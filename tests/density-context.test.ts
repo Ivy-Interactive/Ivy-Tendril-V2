@@ -6,6 +6,7 @@ import { Densities } from "../src/types/density";
 import { Button } from "../src/components/ui/button/button";
 import { Input } from "../src/components/ui/input";
 import { Badge } from "../src/components/ui/badge/badge";
+import { badgeVariant } from "../src/components/ui/badge/variant";
 import {
   Select,
   SelectContent,
@@ -14,7 +15,7 @@ import {
   SelectValue,
 } from "../src/components/ui/select";
 import { Checkbox } from "../src/components/ui/checkbox";
-import { densityToButtonSize, densityToBadgeDensity } from "../src/components/ui/density-scale";
+import { densityToButtonSize } from "../src/components/ui/density-scale";
 
 describe("DensityContext", () => {
   it("provides default Medium density when no value is specified", () => {
@@ -171,12 +172,26 @@ describe("Component Density Cascade", () => {
         React.createElement(
           DensityProvider,
           { density: Densities.Small } as any,
-          React.createElement(Badge, { density: "large", "data-testid": "badge" } as any, "Badge"),
+          React.createElement(Badge, { density: "Large", "data-testid": "badge" } as any, "Badge"),
         ),
       );
 
       const badge = screen.getByTestId("badge");
       expect(badge.className).toContain("text-sm");
+    });
+
+    it("accepts a Densities enum value directly", () => {
+      render(
+        React.createElement(Badge, { density: Densities.Large, "data-testid": "badge" }, "Badge"),
+      );
+
+      const badge = screen.getByTestId("badge");
+      expect(badge.className).toContain("text-sm");
+    });
+
+    it("badgeVariant keys off the Densities enum", () => {
+      const classes = badgeVariant({ density: Densities.Small });
+      expect(classes).toContain("text-[10px]");
     });
   });
 
@@ -270,20 +285,6 @@ describe("Mapping Helpers", () => {
 
     it("maps Large to lg", () => {
       expect(densityToButtonSize(Densities.Large)).toBe("lg");
-    });
-  });
-
-  describe("densityToBadgeDensity", () => {
-    it("maps Small to small", () => {
-      expect(densityToBadgeDensity(Densities.Small)).toBe("small");
-    });
-
-    it("maps Medium to medium", () => {
-      expect(densityToBadgeDensity(Densities.Medium)).toBe("medium");
-    });
-
-    it("maps Large to large", () => {
-      expect(densityToBadgeDensity(Densities.Large)).toBe("large");
     });
   });
 });
