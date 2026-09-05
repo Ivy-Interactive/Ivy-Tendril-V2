@@ -23,4 +23,9 @@ export const Skeleton: Story = {
   args: {
     type: "Skeleton",
   },
+  parameters: {
+    // The skeleton picks its line count, widths and heights with `Math.random()`, so no two renders
+    // have the same shape. Only this story is affected; Spinner stays in the visual pass.
+    visual: { disable: true },
+  },
 };

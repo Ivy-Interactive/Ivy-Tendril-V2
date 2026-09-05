@@ -19,6 +19,10 @@ import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
 import visualConfig from "../.storybook/test-runner.ts";
 import webViewerMeta from "../src/components/WebViewer/WebViewer.stories.tsx";
 import calendarMeta from "../src/stories/calendar.stories.tsx";
+import {
+  Skeleton as loadingSkeletonStory,
+  Spinner as loadingSpinnerStory,
+} from "../src/stories/Loading.stories.tsx";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -222,6 +226,11 @@ describe("Nondeterministic story opt-outs", () => {
   it("opts Components/WebViewer out of visual regression while keeping fullscreen layout", () => {
     expect(webViewerMeta.parameters?.visual?.disable).toBe(true);
     expect(webViewerMeta.parameters?.layout).toBe("fullscreen");
+  });
+
+  it("opts Domain/Loading Skeleton out without disabling Spinner", () => {
+    expect(loadingSkeletonStory.parameters?.visual?.disable).toBe(true);
+    expect(loadingSpinnerStory.parameters?.visual).toBeUndefined();
   });
 });
 

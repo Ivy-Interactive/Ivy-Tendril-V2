@@ -296,7 +296,8 @@ pnpm run test-storybook:visual:update
 
 On failure, annotated diffs are written to `.storybook/__image_snapshots__/__diff_output__/` (gitignored) and uploaded as the `visual-diffs` artifact by CI.
 
-Opt a story out when it cannot produce stable pixels — a clock, a random seed, or an external site:
+Opt a story out when it cannot produce stable pixels — a clock, a random seed, or an external site. The
+parameter works on the meta, which covers every story in the file:
 
 ```ts
 const meta: Meta<typeof Thing> = {
@@ -306,7 +307,18 @@ const meta: Meta<typeof Thing> = {
 };
 ```
 
-`UI/Calendar` (seeded with `new Date()`) and `Components/WebViewer` (frames an external site) are opted out for this reason. Animated stories do **not** need it: the runner injects CSS that pauses animations and transitions before screenshotting.
+or on a single story, when the rest of the file is fine:
+
+```ts
+export const Randomized: Story = {
+  parameters: { visual: { disable: true } },
+};
+```
+
+Currently opted out: `UI/Calendar` (seeded with `new Date()`), `Components/WebViewer` (frames an external
+site) and `Domain/Loading` → `Skeleton` (picks its line count and widths with `Math.random()`). Animated
+stories do **not** need it: the runner injects CSS that pauses animations and transitions before
+screenshotting.
 
 #### CI
 
