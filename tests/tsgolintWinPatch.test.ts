@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
@@ -53,6 +54,69 @@ describe("patch-tsgolint-win", () => {
       runJson();
 
       expect(existsSync(target as string)).toBe(before);
+    });
+  });
+
+  describe("obsolescence canary", () => {
+    it("upstream still declares no .exe bin", () => {
+      const requireFromRepo = createRequire(resolve(repoRoot, "package.json"));
+      const vitePlusPkgPath = requireFromRepo.resolve("vite-plus/package.json");
+      const requireFromVitePlus = createRequire(vitePlusPkgPath);
+
+      // Check oxlint-tsgolint
+      const tsgolintPkgPath = requireFromVitePlus.resolve("oxlint-tsgolint/package.json");
+      const tsgolintPkg = JSON.parse(readFileSync(tsgolintPkgPath, "utf8"));
+
+      if (tsgolintPkg.bin) {
+        const binEntries = Object.entries(tsgolintPkg.bin);
+        for (const [name, path] of binEntries) {
+          expect(name.endsWith(".exe")).toBe(false);
+          expect((path as string).endsWith(".exe")).toBe(false);
+        }
+      }
+
+      // Check @oxlint-tsgolint/<platform>-<arch> (optional dependency, may not be installed)
+      const platformPkgName = `@oxlint-tsgolint/${process.platform}-${process.arch}`;
+      try {
+        const platformPkgPath = requireFromVitePlus.resolve(`${platformPkgName}/package.json`);
+        const platformPkg = JSON.parse(readFileSync(platformPkgPath, "utf8"));
+
+        if (platformPkg.bin) {
+          const binEntries = Object.entries(platformPkg.bin);
+          for (const [name, path] of binEntries) {
+            expect(
+              name.endsWith(".exe"),
+              `tsgolint.exe is now declared upstream — the Windows patch is obsolete. Follow 'Retiring this repair' in README.md.`,
+            ).toBe(false);
+            expect(
+              (path as string).endsWith(".exe"),
+              `tsgolint.exe is now declared upstream — the Windows patch is obsolete. Follow 'Retiring this repair' in README.md.`,
+            ).toBe(false);
+          }
+        }
+      } catch {
+        // Platform package not installed (e.g., Linux CI runner) — skip that check
+      }
+    });
+
+    describe.runIf(process.platform === "win32")("pnpm shim path normalization", () => {
+      it("the pnpm shim still hands cmd.exe an unnormalized path", () => {
+        const requireFromRepo = createRequire(resolve(repoRoot, "package.json"));
+        const vitePlusPkgPath = requireFromRepo.resolve("vite-plus/package.json");
+        const vitePlusDir = dirname(vitePlusPkgPath);
+        const shimPath = resolve(vitePlusDir, "node_modules", ".bin", "tsgolint.CMD");
+
+        if (!existsSync(shimPath)) {
+          // Shim not present — skip this check
+          return;
+        }
+
+        const shimContent = readFileSync(shimPath, "utf8");
+        expect(
+          shimContent.includes("\\..\\..\\"),
+          `the pnpm shim now hands cmd.exe a normalized path — the Windows patch is obsolete. Follow 'Retiring this repair' in README.md.`,
+        ).toBe(true);
+      });
     });
   });
 });

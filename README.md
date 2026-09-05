@@ -343,6 +343,16 @@ node scripts/patch-tsgolint-win.mjs
 Add `--json` to see what it resolved — the source binary, the target path and its length — without
 writing anything.
 
+**Retiring this repair:** The canary in `tests/tsgolintWinPatch.test.ts` fails when `oxlint-tsgolint` declares an `.exe` bin, or when pnpm's shim stops passing an unnormalized path. When that happens, the patch is obsolete and can be removed. Delete:
+
+1. `scripts/patch-tsgolint-win.mjs`
+2. `tests/tsgolintWinPatch.test.ts`
+3. The `node scripts/patch-tsgolint-win.mjs && ` prefix on both `lint` and `check` in `package.json`
+4. The ` && node scripts/patch-tsgolint-win.mjs` suffix on `prepare` (leave `vp config`)
+5. This README subsection
+
+To confirm manually: run `pnpm install --ignore-scripts`, then check if `node_modules/.pnpm/vite-plus@*/node_modules/.bin/tsgolint.exe` exists.
+
 ### Testing
 
 Run the test suite:

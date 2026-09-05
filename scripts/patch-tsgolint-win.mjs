@@ -18,6 +18,8 @@
  * Usage:
  *   node scripts/patch-tsgolint-win.mjs            apply the repair
  *   node scripts/patch-tsgolint-win.mjs --json     report what it would do, write nothing
+ *
+ * Retirement: See "Retiring this repair" in README.md (Windows: type-aware lint binary section).
  */
 
 import {
