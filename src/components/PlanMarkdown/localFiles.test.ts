@@ -1,32 +1,21 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { transformLocalFileUrl } from "./localFiles";
 
 describe("localFiles", () => {
-  let originalQuerySelector: typeof document.querySelector;
+  const setMeta = (name: string, content: string) => {
+    const el = document.createElement("meta");
+    el.name = name;
+    el.content = content;
+    document.head.appendChild(el);
+  };
 
   beforeEach(() => {
-    // Mock document.querySelector
-    originalQuerySelector = document.querySelector;
-    document.querySelector = vi.fn((selector: string) => {
-      if (selector === 'meta[name="ivy-host"]') {
-        return {
-          getAttribute: (attr: string) => (attr === "content" ? "http://localhost:5000" : null),
-        } as any;
-      }
-      if (selector === 'meta[name="ivy-path-base"]') {
-        return null;
-      }
-      if (selector === 'meta[name="ivy-dangerously-allow-local-files"]') {
-        return {
-          getAttribute: (attr: string) => (attr === "content" ? "true" : null),
-        } as any;
-      }
-      return null;
-    }) as any;
+    setMeta("ivy-host", "http://localhost:5000");
+    setMeta("ivy-dangerously-allow-local-files", "true");
   });
 
   afterEach(() => {
-    document.querySelector = originalQuerySelector;
+    document.head.querySelectorAll("meta").forEach((el) => el.remove());
   });
 
   describe("transformLocalFileUrl", () => {
