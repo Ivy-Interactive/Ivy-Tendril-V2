@@ -113,6 +113,75 @@ export * from "./components/ui/toaster";
 export * from "./components/ui/toggle";
 export * from "./components/ui/tooltip";
 
+// Presentation & UI
+export { Icon, type IconProps } from "./components/Icon";
+export { InvalidIcon, type InvalidIconProps } from "./components/InvalidIcon";
+export { IvyLogo, type IvyLogoProps } from "./components/IvyLogo";
+export { Kbd, ShortcutKeys, type KbdProps, type ShortcutKeysProps } from "./components/Kbd";
+export {
+  Loading,
+  Spinner,
+  SkeletonList,
+  type LoadingProps,
+  type SpinnerProps,
+  type SkeletonListProps,
+} from "./components/Loading";
+export { LoadingScreen, type LoadingScreenProps } from "./components/LoadingScreen";
+export { LogoLoading, type LogoLoadingProps } from "./components/LogoLoading";
+export { TextShimmer, type TextShimmerProps } from "./components/TextShimmer";
+export {
+  CopyToClipboardButton,
+  type CopyToClipboardButtonProps,
+} from "./components/CopyToClipboardButton";
+export { EmojiRating, type EmojiRatingProps } from "./components/EmojiRating";
+export { StarRating, type StarRatingProps } from "./components/StarRating";
+export { NumberInput, type NumberInputProps } from "./components/NumberInput";
+export { MadeWithIvy, type MadeWithIvyProps } from "./components/MadeWithIvy";
+
+// Rich Content Renderers
+export {
+  MarkdownRenderer,
+  normalizeNestedFences,
+  type MarkdownRendererProps,
+} from "./components/MarkdownRenderer";
+export { MermaidRenderer, type MermaidRendererProps } from "./components/MermaidRenderer";
+export { GraphvizRenderer, type GraphvizRendererProps } from "./components/GraphvizRenderer";
+export { JsonRenderer, type JsonRendererProps } from "./components/JsonRenderer";
+export { XmlRenderer, type XmlRendererProps } from "./components/XmlRenderer";
+export { HtmlRenderer, type HtmlRendererProps } from "./components/HtmlRenderer";
+
+// Chat & Feedback
+export {
+  ChatBubble,
+  ChatBubbleMessage,
+  ChatBubbleAction,
+  ChatBubbleActionWrapper,
+  type ChatBubbleProps,
+  type ChatBubbleMessageProps,
+  type ChatBubbleActionProps,
+  type ChatBubbleActionWrapperProps,
+} from "./components/ChatBubble";
+export { ChatInput, type ChatInputProps } from "./components/ChatInput";
+export { ChatMessageList, type ChatMessageListProps } from "./components/ChatMessageList";
+export { MessageLoading } from "./components/MessageLoading";
+
+// Diagnostics & Errors
+export { DevTools, type WidgetInfo } from "./components/DevTools";
+export {
+  ErrorBoundary,
+  type ErrorBoundaryProps,
+  type ErrorBoundaryState,
+} from "./components/ErrorBoundary";
+export { ErrorDisplay, type ErrorDisplayProps } from "./components/ErrorDisplay";
+export { ErrorSheet } from "./components/ErrorSheet";
+export { useErrorSheet, showError, type ErrorItem } from "./hooks/use-error-sheet";
+
+// Supporting Utilities & Contexts
+export { copyToClipboard } from "./lib/clipboard";
+export { getPlatformShortcut, formatShortcut } from "./lib/shortcut";
+export { TypographyContext, useTypography } from "./contexts/TypographyContext";
+export { widgetCallSiteRegistry, type CallSite } from "./types/widgets";
+
 // Shell
 export {
   TendrilShell,
