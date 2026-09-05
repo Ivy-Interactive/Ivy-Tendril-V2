@@ -1,2 +1,7 @@
-# Visual regression baselines must survive any core.autocrlf setting byte for byte.
+# Line endings are decided here, not by each contributor's core.autocrlf.
+# Text is stored and checked out as LF on every platform; binaries are auto-detected.
+* text=auto eol=lf
+
+# Visual regression baselines must survive any core.autocrlf setting byte for byte, so say so
+# explicitly rather than relying on auto-detection.
 *.png binary

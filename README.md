@@ -14,7 +14,8 @@
 
 - **`components-storybook`** — Root entry for common components, utilities, and theme provider
 - **`components-storybook/ui`** — 38+ Radix UI & shadcn/ui primitives (Button, Input, Card, Dialog, etc.)
-- **`components-storybook/renderers`** — Rich content renderers (Markdown, Mermaid, Graphviz, Code, Chat, ErrorBoundary)
+- **`components-storybook/renderers`** — Rich content renderers (Markdown, JSON, XML, HTML, Code, Chat, ErrorBoundary)
+- **`components-storybook/diagrams`** — Diagram renderers (Mermaid, Graphviz) that lazy-load mermaid and @hpcc-js/wasm-graphviz on first render
 - **`components-storybook/tendril`** — Tendril execution widgets, Shell layout, diff inspection, and dashboard analytics
 - **`components-storybook/styles/*`** — Design system tokens and stylesheets (`index.css`, `markdown-spacing.css`)
 
@@ -122,10 +123,12 @@ function DemoComponent() {
 ```tsx
 import {
   MarkdownRenderer,
-  MermaidRenderer,
-  GraphvizRenderer,
   JsonRenderer,
 } from "components-storybook/renderers";
+import {
+  MermaidRenderer,
+  GraphvizRenderer,
+} from "components-storybook/diagrams";
 
 function ContentDemo() {
   const markdownContent = "# Hello\n\nThis is **Markdown** content.";
@@ -136,8 +139,8 @@ function ContentDemo() {
   return (
     <div className="space-y-6">
       <MarkdownRenderer content={markdownContent} />
-      <MermaidRenderer chart={mermaidDiagram} />
-      <GraphvizRenderer dot={dotGraph} />
+      <MermaidRenderer content={mermaidDiagram} />
+      <GraphvizRenderer content={dotGraph} />
       <JsonRenderer data={jsonData} />
     </div>
   );
@@ -387,6 +390,43 @@ node scripts/patch-tsgolint-win.mjs
 
 Add `--json` to see what it resolved — the source binary, the target path and its length — without
 writing anything.
+
+**Retiring this repair:** The canary in `tests/tsgolintWinPatch.test.ts` fails when `oxlint-tsgolint` declares an `.exe` bin, or when pnpm's shim stops passing an unnormalized path. When that happens, the patch is obsolete and can be removed. Delete:
+
+1. `scripts/patch-tsgolint-win.mjs`
+2. `tests/tsgolintWinPatch.test.ts`
+3. The `node scripts/patch-tsgolint-win.mjs && ` prefix on both `lint` and `check` in `package.json`
+4. The ` && node scripts/patch-tsgolint-win.mjs` suffix on `prepare` (leave `vp config`)
+5. This README subsection
+
+To confirm manually: run `pnpm install --ignore-scripts`, then check if `node_modules/.pnpm/vite-plus@*/node_modules/.bin/tsgolint.exe` exists.
+
+### Windows: line endings
+
+The repo enforces LF line endings via `.gitattributes`, overriding your local `core.autocrlf` setting
+— you do not need to change your global git config. If you cloned before `.gitattributes` was
+committed, you may see `vp check` report formatting issues in files that show no diff in `git status`.
+This happens when your working copy has CRLF but the committed blob is LF: git's stat cache keeps
+reporting them clean, while oxfmt sees CRLF as incorrect.
+
+To fix it, discard uncommitted work and re-checkout:
+
+```bash
+git rm --cached -rq . && git reset --hard
+```
+
+This empties the index and forces git to re-checkout every file with the correct line endings.
+
+**Warning:** The command above discards all uncommitted changes. Commit or stash your work first.
+
+For a single file:
+
+```bash
+rm <path> && git checkout -- <path>
+```
+
+**Note:** `git add --renormalize .` normalizes the index but does not update the working tree, so it
+will not fix the `vp check` failure.
 
 ### Testing
 

@@ -5,13 +5,9 @@ import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
 import { toMatchImageSnapshot } from "jest-image-snapshot";
 import { readStoryGlobals } from "./globals";
 
-// `expect` is Jest's global inside the Storybook test runner; this project's tsconfig does not
-// include the jest types, so declare the surface used here. The matcher itself stays untyped and is
-// reached behind the @ts-expect-error below.
-declare const expect: {
-  (received: unknown): unknown;
-  extend: (matchers: Record<string, unknown>) => void;
-};
+// `expect` is Jest's global inside the Storybook test runner. tsconfig.json lists
+// "jest-image-snapshot" in `types`, which brings in both the jest globals and the
+// toMatchImageSnapshot matcher, so nothing needs declaring or suppressing here.
 
 /** Read per call rather than once at import time, so a test can flip it between cases. */
 const isVisualRun = () => process.env.STORYBOOK_VISUAL_REGRESSION === "true";
@@ -85,7 +81,6 @@ const config: TestRunnerConfig = {
     const image = await rootElement.screenshot();
     const { theme = "light", density = "Medium" } = readStoryGlobals(storyContext);
 
-    // @ts-expect-error jest-image-snapshot matchers extended on expect
     expect(image).toMatchImageSnapshot({
       customSnapshotsDir: snapshotsDir,
       customSnapshotIdentifier: `${storyContext.id}-${theme}-${density.toLowerCase()}`,

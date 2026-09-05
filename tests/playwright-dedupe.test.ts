@@ -6,13 +6,12 @@ import { describe, expect, it } from "vite-plus/test";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * pnpm 11 writes the lockfile as two YAML documents: a first one for the package manager's own
- * binaries, then the project's. Only the second describes the project's dependencies.
+ * pnpm 11 opens the lockfile with a `---` document marker, so take the last YAML document before
+ * slicing off everything from `snapshots:` onwards.
  */
 function readProjectPackagesSection(): string {
   const lockfile = readFileSync(path.join(repoRoot, "pnpm-lock.yaml"), "utf8");
   const documents = lockfile.split(/^---$/m);
-  // Extract packages section only (before snapshots section)
   return documents[documents.length - 1]!.split(/^snapshots:/m)[0]!;
 }
 
