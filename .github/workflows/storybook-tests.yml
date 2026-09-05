@@ -17,7 +17,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "24"
           cache: pnpm
 
       - name: Install dependencies
@@ -55,22 +55,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Detect baselines
-        id: baselines
-        run: |
-          if [ -n "$(ls -A .storybook/__image_snapshots__/*.png 2>/dev/null)" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No committed baselines; skipping visual regression."
-          fi
-
       - name: Build Storybook
-        if: steps.baselines.outputs.present == 'true'
         run: pnpm run build-storybook
 
       - name: Visual regression
-        if: steps.baselines.outputs.present == 'true'
         run: pnpm run test-storybook:visual:ci
 
       - name: Upload diffs
