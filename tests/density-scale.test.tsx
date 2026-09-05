@@ -81,7 +81,7 @@ describe("DensityScale", () => {
       </DensityProvider>,
     );
     const element = screen.getByTestId("scale");
-    expect(element).toHaveAttribute("data-density", "small");
+    expect(element.getAttribute("data-density")).toBe("small");
     expect(element.className).toContain("text-xs");
   });
 
@@ -112,6 +112,6 @@ describe("DensityScale", () => {
     const button = screen.getByTestId("button");
     expect(button.tagName).toBe("BUTTON");
     expect(button.className).toContain("text-sm");
-    expect(button).toHaveAttribute("data-density", "medium");
+    expect(button.getAttribute("data-density")).toBe("medium");
   });
 });
