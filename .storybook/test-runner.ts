@@ -37,7 +37,7 @@ const config: TestRunnerConfig = {
   setup() {
     expect.extend({ toMatchImageSnapshot });
   },
-  async preVisit(page) {
+  async preVisit(page, _context) {
     if (isVisualRun()) {
       return;
     }

@@ -25,7 +25,7 @@ import { MarkdownCodeBlock } from "./markdown/MarkdownCodeBlock";
 import { PopoverLink } from "./markdown/PopoverLink";
 import Icon from "@/components/Icon";
 import type { Components } from "react-markdown";
-import { parseGitHubAlert, githubAlertStyles } from "@/lib/markdown-utils";
+import { parseGitHubAlert, githubAlertStyles, extractTextContent } from "@/lib/markdown-utils";
 // js-yaml 5's ESM build has no default export, only named ones. A default import survives
 // Vitest's CJS interop but fails the Rolldown production build with MISSING_EXPORT.
 import { load as loadYaml } from "js-yaml";
@@ -125,13 +125,6 @@ FrontmatterDisplay.displayName = "FrontmatterDisplay";
  * For example, a markdown block containing a ```csharp block would have its
  * outer fence increased to ```` so the inner ``` doesn't close it.
  */
-function getNodeText(node: React.ReactNode): string {
-  if (typeof node === "string") return node;
-  if (typeof node === "number") return node.toString();
-  if (Array.isArray(node)) return node.map(getNodeText).join("");
-  return "";
-}
-
 export function normalizeNestedFences(content: string): string {
   const lines = content.split("\n");
   const fenceRegex = /^(\s{0,3})(`{3,})\s*(.*)/;
@@ -542,11 +535,11 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         const { children, className } = props;
         const node = (props as any).node;
         const isInPre = node?.parent?.tagName === "pre";
-        const inline = isInPre ? false : !className && !getNodeText(children).includes("\n");
+        const inline = isInPre ? false : !className && !extractTextContent(children).includes("\n");
 
         // Detect Icons.X pattern in inline code
         if (inline) {
-          const text = getNodeText(children);
+          const text = extractTextContent(children);
           const iconMatch = text.match(/^Icons\.([A-Z][a-zA-Z0-9]*)$/);
           if (iconMatch) {
             return (
