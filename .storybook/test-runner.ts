@@ -5,7 +5,7 @@ import { readStoryGlobals } from "./globals";
 
 const config: TestRunnerConfig = {
   async preVisit(page) {
-    await injectAxe(page as any);
+    await injectAxe(page);
   },
   async postVisit(page, context) {
     const storyContext = await getStoryContext(page, context);
@@ -14,11 +14,11 @@ const config: TestRunnerConfig = {
       return;
     }
 
-    await configureAxe(page as any, {
+    await configureAxe(page, {
       rules: storyContext.parameters?.a11y?.config?.rules,
     });
 
-    await checkA11y(page as any, "#storybook-root", {
+    await checkA11y(page, "#storybook-root", {
       detailedReport: true,
       detailedReportOptions: {
         html: true,
