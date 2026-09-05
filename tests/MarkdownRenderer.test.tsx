@@ -98,7 +98,8 @@ describe("MarkdownRenderer raw HTML sanitisation", () => {
       '<details><summary>S</summary></details>\n\n<a href="javascript:alert(1)">link</a>';
     const { container } = render(<MarkdownRenderer content={content} />);
     const href = container.querySelector("a")?.getAttribute("href");
-    expect(href === null || href === "").toBe(true);
+    // MarkdownRenderer's urlTransform converts invalid URLs to "#", not "" like PlanMarkdown
+    expect(href === null || href === "" || href === "#").toBe(true);
   });
 
   it("preserves safe hrefs in allowed tags", () => {
