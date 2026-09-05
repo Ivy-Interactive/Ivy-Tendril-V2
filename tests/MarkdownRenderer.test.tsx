@@ -173,3 +173,61 @@ describe("MarkdownRenderer features alongside sanitised raw HTML", () => {
     expect(container.querySelector("strong")?.textContent).toBe("Bold");
   });
 });
+
+describe("MarkdownRenderer frontmatter", () => {
+  it("renders a populated frontmatter block with card and strips fences from body", () => {
+    const content =
+      "---\ntitle: Test Document\nauthor: Test Author\n---\n# Main Content\n\nBody text.";
+    const { container } = render(<MarkdownRenderer content={content} />);
+
+    // Frontmatter card should be present (has distinctive classes)
+    const frontmatterCard = container.querySelector(".mb-6.rounded-lg.border");
+    expect(frontmatterCard).toBeTruthy();
+
+    // Body should be present without the frontmatter fences
+    expect(container.textContent).toContain("Main Content");
+    expect(container.textContent).toContain("Body text");
+    expect(container.textContent).toContain("Test Document");
+    expect(container.textContent).toContain("Test Author");
+    // Verify key-value format is rendered
+    expect(container.textContent).toContain("title:");
+    expect(container.textContent).toContain("author:");
+  });
+
+  it("handles malformed frontmatter by rendering no card and preserving body", () => {
+    const content = "---\ntitle: First\ntitle: Second\n---\n# Main Content";
+    const { container } = render(<MarkdownRenderer content={content} />);
+
+    // No frontmatter card for malformed YAML
+    const frontmatterCard = container.querySelector(".mb-6.rounded-lg.border");
+    expect(frontmatterCard).toBeFalsy();
+
+    // Body should still be reachable (content returned as-is on error)
+    expect(container.textContent).toContain("Main Content");
+  });
+
+  it("handles empty frontmatter block by stripping fences silently", () => {
+    const content = "---\n\n---\n# Main Content\n\nBody text.";
+    const { container } = render(<MarkdownRenderer content={content} />);
+
+    // No frontmatter card for empty block
+    const frontmatterCard = container.querySelector(".mb-6.rounded-lg.border");
+    expect(frontmatterCard).toBeFalsy();
+
+    // Body should be present, fences stripped
+    expect(container.textContent).toContain("Main Content");
+    expect(container.textContent).toContain("Body text");
+  });
+
+  it("handles scalar-only frontmatter by rendering no card", () => {
+    const content = "---\njust a string\n---\n# Main Content";
+    const { container } = render(<MarkdownRenderer content={content} />);
+
+    // No frontmatter card for non-object YAML
+    const frontmatterCard = container.querySelector(".mb-6.rounded-lg.border");
+    expect(frontmatterCard).toBeFalsy();
+
+    // Body should be present
+    expect(container.textContent).toContain("Main Content");
+  });
+});

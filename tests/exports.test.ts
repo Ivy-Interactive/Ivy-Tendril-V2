@@ -1,213 +1,175 @@
 import { describe, expect, it } from "vitest";
+import * as root from "../src/index";
+import * as ui from "../src/ui";
+import * as renderers from "../src/renderers";
+import * as tendril from "../src/tendril";
 
 describe("Package Exports", () => {
   describe("Root Export (components-storybook)", () => {
-    it("should export ThemeProvider and theme utilities", async () => {
-      const mod = await import("../src/index");
-
-      expect(mod.ThemeProvider).toBeDefined();
-      expect(mod.useTheme).toBeDefined();
-      expect(mod.ThemeContext).toBeDefined();
+    it("should export ThemeProvider and theme utilities", () => {
+      expect(root.ThemeProvider).toBeDefined();
+      expect(root.useTheme).toBeDefined();
+      expect(root.ThemeContext).toBeDefined();
     });
 
-    it("should export utility functions", async () => {
-      const mod = await import("../src/index");
-
-      expect(mod.cn).toBeDefined();
+    it("should export utility functions", () => {
+      expect(root.cn).toBeDefined();
     });
 
-    it("should export common UI components", async () => {
-      const mod = await import("../src/index");
-
-      expect(mod.Button).toBeDefined();
-      expect(mod.Input).toBeDefined();
-      expect(mod.Card).toBeDefined();
-      expect(mod.Badge).toBeDefined();
-      expect(mod.Dialog).toBeDefined();
-      expect(mod.Tabs).toBeDefined();
+    it("should export common UI components", () => {
+      expect(root.Button).toBeDefined();
+      expect(root.Input).toBeDefined();
+      expect(root.Card).toBeDefined();
+      expect(root.Badge).toBeDefined();
+      expect(root.Dialog).toBeDefined();
+      expect(root.Tabs).toBeDefined();
     });
 
-    it("should export primary renderers", async () => {
-      const mod = await import("../src/index");
-
-      expect(mod.MarkdownRenderer).toBeDefined();
+    it("should export primary renderers", () => {
+      expect(root.MarkdownRenderer).toBeDefined();
     });
 
-    it("should export primary Tendril widgets", async () => {
-      const mod = await import("../src/index");
-
-      expect(mod.TendrilShell).toBeDefined();
-      expect(mod.AgentViewer).toBeDefined();
-      expect(mod.PlanMarkdown).toBeDefined();
-      expect(mod.TendrilDashboard).toBeDefined();
+    it("should export primary Tendril widgets", () => {
+      expect(root.TendrilShell).toBeDefined();
+      expect(root.AgentViewer).toBeDefined();
+      expect(root.PlanMarkdown).toBeDefined();
+      expect(root.TendrilDashboard).toBeDefined();
     });
 
-    it("should export density context and scale", async () => {
-      const mod = await import("../src/index");
-
-      expect(mod.DensityProvider).toBeDefined();
-      expect(mod.useDensity).toBeDefined();
-      expect(mod.DensityScale).toBeDefined();
-      expect(typeof mod.useDensityScale).toBe("function");
+    it("should export density context and scale", () => {
+      expect(root.DensityProvider).toBeDefined();
+      expect(root.useDensity).toBeDefined();
+      expect(root.DensityScale).toBeDefined();
+      expect(typeof root.useDensityScale).toBe("function");
     });
   });
 
   describe("UI Primitives Export (components-storybook/ui)", () => {
-    it("should export utility functions", async () => {
-      const mod = await import("../src/ui");
-
-      expect(mod.cn).toBeDefined();
+    it("should export utility functions", () => {
+      expect(ui.cn).toBeDefined();
     });
 
-    it("should export key UI primitive components", async () => {
-      const mod = await import("../src/ui");
-
+    it("should export key UI primitive components", () => {
       // Verify the module exports exist
-      expect(Object.keys(mod).length).toBeGreaterThan(0);
+      expect(Object.keys(ui).length).toBeGreaterThan(0);
 
       // Sample key primitives (not exhaustive)
-      expect(mod.Button).toBeDefined();
-      expect(mod.Input).toBeDefined();
-      expect(mod.Card).toBeDefined();
-      expect(mod.Badge).toBeDefined();
-      expect(mod.Dialog).toBeDefined();
-      expect(mod.Tabs).toBeDefined();
-      expect(mod.Checkbox).toBeDefined();
-      expect(mod.Switch).toBeDefined();
-      expect(mod.Accordion).toBeDefined();
-      expect(mod.Slider).toBeDefined();
-      expect(mod.Toggle).toBeDefined();
-      expect(mod.Label).toBeDefined();
-      expect(mod.Select).toBeDefined();
+      expect(ui.Button).toBeDefined();
+      expect(ui.Input).toBeDefined();
+      expect(ui.Card).toBeDefined();
+      expect(ui.Badge).toBeDefined();
+      expect(ui.Dialog).toBeDefined();
+      expect(ui.Tabs).toBeDefined();
+      expect(ui.Checkbox).toBeDefined();
+      expect(ui.Switch).toBeDefined();
+      expect(ui.Accordion).toBeDefined();
+      expect(ui.Slider).toBeDefined();
+      expect(ui.Toggle).toBeDefined();
+      expect(ui.Label).toBeDefined();
+      expect(ui.Select).toBeDefined();
     });
 
-    it("should export variant namespaces", async () => {
-      const mod = await import("../src/ui");
-
-      expect(mod.DetailVariants).toBeDefined();
-      expect(mod.ExpandableVariants).toBeDefined();
-      expect(mod.InputVariants).toBeDefined();
-      expect(mod.SelectVariants).toBeDefined();
-      expect(mod.TableVariants).toBeDefined();
+    it("should export variant namespaces", () => {
+      expect(ui.DetailVariants).toBeDefined();
+      expect(ui.ExpandableVariants).toBeDefined();
+      expect(ui.InputVariants).toBeDefined();
+      expect(ui.SelectVariants).toBeDefined();
+      expect(ui.TableVariants).toBeDefined();
     });
   });
 
   describe("Renderers Export (components-storybook/renderers)", () => {
-    it("should export rich content renderers", async () => {
-      const mod = await import("../src/renderers");
-
-      expect(mod.MarkdownRenderer).toBeDefined();
-      expect(mod.JsonRenderer).toBeDefined();
-      expect(mod.XmlRenderer).toBeDefined();
-      expect(mod.HtmlRenderer).toBeDefined();
+    it("should export rich content renderers", () => {
+      expect(renderers.MarkdownRenderer).toBeDefined();
+      expect(renderers.JsonRenderer).toBeDefined();
+      expect(renderers.XmlRenderer).toBeDefined();
+      expect(renderers.HtmlRenderer).toBeDefined();
     });
 
-    it("should export specialized presentation components", async () => {
-      const mod = await import("../src/renderers");
-
-      expect(mod.Icon).toBeDefined();
-      expect(mod.InvalidIcon).toBeDefined();
-      expect(mod.IvyLogo).toBeDefined();
-      expect(mod.Kbd).toBeDefined();
-      expect(mod.Loading).toBeDefined();
-      expect(mod.LoadingScreen).toBeDefined();
-      expect(mod.LogoLoading).toBeDefined();
-      expect(mod.TextShimmer).toBeDefined();
-      expect(mod.CopyToClipboardButton).toBeDefined();
-      expect(mod.EmojiRating).toBeDefined();
-      expect(mod.StarRating).toBeDefined();
-      expect(mod.NumberInput).toBeDefined();
-      expect(mod.MadeWithIvy).toBeDefined();
+    it("should export specialized presentation components", () => {
+      expect(renderers.Icon).toBeDefined();
+      expect(renderers.InvalidIcon).toBeDefined();
+      expect(renderers.IvyLogo).toBeDefined();
+      expect(renderers.Kbd).toBeDefined();
+      expect(renderers.Loading).toBeDefined();
+      expect(renderers.LoadingScreen).toBeDefined();
+      expect(renderers.LogoLoading).toBeDefined();
+      expect(renderers.TextShimmer).toBeDefined();
+      expect(renderers.CopyToClipboardButton).toBeDefined();
+      expect(renderers.EmojiRating).toBeDefined();
+      expect(renderers.StarRating).toBeDefined();
+      expect(renderers.NumberInput).toBeDefined();
+      expect(renderers.MadeWithIvy).toBeDefined();
     });
 
-    it("should export chat components", async () => {
-      const mod = await import("../src/renderers");
-
-      expect(mod.ChatBubble).toBeDefined();
-      expect(mod.ChatInput).toBeDefined();
-      expect(mod.ChatMessageList).toBeDefined();
-      expect(mod.MessageLoading).toBeDefined();
+    it("should export chat components", () => {
+      expect(renderers.ChatBubble).toBeDefined();
+      expect(renderers.ChatInput).toBeDefined();
+      expect(renderers.ChatMessageList).toBeDefined();
+      expect(renderers.MessageLoading).toBeDefined();
     });
 
-    it("should export error handling components", async () => {
-      const mod = await import("../src/renderers");
-
-      expect(mod.ErrorBoundary).toBeDefined();
-      expect(mod.ErrorDisplay).toBeDefined();
-      expect(mod.ErrorSheet).toBeDefined();
-      expect(mod.DevTools).toBeDefined();
+    it("should export error handling components", () => {
+      expect(renderers.ErrorBoundary).toBeDefined();
+      expect(renderers.ErrorDisplay).toBeDefined();
+      expect(renderers.ErrorSheet).toBeDefined();
+      expect(renderers.DevTools).toBeDefined();
     });
 
-    it("should export utility functions", async () => {
-      const mod = await import("../src/renderers");
-
-      expect(mod.copyToClipboard).toBeDefined();
-      expect(mod.getPlatformShortcut).toBeDefined();
+    it("should export utility functions", () => {
+      expect(renderers.copyToClipboard).toBeDefined();
+      expect(renderers.getPlatformShortcut).toBeDefined();
     });
   });
 
   describe("Tendril Export (components-storybook/tendril)", () => {
-    it("should export shell components", async () => {
-      const mod = await import("../src/tendril");
-
-      expect(mod.TendrilShell).toBeDefined();
-      expect(mod.ShellNav).toBeDefined();
-      expect(mod.ShellTabs).toBeDefined();
-      expect(mod.ShellAgentButton).toBeDefined();
-      expect(mod.ShellNewPlanButton).toBeDefined();
-      expect(mod.ShellSettingsButton).toBeDefined();
-      expect(mod.ShellSidebarHeader).toBeDefined();
-      expect(mod.ShellSidebarSection).toBeDefined();
-      expect(mod.BrandIcon).toBeDefined();
-      expect(mod.brandIcons).toBeDefined();
+    it("should export shell components", () => {
+      expect(tendril.TendrilShell).toBeDefined();
+      expect(tendril.ShellNav).toBeDefined();
+      expect(tendril.ShellTabs).toBeDefined();
+      expect(tendril.ShellAgentButton).toBeDefined();
+      expect(tendril.ShellNewPlanButton).toBeDefined();
+      expect(tendril.ShellSettingsButton).toBeDefined();
+      expect(tendril.ShellSidebarHeader).toBeDefined();
+      expect(tendril.ShellSidebarSection).toBeDefined();
+      expect(tendril.BrandIcon).toBeDefined();
+      expect(tendril.brandIcons).toBeDefined();
     });
 
-    it("should export agent and execution visualizers", async () => {
-      const mod = await import("../src/tendril");
-
-      expect(mod.AgentViewer).toBeDefined();
-      expect(mod.TendrilProcessViewer).toBeDefined();
+    it("should export agent and execution visualizers", () => {
+      expect(tendril.AgentViewer).toBeDefined();
+      expect(tendril.TendrilProcessViewer).toBeDefined();
     });
 
-    it("should export inputs and form controls", async () => {
-      const mod = await import("../src/tendril");
-
-      expect(mod.ContentInput).toBeDefined();
-      expect(mod.BadgeSelect).toBeDefined();
-      expect(mod.SortableVerificationList).toBeDefined();
+    it("should export inputs and form controls", () => {
+      expect(tendril.ContentInput).toBeDefined();
+      expect(tendril.BadgeSelect).toBeDefined();
+      expect(tendril.SortableVerificationList).toBeDefined();
     });
 
-    it("should export plan markdown components", async () => {
-      const mod = await import("../src/tendril");
-
-      expect(mod.PlanMarkdown).toBeDefined();
-      expect(mod.DraftMarkdown).toBeDefined();
-      expect(mod.AlertBlockquote).toBeDefined();
-      expect(mod.AnnotationPopover).toBeDefined();
-      expect(mod.QuestionsCallout).toBeDefined();
-      expect(mod.SearchOverlay).toBeDefined();
+    it("should export plan markdown components", () => {
+      expect(tendril.PlanMarkdown).toBeDefined();
+      expect(tendril.DraftMarkdown).toBeDefined();
+      expect(tendril.AlertBlockquote).toBeDefined();
+      expect(tendril.AnnotationPopover).toBeDefined();
+      expect(tendril.QuestionsCallout).toBeDefined();
+      expect(tendril.SearchOverlay).toBeDefined();
     });
 
-    it("should export plan diff components", async () => {
-      const mod = await import("../src/tendril");
-
-      expect(mod.PlanDiffView).toBeDefined();
+    it("should export plan diff components", () => {
+      expect(tendril.PlanDiffView).toBeDefined();
     });
 
-    it("should export dashboard components", async () => {
-      const mod = await import("../src/tendril");
-
-      expect(mod.TendrilDashboard).toBeDefined();
-      expect(mod.ActivityGrid).toBeDefined();
-      expect(mod.PillBars).toBeDefined();
-      expect(mod.TrendChart).toBeDefined();
-      expect(mod.HoverTip).toBeDefined();
+    it("should export dashboard components", () => {
+      expect(tendril.TendrilDashboard).toBeDefined();
+      expect(tendril.ActivityGrid).toBeDefined();
+      expect(tendril.PillBars).toBeDefined();
+      expect(tendril.TrendChart).toBeDefined();
+      expect(tendril.HoverTip).toBeDefined();
     });
 
-    it("should export web viewer", async () => {
-      const mod = await import("../src/tendril");
-
-      expect(mod.WebViewer).toBeDefined();
+    it("should export web viewer", () => {
+      expect(tendril.WebViewer).toBeDefined();
     });
   });
 });
