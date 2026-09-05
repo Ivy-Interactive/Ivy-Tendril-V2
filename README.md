@@ -241,6 +241,45 @@ vp run storybook:preview
 
 ### Visual Catalog Structure
 
+### Storybook Testing
+
+Install Playwright browser binaries (one-time setup):
+
+```bash
+pnpm run test-storybook:install
+```
+
+Browser binaries are cached in `~/.cache/ms-playwright` (Linux/macOS) or `%USERPROFILE%\AppData\Local\ms-playwright` (Windows) and are not re-downloaded per clone.
+
+Run Storybook tests against a running dev server:
+
+```bash
+pnpm run test-storybook
+```
+
+Run Storybook tests in CI mode (builds static files first):
+
+```bash
+pnpm run test-storybook:ci
+```
+
+Run visual regression tests:
+
+```bash
+pnpm run test-storybook:visual
+```
+
+Update visual regression snapshots:
+
+```bash
+pnpm run test-storybook:visual:update
+```
+
+#### CI
+
+The [storybook-tests.yml](.github/workflows/storybook-tests.yml) workflow runs on every push and pull request. It includes a caching step for Playwright browsers to avoid re-downloading on every run.
+
+
 The Storybook catalog is organized into the following sections:
 
 - **Foundation** — Theme provider, typography, design tokens

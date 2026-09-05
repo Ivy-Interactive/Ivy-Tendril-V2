@@ -140,7 +140,7 @@ export const GraphvizRenderer = memo(({ content }: GraphvizRendererProps) => {
 
   useEffect(() => {
     const mountedObj = { current: true };
-    renderDiagram(mountedObj);
+    void renderDiagram(mountedObj);
     return () => {
       mountedObj.current = false;
     };

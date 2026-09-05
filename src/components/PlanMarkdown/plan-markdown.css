@@ -246,7 +246,8 @@
   background: var(--muted);
   padding: 0.05rem 0.25rem;
   font-family:
-    "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    "Geist Mono Variable", "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
   font-size: 0.9em;
   font-weight: 500;
   white-space: normal;

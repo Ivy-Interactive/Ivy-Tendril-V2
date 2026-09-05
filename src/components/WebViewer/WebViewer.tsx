@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import "./web-viewer.css";
-import { getHeight, getWidth } from "../styles.ts";
+import { getHeight, getWidth } from "@/lib/styles";
 
 // ---------------------------------------------------------------------------
 // Types

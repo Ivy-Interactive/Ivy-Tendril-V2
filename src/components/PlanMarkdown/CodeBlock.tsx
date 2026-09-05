@@ -61,7 +61,7 @@ const CopyButton: React.FC<{ content: string }> = ({ content }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(content).then(() => {
+    void navigator.clipboard.writeText(content).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

@@ -41,8 +41,10 @@ describe("WebViewer", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders empty state when no URL is provided", () => {
-    render(<WebViewer id="test-viewer" />);
+  it("renders empty state when no URL is provided", async () => {
+    await act(async () => {
+      render(<WebViewer id="test-viewer" />);
+    });
     expect(screen.getByText("No URL — set the Url prop to load a page.")).toBeDefined();
   });
 
@@ -85,10 +87,13 @@ describe("WebViewer", () => {
     expect(stage?.classList.contains("wvr-device")).toBe(true);
   });
 
-  it("applies scale and custom width/height styles", () => {
+  it("applies scale and custom width/height styles", async () => {
     const { container } = render(
       <WebViewer id="test-viewer" url="https://example.com" width="px:1024" height="px:768" />,
     );
+    // Mounting starts acquireProxyWorker(); let its promise chain settle inside act so the
+    // resulting setSwReady(true) is not applied outside an act scope.
+    await act(async () => {});
     const shell = container.querySelector(".wvr-shell") as HTMLElement;
     expect(shell).not.toBeNull();
     expect(shell.style.width).toBe("1024px");

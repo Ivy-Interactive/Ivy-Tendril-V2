@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Markdown from "react-markdown";
 import "./agent-output.css";
+import "../PlanMarkdown/plan-markdown.css";
 import type { EventHandler, PresentationEvent } from "./types.ts";
-import { getHeight, getWidth } from "../styles.ts";
-import { BlockHandler } from "../BlockHandler.tsx";
+import { getHeight, getWidth } from "@/lib/styles";
+import { BlockHandler } from "../PlanMarkdown/BlockHandler.tsx";
 import { useAutoScroll } from "./use-auto-scroll.ts";
 import { parseEventWireStream } from "./parse-events.ts";
 import { deriveStatus } from "./status.ts";
@@ -12,8 +13,10 @@ import { ToolUseCard } from "./tool-use-card.tsx";
 import { ResultSummary } from "./result-summary.tsx";
 import { groupToolUseEvents } from "./group-events.ts";
 import { ToolUseGroup } from "./tool-use-group.tsx";
-import { getMarkdownPlugins } from "../math.ts";
+import { getMarkdownPlugins } from "@/lib/math";
 import { AlertBlockquote } from "../PlanMarkdown/AlertBlockquote.tsx";
+import { tagQuestionBlocks } from "../PlanMarkdown/questionsSource.ts";
+import { QuestionsAnswerContext, type AnswerCallback } from "../PlanMarkdown/questionsContext.ts";
 
 function buildSuppressIndices(events: PresentationEvent[]): Set<number> {
   const indices = new Set<number>();
@@ -113,6 +116,25 @@ export const AgentViewer: React.FC<AgentViewerProps> = ({
     [enabledEvents, eventHandler, id],
   );
 
+  const handleAnswer = useCallback<AnswerCallback>(
+    (questionId, answer) => {
+      if (enabledEvents.includes("OnAnswersChange") && eventHandler) {
+        const value =
+          answer === undefined
+            ? null
+            : answer === null
+              ? []
+              : Array.isArray(answer)
+                ? answer
+                : [answer];
+        eventHandler("OnAnswersChange", id, [{ questionId, answer: value }]);
+      }
+    },
+    [enabledEvents, eventHandler, id],
+  );
+
+  const answerCallback = enabledEvents.includes("OnAnswersChange") ? handleAnswer : undefined;
+
   useEffect(() => {
     const last = parsedEvents[parsedEvents.length - 1];
     if (last && last.kind === "result") {
@@ -183,21 +205,25 @@ export const AgentViewer: React.FC<AgentViewerProps> = ({
                   {event.text}
                 </div>
               );
-            case "assistant-text":
+            case "assistant-text": {
+              const taggedText = tagQuestionBlocks(event.text);
               return (
                 <div key={idx} className="aov-markdown aov-assistant">
-                  <Markdown
-                    {...getMarkdownPlugins(event.text)}
-                    components={{
-                      code: BlockHandler,
-                      blockquote: AlertBlockquote,
-                      pre: ({ children }) => <>{children}</>,
-                    }}
-                  >
-                    {event.text}
-                  </Markdown>
+                  <QuestionsAnswerContext.Provider value={answerCallback}>
+                    <Markdown
+                      {...getMarkdownPlugins(taggedText)}
+                      components={{
+                        code: BlockHandler,
+                        blockquote: AlertBlockquote,
+                        pre: ({ children }) => <>{children}</>,
+                      }}
+                    >
+                      {taggedText}
+                    </Markdown>
+                  </QuestionsAnswerContext.Provider>
                 </div>
               );
+            }
             case "result":
               return <ResultSummary key={idx} wire={event.wire} />;
             case "error":

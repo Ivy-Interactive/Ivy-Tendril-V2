@@ -263,7 +263,7 @@ describe("applyAnnotationHighlights", () => {
 
     const mark = container.querySelector("mark[data-annotation-id='a1']");
     expect(mark).not.toBeNull();
-    expect(mark?.title).toBe("[Calm Niels] Needs review");
+    expect(mark?.getAttribute("title")).toBe("[Calm Niels] Needs review");
 
     const badge = mark?.querySelector(".pmv-annotation-initials-badge");
     expect(badge).not.toBeNull();

@@ -8,13 +8,20 @@ import "./styles/globals.css";
 export * from "./lib/utils";
 export * from "./lib/formatters";
 export * from "./lib/logger";
+export { getMarkdownPlugins, hasMath } from "./lib/math";
+export { rawHtmlSchema, hasRawHtml } from "./lib/rawHtml";
+export { getWidth, getHeight } from "./lib/styles";
+export { copyToClipboard } from "./lib/clipboard";
+export { getPlatformShortcut, formatShortcut } from "./lib/shortcut";
 
 // Types
 export * from "./types/density";
+export { widgetCallSiteRegistry, type CallSite } from "./types/widgets";
 
 // Hooks
 export * from "./hooks/use-mobile";
 export * from "./hooks/use-toast";
+export { useErrorSheet, showError, type ErrorItem } from "./hooks/use-error-sheet";
 
 // Theme
 export {
@@ -24,6 +31,16 @@ export {
   type ThemeContextType,
 } from "./contexts/theme-context.tsx";
 export { ThemeProvider, type ThemeProviderProps } from "./components/theme-provider.tsx";
+export { TypographyContext, useTypography } from "./contexts/TypographyContext";
+
+// Density
+export {
+  DensityContext,
+  DensityProvider,
+  useDensity,
+  type DensityContextValue,
+  type DensityProviderProps,
+} from "./contexts/density-context.tsx";
 
 // Commonly Used UI Primitives
 export * from "./components/ui/button";
@@ -42,8 +59,22 @@ export {
 export { MermaidRenderer, type MermaidRendererProps } from "./components/MermaidRenderer";
 export { GraphvizRenderer, type GraphvizRendererProps } from "./components/GraphvizRenderer";
 
+// Error Handling
+export {
+  ErrorBoundary,
+  type ErrorBoundaryProps,
+  type ErrorBoundaryState,
+} from "./components/ErrorBoundary";
+export { ErrorDisplay, type ErrorDisplayProps } from "./components/ErrorDisplay";
+export { ErrorSheet } from "./components/ErrorSheet";
+export { DevTools, type WidgetInfo } from "./components/DevTools";
+
 // Primary Tendril Widgets
 export { TendrilShell } from "./components/Shell/index.ts";
 export { AgentViewer } from "./components/AgentViewer/index.ts";
 export { PlanMarkdown } from "./components/PlanMarkdown";
 export { TendrilDashboard } from "./components/TendrilDashboard/index.ts";
+
+export function fn() {
+  return "Hello, tsdown!";
+}

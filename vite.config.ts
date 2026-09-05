@@ -14,7 +14,7 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   pack: {
-    entry: ["src/index.ts", "src/ui.ts", "src/renderers.ts", "src/tendril.ts"],
+    entry: ["src/index.ts", "src/ui.ts", "src/renderers.ts", "src/tendril.ts", "src/diagrams.ts"],
     format: ["esm"],
     dts: {
       tsgo: true,

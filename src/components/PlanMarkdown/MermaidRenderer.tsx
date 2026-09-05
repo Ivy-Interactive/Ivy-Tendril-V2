@@ -140,7 +140,7 @@ export const MermaidRenderer = memo(({ content }: MermaidRendererProps) => {
 
   useEffect(() => {
     const mountedObj = { current: true };
-    renderDiagram(mountedObj);
+    void renderDiagram(mountedObj);
     return () => {
       mountedObj.current = false;
     };

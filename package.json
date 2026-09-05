@@ -36,8 +36,10 @@
       "types": "./dist/tendril.d.mts",
       "import": "./dist/tendril.mjs"
     },
+    "./diagrams": "./dist/diagrams.mjs",
     "./styles/*": "./src/styles/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./style.css": "./dist/style.css"
   },
   "publishConfig": {
     "access": "public"
@@ -50,10 +52,16 @@
     "check": "vp check",
     "format": "vp fmt",
     "storybook": "storybook dev -p 6006",
+    "storybook:dev": "storybook dev --ci --host 127.0.0.1",
     "storybook:build": "storybook build -o dist-storybook",
     "storybook:preview": "vp preview --outDir dist-storybook --port 6006",
+    "build-storybook": "storybook build",
+    "test-storybook:install": "playwright install chromium",
+    "test-storybook:install:ci": "playwright install --with-deps chromium",
     "test-storybook": "test-storybook",
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"http-server storybook-static -a 127.0.0.1 --port 6006 --silent\" \"wait-on tcp:127.0.0.1:6006 && test-storybook\"",
+    "test-storybook:visual": "cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook",
+    "test-storybook:visual:update": "cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook --updateSnapshot",
     "prepublishOnly": "vp run build",
     "prepare": "vp config"
   },
@@ -128,6 +136,7 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
+    "@types/jest-image-snapshot": "^6.4.0",
     "@types/js-yaml": "^4.0.9",
     "@types/mdast": "^4.0.4",
     "@types/node": "^26.1.1",
@@ -138,10 +147,13 @@
     "axe-playwright": "^2.0.1",
     "bumpp": "^11.1.0",
     "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
     "framer-motion": "^13.2.0",
     "happy-dom": "20.8.9",
     "http-server": "^14.1.1",
+    "jest-image-snapshot": "^6.4.0",
     "jsdom": "^29.1.1",
+    "playwright": "1.63.0",
     "react-icons": "^5.7.0",
     "rehype-slug": "^6.0.0",
     "remark-gemoji": "^8.0.0",

@@ -282,3 +282,152 @@ export const LongOutputWithAutoscroll: Story = {
     eventHandler: () => {},
   },
 };
+
+const mockRichPlanLogs = [
+  mockSessionInit,
+  JSON.stringify({
+    kind: "text",
+    timestamp: "2026-09-05T08:30:01Z",
+    text: `## Workflow State Transitions
+
+The following diagram shows how the plan moves through different states:
+
+\`\`\`mermaid
+graph LR
+    Draft --> Creating
+    Creating --> Executing
+    Executing --> Review
+    Executing --> Failed
+    Review --> Completed
+    Failed --> Draft
+    Draft --> Blocked
+    Blocked --> Draft
+\`\`\`
+
+The system ensures that each state transition is validated before proceeding.`,
+    delta: false,
+  }),
+  JSON.stringify({
+    kind: "text",
+    timestamp: "2026-09-05T08:30:02Z",
+    text: `## Architecture Overview
+
+Here's the subsystem component structure:
+
+\`\`\`graphviz
+digraph G {
+    rankdir=LR;
+    node [shape=box, style=rounded];
+
+    Frontend [label="Frontend\\n(React)"];
+    API [label="API Gateway"];
+    Worker [label="Worker\\nService"];
+    DB [label="Database"];
+
+    Frontend -> API [label="HTTP"];
+    API -> Worker [label="Queue"];
+    Worker -> DB [label="SQL"];
+    API -> DB [label="Read"];
+}
+\`\`\`
+
+This architecture allows for scalable background processing.`,
+    delta: false,
+  }),
+  JSON.stringify({
+    kind: "text",
+    timestamp: "2026-09-05T08:30:03Z",
+    text: `## Configuration Choice
+
+Before proceeding, I need to confirm a detail:
+
+\`\`\`questions
+questions:
+  - id: cache-strategy
+    title: Which caching strategy should we use?
+    description: |
+      The system can use in-memory caching for speed or Redis for persistence.
+
+      In-memory is faster but data is lost on restart.
+      Redis persists data but adds network latency.
+    options:
+      - title: In-Memory
+        description: Fast, but data is lost on restart
+        value: in-memory
+        recommended: true
+      - title: Redis
+        description: Persistent, but adds network latency
+        value: redis
+      - title: No Cache
+        description: Simplest, but slowest
+        value: none
+\`\`\`
+
+Please select your preferred caching strategy.`,
+    delta: false,
+  }),
+  JSON.stringify({
+    kind: "text",
+    timestamp: "2026-09-05T08:30:04Z",
+    text: `## Implementation
+
+Here's a sample TypeScript implementation:
+
+\`\`\`typescript
+import { createCache } from "./cache";
+
+interface Config {
+  strategy: "in-memory" | "redis" | "none";
+  ttl: number;
+}
+
+export function setupCache(config: Config) {
+  return createCache({
+    type: config.strategy,
+    ttl: config.ttl,
+  });
+}
+\`\`\`
+
+This provides a flexible caching interface.`,
+    delta: false,
+  }),
+  JSON.stringify({
+    kind: "result",
+    timestamp: "2026-09-05T08:30:05Z",
+    is_success: true,
+    duration_ms: 4200,
+    usage: {
+      input_tokens: 5200,
+      output_tokens: 1150,
+      cost_usd: 0.0285,
+    },
+    response: `## Final Summary
+
+All diagrams and configuration options have been presented:
+
+- ✅ Mermaid state transition diagram
+- ✅ Graphviz architecture diagram
+- ✅ Interactive question block for caching strategy
+- ✅ Code example with syntax highlighting
+
+The plan is ready for review.`,
+  }),
+].join("\n");
+
+export const WithRichPlanLogs: Story = {
+  args: {
+    id: "agent-viewer-rich-logs",
+    jsonStream: mockRichPlanLogs,
+    events: ["OnAnswersChange"],
+    autoScroll: true,
+    showThinking: false,
+    showSystemEvents: true,
+    showStatusLabel: true,
+    groupToolCalls: false,
+    height: "px:700",
+    eventHandler: (eventName, id, args) => {
+      console.log(`Event: ${eventName}`, { id, args });
+    },
+  },
+};
