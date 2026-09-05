@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Job(cmd) => commands::job::handle_job_command(cmd, &tendril_home).await?,
         Commands::Project(cmd) => commands::project::handle_project_command(cmd, &tendril_home)?,
         Commands::Verification(cmd) => commands::verification::handle_verification_command(cmd, &tendril_home)?,
-        Commands::Promptware(cmd) => commands::promptware::handle_promptware_command(cmd, &tendril_home)?,
+        Commands::Promptware(cmd) => commands::promptware::handle_promptware_command(cmd, &tendril_home).await?,
         Commands::Config(cmd) => commands::config::handle_config_command(cmd, &tendril_home)?,
         Commands::Doctor => commands::doctor::handle_doctor(&tendril_home)?,
         Commands::Version => println!("tendril v{}", env!("CARGO_PKG_VERSION")),

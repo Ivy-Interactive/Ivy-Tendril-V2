@@ -1,5 +1,6 @@
 pub mod dependencies;
 pub mod doctor;
+pub mod duplicates;
 pub mod guards;
 pub mod helpers;
 pub mod reader;
@@ -9,6 +10,7 @@ pub mod writer;
 
 pub use dependencies::*;
 pub use doctor::*;
+pub use duplicates::*;
 pub use guards::*;
 pub use helpers::*;
 pub use reader::*;

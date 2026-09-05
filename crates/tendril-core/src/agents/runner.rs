@@ -1,5 +1,5 @@
 use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use crate::agents::providers::AgentProcessSpec;
 use crate::error::{Result, TendrilError};
@@ -16,11 +16,35 @@ pub async fn run_agent_process<F>(
 where
     F: FnMut(AgentOutputEvent) + Send + 'static,
 {
+    let temp_files = spec.temp_files.clone();
+    let res = run_agent_process_inner(spec, &mut on_output_line).await;
+
+    // Clean up temporary files on exit
+    for file in temp_files {
+        let _ = std::fs::remove_file(file);
+    }
+
+    res
+}
+
+async fn run_agent_process_inner<F>(
+    spec: AgentProcessSpec,
+    on_output_line: &mut F,
+) -> Result<i32>
+where
+    F: FnMut(AgentOutputEvent) + Send + 'static,
+{
     let mut cmd = Command::new(&spec.command);
     cmd.args(&spec.args)
         .current_dir(&spec.working_directory)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    if spec.redirect_stdin {
+        cmd.stdin(Stdio::piped());
+    } else {
+        cmd.stdin(Stdio::null());
+    }
 
     for (k, v) in &spec.environment {
         cmd.env(k, v);
@@ -32,6 +56,15 @@ where
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
+    let stdin = child.stdin.take();
+
+    if let (Some(mut stdin_pipe), Some(content)) = (stdin, spec.stdin_content) {
+        tokio::spawn(async move {
+            let _ = stdin_pipe.write_all(content.as_bytes()).await;
+            let _ = stdin_pipe.flush().await;
+            drop(stdin_pipe);
+        });
+    }
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<AgentOutputEvent>(100);
 

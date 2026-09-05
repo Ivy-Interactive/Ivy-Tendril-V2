@@ -10,7 +10,7 @@ use tendril_core::plans::{
     add_recommendation, check_all_plans_health, check_plan_health,
     create_plan, get_revision, list_recommendations, read_plan_file, read_plan_yaml,
     resolve_plan_folder, set_recommendation_state, write_plan_yaml, write_revision,
-    CreatePlanOptions, PlanCompletionGuard,
+    CreatePlanOptions, DuplicateCandidateFinder, PlanCompletionGuard,
 };
 
 #[derive(Subcommand)]
@@ -20,6 +20,9 @@ pub enum PlanCommands {
 
     #[command(about = "Create a new plan")]
     Create(PlanCreateArgs),
+
+    #[command(about = "Update plan from file or stdin")]
+    Update(PlanUpdateArgs),
 
     #[command(about = "Get plan data")]
     Get(PlanGetArgs),
@@ -77,10 +80,24 @@ pub enum PlanCommands {
 pub struct PlanListArgs {
     #[arg(short, long)]
     pub status: Option<String>,
+    #[arg(long)]
+    pub state: Option<String>,
     #[arg(short, long)]
     pub project: Option<String>,
-    #[arg(short, long)]
-    pub q: Option<String>,
+    #[arg(long)]
+    pub level: Option<String>,
+    #[arg(long)]
+    pub has_pr: bool,
+    #[arg(long)]
+    pub has_worktree: bool,
+    #[arg(short = 'q', long)]
+    pub search: Option<String>,
+    #[arg(long)]
+    pub format: Option<String>,
+    #[arg(long)]
+    pub limit: Option<usize>,
+    #[arg(long)]
+    pub plans_dir: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -103,6 +120,21 @@ pub struct PlanCreateArgs {
     pub depends_on: Vec<String>,
     #[arg(long)]
     pub related_plan: Vec<String>,
+    #[arg(long)]
+    pub plans_dir: Option<PathBuf>,
+    #[arg(long)]
+    pub no_duplicate_check: bool,
+}
+
+#[derive(Args)]
+pub struct PlanUpdateArgs {
+    pub plan_id: String,
+    #[arg(short, long)]
+    pub file: Option<PathBuf>,
+    #[arg(long)]
+    pub stdin: bool,
+    #[arg(long)]
+    pub plans_dir: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -137,6 +169,8 @@ pub struct PlanWriteRevisionArgs {
     pub file: Option<PathBuf>,
     #[arg(long)]
     pub stdin: bool,
+    #[arg(long)]
+    pub plans_dir: Option<PathBuf>,
 }
 
 #[derive(Args)]
@@ -231,24 +265,103 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
 
     match cmd {
         PlanCommands::List(args) => {
-            let conn = open_database(&db_path)?;
-            let status_filter = args.status.as_deref().and_then(PlanStatus::from_str_loose);
-            let plans = get_plans(&conn, status_filter, args.project.as_deref(), args.q.as_deref())?;
+            let custom_dir = args.plans_dir.is_some();
+            let p_dir = args.plans_dir.unwrap_or(plans_dir);
+            let status_filter = args.state.as_deref().or(args.status.as_deref()).and_then(PlanStatus::from_str_loose);
+            let search_term = args.search.as_deref();
 
-            println!("{:<8} {:<12} {:<10} {:<15} {}", "ID", "STATE", "LEVEL", "PROJECT", "TITLE");
-            println!("{}", "-".repeat(70));
-            for p in plans {
-                println!(
-                    "{:<8} {:<12} {:<10} {:<15} {}",
-                    format!("{:05}", p.metadata.id),
-                    p.metadata.state.to_string(),
-                    p.metadata.level,
-                    p.metadata.project,
-                    p.metadata.title
-                );
+            let mut plans = if custom_dir || !db_path.exists() {
+                let mut disk_plans = Vec::new();
+                if p_dir.exists() {
+                    if let Ok(entries) = std::fs::read_dir(&p_dir) {
+                        for entry in entries.flatten() {
+                            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                                if let Ok(plan) = read_plan_file(&entry.path()) {
+                                    disk_plans.push(plan);
+                                }
+                            }
+                        }
+                    }
+                }
+                disk_plans.retain(|p| {
+                    if let Some(state) = status_filter {
+                        if p.metadata.state != state {
+                            return false;
+                        }
+                    }
+                    if let Some(proj) = args.project.as_deref() {
+                        if !p.metadata.project.eq_ignore_ascii_case(proj) {
+                            return false;
+                        }
+                    }
+                    if let Some(st) = search_term {
+                        let id_str = format!("{:05}", p.metadata.id);
+                        if !p.metadata.title.to_lowercase().contains(&st.to_lowercase()) && !id_str.contains(st) {
+                            return false;
+                        }
+                    }
+                    true
+                });
+                disk_plans
+            } else {
+                let conn = open_database(&db_path)?;
+                get_plans(&conn, status_filter, args.project.as_deref(), search_term)?
+            };
+
+            if let Some(lvl) = &args.level {
+                plans.retain(|p| p.metadata.level.eq_ignore_ascii_case(lvl));
+            }
+            if args.has_pr {
+                plans.retain(|p| !p.metadata.prs.is_empty());
+            }
+            if args.has_worktree {
+                plans.retain(|p| {
+                    let folder = std::path::Path::new(&p.folder_path);
+                    let wt_dir = folder.join("Worktrees");
+                    wt_dir.exists() && std::fs::read_dir(&wt_dir).map(|mut it| it.next().is_some()).unwrap_or(false)
+                });
+            }
+
+            if let Some(limit) = args.limit {
+                plans.truncate(limit);
+            }
+
+            match args.format.as_deref().unwrap_or("table").to_ascii_lowercase().as_str() {
+                "json" => {
+                    println!("{}", serde_json::to_string_pretty(&plans)?);
+                }
+                "ids" => {
+                    for p in plans {
+                        println!("{:05}", p.metadata.id);
+                    }
+                }
+                "folders" => {
+                    for p in plans {
+                        let name = std::path::Path::new(&p.folder_path)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(&p.folder_path);
+                        println!("{}", name);
+                    }
+                }
+                _ => {
+                    println!("{:<8} {:<12} {:<10} {:<15} {}", "ID", "STATE", "LEVEL", "PROJECT", "TITLE");
+                    println!("{}", "-".repeat(70));
+                    for p in plans {
+                        println!(
+                            "{:<8} {:<12} {:<10} {:<15} {}",
+                            format!("{:05}", p.metadata.id),
+                            p.metadata.state.to_string(),
+                            p.metadata.level,
+                            p.metadata.project,
+                            p.metadata.title
+                        );
+                    }
+                }
             }
         }
         PlanCommands::Create(args) => {
+            let p_dir = args.plans_dir.unwrap_or(plans_dir);
             let mut verifications = Vec::new();
             for v in args.verification {
                 let parts: Vec<&str> = v.split('=').collect();
@@ -257,6 +370,8 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                     verifications.push(PlanVerificationEntry { name: parts[0].to_string(), status: st });
                 }
             }
+
+            let duplicates = DuplicateCandidateFinder::find(&p_dir, &args.title, &args.project, None);
 
             let opts = CreatePlanOptions {
                 title: args.title,
@@ -272,7 +387,7 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                 related_plans: args.related_plan,
             };
 
-            let plan_file = create_plan(&plans_dir, opts)?;
+            let plan_file = create_plan(&p_dir, opts)?;
             println!("PlanId: {:05}", plan_file.metadata.id);
             println!("Directory: {}", plan_file.folder_path);
             println!("Verifications:");
@@ -280,9 +395,39 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                 println!("{}:{}", v.name, v.status);
             }
 
+            if !args.no_duplicate_check {
+                let block = DuplicateCandidateFinder::format_block(&duplicates);
+                if !block.is_empty() {
+                    println!("{}", block);
+                }
+            }
+
             if let Ok(conn) = open_database(&db_path) {
                 let _ = sync_plan(&conn, &plan_file);
             }
+        }
+        PlanCommands::Update(args) => {
+            let p_dir = args.plans_dir.unwrap_or(plans_dir);
+            let folder = resolve_plan_folder(&args.plan_id, &p_dir)?;
+            let content = if let Some(path) = args.file {
+                std::fs::read_to_string(path)?
+            } else if args.stdin {
+                let mut buf = String::new();
+                std::io::stdin().read_to_string(&mut buf)?;
+                buf
+            } else {
+                anyhow::bail!("No YAML content provided (use --file or --stdin)");
+            };
+
+            let plan: tendril_core::models::PlanYaml = serde_yaml::from_str(&content)?;
+            write_plan_yaml(&folder, &plan)?;
+
+            if let Ok(plan_file) = read_plan_file(&folder) {
+                if let Ok(conn) = open_database(&db_path) {
+                    let _ = sync_plan(&conn, &plan_file);
+                }
+            }
+            println!("Updated plan {}", args.plan_id);
         }
         PlanCommands::Get(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
@@ -376,7 +521,8 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
             println!("Worktrees cleaned up for plan {}", args.plan_id);
         }
         PlanCommands::WriteRevision(args) => {
-            let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            let p_dir = args.plans_dir.unwrap_or(plans_dir);
+            let folder = resolve_plan_folder(&args.plan_id, &p_dir)?;
             let content = if let Some(path) = args.file {
                 std::fs::read_to_string(path)?
             } else if args.stdin {
@@ -393,6 +539,17 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
             if let Ok(pf) = read_plan_file(&folder) {
                 if let Ok(conn) = open_database(&db_path) {
                     let _ = sync_plan(&conn, &pf);
+                }
+            }
+
+            if let Ok((plan, _)) = read_plan_yaml(&folder) {
+                if let Some(folder_name) = folder.file_name().and_then(|n| n.to_str()) {
+                    let candidates = DuplicateCandidateFinder::find(&p_dir, &plan.title, &plan.project, Some(folder_name));
+                    if !candidates.is_empty() {
+                        eprintln!();
+                        eprintln!("warning: {} possible duplicate plan(s) found. Review before this plan is executed:", candidates.len());
+                        eprintln!("{}", DuplicateCandidateFinder::format_block(&candidates));
+                    }
                 }
             }
         }

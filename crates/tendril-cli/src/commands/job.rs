@@ -32,14 +32,16 @@ pub struct JobListArgs {
     pub status: Option<String>,
     #[arg(short, long, default_value = "20")]
     pub limit: usize,
+    #[arg(long, help = "Output jobs as JSON")]
+    pub json: bool,
 }
 
 #[derive(Args)]
 pub struct JobStartArgs {
-    #[arg(help = "Job type: ExecutePlan, CreatePlan, RetryPlan, UpdatePlan, ExpandPlan, SplitPlan, CreatePr, CreateIssue, SetupProject")]
+    #[arg(help = "Job type: ExecutePlan, CreatePlan, RetryPlan, UpdatePlan, ExpandPlan, SplitPlan, CreatePr, CreateIssue, SetupProject, AddProject, SyncRepo")]
     pub job_type: String,
 
-    #[arg(help = "Plan ID or folder (required for most job types)")]
+    #[arg(help = "Plan ID or folder (or project name for SetupProject/AddProject)")]
     pub plan_id: Option<String>,
 
     #[arg(long, help = "Task description (for CreatePlan)")]
@@ -47,6 +49,15 @@ pub struct JobStartArgs {
 
     #[arg(long, help = "Target project (for CreatePlan)")]
     pub project: Option<String>,
+
+    #[arg(long, help = "Priority for CreatePlan")]
+    pub priority: Option<i32>,
+
+    #[arg(long, help = "Force CreatePlan without duplicate check")]
+    pub force: bool,
+
+    #[arg(long, help = "Source path (for CreatePlan)")]
+    pub source_path: Option<String>,
 
     #[arg(long, help = "Reviewer feedback / change request (for RetryPlan)")]
     pub change_request: Option<String>,
@@ -56,6 +67,42 @@ pub struct JobStartArgs {
 
     #[arg(long, help = "Refinement instructions (for UpdatePlan)")]
     pub instructions: Option<String>,
+
+    #[arg(long, help = "Repository for CreateIssue")]
+    pub repo: Option<String>,
+
+    #[arg(long, help = "Assignee for CreateIssue / CreatePr")]
+    pub assignee: Option<String>,
+
+    #[arg(long, help = "Reviewers for CreatePr (repeatable or comma-separated)")]
+    pub reviewer: Vec<String>,
+
+    #[arg(long, help = "Comment for CreateIssue / CreatePr")]
+    pub comment: Option<String>,
+
+    #[arg(long, help = "Labels for CreateIssue")]
+    pub labels: Option<String>,
+
+    #[arg(long, help = "Skip merge for CreatePr")]
+    pub no_merge: bool,
+
+    #[arg(long, help = "Skip branch deletion for CreatePr")]
+    pub no_delete_branch: bool,
+
+    #[arg(long, help = "Skip artifacts for CreatePr")]
+    pub no_artifacts: bool,
+
+    #[arg(long, help = "Create draft PR for CreatePr")]
+    pub draft: bool,
+
+    #[arg(long, help = "Repository path for SyncRepo")]
+    pub repo_path: Option<String>,
+
+    #[arg(long, help = "Base branch for SyncRepo")]
+    pub base_branch: Option<String>,
+
+    #[arg(long, help = "Untracked policy for SyncRepo (Stash, Commit, PullRequest)")]
+    pub untracked_policy: Option<String>,
 }
 
 #[derive(Args)]
@@ -102,6 +149,11 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             let resp = client.get(&url).send().await?.error_for_status()?;
             let jobs: serde_json::Value = resp.json().await?;
 
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&jobs)?);
+                return Ok(());
+            }
+
             println!("{:<8} {:<15} {:<12} {:<15} {}", "ID", "TYPE", "STATUS", "PROJECT", "PLAN / ARGS");
             println!("{}", "-".repeat(75));
             if let Some(arr) = jobs.as_array() {
@@ -124,13 +176,13 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             let job_args = match args.job_type.to_ascii_lowercase().as_str() {
                 "createplan" => {
                     let desc = args.description.ok_or_else(|| anyhow::anyhow!("--description is required for CreatePlan"))?;
-                    let proj = args.project.unwrap_or_else(|| "Auto".to_string());
+                    let proj = args.project.ok_or_else(|| anyhow::anyhow!("--project is required for CreatePlan"))?;
                     JobArgs::CreatePlan(CreatePlanArgs {
                         description: desc,
                         project: proj,
-                        priority: 0,
-                        force: false,
-                        source_path: None,
+                        priority: args.priority.unwrap_or(0),
+                        force: args.force,
+                        source_path: args.source_path,
                     })
                 }
                 "executeplan" => {
@@ -160,9 +212,10 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                 "updateplan" => {
                     let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for UpdatePlan"))?;
                     let folder = resolve_plan_folder(&pid, &plans_dir)?;
+                    let inst = args.instructions.ok_or_else(|| anyhow::anyhow!("--instructions is required for UpdatePlan"))?;
                     JobArgs::UpdatePlan(UpdatePlanArgs {
                         folder_path: folder.to_string_lossy().to_string(),
-                        instructions: args.instructions,
+                        instructions: Some(inst),
                     })
                 }
                 "splitplan" => {
@@ -170,6 +223,69 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                     let folder = resolve_plan_folder(&pid, &plans_dir)?;
                     JobArgs::SplitPlan(SplitPlanArgs {
                         folder_path: folder.to_string_lossy().to_string(),
+                    })
+                }
+                "createpr" => {
+                    let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreatePr"))?;
+                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
+                    let mut reviewers = Vec::new();
+                    for r in &args.reviewer {
+                        for sub in r.split(',') {
+                            let trimmed = sub.trim();
+                            if !trimmed.is_empty() {
+                                reviewers.push(trimmed.to_string());
+                            }
+                        }
+                    }
+                    if reviewers.is_empty() {
+                        if let Some(ass) = &args.assignee {
+                            reviewers.push(ass.clone());
+                        }
+                    }
+                    JobArgs::CreatePr(tendril_core::models::CreatePrArgs {
+                        folder_path: folder.to_string_lossy().to_string(),
+                        solve_merge_conflicts: true,
+                        merge: !args.no_merge,
+                        delete_branch: !args.no_delete_branch,
+                        include_artifacts: !args.no_artifacts,
+                        reviewers: if reviewers.is_empty() { None } else { Some(reviewers) },
+                        comment: args.comment,
+                        draft: args.draft,
+                    })
+                }
+                "createissue" => {
+                    let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreateIssue"))?;
+                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
+                    let repo = args.repo.ok_or_else(|| anyhow::anyhow!("--repo is required for CreateIssue"))?;
+                    JobArgs::CreateIssue(tendril_core::models::CreateIssueArgs {
+                        folder_path: folder.to_string_lossy().to_string(),
+                        repo,
+                        assignee: args.assignee,
+                        comment: args.comment,
+                        labels: args.labels,
+                    })
+                }
+                "setupproject" => {
+                    let name = args.plan_id.ok_or_else(|| anyhow::anyhow!("<project-name> is required for SetupProject"))?;
+                    JobArgs::SetupProject(tendril_core::models::SetupProjectArgs {
+                        folder_path: name,
+                    })
+                }
+                "addproject" => {
+                    let name = args.plan_id.ok_or_else(|| anyhow::anyhow!("<project-name> is required for AddProject"))?;
+                    JobArgs::AddProject(tendril_core::models::AddProjectArgs {
+                        project_name: name,
+                        repos: Vec::new(),
+                    })
+                }
+                "syncrepo" => {
+                    let rp = args.repo_path.ok_or_else(|| anyhow::anyhow!("--repo-path is required for SyncRepo"))?;
+                    let bb = args.base_branch.unwrap_or_else(|| "main".to_string());
+                    JobArgs::SyncRepo(tendril_core::models::SyncRepoArgs {
+                        repo_path: rp,
+                        base_branch: bb,
+                        plan_folder_path: None,
+                        untracked_changes_policy: args.untracked_policy.unwrap_or_else(|| "Stash".to_string()),
                     })
                 }
                 _ => anyhow::bail!("Unsupported job type: {}", args.job_type),

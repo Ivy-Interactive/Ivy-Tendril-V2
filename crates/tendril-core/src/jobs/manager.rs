@@ -133,10 +133,9 @@ impl JobManager {
             let launch_config = AgentLaunchConfig {
                 prompt: compiled_prompt,
                 working_directory: working_dir,
-                model: None,
-                effort: None,
-                allowed_tools: Vec::new(),
-                extra_args: Vec::new(),
+                model: job.model.clone(),
+                effort: job.effort.clone(),
+                ..Default::default()
             };
 
             let spec = build_agent_spec(&job.provider, &launch_config);

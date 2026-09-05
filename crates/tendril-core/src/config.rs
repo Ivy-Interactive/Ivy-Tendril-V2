@@ -81,25 +81,80 @@ impl Default for TendrilSettings {
 
 pub fn get_default_tendril_home() -> PathBuf {
     if let Ok(val) = std::env::var("TENDRIL_HOME") {
-        if !val.trim().is_empty() {
-            return PathBuf::from(val.trim());
+        let trimmed = val.trim().trim_matches('"');
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
         }
-    }
-
-    // Windows D:/.tendril default check
-    let d_tendril = PathBuf::from(r"D:\.tendril");
-    if d_tendril.exists() {
-        return d_tendril;
     }
 
     if let Some(home) = dirs_home() {
-        let user_tendril = home.join(".tendril");
-        if user_tendril.exists() {
-            return user_tendril;
+        let pointer_file = home.join(".tendril_location");
+        if pointer_file.is_file() {
+            if let Ok(loc) = std::fs::read_to_string(&pointer_file) {
+                let loc = loc.trim().trim_matches('"');
+                if !loc.is_empty() {
+                    let loc_path = PathBuf::from(loc);
+                    if loc_path.join("config.yaml").exists() {
+                        return loc_path;
+                    }
+                }
+            }
         }
     }
 
-    PathBuf::from(r"D:\.tendril")
+    #[cfg(windows)]
+    {
+        let d_tendril = PathBuf::from(r"D:\.tendril");
+        if d_tendril.exists() {
+            return d_tendril;
+        }
+        if let Some(home) = dirs_home() {
+            let user_tendril = home.join(".tendril");
+            if user_tendril.exists() {
+                return user_tendril;
+            }
+        }
+        // If D:\ drive root exists, use D:\.tendril, else user home .tendril
+        if Path::new(r"D:\").exists() {
+            return PathBuf::from(r"D:\.tendril");
+        }
+        if let Some(home) = dirs_home() {
+            return home.join(".tendril");
+        }
+        PathBuf::from(r"D:\.tendril")
+    }
+
+    #[cfg(not(windows))]
+    {
+        if let Some(home) = dirs_home() {
+            home.join(".tendril")
+        } else {
+            PathBuf::from("/tmp/.tendril")
+        }
+    }
+}
+
+pub fn normalize_slashes(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+pub fn expand_variables(input: &str, tendril_home: &str) -> String {
+    let mut res = input.replace("%TENDRIL_HOME%", tendril_home)
+        .replace("${TENDRIL_HOME}", tendril_home)
+        .replace("$TENDRIL_HOME", tendril_home);
+
+    if res.starts_with('~') {
+        if let Some(home) = dirs_home() {
+            let home_str = home.to_string_lossy();
+            if res == "~" {
+                res = home_str.to_string();
+            } else if res.starts_with("~/") || res.starts_with("~\\") {
+                res = format!("{}{}", home_str, &res[1..]);
+            }
+        }
+    }
+
+    res
 }
 
 fn dirs_home() -> Option<PathBuf> {
