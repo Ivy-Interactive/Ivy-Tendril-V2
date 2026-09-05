@@ -6,7 +6,11 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.resolve(configDir, "../src");
 
 const config: StorybookConfig = {
-  stories: ["../src/**/*.stories.@(js|jsx|mjs|ts|tsx)", "../src/**/*.mdx"],
+  // No `*.mdx` glob: there are no MDX docs pages yet, and an unmatched glob makes Storybook
+  // print `WARN No story files found for the specified pattern`. Re-adding it also requires
+  // switching `test-storybook` to `--index-json` — the runner's default mode collects `.mdx`
+  // into jest's `testMatch` but has no transform for it. See tests/storybook-mdx.test.ts.
+  stories: ["../src/**/*.stories.@(js|jsx|mjs|ts|tsx)"],
   addons: ["@storybook/addon-essentials", "@storybook/addon-a11y", "@storybook/addon-interactions"],
   framework: {
     name: "@storybook/react-vite",
@@ -24,7 +28,9 @@ const config: StorybookConfig = {
         ...viteConfig.resolve,
         alias: Array.isArray(existingAlias)
           ? [...existingAlias, { find: "@", replacement: srcDir }]
-          : { ...existingAlias, "@": srcDir },
+          : existingAlias
+            ? { ...existingAlias, "@": srcDir }
+            : { "@": srcDir },
       },
     };
   },
