@@ -17,6 +17,7 @@ interface MergeResolutionReport {
     ours: string | null;
     theirs: string | null;
     merged: string | null;
+    manifest: string;
   }>;
 }
 
@@ -185,10 +186,175 @@ describe("verify-merge-resolution", () => {
       }
     });
   });
+
+  describe("pnpm-workspace.yaml checking", () => {
+    it("detects reverted workspace overrides when merged equals base", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "workspace-base.yaml"),
+        resolve(fixturesDir, "workspace-ours.yaml"),
+        resolve(fixturesDir, "workspace-theirs.yaml"),
+        resolve(fixturesDir, "workspace-merged.yaml"),
+      );
+
+      const keys = report.lostChanges.map((f) => `${f.section}.${f.key}`);
+      expect(keys).toContain("workspace.overrides.playwright@*");
+      expect(keys).toContain("workspace.overrides.playwright-core@*");
+
+      const playwrightFinding = report.lostChanges.find(
+        (f) => f.section === "workspace.overrides" && f.key === "playwright@*",
+      );
+      expect(playwrightFinding).toBeDefined();
+      expect(playwrightFinding?.manifest).toBe("pnpm-workspace.yaml");
+      expect(playwrightFinding?.lostFrom).toBe("theirs");
+      expect(playwrightFinding?.action).toBe("added");
+      expect(playwrightFinding?.base).toBe(null);
+      expect(playwrightFinding?.theirs).toBe("1.63.0");
+      expect(playwrightFinding?.merged).toBe(null);
+
+      const playwrightCoreFinding = report.lostChanges.find(
+        (f) => f.section === "workspace.overrides" && f.key === "playwright-core@*",
+      );
+      expect(playwrightCoreFinding).toBeDefined();
+      expect(playwrightCoreFinding?.manifest).toBe("pnpm-workspace.yaml");
+      expect(playwrightCoreFinding?.lostFrom).toBe("theirs");
+      expect(playwrightCoreFinding?.action).toBe("added");
+      expect(playwrightCoreFinding?.base).toBe(null);
+      expect(playwrightCoreFinding?.theirs).toBe("1.63.0");
+      expect(playwrightCoreFinding?.merged).toBe(null);
+    });
+
+    it("reports no lost changes when workspace resolution is clean", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "workspace-base.yaml"),
+        resolve(fixturesDir, "workspace-ours.yaml"),
+        resolve(fixturesDir, "workspace-theirs.yaml"),
+        resolve(fixturesDir, "workspace-clean-merged.yaml"),
+      );
+
+      expect(report.lostChanges).toEqual([]);
+    });
+
+    it("exits 1 without --json when workspace findings are present", () => {
+      const exitCode = runExitCode(
+        "--files",
+        resolve(fixturesDir, "workspace-base.yaml"),
+        resolve(fixturesDir, "workspace-ours.yaml"),
+        resolve(fixturesDir, "workspace-theirs.yaml"),
+        resolve(fixturesDir, "workspace-merged.yaml"),
+      );
+      expect(exitCode).toBe(1);
+    });
+
+    it("exits 0 with --json when workspace findings are present", () => {
+      const exitCode = runExitCode(
+        "--files",
+        resolve(fixturesDir, "workspace-base.yaml"),
+        resolve(fixturesDir, "workspace-ours.yaml"),
+        resolve(fixturesDir, "workspace-theirs.yaml"),
+        resolve(fixturesDir, "workspace-merged.yaml"),
+        "--json",
+      );
+      expect(exitCode).toBe(0);
+    });
+
+    it("suppresses workspace findings with --allow workspace.overrides.playwright@*", () => {
+      const withoutAllow = runJson(
+        "--files",
+        resolve(fixturesDir, "workspace-base.yaml"),
+        resolve(fixturesDir, "workspace-ours.yaml"),
+        resolve(fixturesDir, "workspace-theirs.yaml"),
+        resolve(fixturesDir, "workspace-merged.yaml"),
+      );
+
+      const withAllow = runJson(
+        "--files",
+        resolve(fixturesDir, "workspace-base.yaml"),
+        resolve(fixturesDir, "workspace-ours.yaml"),
+        resolve(fixturesDir, "workspace-theirs.yaml"),
+        resolve(fixturesDir, "workspace-merged.yaml"),
+        "--allow",
+        "workspace.overrides.playwright@*",
+      );
+
+      expect(withoutAllow.lostChanges.length).toBe(2);
+      expect(withAllow.lostChanges.length).toBe(1);
+
+      const keys = withAllow.lostChanges.map((f) => `${f.section}.${f.key}`);
+      expect(keys).not.toContain("workspace.overrides.playwright@*");
+      expect(keys).toContain("workspace.overrides.playwright-core@*");
+    });
+  });
+
+  describe("YAML parser edge cases", () => {
+    it("preserves catalog values with colons", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "workspace-base.yaml"),
+        resolve(fixturesDir, "workspace-ours.yaml"),
+        resolve(fixturesDir, "workspace-theirs.yaml"),
+        resolve(fixturesDir, "workspace-clean-merged.yaml"),
+      );
+
+      const catalogVite = report.lostChanges.find(
+        (f) => f.section === "workspace.catalog" && f.key === "vite",
+      );
+      expect(catalogVite).toBeUndefined();
+    });
+
+    it("preserves quoted values ending in colons", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "workspace-base.yaml"),
+        resolve(fixturesDir, "workspace-ours.yaml"),
+        resolve(fixturesDir, "workspace-theirs.yaml"),
+        resolve(fixturesDir, "workspace-clean-merged.yaml"),
+      );
+
+      const viteOverride = report.lostChanges.find(
+        (f) => f.section === "workspace.overrides" && f.key === "vite@*",
+      );
+      expect(viteOverride).toBeUndefined();
+    });
+
+    it("preserves quoted keys with special characters", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "workspace-base.yaml"),
+        resolve(fixturesDir, "workspace-ours.yaml"),
+        resolve(fixturesDir, "workspace-theirs.yaml"),
+        resolve(fixturesDir, "workspace-clean-merged.yaml"),
+      );
+
+      const swcCore = report.lostChanges.find(
+        (f) => f.section === "workspace.allowBuilds" && f.key === "@swc/core",
+      );
+      expect(swcCore).toBeUndefined();
+    });
+  });
+
+  describe.skipIf(!canCheckCommit6dbce24())("git mode on pnpm-workspace.yaml", () => {
+    it("reports no findings for 6dbce24 which took theirs correctly", () => {
+      const report = runJson("--commit", "6dbce24");
+
+      const workspaceFindings = report.lostChanges.filter(
+        (f) => f.manifest === "pnpm-workspace.yaml",
+      );
+      expect(workspaceFindings).toEqual([]);
+    });
+  });
 });
 
 function canCheckCommit8698ad1(): boolean {
   const result = spawnSync("git", ["cat-file", "-e", "8698ad1^{commit}"], {
+    cwd: repoRoot,
+  });
+  return result.status === 0;
+}
+
+function canCheckCommit6dbce24(): boolean {
+  const result = spawnSync("git", ["cat-file", "-e", "6dbce24^{commit}"], {
     cwd: repoRoot,
   });
   return result.status === 0;
