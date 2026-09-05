@@ -20,7 +20,7 @@ export interface DetailsProps
 const Details = React.forwardRef<HTMLDivElement, DetailsProps>(
   ({ className, density: propDensity, children, ...props }, ref) => {
     const contextDensity = useDetailDensity();
-    const density = propDensity ?? contextDensity ?? Densities.Medium;
+    const density = propDensity ?? contextDensity;
 
     return (
       <DetailProvider density={density as Densities}>

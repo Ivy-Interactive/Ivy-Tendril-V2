@@ -1,7 +1,10 @@
 import { useContext } from "react";
 import { TableContext } from "./TableContext";
+import { useDensity } from "@/contexts/density-context";
+import type { Densities } from "@/types/density";
 
-export const useTableScale = () => {
+export const useTableScale = (): Densities => {
   const context = useContext(TableContext);
-  return context.density;
+  const globalDensity = useDensity();
+  return (context.density as Densities | undefined) ?? globalDensity;
 };

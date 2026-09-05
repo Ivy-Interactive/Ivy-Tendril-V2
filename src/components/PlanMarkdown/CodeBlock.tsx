@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { prismTheme } from "./prismTheme";
+import { prismTheme } from "@/lib/prismTheme";
+import { copyToClipboard } from "@/lib/clipboard";
 
 /**
  * A highlighted code block with a copy button — the plain-fence rendering, with no dispatch on the
@@ -61,7 +62,7 @@ const CopyButton: React.FC<{ content: string }> = ({ content }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(content).then(() => {
+    void copyToClipboard(content).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

@@ -10,6 +10,7 @@ import {
 import { TableProvider } from "./table/TableContext";
 import { useTableScale } from "./table/useTableSize";
 import { Densities } from "@/types/density";
+import { useDensity } from "@/contexts/density-context";
 
 export interface TableProps
   extends
@@ -17,19 +18,24 @@ export interface TableProps
     VariantProps<typeof tableSizeVariant> {}
 
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
-  ({ className, density = Densities.Medium, children, ...props }, ref) => (
-    <TableProvider density={density as Densities}>
-      <div className="relative w-full overflow-auto">
-        <table
-          ref={ref}
-          className={cn("w-full caption-bottom", tableSizeVariant({ density }), className)}
-          {...props}
-        >
-          {children}
-        </table>
-      </div>
-    </TableProvider>
-  ),
+  ({ className, density: propDensity, children, ...props }, ref) => {
+    const globalDensity = useDensity();
+    const density = propDensity ?? globalDensity;
+
+    return (
+      <TableProvider density={density as Densities}>
+        <div className="relative w-full overflow-auto">
+          <table
+            ref={ref}
+            className={cn("w-full caption-bottom", tableSizeVariant({ density }), className)}
+            {...props}
+          >
+            {children}
+          </table>
+        </div>
+      </TableProvider>
+    );
+  },
 );
 Table.displayName = "Table";
 
