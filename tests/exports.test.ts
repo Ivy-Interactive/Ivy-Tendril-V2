@@ -74,6 +74,9 @@ describe("Package Exports", () => {
       expect(mod.Tabs).toBeDefined();
       expect(mod.Checkbox).toBeDefined();
       expect(mod.Switch).toBeDefined();
+      expect(mod.Accordion).toBeDefined();
+      expect(mod.Slider).toBeDefined();
+      expect(mod.Toggle).toBeDefined();
       expect(mod.Label).toBeDefined();
       expect(mod.Select).toBeDefined();
     });
