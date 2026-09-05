@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { InvalidIcon } from "@/components/InvalidIcon";
 import { Densities } from "@/types/density";
+import { useDensity } from "@/contexts/density-context";
 import type React from "react";
 
 export interface EmojiRatingProps {
@@ -38,12 +39,15 @@ export function EmojiRating({
   value = 0,
   onRate,
   totalEmojis = 5,
-  density = Densities.Medium,
+  density,
   className,
   disabled = false,
   invalid,
   allowHalf = false,
 }: EmojiRatingProps) {
+  const contextDensity = useDensity();
+  const effectiveDensity = density ?? contextDensity;
+
   const emojis = useMemo(() => getEmojis(totalEmojis), [totalEmojis]);
   const [hover, setHover] = useState(0);
 
@@ -101,7 +105,7 @@ export function EmojiRating({
                 "transition-transform duration-200",
                 "hover:scale-125 active:scale-90 cursor-pointer",
                 disabled && "cursor-not-allowed hover:scale-100",
-                emojiSizes[density],
+                emojiSizes[effectiveDensity],
               )}
               onClick={(e) => handleRating(rating, e)}
               onMouseEnter={(e) => !disabled && handleMouseMove(rating, e)}

@@ -4,11 +4,9 @@ import type { VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 import { toggleVariant } from "@/components/ui/toggle";
+import { useDensity } from "@/contexts/density-context";
 
-const ToggleGroupContext = React.createContext<VariantProps<typeof toggleVariant>>({
-  density: "Medium",
-  variant: "default",
-});
+const ToggleGroupContext = React.createContext<VariantProps<typeof toggleVariant>>({});
 
 const ToggleGroup = React.forwardRef<
   React.ElementRef<typeof ToggleGroupPrimitive.Root>,
@@ -34,14 +32,15 @@ const ToggleGroupItem = React.forwardRef<
     VariantProps<typeof toggleVariant>
 >(({ className, children, variant, density, ...props }, ref) => {
   const context = React.useContext(ToggleGroupContext);
+  const contextDensity = useDensity();
 
   return (
     <ToggleGroupPrimitive.Item
       ref={ref}
       className={cn(
         toggleVariant({
-          variant: context.variant || variant,
-          density: context.density || density,
+          variant: context.variant ?? variant,
+          density: context.density ?? density ?? contextDensity,
         }),
         className,
       )}

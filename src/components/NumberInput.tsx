@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Densities } from "@/types/density";
+import { useDensity } from "@/contexts/density-context";
 import React, {
   useState,
   useCallback,
@@ -54,12 +55,15 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
       isBytesFormat = false,
       allowNegative = true,
       className = "",
-      density = Densities.Medium,
+      density,
       "data-testid": dataTestId,
       ...props
     },
     ref,
   ) => {
+    const contextDensity = useDensity();
+    const effectiveDensity = density ?? contextDensity;
+
     const [displayValue, setDisplayValue] = useState<string>("");
     const [isFocused, setIsFocused] = useState(false);
     const [isValid, setIsValid] = useState(true);
@@ -235,7 +239,7 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
           step={step}
           disabled={disabled}
           placeholder={placeholder}
-          density={density}
+          density={effectiveDensity}
           className={`${className} ${!isValid ? "border-[var(--color-destructive)]" : ""}`}
           data-testid={dataTestId}
           {...props}
