@@ -7,12 +7,11 @@ const Thrower = () => {
 };
 
 describe("ErrorBoundary", () => {
-  const originalError = console.error;
   beforeEach(() => {
-    console.error = vi.fn();
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
   afterEach(() => {
-    console.error = originalError;
+    vi.restoreAllMocks();
   });
 
   it("catches errors in children and renders ErrorDisplay fallback", () => {
