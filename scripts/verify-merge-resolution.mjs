@@ -31,6 +31,9 @@ const SECTIONS = [
   "scripts",
 ];
 
+/** package.json keys outside SECTIONS whose loss a merge resolution can hide. */
+const TOP_LEVEL_KEYS = ["packageManager", "devEngines", "type", "main", "types", "exports"];
+
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 function parseArgs() {
@@ -341,6 +344,29 @@ function walkWorkspaceLeafs(obj, prefix = "workspace") {
   return maps;
 }
 
+function sortKeysDeep(value) {
+  if (Array.isArray(value)) return value.map(sortKeysDeep);
+  if (value === null || typeof value !== "object") return value;
+  const sorted = {};
+  for (const key of Object.keys(value).sort()) sorted[key] = sortKeysDeep(value[key]);
+  return sorted;
+}
+
+function canonicalValue(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "object") return String(value);
+  return JSON.stringify(sortKeysDeep(value));
+}
+
+function topLevelMap(manifest) {
+  const map = {};
+  for (const key of TOP_LEVEL_KEYS) {
+    const canonical = canonicalValue(manifest?.[key]);
+    if (canonical !== null) map[key] = canonical;
+  }
+  return map;
+}
+
 function compareManifests(base, ours, theirs, merged, baseWs, oursWs, theirsWs, mergedWs) {
   const findings = [];
 
@@ -361,6 +387,17 @@ function compareManifests(base, ours, theirs, merged, baseWs, oursWs, theirsWs, 
       ),
     );
   }
+
+  findings.push(
+    ...diffFlatMap(
+      "topLevel",
+      topLevelMap(base),
+      topLevelMap(ours),
+      topLevelMap(theirs),
+      topLevelMap(merged),
+      "package.json",
+    ),
+  );
 
   const pnpmOverridesPath = "pnpm.overrides";
   const basePnpm = getValueAtPath(base, pnpmOverridesPath) || {};
