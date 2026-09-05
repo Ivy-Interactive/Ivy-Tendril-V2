@@ -4,7 +4,6 @@ import type { VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 import { toggleVariant } from "./toggle-variant";
-import { Densities } from "@/types/density";
 import { useDensity } from "@/contexts/density-context";
 const Toggle = React.forwardRef<
   React.ElementRef<typeof TogglePrimitive.Root>,

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { AgentViewer } from "./AgentViewer";
-import React from "react";
 
 const mockSessionInit = JSON.stringify({
   kind: "session_init",

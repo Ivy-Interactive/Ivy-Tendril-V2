@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta } from "@storybook/react";
 import { DensityProvider } from "@/contexts/density-context";
 import { Densities } from "@/types/density";
 import { EmojiRating } from "@/components/EmojiRating";
@@ -18,7 +18,6 @@ const meta = {
 } satisfies Meta<typeof DensityProvider>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
 
 const ControlsGrid = ({ density }: { density: Densities }) => (
   <DensityProvider density={density}>
@@ -58,19 +57,19 @@ const ControlsGrid = ({ density }: { density: Densities }) => (
   </DensityProvider>
 );
 
-export const SmallDensity: Story = {
+export const SmallDensity = {
   render: () => <ControlsGrid density={Densities.Small} />,
 };
 
-export const MediumDensity: Story = {
+export const MediumDensity = {
   render: () => <ControlsGrid density={Densities.Medium} />,
 };
 
-export const LargeDensity: Story = {
+export const LargeDensity = {
   render: () => <ControlsGrid density={Densities.Large} />,
 };
 
-export const AllDensitiesComparison: Story = {
+export const AllDensitiesComparison = {
   render: () => (
     <div className="grid grid-cols-3 gap-8">
       <div>
