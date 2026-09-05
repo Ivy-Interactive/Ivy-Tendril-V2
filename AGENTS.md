@@ -52,7 +52,7 @@ When resolving conflicts in `package.json` or `pnpm-workspace.yaml`:
 
 Commit `8698ad1` _"[00059] Resolve merge conflicts with main"_ kept the base side of `package.json` wholesale, reverting [Plan 00077](plan://00077)'s dev scripts and [Plan 00090](plan://00090)'s variable font switch. Both were already merged to `main` — the conflict resolution undid them. Two test files went red (`tests/storybook-runner.test.ts`, `tests/fonts.test.ts`) and the bad resolution merged anyway because `vp check` short-circuited before the suite ran.
 
-The merge guard prevents this pattern. Branch protection that requires a green `Quality Gates` + `Merge Resolution Guard` status will be enabled via `pnpm run protect:main` once the repository is public or on a paid GitHub plan. Until then, the guard runs in CI as a job that can fail the PR, but cannot block merging.
+The merge guard prevents this pattern. Branch protection that requires a green `Lint & Types` + `Package Build` + `Unit Tests` + `Merge Resolution Guard` status will be enabled via `pnpm run protect:main` once the repository is public or on a paid GitHub plan. Until then, the guard runs in CI as a job that can fail the PR, but cannot block merging.
 
 ## Multi-Document Lockfile
 

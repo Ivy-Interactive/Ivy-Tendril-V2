@@ -15,7 +15,15 @@
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           {
-            "context": "Quality Gates",
+            "context": "Lint & Types",
+            "integration_id": null
+          },
+          {
+            "context": "Package Build",
+            "integration_id": null
+          },
+          {
+            "context": "Unit Tests",
             "integration_id": null
           },
           {
