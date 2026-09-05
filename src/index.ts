@@ -128,7 +128,6 @@ export {
   BrandIcon,
   brandIcons,
   type ShellContextValue,
-  type IvyEventHandler,
   type ShellBadgeDto,
   type ShellNavItemDto,
   type ShellSectionItemDto,
