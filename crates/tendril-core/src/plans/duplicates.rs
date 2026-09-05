@@ -1,7 +1,7 @@
+use crate::plans::reader::read_plan_yaml;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
-use serde::{Deserialize, Serialize};
-use crate::plans::reader::read_plan_yaml;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DuplicateCandidate {
@@ -16,8 +16,8 @@ impl DuplicateCandidateFinder {
     const MINIMUM_TOKEN_LENGTH: usize = 4;
 
     const STOPWORDS: &'static [&'static str] = &[
-        "the", "a", "an", "and", "or", "of", "to", "in", "for", "with",
-        "on", "at", "is", "by", "from", "that", "this", "it", "as", "be",
+        "the", "a", "an", "and", "or", "of", "to", "in", "for", "with", "on", "at", "is", "by",
+        "from", "that", "this", "it", "as", "be",
     ];
 
     pub fn find(

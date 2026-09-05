@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpServerConfig {
@@ -43,10 +43,7 @@ pub struct AgentProcessSpec {
     pub temp_files: Vec<PathBuf>,
 }
 
-pub fn build_agent_spec(
-    provider: &str,
-    config: &AgentLaunchConfig,
-) -> AgentProcessSpec {
+pub fn build_agent_spec(provider: &str, config: &AgentLaunchConfig) -> AgentProcessSpec {
     match provider.to_ascii_lowercase().as_str() {
         "antigravity" | "agy" => build_antigravity_spec(config),
         "codex" => build_codex_spec(config),
@@ -81,7 +78,13 @@ fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
             args.push("--model".to_string());
             args.push(m.clone());
 
-            let eff = match config.effort.as_deref().unwrap_or("medium").to_ascii_lowercase().as_str() {
+            let eff = match config
+                .effort
+                .as_deref()
+                .unwrap_or("medium")
+                .to_ascii_lowercase()
+                .as_str()
+            {
                 "low" => "low",
                 "high" | "xhigh" | "max" => "high",
                 _ => "medium",
@@ -200,16 +203,53 @@ fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     } else if perm_mode == "dontAsk" {
         // Tailor default safe/essential permissions needed to work with Tendril
         let default_rules = [
-            "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch",
-            "Bash(tendril *)", "Bash(git *)", "Bash(gh *)", "Bash(dotnet *)",
-            "Bash(pnpm *)", "Bash(npm *)", "Bash(yarn *)", "Bash(bun *)", "Bash(node *)",
-            "Bash(ls *)", "Bash(find *)", "Bash(cat *)", "Bash(head *)", "Bash(tail *)",
-            "Bash(grep *)", "Bash(mkdir *)", "Bash(rmdir *)", "Bash(rm *)", "Bash(cp *)",
-            "Bash(mv *)", "Bash(touch *)", "Bash(chmod *)", "Bash(pwd)", "Bash(echo *)",
-            "Bash(which *)", "Bash(npx *)", "Bash(vite *)", "Bash(tsc *)", "Bash(eslint *)",
-            "Bash(prettier *)", "Bash(python *)", "Bash(python3 *)", "Bash(pip *)",
-            "Bash(pip3 *)", "Bash(uv *)", "Bash(refitter *)", "Bash(svcutil *)",
-            "Bash(ivy-inspector-*)", "Bash(dotnet-*)", "Bash(strawberryshake *)",
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+            "WebFetch",
+            "WebSearch",
+            "Bash(tendril *)",
+            "Bash(git *)",
+            "Bash(gh *)",
+            "Bash(dotnet *)",
+            "Bash(pnpm *)",
+            "Bash(npm *)",
+            "Bash(yarn *)",
+            "Bash(bun *)",
+            "Bash(node *)",
+            "Bash(ls *)",
+            "Bash(find *)",
+            "Bash(cat *)",
+            "Bash(head *)",
+            "Bash(tail *)",
+            "Bash(grep *)",
+            "Bash(mkdir *)",
+            "Bash(rmdir *)",
+            "Bash(rm *)",
+            "Bash(cp *)",
+            "Bash(mv *)",
+            "Bash(touch *)",
+            "Bash(chmod *)",
+            "Bash(pwd)",
+            "Bash(echo *)",
+            "Bash(which *)",
+            "Bash(npx *)",
+            "Bash(vite *)",
+            "Bash(tsc *)",
+            "Bash(eslint *)",
+            "Bash(prettier *)",
+            "Bash(python *)",
+            "Bash(python3 *)",
+            "Bash(pip *)",
+            "Bash(pip3 *)",
+            "Bash(uv *)",
+            "Bash(refitter *)",
+            "Bash(svcutil *)",
+            "Bash(ivy-inspector-*)",
+            "Bash(dotnet-*)",
+            "Bash(strawberryshake *)",
         ];
         for r in default_rules {
             allowed_rules.push(r.to_string());
@@ -576,19 +616,36 @@ fn build_copilot_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
 // ---------------------------------------------------------------------------
 fn build_ivy_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     let mut modified = config.clone();
-    modified.model = Some(format_opencode_model(config.model.as_deref(), Some("https://llmproxy.ivy.app")));
+    modified.model = Some(format_opencode_model(
+        config.model.as_deref(),
+        Some("https://llmproxy.ivy.app"),
+    ));
 
     let mut spec = build_opencode_spec(&modified);
     spec.command = resolve_ivy_agent_binary();
 
-    spec.environment.insert("ANTHROPIC_BASE_URL".to_string(), "https://llmproxy.ivy.app".to_string());
-    spec.environment.insert("OPENAI_BASE_URL".to_string(), "https://llmproxy.ivy.app/v1".to_string());
-    spec.environment.insert("IVY_BASE_URL".to_string(), "https://llmproxy.ivy.app".to_string());
+    spec.environment.insert(
+        "ANTHROPIC_BASE_URL".to_string(),
+        "https://llmproxy.ivy.app".to_string(),
+    );
+    spec.environment.insert(
+        "OPENAI_BASE_URL".to_string(),
+        "https://llmproxy.ivy.app/v1".to_string(),
+    );
+    spec.environment.insert(
+        "IVY_BASE_URL".to_string(),
+        "https://llmproxy.ivy.app".to_string(),
+    );
 
-    if let Ok(key) = std::env::var("IVY_API_KEY").or_else(|_| std::env::var("ANTHROPIC_API_KEY")).or_else(|_| std::env::var("OPENAI_API_KEY")) {
+    if let Ok(key) = std::env::var("IVY_API_KEY")
+        .or_else(|_| std::env::var("ANTHROPIC_API_KEY"))
+        .or_else(|_| std::env::var("OPENAI_API_KEY"))
+    {
         if !key.is_empty() {
-            spec.environment.insert("IVY_API_KEY".to_string(), key.clone());
-            spec.environment.insert("ANTHROPIC_API_KEY".to_string(), key.clone());
+            spec.environment
+                .insert("IVY_API_KEY".to_string(), key.clone());
+            spec.environment
+                .insert("ANTHROPIC_API_KEY".to_string(), key.clone());
             spec.environment.insert("OPENAI_API_KEY".to_string(), key);
         }
     }
@@ -605,7 +662,10 @@ fn build_openai_proxy_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         .ok();
 
     let mut modified = config.clone();
-    modified.model = Some(format_opencode_model(config.model.as_deref(), base_url.as_deref()));
+    modified.model = Some(format_opencode_model(
+        config.model.as_deref(),
+        base_url.as_deref(),
+    ));
 
     let mut spec = build_opencode_spec(&modified);
     spec.command = resolve_ivy_agent_binary();
@@ -622,14 +682,19 @@ fn build_openai_proxy_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         } else {
             format!("{}/v1", trimmed)
         };
-        spec.environment.insert("ANTHROPIC_BASE_URL".to_string(), anthropic_base.to_string());
-        spec.environment.insert("OPENAI_BASE_URL".to_string(), openai_base);
+        spec.environment
+            .insert("ANTHROPIC_BASE_URL".to_string(), anthropic_base.to_string());
+        spec.environment
+            .insert("OPENAI_BASE_URL".to_string(), openai_base);
     }
 
-    if let Ok(key) = std::env::var("OPENAI_API_KEY").or_else(|_| std::env::var("ANTHROPIC_API_KEY")) {
+    if let Ok(key) = std::env::var("OPENAI_API_KEY").or_else(|_| std::env::var("ANTHROPIC_API_KEY"))
+    {
         if !key.is_empty() {
-            spec.environment.insert("OPENAI_API_KEY".to_string(), key.clone());
-            spec.environment.insert("ANTHROPIC_API_KEY".to_string(), key);
+            spec.environment
+                .insert("OPENAI_API_KEY".to_string(), key.clone());
+            spec.environment
+                .insert("ANTHROPIC_API_KEY".to_string(), key);
         }
     }
 
@@ -669,7 +734,10 @@ pub fn format_opencode_model(model: Option<&str>, base_url: Option<&str>) -> Str
             if b.contains("api.anthropic.com") {
                 return "anthropic/claude-sonnet-5".to_string();
             }
-            if b.contains("generativelanguage.googleapis.com") || b.contains("gemini") || b.contains("google") {
+            if b.contains("generativelanguage.googleapis.com")
+                || b.contains("gemini")
+                || b.contains("google")
+            {
                 return "openai/gemini-3.7-flash".to_string();
             }
             if b.contains("api.berget.ai") {
@@ -684,13 +752,22 @@ pub fn format_opencode_model(model: Option<&str>, base_url: Option<&str>) -> Str
     }
 
     let lower = m.to_ascii_lowercase();
-    if lower.starts_with("claude-") || lower.starts_with("anthropic.")
-        || lower == "haiku" || lower == "sonnet" || lower == "opus" {
+    if lower.starts_with("claude-")
+        || lower.starts_with("anthropic.")
+        || lower == "haiku"
+        || lower == "sonnet"
+        || lower == "opus"
+    {
         return format!("anthropic/{}", m);
     }
 
-    if lower.starts_with("gpt-") || lower.starts_with("o1-") || lower.starts_with("o3-")
-        || lower.starts_with("o4-") || lower.starts_with("codex") || lower.starts_with("chatgpt") {
+    if lower.starts_with("gpt-")
+        || lower.starts_with("o1-")
+        || lower.starts_with("o3-")
+        || lower.starts_with("o4-")
+        || lower.starts_with("codex")
+        || lower.starts_with("chatgpt")
+    {
         return format!("openai/{}", m);
     }
 
@@ -732,9 +809,13 @@ pub fn translate_copilot_tool(canonical: &str) -> String {
         "write" | "edit" => "apply_patch".to_string(),
         "bash" => {
             #[cfg(windows)]
-            { "powershell".to_string() }
+            {
+                "powershell".to_string()
+            }
             #[cfg(not(windows))]
-            { "bash".to_string() }
+            {
+                "bash".to_string()
+            }
         }
         "glob" => "glob".to_string(),
         "grep" => "rg".to_string(),
@@ -754,7 +835,10 @@ pub fn write_mcp_config(servers: &[McpServerConfig]) -> Option<PathBuf> {
             continue;
         }
         let mut s_obj = serde_json::Map::new();
-        s_obj.insert("command".to_string(), serde_json::Value::String(s.command.clone()));
+        s_obj.insert(
+            "command".to_string(),
+            serde_json::Value::String(s.command.clone()),
+        );
         if !s.arguments.is_empty() {
             s_obj.insert("args".to_string(), serde_json::json!(s.arguments));
         }
@@ -775,7 +859,10 @@ pub fn write_mcp_config(servers: &[McpServerConfig]) -> Option<PathBuf> {
     let temp_dir = std::env::temp_dir();
     let filename = format!("tendril-mcp-{}.json", uuid::Uuid::new_v4().simple());
     let path = temp_dir.join(filename);
-    let _ = std::fs::write(&path, serde_json::to_string_pretty(&root).unwrap_or_default());
+    let _ = std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&root).unwrap_or_default(),
+    );
     Some(path)
 }
 
@@ -847,7 +934,11 @@ fn resolve_opencode_binary() -> String {
 }
 
 fn resolve_ivy_agent_binary() -> String {
-    let exe_name = if cfg!(windows) { "ivy-agent.exe" } else { "ivy-agent" };
+    let exe_name = if cfg!(windows) {
+        "ivy-agent.exe"
+    } else {
+        "ivy-agent"
+    };
 
     if let Ok(curr_exe) = std::env::current_exe() {
         if let Some(parent) = curr_exe.parent() {
@@ -875,4 +966,3 @@ fn resolve_ivy_agent_binary() -> String {
 
     "ivy-agent".to_string()
 }
-

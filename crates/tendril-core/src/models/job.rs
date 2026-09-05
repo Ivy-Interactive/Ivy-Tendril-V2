@@ -266,7 +266,10 @@ pub struct JobItem {
     pub reported_plan_id: Option<String>,
     #[serde(rename = "reportedPlanTitle", skip_serializing_if = "Option::is_none")]
     pub reported_plan_title: Option<String>,
-    #[serde(rename = "reportedFailureReason", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "reportedFailureReason",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub reported_failure_reason: Option<String>,
     #[serde(default)]
     pub cleared: bool,

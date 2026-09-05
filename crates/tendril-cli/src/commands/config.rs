@@ -1,5 +1,5 @@
-use std::path::Path;
 use clap::Subcommand;
+use std::path::Path;
 use tendril_core::config::{get_config_path, load_config, save_config};
 
 #[derive(Subcommand)]

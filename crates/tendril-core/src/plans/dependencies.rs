@@ -1,8 +1,8 @@
-use std::path::Path;
-use std::process::Command;
 use crate::error::{Result, TendrilError};
 use crate::models::PlanStatus;
 use crate::plans::reader::read_plan_yaml;
+use std::path::Path;
+use std::process::Command;
 
 pub struct DependencyCheckResult {
     pub ok: bool,
@@ -12,7 +12,10 @@ pub struct DependencyCheckResult {
 pub fn check_dependencies(plan_folder: &Path, plans_dir: &Path) -> Result<DependencyCheckResult> {
     let (plan, _) = read_plan_yaml(plan_folder)?;
     if plan.depends_on.is_empty() {
-        return Ok(DependencyCheckResult { ok: true, block_reason: None });
+        return Ok(DependencyCheckResult {
+            ok: true,
+            block_reason: None,
+        });
     }
 
     for dep in &plan.depends_on {
@@ -54,7 +57,10 @@ pub fn check_dependencies(plan_folder: &Path, plans_dir: &Path) -> Result<Depend
         }
     }
 
-    Ok(DependencyCheckResult { ok: true, block_reason: None })
+    Ok(DependencyCheckResult {
+        ok: true,
+        block_reason: None,
+    })
 }
 
 fn get_gh_pr_state(pr_url: &str) -> Result<String> {
@@ -69,7 +75,10 @@ fn get_gh_pr_state(pr_url: &str) -> Result<String> {
         }
         Ok(out) => {
             let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            Err(TendrilError::Git(format!("gh pr view failed for {}: {}", pr_url, err)))
+            Err(TendrilError::Git(format!(
+                "gh pr view failed for {}: {}",
+                pr_url, err
+            )))
         }
         Err(e) => Err(TendrilError::Git(format!("Failed to run gh CLI: {}", e))),
     }

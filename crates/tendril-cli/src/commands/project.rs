@@ -1,5 +1,5 @@
-use std::path::Path;
 use clap::Subcommand;
+use std::path::Path;
 use tendril_core::config::{get_config_path, load_config, save_config};
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef};
 
@@ -41,7 +41,11 @@ pub fn handle_project_command(cmd: ProjectCommands, tendril_home: &Path) -> anyh
             }
         }
         ProjectCommands::Get { name } => {
-            if let Some(p) = settings.projects.iter().find(|p| p.name.eq_ignore_ascii_case(&name)) {
+            if let Some(p) = settings
+                .projects
+                .iter()
+                .find(|p| p.name.eq_ignore_ascii_case(&name))
+            {
                 println!("Project: {}", p.name);
                 println!("Color: {}", p.color);
                 println!("Repos:");
@@ -57,7 +61,11 @@ pub fn handle_project_command(cmd: ProjectCommands, tendril_home: &Path) -> anyh
             }
         }
         ProjectCommands::Add { name } => {
-            if settings.projects.iter().any(|p| p.name.eq_ignore_ascii_case(&name)) {
+            if settings
+                .projects
+                .iter()
+                .any(|p| p.name.eq_ignore_ascii_case(&name))
+            {
                 anyhow::bail!("Project '{}' already exists", name);
             }
             settings.projects.push(ProjectConfig {
@@ -75,7 +83,9 @@ pub fn handle_project_command(cmd: ProjectCommands, tendril_home: &Path) -> anyh
         }
         ProjectCommands::Remove { name } => {
             let before = settings.projects.len();
-            settings.projects.retain(|p| !p.name.eq_ignore_ascii_case(&name));
+            settings
+                .projects
+                .retain(|p| !p.name.eq_ignore_ascii_case(&name));
             if settings.projects.len() == before {
                 anyhow::bail!("Project '{}' not found", name);
             }
@@ -89,8 +99,15 @@ pub fn handle_project_command(cmd: ProjectCommands, tendril_home: &Path) -> anyh
                 .find(|p| p.name.eq_ignore_ascii_case(&name))
                 .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
 
-            if !proj.repos.iter().any(|r| r.path.eq_ignore_ascii_case(&path)) {
-                proj.repos.push(RepoRef { path: path.clone(), base_branch: None });
+            if !proj
+                .repos
+                .iter()
+                .any(|r| r.path.eq_ignore_ascii_case(&path))
+            {
+                proj.repos.push(RepoRef {
+                    path: path.clone(),
+                    base_branch: None,
+                });
                 save_config(&cfg_path, &settings)?;
             }
             println!("Repo '{}' added to project '{}'.", path, name);
@@ -113,14 +130,21 @@ pub fn handle_project_command(cmd: ProjectCommands, tendril_home: &Path) -> anyh
                 .find(|p| p.name.eq_ignore_ascii_case(&name))
                 .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
 
-            if !proj.verifications.iter().any(|v| v.name.eq_ignore_ascii_case(&verification)) {
+            if !proj
+                .verifications
+                .iter()
+                .any(|v| v.name.eq_ignore_ascii_case(&verification))
+            {
                 proj.verifications.push(ProjectVerificationRef {
                     name: verification.clone(),
                     required: true,
                 });
                 save_config(&cfg_path, &settings)?;
             }
-            println!("Verification '{}' added to project '{}'.", verification, name);
+            println!(
+                "Verification '{}' added to project '{}'.",
+                verification, name
+            );
         }
         ProjectCommands::RemoveVerification { name, verification } => {
             let proj = settings
@@ -129,9 +153,13 @@ pub fn handle_project_command(cmd: ProjectCommands, tendril_home: &Path) -> anyh
                 .find(|p| p.name.eq_ignore_ascii_case(&name))
                 .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
 
-            proj.verifications.retain(|v| !v.name.eq_ignore_ascii_case(&verification));
+            proj.verifications
+                .retain(|v| !v.name.eq_ignore_ascii_case(&verification));
             save_config(&cfg_path, &settings)?;
-            println!("Verification '{}' removed from project '{}'.", verification, name);
+            println!(
+                "Verification '{}' removed from project '{}'.",
+                verification, name
+            );
         }
     }
 

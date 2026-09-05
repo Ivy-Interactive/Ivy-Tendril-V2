@@ -1,8 +1,8 @@
-use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, Result};
 use crate::models::{
     PlanFile, PlanMetadata, PlanStatus, PlanVerificationEntry, VerificationStatus,
 };
+use chrono::{DateTime, Utc};
+use rusqlite::{params, Connection, Result};
 
 pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
     conn.execute(
@@ -63,7 +63,10 @@ pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
         )?;
     }
 
-    conn.execute("DELETE FROM PullRequests WHERE PlanId = ?1", params![plan_id])?;
+    conn.execute(
+        "DELETE FROM PullRequests WHERE PlanId = ?1",
+        params![plan_id],
+    )?;
     for pr in &plan.metadata.prs {
         conn.execute(
             "INSERT INTO PullRequests (PlanId, PrUrl) VALUES (?1, ?2)",
@@ -71,7 +74,10 @@ pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
         )?;
     }
 
-    conn.execute("DELETE FROM Verifications WHERE PlanId = ?1", params![plan_id])?;
+    conn.execute(
+        "DELETE FROM Verifications WHERE PlanId = ?1",
+        params![plan_id],
+    )?;
     for v in &plan.metadata.verifications {
         conn.execute(
             "INSERT INTO Verifications (PlanId, Name, Status) VALUES (?1, ?2, ?3)",
@@ -79,7 +85,10 @@ pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
         )?;
     }
 
-    conn.execute("DELETE FROM RelatedPlans WHERE PlanId = ?1", params![plan_id])?;
+    conn.execute(
+        "DELETE FROM RelatedPlans WHERE PlanId = ?1",
+        params![plan_id],
+    )?;
     for rp in &plan.metadata.related_plans {
         conn.execute(
             "INSERT INTO RelatedPlans (PlanId, RelatedPlanPath) VALUES (?1, ?2)",
@@ -120,7 +129,9 @@ pub fn get_plans(
 
     if let Some(text) = text_filter {
         if !text.trim().is_empty() {
-            sql.push_str(" AND (Title LIKE ? OR LatestRevisionContent LIKE ? OR CAST(Id AS TEXT) LIKE ?)");
+            sql.push_str(
+                " AND (Title LIKE ? OR LatestRevisionContent LIKE ? OR CAST(Id AS TEXT) LIKE ?)",
+            );
             let pattern = format!("%{}%", text.trim());
             params_vec.push(Box::new(pattern.clone()));
             params_vec.push(Box::new(pattern.clone()));
@@ -203,12 +214,14 @@ pub fn get_plan_by_id(conn: &Connection, id: i32) -> Result<Option<PlanFile>> {
             .collect();
         plan.metadata.repos = repos;
 
-        let mut ver_stmt = conn.prepare("SELECT Name, Status FROM Verifications WHERE PlanId = ?")?;
+        let mut ver_stmt =
+            conn.prepare("SELECT Name, Status FROM Verifications WHERE PlanId = ?")?;
         let verifications: Vec<PlanVerificationEntry> = ver_stmt
             .query_map([id], |r| {
                 let name: String = r.get(0)?;
                 let status_str: String = r.get(1)?;
-                let status = VerificationStatus::from_str_loose(&status_str).unwrap_or(VerificationStatus::Pending);
+                let status = VerificationStatus::from_str_loose(&status_str)
+                    .unwrap_or(VerificationStatus::Pending);
                 Ok(PlanVerificationEntry { name, status })
             })?
             .filter_map(|r| r.ok())
@@ -227,13 +240,15 @@ pub fn get_plan_by_id(conn: &Connection, id: i32) -> Result<Option<PlanFile>> {
             .filter_map(|r| r.ok())
             .collect();
 
-        let mut dep_stmt = conn.prepare("SELECT DependsOnPlanPath FROM DependsOn WHERE PlanId = ?")?;
+        let mut dep_stmt =
+            conn.prepare("SELECT DependsOnPlanPath FROM DependsOn WHERE PlanId = ?")?;
         plan.metadata.depends_on = dep_stmt
             .query_map([id], |r| r.get(0))?
             .filter_map(|r| r.ok())
             .collect();
 
-        let mut rel_stmt = conn.prepare("SELECT RelatedPlanPath FROM RelatedPlans WHERE PlanId = ?")?;
+        let mut rel_stmt =
+            conn.prepare("SELECT RelatedPlanPath FROM RelatedPlans WHERE PlanId = ?")?;
         plan.metadata.related_plans = rel_stmt
             .query_map([id], |r| r.get(0))?
             .filter_map(|r| r.ok())

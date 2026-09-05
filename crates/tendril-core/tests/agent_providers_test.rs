@@ -45,10 +45,7 @@ fn test_opencode_model_formatting() {
         format_opencode_model(None, Some("https://api.berget.ai/v1")),
         "moonshotai/Kimi-K3"
     );
-    assert_eq!(
-        format_opencode_model(None, None),
-        "openai/gpt-5.6-terra"
-    );
+    assert_eq!(format_opencode_model(None, None), "openai/gpt-5.6-terra");
 
     // Existing prefix preserved
     assert_eq!(
@@ -61,10 +58,7 @@ fn test_opencode_model_formatting() {
         format_opencode_model(Some("claude-3-7-sonnet-latest"), None),
         "anthropic/claude-3-7-sonnet-latest"
     );
-    assert_eq!(
-        format_opencode_model(Some("gpt-4o"), None),
-        "openai/gpt-4o"
-    );
+    assert_eq!(format_opencode_model(Some("gpt-4o"), None), "openai/gpt-4o");
     assert_eq!(
         format_opencode_model(Some("o3-mini"), None),
         "openai/o3-mini"
@@ -157,8 +151,16 @@ fn test_all_agent_providers_spec_generation() {
         assert_eq!(spec.environment.get("MY_VAR"), Some(&"123".to_string()));
 
         if expect_stdin {
-            assert!(spec.redirect_stdin, "Provider {} should redirect stdin", provider_name);
-            assert!(spec.stdin_content.is_some(), "Provider {} should have stdin content", provider_name);
+            assert!(
+                spec.redirect_stdin,
+                "Provider {} should redirect stdin",
+                provider_name
+            );
+            assert!(
+                spec.stdin_content.is_some(),
+                "Provider {} should have stdin content",
+                provider_name
+            );
         }
 
         // Clean up any generated temp files

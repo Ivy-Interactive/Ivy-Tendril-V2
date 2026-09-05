@@ -13,7 +13,8 @@ pub fn get_mcp_tool_definitions() -> Vec<McpToolDefinition> {
     vec![
         McpToolDefinition {
             name: "tendril_get_plan".to_string(),
-            description: "Get detailed information about a Tendril plan by ID or folder name".to_string(),
+            description: "Get detailed information about a Tendril plan by ID or folder name"
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -27,7 +28,8 @@ pub fn get_mcp_tool_definitions() -> Vec<McpToolDefinition> {
         },
         McpToolDefinition {
             name: "tendril_list_plans".to_string(),
-            description: "List Tendril plans with optional filters for project and status".to_string(),
+            description: "List Tendril plans with optional filters for project and status"
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -38,7 +40,9 @@ pub fn get_mcp_tool_definitions() -> Vec<McpToolDefinition> {
         },
         McpToolDefinition {
             name: "tendril_start_job".to_string(),
-            description: "Start a Tendril background job (CreatePlan, ExecutePlan, RetryPlan, etc.)".to_string(),
+            description:
+                "Start a Tendril background job (CreatePlan, ExecutePlan, RetryPlan, etc.)"
+                    .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {

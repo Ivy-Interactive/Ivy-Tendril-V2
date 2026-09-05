@@ -1,14 +1,15 @@
-use std::path::Path;
 use clap::{Args, Subcommand};
-use tendril_core::config::{get_plans_dir, MasterInfo, read_master};
+use std::path::Path;
+use tendril_core::config::{get_plans_dir, read_master, MasterInfo};
 use tendril_core::jobs::logger::append_agent_log;
 use tendril_core::models::{
-    CreatePlanArgs, ExecutePlanArgs, ExpandPlanArgs,
-    JobArgs, RetryPlanArgs, SplitPlanArgs, UpdatePlanArgs,
+    CreatePlanArgs, ExecutePlanArgs, ExpandPlanArgs, JobArgs, RetryPlanArgs, SplitPlanArgs,
+    UpdatePlanArgs,
 };
 use tendril_core::plans::resolve_plan_folder;
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum JobCommands {
     #[command(about = "List jobs")]
     List(JobListArgs),
@@ -18,6 +19,9 @@ pub enum JobCommands {
 
     #[command(about = "Report job status to the server")]
     Status(JobStatusArgs),
+
+    #[command(about = "Report job failure to the server")]
+    Fail(JobFailArgs),
 
     #[command(about = "Cancel a job")]
     Cancel(JobCancelArgs),
@@ -38,7 +42,9 @@ pub struct JobListArgs {
 
 #[derive(Args)]
 pub struct JobStartArgs {
-    #[arg(help = "Job type: ExecutePlan, CreatePlan, RetryPlan, UpdatePlan, ExpandPlan, SplitPlan, CreatePr, CreateIssue, SetupProject, AddProject, SyncRepo")]
+    #[arg(
+        help = "Job type: ExecutePlan, CreatePlan, RetryPlan, UpdatePlan, ExpandPlan, SplitPlan, CreatePr, CreateIssue, SetupProject, AddProject, SyncRepo"
+    )]
     pub job_type: String,
 
     #[arg(help = "Plan ID or folder (or project name for SetupProject/AddProject)")]
@@ -101,7 +107,10 @@ pub struct JobStartArgs {
     #[arg(long, help = "Base branch for SyncRepo")]
     pub base_branch: Option<String>,
 
-    #[arg(long, help = "Untracked policy for SyncRepo (Stash, Commit, PullRequest)")]
+    #[arg(
+        long,
+        help = "Untracked policy for SyncRepo (Stash, Commit, PullRequest)"
+    )]
     pub untracked_policy: Option<String>,
 }
 
@@ -114,6 +123,13 @@ pub struct JobStatusArgs {
     pub plan_id: Option<String>,
     #[arg(long)]
     pub plan_title: Option<String>,
+}
+
+#[derive(Args)]
+pub struct JobFailArgs {
+    pub job_id: String,
+    #[arg(short = 'm', long)]
+    pub message: String,
 }
 
 #[derive(Args)]
@@ -134,19 +150,35 @@ pub struct JobAddLogArgs {
 pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow::Result<()> {
     match cmd {
         JobCommands::AddLog(args) => {
-            let log_path = append_agent_log(tendril_home, &args.job_id, &args.action, args.summary.as_deref())?;
+            let log_path = append_agent_log(
+                tendril_home,
+                &args.job_id,
+                &args.action,
+                args.summary.as_deref(),
+            )?;
             println!("Log written: {}", log_path.display());
             return Ok(());
         }
         JobCommands::List(args) => {
             let master = get_master_or_err(tendril_home)?;
             let client = reqwest::Client::new();
-            let mut url = format!("http://127.0.0.1:{}/api/jobs?limit={}", master.port, args.limit);
+            let mut url = format!(
+                "http://{}:{}/api/jobs?limit={}",
+                master.host, master.port, args.limit
+            );
             if let Some(st) = args.status {
                 url.push_str(&format!("&status={}", st));
             }
 
-            let resp = client.get(&url).send().await?.error_for_status()?;
+            let resp = client.get(&url).bearer_auth(&master.secret).send().await?;
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                anyhow::bail!(
+                    "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
+                    master.host,
+                    master.port
+                );
+            }
+            let resp = resp.error_for_status()?;
             let jobs: serde_json::Value = resp.json().await?;
 
             if args.json {
@@ -154,7 +186,10 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                 return Ok(());
             }
 
-            println!("{:<8} {:<15} {:<12} {:<15} {}", "ID", "TYPE", "STATUS", "PROJECT", "PLAN / ARGS");
+            println!(
+                "{:<8} {:<15} {:<12} {:<15} PLAN / ARGS",
+                "ID", "TYPE", "STATUS", "PROJECT"
+            );
             println!("{}", "-".repeat(75));
             if let Some(arr) = jobs.as_array() {
                 for j in arr {
@@ -175,8 +210,12 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
 
             let job_args = match args.job_type.to_ascii_lowercase().as_str() {
                 "createplan" => {
-                    let desc = args.description.ok_or_else(|| anyhow::anyhow!("--description is required for CreatePlan"))?;
-                    let proj = args.project.ok_or_else(|| anyhow::anyhow!("--project is required for CreatePlan"))?;
+                    let desc = args.description.ok_or_else(|| {
+                        anyhow::anyhow!("--description is required for CreatePlan")
+                    })?;
+                    let proj = args
+                        .project
+                        .ok_or_else(|| anyhow::anyhow!("--project is required for CreatePlan"))?;
                     JobArgs::CreatePlan(CreatePlanArgs {
                         description: desc,
                         project: proj,
@@ -186,7 +225,9 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                     })
                 }
                 "executeplan" => {
-                    let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for ExecutePlan"))?;
+                    let pid = args
+                        .plan_id
+                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for ExecutePlan"))?;
                     let folder = resolve_plan_folder(&pid, &plans_dir)?;
                     JobArgs::ExecutePlan(ExecutePlanArgs {
                         folder_path: folder.to_string_lossy().to_string(),
@@ -194,8 +235,12 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                     })
                 }
                 "retryplan" => {
-                    let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for RetryPlan"))?;
-                    let cr = args.change_request.ok_or_else(|| anyhow::anyhow!("--change-request is required for RetryPlan"))?;
+                    let pid = args
+                        .plan_id
+                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for RetryPlan"))?;
+                    let cr = args.change_request.ok_or_else(|| {
+                        anyhow::anyhow!("--change-request is required for RetryPlan")
+                    })?;
                     let folder = resolve_plan_folder(&pid, &plans_dir)?;
                     JobArgs::RetryPlan(RetryPlanArgs {
                         folder_path: folder.to_string_lossy().to_string(),
@@ -203,30 +248,40 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                     })
                 }
                 "expandplan" => {
-                    let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for ExpandPlan"))?;
+                    let pid = args
+                        .plan_id
+                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for ExpandPlan"))?;
                     let folder = resolve_plan_folder(&pid, &plans_dir)?;
                     JobArgs::ExpandPlan(ExpandPlanArgs {
                         folder_path: folder.to_string_lossy().to_string(),
                     })
                 }
                 "updateplan" => {
-                    let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for UpdatePlan"))?;
+                    let pid = args
+                        .plan_id
+                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for UpdatePlan"))?;
                     let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    let inst = args.instructions.ok_or_else(|| anyhow::anyhow!("--instructions is required for UpdatePlan"))?;
+                    let inst = args.instructions.ok_or_else(|| {
+                        anyhow::anyhow!("--instructions is required for UpdatePlan")
+                    })?;
                     JobArgs::UpdatePlan(UpdatePlanArgs {
                         folder_path: folder.to_string_lossy().to_string(),
                         instructions: Some(inst),
                     })
                 }
                 "splitplan" => {
-                    let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for SplitPlan"))?;
+                    let pid = args
+                        .plan_id
+                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for SplitPlan"))?;
                     let folder = resolve_plan_folder(&pid, &plans_dir)?;
                     JobArgs::SplitPlan(SplitPlanArgs {
                         folder_path: folder.to_string_lossy().to_string(),
                     })
                 }
                 "createpr" => {
-                    let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreatePr"))?;
+                    let pid = args
+                        .plan_id
+                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreatePr"))?;
                     let folder = resolve_plan_folder(&pid, &plans_dir)?;
                     let mut reviewers = Vec::new();
                     for r in &args.reviewer {
@@ -248,15 +303,23 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                         merge: !args.no_merge,
                         delete_branch: !args.no_delete_branch,
                         include_artifacts: !args.no_artifacts,
-                        reviewers: if reviewers.is_empty() { None } else { Some(reviewers) },
+                        reviewers: if reviewers.is_empty() {
+                            None
+                        } else {
+                            Some(reviewers)
+                        },
                         comment: args.comment,
                         draft: args.draft,
                     })
                 }
                 "createissue" => {
-                    let pid = args.plan_id.ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreateIssue"))?;
+                    let pid = args
+                        .plan_id
+                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreateIssue"))?;
                     let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    let repo = args.repo.ok_or_else(|| anyhow::anyhow!("--repo is required for CreateIssue"))?;
+                    let repo = args
+                        .repo
+                        .ok_or_else(|| anyhow::anyhow!("--repo is required for CreateIssue"))?;
                     JobArgs::CreateIssue(tendril_core::models::CreateIssueArgs {
                         folder_path: folder.to_string_lossy().to_string(),
                         repo,
@@ -266,34 +329,55 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                     })
                 }
                 "setupproject" => {
-                    let name = args.plan_id.ok_or_else(|| anyhow::anyhow!("<project-name> is required for SetupProject"))?;
+                    let name = args.plan_id.ok_or_else(|| {
+                        anyhow::anyhow!("<project-name> is required for SetupProject")
+                    })?;
                     JobArgs::SetupProject(tendril_core::models::SetupProjectArgs {
                         folder_path: name,
                     })
                 }
                 "addproject" => {
-                    let name = args.plan_id.ok_or_else(|| anyhow::anyhow!("<project-name> is required for AddProject"))?;
+                    let name = args.plan_id.ok_or_else(|| {
+                        anyhow::anyhow!("<project-name> is required for AddProject")
+                    })?;
                     JobArgs::AddProject(tendril_core::models::AddProjectArgs {
                         project_name: name,
                         repos: Vec::new(),
                     })
                 }
                 "syncrepo" => {
-                    let rp = args.repo_path.ok_or_else(|| anyhow::anyhow!("--repo-path is required for SyncRepo"))?;
+                    let rp = args
+                        .repo_path
+                        .ok_or_else(|| anyhow::anyhow!("--repo-path is required for SyncRepo"))?;
                     let bb = args.base_branch.unwrap_or_else(|| "main".to_string());
                     JobArgs::SyncRepo(tendril_core::models::SyncRepoArgs {
                         repo_path: rp,
                         base_branch: bb,
                         plan_folder_path: None,
-                        untracked_changes_policy: args.untracked_policy.unwrap_or_else(|| "Stash".to_string()),
+                        untracked_changes_policy: args
+                            .untracked_policy
+                            .unwrap_or_else(|| "Stash".to_string()),
                     })
                 }
                 _ => anyhow::bail!("Unsupported job type: {}", args.job_type),
             };
 
             let client = reqwest::Client::new();
-            let url = format!("http://127.0.0.1:{}/api/jobs", master.port);
-            let resp = client.post(&url).json(&job_args).send().await?.error_for_status()?;
+            let url = format!("http://{}:{}/api/jobs", master.host, master.port);
+            let resp = client
+                .post(&url)
+                .bearer_auth(&master.secret)
+                .json(&job_args)
+                .send()
+                .await?;
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                anyhow::bail!(
+                    "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
+                    master.host,
+                    master.port
+                );
+            }
+            let resp = resp.error_for_status()?;
             let res: serde_json::Value = resp.json().await?;
 
             println!("Job started: ID {}", res["jobId"].as_str().unwrap_or(""));
@@ -301,21 +385,77 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         JobCommands::Status(args) => {
             let master = get_master_or_err(tendril_home)?;
             let client = reqwest::Client::new();
-            let url = format!("http://127.0.0.1:{}/api/jobs/{}/status", master.port, args.job_id);
+            let url = format!(
+                "http://{}:{}/api/jobs/{}/status",
+                master.host, master.port, args.job_id
+            );
             let body = serde_json::json!({
                 "message": args.message,
                 "planId": args.plan_id,
                 "planTitle": args.plan_title,
             });
-            client.put(&url).json(&body).send().await?.error_for_status()?;
+            let resp = client
+                .put(&url)
+                .bearer_auth(&master.secret)
+                .json(&body)
+                .send()
+                .await?;
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                anyhow::bail!(
+                    "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
+                    master.host,
+                    master.port
+                );
+            }
+            resp.error_for_status()?;
             println!("Status updated for job {}", args.job_id);
+        }
+        JobCommands::Fail(args) => {
+            let master = get_master_or_err(tendril_home)?;
+            let client = reqwest::Client::new();
+            let url = format!(
+                "http://{}:{}/api/jobs/{}/fail",
+                master.host, master.port, args.job_id
+            );
+            let body = serde_json::json!({ "message": args.message });
+            let resp = client
+                .put(&url)
+                .bearer_auth(&master.secret)
+                .json(&body)
+                .send()
+                .await?;
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                anyhow::bail!(
+                    "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
+                    master.host,
+                    master.port
+                );
+            }
+            resp.error_for_status()?;
+            println!("Failure reported for job {}", args.job_id);
         }
         JobCommands::Cancel(args) => {
             let master = get_master_or_err(tendril_home)?;
             let client = reqwest::Client::new();
-            let url = format!("http://127.0.0.1:{}/api/jobs/{}/cancel", master.port, args.job_id);
+            let url = format!(
+                "http://{}:{}/api/jobs/{}/cancel",
+                master.host, master.port, args.job_id
+            );
             let body = serde_json::json!({ "message": args.message });
-            client.post(&url).json(&body).send().await?.error_for_status()?;
+            let resp = client
+                .post(&url)
+                .bearer_auth(&master.secret)
+                .json(&body)
+                .send()
+                .await?;
+            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+                anyhow::bail!(
+                    "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
+                    master.host,
+                    master.port
+                );
+            }
+            resp.error_for_status()?;
             println!("Job {} cancelled.", args.job_id);
         }
     }
@@ -324,6 +464,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
 }
 
 fn get_master_or_err(tendril_home: &Path) -> anyhow::Result<MasterInfo> {
-    read_master(tendril_home)
-        .ok_or_else(|| anyhow::anyhow!("Tendril server is not running. Start it with 'tendril serve' first."))
+    read_master(tendril_home).ok_or_else(|| {
+        anyhow::anyhow!("Tendril server is not running. Start it with 'tendril serve' first.")
+    })
 }

@@ -1,6 +1,6 @@
+use crate::models::{JobItem, JobStatus};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Result};
-use crate::models::{JobItem, JobStatus};
 
 pub fn insert_job(conn: &Connection, job: &JobItem) -> Result<()> {
     let started_at_str = job.started_at.map(|t| t.to_rfc3339());
@@ -115,8 +115,16 @@ pub fn get_job(conn: &Connection, id: &str) -> Result<Option<JobItem>> {
         let effort: Option<String> = row.get(27)?;
 
         let status = JobStatus::from_str_loose(&status_str).unwrap_or(JobStatus::Pending);
-        let started_at = started_at_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
-        let completed_at = completed_at_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
+        let started_at = started_at_str.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        });
+        let completed_at = completed_at_str.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        });
 
         let mut item = JobItem::new(id, job_type, plan_file, project);
         item.status = status;
@@ -150,7 +158,11 @@ pub fn get_job(conn: &Connection, id: &str) -> Result<Option<JobItem>> {
     Ok(None)
 }
 
-pub fn list_jobs(conn: &Connection, status_filter: Option<JobStatus>, limit: usize) -> Result<Vec<JobItem>> {
+pub fn list_jobs(
+    conn: &Connection,
+    status_filter: Option<JobStatus>,
+    limit: usize,
+) -> Result<Vec<JobItem>> {
     let mut sql = "SELECT Id, Type, PlanFile, Project, Status, Provider, StartedAt, CompletedAt, DurationSeconds, Cost, Tokens, StatusMessage, Args, WorkingDirectory, CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, ReasoningTokens, CostSource, ExecutionProfile, Effort FROM Jobs".to_string();
 
     if let Some(status) = status_filter {
@@ -194,8 +206,16 @@ pub fn list_jobs(conn: &Connection, status_filter: Option<JobStatus>, limit: usi
         let effort: Option<String> = row.get(27)?;
 
         let status = JobStatus::from_str_loose(&status_str).unwrap_or(JobStatus::Pending);
-        let started_at = started_at_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
-        let completed_at = completed_at_str.and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.with_timezone(&Utc)));
+        let started_at = started_at_str.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        });
+        let completed_at = completed_at_str.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|dt| dt.with_timezone(&Utc))
+        });
 
         let mut item = JobItem::new(id, job_type, plan_file, project);
         item.status = status;

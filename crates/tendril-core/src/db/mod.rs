@@ -6,9 +6,9 @@ pub use jobs::*;
 pub use migrations::*;
 pub use plans::*;
 
+use crate::error::Result;
 use rusqlite::Connection;
 use std::path::Path;
-use crate::error::Result;
 
 pub fn open_database(path: &Path) -> Result<Connection> {
     if let Some(parent) = path.parent() {

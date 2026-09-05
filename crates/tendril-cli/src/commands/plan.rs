@@ -1,16 +1,16 @@
-use tendril_core::git::worktree::cleanup_worktrees;
-use std::io::Read;
-use std::path::PathBuf;
 use chrono::Utc;
 use clap::{Args, Subcommand};
+use std::io::Read;
+use std::path::PathBuf;
 use tendril_core::config::{get_database_path, get_plans_dir};
 use tendril_core::db::{get_plans, open_database, sync_plan};
+use tendril_core::git::worktree::cleanup_worktrees;
 use tendril_core::models::{PlanStatus, PlanVerificationEntry, VerificationStatus};
 use tendril_core::plans::{
-    add_recommendation, check_all_plans_health, check_plan_health,
-    create_plan, get_revision, list_recommendations, read_plan_file, read_plan_yaml,
-    resolve_plan_folder, set_recommendation_state, write_plan_yaml, write_revision,
-    CreatePlanOptions, DuplicateCandidateFinder, PlanCompletionGuard,
+    add_recommendation, check_all_plans_health, check_plan_health, create_plan, get_revision,
+    list_recommendations, read_plan_file, read_plan_yaml, resolve_plan_folder,
+    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
+    DuplicateCandidateFinder, PlanCompletionGuard,
 };
 
 #[derive(Subcommand)]
@@ -259,7 +259,10 @@ pub enum PlanRecCommands {
     },
 }
 
-pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) -> anyhow::Result<()> {
+pub fn handle_plan_command(
+    cmd: PlanCommands,
+    tendril_home: &std::path::Path,
+) -> anyhow::Result<()> {
     let plans_dir = get_plans_dir(tendril_home);
     let db_path = get_database_path(tendril_home);
 
@@ -267,7 +270,11 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
         PlanCommands::List(args) => {
             let custom_dir = args.plans_dir.is_some();
             let p_dir = args.plans_dir.unwrap_or(plans_dir);
-            let status_filter = args.state.as_deref().or(args.status.as_deref()).and_then(PlanStatus::from_str_loose);
+            let status_filter = args
+                .state
+                .as_deref()
+                .or(args.status.as_deref())
+                .and_then(PlanStatus::from_str_loose);
             let search_term = args.search.as_deref();
 
             let mut plans = if custom_dir || !db_path.exists() {
@@ -296,7 +303,9 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                     }
                     if let Some(st) = search_term {
                         let id_str = format!("{:05}", p.metadata.id);
-                        if !p.metadata.title.to_lowercase().contains(&st.to_lowercase()) && !id_str.contains(st) {
+                        if !p.metadata.title.to_lowercase().contains(&st.to_lowercase())
+                            && !id_str.contains(st)
+                        {
                             return false;
                         }
                     }
@@ -318,7 +327,10 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                 plans.retain(|p| {
                     let folder = std::path::Path::new(&p.folder_path);
                     let wt_dir = folder.join("Worktrees");
-                    wt_dir.exists() && std::fs::read_dir(&wt_dir).map(|mut it| it.next().is_some()).unwrap_or(false)
+                    wt_dir.exists()
+                        && std::fs::read_dir(&wt_dir)
+                            .map(|mut it| it.next().is_some())
+                            .unwrap_or(false)
                 });
             }
 
@@ -326,7 +338,13 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                 plans.truncate(limit);
             }
 
-            match args.format.as_deref().unwrap_or("table").to_ascii_lowercase().as_str() {
+            match args
+                .format
+                .as_deref()
+                .unwrap_or("table")
+                .to_ascii_lowercase()
+                .as_str()
+            {
                 "json" => {
                     println!("{}", serde_json::to_string_pretty(&plans)?);
                 }
@@ -345,7 +363,10 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                     }
                 }
                 _ => {
-                    println!("{:<8} {:<12} {:<10} {:<15} {}", "ID", "STATE", "LEVEL", "PROJECT", "TITLE");
+                    println!(
+                        "{:<8} {:<12} {:<10} {:<15} TITLE",
+                        "ID", "STATE", "LEVEL", "PROJECT"
+                    );
                     println!("{}", "-".repeat(70));
                     for p in plans {
                         println!(
@@ -366,12 +387,17 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
             for v in args.verification {
                 let parts: Vec<&str> = v.split('=').collect();
                 if parts.len() == 2 {
-                    let st = VerificationStatus::from_str_loose(parts[1]).unwrap_or(VerificationStatus::Pending);
-                    verifications.push(PlanVerificationEntry { name: parts[0].to_string(), status: st });
+                    let st = VerificationStatus::from_str_loose(parts[1])
+                        .unwrap_or(VerificationStatus::Pending);
+                    verifications.push(PlanVerificationEntry {
+                        name: parts[0].to_string(),
+                        status: st,
+                    });
                 }
             }
 
-            let duplicates = DuplicateCandidateFinder::find(&p_dir, &args.title, &args.project, None);
+            let duplicates =
+                DuplicateCandidateFinder::find(&p_dir, &args.title, &args.project, None);
 
             let opts = CreatePlanOptions {
                 title: args.title,
@@ -511,7 +537,10 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                 println!("All plans are healthy.");
             } else {
                 for issue in issues {
-                    println!("{}: [{}] {}", issue.plan_folder, issue.severity, issue.message);
+                    println!(
+                        "{}: [{}] {}",
+                        issue.plan_folder, issue.severity, issue.message
+                    );
                 }
             }
         }
@@ -544,7 +573,12 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
 
             if let Ok((plan, _)) = read_plan_yaml(&folder) {
                 if let Some(folder_name) = folder.file_name().and_then(|n| n.to_str()) {
-                    let candidates = DuplicateCandidateFinder::find(&p_dir, &plan.title, &plan.project, Some(folder_name));
+                    let candidates = DuplicateCandidateFinder::find(
+                        &p_dir,
+                        &plan.title,
+                        &plan.project,
+                        Some(folder_name),
+                    );
                     if !candidates.is_empty() {
                         eprintln!();
                         eprintln!("warning: {} possible duplicate plan(s) found. Review before this plan is executed:", candidates.len());
@@ -638,7 +672,11 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
             let status = VerificationStatus::from_str_loose(&args.status)
                 .ok_or_else(|| anyhow::anyhow!("Invalid verification status: {}", args.status))?;
 
-            if let Some(entry) = plan.verifications.iter_mut().find(|v| v.name.eq_ignore_ascii_case(&args.name)) {
+            if let Some(entry) = plan
+                .verifications
+                .iter_mut()
+                .find(|v| v.name.eq_ignore_ascii_case(&args.name))
+            {
                 entry.status = status;
             } else {
                 plan.verifications.push(PlanVerificationEntry {
@@ -659,7 +697,12 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                     println!("[{}] {} - {}", r.state, r.title, r.description);
                 }
             }
-            PlanRecCommands::Add { plan_id, title, description, impact } => {
+            PlanRecCommands::Add {
+                plan_id,
+                title,
+                description,
+                impact,
+            } => {
                 let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
                 add_recommendation(&folder, &title, &description, impact.as_deref())?;
                 println!("Recommendation added.");
@@ -669,7 +712,11 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
                 set_recommendation_state(&folder, &title, "Accepted", None)?;
                 println!("Recommendation accepted.");
             }
-            PlanRecCommands::Decline { plan_id, title, reason } => {
+            PlanRecCommands::Decline {
+                plan_id,
+                title,
+                reason,
+            } => {
                 let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
                 set_recommendation_state(&folder, &title, "Declined", reason.as_deref())?;
                 println!("Recommendation declined.");
@@ -679,4 +726,3 @@ pub fn handle_plan_command(cmd: PlanCommands, tendril_home: &std::path::Path) ->
 
     Ok(())
 }
-

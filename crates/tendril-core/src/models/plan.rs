@@ -281,6 +281,9 @@ impl PlanFile {
     }
 
     pub fn is_pull_request_source(&self) -> bool {
-        self.metadata.source_url.as_ref().map_or(false, |u| u.contains("/pull/"))
+        self.metadata
+            .source_url
+            .as_ref()
+            .is_some_and(|u| u.contains("/pull/"))
     }
 }

@@ -1,8 +1,3 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
-use chrono::Utc;
-use tokio::sync::{RwLock, Semaphore};
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig};
 use crate::agents::runner::run_agent_process;
 use crate::config::TendrilSettings;
@@ -14,6 +9,11 @@ use crate::models::{JobArgs, JobItem, JobStatus, PlanStatus};
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::writer::write_plan_yaml;
 use crate::promptware::compiler::compile_firmware;
+use chrono::Utc;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::{RwLock, Semaphore};
 
 pub struct JobManager {
     tendril_home: PathBuf,
@@ -57,7 +57,12 @@ impl JobManager {
         let settings = self.settings.read().await.clone();
         let default_agent = settings.coding_agent.clone();
 
-        let mut job = JobItem::new(job_id.clone(), job_type.clone(), plan_folder_str.clone(), "Auto".to_string());
+        let mut job = JobItem::new(
+            job_id.clone(),
+            job_type.clone(),
+            plan_folder_str.clone(),
+            "Auto".to_string(),
+        );
         job.provider = default_agent;
         job.status = JobStatus::Queued;
         job.started_at = Some(Utc::now());
@@ -119,7 +124,8 @@ impl JobManager {
 
             let promptware_folder = tendril_home_clone.join("Promptwares").join(&job_type);
             let compiled_prompt = if promptware_folder.exists() {
-                compile_firmware(&promptware_folder, &promptware_values).unwrap_or_else(|_| "Execute job".to_string())
+                compile_firmware(&promptware_folder, &promptware_values)
+                    .unwrap_or_else(|_| "Execute job".to_string())
             } else {
                 format!("Execute {} for plan {}", job_type, plan_folder_str)
             };
@@ -146,12 +152,16 @@ impl JobManager {
             let run_res = run_agent_process(spec, move |evt| {
                 let _ = append_to_raw_log(&th, &jid, &evt.raw_line);
                 let _ = append_to_eventwire(&th, &jid, &evt.raw_line);
-            }).await;
+            })
+            .await;
 
             let duration = start_time.elapsed().as_secs() as i64;
             let (final_status, msg) = match run_res {
                 Ok(0) => (JobStatus::Completed, "Completed successfully".to_string()),
-                Ok(code) => (JobStatus::Failed, format!("Process exited with code {}", code)),
+                Ok(code) => (
+                    JobStatus::Failed,
+                    format!("Process exited with code {}", code),
+                ),
                 Err(e) => (JobStatus::Failed, format!("Execution failed: {}", e)),
             };
 
@@ -204,7 +214,13 @@ impl JobManager {
         get_job(&conn, id).map_err(Into::into)
     }
 
-    pub async fn update_job_status(&self, id: &str, message: &str, plan_id: Option<&str>, plan_title: Option<&str>) -> Result<bool> {
+    pub async fn update_job_status(
+        &self,
+        id: &str,
+        message: &str,
+        plan_id: Option<&str>,
+        plan_title: Option<&str>,
+    ) -> Result<bool> {
         let mut map = self.jobs.write().await;
         if let Some(job) = map.get_mut(id) {
             job.status_message = Some(message.to_string());
@@ -262,7 +278,11 @@ impl JobManager {
         append_agent_log(&self.tendril_home, id, action, summary)
     }
 
-    pub async fn list_jobs(&self, status_filter: Option<JobStatus>, limit: usize) -> Result<Vec<JobItem>> {
+    pub async fn list_jobs(
+        &self,
+        status_filter: Option<JobStatus>,
+        limit: usize,
+    ) -> Result<Vec<JobItem>> {
         let db_path = crate::config::get_database_path(&self.tendril_home);
         let conn = open_database(&db_path)?;
         list_jobs(&conn, status_filter, limit).map_err(Into::into)

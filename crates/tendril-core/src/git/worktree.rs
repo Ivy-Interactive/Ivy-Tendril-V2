@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
 use crate::error::{Result, TendrilError};
 use crate::git::service::run_git;
+use std::path::{Path, PathBuf};
 
 pub fn derive_branch_name(plan_folder: &Path) -> String {
     let folder_name = plan_folder
@@ -24,7 +24,10 @@ pub fn add_worktree(
     base_branch: Option<&str>,
 ) -> Result<PathBuf> {
     if !repo_path.exists() {
-        return Err(TendrilError::Git(format!("Repo path does not exist: {}", repo_path.display())));
+        return Err(TendrilError::Git(format!(
+            "Repo path does not exist: {}",
+            repo_path.display()
+        )));
     }
 
     let branch_name = derive_branch_name(plan_folder);
@@ -36,7 +39,15 @@ pub fn add_worktree(
 
     // Remove existing worktree if present
     if worktree_path.exists() {
-        let _ = run_git(&["worktree", "remove", "--force", &worktree_path.to_string_lossy()], repo_path);
+        let _ = run_git(
+            &[
+                "worktree",
+                "remove",
+                "--force",
+                &worktree_path.to_string_lossy(),
+            ],
+            repo_path,
+        );
         let _ = run_git(&["branch", "-D", &branch_name], repo_path);
     }
 
@@ -57,18 +68,35 @@ pub fn add_worktree(
 
     let origin_base = format!("origin/{}", base);
     let (code, _, stderr) = run_git(
-        &["worktree", "add", &worktree_path.to_string_lossy(), "-b", &branch_name, &origin_base],
+        &[
+            "worktree",
+            "add",
+            &worktree_path.to_string_lossy(),
+            "-b",
+            &branch_name,
+            &origin_base,
+        ],
         repo_path,
     )?;
 
     if code != 0 {
         // Fallback without origin/ if branch is local only
         let (retry_code, _, retry_err) = run_git(
-            &["worktree", "add", &worktree_path.to_string_lossy(), "-b", &branch_name, &base],
+            &[
+                "worktree",
+                "add",
+                &worktree_path.to_string_lossy(),
+                "-b",
+                &branch_name,
+                &base,
+            ],
             repo_path,
         )?;
         if retry_code != 0 {
-            return Err(TendrilError::Git(format!("git worktree add failed: {}\n{}", stderr, retry_err)));
+            return Err(TendrilError::Git(format!(
+                "git worktree add failed: {}\n{}",
+                stderr, retry_err
+            )));
         }
     }
 
@@ -86,7 +114,10 @@ pub fn cleanup_worktrees(plan_folder: &Path) -> Result<()> {
         let path = entry.path();
         if path.is_dir() {
             // Remove worktree
-            let _ = run_git(&["worktree", "remove", "--force", &path.to_string_lossy()], &path);
+            let _ = run_git(
+                &["worktree", "remove", "--force", &path.to_string_lossy()],
+                &path,
+            );
             let _ = std::fs::remove_dir_all(&path);
         }
     }

@@ -1,17 +1,21 @@
-use std::path::Path;
 use crate::error::{Result, TendrilError};
 use crate::models::{PlanFile, PlanMetadata, PlanStatus, PlanYaml};
 use crate::plans::revisions::get_revision;
+use std::path::Path;
 
 pub fn read_plan_yaml(plan_folder: &Path) -> Result<(PlanYaml, String)> {
     let yaml_path = plan_folder.join("plan.yaml");
     if !yaml_path.exists() {
-        return Err(TendrilError::PlanNotFound(format!("plan.yaml not found at {}", yaml_path.display())));
+        return Err(TendrilError::PlanNotFound(format!(
+            "plan.yaml not found at {}",
+            yaml_path.display()
+        )));
     }
 
     let raw = std::fs::read_to_string(&yaml_path)?;
-    let plan: PlanYaml = serde_yaml::from_str(&raw)
-        .map_err(|e| TendrilError::Plan(format!("Failed to parse {}: {}", yaml_path.display(), e)))?;
+    let plan: PlanYaml = serde_yaml::from_str(&raw).map_err(|e| {
+        TendrilError::Plan(format!("Failed to parse {}: {}", yaml_path.display(), e))
+    })?;
 
     Ok((plan, raw))
 }

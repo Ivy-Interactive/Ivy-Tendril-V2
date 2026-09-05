@@ -1,6 +1,6 @@
+use crate::error::{Result, TendrilError};
 use std::path::Path;
 use std::process::Command;
-use crate::error::{Result, TendrilError};
 
 pub fn create_pr(
     repo_path: &Path,
@@ -11,7 +11,9 @@ pub fn create_pr(
     draft: bool,
     reviewers: Option<&[String]>,
 ) -> Result<String> {
-    let mut args = vec!["pr", "create", "--head", branch, "--title", title, "--body", body];
+    let mut args = vec![
+        "pr", "create", "--head", branch, "--title", title, "--body", body,
+    ];
 
     if let Some(b) = base {
         args.push("--base");

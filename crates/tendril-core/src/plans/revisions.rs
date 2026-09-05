@@ -1,5 +1,5 @@
-use std::path::Path;
 use crate::error::{Result, TendrilError};
+use std::path::Path;
 
 pub fn get_revision(plan_folder: &Path, number: Option<i32>) -> Result<String> {
     let rev_dir = plan_folder.join("Revisions");
@@ -12,7 +12,11 @@ pub fn get_revision(plan_folder: &Path, number: Option<i32>) -> Result<String> {
         if file_path.exists() {
             return Ok(std::fs::read_to_string(file_path)?);
         }
-        return Err(TendrilError::Plan(format!("Revision {:03} not found in {}", n, plan_folder.display())));
+        return Err(TendrilError::Plan(format!(
+            "Revision {:03} not found in {}",
+            n,
+            plan_folder.display()
+        )));
     }
 
     // Get latest revision

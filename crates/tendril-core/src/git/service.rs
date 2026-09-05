@@ -1,6 +1,6 @@
+use crate::error::{Result, TendrilError};
 use std::path::Path;
 use std::process::Command;
-use crate::error::{Result, TendrilError};
 
 #[derive(Debug, Clone)]
 pub struct WorktreeInfo {
@@ -26,23 +26,42 @@ pub fn run_git(args: &[&str], working_dir: &Path) -> Result<(i32, String, String
 pub fn get_commit_title(repo_path: &Path, commit_hash: &str) -> Result<String> {
     let (code, stdout, stderr) = run_git(&["log", "-1", "--format=%s", commit_hash], repo_path)?;
     if code != 0 {
-        return Err(TendrilError::Git(format!("get_commit_title failed: {}", stderr)));
+        return Err(TendrilError::Git(format!(
+            "get_commit_title failed: {}",
+            stderr
+        )));
     }
     Ok(stdout.lines().next().unwrap_or("").to_string())
 }
 
 pub fn get_commit_diff(repo_path: &Path, commit_hash: &str) -> Result<String> {
-    let (code, stdout, stderr) = run_git(&["show", "--format=", "--patch", commit_hash], repo_path)?;
+    let (code, stdout, stderr) =
+        run_git(&["show", "--format=", "--patch", commit_hash], repo_path)?;
     if code != 0 {
-        return Err(TendrilError::Git(format!("get_commit_diff failed: {}", stderr)));
+        return Err(TendrilError::Git(format!(
+            "get_commit_diff failed: {}",
+            stderr
+        )));
     }
     Ok(stdout)
 }
 
 pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<(String, String)>> {
-    let (code, stdout, stderr) = run_git(&["diff-tree", "--no-commit-id", "--name-status", "-r", commit_hash], repo_path)?;
+    let (code, stdout, stderr) = run_git(
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            commit_hash,
+        ],
+        repo_path,
+    )?;
     if code != 0 {
-        return Err(TendrilError::Git(format!("get_commit_files failed: {}", stderr)));
+        return Err(TendrilError::Git(format!(
+            "get_commit_files failed: {}",
+            stderr
+        )));
     }
 
     let mut list = Vec::new();
@@ -55,11 +74,18 @@ pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<(Stri
     Ok(list)
 }
 
-pub fn get_combined_diff(repo_path: &Path, first_commit: &str, last_commit: &str) -> Result<String> {
+pub fn get_combined_diff(
+    repo_path: &Path,
+    first_commit: &str,
+    last_commit: &str,
+) -> Result<String> {
     let range = format!("{}^..{}", first_commit, last_commit);
     let (code, stdout, stderr) = run_git(&["diff", &range], repo_path)?;
     if code != 0 {
-        return Err(TendrilError::Git(format!("get_combined_diff failed: {}", stderr)));
+        return Err(TendrilError::Git(format!(
+            "get_combined_diff failed: {}",
+            stderr
+        )));
     }
     Ok(stdout)
 }
@@ -67,7 +93,10 @@ pub fn get_combined_diff(repo_path: &Path, first_commit: &str, last_commit: &str
 pub fn get_worktrees(repo_path: &Path) -> Result<Vec<WorktreeInfo>> {
     let (code, stdout, stderr) = run_git(&["worktree", "list", "--porcelain"], repo_path)?;
     if code != 0 {
-        return Err(TendrilError::Git(format!("get_worktrees failed: {}", stderr)));
+        return Err(TendrilError::Git(format!(
+            "get_worktrees failed: {}",
+            stderr
+        )));
     }
 
     let mut worktrees = Vec::new();

@@ -1,12 +1,12 @@
-use std::sync::Arc;
+use crate::state::AppState;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::Arc;
 use tendril_core::models::{JobArgs, JobStatus};
-use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct JobListQuery {
@@ -90,11 +90,19 @@ pub async fn update_job_status(
 ) -> impl IntoResponse {
     match state
         .job_manager
-        .update_job_status(&job_id, &req.message, req.plan_id.as_deref(), req.plan_title.as_deref())
+        .update_job_status(
+            &job_id,
+            &req.message,
+            req.plan_id.as_deref(),
+            req.plan_title.as_deref(),
+        )
         .await
     {
         Ok(true) => (StatusCode::OK, Json(json!({ "status": "Updated" }))),
-        Ok(false) => (StatusCode::NOT_FOUND, Json(json!({ "error": "Job not found" }))),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Job not found" })),
+        ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Error updating job: {}", e) })),
@@ -114,11 +122,20 @@ pub async fn report_job_failure(
     Path(job_id): Path<String>,
     Json(req): Json<ReportJobFailureRequest>,
 ) -> impl IntoResponse {
-    let _ = state.job_manager.report_job_failure(&job_id, &req.message).await;
+    let _ = state
+        .job_manager
+        .report_job_failure(&job_id, &req.message)
+        .await;
     if req.stop {
-        let _ = state.job_manager.cancel_job(&job_id, Some(&req.message)).await;
+        let _ = state
+            .job_manager
+            .cancel_job(&job_id, Some(&req.message))
+            .await;
     }
-    (StatusCode::OK, Json(json!({ "status": "Failure reported" })))
+    (
+        StatusCode::OK,
+        Json(json!({ "status": "Failure reported" })),
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,7 +151,10 @@ pub async fn cancel_job(
     let msg = req.and_then(|r| r.message);
     match state.job_manager.cancel_job(&job_id, msg.as_deref()).await {
         Ok(true) => (StatusCode::OK, Json(json!({ "status": "Cancelled" }))),
-        Ok(false) => (StatusCode::NOT_FOUND, Json(json!({ "error": "Job not found" }))),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Job not found" })),
+        ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Error cancelling job: {}", e) })),
@@ -153,7 +173,10 @@ pub async fn add_log(
     Path(job_id): Path<String>,
     Json(req): Json<AddLogRequest>,
 ) -> impl IntoResponse {
-    match state.job_manager.add_log(&job_id, &req.action, req.summary.as_deref()) {
+    match state
+        .job_manager
+        .add_log(&job_id, &req.action, req.summary.as_deref())
+    {
         Ok(path) => (
             StatusCode::OK,
             Json(json!({

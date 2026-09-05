@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
-use regex::Regex;
 use crate::error::{Result, TendrilError};
+use regex::Regex;
+use std::path::{Path, PathBuf};
 
 pub fn to_safe_title(title: &str) -> String {
     let re = Regex::new(r"[^a-zA-Z0-9\s-]").unwrap();

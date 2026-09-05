@@ -1,5 +1,5 @@
-use std::path::Path;
 use crate::error::Result;
+use std::path::Path;
 
 pub fn list_memory(promptwares_dir: &Path, promptware_name: &str) -> Result<Vec<String>> {
     let mem_dir = promptwares_dir.join(promptware_name).join("Memory");
@@ -53,11 +53,7 @@ pub fn write_memory(
     Ok(())
 }
 
-pub fn delete_memory(
-    promptwares_dir: &Path,
-    promptware_name: &str,
-    filename: &str,
-) -> Result<()> {
+pub fn delete_memory(promptwares_dir: &Path, promptware_name: &str, filename: &str) -> Result<()> {
     let mem_dir = promptwares_dir.join(promptware_name).join("Memory");
     let path = mem_dir.join(filename);
     if path.exists() {
