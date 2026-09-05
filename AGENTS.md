@@ -56,6 +56,18 @@ The merge guard prevents this pattern. Branch protection that requires a green `
 
 ## Multi-Document Lockfile
 
-`pnpm-lock.yaml` may contain **two YAML documents** separated by `---`. When the pnpm version on `PATH` differs from the `devEngines.packageManager` pin in `package.json`, pnpm prepends a document that locks the package manager itself (`packageManagerDependencies`). The second document is the project's dependency graph.
+`pnpm-lock.yaml` contains **two YAML documents** separated by `---`. The leading document locks the package manager itself (`packageManagerDependencies`); the second document is the project's dependency graph.
 
-This is expected pnpm behavior, not corruption. Do not delete the leading document during merge conflict resolution — it will return on the next `pnpm install` by any pnpm version other than the pinned one. Tests that parse the lockfile use the `yaml` package to select the document with an `overrides` key (the project document).
+The pinned pnpm — 11.25.0 — is what _writes_ the leading document. Any older pnpm **removes** it, silently and with exit 0, and does not put it back: pnpm 10 has no `packageManagerDependencies` support, so a bare `pnpm install` from a pnpm 10 on `PATH` strips the block and never restores it. That is a one-way loss, not self-healing behavior. Once stripped, `pnpm install --frozen-lockfile` (both jobs in `.github/workflows/storybook-tests.yml`) fails with a message that names neither a pnpm version nor a file:
+
+```
+[ERROR] Cannot update packageManagerDependencies with "frozen-lockfile" because the lockfile is not up to date
+```
+
+The top-level `"packageManager": "pnpm@11.25.0"` field in `package.json` is what forces the right pnpm: pnpm's `manage-package-manager-versions` (default `true`) reads it and re-executes as 11.25.0, so even a pnpm 10 on `PATH` leaves the lockfile byte-identical. `devEngines.packageManager` is kept alongside it because `vp install` reads that one; the two must always name the same version, and `tests/package-manager-pin.test.ts` fails if they drift or if the lockfile block goes missing.
+
+Operational rules:
+
+- Do not delete the leading document during merge conflict resolution. It will not come back on its own.
+- If `manage-package-manager-versions` is disabled in your pnpm config, install with `vp install` or `corepack pnpm@11.25.0 install` rather than bare `pnpm` — the `packageManager` field cannot protect you with that setting off.
+- Tests that parse the lockfile use the `yaml` package to select a document by key (`overrides` for the project document, `packageManagerDependencies` for the leading one) — never by index.
