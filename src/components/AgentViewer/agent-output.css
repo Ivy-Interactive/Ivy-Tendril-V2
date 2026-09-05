@@ -6,14 +6,25 @@
   --aov-border: var(--border);
   --aov-border-strong: var(--input);
   --aov-fg: var(--foreground);
-  --aov-fg-muted: color-mix(in srgb, var(--foreground) 70%, transparent);
+  --aov-fg-muted: var(--muted-foreground, color-mix(in srgb, var(--foreground) 70%, transparent));
   --aov-fg-faint: color-mix(in srgb, var(--foreground) 45%, transparent);
   --aov-accent: var(--foreground);
   --aov-accent-soft: color-mix(in srgb, var(--foreground) 6%, transparent);
+  --aov-success: var(--success);
   --aov-danger: var(--destructive);
   --aov-warn: var(--warning);
-  --aov-mono:
-    "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --aov-info: var(--info);
+  --aov-running: var(--info);
+  --aov-mono: var(
+    --font-mono,
+    "Geist Mono",
+    "JetBrains Mono",
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace
+  );
   --aov-tool-header-h: 26px;
 
   color: var(--aov-fg);
@@ -348,15 +359,15 @@
 }
 
 .aov-tool-status--success {
-  background: var(--green, #22c55e);
+  background: var(--aov-success, var(--success));
 }
 
 .aov-tool-status--error {
-  background: var(--destructive, #ef4444);
+  background: var(--aov-danger, var(--destructive));
 }
 
 .aov-tool-status--running {
-  background: var(--primary, #3b82f6);
+  background: var(--aov-running, var(--info));
   animation: aov-pulse 1.5s ease-in-out infinite;
 }
 
