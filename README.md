@@ -121,14 +121,8 @@ function DemoComponent() {
 ### 3. Rich Content Renderers
 
 ```tsx
-import {
-  MarkdownRenderer,
-  JsonRenderer,
-} from "components-storybook/renderers";
-import {
-  MermaidRenderer,
-  GraphvizRenderer,
-} from "components-storybook/diagrams";
+import { MarkdownRenderer, JsonRenderer } from "components-storybook/renderers";
+import { MermaidRenderer, GraphvizRenderer } from "components-storybook/diagrams";
 
 function ContentDemo() {
   const markdownContent = "# Hello\n\nThis is **Markdown** content.";
@@ -324,7 +318,7 @@ site), `Domain/Loading` → `Skeleton` (picks its line count and widths with `Ma
 container as they render, so the scroll lands a few pixels off each run). Animated stories do **not**
 need it: the runner injects CSS that pauses animations and transitions before screenshotting.
 
-A story whose content is *slow* rather than unstable needs a settle delay instead of an opt-out. The
+A story whose content is _slow_ rather than unstable needs a settle delay instead of an opt-out. The
 runner waits 100 ms between freezing the page and screenshotting it; stories that lazy-load a renderer
 finish later than that and would otherwise be captured showing a loading placeholder:
 
@@ -335,7 +329,7 @@ parameters: { visual: { settleDelay: 3000 } },
 `Renderers/MermaidRenderer`, `Renderers/GraphvizRenderer` and `Components/PlanMarkdown` use it, because
 mermaid and `@hpcc-js/wasm-graphviz` are imported on first render and lay their diagrams out
 asynchronously. A settle delay only helps when the story is still when it finishes — a story that both
-renders late *and* moves (`Components/AgentViewer` → `WithRichPlanLogs`) has to be opted out instead.
+renders late _and_ moves (`Components/AgentViewer` → `WithRichPlanLogs`) has to be opted out instead.
 
 #### CI
 
