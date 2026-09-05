@@ -215,7 +215,10 @@ pnpm run storybook
 vp run storybook
 ```
 
-Navigate to `http://localhost:6006` to explore the component catalog.
+Navigate to `http://127.0.0.1:6006` to explore the component catalog. When 6006 is already taken the
+server steps to the next free port in 6006..6015, and either way the chosen URL is printed on startup
+before Storybook boots. Override the range with `STORYBOOK_PORT_BASE`, or pass an exact port through
+with `pnpm run storybook -- -p 7777`.
 
 ### Production Static Build
 
@@ -278,7 +281,6 @@ pnpm run test-storybook:visual:update
 #### CI
 
 The [storybook-tests.yml](.github/workflows/storybook-tests.yml) workflow runs on every push and pull request. It includes a caching step for Playwright browsers to avoid re-downloading on every run.
-
 
 The Storybook catalog is organized into the following sections:
 
