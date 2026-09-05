@@ -1,0 +1,82 @@
+/* Element-specific spacing for markdown widget content.
+   Replaces the uniform flex gap with contextual margins based on adjacent elements.
+
+   Headings are deliberately excluded from every rule here: their top margin is
+   owned by the `articleTypography` Tailwind classes (h1..h6 `mt-*`). These
+   selectors are wrapped in :where() so they have zero specificity and can never
+   override a heading's utility margin even if a future rule forgets to exclude
+   headings. */
+
+:where(.markdown-widget > *:not(:is(h1, h2, h3, h4, h5, h6)) + *:not(:is(h1, h2, h3, h4, h5, h6))) {
+  margin-top: 0.5rem;
+  /* Default spacing between non-heading elements */
+}
+
+/* Tighter spacing between consecutive details blocks */
+:where(.markdown-widget > details + details) {
+  margin-top: 0.25rem;
+}
+
+/* Larger spacing for a non-heading element that follows a heading */
+:where(.markdown-widget > :is(h1, h2, h3) + *:not(:is(h1, h2, h3, h4, h5, h6))) {
+  margin-top: 1rem;
+}
+
+/* Spacing around code blocks */
+:where(.markdown-widget > .markdown-code-block) {
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+/* When a heading immediately follows another heading (e.g. an h2 directly
+   followed by an h3 with no body text between), reduce the following
+   heading's large top margin to 1rem so the pair reads as one group while
+   still keeping a small visual gap. This rule is INTENTIONALLY NOT
+   :where()-wrapped: it must out-rank the heading's own `mt-*` utility
+   (specificity 0,1,0). The selector below is 0,1,2 (.markdown-widget class +
+   two :is() type matches), so it wins. */
+.markdown-widget > :is(h1, h2, h3, h4, h5, h6) + :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 1rem;
+}
+
+/* h2 headers get top spacing if they follow a non-heading element */
+.markdown-widget > *:not(:is(h1, h2, h3, h4, h5, h6)) + h2 {
+  margin-top: 1.25rem !important;
+}
+
+/* On mobile, let wide markdown tables scroll horizontally instead of clipping off the right edge. */
+@media (max-width: 639.98px) {
+  .markdown-widget table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Align checkbox lists (task lists) with other list types */
+.markdown-widget ul:has(> .task-list-item) {
+  padding-left: 1.25rem !important;
+}
+
+/* Maintain indent for nested task lists */
+.markdown-widget li.task-list-item ul:has(> .task-list-item) {
+  padding-left: 1.25rem !important;
+}
+
+.markdown-widget .task-list-item {
+  position: relative !important;
+  list-style-type: none !important;
+  padding-left: 0.25rem !important;
+}
+
+.markdown-widget .task-list-item > input[type="checkbox"] {
+  position: absolute !important;
+  left: -1rem !important;
+  top: 0.35rem !important;
+  margin: 0 !important;
+  width: 0.875rem !important;
+  height: 0.875rem !important;
+  flex-shrink: 0 !important;
+}
