@@ -1,0 +1,24 @@
+[package]
+name = "tendril-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tendril"
+path = "src/main.rs"
+
+[dependencies]
+tendril-core = { path = "../tendril-core" }
+tendril-server = { path = "../tendril-server" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }

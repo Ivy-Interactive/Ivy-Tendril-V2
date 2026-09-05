@@ -1,0 +1,76 @@
+# ExpandPlan
+
+Transform investigation-heavy plans into concrete implementation plans.
+
+## Context
+
+The firmware header contains:
+- **TendrilPlanFolder** — path to the plan folder
+- **CurrentTime** — current UTC timestamp
+
+The plan structure and CLI commands are in the **Reference Documents** section of your firmware.
+Project configuration is available from the firmware header.
+
+## Execution Steps
+
+### 1. Read the Plan
+
+- Read `plan.yaml` from the plan folder
+- Read the latest revision: `tendril plan get-revision <TendrilPlanId>`
+- Identify sections with investigative/exploratory language ("Investigate...", "Check if...", "Research...", "Explore...")
+- Report plan context to Jobs UI: `tendril job status TendrilJobId --message="Expanding plan..." --plan-id=<plan-id> --plan-title="<title>"`
+
+### 2. Research and Resolve
+
+Report status: `tendril job status TendrilJobId --message="Researching and resolving..."`
+
+For each investigation section:
+
+1. **Read relevant source files** to understand the current implementation. When using `grep_search` or CLI search tools, always scope searches to specific subdirectories (e.g. `src/`) and provide `Includes` file patterns (`*.cs`, `*.tsx`, `*.ts`, `*.rs`, `*.py`). Avoid broad unconstrained root searches over generated/build directories (`dist/`, `bin/`, `obj/`, `node_modules/`).
+2. **Answer the investigation questions** by examining code, docs, and patterns
+3. **Transform into concrete steps** — replace "Investigate X" with specific implementation tasks
+
+Example:
+
+**Before:**
+```
+1. Investigate the dialog rendering lifecycle:
+   - Check dialog component
+   - Check form builder
+```
+
+**After:**
+```
+1. Fix dialog content initialization race condition:
+   - In `dialog_component`, add immediate content rendering before animation
+   - In `form_builder`, ensure state hooks execute synchronously in dialog context
+```
+
+### 3. Create Expanded Revision
+
+Report status: `tendril job status TendrilJobId --message="Writing expanded revision..."`
+
+- Write the new revision via CLI (number auto-incremented):
+  ```bash
+  tendril plan write-revision <plan-id> --stdin <<'EOF'
+  <expanded revision content here>
+  EOF
+  ```
+
+  The command reads from STDIN and auto-creates the next numbered revision file. Do NOT use the Write or Edit tools to create revision files directly in `Revisions/`.
+- Replace all investigative/exploratory language with specific actions
+- Include exact file paths for changes
+- Specify concrete code modifications or additions
+- Maintain all original context and problem description
+- Preserve the plan template structure
+
+### Rules
+
+- Expansion is research, so it retires the questions it answers. For every question in a `questions` fence that your research settles, fold the finding into the plan and delete that question from its block; drop the fence when its last question goes. Questions that need a human decision — a product or naming call — stay exactly as they are, in place. You may add blocks, but only for genuine decisions, never for anything you could have looked up, and placed next to the section they concern. The schema is in the **Question Blocks** section of **Reference Documents**; `write-revision` rejects a malformed block and writes nothing.
+- The expanded plan must be **immediately actionable** without further investigation
+- If research reveals the problem is already solved or doesn't exist, note that clearly
+- Do NOT modify the original revision — always create a new revision file
+- Do NOT modify any source code — only read files and update the plan
+- Do NOT modify `plan.yaml` — the launcher script handles state and timestamps
+- Keep the plan short and concise — the limiting factor is a human reading it
+- When referencing local files, use markdown links: `[filename:line](file:///path/to/filename)` for source files with line numbers, or `[filename](file:///path/to/filename)` without. Never use backticks in link text, and never append a line number to the URL itself — no `:348` suffix and no `#L123` fragment; the line number belongs only in the display text. Only use `file:///` links for files that already exist; for a file the plan will create, write its path in inline code (`` `path/to/new/file` ``) instead of a link. Use `![alt](path)` for images.
