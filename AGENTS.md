@@ -25,3 +25,31 @@ release. Add a tool name to select part of the graph. For example, run
 - [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
 
 <!--VITE PLUS END-->
+
+## Resolving Merge Conflicts
+
+When resolving conflicts in `package.json` or `pnpm-workspace.yaml`:
+
+1. **Never keep your branch's manifest side wholesale.** Resolve conflicts key-by-key, preferring the side that introduced the change over the base. Keeping `HEAD` or `MERGE_HEAD` without inspection silently reverts already-merged changes.
+
+2. **Run the merge guard before committing the resolution:**
+
+   ```bash
+   pnpm run verify:merge
+   ```
+
+   The guard detects lost changes by comparing `base`, `ours`, `theirs`, and `merged` for every dependency/script key. If it reports findings, review each one — a revert surfaces as someone else's test failing, not yours.
+
+3. **If a drop is deliberate,** pass `--allow <section>.<key>` to suppress the warning and document why in the commit message. For example:
+
+   ```bash
+   node scripts/verify-merge-resolution.mjs --allow devDependencies.old-package
+   ```
+
+4. **After committing the resolution, run the full test suite** (`pnpm test`), not only your plan's tests. A lost change is detected by another plan's tests breaking, so a green suite on your subset proves nothing.
+
+### Precedent
+
+Commit `8698ad1` *"[00059] Resolve merge conflicts with main"* kept the base side of `package.json` wholesale, reverting [Plan 00077](plan://00077)'s dev scripts and [Plan 00090](plan://00090)'s variable font switch. Both were already merged to `main` — the conflict resolution undid them. Two test files went red (`tests/storybook-runner.test.ts`, `tests/fonts.test.ts`) and the bad resolution merged anyway because `vp check` short-circuited before the suite ran.
+
+The merge guard prevents this pattern. Branch protection that requires a green `Quality Gates` + `Merge Resolution Guard` status will be enabled via `pnpm run protect:main` once the repository is public or on a paid GitHub plan. Until then, the guard runs in CI as a job that can fail the PR, but cannot block merging.

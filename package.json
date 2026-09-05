@@ -51,6 +51,8 @@
     "lint": "node scripts/patch-tsgolint-win.mjs && vp check",
     "check": "node scripts/patch-tsgolint-win.mjs && vp check",
     "format": "vp fmt",
+    "verify:merge": "node scripts/verify-merge-resolution.mjs",
+    "protect:main": "gh api --method POST repos/SpaceCorps/components-storybook/rulesets --input .github/rulesets/main-require-green-suite.json",
     "storybook": "node scripts/storybook-dev.mjs",
     "storybook:dev": "node scripts/storybook-dev.mjs",
     "storybook:build": "storybook build -o dist-storybook",
