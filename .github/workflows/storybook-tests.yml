@@ -37,3 +37,46 @@ jobs:
 
       - name: Run Storybook tests
         run: pnpm run test-storybook:ci
+
+  visual:
+    name: Visual Regression
+    needs: test
+    runs-on: ubuntu-latest
+    # Baselines are rendered in this exact image so that font rasterization matches; see README.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Detect baselines
+        id: baselines
+        run: |
+          if [ -n "$(ls -A .storybook/__image_snapshots__/*.png 2>/dev/null)" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No committed baselines; skipping visual regression."
+          fi
+
+      - name: Build Storybook
+        if: steps.baselines.outputs.present == 'true'
+        run: pnpm run build-storybook
+
+      - name: Visual regression
+        if: steps.baselines.outputs.present == 'true'
+        run: pnpm run test-storybook:visual:ci
+
+      - name: Upload diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diffs
+          path: .storybook/__image_snapshots__/__diff_output__/
+          if-no-files-found: ignore

@@ -8,6 +8,11 @@ const meta: Meta<typeof GraphvizRenderer> = {
   argTypes: {
     content: { control: "text" },
   },
+  parameters: {
+    // @hpcc-js/wasm-graphviz is fetched and instantiated on first render, so give the layout time to
+    // land before the screenshot.
+    visual: { settleDelay: 3000 },
+  },
 };
 
 export default meta;

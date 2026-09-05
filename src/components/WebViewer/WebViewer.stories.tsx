@@ -7,6 +7,8 @@ const meta: Meta<typeof WebViewer> = {
   component: WebViewer,
   parameters: {
     layout: "fullscreen",
+    // Every story frames an external site, so the pixels depend on something outside this repo.
+    visual: { disable: true },
   },
 };
 

@@ -10,6 +10,7 @@ vi.mock("@storybook/test-runner", () => ({
   getStoryContext: vi.fn().mockImplementation((_page, context) => {
     return Promise.resolve(context);
   }),
+  waitForPageReady: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { readStoryGlobals } from "../.storybook/globals";
@@ -53,6 +54,8 @@ describe("Storybook Globals Typing", () => {
       };
       const mockPage = {
         $: vi.fn().mockResolvedValue(mockRootElement),
+        addStyleTag: vi.fn().mockResolvedValue(undefined),
+        waitForTimeout: vi.fn().mockResolvedValue(undefined),
       } as any;
 
       const mockMatcher = vi.fn();
@@ -74,7 +77,9 @@ describe("Storybook Globals Typing", () => {
       }
 
       expect(mockMatcher).toHaveBeenCalledWith({
+        customSnapshotsDir: expect.stringContaining("__image_snapshots__"),
         customSnapshotIdentifier: "button--primary-dark-small",
+        customDiffDir: expect.stringContaining("__diff_output__"),
         failureThreshold: 0.01,
         failureThresholdType: "percent",
       });
@@ -89,6 +94,8 @@ describe("Storybook Globals Typing", () => {
       };
       const mockPage = {
         $: vi.fn().mockResolvedValue(mockRootElement),
+        addStyleTag: vi.fn().mockResolvedValue(undefined),
+        waitForTimeout: vi.fn().mockResolvedValue(undefined),
       } as any;
 
       const mockMatcher = vi.fn();
@@ -109,7 +116,9 @@ describe("Storybook Globals Typing", () => {
       }
 
       expect(mockMatcher).toHaveBeenCalledWith({
+        customSnapshotsDir: expect.stringContaining("__image_snapshots__"),
         customSnapshotIdentifier: "button--secondary-light-medium",
+        customDiffDir: expect.stringContaining("__diff_output__"),
         failureThreshold: 0.01,
         failureThresholdType: "percent",
       });

@@ -26,7 +26,9 @@ import { PopoverLink } from "./markdown/PopoverLink";
 import Icon from "@/components/Icon";
 import type { Components } from "react-markdown";
 import { parseGitHubAlert, githubAlertStyles, extractTextContent } from "@/lib/markdown-utils";
-import yaml from "js-yaml";
+// js-yaml 5's ESM build has no default export, only named ones. A default import survives
+// Vitest's CJS interop but fails the Rolldown production build with MISSING_EXPORT.
+import { load as loadYaml } from "js-yaml";
 
 interface MarkdownRendererProps {
   content: string;
@@ -64,7 +66,7 @@ function parseFrontmatter(content: string): {
   try {
     const frontmatterYaml = match[1];
     const mainContent = match[2];
-    const frontmatter = yaml.load(frontmatterYaml) as FrontmatterData;
+    const frontmatter = loadYaml(frontmatterYaml) as FrontmatterData;
     return { frontmatter, content: mainContent };
   } catch (error) {
     // If YAML parsing fails, return content as-is

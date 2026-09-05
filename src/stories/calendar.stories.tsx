@@ -5,6 +5,10 @@ import * as React from "react";
 const meta: Meta<typeof Calendar> = {
   title: "UI/Calendar",
   component: Calendar,
+  parameters: {
+    // Seeded with `new Date()`, so the rendered month and the "today" ring change daily.
+    visual: { disable: true },
+  },
 };
 
 export default meta;

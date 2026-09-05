@@ -4,6 +4,11 @@ import { PlanMarkdown } from "./PlanMarkdown";
 export default {
   title: "Components/PlanMarkdown",
   component: PlanMarkdown,
+  parameters: {
+    // The sample markdown carries mermaid and graphviz fences, both drawn by lazily imported
+    // renderers, so the visual pass has to wait for them before screenshotting.
+    visual: { settleDelay: 3000 },
+  },
 };
 
 const SAMPLE_MARKDOWN = `# Plan 00062: Port Plan Inspection Widgets

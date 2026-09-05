@@ -10,6 +10,7 @@ vi.mock("@storybook/test-runner", () => ({
   getStoryContext: vi.fn().mockImplementation((_page, context) => {
     return Promise.resolve(context);
   }),
+  waitForPageReady: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { checkA11y, configureAxe, injectAxe } from "axe-playwright";

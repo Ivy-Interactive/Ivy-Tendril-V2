@@ -5,6 +5,12 @@ storybook-static
 *.log
 .DS_Store
 
+# visual regression failure diffs (the baselines themselves are committed)
+.storybook/__image_snapshots__/__diff_output__/
+
+# pnpm's store, left behind by the containerised baseline refresh in the README
+.pnpm-store/
+
 # dotenv environment variable files
 .env
 .env.*
