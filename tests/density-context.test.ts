@@ -59,6 +59,6 @@ describe("DensityContext", () => {
       ),
     );
 
-    expect(screen.getByTestId("child")).toHaveTextContent("Child content");
+    expect(screen.getByTestId("child").textContent).toBe("Child content");
   });
 });
