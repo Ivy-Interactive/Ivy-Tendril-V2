@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, userEvent, within } from "@storybook/test";
 import { ThemeProvider, useTheme } from "./theme-provider.tsx";
 import { cn } from "../lib/utils.ts";
 
@@ -158,4 +159,23 @@ export const LightMode: Story = {
       <ThemeDemo />
     </ThemeProvider>
   ),
+};
+
+export const InteractiveThemeToggle: Story = {
+  render: () => (
+    <ThemeProvider defaultTheme="light">
+      <ThemeDemo />
+    </ThemeProvider>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const darkButton = canvas.getByRole("button", { name: /dark/i });
+    const lightButton = canvas.getByRole("button", { name: /light/i });
+
+    await userEvent.click(darkButton);
+    await expect(canvas.getByText(/Active: dark \(dark\)/i)).toBeInTheDocument();
+
+    await userEvent.click(lightButton);
+    await expect(canvas.getByText(/Active: light \(light\)/i)).toBeInTheDocument();
+  },
 };

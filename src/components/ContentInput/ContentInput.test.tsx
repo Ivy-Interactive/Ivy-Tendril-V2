@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 vi.mock("pdfjs-dist", () => ({ GlobalWorkerOptions: {}, getDocument: vi.fn() }));
@@ -96,7 +96,9 @@ describe("ContentInput", () => {
     );
 
     const micButton = screen.getByTitle("Voice input transcription");
-    fireEvent.click(micButton);
+    await act(async () => {
+      fireEvent.click(micButton);
+    });
 
     await vi.waitFor(() => {
       const errorBanner = document.querySelector(".civ-error-banner");
@@ -131,7 +133,9 @@ describe("ContentInput", () => {
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
     const micButton = screen.getByTitle("Voice input transcription");
-    fireEvent.click(micButton);
+    await act(async () => {
+      fireEvent.click(micButton);
+    });
 
     await vi.waitFor(() => {
       expect(mockWebSocket).not.toHaveBeenCalled();
@@ -161,7 +165,9 @@ describe("ContentInput", () => {
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
     const micButton = screen.getByTitle("Voice input transcription");
-    fireEvent.click(micButton);
+    await act(async () => {
+      fireEvent.click(micButton);
+    });
 
     await vi.waitFor(() => {
       expect(micButton).toHaveClass("civ-status-idle");
@@ -194,7 +200,9 @@ describe("ContentInput", () => {
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
     const micButton = screen.getByTitle("Voice input transcription");
-    fireEvent.click(micButton);
+    await act(async () => {
+      fireEvent.click(micButton);
+    });
 
     await vi.waitFor(() => {
       const errorBanner = document.querySelector(".civ-error-banner");

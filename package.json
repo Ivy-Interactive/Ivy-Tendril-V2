@@ -34,6 +34,8 @@
     "format": "vp fmt",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
+    "test-storybook": "test-storybook",
+    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"http-server storybook-static -a 127.0.0.1 --port 6006 --silent\" \"wait-on tcp:127.0.0.1:6006 && test-storybook\"",
     "prepublishOnly": "vp run build",
     "prepare": "vp config"
   },
@@ -94,10 +96,13 @@
   "devDependencies": {
     "@fontsource/geist-mono": "^5.3.0",
     "@fontsource/geist-sans": "^5.3.0",
+    "@storybook/addon-a11y": "^8.6.18",
     "@storybook/addon-essentials": "^8.6.18",
     "@storybook/addon-interactions": "^8.6.18",
     "@storybook/react": "^8.6.18",
     "@storybook/react-vite": "^8.6.18",
+    "@storybook/test": "^8.6.18",
+    "@storybook/test-runner": "^0.21.3",
     "@tailwindcss/vite": "4.1.16",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
@@ -107,15 +112,19 @@
     "@types/react-dom": "19.2.2",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vitejs/plugin-react": "6.0.1",
+    "axe-playwright": "^2.0.1",
     "bumpp": "^11.1.0",
+    "concurrently": "^9.1.2",
     "happy-dom": "20.8.9",
+    "http-server": "^14.1.1",
     "jsdom": "^29.1.1",
     "storybook": "^8.6.18",
     "tailwindcss": "4.1.16",
     "typescript": "^7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "wait-on": "^8.0.4"
   },
   "peerDependencies": {
     "react": "^19.0.0",
