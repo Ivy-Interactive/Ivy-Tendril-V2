@@ -16,7 +16,7 @@ import { getWidth, getHeight } from "@/lib/styles";
 import { getMarkdownPlugins } from "@/lib/math";
 import { MessageSquare } from "lucide-react";
 import { refractor } from "refractor/all";
-import { prismTheme } from "../PlanMarkdown/prismTheme";
+import { prismTheme } from "@/lib/prismTheme";
 import { getInitials } from "../PlanMarkdown/annotationUtils";
 
 const refractorAdapter = {

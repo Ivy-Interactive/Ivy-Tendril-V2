@@ -3,6 +3,7 @@ import type { TestRunnerConfig } from "@storybook/test-runner";
 import { getStoryContext, waitForPageReady } from "@storybook/test-runner";
 import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
 import { toMatchImageSnapshot } from "jest-image-snapshot";
+import { readStoryGlobals } from "./globals";
 
 // `expect` is Jest's global inside the Storybook test runner; this project's tsconfig does not
 // include the jest types, so declare the surface used here. The matcher itself stays untyped and is
@@ -12,7 +13,8 @@ declare const expect: {
   extend: (matchers: Record<string, unknown>) => void;
 };
 
-const isVisualRun = process.env.STORYBOOK_VISUAL_REGRESSION === "true";
+/** Read per call rather than once at import time, so a test can flip it between cases. */
+const isVisualRun = () => process.env.STORYBOOK_VISUAL_REGRESSION === "true";
 
 const snapshotsDir = path.join(process.cwd(), ".storybook", "__image_snapshots__");
 
@@ -33,11 +35,11 @@ const config: TestRunnerConfig = {
     expect.extend({ toMatchImageSnapshot });
   },
   async preVisit(page) {
-    if (isVisualRun) {
+    if (isVisualRun()) {
       return;
     }
 
-    await injectAxe(page);
+    await injectAxe(page as any);
   },
   async postVisit(page, context) {
     const storyContext = await getStoryContext(page, context);
@@ -45,16 +47,16 @@ const config: TestRunnerConfig = {
     // The accessibility pass and the visual pass are mutually exclusive. An axe violation throws
     // before a screenshot could be taken, which would leave that story without a baseline; CI runs
     // the two passes as separate jobs instead.
-    if (!isVisualRun) {
+    if (!isVisualRun()) {
       if (storyContext.parameters?.a11y?.disable) {
         return;
       }
 
-      await configureAxe(page, {
+      await configureAxe(page as any, {
         rules: storyContext.parameters?.a11y?.config?.rules,
       });
 
-      await checkA11y(page, "#storybook-root", {
+      await checkA11y(page as any, "#storybook-root", {
         detailedReport: true,
         detailedReportOptions: {
           html: true,
@@ -77,20 +79,16 @@ const config: TestRunnerConfig = {
 
     const rootElement = await page.$("#storybook-root");
     if (!rootElement) {
-      throw new Error(`No #storybook-root element found for story ${context.id}`);
+      throw new Error(`No #storybook-root element found for story ${storyContext.id}`);
     }
 
     const image = await rootElement.screenshot();
-
-    // `globals` is present at runtime but absent from StoryContextForEnhancers.
-    const globals = (storyContext as { globals?: Record<string, string | undefined> }).globals;
-    const theme = globals?.theme ?? "light";
-    const density = (globals?.density ?? "medium").toLowerCase();
+    const { theme = "light", density = "Medium" } = readStoryGlobals(storyContext);
 
     // @ts-expect-error jest-image-snapshot matchers extended on expect
     expect(image).toMatchImageSnapshot({
       customSnapshotsDir: snapshotsDir,
-      customSnapshotIdentifier: `${context.id}-${theme}-${density}`,
+      customSnapshotIdentifier: `${storyContext.id}-${theme}-${density.toLowerCase()}`,
       customDiffDir: path.join(snapshotsDir, "__diff_output__"),
       failureThreshold: 0.01,
       failureThresholdType: "percent",

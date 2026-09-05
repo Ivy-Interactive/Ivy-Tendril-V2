@@ -14,9 +14,9 @@ vi.mock("@storybook/test-runner", () => ({
   waitForPageReady: vi.fn().mockResolvedValue(undefined),
 }));
 
-import type { TestRunnerConfig } from "@storybook/test-runner";
 import { waitForPageReady } from "@storybook/test-runner";
 import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
+import visualConfig from "../.storybook/test-runner.ts";
 import webViewerMeta from "../src/components/WebViewer/WebViewer.stories.tsx";
 import calendarMeta from "../src/stories/calendar.stories.tsx";
 
@@ -90,15 +90,8 @@ function createPage(order: string[]) {
 }
 
 describe("Storybook visual regression runner", () => {
-  let visualConfig: TestRunnerConfig;
-
-  beforeAll(async () => {
-    // The config reads STORYBOOK_VISUAL_REGRESSION at import time, so stub the env first and
-    // re-import rather than reusing the module instance other suites already loaded.
+  beforeAll(() => {
     vi.stubEnv("STORYBOOK_VISUAL_REGRESSION", "true");
-    vi.resetModules();
-    const module = (await import("../.storybook/test-runner.ts")) as { default: TestRunnerConfig };
-    visualConfig = module.default;
   });
 
   afterAll(() => {

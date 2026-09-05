@@ -21,7 +21,7 @@ import { CustomEmoji } from "./custom-emojis/CustomEmoji";
 import { remarkCustomEmojiPlugin } from "./custom-emojis/remarkCustomEmojiPlugin";
 
 import { ImageOverlay } from "./markdown/ImageOverlay";
-import { CodeBlock } from "./markdown/CodeBlock";
+import { MarkdownCodeBlock } from "./markdown/MarkdownCodeBlock";
 import { PopoverLink } from "./markdown/PopoverLink";
 import Icon from "@/components/Icon";
 import type { Components } from "react-markdown";
@@ -559,7 +559,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         }
 
         return (
-          <CodeBlock
+          <MarkdownCodeBlock
             className={className}
             inline={inline}
             hasCodeBlocks={contentFeatures.hasCodeBlocks}
@@ -567,7 +567,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             hasGraphviz={contentFeatures.hasGraphviz}
           >
             {children}
-          </CodeBlock>
+          </MarkdownCodeBlock>
         );
       }),
     }),

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
-// Create a theme that uses CSS variables for dynamic theming
-const createIvyPrismTheme = (): Record<string, CSSProperties> => ({
+/** Prism token colours as CSS variables, so highlighting follows the active theme. */
+export const prismTheme: Record<string, CSSProperties> = {
   'code[class*="language-"]': {
     fontFamily: "var(--font-mono)",
     fontSize: "14px",
@@ -79,12 +79,4 @@ const createIvyPrismTheme = (): Record<string, CSSProperties> => ({
   "directive.attr-name": { color: "var(--cyan)" },
   "directive.attr-value": { color: "var(--primary)" },
   "directive.punctuation": { color: "var(--foreground)" },
-});
-
-// Export the theme factory function
-export const createPrismTheme = createIvyPrismTheme;
-
-// Export a default theme instance for backward compatibility
-const ivyPrismTheme = createIvyPrismTheme();
-
-export default ivyPrismTheme;
+};

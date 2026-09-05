@@ -11,6 +11,7 @@ export * from "./lib/logger";
 export { getMarkdownPlugins, hasMath } from "./lib/math";
 export { rawHtmlSchema, hasRawHtml } from "./lib/rawHtml";
 export { getWidth, getHeight } from "./lib/styles";
+export { prismTheme } from "./lib/prismTheme";
 export { copyToClipboard } from "./lib/clipboard";
 export { getPlatformShortcut, formatShortcut } from "./lib/shortcut";
 
@@ -38,9 +39,16 @@ export {
   DensityContext,
   DensityProvider,
   useDensity,
+  DensityScale,
+  useDensityScale,
   type DensityContextValue,
   type DensityProviderProps,
+  type DensityScaleProps,
+  type DensityScaleValue,
 } from "./contexts/density-context.tsx";
+
+// Density Scales
+export * from "./components/ui/density-scale";
 
 // Commonly Used UI Primitives
 export * from "./components/ui/button";

@@ -3,9 +3,12 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import { PlanMarkdown as DraftMarkdown } from "./PlanMarkdown";
 
 describe("DraftMarkdown in-page search functionality", () => {
+  const scrollIntoView = vi.fn();
+
   beforeEach(() => {
-    // Mock scrollIntoView in jsdom
-    Element.prototype.scrollIntoView = vi.fn();
+    // jsdom does not implement scrollIntoView, so assign rather than spyOn.
+    scrollIntoView.mockClear();
+    Element.prototype.scrollIntoView = scrollIntoView;
   });
 
   const sampleMarkdown = `
@@ -71,7 +74,7 @@ Another paragraph mentioning keyword multiple times: keyword and KEYWORD.
 
     // The first match should have the active highlight class
     expect(highlights[0].classList.contains("pmv-search-highlight--active")).toBe(true);
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    expect(scrollIntoView).toHaveBeenCalled();
   });
 
   it("displays 'No matches' when query does not match any content", () => {

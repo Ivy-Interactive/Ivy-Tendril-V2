@@ -6,6 +6,7 @@ import "@fontsource-variable/geist-mono";
 import "../src/styles/globals.css";
 import { DensityProvider } from "../src/contexts/density-context";
 import { Densities } from "../src/types/density";
+import { readStoryGlobals, type StorybookGlobals } from "./globals";
 
 const preview: Preview = {
   parameters: {
@@ -28,19 +29,19 @@ const preview: Preview = {
     },
   },
   decorators: [
-    (Story: React.ComponentType, context: any) => {
-      const theme = context.globals.theme || "light";
-      const density = (context.globals.density as Densities) || Densities.Medium;
+    (Story: React.ComponentType, context: { globals?: StorybookGlobals }) => {
+      const { theme = "light", density = Densities.Medium } = readStoryGlobals(context);
+      const densityValue = density as Densities;
       return (
         <div
-          data-density={density.toLowerCase()}
+          data-density={densityValue.toLowerCase()}
           className={
             theme === "dark"
               ? "dark bg-background text-foreground p-6 min-h-screen"
               : "bg-background text-foreground p-6 min-h-screen"
           }
         >
-          <DensityProvider density={density}>
+          <DensityProvider density={densityValue}>
             <Story />
           </DensityProvider>
         </div>
