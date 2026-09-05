@@ -24,7 +24,15 @@ const Details = React.forwardRef<HTMLDivElement, DetailsProps>(
 
     return (
       <DetailProvider density={density as Densities}>
-        <div ref={ref} className={cn("w-full [&>:last-child]:border-0", className)} {...props}>
+        <div
+          ref={ref}
+          className={cn(
+            "w-full [&>:last-child]:border-0",
+            detailsSizeVariant({ density }),
+            className,
+          )}
+          {...props}
+        >
           {children}
         </div>
       </DetailProvider>
