@@ -1,8 +1,15 @@
-import { defineConfig } from "vite-plus";
+import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite-plus";
 
 export default defineConfig({
-  plugins: [tailwindcss()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
   staged: {
     "*": "vp check --fix",
   },
@@ -20,6 +27,8 @@ export default defineConfig({
   },
   fmt: {},
   test: {
+    include: ["**/*.test.ts", "**/*.test.tsx"],
     environment: "happy-dom",
+    setupFiles: ["./tests/setup.ts"],
   },
 });
