@@ -91,7 +91,8 @@
     --rose-foreground: #000000;
 
     /* Fonts & typography */
-    --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-sans:
+      "Geist", "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     --font-serif: "Geist", serif;
     --font-mono: "Geist Mono", monospace;
     --text-body: 14px;
