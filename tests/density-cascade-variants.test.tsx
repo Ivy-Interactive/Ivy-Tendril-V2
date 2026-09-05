@@ -25,7 +25,7 @@ import { densityToIconButtonSize } from "@/components/ui/density-scale";
 
 describe("Density Cascade - AlertDialog", () => {
   it("AlertDialogAction and AlertDialogCancel cascade Small density", () => {
-    const { container } = render(
+    const { getByText } = render(
       <DensityProvider density={Densities.Small}>
         <AlertDialog defaultOpen>
           <AlertDialogContent>
@@ -40,17 +40,17 @@ describe("Density Cascade - AlertDialog", () => {
       </DensityProvider>,
     );
 
-    const cancel = container.querySelector("[data-radix-collection-item]");
-    const action = container.querySelectorAll("[data-radix-collection-item]")[1];
+    const cancel = getByText("Cancel");
+    const action = getByText("Action");
 
-    expect(cancel?.className).toContain("h-7");
-    expect(cancel?.className).toContain("text-xs");
-    expect(action?.className).toContain("h-7");
-    expect(action?.className).toContain("text-xs");
+    expect(cancel.className).toContain("h-7");
+    expect(cancel.className).toContain("text-xs");
+    expect(action.className).toContain("h-7");
+    expect(action.className).toContain("text-xs");
   });
 
   it("AlertDialogAction and AlertDialogCancel cascade Large density", () => {
-    const { container } = render(
+    const { getByText } = render(
       <DensityProvider density={Densities.Large}>
         <AlertDialog defaultOpen>
           <AlertDialogContent>
@@ -65,17 +65,17 @@ describe("Density Cascade - AlertDialog", () => {
       </DensityProvider>,
     );
 
-    const cancel = container.querySelector("[data-radix-collection-item]");
-    const action = container.querySelectorAll("[data-radix-collection-item]")[1];
+    const cancel = getByText("Cancel");
+    const action = getByText("Action");
 
-    expect(cancel?.className).toContain("h-11");
-    expect(cancel?.className).toContain("text-base");
-    expect(action?.className).toContain("h-11");
-    expect(action?.className).toContain("text-base");
+    expect(cancel.className).toContain("h-11");
+    expect(cancel.className).toContain("text-base");
+    expect(action.className).toContain("h-11");
+    expect(action.className).toContain("text-base");
   });
 
   it("AlertDialogAction and AlertDialogCancel default to Medium without provider", () => {
-    const { container } = render(
+    const { getByText } = render(
       <AlertDialog defaultOpen>
         <AlertDialogContent>
           <AlertDialogTitle>Title</AlertDialogTitle>
@@ -88,15 +88,15 @@ describe("Density Cascade - AlertDialog", () => {
       </AlertDialog>,
     );
 
-    const cancel = container.querySelector("[data-radix-collection-item]");
-    const action = container.querySelectorAll("[data-radix-collection-item]")[1];
+    const cancel = getByText("Cancel");
+    const action = getByText("Action");
 
-    expect(cancel?.className).toContain("h-9");
-    expect(action?.className).toContain("h-9");
+    expect(cancel.className).toContain("h-9");
+    expect(action.className).toContain("h-9");
   });
 
   it("explicit size prop overrides density context", () => {
-    const { container } = render(
+    const { getByText } = render(
       <DensityProvider density={Densities.Small}>
         <AlertDialog defaultOpen>
           <AlertDialogContent>
@@ -110,9 +110,9 @@ describe("Density Cascade - AlertDialog", () => {
       </DensityProvider>,
     );
 
-    const action = container.querySelector("[data-radix-collection-item]");
-    expect(action?.className).toContain("h-11");
-    expect(action?.className).toContain("text-base");
+    const action = getByText("Action");
+    expect(action.className).toContain("h-11");
+    expect(action.className).toContain("text-base");
   });
 });
 
