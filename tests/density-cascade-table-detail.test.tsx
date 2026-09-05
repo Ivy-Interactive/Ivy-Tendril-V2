@@ -150,7 +150,8 @@ describe("Density cascade: Table and Details", () => {
         </DensityProvider>,
       );
 
-      const label = container.querySelector("div > div:first-child");
+      const itemWrapper = container.querySelector(".border-b");
+      const label = itemWrapper?.querySelector("div:first-child");
       expect(label?.className).toContain("text-xs");
       expect(label?.className).toContain("p-2");
     });
@@ -164,7 +165,8 @@ describe("Density cascade: Table and Details", () => {
         </DensityProvider>,
       );
 
-      const label = container.querySelector("div > div:first-child");
+      const itemWrapper = container.querySelector(".border-b");
+      const label = itemWrapper?.querySelector("div:first-child");
       expect(label?.className).toContain("text-base");
       expect(label?.className).toContain("p-4");
     });
@@ -176,7 +178,8 @@ describe("Density cascade: Table and Details", () => {
         </Details>,
       );
 
-      const label = container.querySelector("div > div:first-child");
+      const itemWrapper = container.querySelector(".border-b");
+      const label = itemWrapper?.querySelector("div:first-child");
       expect(label?.className).toContain("text-sm");
       expect(label?.className).toContain("p-3");
     });
@@ -190,7 +193,8 @@ describe("Density cascade: Table and Details", () => {
         </DensityProvider>,
       );
 
-      const label = container.querySelector("div > div:first-child");
+      const itemWrapper = container.querySelector(".border-b");
+      const label = itemWrapper?.querySelector("div:first-child");
       expect(label?.className).toContain("text-xs");
       expect(label?.className).toContain("p-2");
     });
@@ -204,7 +208,8 @@ describe("Density cascade: Table and Details", () => {
         </Details>,
       );
 
-      const label = container.querySelector("div > div:first-child");
+      const itemWrapper = container.querySelector(".border-b");
+      const label = itemWrapper?.querySelector("div:first-child");
       expect(label?.className).toContain("text-base");
       expect(label?.className).toContain("p-4");
     });
