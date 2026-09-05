@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { DensityProvider } from "@/contexts/density-context";
+import { DensityProvider, DensityScale } from "@/contexts/density-context";
 import { Densities } from "@/types/density";
+import { CopyToClipboardButton } from "@/components/CopyToClipboardButton";
 
 const meta: Meta = {
   title: "Density/Showcase",
@@ -192,6 +193,46 @@ export const FormElementsComparison: Story = {
               <Checkbox id="terms-large" />
               <Label htmlFor="terms-large">Accept terms and conditions</Label>
             </div>
+          </div>
+        </div>
+      </DensityProvider>
+    </div>
+  ),
+};
+
+export const ContextCascade: Story = {
+  render: () => (
+    <div className="space-y-8">
+      <DensityProvider density={Densities.Small}>
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-muted-foreground">Small Density (via Context)</h4>
+          <div className="flex gap-4 items-center">
+            <CopyToClipboardButton textToCopy="Hello Small" />
+            <DensityScale className="p-2 border rounded">
+              <span>Text in Small density</span>
+            </DensityScale>
+          </div>
+        </div>
+      </DensityProvider>
+      <DensityProvider density={Densities.Medium}>
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-muted-foreground">Medium Density (via Context)</h4>
+          <div className="flex gap-4 items-center">
+            <CopyToClipboardButton textToCopy="Hello Medium" />
+            <DensityScale className="p-2 border rounded">
+              <span>Text in Medium density</span>
+            </DensityScale>
+          </div>
+        </div>
+      </DensityProvider>
+      <DensityProvider density={Densities.Large}>
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium text-muted-foreground">Large Density (via Context)</h4>
+          <div className="flex gap-4 items-center">
+            <CopyToClipboardButton textToCopy="Hello Large" />
+            <DensityScale className="p-2 border rounded">
+              <span>Text in Large density</span>
+            </DensityScale>
           </div>
         </div>
       </DensityProvider>
