@@ -5,6 +5,8 @@ import remarkGemoji from "remark-gemoji";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
+import type { Options as SanitizeSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import "katex/dist/katex.min.css";
 import { cn, getIvyHost, convertAppUrlToPath, isLocalFilesEnabled } from "@/lib/utils";
@@ -16,6 +18,7 @@ import {
   isAppProtocol,
   extractAnchorId,
 } from "@/lib/url";
+import { hasRawHtml, rawHtmlSchema } from "@/lib/rawHtml";
 import { useTypography } from "@/contexts/TypographyContext";
 import { CustomEmoji } from "./custom-emojis/CustomEmoji";
 import { remarkCustomEmojiPlugin } from "./custom-emojis/remarkCustomEmojiPlugin";
@@ -24,7 +27,7 @@ import { ImageOverlay } from "./markdown/ImageOverlay";
 import { MarkdownCodeBlock } from "./markdown/MarkdownCodeBlock";
 import { PopoverLink } from "./markdown/PopoverLink";
 import Icon from "@/components/Icon";
-import type { Components } from "react-markdown";
+import type { Components, Options } from "react-markdown";
 import { parseGitHubAlert, githubAlertStyles, extractTextContent } from "@/lib/markdown-utils";
 import { parse as parseYaml } from "yaml";
 
@@ -199,6 +202,24 @@ const hasContentFeature = (content: string, feature: RegExp): boolean => {
 };
 
 /**
+ * `rawHtmlSchema` plus the one element this renderer adds on top of standard markdown:
+ * `remarkCustomEmojiPlugin` emits `<emoji name=":shortcode:">` for the `emoji` component mapping
+ * below. The GitHub-derived allow-list knows nothing about it, so without this every custom emoji
+ * is dropped.
+ *
+ * `name` also comes off `clobber`: clobbering would rewrite the prop to
+ * `user-content-:shortcode:` and the `emojiMap` lookup would miss. `id` stays clobbered — it is
+ * the property this component resolves with `document.getElementById` for in-page anchors, and the
+ * only one an author can use to clobber a global.
+ */
+const markdownRendererSchema: SanitizeSchema = {
+  ...rawHtmlSchema,
+  tagNames: [...(rawHtmlSchema.tagNames ?? []), "emoji"],
+  attributes: { ...rawHtmlSchema.attributes, emoji: ["name"] },
+  clobber: (rawHtmlSchema.clobber ?? []).filter((property) => property !== "name"),
+};
+
+/**
  * Component to render images inside markdown, with zoom overlay support.
  */
 interface MarkdownImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
@@ -277,23 +298,33 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       hasCodeBlocks: hasContentFeature(content, /```/),
       hasMermaid: hasContentFeature(content, /```mermaid/),
       hasGraphviz: hasContentFeature(content, /```(graphviz|dot)/),
+      hasRawHtml: hasRawHtml(content),
     }),
     [content],
   );
 
   const plugins = useMemo(() => {
-    const remarkPlugins = [remarkGfm, remarkGemoji, remarkCustomEmojiPlugin];
-    if (contentFeatures.hasMath)
-      remarkPlugins.push([
-        remarkMath,
-        { singleDollarTextMath: false },
-      ] as unknown as typeof remarkGfm);
+    const remarkPlugins: NonNullable<Options["remarkPlugins"]> = [
+      remarkGfm,
+      remarkGemoji,
+      remarkCustomEmojiPlugin,
+    ];
+    if (contentFeatures.hasMath) remarkPlugins.push([remarkMath, { singleDollarTextMath: false }]);
 
-    const rehypePlugins = [rehypeRaw, rehypeSlug];
-    if (contentFeatures.hasMath) rehypePlugins.push(rehypeKatex as unknown as typeof rehypeRaw);
+    const rehypePlugins: NonNullable<Options["rehypePlugins"]> = [];
+    // rehype-raw reparses raw HTML into real elements, rehype-sanitize then prunes everything
+    // outside the allow-list. Both are skipped when the content has no HTML tag at all.
+    if (contentFeatures.hasRawHtml)
+      rehypePlugins.push(rehypeRaw, [rehypeSanitize, markdownRendererSchema]);
+    // AFTER sanitising, not before: `id` is on the clobber list, so slugs added first would come
+    // out as `user-content-<slug>` and the anchor handler's getElementById would never find them.
+    rehypePlugins.push(rehypeSlug);
+    // KaTeX also has to run after sanitising: its output is classed spans, inline styles and MathML
+    // that the allow-list would strip.
+    if (contentFeatures.hasMath) rehypePlugins.push(rehypeKatex);
 
     return { remarkPlugins, rehypePlugins };
-  }, [contentFeatures.hasMath]);
+  }, [contentFeatures.hasMath, contentFeatures.hasRawHtml]);
 
   const handleLinkClick = useCallback(
     (href: string, event: React.MouseEvent<HTMLAnchorElement>) => {
