@@ -97,9 +97,7 @@ describe("MarkdownRenderer raw HTML sanitisation", () => {
     const content =
       '<details><summary>S</summary></details>\n\n<a href="javascript:alert(1)">link</a>';
     const { container } = render(<MarkdownRenderer content={content} />);
-    const link = container.querySelector("a");
-    expect(link).toBeTruthy();
-    const href = link?.getAttribute("href");
+    const href = container.querySelector("a")?.getAttribute("href");
     expect(href === null || href === "").toBe(true);
   });
 
