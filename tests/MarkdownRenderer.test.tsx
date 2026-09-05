@@ -69,8 +69,8 @@ describe("MarkdownRenderer frontmatter", () => {
       "---\ntitle: Test Document\nauthor: Test Author\n---\n# Main Content\n\nBody text.";
     const { container } = render(<MarkdownRenderer content={content} />);
 
-    // Frontmatter card should be present
-    const frontmatterCard = container.querySelector("[data-testid='frontmatter-display']");
+    // Frontmatter card should be present (has distinctive classes)
+    const frontmatterCard = container.querySelector(".mb-6.rounded-lg.border");
     expect(frontmatterCard).toBeTruthy();
 
     // Body should be present without the frontmatter fences
@@ -78,6 +78,9 @@ describe("MarkdownRenderer frontmatter", () => {
     expect(container.textContent).toContain("Body text");
     expect(container.textContent).toContain("Test Document");
     expect(container.textContent).toContain("Test Author");
+    // Verify key-value format is rendered
+    expect(container.textContent).toContain("title:");
+    expect(container.textContent).toContain("author:");
   });
 
   it("handles malformed frontmatter by rendering no card and preserving body", () => {
@@ -85,7 +88,7 @@ describe("MarkdownRenderer frontmatter", () => {
     const { container } = render(<MarkdownRenderer content={content} />);
 
     // No frontmatter card for malformed YAML
-    const frontmatterCard = container.querySelector("[data-testid='frontmatter-display']");
+    const frontmatterCard = container.querySelector(".mb-6.rounded-lg.border");
     expect(frontmatterCard).toBeFalsy();
 
     // Body should still be reachable (content returned as-is on error)
@@ -97,7 +100,7 @@ describe("MarkdownRenderer frontmatter", () => {
     const { container } = render(<MarkdownRenderer content={content} />);
 
     // No frontmatter card for empty block
-    const frontmatterCard = container.querySelector("[data-testid='frontmatter-display']");
+    const frontmatterCard = container.querySelector(".mb-6.rounded-lg.border");
     expect(frontmatterCard).toBeFalsy();
 
     // Body should be present, fences stripped
@@ -110,7 +113,7 @@ describe("MarkdownRenderer frontmatter", () => {
     const { container } = render(<MarkdownRenderer content={content} />);
 
     // No frontmatter card for non-object YAML
-    const frontmatterCard = container.querySelector("[data-testid='frontmatter-display']");
+    const frontmatterCard = container.querySelector(".mb-6.rounded-lg.border");
     expect(frontmatterCard).toBeFalsy();
 
     // Body should be present
