@@ -279,7 +279,6 @@ pnpm run test-storybook:visual:update
 
 The [storybook-tests.yml](.github/workflows/storybook-tests.yml) workflow runs on every push and pull request. It includes a caching step for Playwright browsers to avoid re-downloading on every run.
 
-
 The Storybook catalog is organized into the following sections:
 
 - **Foundation** — Theme provider, typography, design tokens

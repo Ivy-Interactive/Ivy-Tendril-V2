@@ -66,7 +66,14 @@ function getNodeText(node: React.ReactNode): string {
 }
 
 export const MarkdownCodeBlock = memo(
-  ({ className, children, inline, hasCodeBlocks, hasMermaid, hasGraphviz }: MarkdownCodeBlockProps) => {
+  ({
+    className,
+    children,
+    inline,
+    hasCodeBlocks,
+    hasMermaid,
+    hasGraphviz,
+  }: MarkdownCodeBlockProps) => {
     const match = /language-(\w+)/.exec(className || "");
     const content = getNodeText(children).replace(/\n$/, "");
     const isTerminal = match && match[1] === "terminal";

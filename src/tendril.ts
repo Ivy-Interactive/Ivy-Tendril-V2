@@ -93,10 +93,11 @@ export {
   SearchOverlay,
   BlockHandler,
   CodeBlock,
-  GraphvizRenderer,
-  MermaidRenderer,
   ImageRenderer,
 } from "./components/PlanMarkdown";
+
+export { GraphvizRenderer } from "./components/GraphvizRenderer";
+export { MermaidRenderer } from "./components/MermaidRenderer";
 
 export type {
   MarkdownAnnotation,
@@ -109,18 +110,11 @@ export type {
 } from "./components/PlanMarkdown";
 
 export { prismTheme } from "./lib/prismTheme";
-export {
-  parseQuestions,
-  tagQuestionBlocks,
-  getMarkdownPlugins,
-  hasMath,
-  normalizeLanguage,
-  codeBlockPreStyle,
-  rawHtmlSchema,
-  hasRawHtml,
-  getWidth,
-  getHeight,
-} from "./components/PlanMarkdown";
+export { parseQuestions, tagQuestionBlocks } from "./components/PlanMarkdown";
+export { normalizeLanguage, codeBlockPreStyle } from "./components/PlanMarkdown";
+export { getMarkdownPlugins, hasMath } from "./lib/math";
+export { rawHtmlSchema, hasRawHtml } from "./lib/rawHtml";
+export { getWidth, getHeight } from "./lib/styles";
 
 // Plan Diff Components
 export {
