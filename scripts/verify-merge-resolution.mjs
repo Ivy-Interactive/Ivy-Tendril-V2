@@ -2,10 +2,10 @@
  * Detects merge resolutions that silently revert already-merged changes by keeping the base side
  * when one parent changed.
  *
- * Compares package.json manifests across merge commits or in-progress merges. For every key in
- * dependencies/devDependencies/peerDependencies/optionalDependencies/scripts/pnpm.overrides, if
- * one parent changed the value from the base and the merged result matches the base, that change
- * was lost.
+ * Compares package.json and pnpm-workspace.yaml across merge commits or in-progress merges. For
+ * every dependency/script key in package.json and every catalog, override and setting in
+ * pnpm-workspace.yaml, if one parent changed the value from the base and the merged result matches
+ * the base, that change was lost.
  *
  * Node builtins and `git` only — runs in CI with no install.
  *
@@ -125,6 +125,114 @@ function parseManifest(text) {
   }
 }
 
+function parseWorkspace(text) {
+  if (!text) {
+    return {};
+  }
+
+  const lines = text.split("\n");
+  const root = {};
+  const stack = [{ obj: root, indent: -1 }];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trimStart();
+
+    if (trimmed === "" || trimmed[0] === "#") {
+      continue;
+    }
+
+    const indent = line.length - trimmed.length;
+
+    if (
+      trimmed.includes("{") ||
+      trimmed.includes("[") ||
+      trimmed.includes("|") ||
+      trimmed.includes(">")
+    ) {
+      return null;
+    }
+
+    if (trimmed.startsWith("- ")) {
+      const value = unquote(trimmed.slice(2).split(" #")[0].trim());
+      while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
+        stack.pop();
+      }
+      const parent = stack[stack.length - 1].obj;
+      if (!Array.isArray(parent._list)) {
+        parent._list = [];
+      }
+      parent._list.push(value);
+      continue;
+    }
+
+    let colonIndex = -1;
+    let inQuote = false;
+    let quoteChar = null;
+
+    for (let j = 0; j < trimmed.length; j++) {
+      const char = trimmed[j];
+      if (!inQuote && (char === '"' || char === "'")) {
+        inQuote = true;
+        quoteChar = char;
+      } else if (inQuote && char === quoteChar) {
+        inQuote = false;
+        quoteChar = null;
+      } else if (!inQuote && char === ":" && (j + 1 === trimmed.length || trimmed[j + 1] === " ")) {
+        colonIndex = j;
+        break;
+      }
+    }
+
+    if (colonIndex === -1) {
+      continue;
+    }
+
+    const key = unquote(trimmed.slice(0, colonIndex).trim());
+    let value = trimmed.slice(colonIndex + 1).trim();
+
+    if (value.includes(" #") && !value.startsWith('"') && !value.startsWith("'")) {
+      value = value.split(" #")[0].trim();
+    }
+
+    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
+      stack.pop();
+    }
+
+    const parent = stack[stack.length - 1].obj;
+
+    if (value === "") {
+      const nested = {};
+      parent[key] = nested;
+      stack.push({ obj: nested, indent });
+    } else {
+      parent[key] = unquote(value);
+    }
+  }
+
+  function flattenLists(obj) {
+    for (const key in obj) {
+      if (obj[key] && typeof obj[key] === "object") {
+        if ("_list" in obj[key]) {
+          obj[key] = obj[key]._list;
+        } else {
+          flattenLists(obj[key]);
+        }
+      }
+    }
+  }
+
+  flattenLists(root);
+  return root;
+}
+
+function unquote(str) {
+  if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+    return str.slice(1, -1);
+  }
+  return str;
+}
+
 function getValueAtPath(obj, path) {
   const parts = path.split(".");
   let current = obj;
@@ -137,7 +245,103 @@ function getValueAtPath(obj, path) {
   return current === undefined ? null : current;
 }
 
-function compareManifests(base, ours, theirs, merged) {
+function diffFlatMap(section, baseMap, oursMap, theirsMap, mergedMap, manifest = "package.json") {
+  const findings = [];
+  const allKeys = new Set([
+    ...Object.keys(baseMap),
+    ...Object.keys(oursMap),
+    ...Object.keys(theirsMap),
+    ...Object.keys(mergedMap),
+  ]);
+
+  for (const key of allKeys) {
+    const baseVal = baseMap[key] || null;
+    const oursVal = oursMap[key] || null;
+    const theirsVal = theirsMap[key] || null;
+    const mergedVal = mergedMap[key] || null;
+
+    if (oursVal !== baseVal && mergedVal === baseVal) {
+      findings.push({
+        section,
+        key,
+        action: baseVal === null ? "added" : oursVal === null ? "removed" : "changed",
+        lostFrom: "ours",
+        base: baseVal,
+        ours: oursVal,
+        theirs: theirsVal,
+        merged: mergedVal,
+        manifest,
+      });
+    }
+
+    if (theirsVal !== baseVal && mergedVal === baseVal) {
+      findings.push({
+        section,
+        key,
+        action: baseVal === null ? "added" : theirsVal === null ? "removed" : "changed",
+        lostFrom: "theirs",
+        base: baseVal,
+        ours: oursVal,
+        theirs: theirsVal,
+        merged: mergedVal,
+        manifest,
+      });
+    }
+  }
+
+  return findings;
+}
+
+function walkWorkspaceLeafs(obj, prefix = "workspace") {
+  const maps = {};
+
+  function walk(current, path) {
+    if (current == null || typeof current !== "object") {
+      return;
+    }
+
+    if (Array.isArray(current)) {
+      maps[path] = { [path.split(".").pop()]: JSON.stringify(current) };
+      return;
+    }
+
+    let hasScalarChild = false;
+    for (const key in current) {
+      const value = current[key];
+      if (value == null || typeof value !== "object") {
+        hasScalarChild = true;
+        break;
+      }
+    }
+
+    if (hasScalarChild) {
+      const flatMap = {};
+      for (const key in current) {
+        const value = current[key];
+        if (value == null || typeof value !== "object") {
+          flatMap[key] = value === null || value === undefined ? null : String(value);
+        } else if (Array.isArray(value)) {
+          flatMap[key] = JSON.stringify(value);
+        }
+      }
+      if (Object.keys(flatMap).length > 0) {
+        maps[path] = flatMap;
+      }
+    }
+
+    for (const key in current) {
+      const value = current[key];
+      if (value != null && typeof value === "object" && !Array.isArray(value)) {
+        walk(value, path ? `${path}.${key}` : key);
+      }
+    }
+  }
+
+  walk(obj, prefix);
+  return maps;
+}
+
+function compareManifests(base, ours, theirs, merged, baseWs, oursWs, theirsWs, mergedWs) {
   const findings = [];
 
   for (const section of SECTIONS) {
@@ -146,45 +350,16 @@ function compareManifests(base, ours, theirs, merged) {
     const theirsSection = getValueAtPath(theirs, section) || {};
     const mergedSection = getValueAtPath(merged, section) || {};
 
-    const allKeys = new Set([
-      ...Object.keys(baseSection),
-      ...Object.keys(oursSection),
-      ...Object.keys(theirsSection),
-      ...Object.keys(mergedSection),
-    ]);
-
-    for (const key of allKeys) {
-      const baseVal = baseSection[key] || null;
-      const oursVal = oursSection[key] || null;
-      const theirsVal = theirsSection[key] || null;
-      const mergedVal = mergedSection[key] || null;
-
-      if (oursVal !== baseVal && mergedVal === baseVal) {
-        findings.push({
-          section,
-          key,
-          action: baseVal === null ? "added" : oursVal === null ? "removed" : "changed",
-          lostFrom: "ours",
-          base: baseVal,
-          ours: oursVal,
-          theirs: theirsVal,
-          merged: mergedVal,
-        });
-      }
-
-      if (theirsVal !== baseVal && mergedVal === baseVal) {
-        findings.push({
-          section,
-          key,
-          action: baseVal === null ? "added" : theirsVal === null ? "removed" : "changed",
-          lostFrom: "theirs",
-          base: baseVal,
-          ours: oursVal,
-          theirs: theirsVal,
-          merged: mergedVal,
-        });
-      }
-    }
+    findings.push(
+      ...diffFlatMap(
+        section,
+        baseSection,
+        oursSection,
+        theirsSection,
+        mergedSection,
+        "package.json",
+      ),
+    );
   }
 
   const pnpmOverridesPath = "pnpm.overrides";
@@ -193,43 +368,39 @@ function compareManifests(base, ours, theirs, merged) {
   const theirsPnpm = getValueAtPath(theirs, pnpmOverridesPath) || {};
   const mergedPnpm = getValueAtPath(merged, pnpmOverridesPath) || {};
 
-  const allPnpmKeys = new Set([
-    ...Object.keys(basePnpm),
-    ...Object.keys(oursPnpm),
-    ...Object.keys(theirsPnpm),
-    ...Object.keys(mergedPnpm),
-  ]);
+  findings.push(
+    ...diffFlatMap("pnpm.overrides", basePnpm, oursPnpm, theirsPnpm, mergedPnpm, "package.json"),
+  );
 
-  for (const key of allPnpmKeys) {
-    const baseVal = basePnpm[key] || null;
-    const oursVal = oursPnpm[key] || null;
-    const theirsVal = theirsPnpm[key] || null;
-    const mergedVal = mergedPnpm[key] || null;
+  if (
+    baseWs !== undefined &&
+    oursWs !== undefined &&
+    theirsWs !== undefined &&
+    mergedWs !== undefined
+  ) {
+    const baseMaps = walkWorkspaceLeafs(baseWs || {});
+    const oursMaps = walkWorkspaceLeafs(oursWs || {});
+    const theirsMaps = walkWorkspaceLeafs(theirsWs || {});
+    const mergedMaps = walkWorkspaceLeafs(mergedWs || {});
 
-    if (oursVal !== baseVal && mergedVal === baseVal) {
-      findings.push({
-        section: "pnpm.overrides",
-        key,
-        action: baseVal === null ? "added" : oursVal === null ? "removed" : "changed",
-        lostFrom: "ours",
-        base: baseVal,
-        ours: oursVal,
-        theirs: theirsVal,
-        merged: mergedVal,
-      });
-    }
+    const allSections = new Set([
+      ...Object.keys(baseMaps),
+      ...Object.keys(oursMaps),
+      ...Object.keys(theirsMaps),
+      ...Object.keys(mergedMaps),
+    ]);
 
-    if (theirsVal !== baseVal && mergedVal === baseVal) {
-      findings.push({
-        section: "pnpm.overrides",
-        key,
-        action: baseVal === null ? "added" : theirsVal === null ? "removed" : "changed",
-        lostFrom: "theirs",
-        base: baseVal,
-        ours: oursVal,
-        theirs: theirsVal,
-        merged: mergedVal,
-      });
+    for (const section of allSections) {
+      findings.push(
+        ...diffFlatMap(
+          section,
+          baseMaps[section] || {},
+          oursMaps[section] || {},
+          theirsMaps[section] || {},
+          mergedMaps[section] || {},
+          "pnpm-workspace.yaml",
+        ),
+      );
     }
   }
 
@@ -237,19 +408,77 @@ function compareManifests(base, ours, theirs, merged) {
 }
 
 function checkFiles(basePath, oursPath, theirsPath, mergedPath) {
-  const base = parseManifest(readFileSync(basePath, "utf8"));
-  const ours = parseManifest(readFileSync(oursPath, "utf8"));
-  const theirs = parseManifest(readFileSync(theirsPath, "utf8"));
-  const merged = parseManifest(readFileSync(mergedPath, "utf8"));
-  return compareManifests(base, ours, theirs, merged);
+  const isJson = basePath.endsWith(".json");
+  const isYaml = basePath.endsWith(".yaml") || basePath.endsWith(".yml");
+
+  if (!isJson && !isYaml) {
+    throw new Error(
+      `--files: unsupported file extension (expected .json, .yaml, or .yml): ${basePath}`,
+    );
+  }
+
+  const allSameExt = [oursPath, theirsPath, mergedPath].every((p) =>
+    isJson ? p.endsWith(".json") : p.endsWith(".yaml") || p.endsWith(".yml"),
+  );
+
+  if (!allSameExt) {
+    throw new Error("--files: all four paths must have the same extension");
+  }
+
+  if (isJson) {
+    const base = parseManifest(readFileSync(basePath, "utf8"));
+    const ours = parseManifest(readFileSync(oursPath, "utf8"));
+    const theirs = parseManifest(readFileSync(theirsPath, "utf8"));
+    const merged = parseManifest(readFileSync(mergedPath, "utf8"));
+    return compareManifests(base, ours, theirs, merged);
+  } else {
+    const base = parseWorkspace(readFileSync(basePath, "utf8"));
+    const ours = parseWorkspace(readFileSync(oursPath, "utf8"));
+    const theirs = parseWorkspace(readFileSync(theirsPath, "utf8"));
+    const merged = parseWorkspace(readFileSync(mergedPath, "utf8"));
+
+    if (base === null || ours === null || theirs === null || merged === null) {
+      process.stdout.write(
+        "pnpm-workspace.yaml: unsupported YAML construct (flow collections, multi-line scalars, or anchors), skipped\n",
+      );
+      return [];
+    }
+
+    return compareManifests({}, {}, {}, {}, base, ours, theirs, merged);
+  }
 }
 
 function checkCommit(ref) {
-  const base = parseManifest(gitShow(gitMergeBase(`${ref}^1`, `${ref}^2`), "package.json"));
+  const mergeBase = gitMergeBase(`${ref}^1`, `${ref}^2`);
+
+  const base = parseManifest(gitShow(mergeBase, "package.json"));
   const ours = parseManifest(gitShow(`${ref}^1`, "package.json"));
   const theirs = parseManifest(gitShow(`${ref}^2`, "package.json"));
   const merged = parseManifest(gitShow(ref, "package.json"));
-  return { ref, findings: compareManifests(base, ours, theirs, merged) };
+
+  const baseWsText = gitShow(mergeBase, "pnpm-workspace.yaml");
+  const oursWsText = gitShow(`${ref}^1`, "pnpm-workspace.yaml");
+  const theirsWsText = gitShow(`${ref}^2`, "pnpm-workspace.yaml");
+  const mergedWsText = gitShow(ref, "pnpm-workspace.yaml");
+
+  const baseWs = parseWorkspace(baseWsText);
+  const oursWs = parseWorkspace(oursWsText);
+  const theirsWs = parseWorkspace(theirsWsText);
+  const mergedWs = parseWorkspace(mergedWsText);
+
+  if (baseWs === null || oursWs === null || theirsWs === null || mergedWs === null) {
+    if (baseWsText || oursWsText || theirsWsText || mergedWsText) {
+      process.stdout.write(
+        "pnpm-workspace.yaml: unsupported YAML construct (flow collections, multi-line scalars, or anchors), skipped\n",
+      );
+    }
+    return { ref, findings: compareManifests(base, ours, theirs, merged) };
+  }
+
+  return {
+    ref,
+    findings: compareManifests(base, ours, theirs, merged, baseWs, oursWs, theirsWs, mergedWs),
+  };
 }
 
 function checkRange(ref) {
@@ -279,7 +508,36 @@ function checkInProgress() {
   const theirsPkg = parseManifest(gitShow(theirs, "package.json"));
   const mergedPkg = parseManifest(readFileSync(join(repoRoot, "package.json"), "utf8"));
 
-  return compareManifests(basePkg, oursPkg, theirsPkg, mergedPkg);
+  const baseWsText = gitShow(base, "pnpm-workspace.yaml");
+  const oursWsText = gitShow(ours, "pnpm-workspace.yaml");
+  const theirsWsText = gitShow(theirs, "pnpm-workspace.yaml");
+  const workspacePath = join(repoRoot, "pnpm-workspace.yaml");
+  const mergedWsText = existsSync(workspacePath) ? readFileSync(workspacePath, "utf8") : null;
+
+  const baseWs = parseWorkspace(baseWsText);
+  const oursWs = parseWorkspace(oursWsText);
+  const theirsWs = parseWorkspace(theirsWsText);
+  const mergedWs = parseWorkspace(mergedWsText);
+
+  if (baseWs === null || oursWs === null || theirsWs === null || mergedWs === null) {
+    if (baseWsText || oursWsText || theirsWsText || mergedWsText) {
+      process.stdout.write(
+        "pnpm-workspace.yaml: unsupported YAML construct (flow collections, multi-line scalars, or anchors), skipped\n",
+      );
+    }
+    return compareManifests(basePkg, oursPkg, theirsPkg, mergedPkg);
+  }
+
+  return compareManifests(
+    basePkg,
+    oursPkg,
+    theirsPkg,
+    mergedPkg,
+    baseWs,
+    oursWs,
+    theirsWs,
+    mergedWs,
+  );
 }
 
 function filterFindings(findings, allowed) {
@@ -296,12 +554,12 @@ function formatTable(findings) {
 
   const lines = [
     "ERROR: Merge resolution reverted changes:\n",
-    "Section              Key                          Action   Lost From",
-    "-------------------  ---------------------------  -------  ---------",
+    "Section                                       Key                          Action   Lost From",
+    "--------------------------------------------  ---------------------------  -------  ---------",
   ];
 
   for (const finding of findings) {
-    const section = finding.section.padEnd(19);
+    const section = finding.section.padEnd(44);
     const key = finding.key.padEnd(27);
     const action = finding.action.padEnd(7);
     const lostFrom = finding.lostFrom;

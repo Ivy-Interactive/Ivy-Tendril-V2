@@ -16,4 +16,3 @@ peerDependencyRules:
     - vite
   allowedVersions:
     vite: "*"
-virtualStoreDirMaxLength: 40

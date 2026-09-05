@@ -8,12 +8,9 @@ minimumReleaseAgeExclude:
   - playwright-core@1.63.0
   - playwright@1.63.0
 overrides:
-  playwright@*: 1.63.0
-  playwright-core@*: 1.63.0
   vite@*: "catalog:"
 peerDependencyRules:
   allowAny:
     - vite
   allowedVersions:
     vite: "*"
-virtualStoreDirMaxLength: 40

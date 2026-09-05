@@ -38,7 +38,7 @@ When resolving conflicts in `package.json` or `pnpm-workspace.yaml`:
    pnpm run verify:merge
    ```
 
-   The guard detects lost changes by comparing `base`, `ours`, `theirs`, and `merged` for every dependency/script key. If it reports findings, review each one — a revert surfaces as someone else's test failing, not yours.
+   The guard detects lost changes by comparing `base`, `ours`, `theirs`, and `merged` for every dependency/script key in `package.json` and every catalog, override and setting in `pnpm-workspace.yaml`. If it reports findings, review each one — a revert surfaces as someone else's test failing, not yours.
 
 3. **If a drop is deliberate,** pass `--allow <section>.<key>` to suppress the warning and document why in the commit message. For example:
 
@@ -53,3 +53,9 @@ When resolving conflicts in `package.json` or `pnpm-workspace.yaml`:
 Commit `8698ad1` _"[00059] Resolve merge conflicts with main"_ kept the base side of `package.json` wholesale, reverting [Plan 00077](plan://00077)'s dev scripts and [Plan 00090](plan://00090)'s variable font switch. Both were already merged to `main` — the conflict resolution undid them. Two test files went red (`tests/storybook-runner.test.ts`, `tests/fonts.test.ts`) and the bad resolution merged anyway because `vp check` short-circuited before the suite ran.
 
 The merge guard prevents this pattern. Branch protection that requires a green `Quality Gates` + `Merge Resolution Guard` status will be enabled via `pnpm run protect:main` once the repository is public or on a paid GitHub plan. Until then, the guard runs in CI as a job that can fail the PR, but cannot block merging.
+
+## Multi-Document Lockfile
+
+`pnpm-lock.yaml` may contain **two YAML documents** separated by `---`. When the pnpm version on `PATH` differs from the `devEngines.packageManager` pin in `package.json`, pnpm prepends a document that locks the package manager itself (`packageManagerDependencies`). The second document is the project's dependency graph.
+
+This is expected pnpm behavior, not corruption. Do not delete the leading document during merge conflict resolution — it will return on the next `pnpm install` by any pnpm version other than the pinned one. Tests that parse the lockfile use the `yaml` package to select the document with an `overrides` key (the project document).
