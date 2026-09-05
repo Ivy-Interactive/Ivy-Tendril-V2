@@ -17,6 +17,7 @@
   --aov-running: var(--info);
   --aov-mono: var(
     --font-mono,
+    "Geist Mono Variable",
     "Geist Mono",
     "JetBrains Mono",
     ui-monospace,
