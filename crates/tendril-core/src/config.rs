@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use crate::error::{Result, TendrilError};
 use crate::models::{LevelConfig, ProjectConfig, VerificationConfig};
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TendrilSettings {
@@ -11,7 +11,10 @@ pub struct TendrilSettings {
     #[serde(rename = "jobTimeout", default = "default_job_timeout")]
     pub job_timeout: i32,
 
-    #[serde(rename = "staleOutputTimeout", default = "default_stale_output_timeout")]
+    #[serde(
+        rename = "staleOutputTimeout",
+        default = "default_stale_output_timeout"
+    )]
     pub stale_output_timeout: i32,
 
     #[serde(rename = "gitTimeout", default = "default_git_timeout")]
@@ -42,21 +45,55 @@ pub struct TendrilSettings {
     pub beta: bool,
 }
 
-fn default_coding_agent() -> String { "claude".to_string() }
-fn default_job_timeout() -> i32 { 30 }
-fn default_stale_output_timeout() -> i32 { 10 }
-fn default_git_timeout() -> i32 { 10 }
-fn default_max_concurrent_jobs() -> i32 { 20 }
-fn default_true() -> bool { true }
-fn default_theme() -> String { "default".to_string() }
+fn default_coding_agent() -> String {
+    "claude".to_string()
+}
+fn default_job_timeout() -> i32 {
+    30
+}
+fn default_stale_output_timeout() -> i32 {
+    10
+}
+fn default_git_timeout() -> i32 {
+    10
+}
+fn default_max_concurrent_jobs() -> i32 {
+    20
+}
+fn default_true() -> bool {
+    true
+}
+fn default_theme() -> String {
+    "default".to_string()
+}
 
 fn default_levels() -> Vec<LevelConfig> {
     vec![
-        LevelConfig { name: "Bug".to_string(), color: "Red".to_string(), badge: None },
-        LevelConfig { name: "Feature".to_string(), color: "Blue".to_string(), badge: None },
-        LevelConfig { name: "Epic".to_string(), color: "Purple".to_string(), badge: None },
-        LevelConfig { name: "Chore".to_string(), color: "Slate".to_string(), badge: None },
-        LevelConfig { name: "Nitpick".to_string(), color: "Gray".to_string(), badge: None },
+        LevelConfig {
+            name: "Bug".to_string(),
+            color: "Red".to_string(),
+            badge: None,
+        },
+        LevelConfig {
+            name: "Feature".to_string(),
+            color: "Blue".to_string(),
+            badge: None,
+        },
+        LevelConfig {
+            name: "Epic".to_string(),
+            color: "Purple".to_string(),
+            badge: None,
+        },
+        LevelConfig {
+            name: "Chore".to_string(),
+            color: "Slate".to_string(),
+            badge: None,
+        },
+        LevelConfig {
+            name: "Nitpick".to_string(),
+            color: "Gray".to_string(),
+            badge: None,
+        },
     ]
 }
 
@@ -139,7 +176,8 @@ pub fn normalize_slashes(path: &Path) -> String {
 }
 
 pub fn expand_variables(input: &str, tendril_home: &str) -> String {
-    let mut res = input.replace("%TENDRIL_HOME%", tendril_home)
+    let mut res = input
+        .replace("%TENDRIL_HOME%", tendril_home)
         .replace("${TENDRIL_HOME}", tendril_home)
         .replace("$TENDRIL_HOME", tendril_home);
 
@@ -194,11 +232,17 @@ pub fn load_config(config_path: &Path) -> Result<TendrilSettings> {
         return Ok(TendrilSettings::default());
     }
 
-    let raw = std::fs::read_to_string(config_path)
-        .map_err(|e| TendrilError::Config(format!("Failed to read config file {}: {}", config_path.display(), e)))?;
+    let raw = std::fs::read_to_string(config_path).map_err(|e| {
+        TendrilError::Config(format!(
+            "Failed to read config file {}: {}",
+            config_path.display(),
+            e
+        ))
+    })?;
 
-    let settings: TendrilSettings = serde_yaml::from_str(&raw)
-        .map_err(|e| TendrilError::Config(format!("Failed to parse {}: {}", config_path.display(), e)))?;
+    let settings: TendrilSettings = serde_yaml::from_str(&raw).map_err(|e| {
+        TendrilError::Config(format!("Failed to parse {}: {}", config_path.display(), e))
+    })?;
 
     Ok(settings)
 }
@@ -215,14 +259,120 @@ pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()>
     Ok(())
 }
 
+pub fn generate_bearer_secret() -> String {
+    use rand::RngCore;
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+pub fn default_capabilities() -> Vec<String> {
+    vec![
+        "jobs".to_string(),
+        "plans".to_string(),
+        "projects".to_string(),
+        "ws".to_string(),
+        "auth_bearer".to_string(),
+    ]
+}
+
+#[cfg(unix)]
+pub fn is_process_running(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    let res = unsafe { libc::kill(pid as libc::pid_t, 0) };
+    if res == 0 {
+        true
+    } else {
+        std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+}
+
+#[cfg(windows)]
+pub fn is_process_running(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    use std::process::Command;
+    let output = Command::new("cmd")
+        .args(["/C", &format!("tasklist /FI \"PID eq {}\" /NH", pid)])
+        .output();
+    if let Ok(out) = output {
+        let text = String::from_utf8_lossy(&out.stdout);
+        text.contains(&pid.to_string())
+    } else {
+        false
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+pub fn is_process_running(_pid: u32) -> bool {
+    true
+}
+
+pub fn probe_health(host: &str, port: u16) -> bool {
+    use std::io::{Read, Write};
+    use std::net::{TcpStream, ToSocketAddrs};
+    use std::time::Duration;
+
+    let host_norm = if host == "0.0.0.0" { "127.0.0.1" } else { host };
+    let addr_str = format!("{}:{}", host_norm, port);
+    let addrs: Vec<_> = match addr_str.to_socket_addrs() {
+        Ok(iter) => iter.collect(),
+        Err(_) => return false,
+    };
+
+    for addr in addrs {
+        if let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(300)) {
+            let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+            let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+            let req = format!(
+                "GET /api/ping HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+                addr
+            );
+            if stream.write_all(req.as_bytes()).is_ok() {
+                let mut buf = [0u8; 1024];
+                if let Ok(n) = stream.read(&mut buf) {
+                    let resp = String::from_utf8_lossy(&buf[..n]);
+                    if resp.contains("200 OK") || resp.contains("pong") {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn default_host() -> String {
+    "127.0.0.1".to_string()
+}
+
+fn default_api_version() -> u32 {
+    1
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MasterInfo {
     pub port: u16,
     pub pid: u32,
     #[serde(default)]
     pub secret: String,
-    #[serde(rename = "startedAt", default)]
+    #[serde(rename = "startedAt", alias = "started_at", default)]
     pub started_at: String,
+    #[serde(default = "default_host")]
+    pub host: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(
+        rename = "apiVersion",
+        alias = "api_version",
+        default = "default_api_version"
+    )]
+    pub api_version: u32,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
@@ -235,22 +385,105 @@ pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
     serde_json::from_str(&content).ok()
 }
 
-pub fn write_master(tendril_home: &Path, port: u16, secret: &str) -> Result<()> {
+pub fn write_master_info(tendril_home: &Path, info: &MasterInfo) -> Result<()> {
+    let tmp_file = tendril_home.join(format!(".master.tmp.{}", info.pid));
     let master_file = tendril_home.join(".master");
+
+    let json = serde_json::to_string_pretty(info)?;
+
+    if let Err(e) = std::fs::write(&tmp_file, json) {
+        let _ = std::fs::remove_file(&tmp_file);
+        return Err(TendrilError::Io(e));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        if let Err(e) = std::fs::set_permissions(&tmp_file, perms) {
+            let _ = std::fs::remove_file(&tmp_file);
+            return Err(TendrilError::Io(e));
+        }
+    }
+
+    if let Err(e) = std::fs::rename(&tmp_file, &master_file) {
+        let _ = std::fs::remove_file(&tmp_file);
+        return Err(TendrilError::Io(e));
+    }
+
+    Ok(())
+}
+
+pub fn write_master(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<()> {
     let info = MasterInfo {
         port,
         pid: std::process::id(),
         secret: secret.to_string(),
         started_at: chrono::Utc::now().to_rfc3339(),
+        host: host.to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        api_version: 1,
+        capabilities: default_capabilities(),
     };
-    let json = serde_json::to_string_pretty(&info)?;
-    std::fs::write(master_file, json)?;
-    Ok(())
+    write_master_info(tendril_home, &info)
 }
 
 pub fn delete_master(tendril_home: &Path) {
     let master_file = tendril_home.join(".master");
     if master_file.exists() {
         let _ = std::fs::remove_file(master_file);
+    }
+}
+
+pub struct MasterGuard {
+    tendril_home: PathBuf,
+    pid: u32,
+}
+
+impl MasterGuard {
+    pub fn acquire(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<Self> {
+        if let Some(existing) = read_master(tendril_home) {
+            let running = is_process_running(existing.pid);
+            let responding = probe_health(&existing.host, existing.port);
+
+            if running && responding {
+                return Err(TendrilError::Other(format!(
+                    "Another Tendril instance is running with PID {} on port {}",
+                    existing.pid, existing.port
+                )));
+            } else {
+                tracing::warn!(
+                    "Cleaning up stale .master file from PID {} on port {} (running: {}, responding: {})",
+                    existing.pid, existing.port, running, responding
+                );
+                delete_master(tendril_home);
+            }
+        }
+
+        write_master(tendril_home, port, secret, host)?;
+        Ok(Self {
+            tendril_home: tendril_home.to_path_buf(),
+            pid: std::process::id(),
+        })
+    }
+
+    pub fn pid(&self) -> u32 {
+        self.pid
+    }
+}
+
+impl Drop for MasterGuard {
+    fn drop(&mut self) {
+        if let Some(info) = read_master(&self.tendril_home) {
+            if info.pid == self.pid {
+                delete_master(&self.tendril_home);
+            } else {
+                tracing::warn!(
+                    "Not deleting .master on drop: file has foreign pid {} (current pid {})",
+                    info.pid,
+                    self.pid
+                );
+            }
+        }
     }
 }

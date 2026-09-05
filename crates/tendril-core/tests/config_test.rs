@@ -36,7 +36,10 @@ fn test_expand_variables() {
 
 #[test]
 fn test_config_load_and_save() {
-    let test_dir = std::env::temp_dir().join(format!("tendril-config-test-{}", uuid::Uuid::new_v4().simple()));
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-config-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
     let config_file = test_dir.join("config.yaml");
 
@@ -69,25 +72,35 @@ fn test_config_load_and_save() {
     assert_eq!(loaded.projects.len(), 1);
     assert_eq!(loaded.projects[0].name, "TestProject");
     assert_eq!(loaded.projects[0].repos[0].path, "D:/repos/test");
-    assert_eq!(loaded.projects[0].repos[0].base_branch.as_deref(), Some("main"));
+    assert_eq!(
+        loaded.projects[0].repos[0].base_branch.as_deref(),
+        Some("main")
+    );
 
     let _ = std::fs::remove_dir_all(test_dir);
 }
 
 #[test]
 fn test_master_file_lifecycle() {
-    let test_dir = std::env::temp_dir().join(format!("tendril-master-test-{}", uuid::Uuid::new_v4().simple()));
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-master-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
     assert!(read_master(&test_dir).is_none());
 
-    write_master(&test_dir, 49200, "secret-token-xyz").expect("Failed to write master");
+    write_master(&test_dir, 49200, "secret-token-xyz", "127.0.0.1")
+        .expect("Failed to write master");
 
     let master_info = read_master(&test_dir).expect("Master info not found");
     assert_eq!(master_info.port, 49200);
     assert_eq!(master_info.secret, "secret-token-xyz");
+    assert_eq!(master_info.host, "127.0.0.1");
     assert_eq!(master_info.pid, std::process::id());
     assert!(!master_info.started_at.is_empty());
+    assert_eq!(master_info.api_version, 1);
+    assert!(!master_info.capabilities.is_empty());
 
     delete_master(&test_dir);
     assert!(read_master(&test_dir).is_none());
