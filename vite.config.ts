@@ -17,4 +17,7 @@ export default defineConfig({
     },
   },
   fmt: {},
+  test: {
+    environment: "happy-dom",
+  },
 });
