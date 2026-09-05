@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as UI from "../src/index";
 import * as Diagrams from "../src/diagrams";
 import * as Renderers from "../src/renderers";
+import * as Tendril from "../src/tendril";
 
 describe("diagrams export", () => {
   it("should export GraphvizRenderer and MermaidRenderer from diagrams entrypoint", () => {
@@ -26,13 +27,13 @@ describe("diagrams export", () => {
     expect(Renderers.HtmlRenderer).toBeDefined();
   });
 
-  it("should still export PlanMarkdown and related utilities from main entrypoint", () => {
+  it("should keep PlanMarkdown on the main entrypoint and its sub-components on ./tendril", () => {
     expect(UI.PlanMarkdown).toBeDefined();
-    expect(UI.DraftMarkdown).toBeDefined();
-    expect(UI.BlockHandler).toBeDefined();
-    expect(UI.CodeBlock).toBeDefined();
-    expect(UI.ImageRenderer).toBeDefined();
-    expect(UI.AlertBlockquote).toBeDefined();
-    expect(UI.QuestionsCallout).toBeDefined();
+    expect(Tendril.DraftMarkdown).toBeDefined();
+    expect(Tendril.BlockHandler).toBeDefined();
+    expect(Tendril.CodeBlock).toBeDefined();
+    expect(Tendril.ImageRenderer).toBeDefined();
+    expect(Tendril.AlertBlockquote).toBeDefined();
+    expect(Tendril.QuestionsCallout).toBeDefined();
   });
 });

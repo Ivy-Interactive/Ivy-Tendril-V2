@@ -14,14 +14,10 @@ test("library exports core foundation symbols", () => {
 
 test("exports core primitives", () => {
   expect(UI.Button).toBeDefined();
-  expect(UI.Checkbox).toBeDefined();
-  expect(UI.Switch).toBeDefined();
   expect(UI.Tabs).toBeDefined();
-  expect(UI.Accordion).toBeDefined();
   expect(UI.Dialog).toBeDefined();
-  expect(UI.Slider).toBeDefined();
-  expect(UI.Toggle).toBeDefined();
   expect(UI.toast).toBeDefined();
+  // Checkbox, Switch, Accordion, Slider, Toggle live on components-storybook/ui since 02b101b
 });
 
 test("exports the consolidated prism theme", () => {
