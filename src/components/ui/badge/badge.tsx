@@ -4,7 +4,6 @@ import type { VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { badgeVariant } from "./variant";
 import { useDensity } from "@/contexts/density-context";
-import { densityToBadgeDensity } from "@/components/ui/density-scale";
 
 export interface BadgeProps
   extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariant> {}
@@ -14,7 +13,7 @@ function Badge({ className, variant, density, ...props }: BadgeProps) {
   return (
     <div
       className={cn(
-        badgeVariant({ variant, density: density ?? densityToBadgeDensity(contextDensity) }),
+        badgeVariant({ variant, density: density ?? contextDensity }),
         className,
       )}
       {...props}
