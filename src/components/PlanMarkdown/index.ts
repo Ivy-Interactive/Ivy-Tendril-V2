@@ -11,8 +11,6 @@ export { QuestionsCallout } from "./QuestionsCallout";
 export { SearchOverlay } from "./SearchOverlay";
 export { BlockHandler } from "./BlockHandler";
 export { CodeBlock, normalizeLanguage, codeBlockPreStyle } from "./CodeBlock";
-export { GraphvizRenderer } from "./GraphvizRenderer";
-export { MermaidRenderer } from "./MermaidRenderer";
 export { ImageRenderer } from "./ImageRenderer";
 export * from "./annotationUtils";
 export * from "./localFiles";
