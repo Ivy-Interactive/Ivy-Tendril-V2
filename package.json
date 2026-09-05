@@ -18,14 +18,8 @@
   ],
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.mts",
-      "import": "./dist/index.mjs"
-    },
-    "./diagrams": {
-      "types": "./dist/diagrams.d.mts",
-      "import": "./dist/diagrams.mjs"
-    },
+    ".": "./dist/index.mjs",
+    "./diagrams": "./dist/diagrams.mjs",
     "./package.json": "./package.json",
     "./style.css": "./dist/style.css"
   },
