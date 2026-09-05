@@ -2,6 +2,9 @@
   "compilerOptions": {
     "target": "esnext",
     "lib": ["es2023", "dom", "dom.iterable"],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "moduleDetection": "force",
     "module": "esnext",
     "moduleResolution": "bundler",
