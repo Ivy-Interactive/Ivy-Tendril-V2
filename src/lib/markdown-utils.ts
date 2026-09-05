@@ -46,7 +46,16 @@ export const githubAlertStyles: Record<GitHubAlertType, GitHubAlertStyle> = {
 
 const ALERT_TYPES = new Set<string>(["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]);
 
-function extractTextContent(node: React.ReactNode): string {
+/**
+ * The concatenated text of a `ReactNode` tree: arrays joined with no separator, elements recursed
+ * into via `props.children`, everything else the empty string.
+ *
+ * This is what `String(node)` ought to mean and does not — a `ReactNode` may be an array, which
+ * stringifies with commas, or an element, which stringifies to `[object Object]`. Both reach the
+ * markdown `code` renderers once `rehype-raw` has reparsed raw HTML into real elements, so those
+ * call this rather than coercing.
+ */
+export function extractTextContent(node: React.ReactNode): string {
   if (typeof node === "string") return node;
   if (typeof node === "number") return String(node);
   if (!node) return "";
