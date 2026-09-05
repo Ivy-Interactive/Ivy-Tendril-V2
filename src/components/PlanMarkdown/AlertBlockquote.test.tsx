@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
 import { AlertBlockquote } from "./AlertBlockquote";
-import React from "react";
 
 describe("AlertBlockquote GitHub alert rendering", () => {
   it("renders all five alert types with their wrapper classes and titles", () => {
