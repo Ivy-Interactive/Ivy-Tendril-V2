@@ -14,7 +14,6 @@ export { CodeBlock, normalizeLanguage, codeBlockPreStyle } from "./CodeBlock";
 export { ImageRenderer } from "./ImageRenderer";
 export * from "./annotationUtils";
 export * from "./localFiles";
-export * from "./prismTheme";
 export * from "./questionsContext";
 export * from "./questionsSchema";
 export * from "./questionsSource";

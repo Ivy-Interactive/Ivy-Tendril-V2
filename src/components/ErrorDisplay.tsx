@@ -4,7 +4,7 @@ import { Button } from "./ui/button";
 import { ClipboardCopy, Check } from "lucide-react";
 import { copyToClipboard } from "@/lib/clipboard";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { createPrismTheme } from "@/lib/prismTheme";
+import { prismTheme } from "@/lib/prismTheme";
 
 export interface ErrorDisplayProps {
   title?: string | null;
@@ -53,7 +53,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
           <div className="w-full overflow-auto border border-border rounded-md">
             <SyntaxHighlighter
               language="csharp"
-              style={createPrismTheme()}
+              style={prismTheme}
               wrapLongLines={true}
               showLineNumbers={false}
             >

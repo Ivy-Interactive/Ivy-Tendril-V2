@@ -109,13 +109,9 @@ export type {
   ParsedQuestions,
 } from "./components/PlanMarkdown";
 
-export {
-  parseQuestions,
-  tagQuestionBlocks,
-  prismTheme,
-  normalizeLanguage,
-  codeBlockPreStyle,
-} from "./components/PlanMarkdown";
+export { prismTheme } from "./lib/prismTheme";
+export { parseQuestions, tagQuestionBlocks } from "./components/PlanMarkdown";
+export { normalizeLanguage, codeBlockPreStyle } from "./components/PlanMarkdown";
 
 export { getMarkdownPlugins, hasMath } from "./lib/math";
 export { rawHtmlSchema, hasRawHtml } from "./lib/rawHtml";

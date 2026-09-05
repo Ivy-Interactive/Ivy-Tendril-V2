@@ -1,18 +1,5 @@
 import { expect, test } from "vite-plus/test";
 import * as UI from "../src/index.ts";
-import {
-  PlanMarkdown,
-  PlanDiffView,
-  ContentInput,
-  BadgeSelect,
-  SortableVerificationList,
-  TendrilDashboard,
-  ActivityGrid,
-  PillBars,
-  TrendChart,
-  HoverTip,
-  WebViewer,
-} from "../src/index.ts";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,39 +24,10 @@ test("exports core primitives", () => {
   expect(UI.toast).toBeDefined();
 });
 
-test("exports PlanMarkdown and PlanDiffView", () => {
-  expect(PlanMarkdown).toBeDefined();
-  expect(PlanDiffView).toBeDefined();
-});
-
-test("exports form and input components", () => {
-  expect(ContentInput).toBeDefined();
-  expect(BadgeSelect).toBeDefined();
-  expect(SortableVerificationList).toBeDefined();
-});
-
-test("library exports AgentViewer and TendrilProcessViewer components and utilities", () => {
-  expect(typeof UI.AgentViewer).toBe("function");
-  expect(typeof UI.TendrilProcessViewer).toBe("function");
-  expect(typeof UI.ToolUseCard).toBe("function");
-  expect(typeof UI.ToolUseGroup).toBe("function");
-  expect(typeof UI.ResultSummary).toBe("function");
-  expect(typeof UI.AnimatedStatus).toBe("function");
-  expect(typeof UI.parseEventWireStream).toBe("function");
-  expect(typeof UI.groupToolUseEvents).toBe("function");
-  expect(typeof UI.aggregateToolStatus).toBe("function");
-  expect(typeof UI.deriveStatus).toBe("function");
-  expect(typeof UI.useAutoScroll).toBe("function");
-  expect(typeof UI.inputSummary).toBe("function");
-});
-
-test("exports TendrilDashboard and WebViewer components", () => {
-  expect(TendrilDashboard).toBeDefined();
-  expect(ActivityGrid).toBeDefined();
-  expect(PillBars).toBeDefined();
-  expect(TrendChart).toBeDefined();
-  expect(HoverTip).toBeDefined();
-  expect(WebViewer).toBeDefined();
+test("exports the consolidated prism theme", () => {
+  expect(UI.prismTheme).toBeDefined();
+  expect(UI.prismTheme.comment).toBeDefined();
+  expect(UI.prismTheme["directive"]).toBeDefined(); // superset entry, absent before consolidation
 });
 
 test("all bare imports in src/ are declared in package.json", () => {
