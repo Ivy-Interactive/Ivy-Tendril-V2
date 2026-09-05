@@ -108,12 +108,12 @@ export type {
   ParsedQuestions,
 } from "./components/PlanMarkdown";
 
+export { prismTheme } from "./lib/prismTheme";
 export {
   parseQuestions,
   tagQuestionBlocks,
   getMarkdownPlugins,
   hasMath,
-  prismTheme,
   normalizeLanguage,
   codeBlockPreStyle,
   rawHtmlSchema,

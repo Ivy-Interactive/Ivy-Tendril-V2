@@ -11,6 +11,7 @@ export * from "./lib/logger";
 export { getMarkdownPlugins, hasMath } from "./lib/math";
 export { rawHtmlSchema, hasRawHtml } from "./lib/rawHtml";
 export { getWidth, getHeight } from "./lib/styles";
+export { prismTheme } from "./lib/prismTheme";
 export { copyToClipboard } from "./lib/clipboard";
 export { getPlatformShortcut, formatShortcut } from "./lib/shortcut";
 
