@@ -17,5 +17,8 @@ export interface StorybookGlobals {
  * `Record<string, any>`. Narrow both to `StorybookGlobals` here, in one place.
  */
 export function readStoryGlobals(context: unknown): StorybookGlobals {
+  if (!context || typeof context !== "object") {
+    return {};
+  }
   return (context as { globals?: StorybookGlobals }).globals ?? {};
 }
