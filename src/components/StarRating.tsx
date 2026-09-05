@@ -6,6 +6,7 @@ import { m, LazyMotion, domAnimation } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { InvalidIcon } from "@/components/InvalidIcon";
 import { Densities } from "@/types/density";
+import { useDensity } from "@/contexts/density-context";
 import type React from "react";
 
 export interface StarRatingProps {
@@ -23,12 +24,15 @@ export function StarRating({
   totalStars = 5,
   value = 0,
   onRate,
-  density = Densities.Medium,
+  density,
   className,
   disabled = false,
   invalid,
   allowHalf = false,
 }: StarRatingProps) {
+  const contextDensity = useDensity();
+  const effectiveDensity = density ?? contextDensity;
+
   const [hover, setHover] = useState(0);
 
   const getHalfValue = useCallback(
@@ -107,7 +111,7 @@ export function StarRating({
                   {/* Background (unfilled) star */}
                   <Star
                     className={cn(
-                      starSizes[density],
+                      starSizes[effectiveDensity],
                       "fill-current stroke-[1.5px] text-border transition-colors duration-300",
                     )}
                   />
@@ -119,7 +123,7 @@ export function StarRating({
                     >
                       <Star
                         className={cn(
-                          starSizes[density],
+                          starSizes[effectiveDensity],
                           "fill-current stroke-[1.5px] text-primary",
                         )}
                       />

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select/utils";
 import { cva } from "class-variance-authority";
 import { Densities } from "@/types/density";
+import { useDensity } from "@/contexts/density-context";
 import { xIconVariant } from "@/components/ui/input/text-input-variant";
 import {
   selectMultiTriggerVariant,
@@ -96,7 +97,7 @@ const MultipleSelector = React.forwardRef<
       hidePlaceholderWhenSelected = false,
       emptyIndicator,
       invalid = false,
-      density = Densities.Medium,
+      density,
       maxVisibleBadges,
       ghost = false,
       onBlur,
@@ -110,6 +111,9 @@ const MultipleSelector = React.forwardRef<
     },
     ref,
   ) => {
+    const contextDensity = useDensity();
+    const effectiveDensity = density ?? contextDensity;
+
     const inputRef = React.useRef<HTMLInputElement>(null);
     const containerRef = React.useRef<HTMLSpanElement>(null);
     const triggerWrapperRef = React.useRef<HTMLDivElement>(null);
@@ -231,7 +235,7 @@ const MultipleSelector = React.forwardRef<
 
     React.useEffect(() => {
       return setupBadgeCalculation();
-    }, [setupBadgeCalculation, density]);
+    }, [setupBadgeCalculation, effectiveDensity]);
 
     const handleUnselect = React.useCallback(
       (option: Option) => {
@@ -367,18 +371,18 @@ const MultipleSelector = React.forwardRef<
                     <Badge
                       key={`measure-${option.value}`}
                       variant="secondary"
-                      className={cn(badgeVariant({ density }), "shrink-0")}
+                      className={cn(badgeVariant({ density: effectiveDensity }), "shrink-0")}
                     >
                       {option.label}
                       <span className="ml-1 p-1 h-3" style={{ display: "inline-flex" }}>
-                        <X className={xIconVariant({ density })} />
+                        <X className={xIconVariant({ density: effectiveDensity })} />
                       </span>
                     </Badge>
                   ))}
                   <Badge
                     variant="outline"
                     className={cn(
-                      badgeVariant({ density }),
+                      badgeVariant({ density: effectiveDensity }),
                       "bg-muted text-muted-foreground shrink-0",
                     )}
                   >
@@ -388,7 +392,7 @@ const MultipleSelector = React.forwardRef<
               )}
               <div
                 className={cn(
-                  selectMultiTriggerVariant({ density }),
+                  selectMultiTriggerVariant({ density: effectiveDensity }),
                   disabled && "cursor-not-allowed opacity-50",
                   (!value || value.length === 0) && "text-muted-foreground",
                   invalid
@@ -409,7 +413,7 @@ const MultipleSelector = React.forwardRef<
                       key={option.value}
                       variant="secondary"
                       className={cn(
-                        badgeVariant({ density }),
+                        badgeVariant({ density: effectiveDensity }),
                         "shrink-0",
                         invalid && "bg-destructive/10 border-destructive text-destructive",
                       )}
@@ -432,7 +436,7 @@ const MultipleSelector = React.forwardRef<
                         }}
                         onClick={() => handleUnselect(option)}
                       >
-                        <X className={xIconVariant({ density })} />
+                        <X className={xIconVariant({ density: effectiveDensity })} />
                       </button>
                     </Badge>
                   ))}
@@ -440,7 +444,7 @@ const MultipleSelector = React.forwardRef<
                     <Badge
                       variant="outline"
                       className={cn(
-                        badgeVariant({ density }),
+                        badgeVariant({ density: effectiveDensity }),
                         "bg-muted text-muted-foreground shrink-0",
                       )}
                     >
@@ -546,7 +550,7 @@ const MultipleSelector = React.forwardRef<
                           toggleOption(option);
                         }}
                         className={cn(
-                          menuItemVariant({ density }),
+                          menuItemVariant({ density: effectiveDensity }),
                           "flex items-center justify-between",
                         )}
                         disabled={option.disable}
@@ -560,7 +564,7 @@ const MultipleSelector = React.forwardRef<
                                   {selected && (
                                     <X
                                       className={cn(
-                                        xIconVariant({ density }),
+                                        xIconVariant({ density: effectiveDensity }),
                                         "text-muted-foreground hover:text-foreground",
                                       )}
                                     />
@@ -576,7 +580,7 @@ const MultipleSelector = React.forwardRef<
                             {selected && (
                               <X
                                 className={cn(
-                                  xIconVariant({ density }),
+                                  xIconVariant({ density: effectiveDensity }),
                                   "text-muted-foreground hover:text-foreground",
                                 )}
                               />
