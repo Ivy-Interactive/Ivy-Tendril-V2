@@ -16,7 +16,7 @@ describe("AlertBlockquote GitHub alert rendering", () => {
       const { container } = render(
         <AlertBlockquote>
           <p>{`[!${type}] This is a ${type.toLowerCase()} message`}</p>
-        </AlertBlockquote>
+        </AlertBlockquote>,
       );
 
       const alert = container.querySelector(".pmv-alert");
@@ -33,7 +33,7 @@ describe("AlertBlockquote GitHub alert rendering", () => {
     const { container: noteContainer } = render(
       <AlertBlockquote>
         <p>[!NOTE] Note message</p>
-      </AlertBlockquote>
+      </AlertBlockquote>,
     );
     const noteSvg = noteContainer.querySelector(".pmv-alert-header svg");
     expect(noteSvg, "NOTE should render an svg icon").not.toBeNull();
@@ -42,7 +42,7 @@ describe("AlertBlockquote GitHub alert rendering", () => {
     const { container: tipContainer } = render(
       <AlertBlockquote>
         <p>[!TIP] Tip message</p>
-      </AlertBlockquote>
+      </AlertBlockquote>,
     );
     const tipSvg = tipContainer.querySelector(".pmv-alert-header svg");
     expect(tipSvg, "TIP should render an svg icon").not.toBeNull();
@@ -55,7 +55,7 @@ describe("AlertBlockquote GitHub alert rendering", () => {
     const { container } = render(
       <AlertBlockquote>
         <p>[!NOTE] This is the body text</p>
-      </AlertBlockquote>
+      </AlertBlockquote>,
     );
 
     const content = container.querySelector(".pmv-alert-content");
@@ -69,13 +69,13 @@ describe("AlertBlockquote GitHub alert rendering", () => {
       <AlertBlockquote>
         <p>[!WARNING]</p>
         <p>Body in second paragraph</p>
-      </AlertBlockquote>
+      </AlertBlockquote>,
     );
 
     const content = container.querySelector(".pmv-alert-content");
     expect(content, "should render .pmv-alert-content").not.toBeNull();
     expect(content!.textContent?.trim(), "should contain only the body").toBe(
-      "Body in second paragraph"
+      "Body in second paragraph",
     );
     // Should not have an empty leading paragraph
     const firstP = content!.querySelector("p");
@@ -88,7 +88,7 @@ describe("AlertBlockquote GitHub alert rendering", () => {
         <p>
           [!TIP] Use <strong>caution</strong> when handling this
         </p>
-      </AlertBlockquote>
+      </AlertBlockquote>,
     );
 
     const content = container.querySelector(".pmv-alert-content");
@@ -98,7 +98,7 @@ describe("AlertBlockquote GitHub alert rendering", () => {
     expect(strong, "should preserve the strong element").not.toBeNull();
     expect(strong!.textContent, "should preserve strong text").toBe("caution");
     expect(content!.textContent, "should contain the full text").toContain(
-      "Use caution when handling this"
+      "Use caution when handling this",
     );
   });
 
@@ -108,7 +108,7 @@ describe("AlertBlockquote GitHub alert rendering", () => {
         {"\n"}
         <p>[!NOTE] Body text</p>
         {"\n"}
-      </AlertBlockquote>
+      </AlertBlockquote>,
     );
 
     const alert = container.querySelector(".pmv-alert");
@@ -124,28 +124,40 @@ describe("AlertBlockquote GitHub alert rendering", () => {
     const { container: plain } = render(
       <AlertBlockquote>
         <p>Just a quote</p>
-      </AlertBlockquote>
+      </AlertBlockquote>,
     );
     expect(plain.querySelector(".pmv-alert"), "plain quote should not render alert").toBeNull();
-    expect(plain.querySelector("blockquote"), "plain quote should render blockquote").not.toBeNull();
+    expect(
+      plain.querySelector("blockquote"),
+      "plain quote should render blockquote",
+    ).not.toBeNull();
     expect(plain.textContent, "plain quote should contain text").toContain("Just a quote");
 
     // Lowercase marker (not recognized)
     const { container: lowercase } = render(
       <AlertBlockquote>
         <p>[!note] lowercase marker</p>
-      </AlertBlockquote>
+      </AlertBlockquote>,
     );
-    expect(lowercase.querySelector(".pmv-alert"), "lowercase marker should not render alert").toBeNull();
-    expect(lowercase.querySelector("blockquote"), "lowercase marker should render blockquote").not.toBeNull();
+    expect(
+      lowercase.querySelector(".pmv-alert"),
+      "lowercase marker should not render alert",
+    ).toBeNull();
+    expect(
+      lowercase.querySelector("blockquote"),
+      "lowercase marker should render blockquote",
+    ).not.toBeNull();
 
     // Unknown marker type
     const { container: unknown } = render(
       <AlertBlockquote>
         <p>[!HINT] unknown type</p>
-      </AlertBlockquote>
+      </AlertBlockquote>,
     );
     expect(unknown.querySelector(".pmv-alert"), "unknown type should not render alert").toBeNull();
-    expect(unknown.querySelector("blockquote"), "unknown type should render blockquote").not.toBeNull();
+    expect(
+      unknown.querySelector("blockquote"),
+      "unknown type should render blockquote",
+    ).not.toBeNull();
   });
 });

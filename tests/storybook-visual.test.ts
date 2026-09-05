@@ -16,7 +16,9 @@ vi.mock("@storybook/test-runner", () => ({
 
 import { waitForPageReady } from "@storybook/test-runner";
 import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
+import { readdirSync, statSync } from "node:fs";
 import visualConfig from "../.storybook/test-runner.ts";
+import { Densities } from "../src/types/density.ts";
 import agentViewerMeta, {
   WithRichPlanLogs as agentViewerRichLogsStory,
 } from "../src/components/AgentViewer/AgentViewer.stories.tsx";
@@ -285,6 +287,7 @@ describe("Visual regression package scripts", () => {
     expect(script).toContain("STORYBOOK_VISUAL_REGRESSION=true");
     expect(script).toContain("storybook-static");
     expect(script).toContain("-a 127.0.0.1");
+    expect(script).toContain("--ci");
     expect(script).not.toContain("--updateSnapshot");
   });
 
@@ -297,12 +300,72 @@ describe("Visual regression package scripts", () => {
     expect(script).toContain("--updateSnapshot");
   });
 
-  it("leaves the dev-server visual scripts untouched", () => {
+  it("runs visual scripts with --ci to fail on missing baselines instead of recording them", () => {
     expect(scripts["test-storybook:visual"]).toBe(
-      "cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook",
+      "cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook --ci",
     );
     expect(scripts["test-storybook:visual:update"]).toBe(
       "cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook --updateSnapshot",
     );
+  });
+});
+
+describe("Committed baseline inventory", () => {
+  const MINIMUM_BASELINE_COUNT = 126;
+  const baselinesDir = path.join(repoRoot, ".storybook", "__image_snapshots__");
+
+  it("contains at least 126 committed PNG baselines", () => {
+    const entries = readdirSync(baselinesDir, { withFileTypes: true });
+    const pngFiles = entries.filter(
+      (entry) => entry.isFile() && entry.name.endsWith(".png") && entry.name !== "__diff_output__",
+    );
+
+    expect(pngFiles.length).toBeGreaterThanOrEqual(MINIMUM_BASELINE_COUNT);
+  });
+
+  it("excludes __diff_output__ directory from the baseline inventory", () => {
+    const entries = readdirSync(baselinesDir, { withFileTypes: true });
+    const diffOutputDir = entries.find((entry) => entry.name === "__diff_output__");
+
+    if (diffOutputDir) {
+      expect(diffOutputDir.isDirectory()).toBe(true);
+    }
+  });
+
+  it("follows the <story-id>--<story-name>-<theme>-<density>.png naming pattern", () => {
+    const entries = readdirSync(baselinesDir);
+    const pngFiles = entries.filter((name) => name.endsWith(".png"));
+
+    const densityValues = Object.values(Densities).map((d) => d.toLowerCase());
+    const themePattern = /(light|dark)/;
+    const densityPattern = new RegExp(`(${densityValues.join("|")})`);
+    const fullPattern = new RegExp(
+      `^[a-z0-9-]+--[a-z0-9-]+-${themePattern.source}-${densityPattern.source}\\.png$`,
+      "i",
+    );
+
+    for (const file of pngFiles) {
+      expect(file).toMatch(fullPattern);
+    }
+
+    expect(pngFiles.length).toBeGreaterThan(0);
+  });
+
+  it("contains no zero-byte PNG files", () => {
+    const entries = readdirSync(baselinesDir);
+    const pngFiles = entries.filter((name) => name.endsWith(".png"));
+
+    for (const file of pngFiles) {
+      const filePath = path.join(baselinesDir, file);
+      const stats = statSync(filePath);
+      expect(stats.size).toBeGreaterThan(0);
+    }
+  });
+
+  it("confirms the workflow no longer contains the skip-on-empty escape hatch", () => {
+    const workflowPath = path.join(repoRoot, ".github", "workflows", "storybook-tests.yml");
+    const workflowContent = readFileSync(workflowPath, "utf8");
+
+    expect(workflowContent).not.toContain("skipping visual regression");
   });
 });
