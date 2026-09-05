@@ -48,8 +48,8 @@
     "build": "vp pack",
     "dev": "vp pack --watch",
     "test": "vp test",
-    "lint": "vp check",
-    "check": "vp check",
+    "lint": "node scripts/patch-tsgolint-win.mjs && vp check",
+    "check": "node scripts/patch-tsgolint-win.mjs && vp check",
     "format": "vp fmt",
     "storybook": "storybook dev -p 6006",
     "storybook:dev": "storybook dev --ci --host 127.0.0.1",
@@ -63,7 +63,7 @@
     "test-storybook:visual": "cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook",
     "test-storybook:visual:update": "cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook --updateSnapshot",
     "prepublishOnly": "vp run build",
-    "prepare": "vp config"
+    "prepare": "vp config && node scripts/patch-tsgolint-win.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
