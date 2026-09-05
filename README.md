@@ -198,6 +198,70 @@ function TendrilApp() {
 }
 ```
 
+## Tendril Consumer Integration & Setup
+
+`components-storybook` serves as a core UI dependency for `SpaceCorps/Tendril-App` (a desktop Rust and Tauri application).
+
+### 1. Stylesheet Import
+
+Import the standalone compiled CSS bundle at the root of your application:
+
+```ts
+import "@spacecorps/components-storybook/style.css";
+```
+
+This single stylesheet includes compiled design system tokens, Tailwind CSS utility classes, `@layer base` styles, and component CSS rules.
+
+### 2. Tendril Entrypoint
+
+Import Tendril widgets directly from the `./tendril` subpath:
+
+```tsx
+import {
+  TendrilShell,
+  PlanMarkdown,
+  PlanDiffView,
+  AgentViewer,
+  TendrilProcessViewer,
+  ContentInput,
+  BadgeSelect,
+  SortableVerificationList,
+  TendrilDashboard,
+} from "@spacecorps/components-storybook/tendril";
+```
+
+### 3. Font Setup
+
+The design system uses Geist Sans (`--font-sans`) and Geist Mono (`--font-mono`). Consumer applications can either:
+
+1. Install variable fonts as dependencies:
+   ```bash
+   pnpm add @fontsource-variable/geist @fontsource-variable/geist-mono
+   ```
+   and import them in the application entry point:
+   ```ts
+   import "@fontsource-variable/geist";
+   import "@fontsource-variable/geist-mono";
+   ```
+2. Rely on system fallback fonts (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif` for sans, `ui-monospace, monospace` for mono).
+
+### 4. Tauri WebView Compatibility and Safe Navigation
+
+When embedding in desktop webviews (such as Tauri), clicking external links should not navigate the desktop container away from the application.
+
+`PlanMarkdown` provides idiomatic React callback props:
+
+- `onLinkClick?: (href: string, event: React.MouseEvent) => void;`: Intercepts link clicks. When omitted, external links (`http://`, `https://`) automatically open via `window.open(href, "_blank", "noopener,noreferrer")` to protect the desktop webview container.
+- `onFileClick?: (filePath: string, event: React.MouseEvent) => void;`: Intercepts local filesystem (`file://`) link clicks for desktop integration (such as opening the file in an external editor or revealing in the OS file explorer). When omitted and `dangerouslyAllowLocalFiles` is false, local file links render as non-navigating text elements.
+
+### 5. Private CI & Artifact Consumption
+
+For reproducible consumption in private CI environments:
+
+- Build and pack release tarballs via `pnpm pack`.
+- Attach the generated `.tgz` archive to GitHub Releases or consume via tarball URL in `Tendril-App`.
+- This ensures reproducible builds without committing private tokens or registry credentials.
+
 ## Storybook Catalog Showcase
 
 This project includes a comprehensive Storybook catalog showcasing all components with interactive examples and documentation.
