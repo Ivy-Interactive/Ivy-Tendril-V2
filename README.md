@@ -438,11 +438,11 @@ will not fix the `vp check` failure.
 
 ### Windows: MAX_PATH budget
 
-Windows process creation fails at 260 characters, independently of the `LongPathsEnabled` registry flag. Tendril worktrees inherit this ceiling: the tsgolint binary that type-aware linting spawns sits at `<checkout-path> + 114-character suffix`, so a checkout path of 146 characters or more breaks `vp check` with `The system cannot find the path specified.`
+Windows process creation fails at 260 characters, independently of the `LongPathsEnabled` registry flag. Tendril worktrees inherit this ceiling: the native TypeScript compiler (`tsc.exe`) that `vp pack` spawns sits at `<checkout-path> + 116-character suffix`, so a checkout path of 144 characters or more breaks builds with `The system cannot find the path specified.`
 
-Tendril's worst-case worktree path for this repo is 126 characters (`D:\.tendril\Plans\` + a 66-character plan folder + `\Worktrees\SpaceCorps\components-storybook`), giving a 240-character target with 19 characters of headroom. This headroom comes from `virtualStoreDirMaxLength: 40` in `pnpm-workspace.yaml`, which caps pnpm's virtual store directory names at 40 characters instead of the Windows default of 60. Removing that setting would push 22% of plans over the limit.
+Tendril's worst-case worktree path for this repo is 126 characters (`D:\.tendril\Plans\` + a 66-character plan folder + `\Worktrees\SpaceCorps\components-storybook`), giving a 242-character target with 17 characters of headroom. `virtualStoreDirMaxLength: 40` in `pnpm-workspace.yaml` caps pnpm's virtual store directory names at 40 characters instead of the Windows default of 60, but does not shorten platform-specific package directories like `@typescript/typescript-win32-x64` that already fit under the cap. The binding constraint is the native compiler's path length, not the virtual store depth.
 
-`tests/max-path-budget.test.ts` enforces the budget, failing if the suffix grows beyond what the worst-case worktree can spawn. The test runs on Linux CI too, so the constraint is portable.
+`tests/max-path-budget.test.ts` enforces the budget with three guards: (1) the declared and installed `virtualStoreDirMaxLength` agree, (2) every executable this repo spawns fits inside MAX_PATH from a maximum-depth Tendril worktree, and (3) a ratchet assertion that the deepest executable path in the tree has not grown. The test runs on Linux CI too, so the constraint is portable.
 
 To measure your current path length, run the diagnostic command (reports `targetLength` without modifying anything):
 
