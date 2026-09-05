@@ -1,10 +1,11 @@
 import type { TestRunnerConfig } from "@storybook/test-runner";
 import { getStoryContext } from "@storybook/test-runner";
 import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
+import { readStoryGlobals } from "./globals";
 
 const config: TestRunnerConfig = {
   async preVisit(page) {
-    await injectAxe(page);
+    await injectAxe(page as any);
   },
   async postVisit(page, context) {
     const storyContext = await getStoryContext(page, context);
@@ -13,11 +14,11 @@ const config: TestRunnerConfig = {
       return;
     }
 
-    await configureAxe(page, {
+    await configureAxe(page as any, {
       rules: storyContext.parameters?.a11y?.config?.rules,
     });
 
-    await checkA11y(page, "#storybook-root", {
+    await checkA11y(page as any, "#storybook-root", {
       detailedReport: true,
       detailedReportOptions: {
         html: true,
@@ -33,8 +34,7 @@ const config: TestRunnerConfig = {
       const rootElement = await page.$("#storybook-root");
       if (rootElement) {
         const image = await rootElement.screenshot();
-        const theme = storyContext.globals?.theme || "light";
-        const density = storyContext.globals?.density || "medium";
+        const { theme = "light", density = "Medium" } = readStoryGlobals(storyContext);
         const snapshotIdentifier = `${storyContext.id}-${theme}-${density.toLowerCase()}`;
 
         // @ts-expect-error jest-image-snapshot matchers extended on expect
