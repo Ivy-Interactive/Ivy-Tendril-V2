@@ -5,6 +5,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { Densities } from "@/types/density";
 import { cva } from "class-variance-authority";
 import { controlSize } from "@/components/ui/density-scale";
+import { useDensity } from "@/contexts/density-context";
 import type React from "react";
 
 const copyIconVariant = cva("", {
@@ -48,10 +49,11 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
   textToCopy = "",
   label = "",
   "aria-label": ariaLabel,
-  density = Densities.Medium,
+  density,
   className,
 }) => {
   const [copied, setCopied] = useState(false);
+  const effectiveDensity = density ?? useDensity();
 
   const handleCopy = async () => {
     try {
@@ -73,7 +75,7 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
       className={cn(
         isIconOnly
           ? cn(
-              copyButtonSizeVariant({ density }),
+              copyButtonSizeVariant({ density: effectiveDensity }),
               !copied && "text-muted-foreground hover:text-foreground",
               copied &&
                 "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus-visible:ring-primary",
@@ -86,14 +88,14 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
         className,
       )}
     >
-      <span className={cn("relative", copyIconVariant({ density }))}>
+      <span className={cn("relative", copyIconVariant({ density: effectiveDensity }))}>
         <span
           className={cn(
             "absolute inset-0 transform transition-transform duration-200",
             copied ? "scale-0" : "scale-100",
           )}
         >
-          <Copy className={copyIconVariant({ density })} />
+          <Copy className={copyIconVariant({ density: effectiveDensity })} />
         </span>
         <span
           className={cn(
@@ -101,7 +103,7 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
             copied ? "scale-100" : "scale-0",
           )}
         >
-          <Check className={copyIconVariant({ density })} />
+          <Check className={copyIconVariant({ density: effectiveDensity })} />
         </span>
       </span>
       {label && <span className="text-small-label">{copied ? "Copied!" : label}</span>}

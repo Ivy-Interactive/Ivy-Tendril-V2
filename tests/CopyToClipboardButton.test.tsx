@@ -1,6 +1,8 @@
 import { render, fireEvent, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vite-plus/test";
 import { CopyToClipboardButton } from "../src/components/CopyToClipboardButton";
+import { DensityProvider } from "../src/contexts/density-context";
+import { Densities } from "../src/types/density";
 
 describe("CopyToClipboardButton", () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
@@ -29,5 +31,25 @@ describe("CopyToClipboardButton", () => {
     });
 
     expect(writeText).toHaveBeenCalledWith("hello world");
+  });
+
+  it("inherits density from DensityProvider", () => {
+    const { container } = render(
+      <DensityProvider density={Densities.Small}>
+        <CopyToClipboardButton textToCopy="test" />
+      </DensityProvider>,
+    );
+    const button = container.querySelector("button")!;
+    expect(button.className).toContain("size-7");
+  });
+
+  it("explicit density prop overrides provider", () => {
+    const { container } = render(
+      <DensityProvider density={Densities.Small}>
+        <CopyToClipboardButton textToCopy="test" density={Densities.Large} />
+      </DensityProvider>,
+    );
+    const button = container.querySelector("button")!;
+    expect(button.className).toContain("size-11");
   });
 });

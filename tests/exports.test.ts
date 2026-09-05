@@ -43,6 +43,15 @@ describe("Package Exports", () => {
       expect(mod.PlanMarkdown).toBeDefined();
       expect(mod.TendrilDashboard).toBeDefined();
     });
+
+    it("should export density context and scale", async () => {
+      const mod = await import("../src/index");
+
+      expect(mod.DensityProvider).toBeDefined();
+      expect(mod.useDensity).toBeDefined();
+      expect(mod.DensityScale).toBeDefined();
+      expect(typeof mod.useDensityScale).toBe("function");
+    });
   });
 
   describe("UI Primitives Export (components-storybook/ui)", () => {
