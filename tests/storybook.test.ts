@@ -52,15 +52,6 @@ describe("Storybook Configuration", () => {
     expect(typeof testRunnerConfig.postVisit).toBe("function");
 
     const mockPage = {} as any;
-    if (testRunnerConfig.preVisit) {
-      await testRunnerConfig.preVisit(mockPage, {
-        id: "foundation-themeprovider--default",
-        title: "Foundation/ThemeProvider",
-        name: "Default",
-      });
-      expect(injectAxe).toHaveBeenCalledWith(mockPage);
-    }
-
     const mockContext = {
       id: "foundation-themeprovider--default",
       title: "Foundation/ThemeProvider",
@@ -72,6 +63,11 @@ describe("Storybook Configuration", () => {
         },
       },
     };
+
+    if (testRunnerConfig.preVisit) {
+      await testRunnerConfig.preVisit(mockPage, mockContext as any);
+      expect(injectAxe).toHaveBeenCalledWith(mockPage);
+    }
 
     if (testRunnerConfig.postVisit) {
       await testRunnerConfig.postVisit(mockPage, mockContext as any);

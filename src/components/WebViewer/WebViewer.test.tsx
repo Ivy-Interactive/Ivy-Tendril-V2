@@ -182,8 +182,8 @@ describe("WebViewer", () => {
     render(<FreshWebViewer id="test-viewer" url="https://example.com" />);
     const iframe = await screen.findByTitle("Web content");
     expect(iframe).not.toBeNull();
-    expect(iframe.src).toBe("https://example.com/");
-    expect(iframe.src).not.toContain("/__view/");
+    expect((iframe as HTMLIFrameElement).src).toBe("https://example.com/");
+    expect((iframe as HTMLIFrameElement).src).not.toContain("/__view/");
     expect(screen.getByText(/Proxy unavailable/)).toBeDefined();
     expect(screen.queryByText("Starting proxy…")).toBeNull();
   });
@@ -201,8 +201,8 @@ describe("WebViewer", () => {
     render(<FreshWebViewer id="test-viewer" url="https://example.com" />);
     const iframe = await screen.findByTitle("Web content");
     expect(iframe).not.toBeNull();
-    expect(iframe.src).toBe("https://example.com/");
-    expect(iframe.src).not.toContain("/__view/");
+    expect((iframe as HTMLIFrameElement).src).toBe("https://example.com/");
+    expect((iframe as HTMLIFrameElement).src).not.toContain("/__view/");
     expect(screen.getByText(/Proxy unavailable/)).toBeDefined();
     expect(screen.queryByText("Starting proxy…")).toBeNull();
   });
@@ -226,7 +226,7 @@ describe("WebViewer", () => {
     render(<FreshWebViewer id="test-viewer" url="https://example.com" proxy="off" />);
     const iframe = await screen.findByTitle("Web content");
     expect(iframe).not.toBeNull();
-    expect(iframe.src).toBe("https://example.com/");
+    expect((iframe as HTMLIFrameElement).src).toBe("https://example.com/");
     expect(register).not.toHaveBeenCalled();
   });
 
@@ -257,8 +257,8 @@ describe("WebViewer", () => {
     render(<WebViewer id="test-viewer" url="https://example.com" />);
     const iframe = await screen.findByTitle("Web content");
     expect(iframe).not.toBeNull();
-    expect(iframe.src).toContain("/__view/@");
-    expect(iframe.src).toContain("https://example.com");
+    expect((iframe as HTMLIFrameElement).src).toContain("/__view/@");
+    expect((iframe as HTMLIFrameElement).src).toContain("https://example.com");
     expect(screen.queryByText(/Proxy unavailable/)).toBeNull();
   });
 
@@ -300,6 +300,6 @@ describe("WebViewer", () => {
 
     render(<FreshWebViewer id="test-viewer-2" url="https://example.com" />);
     const iframe = await screen.findByTitle("Web content");
-    expect(iframe.src).toContain("/__view/@");
+    expect((iframe as HTMLIFrameElement).src).toContain("/__view/@");
   });
 });
