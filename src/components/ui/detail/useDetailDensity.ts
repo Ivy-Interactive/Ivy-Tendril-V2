@@ -1,7 +1,10 @@
 import { useContext } from "react";
 import { DetailContext } from "./DetailContext";
+import { useDensity } from "@/contexts/density-context";
+import type { Densities } from "@/types/density";
 
-export const useDetailDensity = () => {
+export const useDetailDensity = (): Densities => {
   const context = useContext(DetailContext);
-  return context.density;
+  const globalDensity = useDensity();
+  return (context.density as Densities | undefined) ?? globalDensity;
 };

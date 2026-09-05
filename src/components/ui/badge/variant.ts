@@ -19,14 +19,14 @@ export const badgeVariant = cva(
         info: "border-transparent bg-[var(--info-200)] text-[var(--info-800)] dark:bg-[var(--info-800)] dark:text-[var(--info-100)]",
       },
       density: {
-        medium: "px-2 py-0.5 text-xs",
-        small: "px-1 py-0 text-[10px]",
-        large: "px-3 py-1 text-sm",
+        Small: "px-1 py-0 text-[10px]",
+        Medium: "px-2 py-0.5 text-xs",
+        Large: "px-3 py-1 text-sm",
       },
     },
     defaultVariants: {
       variant: "primary",
-      density: "medium",
+      density: "Medium",
     },
   },
 );

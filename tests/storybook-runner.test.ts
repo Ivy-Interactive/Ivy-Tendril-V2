@@ -31,8 +31,8 @@ describe("Storybook dev server runner", () => {
 
   it("disables telemetry so the dev server never prompts interactively", () => {
     expect(mainConfig.core).toBeDefined();
-    // @ts-expect-error - disableTelemetry is a valid CoreConfig property not in type definitions
-    expect(mainConfig.core?.disableTelemetry).toBe(true);
+    // `core` is a PresetValue union that also admits a loader function, so narrow before reading it.
+    expect((mainConfig.core as { disableTelemetry?: boolean }).disableTelemetry).toBe(true);
   });
 
   it("registers the @ path alias to src/ via viteFinal", async () => {
@@ -63,24 +63,24 @@ describe("Storybook dev server runner", () => {
   it("defines non-interactive storybook dev server scripts in package.json", () => {
     const scripts = packageJson.scripts ?? {};
 
-    expect(scripts.storybook).toBe("storybook dev --ci --host 127.0.0.1");
+    expect(scripts.storybook).toBe("node scripts/storybook-dev.mjs");
     expect(scripts["storybook:dev"]).toBe(scripts.storybook);
     expect(scripts["build-storybook"]).toBe("storybook build");
   });
 
   it("configures the dev server for non-blocking startup on a loopback port", () => {
-    const scripts = packageJson.scripts ?? {};
+    // The port is pinned to the first free slot in 6006..6015 so the URL is bookmarkable, which the
+    // wrapper does by probing 127.0.0.1 itself — Storybook's own probe checks a different host and
+    // so hard-fails with EADDRINUSE on a held port. The flags therefore live in the wrapper source,
+    // not in the package.json script.
+    const wrapper = readFileSync(path.join(repoRoot, "scripts", "storybook-dev.mjs"), "utf8");
 
-    for (const script of [scripts.storybook, scripts["storybook:dev"]]) {
-      // --ci suppresses telemetry/port prompts and stops the browser from being opened.
-      expect(script).toContain("--ci");
-      // Loopback only — never expose the dev server on every network interface.
-      expect(script).toContain("--host 127.0.0.1");
-      // No pinned port: a pinned port makes startup fail with EADDRINUSE when a previous
-      // review session still holds it, so let Storybook pick a free port and print the URL.
-      expect(script).not.toMatch(/(^|\s)(-p|--port)(\s|=)/);
-      expect(script).not.toContain("--exact-port");
-    }
+    // --ci suppresses telemetry/port prompts and stops the browser from being opened.
+    expect(wrapper).toContain("--ci");
+    // Loopback only — never expose the dev server on every network interface.
+    expect(wrapper).toContain("127.0.0.1");
+    // --exact-port would exit(-1) silently on the very probe disagreement this wrapper works around.
+    expect(wrapper).not.toContain("--exact-port");
   });
 
   it("discovers the ported Tendril component stories", () => {
