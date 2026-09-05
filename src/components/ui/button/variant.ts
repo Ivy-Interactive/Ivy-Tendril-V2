@@ -26,6 +26,7 @@ export const buttonVariant = cva(
         lg: `${controlHeight.Large} rounded-field px-8 ${densityText.Large}`,
         icon: `${controlSize.Medium} shrink-0`,
         "icon-sm": `${controlSize.Small} shrink-0`,
+        "icon-lg": `${controlSize.Large} shrink-0`,
       },
     },
     defaultVariants: {

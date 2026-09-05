@@ -22,7 +22,7 @@ const meta: Meta<typeof Button> = {
     },
     size: {
       control: "select",
-      options: ["default", "sm", "lg", "icon", "icon-sm"],
+      options: ["default", "sm", "lg", "icon", "icon-sm", "icon-lg"],
     },
     disabled: { control: "boolean" },
   },

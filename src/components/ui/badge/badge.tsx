@@ -12,10 +12,7 @@ function Badge({ className, variant, density, ...props }: BadgeProps) {
   const contextDensity = useDensity();
   return (
     <div
-      className={cn(
-        badgeVariant({ variant, density: density ?? contextDensity }),
-        className,
-      )}
+      className={cn(badgeVariant({ variant, density: density ?? contextDensity }), className)}
       {...props}
     />
   );
