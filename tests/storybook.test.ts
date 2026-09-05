@@ -10,6 +10,7 @@ vi.mock("@storybook/test-runner", () => ({
   getStoryContext: vi.fn().mockImplementation((_page, context) => {
     return Promise.resolve(context);
   }),
+  waitForPageReady: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
@@ -52,7 +53,11 @@ describe("Storybook Configuration", () => {
 
     const mockPage = {} as any;
     if (testRunnerConfig.preVisit) {
-      await testRunnerConfig.preVisit(mockPage);
+      await testRunnerConfig.preVisit(mockPage, {
+        id: "foundation-themeprovider--default",
+        title: "Foundation/ThemeProvider",
+        name: "Default",
+      });
       expect(injectAxe).toHaveBeenCalledWith(mockPage);
     }
 
