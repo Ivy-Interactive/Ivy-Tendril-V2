@@ -19,3 +19,5 @@ export * from "./questionsSchema";
 export * from "./questionsSource";
 export * from "./searchUtils";
 export * from "./useAnchoredPosition";
+export { GraphvizRenderer } from "./GraphvizRenderer";
+export { MermaidRenderer } from "./MermaidRenderer";

@@ -163,4 +163,143 @@ describe("WebViewer", () => {
       );
     });
   });
+
+  it("frames directly when the worker cannot register", async () => {
+    vi.resetModules();
+    const { WebViewer: FreshWebViewer } = await import("./WebViewer.tsx");
+
+    Object.defineProperty(navigator, "serviceWorker", {
+      writable: true,
+      configurable: true,
+      value: {
+        getRegistrations: vi.fn().mockResolvedValue([]),
+        register: vi.fn().mockRejectedValue(new Error("Registration failed")),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+    });
+
+    render(<FreshWebViewer id="test-viewer" url="https://example.com" />);
+    const iframe = await screen.findByTitle("Web content");
+    expect(iframe).not.toBeNull();
+    expect(iframe.src).toBe("https://example.com/");
+    expect(iframe.src).not.toContain("/__view/");
+    expect(screen.getByText(/Proxy unavailable/)).toBeDefined();
+    expect(screen.queryByText("Starting proxy…")).toBeNull();
+  });
+
+  it("frames directly when the browser has no service worker", async () => {
+    vi.resetModules();
+    const { WebViewer: FreshWebViewer } = await import("./WebViewer.tsx");
+
+    Object.defineProperty(navigator, "serviceWorker", {
+      writable: true,
+      configurable: true,
+      value: undefined,
+    });
+
+    render(<FreshWebViewer id="test-viewer" url="https://example.com" />);
+    const iframe = await screen.findByTitle("Web content");
+    expect(iframe).not.toBeNull();
+    expect(iframe.src).toBe("https://example.com/");
+    expect(iframe.src).not.toContain("/__view/");
+    expect(screen.getByText(/Proxy unavailable/)).toBeDefined();
+    expect(screen.queryByText("Starting proxy…")).toBeNull();
+  });
+
+  it('never registers when proxy="off"', async () => {
+    vi.resetModules();
+    const { WebViewer: FreshWebViewer } = await import("./WebViewer.tsx");
+
+    const register = vi.fn();
+    Object.defineProperty(navigator, "serviceWorker", {
+      writable: true,
+      configurable: true,
+      value: {
+        getRegistrations: vi.fn().mockResolvedValue([]),
+        register,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+    });
+
+    render(<FreshWebViewer id="test-viewer" url="https://example.com" proxy="off" />);
+    const iframe = await screen.findByTitle("Web content");
+    expect(iframe).not.toBeNull();
+    expect(iframe.src).toBe("https://example.com/");
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it('keeps waiting when proxy="require"', async () => {
+    vi.resetModules();
+    const { WebViewer: FreshWebViewer } = await import("./WebViewer.tsx");
+
+    Object.defineProperty(navigator, "serviceWorker", {
+      writable: true,
+      configurable: true,
+      value: {
+        getRegistrations: vi.fn().mockResolvedValue([]),
+        register: vi.fn().mockRejectedValue(new Error("Registration failed")),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+    });
+
+    render(<FreshWebViewer id="test-viewer" url="https://example.com" proxy="require" />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+    });
+    expect(screen.getByText("Starting proxy…")).toBeDefined();
+    expect(screen.queryByTitle("Web content")).toBeNull();
+  });
+
+  it("uses view-space when the proxy registers", async () => {
+    render(<WebViewer id="test-viewer" url="https://example.com" />);
+    const iframe = await screen.findByTitle("Web content");
+    expect(iframe).not.toBeNull();
+    expect(iframe.src).toContain("/__view/@");
+    expect(iframe.src).toContain("https://example.com");
+    expect(screen.queryByText(/Proxy unavailable/)).toBeNull();
+  });
+
+  it("retries after a failed registration", async () => {
+    // First mount with rejecting register
+    vi.resetModules();
+    let FreshWebViewer = (await import("./WebViewer.tsx")).WebViewer;
+
+    Object.defineProperty(navigator, "serviceWorker", {
+      writable: true,
+      configurable: true,
+      value: {
+        getRegistrations: vi.fn().mockResolvedValue([]),
+        register: vi.fn().mockRejectedValue(new Error("First attempt failed")),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+    });
+
+    const { unmount } = render(<FreshWebViewer id="test-viewer-1" url="https://example.com" />);
+    await screen.findByTitle("Web content");
+    unmount();
+    cleanup();
+
+    // Second mount with resolving register - reset modules again to clear the failed cache
+    vi.resetModules();
+    FreshWebViewer = (await import("./WebViewer.tsx")).WebViewer;
+
+    Object.defineProperty(navigator, "serviceWorker", {
+      writable: true,
+      configurable: true,
+      value: {
+        getRegistrations: vi.fn().mockResolvedValue([]),
+        register: vi.fn().mockResolvedValue(mockRegistration),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      },
+    });
+
+    render(<FreshWebViewer id="test-viewer-2" url="https://example.com" />);
+    const iframe = await screen.findByTitle("Web content");
+    expect(iframe.src).toContain("/__view/@");
+  });
 });

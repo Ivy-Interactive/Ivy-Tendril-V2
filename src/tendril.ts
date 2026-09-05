@@ -96,8 +96,8 @@ export {
   ImageRenderer,
 } from "./components/PlanMarkdown";
 
-export { GraphvizRenderer } from "./components/GraphvizRenderer";
-export { MermaidRenderer } from "./components/MermaidRenderer";
+export { GraphvizRenderer } from "./components/PlanMarkdown/GraphvizRenderer";
+export { MermaidRenderer } from "./components/PlanMarkdown/MermaidRenderer";
 
 export type {
   MarkdownAnnotation,
@@ -112,6 +112,7 @@ export type {
 export { prismTheme } from "./lib/prismTheme";
 export { parseQuestions, tagQuestionBlocks } from "./components/PlanMarkdown";
 export { normalizeLanguage, codeBlockPreStyle } from "./components/PlanMarkdown";
+
 export { getMarkdownPlugins, hasMath } from "./lib/math";
 export { rawHtmlSchema, hasRawHtml } from "./lib/rawHtml";
 export { getWidth, getHeight } from "./lib/styles";
