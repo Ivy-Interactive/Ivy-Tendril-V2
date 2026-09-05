@@ -45,3 +45,5 @@ export const getHeight = (height?: string): React.CSSProperties => {
       return {};
   }
 };
+
+export { typography } from "./lib/styles";

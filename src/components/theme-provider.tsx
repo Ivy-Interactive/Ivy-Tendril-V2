@@ -8,6 +8,18 @@ export interface ThemeProviderProps {
   attribute?: string;
 }
 
+export const globalThemeRef = {
+  setTheme: null as ((theme: Theme) => void) | null,
+};
+
+export const setThemeGlobal = (theme: Theme) => {
+  if (globalThemeRef.setTheme) {
+    globalThemeRef.setTheme(theme);
+    return true;
+  }
+  return false;
+};
+
 export function ThemeProvider({
   children,
   defaultTheme = "system",
@@ -62,6 +74,13 @@ export function ThemeProvider({
     },
     [storageKey],
   );
+
+  useEffect(() => {
+    globalThemeRef.setTheme = setTheme;
+    return () => {
+      globalThemeRef.setTheme = null;
+    };
+  }, [setTheme]);
 
   useEffect(() => {
     applyTheme(theme);
