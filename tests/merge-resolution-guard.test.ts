@@ -344,6 +344,187 @@ describe("verify-merge-resolution", () => {
       expect(workspaceFindings).toEqual([]);
     });
   });
+
+  describe("package.json top-level fields", () => {
+    it("detects a reverted packageManager pin", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-merged.json"),
+      );
+
+      const finding = report.lostChanges.find(
+        (f) => f.section === "topLevel" && f.key === "packageManager",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.action).toBe("changed");
+      expect(finding?.lostFrom).toBe("theirs");
+      expect(finding?.base).toBe("pnpm@10.18.0");
+      expect(finding?.theirs).toBe("pnpm@11.25.0");
+      expect(finding?.merged).toBe("pnpm@10.18.0");
+      expect(finding?.manifest).toBe("package.json");
+    });
+
+    it("detects a reverted devEngines block", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-merged.json"),
+      );
+
+      const finding = report.lostChanges.find(
+        (f) => f.section === "topLevel" && f.key === "devEngines",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.theirs).toBeDefined();
+
+      const theirsDevEngines = JSON.parse(finding!.theirs!);
+      expect(theirsDevEngines.packageManager.version).toBe("11.25.0");
+    });
+
+    it("detects a lost exports subpath", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-merged.json"),
+      );
+
+      const finding = report.lostChanges.find(
+        (f) => f.section === "topLevel" && f.key === "exports",
+      );
+      expect(finding).toBeDefined();
+      expect(finding?.action).toBe("changed");
+
+      const theirsExports = JSON.parse(finding!.theirs!);
+      const mergedExports = JSON.parse(finding!.merged!);
+      expect(theirsExports["./ui"]).toBeDefined();
+      expect(mergedExports["./ui"]).toBeUndefined();
+    });
+
+    it("detects a reverted types field and skips unchanged fields", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-merged.json"),
+      );
+
+      const typesFinding = report.lostChanges.find(
+        (f) => f.section === "topLevel" && f.key === "types",
+      );
+      expect(typesFinding).toBeDefined();
+
+      const typeFinding = report.lostChanges.find(
+        (f) => f.section === "topLevel" && f.key === "type",
+      );
+      expect(typeFinding).toBeUndefined();
+
+      const mainFinding = report.lostChanges.find(
+        (f) => f.section === "topLevel" && f.key === "main",
+      );
+      expect(mainFinding).toBeUndefined();
+    });
+
+    it("does not report false positives from object key order", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-merged.json"),
+      );
+
+      const lostFromOurs = report.lostChanges.filter((f) => f.lostFrom === "ours");
+      expect(lostFromOurs).toEqual([]);
+
+      const allLostFromTheirs = report.lostChanges.every((f) => f.lostFrom === "theirs");
+      expect(allLostFromTheirs).toBe(true);
+    });
+
+    it("reports nothing for a clean resolution", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-clean-merged.json"),
+      );
+
+      expect(report.lostChanges).toEqual([]);
+    });
+
+    it("allows suppressing topLevel.packageManager with --allow", () => {
+      const report = runJson(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-merged.json"),
+        "--allow",
+        "topLevel.packageManager",
+      );
+
+      const packageManagerFinding = report.lostChanges.find(
+        (f) => f.section === "topLevel" && f.key === "packageManager",
+      );
+      expect(packageManagerFinding).toBeUndefined();
+
+      const devEnginesFinding = report.lostChanges.find(
+        (f) => f.section === "topLevel" && f.key === "devEngines",
+      );
+      expect(devEnginesFinding).toBeDefined();
+    });
+
+    it("exits 1 without --json on a revert", () => {
+      const exitCode = runExitCode(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-merged.json"),
+      );
+      expect(exitCode).toBe(1);
+    });
+
+    it("exits 0 with --json on a revert", () => {
+      const exitCode = runExitCode(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-merged.json"),
+        "--json",
+      );
+      expect(exitCode).toBe(0);
+    });
+
+    it("exits 0 on clean fixtures", () => {
+      const exitCode = runExitCode(
+        "--files",
+        resolve(fixturesDir, "top-level-base.json"),
+        resolve(fixturesDir, "top-level-ours.json"),
+        resolve(fixturesDir, "top-level-theirs.json"),
+        resolve(fixturesDir, "top-level-clean-merged.json"),
+      );
+      expect(exitCode).toBe(0);
+    });
+
+    describe.skipIf(!canCheckCommit735cf7e())("real history: Plan 00191 merge", () => {
+      it("reports no topLevel findings for the correct resolution at 735cf7e", () => {
+        const report = runJson("--commit", "735cf7e");
+
+        const topLevelFindings = report.lostChanges.filter((f) => f.section === "topLevel");
+        expect(topLevelFindings).toEqual([]);
+      });
+    });
+  });
 });
 
 function canCheckCommit8698ad1(): boolean {
@@ -355,6 +536,13 @@ function canCheckCommit8698ad1(): boolean {
 
 function canCheckCommit6dbce24(): boolean {
   const result = spawnSync("git", ["cat-file", "-e", "6dbce24^{commit}"], {
+    cwd: repoRoot,
+  });
+  return result.status === 0;
+}
+
+function canCheckCommit735cf7e(): boolean {
+  const result = spawnSync("git", ["cat-file", "-e", "735cf7e^{commit}"], {
     cwd: repoRoot,
   });
   return result.status === 0;

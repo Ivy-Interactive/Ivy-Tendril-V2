@@ -1,0 +1,28 @@
+{
+  "name": "merge-resolution-test",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.mts"
+    },
+    "./ui": {
+      "import": "./dist/ui.mjs",
+      "types": "./dist/ui.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vite build"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "11.25.0",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@11.25.0"
+}

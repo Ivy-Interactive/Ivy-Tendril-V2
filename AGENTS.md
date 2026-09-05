@@ -38,7 +38,7 @@ When resolving conflicts in `package.json` or `pnpm-workspace.yaml`:
    pnpm run verify:merge
    ```
 
-   The guard detects lost changes by comparing `base`, `ours`, `theirs`, and `merged` for every dependency/script key in `package.json` and every catalog, override and setting in `pnpm-workspace.yaml`. If it reports findings, review each one — a revert surfaces as someone else's test failing, not yours.
+   The guard detects lost changes by comparing `base`, `ours`, `theirs`, and `merged` for every dependency/script key and the `packageManager`, `devEngines`, `type`, `main`, `types` and `exports` fields in `package.json`, plus every catalog, override and setting in `pnpm-workspace.yaml`. If it reports findings, review each one — a revert surfaces as someone else's test failing, not yours.
 
 3. **If a drop is deliberate,** pass `--allow <section>.<key>` to suppress the warning and document why in the commit message. For example:
 
