@@ -4,6 +4,8 @@ import type { ResultWire } from "./types.ts";
 import { BlockHandler } from "../BlockHandler.tsx";
 import { getMarkdownPlugins } from "../math.ts";
 import { AlertBlockquote } from "../PlanMarkdown/AlertBlockquote.tsx";
+import { tagQuestionBlocks } from "../PlanMarkdown/questionsSource.ts";
+import { QuestionsAnswerContext } from "../PlanMarkdown/questionsContext.ts";
 
 interface ResultSummaryProps {
   wire: ResultWire;
@@ -40,7 +42,8 @@ export const ResultSummary: React.FC<ResultSummaryProps> = ({ wire }) => {
 
   const hasResponse = Boolean(wire.response && wire.response.trim().length > 0);
 
-  const plugins = getMarkdownPlugins(wire.response ?? "");
+  const taggedResponse = hasResponse ? tagQuestionBlocks(wire.response) : "";
+  const plugins = getMarkdownPlugins(taggedResponse);
 
   // Return null if there is nothing to render, preventing empty container boxes
   if (!isError && !hasResponse && statsList.length === 0) {
@@ -56,17 +59,19 @@ export const ResultSummary: React.FC<ResultSummaryProps> = ({ wire }) => {
       )}
       {hasResponse && (
         <div className="aov-markdown aov-result-body">
-          <Markdown
-            remarkPlugins={plugins.remarkPlugins}
-            rehypePlugins={plugins.rehypePlugins}
-            components={{
-              code: BlockHandler,
-              blockquote: AlertBlockquote,
-              pre: ({ children }) => <>{children}</>,
-            }}
-          >
-            {wire.response}
-          </Markdown>
+          <QuestionsAnswerContext.Provider value={undefined}>
+            <Markdown
+              remarkPlugins={plugins.remarkPlugins}
+              rehypePlugins={plugins.rehypePlugins}
+              components={{
+                code: BlockHandler,
+                blockquote: AlertBlockquote,
+                pre: ({ children }) => <>{children}</>,
+              }}
+            >
+              {taggedResponse}
+            </Markdown>
+          </QuestionsAnswerContext.Provider>
         </div>
       )}
       {statsList.length > 0 && <div className="aov-result-stats">{statsList}</div>}
