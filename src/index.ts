@@ -209,3 +209,30 @@ export type {
   VerificationItem,
   SortableVerificationListProps,
 } from "./components/SortableVerificationList/index.ts";
+
+// Tendril Dashboard components
+export {
+  TendrilDashboard,
+  ActivityGrid,
+  PillBars,
+  TrendChart,
+  HoverTip,
+  useHoverTip,
+  hasSlotContent,
+  rampLevel,
+  niceTicks,
+  formatCurrencyTick,
+  formatCountTick,
+} from "./components/TendrilDashboard/index.ts";
+export type {
+  DashboardKpiDto,
+  DashboardMonthValueDto,
+  DashboardActivityMonthDto,
+  DashboardJobDto,
+  DashboardTrendDto,
+  TendrilDashboardProps,
+} from "./components/TendrilDashboard/index.ts";
+
+// Web Viewer component
+export { WebViewer } from "./components/WebViewer/index.ts";
+export type { WebViewerProps } from "./components/WebViewer/index.ts";

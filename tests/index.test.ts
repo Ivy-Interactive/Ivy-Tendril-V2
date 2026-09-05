@@ -6,6 +6,12 @@ import {
   ContentInput,
   BadgeSelect,
   SortableVerificationList,
+  TendrilDashboard,
+  ActivityGrid,
+  PillBars,
+  TrendChart,
+  HoverTip,
+  WebViewer,
 } from "../src/index.ts";
 
 test("library exports core foundation symbols", () => {
@@ -33,7 +39,7 @@ test("exports PlanMarkdown and PlanDiffView", () => {
   expect(PlanDiffView).toBeDefined();
 });
 
-test("exports components", () => {
+test("exports form and input components", () => {
   expect(ContentInput).toBeDefined();
   expect(BadgeSelect).toBeDefined();
   expect(SortableVerificationList).toBeDefined();
@@ -52,4 +58,13 @@ test("library exports AgentViewer and TendrilProcessViewer components and utilit
   expect(typeof UI.deriveStatus).toBe("function");
   expect(typeof UI.useAutoScroll).toBe("function");
   expect(typeof UI.inputSummary).toBe("function");
+});
+
+test("exports TendrilDashboard and WebViewer components", () => {
+  expect(TendrilDashboard).toBeDefined();
+  expect(ActivityGrid).toBeDefined();
+  expect(PillBars).toBeDefined();
+  expect(TrendChart).toBeDefined();
+  expect(HoverTip).toBeDefined();
+  expect(WebViewer).toBeDefined();
 });
