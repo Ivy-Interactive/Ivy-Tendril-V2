@@ -343,6 +343,33 @@ node scripts/patch-tsgolint-win.mjs
 Add `--json` to see what it resolved — the source binary, the target path and its length — without
 writing anything.
 
+### Windows: line endings
+
+The repo enforces LF line endings via `.gitattributes`, overriding your local `core.autocrlf` setting
+— you do not need to change your global git config. If you cloned before `.gitattributes` was
+committed, you may see `vp check` report formatting issues in files that show no diff in `git status`.
+This happens when your working copy has CRLF but the committed blob is LF: git's stat cache keeps
+reporting them clean, while oxfmt sees CRLF as incorrect.
+
+To fix it, discard uncommitted work and re-checkout:
+
+```bash
+git rm --cached -rq . && git reset --hard
+```
+
+This empties the index and forces git to re-checkout every file with the correct line endings.
+
+**Warning:** The command above discards all uncommitted changes. Commit or stash your work first.
+
+For a single file:
+
+```bash
+rm <path> && git checkout -- <path>
+```
+
+**Note:** `git add --renormalize .` normalizes the index but does not update the working tree, so it
+will not fix the `vp check` failure.
+
 ### Testing
 
 Run the test suite:
