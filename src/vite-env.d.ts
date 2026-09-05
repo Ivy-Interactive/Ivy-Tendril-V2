@@ -12,7 +12,6 @@ declare module "vite-plus/test" {
   interface Assertion<T = any> extends TestingLibraryMatchers<any, T> {}
   interface Assertion<R = void, T = any> extends TestingLibraryMatchers<any, T> {}
 }
-
 declare module "*.css" {
   const content: string;
   export default content;

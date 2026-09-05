@@ -1,6 +1,12 @@
 import { expect, test } from "vite-plus/test";
 import * as UI from "../src/index.ts";
-import { ContentInput, BadgeSelect, SortableVerificationList } from "../src/index.ts";
+import {
+  PlanMarkdown,
+  PlanDiffView,
+  ContentInput,
+  BadgeSelect,
+  SortableVerificationList,
+} from "../src/index.ts";
 
 test("library exports core foundation symbols", () => {
   expect(typeof UI.cn).toBe("function");
@@ -20,6 +26,11 @@ test("exports core primitives", () => {
   expect(UI.Slider).toBeDefined();
   expect(UI.Toggle).toBeDefined();
   expect(UI.toast).toBeDefined();
+});
+
+test("exports PlanMarkdown and PlanDiffView", () => {
+  expect(PlanMarkdown).toBeDefined();
+  expect(PlanDiffView).toBeDefined();
 });
 
 test("exports components", () => {
