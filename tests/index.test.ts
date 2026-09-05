@@ -27,3 +27,18 @@ test("exports components", () => {
   expect(BadgeSelect).toBeDefined();
   expect(SortableVerificationList).toBeDefined();
 });
+
+test("library exports AgentViewer and TendrilProcessViewer components and utilities", () => {
+  expect(typeof UI.AgentViewer).toBe("function");
+  expect(typeof UI.TendrilProcessViewer).toBe("function");
+  expect(typeof UI.ToolUseCard).toBe("function");
+  expect(typeof UI.ToolUseGroup).toBe("function");
+  expect(typeof UI.ResultSummary).toBe("function");
+  expect(typeof UI.AnimatedStatus).toBe("function");
+  expect(typeof UI.parseEventWireStream).toBe("function");
+  expect(typeof UI.groupToolUseEvents).toBe("function");
+  expect(typeof UI.aggregateToolStatus).toBe("function");
+  expect(typeof UI.deriveStatus).toBe("function");
+  expect(typeof UI.useAutoScroll).toBe("function");
+  expect(typeof UI.inputSummary).toBe("function");
+});
