@@ -14,6 +14,10 @@ export interface WebViewerProps {
   height?: string;
   url?: string;
   device?: string; // "Desktop" | "Mobile" | "Tablet" (omitted when Desktop)
+  /** How the page is framed. "auto" (default) registers the proxy worker and falls back to framing
+   *  the URL directly when it cannot be registered. "require" never frames unproxied (today's
+   *  behaviour). "off" skips registration entirely and always frames directly. */
+  proxy?: "auto" | "require" | "off";
   commands?: { id: string };
   subscribeToStream?: StreamSubscriber;
   eventHandler?: EventHandler;
@@ -213,12 +217,18 @@ function acquireProxyWorker(): Promise<ServiceWorkerRegistration> {
     clearTimeout(releaseTimer);
     releaseTimer = null;
   }
-  proxyWorker ??= removeRootScopedWorker()
-    .then(() => navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE }))
-    .then(async (registration) => {
-      await workerActivated(registration);
-      return registration;
+  if (proxyWorker === null) {
+    const attempt = removeRootScopedWorker()
+      .then(() => navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE }))
+      .then(async (registration) => {
+        await workerActivated(registration);
+        return registration;
+      });
+    attempt.catch(() => {
+      if (proxyWorker === attempt) proxyWorker = null;
     });
+    proxyWorker = attempt;
+  }
   return proxyWorker;
 }
 
@@ -249,6 +259,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   height,
   url,
   device,
+  proxy = "auto",
   commands,
   subscribeToStream,
   eventHandler,
@@ -266,7 +277,9 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   // address bar and history without re-pointing the iframe — re-pointing would remount it
   // and reload the whole document, throwing away the very navigation being reported.
   const [frameSrc, setFrameSrc] = useState<string | null>(initialUrl);
-  const [swReady, setSwReady] = useState(false);
+  const [proxyState, setProxyState] = useState<"pending" | "ready" | "unavailable">(
+    proxy === "off" ? "unavailable" : "pending",
+  );
   const [pending, setPending] = useState<PendingComment | null>(null);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState<CommentMarker[]>([]);
@@ -277,6 +290,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   const viewerId = viewerIdRef.current;
 
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const framingRef = useRef<"ready" | "unavailable">("unavailable");
   const commentRef = useRef<HTMLTextAreaElement>(null);
   const selectionSeq = useRef(0);
   const codeRef = useRef<HTMLPreElement>(null);
@@ -374,6 +388,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   // of the site. View-space is same-origin, so we can see where the frame ended up and put it
   // back. Costs one extra load on the rare escape, and self-heals whatever caused it.
   const healEscapedFrame = useCallback(() => {
+    if (framingRef.current !== "ready") return;
     try {
       const location = frameRef.current?.contentWindow?.location;
       if (!location) return;
@@ -417,32 +432,64 @@ export const WebViewer: React.FC<WebViewerProps> = ({
     }
   }, [currentUrl, canGoBack, canGoForward, emit]);
 
+  // Sync the ref for healEscapedFrame and other proxy-dependent paths.
+  useEffect(() => {
+    framingRef.current = proxyState === "ready" ? "ready" : "unavailable";
+  }, [proxyState]);
+
   // ---- service worker -----------------------------------------------------
   useEffect(() => {
+    if (proxy === "off") {
+      return;
+    }
     if (!("serviceWorker" in navigator)) {
       emit("console", {
         level: "error",
         text: "Service Worker not supported — the proxy cannot run.",
         stack: null,
       });
+      if (proxy !== "require") {
+        setProxyState("unavailable");
+      }
       return;
     }
     let cancelled = false;
+    let settleTimeout: ReturnType<typeof setTimeout> | null = null;
+    const didAcquire = true;
+
     acquireProxyWorker()
       .then(() => {
         if (cancelled) return;
-        setSwReady(true);
+        if (settleTimeout !== null) clearTimeout(settleTimeout);
+        setProxyState("ready");
       })
-      .catch((err) =>
+      .catch((err) => {
         emit("console", {
           level: "error",
           text: "SW registration failed: " + (err?.message || String(err)),
           stack: null,
-        }),
-      );
+        });
+        if (cancelled) return;
+        if (settleTimeout !== null) clearTimeout(settleTimeout);
+        if (proxy !== "require") {
+          setProxyState("unavailable");
+        }
+      });
+
+    if (proxy === "auto") {
+      settleTimeout = setTimeout(() => {
+        if (!cancelled) {
+          setProxyState("unavailable");
+        }
+      }, 8000);
+    }
+
     return () => {
       cancelled = true;
-      releaseProxyWorker();
+      if (settleTimeout !== null) clearTimeout(settleTimeout);
+      if (didAcquire) {
+        releaseProxyWorker();
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -456,6 +503,14 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   // ---- screenshot save ----------------------------------------------------
   const saveCapture = useCallback(
     async (dataUrl: string, mode: string, w: number, h: number) => {
+      if (proxyState !== "ready") {
+        emit("console", {
+          level: "error",
+          text: "Screenshot capture requires the Tendril proxy.",
+          stack: null,
+        });
+        return;
+      }
       try {
         const res = await fetch("/__capture", {
           method: "POST",
@@ -479,7 +534,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
         });
       }
     },
-    [emit],
+    [emit, proxyState],
   );
 
   // ---- messages from the iframe agent ------------------------------------
@@ -617,8 +672,14 @@ export const WebViewer: React.FC<WebViewerProps> = ({
         time: entry.time ?? 0,
       });
     }
-    navigator.serviceWorker.addEventListener("message", onMsg);
-    return () => navigator.serviceWorker.removeEventListener("message", onMsg);
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener("message", onMsg);
+    }
+    return () => {
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.removeEventListener("message", onMsg);
+      }
+    };
   }, [emit, viewerId]);
 
   // ---- imperative command stream (Ivy -> widget) --------------------------
@@ -750,15 +811,21 @@ export const WebViewer: React.FC<WebViewerProps> = ({
     // remove-parent-padding is Ivy's opt-out for full-bleed widgets: the host layout zeroes
     // its own padding when a child carries it, so the viewport reaches the container edges.
     <div className="wvr-shell remove-parent-padding" style={shellStyle}>
+      {proxyState === "unavailable" && (
+        <div className="wvr-notice" role="status">
+          Proxy unavailable — framing this page directly. Element picking, screenshots and network
+          events need the Tendril proxy.
+        </div>
+      )}
       <div className={"wvr-stage" + (dev.w ? " wvr-device" : "")}>
         {!currentUrl ? (
           <div className="wvr-empty">No URL — set the Url prop to load a page.</div>
-        ) : swReady && frameSrc ? (
+        ) : frameSrc && proxyState !== "pending" ? (
           <iframe
             ref={frameRef}
-            key={`${frameSrc}#${devKey}#${reloadKey}`}
+            key={`${frameSrc}#${devKey}#${reloadKey}#${proxyState}`}
             className="wvr-frame"
-            src={toViewUrl(frameSrc, viewerId, devKey)}
+            src={proxyState === "ready" ? toViewUrl(frameSrc, viewerId, devKey) : frameSrc}
             title="Web content"
             style={iframeStyle}
             onLoad={() => {
