@@ -5,6 +5,9 @@ import "./styles/globals.css";
 export * from "./lib/utils";
 export * from "./lib/formatters";
 export * from "./lib/logger";
+export { getMarkdownPlugins, hasMath } from "./lib/math";
+export { rawHtmlSchema, hasRawHtml } from "./lib/rawHtml";
+export { getWidth, getHeight } from "./lib/styles";
 
 // Types
 export * from "./types/density";
@@ -246,15 +249,9 @@ export type {
 export {
   parseQuestions,
   tagQuestionBlocks,
-  getMarkdownPlugins,
-  hasMath,
   prismTheme,
   normalizeLanguage,
   codeBlockPreStyle,
-  rawHtmlSchema,
-  hasRawHtml,
-  getWidth,
-  getHeight,
 } from "./components/PlanMarkdown";
 
 // Plan Diff components
