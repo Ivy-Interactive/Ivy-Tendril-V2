@@ -22,15 +22,19 @@ const config: StorybookConfig = {
   },
   viteFinal(viteConfig) {
     const existingAlias = viteConfig.resolve?.alias;
+    let alias;
+    if (Array.isArray(existingAlias)) {
+      alias = [...existingAlias, { find: "@", replacement: srcDir }];
+    } else if (existingAlias) {
+      alias = { ...(existingAlias as Record<string, string>), "@": srcDir };
+    } else {
+      alias = { "@": srcDir };
+    }
     return {
       ...viteConfig,
       resolve: {
         ...viteConfig.resolve,
-        alias: Array.isArray(existingAlias)
-          ? [...existingAlias, { find: "@", replacement: srcDir }]
-          : existingAlias
-            ? { ...existingAlias, "@": srcDir }
-            : { "@": srcDir },
+        alias,
       },
     };
   },
