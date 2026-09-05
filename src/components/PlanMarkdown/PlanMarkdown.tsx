@@ -39,6 +39,8 @@ export interface PlanMarkdownProps {
   slots?: {
     StickyContent?: React.ReactNode[];
   };
+  onLinkClick?: (href: string, event: React.MouseEvent) => void;
+  onFileClick?: (filePath: string, event: React.MouseEvent) => void;
 }
 
 interface SelectionState {
@@ -63,6 +65,8 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
   events = EMPTY_EVENTS,
   eventHandler,
   slots,
+  onLinkClick,
+  onFileClick,
 }) => {
   const contentRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
@@ -381,17 +385,42 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
       const isLocalFile =
         !!href &&
         (href.startsWith("file:") || (!/^[a-z]+:\/\//i.test(href) && !href.startsWith("#")));
-      if (isLocalFile && !dangerouslyAllowLocalFiles) {
-        return <span {...rest}>{children}</span>;
+
+      if (isLocalFile) {
+        if (onFileClick) {
+          return (
+            <a
+              href={href}
+              {...rest}
+              onClick={(e) => {
+                e.preventDefault();
+                onFileClick(href, e);
+              }}
+            >
+              {children}
+            </a>
+          );
+        }
+        if (!dangerouslyAllowLocalFiles) {
+          return <span {...rest}>{children}</span>;
+        }
       }
+
       return (
         <a
           href={href}
           {...rest}
           onClick={(e) => {
-            if (events.includes("OnLinkClick") && href) {
+            if (!href) return;
+            if (onLinkClick) {
+              e.preventDefault();
+              onLinkClick(href, e);
+            } else if (events.includes("OnLinkClick") && eventHandler) {
               e.preventDefault();
               handleLinkClick(href);
+            } else if (/^https?:\/\//i.test(href)) {
+              e.preventDefault();
+              window.open(href, "_blank", "noopener,noreferrer");
             }
           }}
         >
@@ -399,7 +428,7 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
         </a>
       );
     },
-    [events, dangerouslyAllowLocalFiles, handleLinkClick],
+    [events, eventHandler, dangerouslyAllowLocalFiles, handleLinkClick, onFileClick, onLinkClick],
   );
 
   // react-markdown's default transform strips file:// URLs. When local files
@@ -408,8 +437,10 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
   // URLs on links so the anchor renderer / OnLinkClick can handle them.
   const urlTransform = useCallback(
     (url: string, key: string) => {
-      if (dangerouslyAllowLocalFiles && isLocalFileUrl(url)) {
-        return transformLocalFileUrl(url, key);
+      if (isLocalFileUrl(url)) {
+        if (key === "href" || dangerouslyAllowLocalFiles) {
+          return transformLocalFileUrl(url, key);
+        }
       }
       return defaultUrlTransform(url);
     },

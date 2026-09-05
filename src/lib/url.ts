@@ -39,7 +39,14 @@ export function getCurrentOrigin(): string {
   if (typeof window === "undefined" || !window.location) {
     return "";
   }
-  return window.location.origin;
+  const origin = window.location.origin;
+  if (origin && origin !== "null") {
+    return origin;
+  }
+  if (window.location.protocol && window.location.host) {
+    return `${window.location.protocol}//${window.location.host}`;
+  }
+  return origin || "";
 }
 
 // Internal reference to getCurrentOrigin for use within this module
@@ -64,7 +71,13 @@ function normalizeOrigin(origin: string): string {
 
     const url = new URL(originWithProtocol);
     // url.origin already excludes default ports (443 for https, 80 for http)
-    return url.origin;
+    if (url.origin && url.origin !== "null") {
+      return url.origin;
+    }
+    if (url.protocol && url.host) {
+      return `${url.protocol}//${url.host}`;
+    }
+    return origin;
   } catch {
     // If parsing fails, return as-is
     return origin;

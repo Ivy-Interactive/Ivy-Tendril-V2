@@ -100,6 +100,7 @@ export { GraphvizRenderer } from "./components/PlanMarkdown/GraphvizRenderer";
 export { MermaidRenderer } from "./components/PlanMarkdown/MermaidRenderer";
 
 export type {
+  PlanMarkdownProps,
   MarkdownAnnotation,
   AnswerCallback,
   QuestionsAnswerContextType,
