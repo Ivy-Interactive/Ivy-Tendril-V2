@@ -36,7 +36,10 @@
       "types": "./dist/tendril.d.mts",
       "import": "./dist/tendril.mjs"
     },
-    "./diagrams": "./dist/diagrams.mjs",
+    "./diagrams": {
+      "types": "./dist/diagrams.d.mts",
+      "import": "./dist/diagrams.mjs"
+    },
     "./styles/*": "./src/styles/*",
     "./package.json": "./package.json",
     "./style.css": "./dist/style.css"

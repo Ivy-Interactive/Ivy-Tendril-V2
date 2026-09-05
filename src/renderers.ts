@@ -7,8 +7,6 @@ export {
   normalizeNestedFences,
   type MarkdownRendererProps,
 } from "./components/MarkdownRenderer";
-export { MermaidRenderer, type MermaidRendererProps } from "./components/MermaidRenderer";
-export { GraphvizRenderer, type GraphvizRendererProps } from "./components/GraphvizRenderer";
 export { JsonRenderer, type JsonRendererProps } from "./components/JsonRenderer";
 export { XmlRenderer, type XmlRendererProps } from "./components/XmlRenderer";
 export { HtmlRenderer, type HtmlRendererProps } from "./components/HtmlRenderer";

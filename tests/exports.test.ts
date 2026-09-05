@@ -31,8 +31,6 @@ describe("Package Exports", () => {
       const mod = await import("../src/index");
 
       expect(mod.MarkdownRenderer).toBeDefined();
-      expect(mod.MermaidRenderer).toBeDefined();
-      expect(mod.GraphvizRenderer).toBeDefined();
     });
 
     it("should export primary Tendril widgets", async () => {
@@ -96,8 +94,6 @@ describe("Package Exports", () => {
       const mod = await import("../src/renderers");
 
       expect(mod.MarkdownRenderer).toBeDefined();
-      expect(mod.MermaidRenderer).toBeDefined();
-      expect(mod.GraphvizRenderer).toBeDefined();
       expect(mod.JsonRenderer).toBeDefined();
       expect(mod.XmlRenderer).toBeDefined();
       expect(mod.HtmlRenderer).toBeDefined();

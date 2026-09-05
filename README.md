@@ -14,7 +14,8 @@
 
 - **`components-storybook`** — Root entry for common components, utilities, and theme provider
 - **`components-storybook/ui`** — 38+ Radix UI & shadcn/ui primitives (Button, Input, Card, Dialog, etc.)
-- **`components-storybook/renderers`** — Rich content renderers (Markdown, Mermaid, Graphviz, Code, Chat, ErrorBoundary)
+- **`components-storybook/renderers`** — Rich content renderers (Markdown, JSON, XML, HTML, Code, Chat, ErrorBoundary)
+- **`components-storybook/diagrams`** — Diagram renderers (Mermaid, Graphviz) that lazy-load mermaid and @hpcc-js/wasm-graphviz on first render
 - **`components-storybook/tendril`** — Tendril execution widgets, Shell layout, diff inspection, and dashboard analytics
 - **`components-storybook/styles/*`** — Design system tokens and stylesheets (`index.css`, `markdown-spacing.css`)
 
@@ -122,10 +123,12 @@ function DemoComponent() {
 ```tsx
 import {
   MarkdownRenderer,
-  MermaidRenderer,
-  GraphvizRenderer,
   JsonRenderer,
 } from "components-storybook/renderers";
+import {
+  MermaidRenderer,
+  GraphvizRenderer,
+} from "components-storybook/diagrams";
 
 function ContentDemo() {
   const markdownContent = "# Hello\n\nThis is **Markdown** content.";
@@ -136,8 +139,8 @@ function ContentDemo() {
   return (
     <div className="space-y-6">
       <MarkdownRenderer content={markdownContent} />
-      <MermaidRenderer chart={mermaidDiagram} />
-      <GraphvizRenderer dot={dotGraph} />
+      <MermaidRenderer content={mermaidDiagram} />
+      <GraphvizRenderer content={dotGraph} />
       <JsonRenderer data={jsonData} />
     </div>
   );
