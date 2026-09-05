@@ -1,6 +1,14 @@
 import { expect, test } from "vite-plus/test";
-import { fn } from "../src/index.ts";
+import * as UI from "../src/index.ts";
 
-test("fn", () => {
-  expect(fn()).toBe("Hello, tsdown!");
+test("exports core primitives", () => {
+  expect(UI.Button).toBeDefined();
+  expect(UI.Checkbox).toBeDefined();
+  expect(UI.Switch).toBeDefined();
+  expect(UI.Tabs).toBeDefined();
+  expect(UI.Accordion).toBeDefined();
+  expect(UI.Dialog).toBeDefined();
+  expect(UI.Slider).toBeDefined();
+  expect(UI.Toggle).toBeDefined();
+  expect(UI.toast).toBeDefined();
 });
