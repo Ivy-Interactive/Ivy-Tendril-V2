@@ -281,7 +281,7 @@ The committed baseline set is protected by a unit test floor in `tests/storybook
 
 The baselines are **rendered inside a container on purpose**. Text rasterization differs between DirectWrite (Windows), CoreText (macOS) and FreeType (Linux) on every glyph edge, which is far more than the 1% threshold allows, so a baseline generated on a developer machine can never pass on `ubuntu-latest`. Both the committed baselines and the CI comparison use `mcr.microsoft.com/playwright:v1.63.0-noble-amd64`, matching the pinned `playwright` devDependency.
 
-Refresh the baselines after an intentional design change (requires Docker):
+To refresh the baselines after an **intentional design change**, run the Docker command below (a nightly workflow handles baselines that drift as `main` moves forward):
 
 ```bash
 docker run --rm -t \
@@ -304,6 +304,14 @@ pnpm run test-storybook:visual:update
 ```
 
 On failure, annotated diffs are written to `.storybook/__image_snapshots__/__diff_output__/` (gitignored) and uploaded as the `visual-diffs` artifact by CI.
+
+#### Automated baseline refresh
+
+A nightly workflow regenerates the committed baselines in the pinned container and opens a PR when they drift. Baselines go stale when a PR lands between generation and merge — a contributor who changed nothing visual discovers the false failure — so the automation keeps the set current as `main` moves forward. The workflow also runs on demand via `workflow_dispatch` in the Actions tab.
+
+The refresh branch is `chore/visual-baseline-refresh`, force-pushed, with one long-lived PR. Only PNGs that fail the 1% threshold, or that do not yet exist, are written, so the diff is exactly the set of drifted baselines.
+
+Opening the PR requires either the Actions "Allow GitHub Actions to create and approve pull requests" setting (Settings / Actions / General / Workflow permissions), or a `BASELINE_REFRESH_TOKEN` repository secret. The branch is pushed either way, so the workflow never loses data — it fails with a clear message naming the branch and the setting.
 
 Opt a story out when it cannot produce stable pixels — a clock, a random seed, or an external site. The
 parameter works on the meta, which covers every story in the file:
