@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { PlanMarkdown } from "./PlanMarkdown";
 
 export default {
@@ -106,13 +106,9 @@ export const Default = {
   render: () => {
     const [content] = useState(SAMPLE_MARKDOWN);
 
-    const handleAnswer = (questionId: string, answer: any) => {
-      console.log("Question answered:", questionId, answer);
-    };
-
     return (
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "1.5rem" }}>
-        <PlanMarkdown content={content} onAnswer={handleAnswer} showLineNumbers={false} />
+        <PlanMarkdown id="default-story" content={content} />
       </div>
     );
   },
@@ -122,6 +118,7 @@ export const AlertsAndMath = {
   render: () => (
     <div style={{ maxWidth: 800, margin: "0 auto", padding: "1.5rem" }}>
       <PlanMarkdown
+        id="alerts-math-story"
         content={`
 > [!NOTE]
 > Informational notice.
@@ -147,11 +144,10 @@ $$\\int_0^\\infty e^{-x^2} dx = \\frac{\\sqrt{\\pi}}{2}$$
 
 export const InteractiveQuestions = {
   render: () => {
-    const [answers, setAnswers] = useState<Record<string, any>>({});
-
     return (
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "1.5rem" }}>
         <PlanMarkdown
+          id="interactive-questions-story"
           content={`
 \`\`\`questions
 questions:
@@ -165,11 +161,7 @@ questions:
         value: redis
 \`\`\`
           `}
-          onAnswer={(id, val) => setAnswers((prev) => ({ ...prev, [id]: val }))}
         />
-        <div style={{ marginTop: "1rem", fontSize: "0.875rem", color: "#666" }}>
-          Selected answers: {JSON.stringify(answers)}
-        </div>
       </div>
     );
   },

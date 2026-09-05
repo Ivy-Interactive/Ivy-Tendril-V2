@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { PlanDiffView } from "./PlanDiffView";
 
 export default {
