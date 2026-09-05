@@ -241,6 +241,16 @@ vp run storybook:preview
 
 ### Visual Catalog Structure
 
+The Storybook catalog is organized into the following sections:
+
+- **Foundation** — Theme provider, typography, design tokens
+- **UI Primitives** — All 38+ base components with variants and states
+- **Renderers** — Content rendering components (Markdown, Mermaid, Graphviz, JSON, XML, HTML)
+- **Tendril Shell** — Navigation, tabs, sidebar components
+- **Tendril Widgets** — Agent viewer, plan markdown, diff view, dashboard, web viewer
+- **Inputs & Controls** — ContentInput, BadgeSelect, SortableVerificationList
+- **Specialized Components** — Chat bubbles, error boundaries, loading states
+
 ### Storybook Testing
 
 Install Playwright browser binaries (one-time setup):
@@ -337,16 +347,6 @@ The [storybook-tests.yml](.github/workflows/storybook-tests.yml) workflow runs o
 
 - **`test`** — builds Storybook and runs the accessibility and interaction pass. It caches Playwright browsers to avoid re-downloading on every run.
 - **`visual`** — `needs: test`, so it only starts once accessibility is green. It runs in the pinned Playwright container (which already ships browsers, so no install step) and skips itself with a warning if no baselines are committed.
-
-The Storybook catalog is organized into the following sections:
-
-- **Foundation** — Theme provider, typography, design tokens
-- **UI Primitives** — All 38+ base components with variants and states
-- **Renderers** — Content rendering components (Markdown, Mermaid, Graphviz, JSON, XML, HTML)
-- **Tendril Shell** — Navigation, tabs, sidebar components
-- **Tendril Widgets** — Agent viewer, plan markdown, diff view, dashboard, web viewer
-- **Inputs & Controls** — ContentInput, BadgeSelect, SortableVerificationList
-- **Specialized Components** — Chat bubbles, error boundaries, loading states
 
 ## Development & Quality Gates
 
