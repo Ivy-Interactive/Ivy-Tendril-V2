@@ -182,6 +182,126 @@ export { getPlatformShortcut, formatShortcut } from "./lib/shortcut";
 export { TypographyContext, useTypography } from "./contexts/TypographyContext";
 export { widgetCallSiteRegistry, type CallSite } from "./types/widgets";
 
+// Shell
+export {
+  TendrilShell,
+  ShellNav,
+  ShellTabs,
+  ShellAgentButton,
+  ShellNewPlanButton,
+  ShellSettingsButton,
+  ShellSidebarHeader,
+  ShellSidebarSection,
+  ShellContext,
+  useShell,
+  BrandIcon,
+  brandIcons,
+  type ShellContextValue,
+  type ShellBadgeDto,
+  type ShellNavItemDto,
+  type ShellSectionItemDto,
+  type ShellTabDto,
+  type ShellWidgetProps,
+} from "./components/Shell/index.ts";
+
 export function fn() {
   return "Hello, tsdown!";
 }
+
+// Plan Markdown components and sub-components
+export {
+  PlanMarkdown,
+  DraftMarkdown,
+  AlertBlockquote,
+  AnnotationPopover,
+  AddAnnotationPopover,
+  EditAnnotationPopover,
+  SelectionToolbar,
+  QuestionsCallout,
+  SearchOverlay,
+  BlockHandler,
+  CodeBlock,
+  GraphvizRenderer,
+  MermaidRenderer,
+  ImageRenderer,
+} from "./components/PlanMarkdown";
+
+export type {
+  MarkdownAnnotation,
+  AnswerCallback,
+  QuestionsAnswerContextType,
+  PlanQuestion,
+  QuestionOption,
+  QuestionsBlock,
+  ParsedQuestions,
+} from "./components/PlanMarkdown";
+
+export {
+  parseQuestions,
+  tagQuestionBlocks,
+  getMarkdownPlugins,
+  hasMath,
+  prismTheme,
+  normalizeLanguage,
+  codeBlockPreStyle,
+  rawHtmlSchema,
+  hasRawHtml,
+  getWidth,
+  getHeight,
+} from "./components/PlanMarkdown";
+
+// Plan Diff components
+export {
+  PlanDiffView,
+  getLanguageFromFilePath,
+  useIsNarrow,
+  NARROW_BREAKPOINT,
+} from "./components/PlanDiffView";
+
+export type { PlanDiffViewProps, DraftComment } from "./components/PlanDiffView";
+
+// Inputs & Form Controls
+export { ContentInput } from "./components/ContentInput/index.ts";
+export type {
+  ContentInputProps,
+  AttachedFile,
+  VoiceStatus,
+  VoiceRecorderOptions,
+} from "./components/ContentInput/index.ts";
+export { VoiceRecorder } from "./components/ContentInput/index.ts";
+
+export { BadgeSelect } from "./components/BadgeSelect/index.ts";
+export type { BadgeSelectOption, BadgeSelectProps } from "./components/BadgeSelect/index.ts";
+
+export { SortableVerificationList } from "./components/SortableVerificationList/index.ts";
+export type {
+  VerificationItem,
+  SortableVerificationListProps,
+} from "./components/SortableVerificationList/index.ts";
+
+// Tendril Dashboard components
+export {
+  TendrilDashboard,
+  ActivityGrid,
+  PillBars,
+  TrendChart,
+  HoverTip,
+  useHoverTip,
+  hasSlotContent,
+  rampLevel,
+  niceTicks,
+  formatCurrencyTick,
+  formatCountTick,
+} from "./components/TendrilDashboard/index.ts";
+export type {
+  DashboardKpiDto,
+  DashboardMonthValueDto,
+  DashboardActivityMonthDto,
+  DashboardJobDto,
+  DashboardTrendDto,
+  TendrilDashboardProps,
+} from "./components/TendrilDashboard/index.ts";
+
+// Web Viewer component
+export { WebViewer } from "./components/WebViewer/index.ts";
+export type { WebViewerProps } from "./components/WebViewer/index.ts";

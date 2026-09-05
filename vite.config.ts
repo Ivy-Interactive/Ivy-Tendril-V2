@@ -19,16 +19,12 @@ export default defineConfig({
     },
     exports: true,
   },
-  lint: {
-    options: {
-      typeAware: true,
-      typeCheck: true,
-    },
-  },
+  lint: {},
   fmt: {},
   test: {
     include: ["**/*.test.ts", "**/*.test.tsx"],
     environment: "happy-dom",
+    globals: true,
     setupFiles: ["./tests/setup.ts"],
   },
 });

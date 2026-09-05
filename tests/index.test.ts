@@ -1,5 +1,18 @@
 import { expect, test } from "vite-plus/test";
 import * as UI from "../src/index.ts";
+import {
+  PlanMarkdown,
+  PlanDiffView,
+  ContentInput,
+  BadgeSelect,
+  SortableVerificationList,
+  TendrilDashboard,
+  ActivityGrid,
+  PillBars,
+  TrendChart,
+  HoverTip,
+  WebViewer,
+} from "../src/index.ts";
 
 test("library exports core foundation symbols", () => {
   expect(typeof UI.cn).toBe("function");
@@ -21,6 +34,17 @@ test("exports core primitives", () => {
   expect(UI.toast).toBeDefined();
 });
 
+test("exports PlanMarkdown and PlanDiffView", () => {
+  expect(PlanMarkdown).toBeDefined();
+  expect(PlanDiffView).toBeDefined();
+});
+
+test("exports form and input components", () => {
+  expect(ContentInput).toBeDefined();
+  expect(BadgeSelect).toBeDefined();
+  expect(SortableVerificationList).toBeDefined();
+});
+
 test("library exports AgentViewer and TendrilProcessViewer components and utilities", () => {
   expect(typeof UI.AgentViewer).toBe("function");
   expect(typeof UI.TendrilProcessViewer).toBe("function");
@@ -34,4 +58,13 @@ test("library exports AgentViewer and TendrilProcessViewer components and utilit
   expect(typeof UI.deriveStatus).toBe("function");
   expect(typeof UI.useAutoScroll).toBe("function");
   expect(typeof UI.inputSummary).toBe("function");
+});
+
+test("exports TendrilDashboard and WebViewer components", () => {
+  expect(TendrilDashboard).toBeDefined();
+  expect(ActivityGrid).toBeDefined();
+  expect(PillBars).toBeDefined();
+  expect(TrendChart).toBeDefined();
+  expect(HoverTip).toBeDefined();
+  expect(WebViewer).toBeDefined();
 });
