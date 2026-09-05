@@ -182,7 +182,11 @@ describe("Component Density Cascade", () => {
 
     it("accepts a Densities enum value directly", () => {
       render(
-        React.createElement(Badge, { density: Densities.Large, "data-testid": "badge" }, "Badge"),
+        React.createElement(
+          Badge,
+          { density: Densities.Large, "data-testid": "badge" } as any,
+          "Badge",
+        ),
       );
 
       const badge = screen.getByTestId("badge");
