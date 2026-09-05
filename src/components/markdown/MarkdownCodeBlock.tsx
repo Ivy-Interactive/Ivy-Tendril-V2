@@ -1,6 +1,6 @@
-import React, { memo, useMemo, Suspense } from "react";
+import React, { memo, Suspense } from "react";
 import { cn } from "@/lib/utils";
-import { createPrismTheme } from "@/lib/prismTheme";
+import { prismTheme } from "@/lib/prismTheme";
 import { useTypography } from "@/contexts/TypographyContext";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
@@ -49,7 +49,7 @@ function CodeBlockChromeWithCopy({
 const MermaidRenderer = lazyWithRetry(() => import("../MermaidRenderer"));
 const GraphvizRenderer = lazyWithRetry(() => import("../GraphvizRenderer"));
 
-interface CodeBlockProps {
+interface MarkdownCodeBlockProps {
   className?: string;
   children: React.ReactNode;
   inline?: boolean;
@@ -65,16 +65,14 @@ function getNodeText(node: React.ReactNode): string {
   return "";
 }
 
-export const CodeBlock = memo(
-  ({ className, children, inline, hasCodeBlocks, hasMermaid, hasGraphviz }: CodeBlockProps) => {
+export const MarkdownCodeBlock = memo(
+  ({ className, children, inline, hasCodeBlocks, hasMermaid, hasGraphviz }: MarkdownCodeBlockProps) => {
     const match = /language-(\w+)/.exec(className || "");
     const content = getNodeText(children).replace(/\n$/, "");
     const isTerminal = match && match[1] === "terminal";
     const isMermaid = match && match[1] === "mermaid";
     const isGraphviz = match && (match[1] === "graphviz" || match[1] === "dot");
 
-    // Create dynamic theme that uses CSS variables for dynamic theming
-    const dynamicTheme = useMemo(() => createPrismTheme(), []);
     const typography = useTypography();
 
     if (!inline && hasCodeBlocks) {
@@ -180,7 +178,7 @@ export const CodeBlock = memo(
           <CodeBlockChromeWithCopy textToCopy={content}>
             <SyntaxHighlighter
               language={language}
-              style={dynamicTheme}
+              style={prismTheme}
               customStyle={{
                 ...markdownCodeBlockPreStyle,
                 wordBreak: "normal",
@@ -199,4 +197,4 @@ export const CodeBlock = memo(
   },
 );
 
-CodeBlock.displayName = "CodeBlock";
+MarkdownCodeBlock.displayName = "MarkdownCodeBlock";
