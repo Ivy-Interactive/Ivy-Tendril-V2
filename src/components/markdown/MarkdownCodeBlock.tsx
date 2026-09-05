@@ -1,6 +1,7 @@
 import React, { memo, Suspense } from "react";
 import { cn } from "@/lib/utils";
 import { prismTheme } from "@/lib/prismTheme";
+import { extractTextContent } from "@/lib/markdown-utils";
 import { useTypography } from "@/contexts/TypographyContext";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
@@ -58,13 +59,6 @@ interface MarkdownCodeBlockProps {
   hasGraphviz: boolean;
 }
 
-function getNodeText(node: React.ReactNode): string {
-  if (typeof node === "string") return node;
-  if (typeof node === "number") return node.toString();
-  if (Array.isArray(node)) return node.map(getNodeText).join("");
-  return "";
-}
-
 export const MarkdownCodeBlock = memo(
   ({
     className,
@@ -75,7 +69,7 @@ export const MarkdownCodeBlock = memo(
     hasGraphviz,
   }: MarkdownCodeBlockProps) => {
     const match = /language-(\w+)/.exec(className || "");
-    const content = getNodeText(children).replace(/\n$/, "");
+    const content = extractTextContent(children).replace(/\n$/, "");
     const isTerminal = match && match[1] === "terminal";
     const isMermaid = match && match[1] === "mermaid";
     const isGraphviz = match && (match[1] === "graphviz" || match[1] === "dot");
