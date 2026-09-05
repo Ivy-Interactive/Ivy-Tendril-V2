@@ -139,7 +139,12 @@ test("all bare imports in src/ are declared in package.json", () => {
     while ((match = importRegex.exec(content)) !== null) {
       const importPath = match[1];
       // Skip relative imports (starting with . or /)
-      if (!importPath.startsWith(".") && !importPath.startsWith("/")) {
+      // Skip path aliases (starting with @/)
+      if (
+        !importPath.startsWith(".") &&
+        !importPath.startsWith("/") &&
+        !importPath.startsWith("@/")
+      ) {
         imports.push(importPath);
       }
     }
@@ -148,6 +153,16 @@ test("all bare imports in src/ are declared in package.json", () => {
   };
 
   const getPackageName = (importPath: string): string => {
+    // Handle bare type imports from @types packages
+    // e.g., "mdast" is provided by @types/mdast
+    const typesPackageMap: Record<string, string> = {
+      mdast: "@types/mdast",
+    };
+
+    if (typesPackageMap[importPath]) {
+      return typesPackageMap[importPath];
+    }
+
     // For scoped packages like @radix-ui/react-dialog, take @scope/package
     if (importPath.startsWith("@")) {
       const parts = importPath.split("/");
