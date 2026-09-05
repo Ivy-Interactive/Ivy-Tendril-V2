@@ -5,14 +5,18 @@ import type { VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { toggleVariant } from "./toggle-variant";
 import { Densities } from "@/types/density";
+import { useDensity } from "@/contexts/density-context";
 const Toggle = React.forwardRef<
   React.ElementRef<typeof TogglePrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof TogglePrimitive.Root> &
     VariantProps<typeof toggleVariant> & {
       dataTestId?: string;
     }
->(({ className, variant, density = Densities.Medium, dataTestId, ...props }, ref) => {
-  let toggleClass = toggleVariant({ variant, density, className });
+>(({ className, variant, density, dataTestId, ...props }, ref) => {
+  const contextDensity = useDensity();
+  const effectiveDensity = density ?? contextDensity;
+
+  let toggleClass = toggleVariant({ variant, density: effectiveDensity, className });
   const isInvalid = className?.includes("border-destructive") || className?.includes("bg-red-50");
   if (isInvalid) {
     toggleClass = toggleClass

@@ -13,6 +13,7 @@ import {
   calendarDayVariant,
 } from "./calendar-variant";
 import { Densities } from "@/types/density";
+import { useDensityScale } from "@/contexts/density-context";
 
 export function Calendar({
   className,
@@ -22,19 +23,20 @@ export function Calendar({
   buttonVariant = "ghost",
   formatters,
   components,
-  density = Densities.Medium,
+  density,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"];
   density?: Densities;
 }) {
+  const { density: effectiveDensity } = useDensityScale(density);
   const defaultClassNames = getDefaultClassNames();
 
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        calendarVariant({ density }),
+        calendarVariant({ density: effectiveDensity }),
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className,
@@ -54,17 +56,20 @@ export function Calendar({
         ),
         button_previous: cn(
           buttonVariantStyles({ variant: buttonVariant }),
-          calendarButtonVariant({ density }),
+          calendarButtonVariant({ density: effectiveDensity }),
           "pointer-events-auto",
           defaultClassNames.button_previous,
         ),
         button_next: cn(
           buttonVariantStyles({ variant: buttonVariant }),
-          calendarButtonVariant({ density }),
+          calendarButtonVariant({ density: effectiveDensity }),
           "pointer-events-auto",
           defaultClassNames.button_next,
         ),
-        month_caption: cn(calendarCaptionVariant({ density }), defaultClassNames.month_caption),
+        month_caption: cn(
+          calendarCaptionVariant({ density: effectiveDensity }),
+          defaultClassNames.month_caption,
+        ),
         dropdowns: cn(
           "w-full flex items-center text-sm font-medium justify-center h-(--cell-size) gap-1.5",
           defaultClassNames.dropdowns,
@@ -84,7 +89,7 @@ export function Calendar({
         table: "w-full border-collapse",
         weekdays: cn("flex", defaultClassNames.weekdays),
         weekday: cn(
-          calendarWeekdayVariant({ density }),
+          calendarWeekdayVariant({ density: effectiveDensity }),
           "flex-1", // Ensure headers take equal space
           defaultClassNames.weekday,
         ),
@@ -131,7 +136,7 @@ export function Calendar({
 
           return <ChevronDownIcon className={cn("size-4", className)} {...props} />;
         },
-        DayButton: (props) => <CalendarDayButton {...props} density={density} />,
+        DayButton: (props) => <CalendarDayButton {...props} density={effectiveDensity} />,
         WeekNumber: ({ children, ...props }) => {
           return (
             <td {...props} className="flex-none">

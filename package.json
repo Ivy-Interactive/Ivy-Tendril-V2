@@ -48,11 +48,11 @@
     "build": "vp pack",
     "dev": "vp pack --watch",
     "test": "vp test",
-    "lint": "vp check",
-    "check": "vp check",
+    "lint": "node scripts/patch-tsgolint-win.mjs && vp check",
+    "check": "node scripts/patch-tsgolint-win.mjs && vp check",
     "format": "vp fmt",
-    "storybook": "storybook dev --ci --host 127.0.0.1",
-    "storybook:dev": "storybook dev --ci --host 127.0.0.1",
+    "storybook": "node scripts/storybook-dev.mjs",
+    "storybook:dev": "node scripts/storybook-dev.mjs",
     "storybook:build": "storybook build -o dist-storybook",
     "storybook:preview": "vp preview --outDir dist-storybook --port 6006",
     "build-storybook": "storybook build",
@@ -65,7 +65,7 @@
     "test-storybook:visual:ci": "concurrently -k -s first -n \"SB,VISUAL\" -c \"magenta,cyan\" \"http-server storybook-static -a 127.0.0.1 --port 6006 --silent\" \"wait-on tcp:127.0.0.1:6006 && cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook\"",
     "test-storybook:visual:update:ci": "concurrently -k -s first -n \"SB,VISUAL\" -c \"magenta,cyan\" \"http-server storybook-static -a 127.0.0.1 --port 6006 --silent\" \"wait-on tcp:127.0.0.1:6006 && cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook --updateSnapshot\"",
     "prepublishOnly": "vp run build",
-    "prepare": "vp config"
+    "prepare": "vp config && node scripts/patch-tsgolint-win.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

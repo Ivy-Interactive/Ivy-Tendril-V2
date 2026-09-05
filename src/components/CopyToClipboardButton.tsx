@@ -53,7 +53,8 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
   className,
 }) => {
   const [copied, setCopied] = useState(false);
-  const effectiveDensity = density ?? useDensity();
+  const contextDensity = useDensity();
+  const effectiveDensity = density ?? contextDensity;
 
   const handleCopy = async () => {
     try {
