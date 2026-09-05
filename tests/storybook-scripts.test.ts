@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 
 describe("Storybook Scripts Configuration", () => {
-  const packageJsonPath = new URL("../package.json", import.meta.url);
+  const rootDir = resolve(__dirname, "..");
+  const packageJsonPath = resolve(rootDir, "package.json");
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-  const readmePath = new URL("../README.md", import.meta.url);
+  const readmePath = resolve(rootDir, "README.md");
   const readmeContent = readFileSync(readmePath, "utf8");
 
   it("defines test-storybook:install script with playwright install chromium", () => {
