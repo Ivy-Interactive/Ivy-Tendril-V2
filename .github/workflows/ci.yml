@@ -7,6 +7,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -27,8 +31,8 @@ jobs:
       - name: Check merge resolutions
         run: node scripts/verify-merge-resolution.mjs --range origin/${{ github.base_ref }}
 
-  quality-gates:
-    name: Quality Gates
+  lint:
+    name: Lint & Types
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -40,16 +44,37 @@ jobs:
           node-version: "24"
           cache: true
 
-      - name: Install dependencies
-        run: vp install
-
-      - name: Quality & Type Check
+      - name: Lint & Type Check
         run: vp check
 
-      - name: Package Build
-        if: always()
+  build:
+    name: Package Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: "24"
+          cache: true
+
+      - name: Build package
         run: vp pack
 
-      - name: Unit Tests
-        if: always()
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: "24"
+          cache: true
+
+      - name: Run tests
         run: vp test
