@@ -1,7 +1,7 @@
+use crate::error::Result;
+use chrono::Utc;
 use std::collections::HashMap;
 use std::path::Path;
-use chrono::Utc;
-use crate::error::Result;
 
 const FIRMWARE_TEMPLATE: &str = r#"---
 {HEADER}
@@ -58,10 +58,7 @@ tendril promptware delete-memory {PROMPTWARE_NAME} <filename>.md
 {PROGRAM}
 "#;
 
-pub fn compile_firmware(
-    program_folder: &Path,
-    values: &HashMap<String, String>,
-) -> Result<String> {
+pub fn compile_firmware(program_folder: &Path, values: &HashMap<String, String>) -> Result<String> {
     let mut header_values = values.clone();
     if !header_values.contains_key("CurrentTime") {
         header_values.insert("CurrentTime".to_string(), Utc::now().to_rfc3339());

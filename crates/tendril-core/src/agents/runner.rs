@@ -1,18 +1,15 @@
+use crate::agents::providers::AgentProcessSpec;
+use crate::error::{Result, TendrilError};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-use crate::agents::providers::AgentProcessSpec;
-use crate::error::{Result, TendrilError};
 
 pub struct AgentOutputEvent {
     pub raw_line: String,
     pub is_stderr: bool,
 }
 
-pub async fn run_agent_process<F>(
-    spec: AgentProcessSpec,
-    mut on_output_line: F,
-) -> Result<i32>
+pub async fn run_agent_process<F>(spec: AgentProcessSpec, mut on_output_line: F) -> Result<i32>
 where
     F: FnMut(AgentOutputEvent) + Send + 'static,
 {
@@ -27,10 +24,7 @@ where
     res
 }
 
-async fn run_agent_process_inner<F>(
-    spec: AgentProcessSpec,
-    on_output_line: &mut F,
-) -> Result<i32>
+async fn run_agent_process_inner<F>(spec: AgentProcessSpec, on_output_line: &mut F) -> Result<i32>
 where
     F: FnMut(AgentOutputEvent) + Send + 'static,
 {
@@ -50,9 +44,9 @@ where
         cmd.env(k, v);
     }
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| TendrilError::Agent(format!("Failed to spawn agent '{}': {}", spec.command, e)))?;
+    let mut child = cmd.spawn().map_err(|e| {
+        TendrilError::Agent(format!("Failed to spawn agent '{}': {}", spec.command, e))
+    })?;
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -73,7 +67,12 @@ where
         tokio::spawn(async move {
             let mut reader = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                let _ = tx.send(AgentOutputEvent { raw_line: line, is_stderr: false }).await;
+                let _ = tx
+                    .send(AgentOutputEvent {
+                        raw_line: line,
+                        is_stderr: false,
+                    })
+                    .await;
             }
         });
     }
@@ -83,7 +82,12 @@ where
         tokio::spawn(async move {
             let mut reader = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = reader.next_line().await {
-                let _ = tx.send(AgentOutputEvent { raw_line: line, is_stderr: true }).await;
+                let _ = tx
+                    .send(AgentOutputEvent {
+                        raw_line: line,
+                        is_stderr: true,
+                    })
+                    .await;
             }
         });
     }

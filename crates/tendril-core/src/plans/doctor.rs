@@ -1,6 +1,6 @@
-use std::path::Path;
 use crate::error::Result;
 use crate::plans::reader::read_plan_yaml;
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct PlanDoctorIssue {
@@ -11,7 +11,10 @@ pub struct PlanDoctorIssue {
 
 pub fn check_plan_health(plan_folder: &Path) -> Vec<PlanDoctorIssue> {
     let mut issues = Vec::new();
-    let folder_name = plan_folder.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let folder_name = plan_folder
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
 
     let yaml_path = plan_folder.join("plan.yaml");
     if !yaml_path.exists() {

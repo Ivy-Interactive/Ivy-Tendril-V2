@@ -1,9 +1,9 @@
-use std::path::Path;
-use chrono::Utc;
 use crate::error::{Result, TendrilError};
 use crate::models::{PlanFile, PlanStatus, PlanVerificationEntry, PlanYaml};
 use crate::plans::helpers::{allocate_plan_id, to_safe_title};
 use crate::plans::reader::read_plan_file;
+use chrono::Utc;
+use std::path::Path;
 
 pub fn write_plan_yaml(plan_folder: &Path, plan: &PlanYaml) -> Result<()> {
     let yaml_path = plan_folder.join("plan.yaml");
@@ -36,7 +36,10 @@ pub fn create_plan(plans_dir: &Path, opts: CreatePlanOptions) -> Result<PlanFile
     let plan_folder = plans_dir.join(&folder_name);
 
     if plan_folder.exists() {
-        return Err(TendrilError::Plan(format!("Plan directory already exists: {}", plan_folder.display())));
+        return Err(TendrilError::Plan(format!(
+            "Plan directory already exists: {}",
+            plan_folder.display()
+        )));
     }
 
     std::fs::create_dir_all(&plan_folder)?;

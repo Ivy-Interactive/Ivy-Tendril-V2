@@ -4,16 +4,25 @@ use tendril_core::models::{
 };
 use tendril_core::plans::{
     add_recommendation, allocate_plan_id, create_plan, get_revision, list_recommendations,
-    read_plan_file, set_recommendation_state, to_safe_title,
-    write_revision, CreatePlanOptions, PlanCompletionGuard,
+    read_plan_file, set_recommendation_state, to_safe_title, write_revision, CreatePlanOptions,
+    PlanCompletionGuard,
 };
 
 #[test]
 fn test_helpers_allocate_id_and_safe_title() {
-    assert_eq!(to_safe_title("Fix Login & Auth / Flow!"), "FixLoginAuthFlow");
-    assert_eq!(to_safe_title("   Spaces   Everywhere   "), "SpacesEverywhere");
+    assert_eq!(
+        to_safe_title("Fix Login & Auth / Flow!"),
+        "FixLoginAuthFlow"
+    );
+    assert_eq!(
+        to_safe_title("   Spaces   Everywhere   "),
+        "SpacesEverywhere"
+    );
 
-    let test_dir = std::env::temp_dir().join(format!("tendril-alloc-test-{}", uuid::Uuid::new_v4().simple()));
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-alloc-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
     // Initially should allocate 00001
@@ -32,7 +41,10 @@ fn test_helpers_allocate_id_and_safe_title() {
 
 #[test]
 fn test_create_plan_and_revisions_lifecycle() {
-    let test_dir = std::env::temp_dir().join(format!("tendril-plan-test-{}", uuid::Uuid::new_v4().simple()));
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plan-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
     let opts = CreatePlanOptions {
@@ -66,19 +78,27 @@ fn test_create_plan_and_revisions_lifecycle() {
     assert!(plan_folder.join("Artifacts").exists());
 
     // Write revisions
-    let rev1_num = write_revision(plan_folder, "# Dark Mode Design\nFirst draft.").expect("Failed to write rev 1");
+    let rev1_num = write_revision(plan_folder, "# Dark Mode Design\nFirst draft.")
+        .expect("Failed to write rev 1");
     assert_eq!(rev1_num, 1);
     assert_eq!(
         get_revision(plan_folder, Some(1)).unwrap(),
         "# Dark Mode Design\nFirst draft."
     );
 
-    let rev2_num = write_revision(plan_folder, "# Dark Mode Design\nSecond draft with feedback.").expect("Failed to write rev 2");
+    let rev2_num = write_revision(
+        plan_folder,
+        "# Dark Mode Design\nSecond draft with feedback.",
+    )
+    .expect("Failed to write rev 2");
     assert_eq!(rev2_num, 2);
 
     // Latest revision should return rev 2
     let latest_content = get_revision(plan_folder, None).expect("Failed to get latest revision");
-    assert_eq!(latest_content, "# Dark Mode Design\nSecond draft with feedback.");
+    assert_eq!(
+        latest_content,
+        "# Dark Mode Design\nSecond draft with feedback."
+    );
 
     // Reading plan file should now show 2 revisions and the latest content
     let reloaded = read_plan_file(plan_folder).expect("Failed to reload plan");
@@ -90,7 +110,10 @@ fn test_create_plan_and_revisions_lifecycle() {
 
 #[test]
 fn test_plan_recommendations() {
-    let test_dir = std::env::temp_dir().join(format!("tendril-rec-test-{}", uuid::Uuid::new_v4().simple()));
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-rec-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
     let opts = CreatePlanOptions {
@@ -116,7 +139,8 @@ fn test_plan_recommendations() {
         "Add Index",
         "Add an index to the jobs table for fast filtering",
         Some("High"),
-    ).expect("Failed to add recommendation");
+    )
+    .expect("Failed to add recommendation");
 
     let recs = list_recommendations(plan_folder).unwrap();
     assert_eq!(recs.len(), 1);
@@ -124,16 +148,16 @@ fn test_plan_recommendations() {
     assert_eq!(recs[0].state, RecommendationStatus::PENDING);
 
     // Duplicate title should error
-    assert!(add_recommendation(
-        plan_folder,
-        "Add Index",
-        "Duplicate title",
-        None,
-    ).is_err());
+    assert!(add_recommendation(plan_folder, "Add Index", "Duplicate title", None,).is_err());
 
     // Accept recommendation
-    set_recommendation_state(plan_folder, "Add Index", RecommendationStatus::ACCEPTED, None)
-        .expect("Failed to set recommendation state");
+    set_recommendation_state(
+        plan_folder,
+        "Add Index",
+        RecommendationStatus::ACCEPTED,
+        None,
+    )
+    .expect("Failed to set recommendation state");
 
     let recs_accepted = list_recommendations(plan_folder).unwrap();
     assert_eq!(recs_accepted[0].state, RecommendationStatus::ACCEPTED);
@@ -144,11 +168,15 @@ fn test_plan_recommendations() {
         "Add Index",
         RecommendationStatus::DECLINED,
         Some("Not needed right now"),
-    ).expect("Failed to decline recommendation");
+    )
+    .expect("Failed to decline recommendation");
 
     let recs_declined = list_recommendations(plan_folder).unwrap();
     assert_eq!(recs_declined[0].state, RecommendationStatus::DECLINED);
-    assert_eq!(recs_declined[0].decline_reason.as_deref(), Some("Not needed right now"));
+    assert_eq!(
+        recs_declined[0].decline_reason.as_deref(),
+        Some("Not needed right now")
+    );
 
     let _ = std::fs::remove_dir_all(test_dir);
 }
@@ -185,7 +213,8 @@ fn test_plan_completion_guard() {
     assert!(res.is_err());
 
     // Transitioning to Completed with allow_failed_verifications=true should succeed with a warning and set partial_delivery
-    let res_allowed = PlanCompletionGuard::apply_state(&mut plan, PlanStatus::Completed, true, "00001");
+    let res_allowed =
+        PlanCompletionGuard::apply_state(&mut plan, PlanStatus::Completed, true, "00001");
     assert!(res_allowed.is_ok());
     let warning = res_allowed.unwrap();
     assert!(warning.is_some());

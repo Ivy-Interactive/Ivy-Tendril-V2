@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use crate::state::AppState;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
 use axum::response::Response;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use crate::state::AppState;
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WSClientMessage {
@@ -21,10 +21,7 @@ pub struct WSServerMessage {
     pub message: Option<String>,
 }
 
-pub async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<AppState>>,
-) -> Response {
+pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
@@ -49,7 +46,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         step: None,
                         message: Some("Job simulation / execution started".to_string()),
                     };
-                    let _ = state.ws_tx.send(serde_json::to_string(&notify_msg).unwrap_or_default());
+                    let _ = state
+                        .ws_tx
+                        .send(serde_json::to_string(&notify_msg).unwrap_or_default());
                 }
                 "approve_plan" => {
                     let notify_msg = WSServerMessage {
@@ -57,7 +56,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         step: None,
                         message: Some("Plan approved".to_string()),
                     };
-                    let _ = state.ws_tx.send(serde_json::to_string(&notify_msg).unwrap_or_default());
+                    let _ = state
+                        .ws_tx
+                        .send(serde_json::to_string(&notify_msg).unwrap_or_default());
                 }
                 _ => {}
             }

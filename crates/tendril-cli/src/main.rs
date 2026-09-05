@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 use tendril_core::config::get_default_tendril_home;
 
 mod commands;
@@ -52,6 +52,9 @@ enum Commands {
     Serve {
         #[arg(short, long, default_value = "5010")]
         port: u16,
+
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
     },
 
     #[command(about = "Run Model Context Protocol (MCP) server over stdio")]
@@ -67,13 +70,19 @@ async fn main() -> anyhow::Result<()> {
         Commands::Plan(cmd) => commands::plan::handle_plan_command(cmd, &tendril_home)?,
         Commands::Job(cmd) => commands::job::handle_job_command(cmd, &tendril_home).await?,
         Commands::Project(cmd) => commands::project::handle_project_command(cmd, &tendril_home)?,
-        Commands::Verification(cmd) => commands::verification::handle_verification_command(cmd, &tendril_home)?,
-        Commands::Promptware(cmd) => commands::promptware::handle_promptware_command(cmd, &tendril_home).await?,
+        Commands::Verification(cmd) => {
+            commands::verification::handle_verification_command(cmd, &tendril_home)?
+        }
+        Commands::Promptware(cmd) => {
+            commands::promptware::handle_promptware_command(cmd, &tendril_home).await?
+        }
         Commands::Config(cmd) => commands::config::handle_config_command(cmd, &tendril_home)?,
         Commands::Doctor => commands::doctor::handle_doctor(&tendril_home)?,
         Commands::Version => println!("tendril v{}", env!("CARGO_PKG_VERSION")),
         Commands::Models => commands::models::handle_models()?,
-        Commands::Serve { port } => commands::serve::handle_serve(&tendril_home, port).await?,
+        Commands::Serve { port, host } => {
+            commands::serve::handle_serve(&tendril_home, port, Some(host)).await?
+        }
         Commands::Mcp => commands::mcp::handle_mcp()?,
     }
 

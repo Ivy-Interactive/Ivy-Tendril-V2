@@ -1,10 +1,13 @@
+use crate::error::Result;
+use chrono::Utc;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use chrono::Utc;
-use crate::error::Result;
 
 pub fn get_job_log_path(tendril_home: &Path, job_id: &str) -> PathBuf {
-    tendril_home.join("Logs").join("Jobs").join(format!("{}.md", job_id))
+    tendril_home
+        .join("Logs")
+        .join("Jobs")
+        .join(format!("{}.md", job_id))
 }
 
 pub fn ensure_log_dirs(tendril_home: &Path) -> Result<()> {
@@ -14,7 +17,10 @@ pub fn ensure_log_dirs(tendril_home: &Path) -> Result<()> {
 }
 
 pub fn append_to_raw_log(tendril_home: &Path, job_id: &str, line: &str) -> Result<()> {
-    let path = tendril_home.join("Logs").join("Jobs").join(format!("{}.raw.jsonl", job_id));
+    let path = tendril_home
+        .join("Logs")
+        .join("Jobs")
+        .join(format!("{}.raw.jsonl", job_id));
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -27,7 +33,10 @@ pub fn append_to_raw_log(tendril_home: &Path, job_id: &str, line: &str) -> Resul
 }
 
 pub fn append_to_eventwire(tendril_home: &Path, job_id: &str, event_json: &str) -> Result<()> {
-    let path = tendril_home.join("Logs").join("Jobs").join(format!("{}.eventwire.jsonl", job_id));
+    let path = tendril_home
+        .join("Logs")
+        .join("Jobs")
+        .join(format!("{}.eventwire.jsonl", job_id));
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -48,7 +57,11 @@ pub fn append_agent_log(
     ensure_log_dirs(tendril_home)?;
     let log_path = get_job_log_path(tendril_home, job_id);
 
-    let mut content = format!("\n\n## Agent Log [{}]\n**Action:** {}\n", Utc::now().to_rfc3339(), action);
+    let mut content = format!(
+        "\n\n## Agent Log [{}]\n**Action:** {}\n",
+        Utc::now().to_rfc3339(),
+        action
+    );
     if let Some(s) = summary {
         content.push_str(&format!("\n{}\n", s));
     }

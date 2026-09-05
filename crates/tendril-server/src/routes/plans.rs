@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use crate::state::AppState;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -6,14 +6,13 @@ use axum::Json;
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
+use std::sync::Arc;
 use tendril_core::db::{get_plans, open_database, sync_plan};
 use tendril_core::models::{PlanStatus, PlanVerificationEntry};
 use tendril_core::plans::{
-    create_plan, get_revision,
-    read_plan_file, read_plan_yaml, resolve_plan_folder, write_plan_yaml,
-    write_revision, CreatePlanOptions, PlanCompletionGuard,
+    create_plan, get_revision, read_plan_file, read_plan_yaml, resolve_plan_folder,
+    write_plan_yaml, write_revision, CreatePlanOptions, PlanCompletionGuard,
 };
-use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
 pub struct PlanQuery {

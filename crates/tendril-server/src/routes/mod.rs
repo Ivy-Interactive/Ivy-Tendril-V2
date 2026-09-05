@@ -8,26 +8,54 @@ pub mod projects;
 pub mod verifications;
 pub mod ws;
 
-use std::sync::Arc;
+use crate::state::AppState;
+use axum::http::{HeaderValue, Method};
 use axum::routing::{get, post, put};
 use axum::Router;
-use tower_http::cors::{Any, CorsLayer};
-use crate::state::AppState;
+use std::sync::Arc;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 pub fn create_router(state: Arc<AppState>) -> Router {
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::predicate(|origin: &HeaderValue, _| {
+            if let Ok(s) = origin.to_str() {
+                s == "tauri://localhost"
+                    || s == "http://localhost"
+                    || s == "http://127.0.0.1"
+                    || s.starts_with("http://localhost:")
+                    || s.starts_with("http://127.0.0.1:")
+            } else {
+                false
+            }
+        }))
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::UPGRADE,
+            axum::http::header::CONNECTION,
+        ]);
 
-    Router::new()
-        // Diagnostics
-        .route("/api/ping", get(ping::ping_handler))
-        .route("/api/health", get(health::health_handler))
+    let protected = Router::new()
         // Plans
-        .route("/api/plans", get(plans::list_plans).post(plans::create_plan_handler))
-        .route("/api/plans/:id", get(plans::get_plan).put(plans::update_plan_field))
-        .route("/api/plans/:id/revisions", get(plans::get_revision_handler).post(plans::write_revision_handler))
+        .route(
+            "/api/plans",
+            get(plans::list_plans).post(plans::create_plan_handler),
+        )
+        .route(
+            "/api/plans/:id",
+            get(plans::get_plan).put(plans::update_plan_field),
+        )
+        .route(
+            "/api/plans/:id/revisions",
+            get(plans::get_revision_handler).post(plans::write_revision_handler),
+        )
         // Inbox
         .route("/api/inbox", post(inbox::post_inbox))
         // Jobs
@@ -42,9 +70,22 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/projects/:name", get(projects::get_project))
         .route("/api/verifications", get(verifications::list_verifications))
         // Config
-        .route("/api/config", get(config::get_config_handler).put(config::put_config_handler))
+        .route(
+            "/api/config",
+            get(config::get_config_handler).put(config::put_config_handler),
+        )
         // WebSocket
         .route("/api/ws", get(ws::ws_handler))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::auth_middleware,
+        ));
+
+    Router::new()
+        // Diagnostics (unauthenticated readiness probe and ping)
+        .route("/api/ping", get(ping::ping_handler))
+        .route("/api/health", get(health::health_handler))
+        .merge(protected)
         .layer(cors)
         .with_state(state)
 }

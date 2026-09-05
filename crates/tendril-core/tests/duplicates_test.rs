@@ -49,7 +49,10 @@ fn test_format_block() {
 
 #[test]
 fn test_find_duplicate_candidates() {
-    let test_dir = std::env::temp_dir().join(format!("tendril-dup-test-{}", uuid::Uuid::new_v4().simple()));
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-dup-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
     // Create 3 plans:
@@ -85,10 +88,30 @@ fn test_find_duplicate_candidates() {
         write_plan_yaml(&p_folder, &plan_yaml).unwrap();
     };
 
-    make_plan("00001-AuthServiceLoginTimeout", "Authentication service login timeout", "Alpha", "Completed");
-    make_plan("00002-AuthServiceDbFail", "Authentication service database failure", "Alpha", "Draft");
-    make_plan("00003-AuthBeta", "Authentication service login timeout", "Beta", "Draft");
-    make_plan("00004-CacheEviction", "Unrelated cache eviction mechanism", "Alpha", "Draft");
+    make_plan(
+        "00001-AuthServiceLoginTimeout",
+        "Authentication service login timeout",
+        "Alpha",
+        "Completed",
+    );
+    make_plan(
+        "00002-AuthServiceDbFail",
+        "Authentication service database failure",
+        "Alpha",
+        "Draft",
+    );
+    make_plan(
+        "00003-AuthBeta",
+        "Authentication service login timeout",
+        "Beta",
+        "Draft",
+    );
+    make_plan(
+        "00004-CacheEviction",
+        "Unrelated cache eviction mechanism",
+        "Alpha",
+        "Draft",
+    );
 
     // Search for duplicate of "Authentication service login issue" in project "Alpha"
     let candidates = DuplicateCandidateFinder::find(
@@ -115,12 +138,8 @@ fn test_find_duplicate_candidates() {
 
     // Test plan ID direct match
     make_plan("00005-Ref", "Followup for 00001", "Alpha", "Draft");
-    let candidates_id = DuplicateCandidateFinder::find(
-        &test_dir,
-        "Discussion of 00001",
-        "Alpha",
-        None,
-    );
+    let candidates_id =
+        DuplicateCandidateFinder::find(&test_dir, "Discussion of 00001", "Alpha", None);
     assert_eq!(candidates_id.len(), 1);
     assert_eq!(candidates_id[0].folder_name, "00005-Ref");
 

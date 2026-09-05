@@ -1,9 +1,9 @@
-use std::path::Path;
-use chrono::Utc;
 use crate::error::{Result, TendrilError};
 use crate::models::{Recommendation, RecommendationStatus};
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::writer::write_plan_yaml;
+use chrono::Utc;
+use std::path::Path;
 
 pub fn list_recommendations(plan_folder: &Path) -> Result<Vec<Recommendation>> {
     let (plan, _) = read_plan_yaml(plan_folder)?;
@@ -20,7 +20,10 @@ pub fn add_recommendation(
     let mut list = plan.recommendations.unwrap_or_default();
 
     if list.iter().any(|r| r.title.eq_ignore_ascii_case(title)) {
-        return Err(TendrilError::Plan(format!("Recommendation '{}' already exists", title)));
+        return Err(TendrilError::Plan(format!(
+            "Recommendation '{}' already exists",
+            title
+        )));
     }
 
     list.push(Recommendation {

@@ -1,5 +1,5 @@
 use std::path::Path;
-use tendril_core::config::{get_database_path, get_plans_dir, load_config, get_config_path};
+use tendril_core::config::{get_config_path, get_database_path, get_plans_dir, load_config};
 use tendril_core::db::open_database;
 
 pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
@@ -19,7 +19,10 @@ pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
 
     let db_path = get_database_path(tendril_home);
     match open_database(&db_path) {
-        Ok(_) => println!("[OK] Database accessible and migrated: {}", db_path.display()),
+        Ok(_) => println!(
+            "[OK] Database accessible and migrated: {}",
+            db_path.display()
+        ),
         Err(e) => println!("[FAIL] Database error: {}", e),
     }
 
@@ -32,13 +35,22 @@ pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
 
     // Git check
     match std::process::Command::new("git").arg("--version").output() {
-        Ok(out) => println!("[OK] Git installed: {}", String::from_utf8_lossy(&out.stdout).trim()),
+        Ok(out) => println!(
+            "[OK] Git installed: {}",
+            String::from_utf8_lossy(&out.stdout).trim()
+        ),
         Err(_) => println!("[FAIL] Git not found on PATH"),
     }
 
     // GitHub CLI check
     match std::process::Command::new("gh").arg("--version").output() {
-        Ok(out) => println!("[OK] GitHub CLI installed: {}", String::from_utf8_lossy(&out.stdout).lines().next().unwrap_or("")),
+        Ok(out) => println!(
+            "[OK] GitHub CLI installed: {}",
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+        ),
         Err(_) => println!("[WARN] GitHub CLI ('gh') not found on PATH"),
     }
 
