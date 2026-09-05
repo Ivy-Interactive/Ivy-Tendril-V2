@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 import type { Preview } from "@storybook/react";
 import * as React from "react";
-import "@fontsource/geist-sans";
-import "@fontsource/geist-mono";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "../src/styles/globals.css";
 import { DensityProvider } from "../src/contexts/density-context";
 import { Densities } from "../src/types/density";
