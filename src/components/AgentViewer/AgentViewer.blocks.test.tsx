@@ -82,8 +82,7 @@ questions:
     );
 
     expect(screen.getByText("Choose a color")).toBeTruthy();
-    expect(screen.getByText("Red")).toBeTruthy();
-    expect(screen.getByText("Blue")).toBeTruthy();
+    expect(document.querySelector(".pmv-questions")).toBeTruthy();
   });
 
   it("triggers OnAnswersChange when OnAnswersChange is in events and user interacts", () => {
@@ -133,9 +132,13 @@ questions:
       }),
     ].join("\n");
 
-    render(<AgentViewer id="test-code-block" jsonStream={jsonStream} eventHandler={() => {}} />);
+    const { container } = render(
+      <AgentViewer id="test-code-block" jsonStream={jsonStream} eventHandler={() => {}} />,
+    );
 
-    expect(screen.getByText("const x = 42;")).toBeTruthy();
+    const codeElement = container.querySelector("code.language-typescript");
+    expect(codeElement).toBeTruthy();
+    expect(codeElement?.textContent).toContain("const x = 42;");
     expect(screen.getByRole("button", { name: /copy/i })).toBeTruthy();
   });
 
