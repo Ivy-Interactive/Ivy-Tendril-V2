@@ -43,6 +43,19 @@
     system-ui,
     sans-serif;
 }
+
+.wvr-notice {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  font:
+    12px/1.4 ui-sans-serif,
+    system-ui,
+    sans-serif;
+}
+
 /* ---- comment overlay ----
    Styled to match the annotation popover in DraftMarkdown (.pmv-popover): the same Ivy
    theme tokens, radii, type scale and ghost/primary buttons, so the two widgets read as
