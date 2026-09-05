@@ -121,14 +121,8 @@ function DemoComponent() {
 ### 3. Rich Content Renderers
 
 ```tsx
-import {
-  MarkdownRenderer,
-  JsonRenderer,
-} from "components-storybook/renderers";
-import {
-  MermaidRenderer,
-  GraphvizRenderer,
-} from "components-storybook/diagrams";
+import { MarkdownRenderer, JsonRenderer } from "components-storybook/renderers";
+import { MermaidRenderer, GraphvizRenderer } from "components-storybook/diagrams";
 
 function ContentDemo() {
   const markdownContent = "# Hello\n\nThis is **Markdown** content.";
