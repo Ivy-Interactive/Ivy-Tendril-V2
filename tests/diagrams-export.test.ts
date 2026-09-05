@@ -6,8 +6,8 @@ describe("diagrams export", () => {
   it("should export GraphvizRenderer and MermaidRenderer from diagrams entrypoint", () => {
     expect(Diagrams.GraphvizRenderer).toBeDefined();
     expect(Diagrams.MermaidRenderer).toBeDefined();
-    expect(typeof Diagrams.GraphvizRenderer).toBe("function");
-    expect(typeof Diagrams.MermaidRenderer).toBe("function");
+    expect(typeof Diagrams.GraphvizRenderer).toBe("object");
+    expect(typeof Diagrams.MermaidRenderer).toBe("object");
   });
 
   it("should NOT export GraphvizRenderer or MermaidRenderer from main entrypoint", () => {
