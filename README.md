@@ -263,21 +263,54 @@ Run Storybook tests in CI mode (builds static files first):
 pnpm run test-storybook:ci
 ```
 
-Run visual regression tests:
+#### Visual regression
+
+Every story is screenshotted and compared against a committed PNG baseline in `.storybook/__image_snapshots__/`, named `<story-id>-<theme>-<density>.png`. A story matches its baseline when at most 1% of pixels differ.
+
+The baselines are **rendered inside a container on purpose**. Text rasterization differs between DirectWrite (Windows), CoreText (macOS) and FreeType (Linux) on every glyph edge, which is far more than the 1% threshold allows, so a baseline generated on a developer machine can never pass on `ubuntu-latest`. Both the committed baselines and the CI comparison use `mcr.microsoft.com/playwright:v1.63.0-noble-amd64`, matching the pinned `playwright` devDependency.
+
+Refresh the baselines after an intentional design change (requires Docker):
+
+```bash
+docker run --rm -t \
+  -v "$(pwd)":/work -v /work/node_modules -v /work/storybook-static \
+  -w /work mcr.microsoft.com/playwright:v1.63.0-noble-amd64 \
+  bash -lc 'corepack enable pnpm \
+    && corepack prepare pnpm@11.25.0 --activate \
+    && pnpm install --frozen-lockfile --ignore-scripts \
+    && pnpm run build-storybook \
+    && pnpm run test-storybook:visual:update:ci'
+```
+
+On a Linux host add `--user "$(id -u):$(id -g)"`, or the PNGs land root-owned. Swap `test-storybook:visual:update:ci` for `test-storybook:visual:ci` to verify without writing.
+
+For a quick local loop against a dev server already on port 6006 — useful for checking that a story renders at all, but **not** for judging pixels, since host rendering differs from the container:
 
 ```bash
 pnpm run test-storybook:visual
-```
-
-Update visual regression snapshots:
-
-```bash
 pnpm run test-storybook:visual:update
 ```
 
+On failure, annotated diffs are written to `.storybook/__image_snapshots__/__diff_output__/` (gitignored) and uploaded as the `visual-diffs` artifact by CI.
+
+Opt a story out when it cannot produce stable pixels — a clock, a random seed, or an external site:
+
+```ts
+const meta: Meta<typeof Thing> = {
+  title: "UI/Thing",
+  component: Thing,
+  parameters: { visual: { disable: true } },
+};
+```
+
+`UI/Calendar` (seeded with `new Date()`) and `Components/WebViewer` (frames an external site) are opted out for this reason. Animated stories do **not** need it: the runner injects CSS that pauses animations and transitions before screenshotting.
+
 #### CI
 
-The [storybook-tests.yml](.github/workflows/storybook-tests.yml) workflow runs on every push and pull request. It includes a caching step for Playwright browsers to avoid re-downloading on every run.
+The [storybook-tests.yml](.github/workflows/storybook-tests.yml) workflow runs on every push and pull request, as two jobs:
+
+- **`test`** — builds Storybook and runs the accessibility and interaction pass. It caches Playwright browsers to avoid re-downloading on every run.
+- **`visual`** — `needs: test`, so it only starts once accessibility is green. It runs in the pinned Playwright container (which already ships browsers, so no install step) and skips itself with a warning if no baselines are committed.
 
 The Storybook catalog is organized into the following sections:
 

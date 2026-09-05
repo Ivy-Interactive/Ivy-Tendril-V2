@@ -1,0 +1,2 @@
+# Visual regression baselines must survive any core.autocrlf setting byte for byte.
+*.png binary
