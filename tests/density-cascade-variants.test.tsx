@@ -40,8 +40,8 @@ describe("Density Cascade - AlertDialog", () => {
       </DensityProvider>,
     );
 
-    const cancel = container.querySelector('[data-radix-collection-item]');
-    const action = container.querySelectorAll('[data-radix-collection-item]')[1];
+    const cancel = container.querySelector("[data-radix-collection-item]");
+    const action = container.querySelectorAll("[data-radix-collection-item]")[1];
 
     expect(cancel?.className).toContain("h-7");
     expect(cancel?.className).toContain("text-xs");
@@ -65,8 +65,8 @@ describe("Density Cascade - AlertDialog", () => {
       </DensityProvider>,
     );
 
-    const cancel = container.querySelector('[data-radix-collection-item]');
-    const action = container.querySelectorAll('[data-radix-collection-item]')[1];
+    const cancel = container.querySelector("[data-radix-collection-item]");
+    const action = container.querySelectorAll("[data-radix-collection-item]")[1];
 
     expect(cancel?.className).toContain("h-11");
     expect(cancel?.className).toContain("text-base");
@@ -88,8 +88,8 @@ describe("Density Cascade - AlertDialog", () => {
       </AlertDialog>,
     );
 
-    const cancel = container.querySelector('[data-radix-collection-item]');
-    const action = container.querySelectorAll('[data-radix-collection-item]')[1];
+    const cancel = container.querySelector("[data-radix-collection-item]");
+    const action = container.querySelectorAll("[data-radix-collection-item]")[1];
 
     expect(cancel?.className).toContain("h-9");
     expect(action?.className).toContain("h-9");
@@ -110,7 +110,7 @@ describe("Density Cascade - AlertDialog", () => {
       </DensityProvider>,
     );
 
-    const action = container.querySelector('[data-radix-collection-item]');
+    const action = container.querySelector("[data-radix-collection-item]");
     expect(action?.className).toContain("h-11");
     expect(action?.className).toContain("text-base");
   });
@@ -136,10 +136,10 @@ describe("Density Cascade - Pagination", () => {
       </DensityProvider>,
     );
 
-    const content = container.querySelector('ul');
-    const link = container.querySelector('a');
-    const previous = container.querySelectorAll('a')[1];
-    const ellipsis = container.querySelector('span[aria-hidden]');
+    const content = container.querySelector("ul");
+    const link = container.querySelector("a");
+    const previous = container.querySelectorAll("a")[1];
+    const ellipsis = container.querySelector("span[aria-hidden]");
 
     expect(content?.className).toContain("gap-0.5");
     expect(link?.className).toContain("size-7");
@@ -166,10 +166,10 @@ describe("Density Cascade - Pagination", () => {
       </DensityProvider>,
     );
 
-    const content = container.querySelector('ul');
-    const link = container.querySelector('a');
-    const next = container.querySelectorAll('a')[1];
-    const ellipsis = container.querySelector('span[aria-hidden]');
+    const content = container.querySelector("ul");
+    const link = container.querySelector("a");
+    const next = container.querySelectorAll("a")[1];
+    const ellipsis = container.querySelector("span[aria-hidden]");
 
     expect(content?.className).toContain("gap-1.5");
     expect(link?.className).toContain("size-11");
