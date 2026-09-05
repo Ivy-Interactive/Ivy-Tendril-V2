@@ -13,6 +13,15 @@ export * from "./types/density";
 export * from "./hooks/use-mobile";
 export * from "./hooks/use-toast";
 
+// Theme
+export {
+  ThemeContext,
+  useTheme,
+  type Theme,
+  type ThemeContextType,
+} from "./contexts/theme-context.tsx";
+export { ThemeProvider, type ThemeProviderProps } from "./components/theme-provider.tsx";
+
 // Density Scales
 export * from "./components/ui/density-scale";
 
@@ -65,3 +74,7 @@ export * from "./components/ui/toast";
 export * from "./components/ui/toaster";
 export * from "./components/ui/toggle";
 export * from "./components/ui/tooltip";
+
+export function fn() {
+  return "Hello, tsdown!";
+}

@@ -13,7 +13,8 @@
     "url": "git+https://github.com/author/library.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "src/styles"
   ],
   "type": "module",
   "exports": {
@@ -29,6 +30,8 @@
     "dev": "vp pack --watch",
     "test": "vp test",
     "check": "vp check",
+    "lint": "vp check",
+    "format": "vp fmt",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "prepublishOnly": "vp run build",
@@ -72,10 +75,10 @@
     "tailwind-merge": "3.3.1"
   },
   "devDependencies": {
-    "@storybook/addon-essentials": "^8.6.14",
-    "@storybook/addon-interactions": "^8.6.14",
-    "@storybook/react": "^10.6.0",
-    "@storybook/react-vite": "^10.6.0",
+    "@storybook/addon-essentials": "^8.6.18",
+    "@storybook/addon-interactions": "^8.6.18",
+    "@storybook/react": "^8.6.18",
+    "@storybook/react-vite": "^8.6.18",
     "@tailwindcss/vite": "4.1.16",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
@@ -85,11 +88,15 @@
     "@vitejs/plugin-react": "6.0.1",
     "bumpp": "^11.1.0",
     "happy-dom": "20.8.9",
-    "storybook": "^10.6.0",
+    "storybook": "^8.6.18",
     "tailwindcss": "4.1.16",
     "typescript": "^7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devEngines": {
     "packageManager": {

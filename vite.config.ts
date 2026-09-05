@@ -10,11 +10,6 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  test: {
-    include: ["**/*.test.ts", "**/*.test.tsx"],
-    environment: "happy-dom",
-    setupFiles: ["./tests/setup.ts"],
-  },
   staged: {
     "*": "vp check --fix",
   },
@@ -31,4 +26,9 @@ export default defineConfig({
     },
   },
   fmt: {},
+  test: {
+    include: ["**/*.test.ts", "**/*.test.tsx"],
+    environment: "happy-dom",
+    setupFiles: ["./tests/setup.ts"],
+  },
 });
