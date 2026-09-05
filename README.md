@@ -313,6 +313,33 @@ Auto-fix issues:
 vp check --fix
 ```
 
+### Windows: type-aware lint binary
+
+Type-aware linting shells out to `tsgolint`. On Windows, pnpm only installs a `tsgolint.CMD` shim,
+and that shim hands `cmd.exe` an unnormalized path into the virtual store — which exceeds the
+260-character `MAX_PATH` limit whenever the checkout sits in a deep directory, so `vp check` fails
+with:
+
+```
+Error running tsgolint: "exit status: exit code: 1"
+The system cannot find the path specified.
+```
+
+`scripts/patch-tsgolint-win.mjs` fixes this by placing the native `tsgolint.exe` where Vite+ looks
+for it before falling back to the shim, so `cmd.exe` is never involved. It is a no-op on non-Windows
+platforms.
+
+Every `pnpm install` deletes that binary again while relinking bins, so the script runs from
+`prepare` (which pnpm executes _after_ bin linking) as well as from `pnpm lint` and `pnpm run check`.
+You should never need to invoke it, but to re-apply the repair by hand:
+
+```bash
+node scripts/patch-tsgolint-win.mjs
+```
+
+Add `--json` to see what it resolved — the source binary, the target path and its length — without
+writing anything.
+
 ### Testing
 
 Run the test suite:
