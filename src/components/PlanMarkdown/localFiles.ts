@@ -14,14 +14,22 @@ export function getIvyHost(): string {
   if (metaHost) {
     try {
       const url = metaHost.includes("://") ? new URL(metaHost) : new URL(`https://${metaHost}`);
-      if (url.protocol === "https:" || url.protocol === "http:") {
-        return url.origin + getIvyBasePath();
+      if (url.protocol === "https:" || url.protocol === "http:" || url.protocol === "tauri:") {
+        const origin =
+          url.origin && url.origin !== "null" ? url.origin : `${url.protocol}//${url.host}`;
+        return origin + getIvyBasePath();
       }
     } catch {
       // Ignore parse errors and fall back to the current origin.
     }
   }
-  return window.location.origin + getIvyBasePath();
+  const locOrigin =
+    typeof window !== "undefined" && window.location
+      ? window.location.origin && window.location.origin !== "null"
+        ? window.location.origin
+        : `${window.location.protocol}//${window.location.host}`
+      : "";
+  return locOrigin + getIvyBasePath();
 }
 
 /** True when the Ivy host serves the /ivy/local-file proxy (opt-in, dev-only). */

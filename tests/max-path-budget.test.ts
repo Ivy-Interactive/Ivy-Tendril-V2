@@ -122,7 +122,13 @@ describe("MAX_PATH budget", () => {
     candidates.push({ path: tscPath, length: tscNormalized.length });
 
     // Oxlint tsgolint.exe
-    const tsgolintPkgJson = require.resolve("oxlint-tsgolint/package.json");
+    let tsgolintPkgJson: string;
+    try {
+      tsgolintPkgJson = require.resolve("oxlint-tsgolint/package.json");
+    } catch {
+      const vitePlusPkgJson = require.resolve("vite-plus/package.json");
+      tsgolintPkgJson = createRequire(vitePlusPkgJson).resolve("oxlint-tsgolint/package.json");
+    }
     const tsgolintVersion = JSON.parse(readFileSync(tsgolintPkgJson, "utf-8")).version;
     const tsgolintDirName = `@oxlint-tsgolint+win32-x64@${tsgolintVersion}`;
 

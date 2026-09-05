@@ -1,16 +1,16 @@
 {
-  "name": "components-storybook",
-  "version": "0.0.0",
+  "name": "@spacecorps/components-storybook",
+  "version": "0.1.0",
   "description": "Comprehensive UI component library, renderers, and Tendril widgets showcase with Storybook.",
-  "homepage": "https://github.com/author/library#readme",
+  "homepage": "https://github.com/SpaceCorps/components-storybook#readme",
   "bugs": {
-    "url": "https://github.com/author/library/issues"
+    "url": "https://github.com/SpaceCorps/components-storybook/issues"
   },
   "license": "MIT",
-  "author": "Author Name <author.name@mail.com>",
+  "author": "SpaceCorps",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/author/library.git"
+    "url": "git+https://github.com/SpaceCorps/components-storybook.git"
   },
   "files": [
     "dist",
@@ -49,6 +49,7 @@
   },
   "scripts": {
     "build": "vp pack",
+    "bump": "bumpp package.json",
     "dev": "vp pack --watch",
     "test": "vp test",
     "lint": "node scripts/patch-tsgolint-win.mjs && vp check",
