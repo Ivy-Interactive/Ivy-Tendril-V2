@@ -11,6 +11,22 @@ permissions:
   contents: read
 
 jobs:
+  merge-guard:
+    name: Merge Resolution Guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch --no-tags origin +refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
+
+      - name: Check merge resolutions
+        run: node scripts/verify-merge-resolution.mjs --range origin/${{ github.base_ref }}
+
   quality-gates:
     name: Quality Gates
     runs-on: ubuntu-latest
@@ -31,7 +47,9 @@ jobs:
         run: vp check
 
       - name: Package Build
+        if: always()
         run: vp pack
 
       - name: Unit Tests
+        if: always()
         run: vp test
