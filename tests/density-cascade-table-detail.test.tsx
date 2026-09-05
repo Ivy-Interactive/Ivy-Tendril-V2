@@ -213,6 +213,69 @@ describe("Density cascade: Table and Details", () => {
       expect(label?.className).toContain("text-base");
       expect(label?.className).toContain("p-4");
     });
+
+    it("Details wrapper carries the density text class from DensityProvider (Small)", () => {
+      const { container } = render(
+        <DensityProvider density={Densities.Small}>
+          <Details>
+            <DetailItem label="Label">Value</DetailItem>
+          </Details>
+        </DensityProvider>,
+      );
+
+      const wrapper = container.firstElementChild;
+      expect(wrapper?.className).toContain("text-xs");
+    });
+
+    it("Details wrapper carries the density text class from DensityProvider (Large)", () => {
+      const { container } = render(
+        <DensityProvider density={Densities.Large}>
+          <Details>
+            <DetailItem label="Label">Value</DetailItem>
+          </Details>
+        </DensityProvider>,
+      );
+
+      const wrapper = container.firstElementChild;
+      expect(wrapper?.className).toContain("text-base");
+    });
+
+    it("Details wrapper defaults to text-sm without provider", () => {
+      const { container } = render(
+        <Details>
+          <DetailItem label="Label">Value</DetailItem>
+        </Details>,
+      );
+
+      const wrapper = container.firstElementChild;
+      expect(wrapper?.className).toContain("text-sm");
+    });
+
+    it("Details density prop overrides DensityProvider on the wrapper", () => {
+      const { container } = render(
+        <DensityProvider density={Densities.Large}>
+          <Details density={Densities.Small}>
+            <DetailItem label="Label">Value</DetailItem>
+          </Details>
+        </DensityProvider>,
+      );
+
+      const wrapper = container.firstElementChild;
+      expect(wrapper?.className).toContain("text-xs");
+      expect(wrapper?.className).not.toContain("text-base");
+    });
+
+    it("consumer className text size still wins on the Details wrapper", () => {
+      const { container } = render(
+        <Details className="text-lg">
+          <DetailItem label="Label">Value</DetailItem>
+        </Details>,
+      );
+
+      const wrapper = container.firstElementChild;
+      expect(wrapper?.className).toContain("text-lg");
+      expect(wrapper?.className).not.toContain("text-sm");
+    });
   });
 
   describe("Hooks rendered standalone", () => {
