@@ -8,14 +8,18 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 describe("playwright lockfile deduplication", () => {
   it("has exactly one playwright-core@1.63.0 package declaration", () => {
     const lockfile = readFileSync(path.join(repoRoot, "pnpm-lock.yaml"), "utf8");
-    const playwrightCorePackages = lockfile.match(/^\s+playwright-core@1\.\d+\.\d+:/gm) || [];
+    // Extract packages section only (before snapshots section)
+    const packagesSection = lockfile.split(/^snapshots:/m)[0];
+    const playwrightCorePackages = packagesSection.match(/^\s+playwright-core@1\.\d+\.\d+:/gm) || [];
     expect(playwrightCorePackages.length).toBe(1);
     expect(playwrightCorePackages[0]).toContain("playwright-core@1.63.0");
   });
 
   it("has exactly one playwright@1.63.0 package declaration", () => {
     const lockfile = readFileSync(path.join(repoRoot, "pnpm-lock.yaml"), "utf8");
-    const playwrightPackages = lockfile.match(/^\s+playwright@1\.\d+\.\d+:/gm) || [];
+    // Extract packages section only (before snapshots section)
+    const packagesSection = lockfile.split(/^snapshots:/m)[0];
+    const playwrightPackages = packagesSection.match(/^\s+playwright@1\.\d+\.\d+:/gm) || [];
     expect(playwrightPackages.length).toBe(1);
     expect(playwrightPackages[0]).toContain("playwright@1.63.0");
   });
