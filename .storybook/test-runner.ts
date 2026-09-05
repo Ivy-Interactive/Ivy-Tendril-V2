@@ -4,7 +4,7 @@ import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
 import { readStoryGlobals } from "./globals";
 
 const config: TestRunnerConfig = {
-  async preVisit(page) {
+  async preVisit(page, _context) {
     await injectAxe(page);
   },
   async postVisit(page, context) {

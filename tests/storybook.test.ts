@@ -49,6 +49,8 @@ describe("Storybook Configuration", () => {
     expect(testRunnerConfig).toBeDefined();
     expect(typeof testRunnerConfig.preVisit).toBe("function");
     expect(typeof testRunnerConfig.postVisit).toBe("function");
+    expect(testRunnerConfig.preVisit).toHaveLength(2);
+    expect(testRunnerConfig.postVisit).toHaveLength(2);
 
     const mockPage = {} as any;
     const mockContext = {
