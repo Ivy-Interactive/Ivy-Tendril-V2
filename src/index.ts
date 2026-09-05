@@ -152,8 +152,6 @@ export {
   SearchOverlay,
   BlockHandler,
   CodeBlock,
-  GraphvizRenderer,
-  MermaidRenderer,
   ImageRenderer,
 } from "./components/PlanMarkdown";
 

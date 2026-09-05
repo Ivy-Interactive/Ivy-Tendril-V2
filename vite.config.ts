@@ -14,6 +14,8 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   pack: {
+    entry: ["src/index.ts", "src/diagrams.ts"],
+    format: ["esm"],
     dts: {
       tsgo: true,
     },
