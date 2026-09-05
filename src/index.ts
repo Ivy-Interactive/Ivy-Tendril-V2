@@ -113,6 +113,28 @@ export * from "./components/ui/toaster";
 export * from "./components/ui/toggle";
 export * from "./components/ui/tooltip";
 
+// Shell
+export {
+  TendrilShell,
+  ShellNav,
+  ShellTabs,
+  ShellAgentButton,
+  ShellNewPlanButton,
+  ShellSettingsButton,
+  ShellSidebarHeader,
+  ShellSidebarSection,
+  ShellContext,
+  useShell,
+  BrandIcon,
+  brandIcons,
+  type ShellContextValue,
+  type ShellBadgeDto,
+  type ShellNavItemDto,
+  type ShellSectionItemDto,
+  type ShellTabDto,
+  type ShellWidgetProps,
+} from "./components/Shell/index.ts";
+
 export function fn() {
   return "Hello, tsdown!";
 }
