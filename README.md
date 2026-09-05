@@ -85,8 +85,10 @@ import {
 function DemoComponent() {
   return (
     <div className={cn("space-y-4 p-4")}>
-      <Button variant="default" size="lg">Primary Action</Button>
-      
+      <Button variant="default" size="lg">
+        Primary Action
+      </Button>
+
       <Dialog>
         <DialogTrigger asChild>
           <Button variant="outline">Open Dialog</Button>
@@ -96,12 +98,12 @@ function DemoComponent() {
           <p>Your content here</p>
         </DialogContent>
       </Dialog>
-      
+
       <Card>
         <Badge variant="secondary">Status</Badge>
         <Input placeholder="Enter text..." />
       </Card>
-      
+
       <Tabs defaultValue="tab1">
         <TabsList>
           <TabsTrigger value="tab1">Tab 1</TabsTrigger>
@@ -171,27 +173,20 @@ function TendrilApp() {
         { id: "plans", label: "Plans", icon: "folder", href: "/plans" },
         { id: "jobs", label: "Jobs", icon: "activity", href: "/jobs" },
       ]}
-      tabs={[
-        { id: "overview", label: "Overview", path: "/" },
-      ]}
+      tabs={[{ id: "overview", label: "Overview", path: "/" }]}
     >
       <div className="space-y-6">
         <TendrilDashboard {...dashboardData} />
-        
-        <AgentViewer
-          events={[]}
-          isStreaming={false}
-        />
-        
-        <PlanMarkdown
-          content="# Plan Title\n\nPlan description."
-        />
-        
+
+        <AgentViewer events={[]} isStreaming={false} />
+
+        <PlanMarkdown content="# Plan Title\n\nPlan description." />
+
         <ContentInput
           onSubmit={(text) => console.log("Submitted:", text)}
           placeholder="Enter your prompt..."
         />
-        
+
         <BadgeSelect
           options={[
             { value: "feature", label: "Feature" },
@@ -259,6 +254,7 @@ The Storybook catalog is organized into the following sections:
 ## Development & Quality Gates
 
 This project uses [Vite+](https://github.com/voidzero/vite-plus), a unified web toolchain that integrates:
+
 - **Rolldown** & **tsdown** for fast bundling and `.d.mts` declaration generation
 - **Oxlint** & **Oxfmt** for lightning-fast linting and formatting
 - **Vitest** for unit testing
@@ -306,6 +302,7 @@ vp pack
 ```
 
 This command:
+
 - Bundles all entrypoints (`index.ts`, `ui.ts`, `renderers.ts`, `tendril.ts`) to ESM modules
 - Generates TypeScript declaration files (`.d.mts`) with `tsgo`
 - Outputs to `dist/` directory with sourcemaps
