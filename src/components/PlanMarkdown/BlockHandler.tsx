@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useContext } from "react";
+import { extractTextContent } from "@/lib/markdown-utils";
 import { CodeBlock } from "./CodeBlock";
 import { QuestionsCallout } from "./QuestionsCallout";
 import { QuestionsAnswerContext } from "./questionsContext";
@@ -20,7 +21,8 @@ export const BlockHandler: React.FC<React.HTMLAttributes<HTMLElement>> = ({
   ...rest
 }) => {
   const match = /language-(\w+)/.exec(String(className || ""));
-  const content = String(children).replace(/\n$/, "");
+  const text = extractTextContent(children);
+  const content = text.replace(/\n$/, "");
   const onAnswer = useContext(QuestionsAnswerContext);
 
   if (match) {
@@ -69,7 +71,7 @@ export const BlockHandler: React.FC<React.HTMLAttributes<HTMLElement>> = ({
   }
 
   // No language match - check if block-level (multi-line) or inline
-  const isBlock = String(children).includes("\n");
+  const isBlock = text.includes("\n");
   if (isBlock) {
     return <CodeBlock content={content} />;
   }

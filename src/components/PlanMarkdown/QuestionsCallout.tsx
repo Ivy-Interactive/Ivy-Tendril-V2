@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { extractTextContent } from "@/lib/markdown-utils";
 import { CodeBlock } from "./CodeBlock";
 import { answerEntries, otherEntry, parseQuestions } from "./questionsSchema";
 import type { PlanQuestion, QuestionOption } from "./questionsSchema";
@@ -17,7 +18,7 @@ import type { AnswerCallback } from "./questionsContext";
 const descriptionComponents = {
   code: ({ className, children }: React.HTMLAttributes<HTMLElement>) => {
     const language = /language-(\w+)/.exec(String(className || ""))?.[1];
-    const text = String(children);
+    const text = extractTextContent(children);
 
     // react-markdown hands both spans and fences to `code`; only a fence is block content.
     if (!language && !text.includes("\n")) return <code>{children}</code>;
