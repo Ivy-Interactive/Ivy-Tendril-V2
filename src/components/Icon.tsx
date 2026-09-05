@@ -26,7 +26,7 @@ import { VscAzure } from "react-icons/vsc";
 import {
   SiNotion,
   SiGithubcopilot,
-  SiOpenai,
+  // SiOpenai, // Not available in react-icons@5.7
   SiAnthropic,
   SiGooglegemini,
   SiLinear,
@@ -146,7 +146,7 @@ export const Icon: FC<IconProps> = ({ name, color, size, className, style }) => 
     Pinterest: FaPinterest,
     XTwitter: FaXTwitter,
     Copilot: SiGithubcopilot,
-    OpenAI: SiOpenai,
+    // OpenAI: SiOpenai, // Not available in react-icons@5.7
     Anthropic: SiAnthropic,
     Gemini: SiGooglegemini,
     Linear: SiLinear,
