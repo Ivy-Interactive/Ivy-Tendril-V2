@@ -1,1 +1,8 @@
-vp staged
+if ! vp staged --no-stash; then
+  patch="$(git rev-parse --absolute-git-dir)/lint-staged_unstaged.patch"
+  if [ -s "$patch" ]; then
+    echo "VITE+ - unstaged hunks of partially staged files were not restored (--no-stash)."
+    echo "        Inspect and re-apply them with: git apply --3way \"$patch\""
+  fi
+  exit 1
+fi
