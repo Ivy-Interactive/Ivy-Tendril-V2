@@ -1,8 +1,8 @@
 import React from "react";
 import Markdown from "react-markdown";
 import type { ResultWire } from "./types.ts";
-import { BlockHandler } from "../BlockHandler.tsx";
-import { getMarkdownPlugins } from "../math.ts";
+import { BlockHandler } from "../PlanMarkdown/BlockHandler.tsx";
+import { getMarkdownPlugins } from "@/lib/math";
 import { AlertBlockquote } from "../PlanMarkdown/AlertBlockquote.tsx";
 import { tagQuestionBlocks } from "../PlanMarkdown/questionsSource.ts";
 import { QuestionsAnswerContext } from "../PlanMarkdown/questionsContext.ts";
@@ -42,7 +42,7 @@ export const ResultSummary: React.FC<ResultSummaryProps> = ({ wire }) => {
 
   const hasResponse = Boolean(wire.response && wire.response.trim().length > 0);
 
-  const taggedResponse = hasResponse ? tagQuestionBlocks(wire.response) : "";
+  const taggedResponse = hasResponse ? tagQuestionBlocks(wire.response!) : "";
   const plugins = getMarkdownPlugins(taggedResponse);
 
   // Return null if there is nothing to render, preventing empty container boxes
