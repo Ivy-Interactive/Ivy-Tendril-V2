@@ -93,9 +93,7 @@ describe("verify-merge-resolution", () => {
         resolve(fixturesDir, "clean-merged.json"),
       );
 
-      expect(report.lostChanges.every((f) => f.merged !== f.base || f.ours === f.base)).toBe(
-        true,
-      );
+      expect(report.lostChanges.every((f) => f.merged !== f.base || f.ours === f.base)).toBe(true);
     });
   });
 

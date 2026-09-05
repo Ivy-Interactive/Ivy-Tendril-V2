@@ -100,15 +100,11 @@ function gitMergeBase(ref1, ref2) {
 }
 
 function gitRevList(range) {
-  const output = spawnSync(
-    "git",
-    ["rev-list", "--merges", "--first-parent", range],
-    {
-      cwd: repoRoot,
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024,
-    },
-  );
+  const output = spawnSync("git", ["rev-list", "--merges", "--first-parent", range], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024,
+  });
   if (output.status !== 0) {
     return [];
   }
@@ -249,9 +245,7 @@ function checkFiles(basePath, oursPath, theirsPath, mergedPath) {
 }
 
 function checkCommit(ref) {
-  const base = parseManifest(
-    gitShow(gitMergeBase(`${ref}^1`, `${ref}^2`), "package.json"),
-  );
+  const base = parseManifest(gitShow(gitMergeBase(`${ref}^1`, `${ref}^2`), "package.json"));
   const ours = parseManifest(gitShow(`${ref}^1`, "package.json"));
   const theirs = parseManifest(gitShow(`${ref}^2`, "package.json"));
   const merged = parseManifest(gitShow(ref, "package.json"));
