@@ -21,7 +21,12 @@ export default defineConfig({
     },
     exports: true,
   },
-  lint: {},
+  lint: {
+    options: {
+      typeAware: true,
+      typeCheck: true,
+    },
+  },
   fmt: {},
   test: {
     include: ["**/*.test.ts", "**/*.test.tsx"],
