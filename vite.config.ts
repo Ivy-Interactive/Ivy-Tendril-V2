@@ -14,12 +14,25 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   pack: {
+    entry: [
+      "src/index.ts",
+      "src/ui.ts",
+      "src/renderers.ts",
+      "src/tendril.ts",
+    ],
+    format: ["esm"],
     dts: {
       tsgo: true,
     },
-    exports: true,
+    clean: true,
+    sourcemap: true,
   },
-  lint: {},
+  lint: {
+    options: {
+      typeAware: true,
+      typeCheck: true,
+    },
+  },
   fmt: {},
   test: {
     include: ["**/*.test.ts", "**/*.test.tsx"],
