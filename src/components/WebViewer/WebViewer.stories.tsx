@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import React, { useState } from "react";
 import { WebViewer } from "./WebViewer.tsx";
 
 const meta: Meta<typeof WebViewer> = {
@@ -45,6 +46,108 @@ export const Mobile: Story = {
     id: "web-viewer-mobile",
     url: "https://example.com",
     device: "Mobile",
+    width: "100%",
+    height: "800px",
+    events: ["OnComment"],
+    eventHandler: (eventName: string, id: string, args: unknown[]) => {
+      console.log("WebViewer event:", eventName, id, args);
+    },
+  },
+};
+
+export const AnnotationDemo: Story = {
+  render: () => {
+    const [commands, setCommands] = useState<{ id: string }>({ id: "" });
+    const [selecting, setSelecting] = useState(false);
+    const subscribers = React.useRef(new Map<string, (data: unknown) => void>());
+
+    const subscribeToStream = (streamId: string, onData: (data: unknown) => void) => {
+      subscribers.current.set(streamId, onData);
+      return () => {
+        subscribers.current.delete(streamId);
+      };
+    };
+
+    const sendCommand = (cmd: string) => {
+      const id = `${Date.now()}`;
+      setCommands({ id });
+      const sub = subscribers.current.get("commands");
+      if (sub) {
+        sub({ __proxyCmd: cmd });
+      }
+    };
+
+    const eventHandler = (eventName: string, id: string, args: unknown[]) => {
+      console.log("WebViewer event:", eventName, id, args);
+    };
+
+    const url = `${window.location.origin}/webviewer-demo/index.html`;
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+        <div style={{ padding: "1rem", borderBottom: "1px solid #ccc" }}>
+          <button
+            onClick={() => {
+              const newSelecting = !selecting;
+              setSelecting(newSelecting);
+              sendCommand(newSelecting ? "select-start" : "select-stop");
+            }}
+            style={{
+              padding: "0.5rem 1rem",
+              marginRight: "0.5rem",
+              cursor: "pointer",
+            }}
+          >
+            {selecting ? "Stop Selecting" : "Start Selecting"}
+          </button>
+          <button
+            onClick={() => setCommands({ id: `${Date.now()}` })}
+            style={{ padding: "0.5rem 1rem", marginRight: "0.5rem", cursor: "pointer" }}
+          >
+            Reload
+          </button>
+          <button
+            onClick={() => sendCommand("back")}
+            style={{ padding: "0.5rem 1rem", marginRight: "0.5rem", cursor: "pointer" }}
+          >
+            Back
+          </button>
+          <button
+            onClick={() => sendCommand("forward")}
+            style={{ padding: "0.5rem 1rem", cursor: "pointer" }}
+          >
+            Forward
+          </button>
+        </div>
+        <div style={{ flex: 1 }}>
+          <WebViewer
+            id="web-viewer-demo"
+            url={url}
+            device="Desktop"
+            width="100%"
+            height="100%"
+            commands={commands}
+            subscribeToStream={subscribeToStream}
+            events={["OnComment"]}
+            eventHandler={eventHandler}
+          />
+        </div>
+      </div>
+    );
+  },
+  parameters: {
+    a11y: {
+      disable: true,
+    },
+  },
+};
+
+export const ProxyRequired: Story = {
+  args: {
+    id: "web-viewer-proxy-required",
+    url: "https://example.com",
+    device: "Desktop",
+    proxy: "require",
     width: "100%",
     height: "800px",
     events: ["OnComment"],
