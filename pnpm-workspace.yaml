@@ -4,6 +4,9 @@ allowBuilds:
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@0.3.0
   vite-plus: 0.3.0
+minimumReleaseAgeExclude:
+  - playwright-core@1.63.0
+  - playwright@1.63.0
 overrides:
   vite@*: "catalog:"
 peerDependencyRules:
