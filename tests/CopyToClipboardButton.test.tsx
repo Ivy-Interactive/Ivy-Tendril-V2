@@ -52,4 +52,25 @@ describe("CopyToClipboardButton", () => {
     const button = container.querySelector("button")!;
     expect(button.className).toContain("size-11");
   });
+
+  it("does not throw when re-rendering with different density prop", () => {
+    const { container, rerender } = render(
+      <DensityProvider density={Densities.Small}>
+        <CopyToClipboardButton textToCopy="test" density={Densities.Small} />
+      </DensityProvider>,
+    );
+
+    // Re-render with a different explicit density
+    rerender(
+      <DensityProvider density={Densities.Small}>
+        <CopyToClipboardButton textToCopy="test" density={Densities.Large} />
+      </DensityProvider>,
+    );
+
+    const button = container.querySelector("button")!;
+    expect(button).not.toBeNull();
+    // Icon span should now use Large density
+    const iconSpan = container.querySelector("span.relative");
+    expect(iconSpan?.getAttribute("class")).toContain("size-5");
+  });
 });
