@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebViewer Demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.6;
+      }
+      h1 {
+        color: #333;
+      }
+      section {
+        margin: 2rem 0;
+        padding: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+      }
+      input {
+        width: 100%;
+        padding: 0.5rem;
+        margin-bottom: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      button {
+        padding: 0.5rem 1rem;
+        margin-right: 0.5rem;
+        margin-bottom: 0.5rem;
+        border: 1px solid #007bff;
+        background: #007bff;
+        color: white;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      .element-outline {
+        outline: 2px solid #007bff;
+        outline-offset: 2px;
+      }
+      .marker-pin {
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #007bff;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        z-index: 9999;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>WebViewer Demo Page</h1>
+
+    <section>
+      <h2>Interaction Demo</h2>
+      <p>This page demonstrates WebViewer's annotation capabilities in standalone Storybook.</p>
+      <label for="demo-input">Sample Input:</label>
+      <input id="demo-input" type="text" placeholder="Enter some text..." />
+      <button id="submit-btn">Submit</button>
+      <button id="reset-btn">Reset</button>
+    </section>
+
+    <section>
+      <h2>Content Area</h2>
+      <p>You can use element picking to select any part of this page.</p>
+      <ul>
+        <li>Click to select elements</li>
+        <li>Add comments to document issues</li>
+        <li>View markers for existing comments</li>
+      </ul>
+    </section>
+
+    <script src="./agent-lite.js"></script>
+  </body>
+</html>
