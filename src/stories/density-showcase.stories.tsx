@@ -216,7 +216,9 @@ export const ContextCascade: Story = {
       </DensityProvider>
       <DensityProvider density={Densities.Medium}>
         <div className="space-y-2">
-          <h4 className="text-sm font-medium text-muted-foreground">Medium Density (via Context)</h4>
+          <h4 className="text-sm font-medium text-muted-foreground">
+            Medium Density (via Context)
+          </h4>
           <div className="flex gap-4 items-center">
             <CopyToClipboardButton textToCopy="Hello Medium" />
             <DensityScale className="p-2 border rounded">
