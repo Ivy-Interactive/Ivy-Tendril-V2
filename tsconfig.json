@@ -2,10 +2,12 @@
   "compilerOptions": {
     "target": "esnext",
     "lib": ["es2023", "dom", "dom.iterable"],
-    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "moduleDetection": "force",
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "types": ["node", "vite/client"],
     "strict": true,
@@ -16,6 +18,7 @@
     "esModuleInterop": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "jsx": "react-jsx"
   }
 }

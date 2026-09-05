@@ -3,7 +3,7 @@ import type React from "react";
 export const getWidth = (width?: string): React.CSSProperties => {
   if (!width) return {};
   const [sizeType, value] = width.split(":");
-  switch (sizeType.toLowerCase()) {
+  switch (sizeType?.toLowerCase()) {
     case "units":
       return { width: `${parseFloat(value) * 0.25}rem` };
     case "px":
@@ -26,7 +26,7 @@ export const getWidth = (width?: string): React.CSSProperties => {
 export const getHeight = (height?: string): React.CSSProperties => {
   if (!height) return {};
   const [sizeType, value] = height.split(":");
-  switch (sizeType.toLowerCase()) {
+  switch (sizeType?.toLowerCase()) {
     case "units":
       return { height: `${parseFloat(value) * 0.25}rem` };
     case "px":
