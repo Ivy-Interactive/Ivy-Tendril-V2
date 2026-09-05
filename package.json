@@ -1,7 +1,7 @@
 {
   "name": "components-storybook",
   "version": "0.0.0",
-  "description": "A starter for creating a TypeScript package.",
+  "description": "Comprehensive UI component library, renderers, and Tendril widgets showcase with Storybook.",
   "homepage": "https://github.com/author/library#readme",
   "bugs": {
     "url": "https://github.com/author/library/issues"
@@ -17,10 +17,27 @@
     "src/styles"
   ],
   "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
-    ".": "./dist/index.mjs",
-    "./package.json": "./package.json",
-    "./style.css": "./dist/style.css"
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./ui": {
+      "types": "./dist/ui.d.mts",
+      "import": "./dist/ui.mjs"
+    },
+    "./renderers": {
+      "types": "./dist/renderers.d.mts",
+      "import": "./dist/renderers.mjs"
+    },
+    "./tendril": {
+      "types": "./dist/tendril.d.mts",
+      "import": "./dist/tendril.mjs"
+    },
+    "./styles/*": "./src/styles/*",
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public"
@@ -33,7 +50,8 @@
     "check": "vp check",
     "format": "vp fmt",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build",
+    "storybook:build": "storybook build -o dist-storybook",
+    "storybook:preview": "vp preview --outDir dist-storybook --port 6006",
     "test-storybook": "test-storybook",
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"http-server storybook-static -a 127.0.0.1 --port 6006 --silent\" \"wait-on tcp:127.0.0.1:6006 && test-storybook\"",
     "prepublishOnly": "vp run build",
