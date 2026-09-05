@@ -24,6 +24,27 @@ const config: TestRunnerConfig = {
       },
       axeOptions: storyContext.parameters?.a11y?.options,
     });
+
+    if (storyContext.parameters?.visual?.disable) {
+      return;
+    }
+
+    if (process.env.STORYBOOK_VISUAL_REGRESSION === "true") {
+      const rootElement = await page.$("#storybook-root");
+      if (rootElement) {
+        const image = await rootElement.screenshot();
+        const theme = storyContext.globals?.theme || "light";
+        const density = storyContext.globals?.density || "medium";
+        const snapshotIdentifier = `${storyContext.id}-${theme}-${density.toLowerCase()}`;
+
+        // @ts-expect-error jest-image-snapshot matchers extended on expect
+        expect(image).toMatchImageSnapshot({
+          customSnapshotIdentifier: snapshotIdentifier,
+          failureThreshold: 0.01,
+          failureThresholdType: "percent",
+        });
+      }
+    }
   },
 };
 

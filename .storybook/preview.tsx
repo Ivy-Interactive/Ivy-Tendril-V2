@@ -10,6 +10,8 @@ import "@fontsource/geist-mono/500.css";
 import "@fontsource/geist-mono/600.css";
 import "@fontsource/geist-mono/700.css";
 import "../src/styles/globals.css";
+import { DensityProvider } from "../src/contexts/density-context";
+import { Densities } from "../src/types/density";
 
 const preview: Preview = {
   parameters: {
@@ -34,15 +36,19 @@ const preview: Preview = {
   decorators: [
     (Story: React.ComponentType, context: any) => {
       const theme = context.globals.theme || "light";
+      const density = (context.globals.density as Densities) || Densities.Medium;
       return (
         <div
+          data-density={density.toLowerCase()}
           className={
             theme === "dark"
               ? "dark bg-background text-foreground p-6 min-h-screen"
               : "bg-background text-foreground p-6 min-h-screen"
           }
         >
-          <Story />
+          <DensityProvider density={density}>
+            <Story />
+          </DensityProvider>
         </div>
       );
     },
@@ -57,6 +63,19 @@ const preview: Preview = {
         items: [
           { value: "light", icon: "sun", title: "Light" },
           { value: "dark", icon: "moon", title: "Dark" },
+        ],
+      },
+    },
+    density: {
+      name: "Density",
+      description: "Density scale for components",
+      defaultValue: "Medium",
+      toolbar: {
+        icon: "unfold",
+        items: [
+          { value: "Small", title: "Small (Compact)" },
+          { value: "Medium", title: "Medium (Default)" },
+          { value: "Large", title: "Large (Relaxed)" },
         ],
       },
     },
