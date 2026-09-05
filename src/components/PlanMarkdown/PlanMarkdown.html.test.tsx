@@ -141,3 +141,41 @@ describe("DraftMarkdown features alongside raw HTML", () => {
     expect(container.querySelector("a")?.getAttribute("href")).toBe("file:///D:/tmp/run.log");
   });
 });
+
+describe("DraftMarkdown code text from raw HTML children", () => {
+  // A markdown fence hands `code` a single string, but rehype-raw reparses raw HTML into real
+  // elements, and the sanitise allow-list keeps `code`, `pre` and inline markup like `b`. So
+  // `children` can be an array holding elements, and stringifying it with `String()` would join it
+  // with commas and render each element as "[object Object]".
+  it("extracts the text of nested elements in a multi-line raw-HTML code block", () => {
+    const container = renderContent("<pre><code>const a = 1\n<b>const b = 2</b></code></pre>");
+
+    const codeBlock = container.querySelector(".pmv-code-block");
+    expect(codeBlock).not.toBeNull();
+    expect(codeBlock!.querySelector("code")?.textContent).toBe("const a = 1\nconst b = 2");
+    expect(container.textContent).not.toContain("[object Object]");
+    expect(container.textContent).not.toContain(",");
+  });
+
+  it("extracts the text of nested elements in a languaged raw-HTML code block", () => {
+    const container = renderContent(
+      '<pre><code class="language-ts">const a<b> = 1</b></code></pre>',
+    );
+
+    const codeBlock = container.querySelector(".pmv-code-block");
+    expect(codeBlock).not.toBeNull();
+    expect(codeBlock!.textContent).toContain("const a = 1");
+    expect(container.textContent).not.toContain("[object Object]");
+    expect(container.textContent).not.toContain(",");
+  });
+
+  // The single-string path is the overwhelmingly common one, and it must keep passing the text
+  // through untouched — no separator inserted, none stripped.
+  it("keeps commas in an ordinary fence untouched", () => {
+    const container = renderContent("```ts\nconst xs = [1, 2, 3];\nconst ys = xs;\n```");
+
+    expect(container.querySelector(".pmv-code-block")?.textContent).toContain(
+      "const xs = [1, 2, 3];",
+    );
+  });
+});
