@@ -37,7 +37,6 @@ const config: TestRunnerConfig = {
         const { theme = "light", density = "Medium" } = readStoryGlobals(storyContext);
         const snapshotIdentifier = `${storyContext.id}-${theme}-${density.toLowerCase()}`;
 
-        // @ts-expect-error jest-image-snapshot matchers extended on expect
         expect(image).toMatchImageSnapshot({
           customSnapshotIdentifier: snapshotIdentifier,
           failureThreshold: 0.01,
