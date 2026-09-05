@@ -64,8 +64,6 @@ export {
   normalizeNestedFences,
   type MarkdownRendererProps,
 } from "./components/MarkdownRenderer";
-export { MermaidRenderer, type MermaidRendererProps } from "./components/MermaidRenderer";
-export { GraphvizRenderer, type GraphvizRendererProps } from "./components/GraphvizRenderer";
 
 // Error Handling
 export {
