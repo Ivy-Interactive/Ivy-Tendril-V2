@@ -111,15 +111,9 @@ export type {
 export {
   parseQuestions,
   tagQuestionBlocks,
-  getMarkdownPlugins,
-  hasMath,
   prismTheme,
   normalizeLanguage,
   codeBlockPreStyle,
-  rawHtmlSchema,
-  hasRawHtml,
-  getWidth,
-  getHeight,
 } from "./components/PlanMarkdown";
 
 // Plan Diff Components

@@ -37,3 +37,29 @@ export const densityTreeGap = {
   Medium: "gap-1",
   Large: "gap-1.5",
 } as const;
+
+import { Densities } from "@/types/density";
+
+/** Density to the {@link buttonVariant} `size` key for text buttons. */
+export function densityToButtonSize(density: Densities): "sm" | "default" | "lg" {
+  switch (density) {
+    case Densities.Small:
+      return "sm";
+    case Densities.Large:
+      return "lg";
+    default:
+      return "default";
+  }
+}
+
+/** Density to the lowercase {@link badgeVariant} `density` key. */
+export function densityToBadgeDensity(density: Densities): "small" | "medium" | "large" {
+  switch (density) {
+    case Densities.Small:
+      return "small";
+    case Densities.Large:
+      return "large";
+    default:
+      return "medium";
+  }
+}

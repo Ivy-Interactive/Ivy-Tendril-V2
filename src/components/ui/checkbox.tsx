@@ -4,6 +4,7 @@ import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { Check, Minus } from "lucide-react";
 import * as React from "react";
 import { Densities } from "@/types/density";
+import { useDensity } from "@/contexts/density-context";
 export type NullableBoolean = boolean | null | undefined;
 
 const getSizeClasses = (density?: Densities): string => {
@@ -42,11 +43,13 @@ const Checkbox = React.forwardRef<
       disabled,
       nullable = false,
       className = "",
-      density = Densities.Medium,
+      density,
       ...props
     },
     ref,
   ) => {
+    const contextDensity = useDensity();
+    const effectiveDensity = density ?? contextDensity;
     const isControlled = checked !== undefined;
     const [internalChecked, setInternalChecked] = React.useState<NullableBoolean>(
       defaultChecked ?? false,
@@ -83,7 +86,7 @@ const Checkbox = React.forwardRef<
     };
 
     const isInvalid = className?.includes("border-destructive") || className?.includes("bg-red-50");
-    const baseClass = `peer ${getSizeClasses(density)} shrink-0 rounded-checkbox border border-border shadow transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary data-[state=checked]:hover:bg-primary/90 dark:border-white/10`;
+    const baseClass = `peer ${getSizeClasses(effectiveDensity)} shrink-0 rounded-checkbox border border-border shadow transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary data-[state=checked]:hover:bg-primary/90 dark:border-white/10`;
     const finalClass = isInvalid
       ? baseClass
           .replace("data-[state=checked]:bg-primary", "data-[state=checked]:bg-destructive")
@@ -115,9 +118,9 @@ const Checkbox = React.forwardRef<
           className={cn("flex items-center justify-center text-current")}
         >
           {uiChecked === "indeterminate" ? (
-            <Minus className={getSizeClasses(density)} />
+            <Minus className={getSizeClasses(effectiveDensity)} />
           ) : (
-            <Check className={getSizeClasses(density)} />
+            <Check className={getSizeClasses(effectiveDensity)} />
           )}
         </CheckboxPrimitive.Indicator>
       </CheckboxPrimitive.Root>

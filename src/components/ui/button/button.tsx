@@ -4,6 +4,8 @@ import type { VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 import { buttonVariant } from "./variant";
+import { useDensity } from "@/contexts/density-context";
+import { densityToButtonSize } from "@/components/ui/density-scale";
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariant> {
@@ -12,9 +14,15 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const contextDensity = useDensity();
+    const effectiveSize = size ?? densityToButtonSize(contextDensity);
     const Comp = asChild ? Slot : "button";
     return (
-      <Comp className={cn(buttonVariant({ variant, size, className }))} ref={ref} {...props} />
+      <Comp
+        className={cn(buttonVariant({ variant, size: effectiveSize, className }))}
+        ref={ref}
+        {...props}
+      />
     );
   },
 );
