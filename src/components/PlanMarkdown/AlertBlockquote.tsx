@@ -1,8 +1,7 @@
 import React from "react";
+import { parseGitHubAlert, type GitHubAlertType } from "@/lib/markdown-utils";
 
-type AlertType = "NOTE" | "TIP" | "IMPORTANT" | "WARNING" | "CAUTION";
-
-const ALERT_TYPES = new Set<string>(["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]);
+type AlertType = GitHubAlertType;
 
 const alertConfig: Record<AlertType, { title: string; className: string }> = {
   NOTE: { title: "Note", className: "pmv-alert pmv-alert--note" },
@@ -76,76 +75,6 @@ function getIcon(type: AlertType) {
     case "CAUTION":
       return <AlertIcon />;
   }
-}
-
-function extractTextContent(node: React.ReactNode): string {
-  if (typeof node === "string") return node;
-  if (typeof node === "number") return String(node);
-  if (!node) return "";
-  if (Array.isArray(node)) return node.map(extractTextContent).join("");
-  if (React.isValidElement(node)) {
-    const props = node.props as { children?: React.ReactNode };
-    return extractTextContent(props.children);
-  }
-  return "";
-}
-
-function stripAlertMarker(children: React.ReactNode, markerLength: number): React.ReactNode {
-  const childArray = React.Children.toArray(children);
-  if (childArray.length === 0) return children;
-
-  const first = childArray[0];
-  if (typeof first === "string") {
-    const remaining = first.slice(markerLength).replace(/^\n/, "");
-    if (remaining.length === 0) return childArray.slice(1);
-    return [remaining, ...childArray.slice(1)];
-  }
-  return children;
-}
-
-interface ParsedAlert {
-  type: AlertType;
-  content: React.ReactNode;
-}
-
-function parseGitHubAlert(children: React.ReactNode): ParsedAlert | null {
-  const childArray = React.Children.toArray(children);
-  if (childArray.length === 0) return null;
-
-  let firstChildIndex = 0;
-  let firstChild = childArray[firstChildIndex];
-  while (firstChildIndex < childArray.length && !React.isValidElement(firstChild)) {
-    firstChildIndex++;
-    firstChild = childArray[firstChildIndex];
-  }
-  if (!firstChild || !React.isValidElement(firstChild)) return null;
-
-  const firstProps = firstChild.props as { children?: React.ReactNode };
-  const textContent = extractTextContent(firstProps.children);
-
-  const match = textContent.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/);
-  if (!match) return null;
-
-  const type = match[1] as AlertType;
-  if (!ALERT_TYPES.has(type)) return null;
-
-  const strippedFirstChildren = stripAlertMarker(firstProps.children, match[0].length);
-
-  const hasRemainingContent =
-    React.Children.toArray(strippedFirstChildren).length > 0 &&
-    extractTextContent(strippedFirstChildren).trim().length > 0;
-
-  const remainingChildren = childArray.slice(firstChildIndex + 1).filter(React.isValidElement);
-
-  let content: React.ReactNode;
-  if (hasRemainingContent) {
-    const modifiedFirst = React.cloneElement(firstChild, {}, strippedFirstChildren);
-    content = remainingChildren.length > 0 ? [modifiedFirst, ...remainingChildren] : modifiedFirst;
-  } else {
-    content = remainingChildren.length > 0 ? remainingChildren : null;
-  }
-
-  return { type, content };
 }
 
 export const AlertBlockquote: React.FC<React.HTMLAttributes<HTMLQuoteElement>> = ({ children }) => {
