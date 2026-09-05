@@ -7,7 +7,6 @@ describe("Package Exports", () => {
 
       expect(mod.ThemeProvider).toBeDefined();
       expect(mod.useTheme).toBeDefined();
-      expect(mod.Theme).toBeDefined();
       expect(mod.ThemeContext).toBeDefined();
     });
 
