@@ -1,0 +1,73 @@
+/* Textarea resizer: custom grip same as native (two diagonal lines), only color is theme var(--border). */
+@layer base {
+  textarea.ivy-textarea::-webkit-resizer {
+    appearance: none;
+    background: transparent;
+  }
+  .ivy-textarea-wrapper {
+    position: relative;
+    overflow: visible;
+  }
+  .ivy-textarea-wrapper::before,
+  .ivy-textarea-wrapper::after {
+    content: "";
+    position: absolute;
+    bottom: 4px;
+    right: 2px;
+    width: 2px;
+    height: 1px;
+    background: var(--muted-foreground);
+    transform: rotate(-45deg);
+    transform-origin: bottom right;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .ivy-textarea-wrapper::after {
+    width: 6px;
+    bottom: 7px;
+    right: 2px;
+  }
+  .ivy-textarea-wrapper:has(.resize-none)::before,
+  .ivy-textarea-wrapper:has(.resize-none)::after {
+    display: none;
+  }
+
+  /* Affixed textarea: grip belongs on the full input shell, not the field column. */
+  .ivy-textarea-affixed-shell {
+    position: relative;
+  }
+  .ivy-textarea-affixed-shell .ivy-textarea-wrapper::before,
+  .ivy-textarea-affixed-shell .ivy-textarea-wrapper::after {
+    display: none;
+  }
+  .ivy-textarea-affixed-shell::before,
+  .ivy-textarea-affixed-shell::after {
+    content: "";
+    position: absolute;
+    bottom: 4px;
+    right: 2px;
+    width: 2px;
+    height: 1px;
+    background: var(--muted-foreground);
+    transform: rotate(-45deg);
+    transform-origin: bottom right;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .ivy-textarea-affixed-shell::after {
+    width: 6px;
+    bottom: 7px;
+    right: 2px;
+  }
+
+  .ivy-textarea-affixed-shell .ivy-textarea-wrapper {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .ivy-textarea-affixed-shell .ivy-textarea {
+    flex: 1;
+    min-height: 0;
+  }
+}
