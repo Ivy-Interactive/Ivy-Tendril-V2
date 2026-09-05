@@ -14,47 +14,67 @@ describe("Geist and Geist Mono Font Assets & Configuration", () => {
     const devDeps = pkg.devDependencies || {};
     const deps = pkg.dependencies || {};
 
-    expect(devDeps["@fontsource/geist-sans"]).toBeDefined();
-    expect(devDeps["@fontsource/geist-mono"]).toBeDefined();
+    expect(devDeps["@fontsource-variable/geist"]).toBeDefined();
+    expect(devDeps["@fontsource-variable/geist-mono"]).toBeDefined();
 
-    expect(deps["@fontsource/geist-sans"]).toBeUndefined();
-    expect(deps["@fontsource/geist-mono"]).toBeUndefined();
+    expect(deps["@fontsource-variable/geist"]).toBeUndefined();
+    expect(deps["@fontsource-variable/geist-mono"]).toBeUndefined();
   });
 
   test("preview.tsx imports the required font stylesheets", () => {
     const previewContent = readFileSync(previewPath, "utf-8");
 
-    const expectedImports = [
-      "@fontsource/geist-sans/400.css",
-      "@fontsource/geist-sans/500.css",
-      "@fontsource/geist-sans/600.css",
-      "@fontsource/geist-sans/700.css",
-      "@fontsource/geist-mono/400.css",
-      "@fontsource/geist-mono/500.css",
-      "@fontsource/geist-mono/600.css",
-      "@fontsource/geist-mono/700.css",
-    ];
+    const expectedImports = ["@fontsource-variable/geist", "@fontsource-variable/geist-mono"];
 
     for (const fontImport of expectedImports) {
       expect(previewContent).toContain(fontImport);
     }
+
+    // Ensure old static imports are removed
+    expect(previewContent).not.toContain("@fontsource/geist-sans");
+    expect(previewContent).not.toContain("@fontsource/geist-mono");
   });
 
-  test("globals.css defines --font-sans containing Geist and --font-mono containing Geist Mono", () => {
+  test("globals.css defines --font-sans containing Geist Variable and --font-mono containing Geist Mono Variable", () => {
     const globalsCss = readFileSync(globalsCssPath, "utf-8");
 
-    expect(globalsCss).toMatch(/--font-sans:[^;]*Geist[^;]*;/);
-    expect(globalsCss).toMatch(/--font-mono:[^;]*Geist Mono[^;]*;/);
+    expect(globalsCss).toMatch(/--font-sans:[^;]*Geist Variable[^;]*;/);
+    expect(globalsCss).toMatch(/--font-mono:[^;]*Geist Mono Variable[^;]*;/);
     expect(globalsCss).toContain("--font-family-mono: var(--font-mono);");
     expect(globalsCss).toContain("--font-family-sans: var(--font-sans);");
   });
 
-  test("index.css defines --font-sans containing Geist and --font-mono containing Geist Mono", () => {
+  test("index.css defines --font-sans containing Geist Variable and --font-mono containing Geist Mono Variable", () => {
     const indexCss = readFileSync(indexCssPath, "utf-8");
 
-    expect(indexCss).toMatch(/--font-sans:[^;]*Geist[^;]*;/);
-    expect(indexCss).toMatch(/--font-mono:[^;]*Geist Mono[^;]*;/);
+    expect(indexCss).toMatch(/--font-sans:[^;]*Geist Variable[^;]*;/);
+    expect(indexCss).toMatch(/--font-mono:[^;]*Geist Mono Variable[^;]*;/);
     expect(indexCss).toContain("--font-family-mono: var(--font-mono);");
     expect(indexCss).toContain("--font-family-sans: var(--font-sans);");
+  });
+
+  test("globals.css and index.css declare the same Geist variable families", () => {
+    const families = (css: string) =>
+      [/--font-sans:\s*([^;]+);/.exec(css)?.[1], /--font-mono:\s*([^;]+);/.exec(css)?.[1]].map(
+        (v) => v?.replace(/\s+/g, " ").trim(),
+      );
+
+    expect(families(readFileSync(globalsCssPath, "utf-8"))).toEqual(
+      families(readFileSync(indexCssPath, "utf-8")),
+    );
+  });
+
+  test("agent-output.css names Geist Mono Variable", () => {
+    const agentOutputCssPath = resolve(rootDir, "src/components/AgentViewer/agent-output.css");
+    const agentOutputCss = readFileSync(agentOutputCssPath, "utf-8");
+
+    expect(agentOutputCss).toContain("Geist Mono Variable");
+  });
+
+  test("plan-markdown.css names Geist Mono Variable", () => {
+    const planMarkdownCssPath = resolve(rootDir, "src/components/PlanMarkdown/plan-markdown.css");
+    const planMarkdownCss = readFileSync(planMarkdownCssPath, "utf-8");
+
+    expect(planMarkdownCss).toContain("Geist Mono Variable");
   });
 });

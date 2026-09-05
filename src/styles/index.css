@@ -92,9 +92,10 @@
 
     /* Fonts & typography */
     --font-sans:
-      "Geist", "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-serif: "Geist", serif;
-    --font-mono: "Geist Mono", monospace;
+      "Geist Variable", "Geist", "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Roboto, sans-serif;
+    --font-serif: "Geist Variable", "Geist", serif;
+    --font-mono: "Geist Mono Variable", "Geist Mono", monospace;
     --text-body: 14px;
     --text-large-body: 14px;
     --text-large-label: 14px;

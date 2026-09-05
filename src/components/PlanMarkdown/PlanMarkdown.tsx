@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 import "./plan-markdown.css";
-import { getHeight, getWidth } from "./styles";
+import { getHeight, getWidth } from "@/lib/styles";
 import { BlockHandler } from "./BlockHandler";
 import type { MarkdownAnnotation } from "./annotationUtils";
 import {
@@ -14,7 +14,7 @@ import { AddAnnotationPopover, EditAnnotationPopover, SelectionToolbar } from ".
 import { AlertBlockquote } from "./AlertBlockquote";
 import { ImageRenderer } from "./ImageRenderer";
 import { isLocalFileUrl, transformLocalFileUrl } from "./localFiles";
-import { getMarkdownPlugins } from "./math";
+import { getMarkdownPlugins } from "@/lib/math";
 import { tagQuestionBlocks } from "./questionsSource";
 import { QuestionsAnswerContext } from "./questionsContext";
 import type { AnswerCallback } from "./questionsContext";
