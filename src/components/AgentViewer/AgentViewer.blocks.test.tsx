@@ -22,13 +22,7 @@ describe("AgentViewer - Rich Block Rendering", () => {
       }),
     ].join("\n");
 
-    render(
-      <AgentViewer
-        id="test-mermaid"
-        jsonStream={jsonStream}
-        eventHandler={() => {}}
-      />,
-    );
+    render(<AgentViewer id="test-mermaid" jsonStream={jsonStream} eventHandler={() => {}} />);
 
     await waitFor(() => {
       expect(
@@ -50,13 +44,7 @@ describe("AgentViewer - Rich Block Rendering", () => {
       }),
     ].join("\n");
 
-    render(
-      <AgentViewer
-        id="test-graphviz"
-        jsonStream={jsonStream}
-        eventHandler={() => {}}
-      />,
-    );
+    render(<AgentViewer id="test-graphviz" jsonStream={jsonStream} eventHandler={() => {}} />);
 
     await waitFor(() => {
       expect(
@@ -90,11 +78,7 @@ questions:
     ].join("\n");
 
     render(
-      <AgentViewer
-        id="test-questions-readonly"
-        jsonStream={jsonStream}
-        eventHandler={() => {}}
-      />,
+      <AgentViewer id="test-questions-readonly" jsonStream={jsonStream} eventHandler={() => {}} />,
     );
 
     expect(screen.getByText("Choose a color")).toBeTruthy();
@@ -149,13 +133,7 @@ questions:
       }),
     ].join("\n");
 
-    render(
-      <AgentViewer
-        id="test-code-block"
-        jsonStream={jsonStream}
-        eventHandler={() => {}}
-      />,
-    );
+    render(<AgentViewer id="test-code-block" jsonStream={jsonStream} eventHandler={() => {}} />);
 
     expect(screen.getByText("const x = 42;")).toBeTruthy();
     expect(screen.getByRole("button", { name: /copy/i })).toBeTruthy();
@@ -181,11 +159,7 @@ Done.`,
     ].join("\n");
 
     render(
-      <AgentViewer
-        id="test-result-with-diagram"
-        jsonStream={jsonStream}
-        eventHandler={() => {}}
-      />,
+      <AgentViewer id="test-result-with-diagram" jsonStream={jsonStream} eventHandler={() => {}} />,
     );
 
     await waitFor(() => {
