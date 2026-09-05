@@ -17,8 +17,14 @@ vi.mock("@storybook/test-runner", () => ({
 import { waitForPageReady } from "@storybook/test-runner";
 import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
 import visualConfig from "../.storybook/test-runner.ts";
+import agentViewerMeta, {
+  WithRichPlanLogs as agentViewerRichLogsStory,
+} from "../src/components/AgentViewer/AgentViewer.stories.tsx";
+import planMarkdownMeta from "../src/components/PlanMarkdown/PlanMarkdown.stories.tsx";
 import webViewerMeta from "../src/components/WebViewer/WebViewer.stories.tsx";
 import calendarMeta from "../src/stories/calendar.stories.tsx";
+import graphvizMeta from "../src/stories/GraphvizRenderer.stories.tsx";
+import mermaidMeta from "../src/stories/MermaidRenderer.stories.tsx";
 import {
   Skeleton as loadingSkeletonStory,
   Spinner as loadingSpinnerStory,
@@ -150,6 +156,25 @@ describe("Storybook visual regression runner", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("honours parameters.visual.settleDelay for lazily rendered stories", async () => {
+    const order: string[] = [];
+    const { page } = createPage(order);
+
+    await captureSnapshotCalls(async () => {
+      await visualConfig.postVisit?.(
+        page as never,
+        {
+          id: "renderers-mermaidrenderer--sequence-diagram",
+          title: "Renderers/MermaidRenderer",
+          name: "SequenceDiagram",
+          parameters: { visual: { settleDelay: 3000 } },
+        } as never,
+      );
+    });
+
+    expect(page.waitForTimeout).toHaveBeenCalledWith(3000);
+  });
+
   it("writes baselines to .storybook/__image_snapshots__ with a theme and density identifier", async () => {
     const order: string[] = [];
     const { page } = createPage(order);
@@ -231,6 +256,23 @@ describe("Nondeterministic story opt-outs", () => {
   it("opts Domain/Loading Skeleton out without disabling Spinner", () => {
     expect(loadingSkeletonStory.parameters?.visual?.disable).toBe(true);
     expect(loadingSpinnerStory.parameters?.visual).toBeUndefined();
+  });
+});
+
+describe("Lazily rendered story settle delays", () => {
+  it("gives the diagram renderers time to finish laying out", () => {
+    expect(mermaidMeta.parameters?.visual?.settleDelay).toBe(3000);
+    expect(graphvizMeta.parameters?.visual?.settleDelay).toBe(3000);
+  });
+
+  it("gives Components/PlanMarkdown the same allowance for its diagram fences", () => {
+    expect(planMarkdownMeta.parameters?.visual?.settleDelay).toBe(3000);
+  });
+
+  it("opts AgentViewer's diagram story out instead, since auto-scroll moves with the layout", () => {
+    expect(agentViewerRichLogsStory.parameters?.visual?.disable).toBe(true);
+    expect(agentViewerMeta.parameters?.visual).toBeUndefined();
+    expect(agentViewerMeta.parameters?.layout).toBe("padded");
   });
 });
 

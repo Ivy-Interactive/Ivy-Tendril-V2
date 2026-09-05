@@ -14,6 +14,13 @@ const isVisualRun = () => process.env.STORYBOOK_VISUAL_REGRESSION === "true";
 
 const snapshotsDir = path.join(process.cwd(), ".storybook", "__image_snapshots__");
 
+/**
+ * Settle time between freezing the page and screenshotting it. Stories that lazy-load their renderer
+ * keep working after `waitForPageReady` resolves, so they can ask for longer through
+ * `parameters.visual.settleDelay`.
+ */
+const DEFAULT_SETTLE_DELAY_MS = 100;
+
 // Neutralises everything that would otherwise make two screenshots of the same story differ:
 // running animations and transitions, blinking text carets, and smooth scrolling.
 const FREEZE_CSS = `
@@ -71,7 +78,9 @@ const config: TestRunnerConfig = {
     // suppress the very work this call waits on.
     await waitForPageReady(page);
     await page.addStyleTag({ content: FREEZE_CSS });
-    await page.waitForTimeout(100);
+    await page.waitForTimeout(
+      storyContext.parameters?.visual?.settleDelay ?? DEFAULT_SETTLE_DELAY_MS,
+    );
 
     const rootElement = await page.$("#storybook-root");
     if (!rootElement) {

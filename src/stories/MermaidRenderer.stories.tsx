@@ -8,6 +8,11 @@ const meta: Meta<typeof MermaidRenderer> = {
   argTypes: {
     content: { control: "text" },
   },
+  parameters: {
+    // mermaid is imported on first render and lays the diagram out asynchronously, so the visual
+    // pass would otherwise screenshot the "Loading diagram…" placeholder.
+    visual: { settleDelay: 3000 },
+  },
 };
 
 export default meta;

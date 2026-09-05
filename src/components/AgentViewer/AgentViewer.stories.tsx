@@ -430,4 +430,10 @@ export const WithRichPlanLogs: Story = {
       console.log(`Event: ${eventName}`, { id, args });
     },
   },
+  parameters: {
+    // These logs embed mermaid and graphviz fences, which resize the scroll container once their
+    // lazily imported renderers finish. Auto-scroll then lands a few pixels off from run to run, so
+    // there is no stable frame to screenshot.
+    visual: { disable: true },
+  },
 };
