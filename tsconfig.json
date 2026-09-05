@@ -9,7 +9,7 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "types": ["node", "vite/client"],
+    "types": ["node", "vite/client", "jest-image-snapshot"],
     "strict": true,
     "noUnusedLocals": true,
     "declaration": true,
