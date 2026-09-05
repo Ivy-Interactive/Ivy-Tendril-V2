@@ -28,7 +28,7 @@ release. Add a tool name to select part of the graph. For example, run
 
 ## Git Hooks
 
-`.vite-hooks/pre-commit` runs `vp staged --no-stash` instead of plain `vp staged`. `refs/stash` is shared by every worktree of this clone, and lint-staged resolves its backup stash by *index*, so a sibling worktree's commit can make it drop or apply the wrong entry.
+`.vite-hooks/pre-commit` runs `vp staged --no-stash` instead of plain `vp staged`. `refs/stash` is shared by every worktree of this clone, and lint-staged resolves its backup stash by _index_, so a sibling worktree's commit can make it drop or apply the wrong entry.
 
 - Do not remove the `--no-stash` flag to silence the `Skipping backup` warning it prints on every commit. The warning is the honest price of the protection.
 - If a commit fails and you had unstaged hunks in a partially staged file, they are in `lint-staged_unstaged.patch` inside `git rev-parse --absolute-git-dir`. Re-apply with `git apply --3way`.

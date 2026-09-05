@@ -52,9 +52,10 @@ describe("AGENTS.md", () => {
 
     // Find the next section header after ## Git Hooks
     const nextSectionIndex = content.indexOf("## ", gitHooksIndex + 1);
-    const gitHooksSection = nextSectionIndex > -1
-      ? content.substring(gitHooksIndex, nextSectionIndex)
-      : content.substring(gitHooksIndex);
+    const gitHooksSection =
+      nextSectionIndex > -1
+        ? content.substring(gitHooksIndex, nextSectionIndex)
+        : content.substring(gitHooksIndex);
 
     expect(gitHooksSection).toContain("--no-stash");
   });
