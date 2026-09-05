@@ -71,3 +71,4 @@ Operational rules:
 - Do not delete the leading document during merge conflict resolution. It will not come back on its own.
 - If `manage-package-manager-versions` is disabled in your pnpm config, install with `vp install` or `corepack pnpm@11.25.0 install` rather than bare `pnpm` — the `packageManager` field cannot protect you with that setting off.
 - Tests that parse the lockfile use the `yaml` package to select a document by key (`overrides` for the project document, `packageManagerDependencies` for the leading one) — never by index.
+- Every workflow now installs with `--frozen-lockfile` (`ci.yml` included), so a stripped leading document fails the PR everywhere instead of being silently repaired in one job.
