@@ -104,6 +104,9 @@ impl MasterDiscovery {
                     pid: None,
                     capabilities: Vec::new(),
                     message: format!("Tendril daemon metadata (.master) not found: {err}"),
+                    ownership: None,
+                    status_badge: Some("NotRunning".to_string()),
+                    crash_count: None,
                 };
             }
         };
@@ -120,26 +123,46 @@ impl MasterDiscovery {
                 pid: Some(master.pid),
                 capabilities: master.capabilities,
                 message: format!("Daemon PID {} is inactive", master.pid),
+                ownership: None,
+                status_badge: Some("NotRunning".to_string()),
+                crash_count: None,
             };
         }
 
+        let is_managed = self.tendril_home.join(".managed_service.lock").exists();
+        let ownership_str = if is_managed {
+            "Managed"
+        } else {
+            "AdoptedExternal"
+        };
+
         match probe_daemon_health(&master.scheme, &master.host, master.port, &master.secret).await {
-            Ok((api_ver, caps)) => ServiceInfoDto {
-                state: "Connected".to_string(),
-                tendril_home: tendril_home_str,
-                port: Some(master.port),
-                host: Some(master.host),
-                scheme: Some(master.scheme),
-                version: Some(master.version),
-                api_version: Some(api_ver),
-                pid: Some(master.pid),
-                capabilities: if caps.is_empty() {
-                    master.capabilities
+            Ok((api_ver, caps)) => {
+                let badge = if is_managed {
+                    "Connected (Managed)"
                 } else {
-                    caps
-                },
-                message: "Daemon is online and healthy".to_string(),
-            },
+                    "Connected (External)"
+                };
+                ServiceInfoDto {
+                    state: "Connected".to_string(),
+                    tendril_home: tendril_home_str,
+                    port: Some(master.port),
+                    host: Some(master.host),
+                    scheme: Some(master.scheme),
+                    version: Some(master.version),
+                    api_version: Some(api_ver),
+                    pid: Some(master.pid),
+                    capabilities: if caps.is_empty() {
+                        master.capabilities
+                    } else {
+                        caps
+                    },
+                    message: format!("Daemon is online and healthy ({badge})"),
+                    ownership: Some(ownership_str.to_string()),
+                    status_badge: Some(badge.to_string()),
+                    crash_count: Some(0),
+                }
+            }
             Err(DaemonConnectionState::Unauthenticated) => ServiceInfoDto {
                 state: "Unauthenticated".to_string(),
                 tendril_home: tendril_home_str,
@@ -151,6 +174,9 @@ impl MasterDiscovery {
                 pid: Some(master.pid),
                 capabilities: master.capabilities,
                 message: "Daemon rejected authorization credentials".to_string(),
+                ownership: Some(ownership_str.to_string()),
+                status_badge: Some("Degraded".to_string()),
+                crash_count: None,
             },
             Err(_) => ServiceInfoDto {
                 state: "Disconnected".to_string(),
@@ -163,6 +189,9 @@ impl MasterDiscovery {
                 pid: Some(master.pid),
                 capabilities: master.capabilities,
                 message: format!("Daemon PID {} is active, but HTTP ping failed", master.pid),
+                ownership: Some(ownership_str.to_string()),
+                status_badge: Some("Disconnected".to_string()),
+                crash_count: None,
             },
         }
     }

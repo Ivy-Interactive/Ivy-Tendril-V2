@@ -38,6 +38,47 @@ pub fn get_tendril_home() -> Result<String, String> {
     Ok(resolve_tendril_home().to_string_lossy().to_string())
 }
 
+#[tauri::command]
+pub async fn cmd_get_service_logs(lines: Option<usize>) -> Result<Vec<String>, String> {
+    let home = resolve_tendril_home();
+    let supervisor = crate::service::ServiceSupervisor::new(home, None);
+    supervisor.read_service_logs(lines)
+}
+
+#[tauri::command]
+pub async fn cmd_restart_service() -> Result<ServiceInfoDto, String> {
+    let home = resolve_tendril_home();
+    let mut supervisor = crate::service::ServiceSupervisor::new(home.clone(), None);
+    let _ = supervisor.stop_managed_service();
+    let discovery = MasterDiscovery::with_home(home);
+    Ok(discovery.get_service_info().await)
+}
+
+#[tauri::command]
+pub async fn cmd_repair_service() -> Result<String, String> {
+    let home = resolve_tendril_home();
+    let mut supervisor = crate::service::ServiceSupervisor::new(home.clone(), None);
+    let cleaned = supervisor.atomic_remove_stale_master().unwrap_or(false);
+    supervisor.remove_lock_file();
+    supervisor.circuit_breaker.reset();
+
+    Ok(format!(
+        "Service repair completed successfully. (Cleaned stale master: {})",
+        cleaned
+    ))
+}
+
+#[tauri::command]
+pub async fn cmd_switch_service_mode(mode: String) -> Result<ServiceInfoDto, String> {
+    let home = resolve_tendril_home();
+    let mut supervisor = crate::service::ServiceSupervisor::new(home.clone(), None);
+    if mode == "external" {
+        let _ = supervisor.stop_managed_service();
+    }
+    let discovery = MasterDiscovery::with_home(home);
+    Ok(discovery.get_service_info().await)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -10,11 +10,18 @@ fn sample_config() -> PlatformServiceConfig {
     PlatformServiceConfig {
         service_name: "com.spacecorps.tendril.service".to_string(),
         binary_path: PathBuf::from("/usr/local/bin/tendril"),
-        args: vec!["serve".to_string(), "--port".to_string(), "5010".to_string()],
+        args: vec![
+            "serve".to_string(),
+            "--port".to_string(),
+            "5010".to_string(),
+        ],
         tendril_home: PathBuf::from("/Users/test/.tendril"),
         log_path: PathBuf::from("/Users/test/.tendril/Logs/service.log"),
         env_vars: vec![
-            ("TENDRIL_HOME".to_string(), "/Users/test/.tendril".to_string()),
+            (
+                "TENDRIL_HOME".to_string(),
+                "/Users/test/.tendril".to_string(),
+            ),
             ("TENDRIL_MANAGED_BY".to_string(), "Tendril-App".to_string()),
         ],
     }
