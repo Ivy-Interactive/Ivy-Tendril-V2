@@ -46,6 +46,6 @@ export function getPollingInterval(
   }
 
   // Polling fallback when disconnected/reconnecting:
-  // 3s for active jobs, 10s for plan lists
-  return resource === "jobs" ? 3000 : 10000;
+  // 3s for active jobs, 5s for plan lists
+  return resource === "jobs" ? 3000 : 5000;
 }

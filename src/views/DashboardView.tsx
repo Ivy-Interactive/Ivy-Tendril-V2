@@ -1,0 +1,119 @@
+import React from "react";
+import {
+  TendrilDashboard,
+  TendrilProcessViewer,
+  type DashboardKpiDto,
+  type DashboardJobDto,
+} from "components-storybook/tendril";
+import type { PlanSummary, Job } from "../types/api";
+
+interface DashboardViewProps {
+  plans: PlanSummary[];
+  jobs: Job[];
+  onSelectPlan?: (planId: string) => void;
+  onSelectJob?: (jobId: string) => void;
+}
+
+export const DashboardView: React.FC<DashboardViewProps> = ({
+  plans,
+  jobs,
+  onSelectPlan,
+  onSelectJob,
+}) => {
+  // Compute counts for process viewer
+  const draftCount = plans.filter((p) => p.state === "Draft").length;
+  const reviewCount = plans.filter((p) => p.state === "Review").length;
+  const executingCount = plans.filter((p) => p.state === "Executing").length;
+  const creatingCount = plans.filter((p) => p.state === "Creating").length;
+  const updatingCount = plans.filter((p) => p.state === "Updating").length;
+  const completedCount = plans.filter((p) => p.state === "Completed").length;
+
+  // Compute KPIs
+  const totalCost = jobs.reduce((acc, j) => acc + (j.cost || 0), 0);
+  const totalTokens = jobs.reduce((acc, j) => acc + (j.tokens || 0), 0);
+
+  const kpis: DashboardKpiDto[] = [
+    {
+      label: "Active Plans",
+      value: String(draftCount + reviewCount + executingCount),
+      delta: `${executingCount} executing`,
+      direction: "up",
+    },
+    {
+      label: "Completed Plans",
+      value: String(completedCount),
+      delta: "All time",
+      direction: null,
+    },
+    {
+      label: "Total Job Cost",
+      value: `$${totalCost.toFixed(2)}`,
+      delta: "USD",
+      direction: null,
+    },
+    {
+      label: "Tokens Consumed",
+      value: totalTokens > 1000 ? `${(totalTokens / 1000).toFixed(1)}k` : String(totalTokens),
+      delta: "Tokens",
+      direction: "up",
+    },
+  ];
+
+  const dashboardJobs: DashboardJobDto[] = jobs.slice(0, 5).map((j) => ({
+    id: j.id,
+    planId: j.planId || "",
+    title: j.planTitle || j.project || "Task Execution",
+    status: j.status.toLowerCase(),
+  }));
+
+  return (
+    <div className="space-y-6" data-testid="dashboard-view">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-100">
+            Tendril Dashboard
+          </h1>
+          <p className="text-xs text-slate-400">
+            Autonomous Pipeline Health and Execution Metrics
+          </p>
+        </div>
+      </div>
+
+      <TendrilDashboard
+        id="tendril-dashboard"
+        draftCount={draftCount}
+        inProgressCount={executingCount + creatingCount + updatingCount}
+        reviewCount={reviewCount}
+        completedCount={completedCount}
+        failedCount={0}
+        events={["OnJob"]}
+        eventHandler={(_evt, _id, args) => {
+          if (args && args[0] && onSelectJob) {
+            onSelectJob(String(args[0]));
+          }
+        }}
+        kpis={kpis}
+        jobs={dashboardJobs}
+        slots={{
+          ProcessViewer: (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+              <TendrilProcessViewer
+                id="process-viewer"
+                draftCount={draftCount}
+                reviewCount={reviewCount}
+                executingPlansCount={executingCount}
+                creatingPlansCount={creatingCount}
+                updatingPlansCount={updatingCount}
+                eventHandler={(_evt, _id, args) => {
+                  if (args && args[0] && onSelectPlan) {
+                    onSelectPlan(String(args[0]));
+                  }
+                }}
+              />
+            </div>
+          ),
+        }}
+      />
+    </div>
+  );
+};

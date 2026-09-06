@@ -1,0 +1,774 @@
+use crate::error::BridgeError;
+use crate::models::{
+    JobDetailDto, JobDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, PlanVerificationDto,
+    ProjectSummaryDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
+};
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use serde_json::json;
+
+#[derive(Debug, Clone)]
+pub struct TendrilClient {
+    base_url: String,
+    secret: Option<String>,
+    client: reqwest::Client,
+}
+
+impl TendrilClient {
+    pub fn new(base_url: impl Into<String>, secret: Option<String>) -> Self {
+        let base_url = base_url.into().trim_end_matches('/').to_string();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
+        Self {
+            base_url,
+            secret,
+            client,
+        }
+    }
+
+    fn headers(&self) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(ref sec) = self.secret {
+            if let Ok(val) = HeaderValue::from_str(&format!("Bearer {sec}")) {
+                headers.insert(AUTHORIZATION, val);
+            }
+        }
+        headers
+    }
+
+    pub async fn ping(&self) -> Result<String, BridgeError> {
+        let url = format!("{}/api/ping", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(BridgeError::new(
+                "PING_FAILED",
+                format!("Ping failed with status {}", resp.status()),
+            ));
+        }
+
+        Ok(resp.text().await.unwrap_or_else(|_| "pong".to_string()))
+    }
+
+    pub async fn list_plans(
+        &self,
+        query: Option<PlanQueryDto>,
+    ) -> Result<Vec<PlanSummaryDto>, BridgeError> {
+        let mut url = format!("{}/api/plans", self.base_url);
+        if let Some(q) = query {
+            let mut params = Vec::new();
+            if let Some(st) = q.status {
+                params.push(format!("status={}", urlencoding(&st)));
+            }
+            if let Some(pj) = q.project {
+                params.push(format!("project={}", urlencoding(&pj)));
+            }
+            if let Some(search) = q.q {
+                params.push(format!("q={}", urlencoding(&search)));
+            }
+            if !params.is_empty() {
+                url = format!("{}?{}", url, params.join("&"));
+            }
+        }
+
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_PLANS_FAILED",
+                format!("Failed to list plans ({status}): {text}"),
+            ));
+        }
+
+        let raw_plans: Vec<serde_json::Value> = resp.json().await?;
+        let summaries = raw_plans
+            .into_iter()
+            .map(|val| {
+                let id = val.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let title = val.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let state = val.get("state").and_then(|v| v.as_str()).unwrap_or("Draft").to_string();
+                let project = val.get("project").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let level = val.get("level").and_then(|v| v.as_str()).unwrap_or("Feature").to_string();
+                let priority = val.get("priority").and_then(|v| v.as_i64()).map(|p| p as i32);
+                let created = val.get("created").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let updated = val.get("updated").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+                let verifications = val.get("verifications")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter().filter_map(|item| {
+                            let name = item.get("name").and_then(|n| n.as_str())?.to_string();
+                            let status = item.get("status").and_then(|s| s.as_str()).unwrap_or("Pending").to_string();
+                            Some(PlanVerificationDto { name, status })
+                        }).collect()
+                    }).unwrap_or_default();
+
+                PlanSummaryDto {
+                    id,
+                    title,
+                    state,
+                    project,
+                    level,
+                    priority,
+                    created,
+                    updated,
+                    verifications,
+                }
+            })
+            .collect();
+
+        Ok(summaries)
+    }
+
+    pub async fn get_plan(&self, plan_id: &str) -> Result<PlanDetailDto, BridgeError> {
+        let url = format!("{}/api/plans/{}", self.base_url, urlencoding(plan_id));
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(BridgeError::not_found(format!("Plan '{plan_id}' not found")));
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_PLAN_FAILED",
+                format!("Failed to get plan '{plan_id}' ({status}): {text}"),
+            ));
+        }
+
+        let val: serde_json::Value = resp.json().await?;
+        let metadata = val.get("metadata").unwrap_or(&val);
+
+        let id = metadata.get("id").and_then(|v| v.as_str()).unwrap_or(plan_id).to_string();
+        let title = metadata.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let state = metadata.get("state").and_then(|v| v.as_str()).unwrap_or("Draft").to_string();
+        let project = metadata.get("project").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let level = metadata.get("level").and_then(|v| v.as_str()).unwrap_or("Feature").to_string();
+        let priority = metadata.get("priority").and_then(|v| v.as_i64()).map(|p| p as i32);
+        let execution_profile = metadata.get("executionProfile").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let initial_prompt = metadata.get("initialPrompt").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let source_url = metadata.get("sourceUrl").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let created = metadata.get("created").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let updated = metadata.get("updated").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        let repos = metadata.get("repos")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+
+        let verifications = metadata.get("verifications")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter().filter_map(|item| {
+                    let name = item.get("name").and_then(|n| n.as_str())?.to_string();
+                    let status = item.get("status").and_then(|s| s.as_str()).unwrap_or("Pending").to_string();
+                    Some(PlanVerificationDto { name, status })
+                }).collect()
+            }).unwrap_or_default();
+
+        let depends_on = metadata.get("dependsOn")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+
+        let related_plans = metadata.get("relatedPlans")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+
+        let commits = metadata.get("commits")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+
+        let prs = metadata.get("prs")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
+            .unwrap_or_default();
+
+        let latest_revision_content = val.get("latestRevision").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        Ok(PlanDetailDto {
+            id,
+            title,
+            state,
+            project,
+            level,
+            priority,
+            execution_profile,
+            initial_prompt,
+            source_url,
+            created,
+            updated,
+            repos,
+            verifications,
+            depends_on,
+            related_plans,
+            commits,
+            prs,
+            latest_revision_content,
+        })
+    }
+
+    pub async fn create_plan(&self, body: serde_json::Value) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/plans", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CREATE_PLAN_FAILED",
+                format!("Failed to create plan ({status}): {text}"),
+            ));
+        }
+
+        let created_val = resp.json().await?;
+        Ok(created_val)
+    }
+
+    pub async fn update_plan_field(
+        &self,
+        id: &str,
+        field: &str,
+        value: &str,
+        allow_failed: bool,
+    ) -> Result<(), BridgeError> {
+        let url = format!("{}/api/plans/{}", self.base_url, urlencoding(id));
+        let body = json!({
+            "field": field,
+            "value": value,
+            "allowFailedVerifications": allow_failed
+        });
+
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "UPDATE_FIELD_FAILED",
+                format!("Failed to update plan field ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_revision(
+        &self,
+        id: &str,
+        number: Option<i32>,
+    ) -> Result<String, BridgeError> {
+        let mut url = format!("{}/api/plans/{}/revisions", self.base_url, urlencoding(id));
+        if let Some(num) = number {
+            url = format!("{url}?number={num}");
+        }
+
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_REVISION_FAILED",
+                format!("Failed to get revision for plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.text().await.unwrap_or_default())
+    }
+
+    pub async fn write_revision(
+        &self,
+        id: &str,
+        content: &str,
+    ) -> Result<RevisionResultDto, BridgeError> {
+        let url = format!("{}/api/plans/{}/revisions", self.base_url, urlencoding(id));
+        let body = json!({ "content": content });
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "WRITE_REVISION_FAILED",
+                format!("Failed to write revision ({status}): {text}"),
+            ));
+        }
+
+        let result: serde_json::Value = resp.json().await?;
+        let rev_num = result.get("revision").and_then(|r| r.as_i64()).unwrap_or(1) as i32;
+        let message = result.get("message").and_then(|m| m.as_str()).unwrap_or("Revision written").to_string();
+
+        Ok(RevisionResultDto {
+            revision: rev_num,
+            message,
+        })
+    }
+
+    pub async fn list_jobs(
+        &self,
+        status: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<JobDto>, BridgeError> {
+        let mut url = format!("{}/api/jobs", self.base_url);
+        let mut params = Vec::new();
+        if let Some(st) = status {
+            params.push(format!("status={}", urlencoding(st)));
+        }
+        if let Some(lim) = limit {
+            params.push(format!("limit={lim}"));
+        }
+        if !params.is_empty() {
+            url = format!("{}?{}", url, params.join("&"));
+        }
+
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status_code = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_JOBS_FAILED",
+                format!("Failed to list jobs ({status_code}): {text}"),
+            ));
+        }
+
+        let raw_jobs: Vec<serde_json::Value> = resp.json().await?;
+        let jobs = raw_jobs
+            .into_iter()
+            .map(|val| {
+                let id = val.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let job_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
+                let plan_id = val.get("reportedPlanId").or_else(|| val.get("planId")).and_then(|v| v.as_str()).map(|s| s.to_string());
+                let plan_title = val.get("reportedPlanTitle").or_else(|| val.get("planTitle")).and_then(|v| v.as_str()).map(|s| s.to_string());
+                let project = val.get("project").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let status = val.get("status").and_then(|v| v.as_str()).unwrap_or("Pending").to_string();
+                let status_message = val.get("statusMessage").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let started_at = val.get("startedAt").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let completed_at = val.get("completedAt").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let cost = val.get("cost").and_then(|v| v.as_f64());
+                let tokens = val.get("tokens").and_then(|v| v.as_i64());
+
+                JobDto {
+                    id,
+                    job_type,
+                    plan_id,
+                    plan_title,
+                    project,
+                    status,
+                    status_message,
+                    started_at,
+                    completed_at,
+                    cost,
+                    tokens,
+                }
+            })
+            .collect();
+
+        Ok(jobs)
+    }
+
+    pub async fn get_job(&self, job_id: &str) -> Result<JobDetailDto, BridgeError> {
+        let url = format!("{}/api/jobs/{}", self.base_url, urlencoding(job_id));
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_JOB_FAILED",
+                format!("Failed to get job '{job_id}' ({status}): {text}"),
+            ));
+        }
+
+        let val: serde_json::Value = resp.json().await?;
+        let details = val.get("details").unwrap_or(&val);
+
+        let id = details.get("id").and_then(|v| v.as_str()).unwrap_or(job_id).to_string();
+        let job_type = details.get("type").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
+        let plan_id = details.get("reportedPlanId").or_else(|| details.get("planId")).and_then(|v| v.as_str()).map(|s| s.to_string());
+        let plan_title = details.get("reportedPlanTitle").or_else(|| details.get("planTitle")).and_then(|v| v.as_str()).map(|s| s.to_string());
+        let project = details.get("project").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let status = details.get("status").and_then(|v| v.as_str()).unwrap_or("Pending").to_string();
+        let status_message = details.get("statusMessage").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let args = details.get("args").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let working_directory = details.get("workingDirectory").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let started_at = details.get("startedAt").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let completed_at = details.get("completedAt").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let cost = details.get("cost").and_then(|v| v.as_f64());
+        let tokens = details.get("tokens").and_then(|v| v.as_i64());
+        let reported_failure_reason = details.get("reportedFailureReason").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        Ok(JobDetailDto {
+            id,
+            job_type,
+            plan_id,
+            plan_title,
+            project,
+            status,
+            status_message,
+            args,
+            working_directory,
+            started_at,
+            completed_at,
+            cost,
+            tokens,
+            reported_failure_reason,
+        })
+    }
+
+    pub async fn start_job(&self, args: serde_json::Value) -> Result<StartJobResponseDto, BridgeError> {
+        let url = format!("{}/api/jobs", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&args)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "START_JOB_FAILED",
+                format!("Failed to start job ({status}): {text}"),
+            ));
+        }
+
+        let val: serde_json::Value = resp.json().await?;
+        let job_id = val.get("jobId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let status = val.get("status").and_then(|v| v.as_str()).unwrap_or("Started").to_string();
+
+        Ok(StartJobResponseDto { job_id, status })
+    }
+
+    pub async fn update_job_status(
+        &self,
+        job_id: &str,
+        message: &str,
+        plan_id: Option<&str>,
+        plan_title: Option<&str>,
+    ) -> Result<(), BridgeError> {
+        let url = format!("{}/api/jobs/{}/status", self.base_url, urlencoding(job_id));
+        let body = json!({
+            "message": message,
+            "planId": plan_id,
+            "planTitle": plan_title,
+        });
+
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "UPDATE_JOB_STATUS_FAILED",
+                format!("Failed to update job status ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn report_job_failure(
+        &self,
+        job_id: &str,
+        message: &str,
+        stop: bool,
+    ) -> Result<(), BridgeError> {
+        let url = format!("{}/api/jobs/{}/fail", self.base_url, urlencoding(job_id));
+        let body = json!({
+            "message": message,
+            "stop": stop,
+        });
+
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "REPORT_JOB_FAILURE_FAILED",
+                format!("Failed to report job failure ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn cancel_job(&self, job_id: &str, message: Option<&str>) -> Result<(), BridgeError> {
+        let url = format!("{}/api/jobs/{}/cancel", self.base_url, urlencoding(job_id));
+        let body = json!({ "message": message });
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CANCEL_JOB_FAILED",
+                format!("Failed to cancel job ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn add_log(
+        &self,
+        job_id: &str,
+        action: &str,
+        summary: Option<&str>,
+    ) -> Result<String, BridgeError> {
+        let url = format!("{}/api/jobs/{}/logs", self.base_url, urlencoding(job_id));
+        let body = json!({
+            "action": action,
+            "summary": summary,
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "ADD_LOG_FAILED",
+                format!("Failed to add log ({status}): {text}"),
+            ));
+        }
+
+        let val: serde_json::Value = resp.json().await?;
+        let msg = val.get("message").and_then(|v| v.as_str()).unwrap_or("Log added").to_string();
+        Ok(msg)
+    }
+
+    pub async fn list_projects(&self) -> Result<Vec<ProjectSummaryDto>, BridgeError> {
+        let url = format!("{}/api/projects", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_PROJECTS_FAILED",
+                format!("Failed to list projects ({status}): {text}"),
+            ));
+        }
+
+        let raw_projects: Vec<serde_json::Value> = resp.json().await?;
+        let summaries = raw_projects
+            .into_iter()
+            .map(|val| {
+                let name = val.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                let repos = val.get("repos")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter().filter_map(|r| {
+                            r.as_str()
+                                .map(|s| s.to_string())
+                                .or_else(|| r.get("path").and_then(|p| p.as_str()).map(|p| p.to_string()))
+                        }).collect()
+                    }).unwrap_or_default();
+
+                let verifications = val.get("verifications")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter().filter_map(|item| {
+                            item.as_str()
+                                .map(|s| s.to_string())
+                                .or_else(|| item.get("name").and_then(|n| n.as_str()).map(|n| n.to_string()))
+                        }).collect()
+                    }).unwrap_or_default();
+
+                ProjectSummaryDto {
+                    name,
+                    repos,
+                    verifications,
+                }
+            })
+            .collect();
+
+        Ok(summaries)
+    }
+
+    pub async fn get_config(&self) -> Result<TendrilConfigDto, BridgeError> {
+        let url = format!("{}/api/config", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_CONFIG_FAILED",
+                format!("Failed to get config ({status}): {text}"),
+            ));
+        }
+
+        let val: serde_json::Value = resp.json().await?;
+        let coding_agent = val.get("codingAgent").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let job_timeout = val.get("jobTimeout").and_then(|v| v.as_u64());
+        let max_concurrent_jobs = val.get("maxConcurrentJobs").and_then(|v| v.as_u64()).map(|n| n as usize);
+        let plan_template = val.get("planTemplate").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let theme = val.get("theme").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+        Ok(TendrilConfigDto {
+            coding_agent,
+            job_timeout,
+            max_concurrent_jobs,
+            plan_template,
+            theme,
+            raw: val,
+        })
+    }
+
+    pub async fn put_config(&self, key: &str, value: serde_json::Value) -> Result<(), BridgeError> {
+        let url = format!("{}/api/config?key={}", self.base_url, urlencoding(key));
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&value)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "PUT_CONFIG_FAILED",
+                format!("Failed to put config key '{key}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn post_inbox(
+        &self,
+        title: &str,
+        description: &str,
+        project: &str,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/inbox", self.base_url);
+        let body = json!({
+            "title": title,
+            "description": description,
+            "project": project,
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "POST_INBOX_FAILED",
+                format!("Failed to post to inbox ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+}
+
+fn urlencoding(s: &str) -> String {
+    url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}

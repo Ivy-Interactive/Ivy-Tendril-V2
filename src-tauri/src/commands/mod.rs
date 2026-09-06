@@ -1,4 +1,32 @@
+pub mod config;
+pub mod jobs;
+pub mod plans;
+pub mod state;
+
 use crate::daemon::{discover_daemon_status, resolve_tendril_home, DaemonStatusResponse};
+use crate::models::{ServiceHealthDto, ServiceInfoDto};
+use crate::service::{MasterDiscovery, TendrilClient};
+
+pub fn get_client_from_master() -> Result<TendrilClient, String> {
+    let discovery = MasterDiscovery::new();
+    let master = discovery
+        .read_master()
+        .map_err(|e| format!("Daemon metadata (.master) not found: {e}"))?;
+    let base_url = format!("{}://{}:{}", master.scheme, master.host, master.port);
+    Ok(TendrilClient::new(base_url, Some(master.secret)))
+}
+
+#[tauri::command]
+pub async fn cmd_check_service_health() -> Result<ServiceHealthDto, String> {
+    let discovery = MasterDiscovery::new();
+    discovery.check_service_health().await
+}
+
+#[tauri::command]
+pub async fn cmd_get_service_info() -> Result<ServiceInfoDto, String> {
+    let discovery = MasterDiscovery::new();
+    Ok(discovery.get_service_info().await)
+}
 
 #[tauri::command]
 pub async fn get_daemon_status() -> Result<DaemonStatusResponse, String> {
