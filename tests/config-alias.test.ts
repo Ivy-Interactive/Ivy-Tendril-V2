@@ -24,11 +24,26 @@ describe("shared @ alias", () => {
   });
 
   it("is the only place the alias base directory is computed", () => {
-    for (const file of ["vite.config.ts", "vitest.config.ts", ".storybook/main.ts"]) {
+    for (const file of ["vite.config.ts", ".storybook/main.ts"]) {
       const source = readFileSync(path.join(repoRoot, file), "utf8");
       expect(source, `${file} should import the shared alias`).toContain("config/alias.ts");
       expect(localSrcResolve.test(source), `${file} should not recompute the base dir`).toBe(false);
     }
+  });
+
+  it("keeps the test config merged in vite.config.ts", () => {
+    const vitestConfigPath = path.join(repoRoot, "vitest.config.ts");
+    expect(
+      existsSync(vitestConfigPath),
+      "vitest.config.ts should not exist — it was merged into vite.config.ts",
+    ).toBe(false);
+
+    const viteSource = readFileSync(path.join(repoRoot, "vite.config.ts"), "utf8");
+    expect(viteSource, "vite.config.ts should have a test block").toContain("test: {");
+    expect(viteSource, "vite.config.ts should declare jsdom environment").toContain(
+      'environment: "jsdom"',
+    );
+    expect(viteSource, "vite.config.ts should declare setupFiles").toContain("setupFiles:");
   });
 
   it("keeps tsconfig paths in step with the shared alias", () => {
