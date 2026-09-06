@@ -8,6 +8,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    include: ["**/*.{test,spec}.?(c|m)[jt]s?(x)", "**/*_tests.ts"],
     server: {
       deps: {
         inline: [/components-storybook/, /@dnd-kit/],
