@@ -1,6 +1,7 @@
 pub mod client;
 pub mod compatibility;
 pub mod master;
+pub mod platform;
 pub mod supervisor;
 pub mod ws_bridge;
 
