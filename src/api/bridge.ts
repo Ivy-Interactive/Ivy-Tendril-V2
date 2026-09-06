@@ -23,6 +23,22 @@ export const bridge = {
     return invoke<ServiceInfo>("cmd_get_service_info");
   },
 
+  async getServiceLogs(lines?: number): Promise<string[]> {
+    return invoke<string[]>("cmd_get_service_logs", { lines });
+  },
+
+  async restartService(): Promise<ServiceInfo> {
+    return invoke<ServiceInfo>("cmd_restart_service");
+  },
+
+  async repairService(): Promise<string> {
+    return invoke<string>("cmd_repair_service");
+  },
+
+  async switchServiceMode(mode: string): Promise<ServiceInfo> {
+    return invoke<ServiceInfo>("cmd_switch_service_mode", { mode });
+  },
+
   async listPlans(query?: PlanQuery): Promise<PlanSummary[]> {
     return invoke<PlanSummary[]>("cmd_list_plans", { query });
   },

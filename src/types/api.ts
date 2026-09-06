@@ -98,6 +98,9 @@ export interface ServiceInfo {
   pid?: number;
   capabilities: string[];
   message: string;
+  ownership?: "AdoptedExternal" | "Managed";
+  statusBadge?: string;
+  crashCount?: number;
 }
 
 export interface ProjectSummary {

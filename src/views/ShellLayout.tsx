@@ -11,6 +11,7 @@ import {
 import "components-storybook/style.css";
 import type { ServiceInfo } from "../types/api";
 import { OfflineBanner } from "../components/OfflineBanner";
+import { ServiceStatusBanner } from "../components/service";
 
 interface ShellLayoutProps {
   activeNav: string;
@@ -24,6 +25,9 @@ interface ShellLayoutProps {
   onNewPlan: () => void;
   onOpenShortcuts: () => void;
   onReconnect: () => void;
+  onRestartService?: () => void;
+  onRepairService?: () => void;
+  onViewDiagnostics?: () => void;
   children: React.ReactNode;
 }
 
@@ -39,6 +43,9 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   onNewPlan,
   onOpenShortcuts,
   onReconnect,
+  onRestartService,
+  onRepairService,
+  onViewDiagnostics,
   children,
 }) => {
   const navItems: ShellNavItemDto[] = [
@@ -96,6 +103,14 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
         status={connectionStatus}
         countdown={reconnectCountdown}
         onReconnect={onReconnect}
+      />
+
+      {/* Service Health & Ownership Status Banner */}
+      <ServiceStatusBanner
+        serviceInfo={serviceInfo}
+        onRestart={onRestartService}
+        onRepair={onRepairService}
+        onViewDiagnostics={onViewDiagnostics}
       />
 
       <div className="flex-1 overflow-hidden">

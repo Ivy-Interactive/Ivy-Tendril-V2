@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { bridge } from "../api/bridge";
 import type { ServiceInfo, TendrilConfig } from "../types/api";
+import { ServiceSettingsView } from "../components/service";
 
 interface SettingsViewProps {
   serviceInfo: ServiceInfo | null;
@@ -236,6 +237,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </form>
         </div>
       </div>
+
+      <ServiceSettingsView
+        serviceInfo={serviceInfo}
+        onRefreshHealth={onRefreshHealth}
+      />
     </div>
   );
 };
