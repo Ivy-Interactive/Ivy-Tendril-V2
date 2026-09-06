@@ -108,7 +108,9 @@ impl WsBridge {
                         let _ = app_handle.emit("service-status", "disconnected");
                     }
                     Err(e) => {
-                        tracing::warn!("WebSocket connection failed: {e}. Retrying in {backoff:?}...");
+                        tracing::warn!(
+                            "WebSocket connection failed: {e}. Retrying in {backoff:?}..."
+                        );
                         is_connected_clone.store(false, Ordering::SeqCst);
                         let _ = app_handle.emit("service-status", "disconnected");
                     }

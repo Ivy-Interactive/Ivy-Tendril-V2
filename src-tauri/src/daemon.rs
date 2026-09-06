@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use sysinfo::{Pid, System};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -17,7 +17,11 @@ pub struct MasterInfo {
     pub scheme: String,
     #[serde(default)]
     pub version: String,
-    #[serde(rename = "apiVersion", alias = "api_version", default = "default_api_version")]
+    #[serde(
+        rename = "apiVersion",
+        alias = "api_version",
+        default = "default_api_version"
+    )]
     pub api_version: u32,
     #[serde(default)]
     pub capabilities: Vec<String>,
@@ -81,7 +85,10 @@ pub fn parse_master_json(content: &str) -> Result<MasterInfo, String> {
 pub fn read_master(tendril_home: &Path) -> Result<MasterInfo, String> {
     let master_file = tendril_home.join(".master");
     if !master_file.exists() {
-        return Err(format!("Master file not found at {}", master_file.display()));
+        return Err(format!(
+            "Master file not found at {}",
+            master_file.display()
+        ));
     }
 
     let content = std::fs::read_to_string(&master_file)

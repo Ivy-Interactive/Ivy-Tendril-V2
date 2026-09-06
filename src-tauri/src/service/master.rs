@@ -1,6 +1,9 @@
-use std::path::PathBuf;
-use crate::daemon::{is_pid_alive, parse_master_json, probe_daemon_health, resolve_tendril_home, DaemonConnectionState, MasterInfo};
+use crate::daemon::{
+    is_pid_alive, parse_master_json, probe_daemon_health, resolve_tendril_home,
+    DaemonConnectionState, MasterInfo,
+};
 use crate::models::{ServiceHealthDto, ServiceInfoDto};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct MasterDiscovery {
@@ -61,7 +64,11 @@ impl MasterDiscovery {
                 is_healthy: true,
                 port: Some(master.port),
                 api_version: Some(api_ver),
-                capabilities: if caps.is_empty() { master.capabilities } else { caps },
+                capabilities: if caps.is_empty() {
+                    master.capabilities
+                } else {
+                    caps
+                },
             }),
             Err(DaemonConnectionState::Unauthenticated) => Ok(ServiceHealthDto {
                 status: "Unauthenticated".to_string(),
@@ -126,7 +133,11 @@ impl MasterDiscovery {
                 version: Some(master.version),
                 api_version: Some(api_ver),
                 pid: Some(master.pid),
-                capabilities: if caps.is_empty() { master.capabilities } else { caps },
+                capabilities: if caps.is_empty() {
+                    master.capabilities
+                } else {
+                    caps
+                },
                 message: "Daemon is online and healthy".to_string(),
             },
             Err(DaemonConnectionState::Unauthenticated) => ServiceInfoDto {

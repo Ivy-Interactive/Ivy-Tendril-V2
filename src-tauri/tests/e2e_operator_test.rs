@@ -1,31 +1,45 @@
-use axum::{routing::{get, post}, Json, Router};
+use axum::{
+    routing::{get, post},
+    Json, Router,
+};
 use serde_json::json;
 use std::net::SocketAddr;
 use tendril_app_lib::daemon::MasterInfo;
 use tendril_app_lib::service::{MasterDiscovery, TendrilClient};
 use tokio::net::TcpListener;
 
-async fn spawn_isolated_test_daemon(_secret: &'static str) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+async fn spawn_isolated_test_daemon(
+    _secret: &'static str,
+) -> (SocketAddr, tokio::task::JoinHandle<()>) {
     let app = Router::new()
         .route("/api/ping", get(|| async { "pong" }))
-        .route("/api/health", get(|| async {
-            Json(json!({ "status": "ok", "apiVersion": 1, "capabilities": ["plans", "jobs"] }))
-        }))
-        .route("/api/plans", get(|| async {
-            Json(json!([
-                {
-                    "id": "00042",
-                    "title": "Isolated E2E Plan",
-                    "state": "Draft",
-                    "project": "TestProject",
-                    "level": "Feature",
-                    "verifications": [{ "name": "Build", "status": "Pending" }]
-                }
-            ]))
-        }))
-        .route("/api/jobs", post(|Json(_body): Json<serde_json::Value>| async {
-            Json(json!({ "jobId": "00999", "status": "Started" }))
-        }));
+        .route(
+            "/api/health",
+            get(|| async {
+                Json(json!({ "status": "ok", "apiVersion": 1, "capabilities": ["plans", "jobs"] }))
+            }),
+        )
+        .route(
+            "/api/plans",
+            get(|| async {
+                Json(json!([
+                    {
+                        "id": "00042",
+                        "title": "Isolated E2E Plan",
+                        "state": "Draft",
+                        "project": "TestProject",
+                        "level": "Feature",
+                        "verifications": [{ "name": "Build", "status": "Pending" }]
+                    }
+                ]))
+            }),
+        )
+        .route(
+            "/api/jobs",
+            post(|Json(_body): Json<serde_json::Value>| async {
+                Json(json!({ "jobId": "00999", "status": "Started" }))
+            }),
+        );
 
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
