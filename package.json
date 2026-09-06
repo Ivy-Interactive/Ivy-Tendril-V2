@@ -1,0 +1,38 @@
+{
+  "name": "tendril-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@spacecorps/components-storybook": "link:/Users/rorychatt/git/components-storybook",
+    "@tanstack/react-query": "^5.67.2",
+    "@tauri-apps/api": "^2.2.0",
+    "@tauri-apps/plugin-opener": "^2.2.5",
+    "clsx": "^2.1.1",
+    "components-storybook": "link:/Users/rorychatt/git/components-storybook",
+    "lucide-react": "^0.562.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.16",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.4.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "5.2.0",
+    "jsdom": "^26.0.0",
+    "tailwindcss": "4.1.16",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
+  }
+}
