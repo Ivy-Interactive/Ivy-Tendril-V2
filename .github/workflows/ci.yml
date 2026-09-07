@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Clippy lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build
+        run: cargo build --workspace
