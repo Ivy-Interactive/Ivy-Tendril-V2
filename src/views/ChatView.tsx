@@ -1,17 +1,11 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import {
-  ChatBubble,
-  ChatBubbleMessage,
-  ChatBubbleAction,
-  ChatBubbleActionWrapper,
-  ChatInput,
-  ChatMessageList,
-} from "@spacecorps/components-storybook/renderers";
-import { PlanMarkdown } from "@spacecorps/components-storybook/tendril";
+import { ChatInput, ChatMessageList } from "@spacecorps/components-storybook/renderers";
 import { chatStore, type ChatState } from "../state/chatStore";
 import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
+import { useChatMessageWindow, CHAT_VIRTUALIZATION_MIN_MESSAGES } from "../hooks/useChatMessageWindow";
+import { ChatMessageRow } from "./ChatMessageRow";
 import {
   Plus,
   Edit2,
@@ -19,10 +13,8 @@ import {
   Trash2,
   Send,
   Square,
-  Copy,
   ChevronDown,
   ChevronUp,
-  FilePlus,
   Loader2,
   Paperclip,
   X,
@@ -223,19 +215,34 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     }
   };
 
-  const handleCopyMessage = (msg: ChatMessage) => {
+  const handleCopyMessage = useCallback((msg: ChatMessage) => {
     navigator.clipboard.writeText(msg.content);
     setCopiedMessageId(msg.id);
     setTimeout(() => {
       setCopiedMessageId(null);
     }, 2000);
-  };
+  }, []);
 
-  const handleCreatePlanFromMessage = (content: string) => {
-    if (onCreatePlan) {
-      onCreatePlan(content);
-    }
-  };
+  const handleCreatePlanFromMessage = useCallback(
+    (content: string) => {
+      if (onCreatePlan) {
+        onCreatePlan(content);
+      }
+    },
+    [onCreatePlan]
+  );
+
+  const messages = activeSession?.messages ?? [];
+
+  const getMessageKey = useCallback((index: number) => messages[index].id, [messages]);
+
+  const { isVirtualized, totalSize, items } = useChatMessageWindow({
+    count: messages.length,
+    scrollContainerRef,
+    getItemKey: getMessageKey,
+    enabled: messages.length >= CHAT_VIRTUALIZATION_MIN_MESSAGES,
+    pinnedIndex: messages.length - 1,
+  });
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-slate-950 text-slate-100">
@@ -393,87 +400,48 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
             </div>
           ) : (
             <ChatMessageList ref={scrollContainerRef} className="h-full">
-              {activeSession.messages.map((msg) => {
-                const isUser = msg.role === "user";
-
-                return (
-                  <ChatBubble
-                    key={msg.id}
-                    variant={isUser ? "sent" : "received"}
-                    layout={isUser ? "default" : "ai"}
-                  >
-                    <div className="flex flex-col max-w-3xl">
-                      <ChatBubbleMessage
-                        variant={isUser ? "sent" : "received"}
-                        className={isUser ? "bg-emerald-600 text-white" : "bg-slate-900 border border-slate-800 text-slate-100"}
+              {isVirtualized ? (
+                <div
+                  style={{ height: totalSize, position: "relative" }}
+                  data-testid="chat-virtual-container"
+                >
+                  {items.map((item) => {
+                    const msg = messages[item.index];
+                    return (
+                      <div
+                        key={item.key}
+                        ref={item.measureRef}
+                        data-index={item.index}
+                        data-testid="chat-virtual-row"
+                        style={{
+                          position: "absolute",
+                          top: item.start,
+                          left: 0,
+                          width: "100%",
+                          paddingBottom: 24,
+                        }}
                       >
-                        {isUser ? (
-                          <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
-                        ) : (
-                          <div className="text-sm">
-                            <PlanMarkdown
-                              id={`chat-msg-${msg.id}`}
-                              content={msg.content}
-                              events={["OnAnswersChange"]}
-                              eventHandler={(eventName, _widgetId, args) => {
-                                if (eventName === "OnAnswersChange") {
-                                  const payload = args[0] as
-                                    | Array<{ questionId: string; answer: string[] | null }>
-                                    | { questionId: string; answer: string[] | null };
-                                  const items = Array.isArray(payload) ? payload : [payload];
-                                  for (const item of items) {
-                                    chatStore.submitAnswer(msg.id, item.questionId, item.answer);
-                                  }
-                                }
-                              }}
-                            />
-                          </div>
-                        )}
-
-                        {msg.attachments && msg.attachments.length > 0 && (
-                          <div
-                            data-testid="message-attachments"
-                            className={`mt-2 flex flex-wrap gap-1.5 pt-1.5 border-t ${
-                              isUser ? "border-emerald-500/40" : "border-slate-800"
-                            }`}
-                          >
-                            {msg.attachments.map((att, idx) => (
-                              <div
-                                key={`${att.path}-${idx}`}
-                                className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
-                                  isUser ? "bg-black/20 text-white/95" : "bg-slate-800 text-slate-300"
-                                }`}
-                                title={att.path}
-                              >
-                                <Paperclip className="size-3 opacity-75 shrink-0" />
-                                <span className="max-w-[140px] truncate">{att.name}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </ChatBubbleMessage>
-
-                      {/* Action bar on message */}
-                      <ChatBubbleActionWrapper className={isUser ? "justify-end" : "justify-start"}>
-                        <ChatBubbleAction
-                          icon={<Copy className="size-3.5" />}
-                          onClick={() => handleCopyMessage(msg)}
-                          className={copiedMessageId === msg.id ? "text-emerald-400" : "text-slate-400"}
+                        <ChatMessageRow
+                          message={msg}
+                          isCopied={copiedMessageId === msg.id}
+                          onCopy={handleCopyMessage}
+                          onCreatePlan={handleCreatePlanFromMessage}
                         />
-                        <button
-                          type="button"
-                          onClick={() => handleCreatePlanFromMessage(msg.content)}
-                          className="flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 px-2 py-1 rounded transition-colors"
-                          title="Create Plan from message"
-                        >
-                          <FilePlus className="size-3.5" />
-                          <span>Create Plan</span>
-                        </button>
-                      </ChatBubbleActionWrapper>
-                    </div>
-                  </ChatBubble>
-                );
-              })}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                messages.map((msg) => (
+                  <ChatMessageRow
+                    key={msg.id}
+                    message={msg}
+                    isCopied={copiedMessageId === msg.id}
+                    onCopy={handleCopyMessage}
+                    onCreatePlan={handleCreatePlanFromMessage}
+                  />
+                ))
+              )}
 
               {isGenerating && (
                 <div className="flex items-center gap-2 text-xs text-slate-400 px-4 py-2">
