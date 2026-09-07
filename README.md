@@ -89,6 +89,14 @@ replace the `ref:` value, and let CI prove the build. Nothing bumps it
 automatically. The library publishes no tags or releases, which is why the
 pin is a SHA.
 
+Because `SpaceCorps/components-storybook` is private, CI requires a repository secret named `COMPONENTS_STORYBOOK_TOKEN` to authenticate the checkout step. The token needs read-only access to repository contents for `SpaceCorps/components-storybook`.
+
+Set the secret using the GitHub CLI:
+
+```bash
+gh secret set COMPONENTS_STORYBOOK_TOKEN --repo SpaceCorps/Tendril-App
+```
+
 ## Tests
 
 ```sh
