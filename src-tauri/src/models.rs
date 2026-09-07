@@ -291,6 +291,16 @@ pub struct GitHubIssueDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct GitHubIssuesPageDto {
+    pub issues: Vec<GitHubIssueDto>,
+    pub total_count: Option<u64>,
+    pub page: u32,
+    pub per_page: u32,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatAttachmentDto {
     #[serde(alias = "Name")]
     pub name: String,
