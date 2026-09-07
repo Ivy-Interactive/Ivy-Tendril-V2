@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { ChatView } from "../src/views/ChatView";
 import { chatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
 import type { ChatSession } from "../src/types/chat";
 
-// Stub scrollIntoView in jsdom
-if (!window.HTMLElement.prototype.scrollIntoView) {
-  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+const scrollIntoViewMock = vi.fn();
+window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+if (!window.HTMLElement.prototype.scrollTo) {
+  window.HTMLElement.prototype.scrollTo = vi.fn();
 }
 
 describe("ChatView Component & Interaction Tests", () => {
@@ -49,6 +50,8 @@ questions:
   beforeEach(() => {
     chatStore.resetForTesting();
     vi.restoreAllMocks();
+    scrollIntoViewMock.mockClear();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
   });
 
   afterEach(() => {
@@ -63,11 +66,10 @@ questions:
     render(<ChatView />);
 
     await waitFor(() => {
-      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
       expect(screen.getByText("What database should we use?")).toBeInTheDocument();
     });
 
-    // Check assistant markdown rendered question title
     expect(screen.getByText("Which database should we use?")).toBeInTheDocument();
   });
 
@@ -80,7 +82,7 @@ questions:
     render(<ChatView />);
 
     await waitFor(() => {
-      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
     const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
@@ -107,18 +109,15 @@ questions:
       expect(screen.getByText("Which database should we use?")).toBeInTheDocument();
     });
 
-    // PlanMarkdown renders questions. Find the SQLite option or radio/button
     const sqliteOption = screen.getByText("SQLite");
     expect(sqliteOption).toBeInTheDocument();
     fireEvent.click(sqliteOption);
 
-    // If there is a Submit button rendered by QuestionsCallout:
     const submitBtn = screen.queryByRole("button", { name: /Submit Response/i });
     if (submitBtn) {
       fireEvent.click(submitBtn);
     }
 
-    // Verify submitAnswer is called or routed
     await waitFor(() => {
       expect(submitSpy).toHaveBeenCalledWith(
         "msg-asst-1",
@@ -137,7 +136,7 @@ questions:
     render(<ChatView onCreatePlan={onCreatePlanMock} />);
 
     await waitFor(() => {
-      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
     const createPlanButtons = screen.getAllByTitle("Create Plan from message");
@@ -155,7 +154,7 @@ questions:
     render(<ChatView />);
 
     await waitFor(() => {
-      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
     const file = new File(["dummy content"], "test-dropped-file.ts", { type: "text/plain" });
@@ -187,7 +186,7 @@ questions:
     render(<ChatView />);
 
     await waitFor(() => {
-      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
     const file = new File(["selected content"], "config.json", { type: "application/json" });
@@ -209,7 +208,7 @@ questions:
     render(<ChatView />);
 
     await waitFor(() => {
-      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
     const file = new File(["hello"], "to-remove.md", { type: "text/markdown" });
@@ -228,7 +227,7 @@ questions:
     });
   });
 
-  it("passes attachments array in options on message send and clears chip list", async () => {
+  it("sends attachments alongside prompt and clears them upon sending", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
@@ -237,12 +236,11 @@ questions:
     render(<ChatView />);
 
     await waitFor(() => {
-      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
-    const file = new File(["data"], "payload.txt", { type: "text/plain" });
+    const file = new File(["payload"], "payload.txt", { type: "text/plain" });
     Object.defineProperty(file, "path", { value: "/data/payload.txt" });
-
     const fileInput = screen.getByTestId("file-upload-input");
     fireEvent.change(fileInput, { target: { files: [file] } });
 
@@ -306,5 +304,210 @@ questions:
     const attachmentChip = screen.getByText("system.log");
     expect(attachmentChip).toBeInTheDocument();
     expect(attachmentChip.closest("div")).toHaveAttribute("title", "/var/log/system.log");
+  });
+
+  it("renders Auto-scroll toggle button with initial state ON and toggles state on click", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    const toggleBtn = await screen.findByTestId("chat-autoscroll-toggle");
+    expect(toggleBtn).toBeInTheDocument();
+    expect(toggleBtn).toHaveTextContent("Auto-scroll: ON");
+
+    fireEvent.click(toggleBtn);
+    expect(toggleBtn).toHaveTextContent("Auto-scroll: OFF");
+
+    fireEvent.click(toggleBtn);
+    expect(toggleBtn).toHaveTextContent("Auto-scroll: ON");
+  });
+
+  it("renders bottom anchor element with data-testid chat-scroll-anchor", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    const anchor = await screen.findByTestId("chat-scroll-anchor");
+    expect(anchor).toBeInTheDocument();
+  });
+
+  it("calls scrollIntoView on anchor when stream delta arrives and autoScrollEnabled is true", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await screen.findByTestId("chat-scroll-anchor");
+    scrollIntoViewMock.mockClear();
+
+    act(() => {
+      chatStore.handleChatEvent({
+        type: "chat.stream_delta",
+        sessionId: "session-10",
+        messageId: "msg-asst-1",
+        delta: " More content streamed.",
+      });
+    });
+
+    await waitFor(() => {
+      expect(scrollIntoViewMock).toHaveBeenCalled();
+    });
+  });
+
+  it("detaches tail locking when container is scrolled up and does not scroll on stream deltas", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    const { container } = render(<ChatView />);
+
+    await screen.findByTestId("chat-scroll-anchor");
+    const scrollContainer = container.querySelector("main .overflow-y-auto");
+    expect(scrollContainer).toBeInTheDocument();
+
+    if (scrollContainer) {
+      Object.defineProperty(scrollContainer, "scrollHeight", { value: 1000, configurable: true });
+      Object.defineProperty(scrollContainer, "clientHeight", { value: 400, configurable: true });
+      let currentScrollTop = 100;
+      Object.defineProperty(scrollContainer, "scrollTop", {
+        get: () => currentScrollTop,
+        set: (v) => {
+          currentScrollTop = v;
+        },
+        configurable: true,
+      });
+
+      act(() => {
+        fireEvent.scroll(scrollContainer);
+      });
+
+      const tailBtn = await screen.findByTestId("chat-scroll-tail-button");
+      expect(tailBtn).toBeInTheDocument();
+
+      scrollIntoViewMock.mockClear();
+
+      act(() => {
+        chatStore.handleChatEvent({
+          type: "chat.stream_delta",
+          sessionId: "session-10",
+          messageId: "msg-asst-1",
+          delta: " More streamed text while scrolled up.",
+        });
+      });
+
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    }
+  });
+
+  it("renders floating anchor button when scrolled up, shows streaming status, and scrolls to tail on click", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    const { container } = render(<ChatView />);
+
+    await screen.findByTestId("chat-scroll-anchor");
+    const scrollContainer = container.querySelector("main .overflow-y-auto");
+    expect(scrollContainer).toBeInTheDocument();
+
+    if (scrollContainer) {
+      Object.defineProperty(scrollContainer, "scrollHeight", { value: 1000, configurable: true });
+      Object.defineProperty(scrollContainer, "clientHeight", { value: 400, configurable: true });
+      let currentScrollTop = 100;
+      Object.defineProperty(scrollContainer, "scrollTop", {
+        get: () => currentScrollTop,
+        set: (v) => {
+          currentScrollTop = v;
+        },
+        configurable: true,
+      });
+
+      act(() => {
+        chatStore.handleChatEvent({
+          type: "chat.generating_state",
+          sessionId: "session-10",
+          isGenerating: true,
+        });
+        fireEvent.scroll(scrollContainer);
+      });
+
+      const tailBtn = await screen.findByTestId("chat-scroll-tail-button");
+      expect(tailBtn).toHaveTextContent(/Scroll to streaming tail/i);
+
+      scrollIntoViewMock.mockClear();
+      fireEvent.click(tailBtn);
+
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
+    }
+  });
+
+  it("does not call scrollIntoView on stream deltas when autoScrollEnabled is toggled OFF", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    const toggleBtn = await screen.findByTestId("chat-autoscroll-toggle");
+    fireEvent.click(toggleBtn);
+    expect(toggleBtn).toHaveTextContent("Auto-scroll: OFF");
+
+    scrollIntoViewMock.mockClear();
+
+    act(() => {
+      chatStore.handleChatEvent({
+        type: "chat.stream_delta",
+        sessionId: "session-10",
+        messageId: "msg-asst-1",
+        delta: " Delta while OFF",
+      });
+    });
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+
+  it("re-locks and scrolls to tail when sending a new message", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+
+    const { container } = render(<ChatView />);
+
+    await screen.findByTestId("chat-scroll-anchor");
+    const scrollContainer = container.querySelector("main .overflow-y-auto");
+
+    if (scrollContainer) {
+      Object.defineProperty(scrollContainer, "scrollHeight", { value: 1000, configurable: true });
+      Object.defineProperty(scrollContainer, "clientHeight", { value: 400, configurable: true });
+      let currentScrollTop = 100;
+      Object.defineProperty(scrollContainer, "scrollTop", {
+        get: () => currentScrollTop,
+        set: (v) => {
+          currentScrollTop = v;
+        },
+        configurable: true,
+      });
+
+      act(() => {
+        fireEvent.scroll(scrollContainer);
+      });
+
+      expect(await screen.findByTestId("chat-scroll-tail-button")).toBeInTheDocument();
+    }
+
+    const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
+    fireEvent.change(textarea, { target: { value: "New question" } });
+
+    scrollIntoViewMock.mockClear();
+    const sendBtn = screen.getByTitle("Send message");
+    fireEvent.click(sendBtn);
+
+    expect(scrollIntoViewMock).toHaveBeenCalled();
   });
 });
