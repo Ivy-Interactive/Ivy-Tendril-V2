@@ -1,10 +1,33 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 import type { GitHubIssue, ProjectSummary } from "../types/api";
 
 export type InboxCategory = "my-issues" | "review-requests" | "project-issues";
+
+export type PollInterval = "off" | "30s" | "1m" | "5m" | "15m";
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 25;
+
+const POLL_INTERVAL_MS: Record<PollInterval, number> = {
+  off: 0,
+  "30s": 30_000,
+  "1m": 60_000,
+  "5m": 300_000,
+  "15m": 900_000,
+};
+
+const POLL_INTERVAL_LABELS: Record<PollInterval, string> = {
+  off: "Off",
+  "30s": "30s",
+  "1m": "1m",
+  "5m": "5m",
+  "15m": "15m",
+};
+
+const POLL_INTERVAL_UI_STATE_KEY = "inbox_poll_interval";
 
 export interface InboxViewProps {
   projects?: ProjectSummary[];
@@ -28,6 +51,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
   const [issues, setIssues] = useState<GitHubIssue[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Counts for category badges
@@ -37,6 +61,16 @@ export const InboxView: React.FC<InboxViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
+
+  // Pagination state
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+
+  // Background polling state
+  const [pollInterval, setPollInterval] = useState<PollInterval>("off");
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Update selectedProject and selectedRepo when projects prop changes
   useEffect(() => {
@@ -59,27 +93,91 @@ export const InboxView: React.FC<InboxViewProps> = ({
     return proj?.repos || [];
   }, [projects, selectedProject]);
 
-  // Fetch issues whenever category or selectedRepo changes
-  const fetchIssues = async () => {
-    setIsLoading(true);
-    setError(null);
+  // Load persisted polling interval preference on mount
+  useEffect(() => {
+    bridge
+      .loadUiState(POLL_INTERVAL_UI_STATE_KEY)
+      .then((value) => {
+        if (value && value in POLL_INTERVAL_MS) {
+          setPollInterval(value as PollInterval);
+        }
+      })
+      .catch(() => {
+        // Persisted preference is best-effort; default to "off" on failure.
+      });
+  }, []);
 
-    try {
-      const repoArg = selectedCategory === "project-issues" ? selectedRepo : undefined;
-      const data = await bridge.listGitHubIssues(repoArg, selectedCategory);
-      setIssues(data);
-      setCounts((prev) => ({ ...prev, [selectedCategory]: data.length }));
-      setIsLoading(false);
-    } catch (err) {
-      setIsLoading(false);
-      setError(describeBridgeError(err));
-      setIssues([]);
-    }
+  const handlePollIntervalChange = (value: PollInterval) => {
+    setPollInterval(value);
+    bridge.saveUiState(POLL_INTERVAL_UI_STATE_KEY, value).catch(() => {
+      // Best-effort persistence; the in-memory selection still applies.
+    });
   };
+
+  // Fetch issues whenever category, repo, or page/pageSize changes
+  const fetchIssues = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent ?? false;
+      if (silent) {
+        setIsBackgroundRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError(null);
+
+      try {
+        const repoArg = selectedCategory === "project-issues" ? selectedRepo : undefined;
+        const data = await bridge.listGitHubIssues(repoArg, selectedCategory, page, pageSize);
+
+        // Backwards compatible: handle either a raw array or a GitHubIssuesPage envelope.
+        const pageIssues = Array.isArray(data) ? data : data.issues;
+        const pageTotalCount = Array.isArray(data) ? null : data.totalCount ?? null;
+        const pageHasMore = Array.isArray(data)
+          ? pageIssues.length === pageSize
+          : data.hasMore;
+
+        setIssues(pageIssues);
+        setTotalCount(pageTotalCount);
+        setHasMore(pageHasMore);
+        setCounts((prev) => ({ ...prev, [selectedCategory]: pageTotalCount ?? pageIssues.length }));
+        setLastUpdated(new Date());
+      } catch (err) {
+        setError(describeBridgeError(err));
+        setIssues([]);
+        setTotalCount(null);
+        setHasMore(false);
+      } finally {
+        if (silent) {
+          setIsBackgroundRefreshing(false);
+        } else {
+          setIsLoading(false);
+        }
+      }
+    },
+    [selectedCategory, selectedRepo, page, pageSize]
+  );
 
   useEffect(() => {
     fetchIssues();
-  }, [selectedCategory, selectedRepo]);
+  }, [fetchIssues]);
+
+  // Background polling: silently refetch on the configured interval, skipping
+  // ticks while the tab/window is hidden to preserve GitHub API rate limits.
+  useEffect(() => {
+    if (pollInterval === "off") {
+      return;
+    }
+    const intervalMs = POLL_INTERVAL_MS[pollInterval];
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+      fetchIssues({ silent: true });
+    }, intervalMs);
+    return () => window.clearInterval(id);
+  }, [pollInterval, fetchIssues]);
+
+  const resetToFirstPage = () => setPage(1);
 
   // Extract distinct labels and assignees for filtering
   const availableLabels = useMemo(() => {
@@ -136,12 +234,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
     setSelectedLabels((prev) =>
       prev.includes(labelName) ? prev.filter((l) => l !== labelName) : [...prev, labelName]
     );
+    resetToFirstPage();
   };
 
   const toggleAssigneeFilter = (login: string) => {
     setSelectedAssignees((prev) =>
       prev.includes(login) ? prev.filter((a) => a !== login) : [...prev, login]
     );
+    resetToFirstPage();
   };
 
   const handleOpenGitHub = async (url: string) => {
@@ -187,6 +287,15 @@ export const InboxView: React.FC<InboxViewProps> = ({
     }
   };
 
+  const formatLastUpdated = (date: Date) => {
+    const diffMs = Date.now() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    if (diffMins < 1) return "Updated just now";
+    if (diffMins < 60) return `Updated ${diffMins}m ago`;
+    const diffHrs = Math.floor(diffMins / 60);
+    return `Updated ${diffHrs}h ago`;
+  };
+
   return (
     <div data-testid="inbox-view" className="space-y-6">
       {/* Header & Project/Repo Switcher */}
@@ -218,6 +327,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   } else {
                     setSelectedRepo("");
                   }
+                  resetToFirstPage();
                 }}
                 className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
               >
@@ -238,7 +348,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   id="inbox-repo-select"
                   aria-label="Filter by repository"
                   value={selectedRepo}
-                  onChange={(e) => setSelectedRepo(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedRepo(e.target.value);
+                    resetToFirstPage();
+                  }}
                   className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
                 >
                   {activeProjectRepos.map((r) => (
@@ -260,7 +373,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
           role="tab"
           aria-selected={selectedCategory === "my-issues"}
           data-testid="category-my-issues"
-          onClick={() => setSelectedCategory("my-issues")}
+          onClick={() => {
+            setSelectedCategory("my-issues");
+            resetToFirstPage();
+          }}
           className={`flex items-center space-x-2 rounded-full px-4 py-1.5 text-xs font-medium transition ${
             selectedCategory === "my-issues"
               ? "bg-emerald-600 text-white shadow-sm"
@@ -286,7 +402,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
           role="tab"
           aria-selected={selectedCategory === "review-requests"}
           data-testid="category-review-requests"
-          onClick={() => setSelectedCategory("review-requests")}
+          onClick={() => {
+            setSelectedCategory("review-requests");
+            resetToFirstPage();
+          }}
           className={`flex items-center space-x-2 rounded-full px-4 py-1.5 text-xs font-medium transition ${
             selectedCategory === "review-requests"
               ? "bg-emerald-600 text-white shadow-sm"
@@ -312,7 +431,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
           role="tab"
           aria-selected={selectedCategory === "project-issues"}
           data-testid="category-project-issues"
-          onClick={() => setSelectedCategory("project-issues")}
+          onClick={() => {
+            setSelectedCategory("project-issues");
+            resetToFirstPage();
+          }}
           className={`flex items-center space-x-2 rounded-full px-4 py-1.5 text-xs font-medium transition ${
             selectedCategory === "project-issues"
               ? "bg-emerald-600 text-white shadow-sm"
@@ -336,20 +458,26 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
       {/* Search Bar & Multi-Select Filters */}
       <div className="space-y-3">
-        <div className="flex items-center space-x-3">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
             <input
               type="search"
               aria-label="Search issues"
               placeholder="Search by title, #number, author, or description..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                resetToFirstPage();
+              }}
               className="w-full rounded-lg border border-slate-800 bg-slate-900/80 px-4 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
             />
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => setSearchQuery("")}
+                onClick={() => {
+                  setSearchQuery("");
+                  resetToFirstPage();
+                }}
                 aria-label="Clear search"
                 className="absolute right-3 top-2 text-xs text-slate-400 hover:text-slate-200"
               >
@@ -357,9 +485,41 @@ export const InboxView: React.FC<InboxViewProps> = ({
               </button>
             )}
           </div>
+
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2 w-2 rounded-full ${
+                isBackgroundRefreshing ? "bg-emerald-400 animate-pulse" : "bg-slate-700"
+              }`}
+              aria-hidden="true"
+            />
+            <span className="text-[11px] text-slate-500" data-testid="inbox-last-updated">
+              {lastUpdated ? formatLastUpdated(lastUpdated) : "Not yet updated"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="inbox-poll-interval" className="text-xs text-slate-400">
+              Auto-refresh:
+            </label>
+            <select
+              id="inbox-poll-interval"
+              aria-label="Auto-refresh interval"
+              value={pollInterval}
+              onChange={(e) => handlePollIntervalChange(e.target.value as PollInterval)}
+              className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+            >
+              {(Object.keys(POLL_INTERVAL_LABELS) as PollInterval[]).map((opt) => (
+                <option key={opt} value={opt}>
+                  {POLL_INTERVAL_LABELS[opt]}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             type="button"
-            onClick={fetchIssues}
+            onClick={() => fetchIssues()}
             disabled={isLoading}
             className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800"
           >
@@ -421,6 +581,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 onClick={() => {
                   setSelectedLabels([]);
                   setSelectedAssignees([]);
+                  resetToFirstPage();
                 }}
                 className="text-[11px] text-slate-500 hover:text-slate-300 underline"
               >
@@ -447,7 +608,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
           )}
           <button
             type="button"
-            onClick={fetchIssues}
+            onClick={() => fetchIssues()}
             className="mt-2 rounded bg-red-900/60 px-3 py-1 font-medium text-red-100 hover:bg-red-800"
           >
             Retry
@@ -588,6 +749,64 @@ export const InboxView: React.FC<InboxViewProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Pagination Bar */}
+      {!isLoading && !error && (
+        <div
+          data-testid="inbox-pagination"
+          className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3 text-xs text-slate-400"
+        >
+          <span data-testid="inbox-pagination-summary">
+            {totalCount !== null
+              ? `Showing ${Math.min((page - 1) * pageSize + 1, totalCount)}-${Math.min(
+                  page * pageSize,
+                  totalCount
+                )} of ${totalCount}`
+              : `Page ${page}`}
+          </span>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="inbox-page-size" className="text-slate-500">
+                Per page:
+              </label>
+              <select
+                id="inbox-page-size"
+                aria-label="Page size"
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  resetToFirstPage();
+                }}
+                className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || isLoading}
+              className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!hasMore || isLoading}
+              className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>

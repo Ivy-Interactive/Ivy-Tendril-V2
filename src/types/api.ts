@@ -251,4 +251,14 @@ export interface GitHubIssueFilter {
   search?: string;
   labels?: string[];
   assignees?: string[];
+  page?: number;
+  perPage?: number;
+}
+
+export interface GitHubIssuesPage {
+  issues: GitHubIssue[];
+  totalCount?: number;
+  page: number;
+  perPage: number;
+  hasMore: boolean;
 }

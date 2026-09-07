@@ -1,8 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import { InboxView } from "../src/views/InboxView";
 import { bridge } from "../src/api/bridge";
-import type { GitHubIssue, ProjectSummary } from "../src/types/api";
+import type { GitHubIssue, GitHubIssuesPage, ProjectSummary } from "../src/types/api";
+
+const makePage = (
+  issues: GitHubIssue[],
+  overrides: Partial<GitHubIssuesPage> = {}
+): GitHubIssuesPage => ({
+  issues,
+  totalCount: issues.length,
+  page: 1,
+  perPage: 25,
+  hasMore: false,
+  ...overrides,
+});
 
 describe("InboxView Component & Triage Tests", () => {
   const mockProjects: ProjectSummary[] = [
@@ -50,7 +62,11 @@ describe("InboxView Component & Triage Tests", () => {
   ];
 
   beforeEach(() => {
-    vi.spyOn(bridge, "listGitHubIssues").mockResolvedValue(mockIssues);
+    vi.spyOn(bridge, "listGitHubIssues").mockResolvedValue(
+      makePage(mockIssues, { hasMore: true, totalCount: 60 })
+    );
+    vi.spyOn(bridge, "loadUiState").mockResolvedValue(null);
+    vi.spyOn(bridge, "saveUiState").mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -66,7 +82,7 @@ describe("InboxView Component & Triage Tests", () => {
     expect(screen.getByRole("tab", { name: /project issues/i })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues");
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
 
     // Switch to Review Requests
@@ -74,7 +90,7 @@ describe("InboxView Component & Triage Tests", () => {
     fireEvent.click(reviewRequestsTab);
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "review-requests");
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "review-requests", 1, 25);
     });
 
     // Switch to Project Issues
@@ -84,7 +100,9 @@ describe("InboxView Component & Triage Tests", () => {
     await waitFor(() => {
       expect(bridge.listGitHubIssues).toHaveBeenCalledWith(
         mockProjects[0].repos[0],
-        "project-issues"
+        "project-issues",
+        1,
+        25
       );
     });
   });
@@ -166,7 +184,7 @@ describe("InboxView Component & Triage Tests", () => {
   });
 
   it("displays empty state when no issues match filters or list is empty", async () => {
-    vi.spyOn(bridge, "listGitHubIssues").mockResolvedValue([]);
+    vi.spyOn(bridge, "listGitHubIssues").mockResolvedValue(makePage([]));
     render(<InboxView projects={mockProjects} />);
 
     await waitFor(() => {
@@ -187,6 +205,127 @@ describe("InboxView Component & Triage Tests", () => {
       expect(screen.getByTestId("inbox-error")).toBeInTheDocument();
       expect(screen.getByText(/github cli is not authenticated/i)).toBeInTheDocument();
       expect(screen.getByText("$ gh auth login")).toBeInTheDocument();
+    });
+  });
+
+  it("supports paging forward and backward through results via Next/Previous controls", async () => {
+    render(<InboxView projects={mockProjects} />);
+
+    await waitFor(() => {
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+    });
+
+    expect(screen.getByRole("button", { name: /previous/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => {
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /previous/i }));
+
+    await waitFor(() => {
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+    });
+  });
+
+  it("resets to the first page and requests the new page size when the page size changes", async () => {
+    render(<InboxView projects={mockProjects} />);
+
+    await waitFor(() => {
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => {
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
+    });
+
+    fireEvent.change(screen.getByLabelText(/page size/i), { target: { value: "50" } });
+
+    await waitFor(() => {
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 50);
+    });
+  });
+
+  it("resets to the first page when a search filter is applied while viewing a later page", async () => {
+    render(<InboxView projects={mockProjects} />);
+
+    await waitFor(() => {
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+
+    await waitFor(() => {
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
+    });
+
+    fireEvent.change(screen.getByRole("searchbox", { name: /search issues/i }), {
+      target: { value: "bug" },
+    });
+
+    await waitFor(() => {
+      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+    });
+  });
+
+  describe("background polling", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("silently refetches on the configured interval and stops once disabled", async () => {
+      render(<InboxView projects={mockProjects} />);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(1);
+
+      fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
+        target: { value: "30s" },
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(2);
+
+      fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
+        target: { value: "off" },
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(2);
+    });
+
+    it("clears the polling interval on unmount", async () => {
+      const { unmount } = render(<InboxView projects={mockProjects} />);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(1);
+
+      fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
+        target: { value: "30s" },
+      });
+
+      unmount();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(1);
     });
   });
 });

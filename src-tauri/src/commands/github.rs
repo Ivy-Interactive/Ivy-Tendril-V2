@@ -1,5 +1,7 @@
 use crate::error::BridgeError;
-use crate::models::{GitHubIssueDto, GitHubLabelDto, GitHubRepositoryDto, GitHubUserDto};
+use crate::models::{
+    GitHubIssueDto, GitHubIssuesPageDto, GitHubLabelDto, GitHubRepositoryDto, GitHubUserDto,
+};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -161,95 +163,224 @@ pub fn parse_github_issues_json(
     Ok(items)
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct RawGitHubApiUser {
+    login: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RawGitHubApiLabel {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    color: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RawGitHubApiRepository {
+    name: String,
+    full_name: String,
+}
+
+/// Shape of one issue/PR item as returned by the GitHub REST API, either from
+/// `GET /repos/{owner}/{repo}/issues` or from the `items` array of `GET /search/issues`.
+#[derive(Debug, Clone, Deserialize)]
+struct RawGitHubApiIssue {
+    number: u64,
+    title: String,
+    #[serde(default)]
+    body: Option<String>,
+    state: String,
+    #[serde(default)]
+    user: Option<RawGitHubApiUser>,
+    #[serde(default)]
+    assignees: Vec<RawGitHubApiUser>,
+    #[serde(default)]
+    labels: Vec<RawGitHubApiLabel>,
+    #[serde(default)]
+    comments: Option<u64>,
+    created_at: String,
+    updated_at: String,
+    html_url: String,
+    #[serde(default)]
+    repository: Option<RawGitHubApiRepository>,
+    #[serde(default)]
+    repository_url: Option<String>,
+    #[serde(default)]
+    pull_request: Option<serde_json::Value>,
+}
+
+/// Envelope returned by `GET /search/issues`.
+#[derive(Debug, Clone, Deserialize)]
+struct RawGitHubSearchEnvelope {
+    total_count: u64,
+    items: Vec<RawGitHubApiIssue>,
+}
+
+fn repository_from_url(repository_url: &str) -> Option<GitHubRepositoryDto> {
+    let marker = "/repos/";
+    let pos = repository_url.find(marker)?;
+    let slug = &repository_url[pos + marker.len()..];
+    let parts: Vec<&str> = slug.trim_matches('/').split('/').collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    Some(GitHubRepositoryDto {
+        name: parts[1].to_string(),
+        name_with_owner: format!("{}/{}", parts[0], parts[1]),
+    })
+}
+
+fn map_raw_api_issue(raw: RawGitHubApiIssue, default_repo: Option<&str>) -> GitHubIssueDto {
+    let repository = raw
+        .repository
+        .map(|r| GitHubRepositoryDto {
+            name: r.name,
+            name_with_owner: r.full_name,
+        })
+        .or_else(|| raw.repository_url.as_deref().and_then(repository_from_url))
+        .or_else(|| {
+            default_repo.map(|dr| {
+                let parts: Vec<&str> = dr.split('/').collect();
+                let name = if parts.len() >= 2 { parts[1] } else { dr };
+                GitHubRepositoryDto {
+                    name: name.to_string(),
+                    name_with_owner: dr.to_string(),
+                }
+            })
+        });
+
+    let labels = raw
+        .labels
+        .into_iter()
+        .filter_map(|l| {
+            let name = l.name?;
+            Some(GitHubLabelDto {
+                id: None,
+                name,
+                color: l.color.unwrap_or_default(),
+                description: l.description,
+            })
+        })
+        .collect();
+
+    GitHubIssueDto {
+        number: raw.number,
+        title: raw.title,
+        body: raw.body.unwrap_or_default(),
+        state: raw.state.to_lowercase(),
+        author: raw.user.map(|u| GitHubUserDto {
+            login: u.login,
+            name: u.name,
+            avatar_url: u.avatar_url,
+        }),
+        assignees: raw
+            .assignees
+            .into_iter()
+            .map(|u| GitHubUserDto {
+                login: u.login,
+                name: u.name,
+                avatar_url: u.avatar_url,
+            })
+            .collect(),
+        labels,
+        comments_count: raw.comments.unwrap_or(0),
+        created_at: raw.created_at,
+        updated_at: raw.updated_at,
+        url: raw.html_url,
+        repository,
+        is_pull_request: raw.pull_request.is_some(),
+    }
+}
+
+/// Parse a page of GitHub REST API issue/PR results into DTOs plus an optional
+/// total count. Handles both a raw JSON array (`GET /repos/{owner}/{repo}/issues`)
+/// and the `{ total_count, items }` envelope (`GET /search/issues`).
+pub fn parse_github_issues_page_json(
+    json_str: &str,
+    default_repo: Option<&str>,
+) -> Result<(Vec<GitHubIssueDto>, Option<u64>), BridgeError> {
+    if let Ok(envelope) = serde_json::from_str::<RawGitHubSearchEnvelope>(json_str) {
+        let issues = envelope
+            .items
+            .into_iter()
+            .map(|raw| map_raw_api_issue(raw, default_repo))
+            .collect();
+        return Ok((issues, Some(envelope.total_count)));
+    }
+
+    let raw_list: Vec<RawGitHubApiIssue> = serde_json::from_str(json_str).map_err(|e| {
+        BridgeError::with_details(
+            "JSON_ERROR",
+            format!("Failed to parse GitHub issues JSON: {e}"),
+            e.to_string(),
+        )
+    })?;
+
+    let issues = raw_list
+        .into_iter()
+        .map(|raw| map_raw_api_issue(raw, default_repo))
+        .collect();
+    Ok((issues, None))
+}
+
+/// Normalize pagination inputs: `page` defaults to 1 (minimum 1), `per_page`
+/// defaults to 50 (clamped between 10 and 100).
+fn normalize_pagination(page: Option<u32>, per_page: Option<u32>) -> (u32, u32) {
+    let page = page.unwrap_or(1).max(1);
+    let per_page = per_page.unwrap_or(50).clamp(10, 100);
+    (page, per_page)
+}
+
+fn search_query_for_category(category: &str, resolved_repo: Option<&str>) -> String {
+    let mut query = match category {
+        "review-requests" => "is:open is:pr review-requested:@me".to_string(),
+        "project-issues" => "is:open is:issue".to_string(),
+        _ => "is:open is:issue assignee:@me".to_string(),
+    };
+    if let Some(r) = resolved_repo {
+        if !r.is_empty() {
+            query.push_str(&format!(" repo:{r}"));
+        }
+    }
+    query
+}
+
 #[tauri::command]
 pub async fn cmd_list_github_issues(
     repo: Option<String>,
     category: Option<String>,
-) -> Result<Vec<GitHubIssueDto>, BridgeError> {
+    page: Option<u32>,
+    per_page: Option<u32>,
+) -> Result<GitHubIssuesPageDto, BridgeError> {
     let category = category.as_deref().unwrap_or("my-issues");
     let resolved_repo = repo.as_deref().map(resolve_repo_slug);
+    let (page, per_page) = normalize_pagination(page, per_page);
 
     let mut cmd = tokio::process::Command::new("gh");
+    cmd.arg("api").args(["-X", "GET"]);
 
-    match category {
-        "review-requests" => {
-            cmd.args([
-                "search",
-                "prs",
-                "--review-requested=@me",
-                "--state=open",
-                "--limit",
-                "50",
-            ]);
-            if let Some(ref r) = resolved_repo {
-                if !r.is_empty() {
-                    cmd.args(["--repo", r]);
-                }
-            }
-            cmd.args([
-                "--json",
-                "number,title,body,state,author,assignees,labels,commentsCount,createdAt,updatedAt,url,repository",
-            ]);
-        }
-        "project-issues" => {
-            if let Some(ref r) = resolved_repo {
-                if !r.is_empty() {
-                    cmd.args([
-                        "issue",
-                        "list",
-                        "--repo",
-                        r,
-                        "--state",
-                        "open",
-                        "--limit",
-                        "50",
-                        "--json",
-                        "number,title,body,state,author,assignees,labels,comments,createdAt,updatedAt,url",
-                    ]);
-                } else {
-                    cmd.args([
-                        "search",
-                        "issues",
-                        "--state=open",
-                        "--limit",
-                        "50",
-                        "--json",
-                        "number,title,body,state,author,assignees,labels,commentsCount,createdAt,updatedAt,url,repository,isPullRequest",
-                    ]);
-                }
-            } else {
-                cmd.args([
-                    "search",
-                    "issues",
-                    "--state=open",
-                    "--limit",
-                    "50",
-                    "--json",
-                    "number,title,body,state,author,assignees,labels,commentsCount,createdAt,updatedAt,url,repository,isPullRequest",
-                ]);
-            }
-        }
-        _ => {
-            // Default to "my-issues"
-            cmd.args([
-                "search",
-                "issues",
-                "--assignee=@me",
-                "--state=open",
-                "--limit",
-                "50",
-            ]);
-            if let Some(ref r) = resolved_repo {
-                if !r.is_empty() {
-                    cmd.args(["--repo", r]);
-                }
-            }
-            cmd.args([
-                "--json",
-                "number,title,body,state,author,assignees,labels,commentsCount,createdAt,updatedAt,url,repository,isPullRequest",
-            ]);
-        }
+    let use_repo_issues_endpoint =
+        category == "project-issues" && resolved_repo.as_deref().is_some_and(|r| !r.is_empty());
+
+    if use_repo_issues_endpoint {
+        let r = resolved_repo.as_deref().unwrap();
+        cmd.arg(format!("repos/{r}/issues"));
+        cmd.args(["-f", "state=open"]);
+    } else {
+        cmd.arg("search/issues");
+        let query = search_query_for_category(category, resolved_repo.as_deref());
+        cmd.args(["-f", &format!("q={query}")]);
     }
+
+    cmd.args(["-F", &format!("per_page={per_page}")]);
+    cmd.args(["-F", &format!("page={page}")]);
 
     let output = match cmd.output().await {
         Ok(out) => out,
@@ -275,7 +406,19 @@ pub async fn cmd_list_github_issues(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_github_issues_json(&stdout, resolved_repo.as_deref())
+    let (issues, total_count) = parse_github_issues_page_json(&stdout, resolved_repo.as_deref())?;
+
+    let has_more = total_count.map_or(issues.len() == per_page as usize, |total| {
+        (page as u64) * (per_page as u64) < total
+    });
+
+    Ok(GitHubIssuesPageDto {
+        issues,
+        total_count,
+        page,
+        per_page,
+        has_more,
+    })
 }
 
 #[cfg(test)]
@@ -395,5 +538,103 @@ mod tests {
             "SpaceCorps/Tendril-App"
         );
         assert_eq!(issue.repository.as_ref().unwrap().name, "Tendril-App");
+    }
+
+    #[test]
+    fn test_parse_github_issues_page_json_search_envelope() {
+        let sample = r#"{
+            "total_count": 120,
+            "incomplete_results": false,
+            "items": [
+                {
+                    "number": 5,
+                    "title": "Search result issue",
+                    "body": "Body text",
+                    "state": "open",
+                    "user": { "login": "dana" },
+                    "assignees": [],
+                    "labels": [{ "name": "bug", "color": "d73a4a" }],
+                    "comments": 2,
+                    "created_at": "2026-09-01T10:00:00Z",
+                    "updated_at": "2026-09-02T11:00:00Z",
+                    "html_url": "https://github.com/SpaceCorps/Tendril-App/issues/5",
+                    "repository_url": "https://api.github.com/repos/SpaceCorps/Tendril-App"
+                }
+            ]
+        }"#;
+
+        let (issues, total_count) =
+            parse_github_issues_page_json(sample, None).expect("Must parse envelope");
+        assert_eq!(total_count, Some(120));
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].number, 5);
+        assert!(!issues[0].is_pull_request);
+        assert_eq!(
+            issues[0].repository.as_ref().unwrap().name_with_owner,
+            "SpaceCorps/Tendril-App"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issues_page_json_raw_array_no_total_count() {
+        let sample = r#"[
+            {
+                "number": 9,
+                "title": "Repo issue",
+                "state": "open",
+                "assignees": [],
+                "labels": [],
+                "created_at": "2026-09-01T10:00:00Z",
+                "updated_at": "2026-09-02T11:00:00Z",
+                "html_url": "https://github.com/SpaceCorps/Tendril-App/pull/9",
+                "pull_request": { "url": "https://api.github.com/repos/SpaceCorps/Tendril-App/pulls/9" }
+            }
+        ]"#;
+
+        let (issues, total_count) =
+            parse_github_issues_page_json(sample, Some("SpaceCorps/Tendril-App"))
+                .expect("Must parse raw array");
+        assert_eq!(total_count, None);
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].is_pull_request);
+        assert_eq!(
+            issues[0].repository.as_ref().unwrap().name_with_owner,
+            "SpaceCorps/Tendril-App"
+        );
+    }
+
+    #[test]
+    fn test_normalize_pagination_defaults_and_clamping() {
+        assert_eq!(normalize_pagination(None, None), (1, 50));
+        assert_eq!(normalize_pagination(Some(0), Some(5)), (1, 10));
+        assert_eq!(normalize_pagination(Some(3), Some(500)), (3, 100));
+        assert_eq!(normalize_pagination(Some(2), Some(75)), (2, 75));
+    }
+
+    #[test]
+    fn test_has_more_calculation_with_total_count() {
+        let total = Some(120u64);
+        let page = 2u32;
+        let per_page = 50u32;
+        let has_more = total.is_some_and(|t| (page as u64) * (per_page as u64) < t);
+        assert!(has_more);
+
+        let page_last = 3u32;
+        let has_more_last = total.is_some_and(|t| (page_last as u64) * (per_page as u64) < t);
+        assert!(!has_more_last);
+    }
+
+    #[test]
+    fn test_has_more_calculation_without_total_count_uses_length_heuristic() {
+        let total: Option<u64> = None;
+        let per_page = 50usize;
+        let full_page_len = 50usize;
+        let partial_page_len = 10usize;
+
+        let has_more_full = total.map_or(full_page_len == per_page, |_| unreachable!());
+        let has_more_partial = total.map_or(partial_page_len == per_page, |_| unreachable!());
+
+        assert!(has_more_full);
+        assert!(!has_more_partial);
     }
 }
