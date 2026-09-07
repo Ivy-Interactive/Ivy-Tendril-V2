@@ -1,6 +1,13 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { PlanMarkdown } from "components-storybook/tendril";
-import { describeBridgeError, type PlanDetail, type PlanSummary } from "../types/api";
+import {
+  describeBridgeError,
+  type PlanDetail,
+  type PlanSummary,
+  type RecommendationItem,
+  type RecommendationState,
+} from "../types/api";
+import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
@@ -16,6 +23,13 @@ interface PlanDetailViewProps {
   onBack?: () => void;
 }
 
+const REC_STATUS_CLASS: Record<string, string> = {
+  Accepted: "bg-emerald-950 text-emerald-300 border border-emerald-800",
+  AcceptedWithNotes: "bg-emerald-950 text-emerald-300 border border-emerald-800",
+  Declined: "bg-slate-800 text-slate-400 border border-slate-700",
+  Pending: "bg-amber-950 text-amber-300 border border-amber-800",
+};
+
 export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   plan,
   allPlans = [],
@@ -24,9 +38,37 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   onCreatePr,
   onBack,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<"spec" | "diff" | "verifications" | "metadata">("spec");
+  const [activeSubTab, setActiveSubTab] = useState<
+    "spec" | "diff" | "verifications" | "recommendations" | "metadata"
+  >("spec");
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<RecommendationItem[]>(
+    plan.recommendations || []
+  );
+  const [activeNoteDialog, setActiveNoteDialog] = useState<{
+    title: string;
+    action: "Accept" | "Decline";
+  } | null>(null);
+  const [noteText, setNoteText] = useState("");
+
+  useEffect(() => {
+    setRecommendations(plan.recommendations || []);
+    let cancelled = false;
+    bridge
+      .listRecommendations(plan.id)
+      .then((recs) => {
+        if (!cancelled && recs) {
+          setRecommendations(recs);
+        }
+      })
+      .catch(() => {
+        // Fall back to initial plan.recommendations
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plan.id, plan.recommendations]);
 
   // Gating checks
   const canExec = PlanActionsController.canExecute(plan, allPlans);
@@ -38,7 +80,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   /**
    * Run a lifecycle action, reporting any rejection in the banner. Every one of
    * these ends up starting a promptware job on the service, which can refuse
-   * (dependency not met, plan in the wrong state, daemon down) — so the
+   * (dependency not met, plan in the wrong state, daemon down): so the
    * rejection is the operator's only signal that nothing happened.
    */
   const runAction = async (
@@ -60,6 +102,54 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const handleExecute = () => runAction("Execute Plan", onExecute);
   const handleRetry = () => runAction("Retry Plan", onRetry);
   const handleCreatePr = () => runAction("Create PR", onCreatePr);
+
+  const handleOpenDialog = (title: string, action: "Accept" | "Decline") => {
+    setActiveNoteDialog({ title, action });
+    setNoteText("");
+  };
+
+  const handleCloseDialog = () => {
+    setActiveNoteDialog(null);
+    setNoteText("");
+  };
+
+  const handleSubmitDialog = async () => {
+    if (!activeNoteDialog) return;
+    const { title, action } = activeNoteDialog;
+    const trimmedNote = noteText.trim();
+    const targetState: RecommendationState =
+      action === "Accept"
+        ? (trimmedNote ? "AcceptedWithNotes" : "Accepted")
+        : "Declined";
+    const notePayload = trimmedNote || undefined;
+
+    handleCloseDialog();
+    setActionError(null);
+
+    // Snapshot for rollback
+    const previous = recommendations;
+    setRecommendations((prev) =>
+      prev.map((r) =>
+        r.title === title
+          ? { ...r, state: targetState, declineReason: notePayload }
+          : r
+      )
+    );
+
+    try {
+      await bridge.setRecommendationState(
+        plan.id,
+        title,
+        targetState,
+        notePayload
+      );
+    } catch (err) {
+      setRecommendations(previous);
+      setActionError(
+        `Failed to update recommendation "${title}": ${describeBridgeError(err)}`
+      );
+    }
+  };
 
   return (
     <div className="space-y-6" data-testid="plan-detail-view">
@@ -185,6 +275,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         </button>
         <button
           type="button"
+          onClick={() => setActiveSubTab("recommendations")}
+          className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
+            activeSubTab === "recommendations"
+              ? "border-emerald-500 text-slate-100"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          Recommendations ({recommendations.length})
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveSubTab("metadata")}
           className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
             activeSubTab === "metadata"
@@ -224,6 +325,81 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               planId={plan.id}
               verifications={plan.verifications || []}
             />
+          </div>
+        )}
+
+        {activeSubTab === "recommendations" && (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200">
+                Plan Recommendations
+              </h3>
+              <p className="text-xs text-slate-400">
+                Out-of-scope follow-ups and improvements discovered during execution.
+              </p>
+            </div>
+
+            {recommendations.length === 0 ? (
+              <p data-testid="no-recommendations" className="text-xs text-slate-500">
+                ExecutePlan registered no recommendations for this plan.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {recommendations.map((rec) => (
+                  <div
+                    key={rec.title}
+                    data-testid={`recommendation-card-${rec.title}`}
+                    className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4 sm:flex-row sm:items-start sm:justify-between"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-medium text-slate-200">
+                          {rec.title}
+                        </h4>
+                        {rec.impact && (
+                          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
+                            {rec.impact} impact
+                          </span>
+                        )}
+                        <span
+                          className={`rounded px-2 py-0.5 text-xs font-medium ${
+                            REC_STATUS_CLASS[rec.state || "Pending"] ?? REC_STATUS_CLASS.Pending
+                          }`}
+                        >
+                          {rec.state || "Pending"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300">{rec.description}</p>
+                      {rec.declineReason && (
+                        <p className="text-xs text-slate-400">
+                          {rec.state === "Declined" ? "Decline reason: " : "Notes: "}
+                          {rec.declineReason}
+                        </p>
+                      )}
+                    </div>
+
+                    {(!rec.state || rec.state === "Pending") && (
+                      <div className="flex shrink-0 items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDialog(rec.title, "Accept")}
+                          className="rounded bg-emerald-600/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-600"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDialog(rec.title, "Decline")}
+                          className="rounded bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -281,6 +457,75 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Optional Note Dialog */}
+      {activeNoteDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${activeNoteDialog.action} Recommendation`}
+          data-testid="recommendation-note-dialog"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+        >
+          <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+            <h3 className="text-sm font-semibold text-slate-100">
+              {activeNoteDialog.action === "Accept"
+                ? "Accept Recommendation"
+                : "Decline Recommendation"}
+            </h3>
+            <p className="mt-1 text-xs text-slate-400">
+              {activeNoteDialog.title}
+            </p>
+            <div className="mt-4">
+              <label
+                htmlFor="rec-dialog-note"
+                className="block text-xs font-medium text-slate-300 mb-1"
+              >
+                {activeNoteDialog.action === "Accept"
+                  ? "Optional Operator Note:"
+                  : "Decline Reason:"}
+              </label>
+              <textarea
+                id="rec-dialog-note"
+                aria-label={
+                  activeNoteDialog.action === "Accept"
+                    ? "Optional note"
+                    : "Decline reason"
+                }
+                rows={3}
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder={
+                  activeNoteDialog.action === "Accept"
+                    ? "Enter optional notes..."
+                    : "Enter reason for declining..."
+                }
+                className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div className="mt-4 flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={handleCloseDialog}
+                className="rounded px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmitDialog}
+                className={`rounded px-4 py-1.5 text-xs font-medium text-white transition ${
+                  activeNoteDialog.action === "Accept"
+                    ? "bg-emerald-600 hover:bg-emerald-500"
+                    : "bg-red-600 hover:bg-red-500"
+                }`}
+              >
+                Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -224,6 +224,45 @@ impl TendrilClient {
         Ok(())
     }
 
+    /// Set verification status for a plan.
+    ///
+    /// The route is live in tendril-server (shipped in Plan 00068 via
+    /// PUT /api/plans/:id/verifications/:name).
+    pub async fn update_verification(
+        &self,
+        plan_id: &str,
+        name: &str,
+        status: &str,
+    ) -> Result<(), BridgeError> {
+        let url = format!(
+            "{}/api/plans/{}/verifications/{}",
+            self.base_url,
+            path_segment(plan_id),
+            path_segment(name)
+        );
+        let body = json!({ "status": status });
+
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status_code = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "VERIFICATION_UPDATE_FAILED",
+                format!("Failed to set verification '{name}' to {status} ({status_code})"),
+                text,
+            ));
+        }
+
+        Ok(())
+    }
+
     pub async fn get_revision(&self, id: &str, number: Option<i32>) -> Result<String, BridgeError> {
         let mut url = format!("{}/api/plans/{}/revisions", self.base_url, urlencoding(id));
         if let Some(num) = number {

@@ -4,6 +4,7 @@ import { DashboardView } from "../src/views/DashboardView";
 import { PlansView } from "../src/views/PlansView";
 import { PlanDetailView } from "../src/views/PlanDetailView";
 import { NewPlanModal } from "../src/views/NewPlanModal";
+import { ShellLayout } from "../src/views/ShellLayout";
 import { bridge } from "../src/api/bridge";
 import { planDetail, planSummary } from "./fixtures/plan.fixture";
 import type { PlanSummary, Job, ProjectSummary } from "../src/types/api";
@@ -187,6 +188,51 @@ describe("Operator Views Component & Accessibility Tests", () => {
       );
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("pre-fills description and target project when initial values are supplied", () => {
+      render(
+        <NewPlanModal
+          isOpen={true}
+          onClose={() => {}}
+          projects={mockProjects}
+          initialTitle="Fix OAuth callback"
+          initialDescription="Token refresh fails on redirect"
+          initialSourceUrl="https://github.com/SpaceCorps/Tendril-App/issues/88"
+          initialProject="Tendril-App"
+        />
+      );
+
+      const textarea = screen.getByLabelText(/task description/i);
+      expect(textarea).toHaveValue("Fix OAuth callback\n\nToken refresh fails on redirect");
+      expect(screen.getByLabelText(/target project/i)).toHaveValue("Tendril-App");
+    });
+  });
+
+  describe("ShellLayout", () => {
+    it("renders Inbox navigation item and Inbox tab", () => {
+      const handleSelectNav = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="inbox"
+          activeTabs={["dashboard", "inbox", "plans"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={handleSelectNav}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+        >
+          <div>Inbox View Content</div>
+        </ShellLayout>
+      );
+
+      expect(screen.getByText("Inbox View Content")).toBeInTheDocument();
+      // Verify Inbox tab is rendered in ShellTabs
+      expect(screen.getAllByText("Inbox").length).toBeGreaterThan(0);
     });
   });
 });

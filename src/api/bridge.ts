@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  GitHubIssue,
   Job,
   JobDetail,
   PlanDetail,
@@ -15,6 +16,7 @@ import type {
   StartJobResponse,
   TendrilConfig,
   VerificationReport,
+  VerificationStatus,
 } from "../types/api";
 
 export const bridge = {
@@ -90,6 +92,18 @@ export const bridge = {
     });
   },
 
+  async setVerificationStatus(
+    planId: string,
+    name: string,
+    status: VerificationStatus
+  ): Promise<void> {
+    return invoke<void>("cmd_set_verification_status", {
+      planId,
+      name,
+      status,
+    });
+  },
+
   async listRecommendations(planId: string): Promise<RecommendationItem[]> {
     return invoke<RecommendationItem[]>("cmd_list_recommendations", { planId });
   },
@@ -138,5 +152,9 @@ export const bridge = {
 
   async loadUiState(key: string): Promise<string | null> {
     return invoke<string | null>("cmd_load_ui_state", { key });
+  },
+
+  async listGitHubIssues(repo?: string, category?: string): Promise<GitHubIssue[]> {
+    return invoke<GitHubIssue[]>("cmd_list_github_issues", { repo, category });
   },
 };

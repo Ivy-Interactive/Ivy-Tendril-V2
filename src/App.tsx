@@ -15,6 +15,7 @@ import { JobSessionView } from "./views/JobSessionView";
 import { ReviewView } from "./views/ReviewView";
 import { SettingsView } from "./views/SettingsView";
 import { ChatView } from "./views/ChatView";
+import { InboxView } from "./views/InboxView";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 
@@ -26,7 +27,12 @@ export const App: React.FC = () => {
 
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isNewPlanOpen, setIsNewPlanOpen] = useState(false);
-  const [initialPlanDescription, setInitialPlanDescription] = useState<string | undefined>(undefined);
+  const [newPlanPrefill, setNewPlanPrefill] = useState<{
+    title?: string;
+    description?: string;
+    sourceUrl?: string;
+    project?: string;
+  }>({});
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   // Failures from actions the shell itself owns (service restart/repair).
   const [shellError, setShellError] = useState<string | null>(null);
@@ -91,8 +97,12 @@ export const App: React.FC = () => {
       } else if (isCmdOrCtrl && e.key.toLowerCase() === "b") {
         e.preventDefault();
         uiStore.toggleSidebar();
+      } else if (isCmdOrCtrl && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        uiStore.setActiveNav("inbox");
       } else if (isCmdOrCtrl && e.key.toLowerCase() === "n") {
         e.preventDefault();
+        setNewPlanPrefill({});
         setIsNewPlanOpen(true);
       } else if (isCmdOrCtrl && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -224,7 +234,27 @@ export const App: React.FC = () => {
         return (
           <ChatView
             onCreatePlan={(initialDesc) => {
-              setInitialPlanDescription(initialDesc);
+              setNewPlanPrefill({ description: initialDesc });
+              setIsNewPlanOpen(true);
+            }}
+          />
+        );
+
+      case "inbox":
+        return (
+          <InboxView
+            projects={projects}
+            onCreatePlan={(issue, project) => {
+              setNewPlanPrefill({
+                title: issue.title,
+                description: `Task from GitHub Issue #${issue.number} (${issue.url}):\n\n${issue.body}`,
+                sourceUrl: issue.url,
+                project,
+              });
+              setIsNewPlanOpen(true);
+            }}
+            onOpenNewPlanModal={(prefill) => {
+              setNewPlanPrefill(prefill);
               setIsNewPlanOpen(true);
             }}
           />
@@ -235,7 +265,10 @@ export const App: React.FC = () => {
           <PlansView
             plans={plansState.plans}
             onSelectPlan={handleSelectPlan}
-            onNewPlan={() => setIsNewPlanOpen(true)}
+            onNewPlan={() => {
+              setNewPlanPrefill({});
+              setIsNewPlanOpen(true);
+            }}
           />
         );
 
@@ -315,7 +348,10 @@ export const App: React.FC = () => {
         onSelectNav={(nav) => uiStore.setActiveNav(nav)}
         onSelectTab={(tab) => uiStore.setActiveNav(tab)}
         onCloseTab={(tab) => uiStore.closeTab(tab)}
-        onNewPlan={() => setIsNewPlanOpen(true)}
+        onNewPlan={() => {
+          setNewPlanPrefill({});
+          setIsNewPlanOpen(true);
+        }}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onReconnect={() => serviceStore.checkHealth()}
         onRestartService={() => {
@@ -366,10 +402,13 @@ export const App: React.FC = () => {
         isOpen={isNewPlanOpen}
         onClose={() => {
           setIsNewPlanOpen(false);
-          setInitialPlanDescription(undefined);
+          setNewPlanPrefill({});
         }}
         projects={projects}
-        initialDescription={initialPlanDescription}
+        initialTitle={newPlanPrefill.title}
+        initialDescription={newPlanPrefill.description}
+        initialSourceUrl={newPlanPrefill.sourceUrl}
+        initialProject={newPlanPrefill.project}
         onJobStarted={(res) => {
           handleSelectJob(res.jobId);
         }}

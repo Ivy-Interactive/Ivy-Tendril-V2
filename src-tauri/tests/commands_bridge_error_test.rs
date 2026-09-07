@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use tempfile::TempDir;
 use tendril_app_lib::commands::plans::{
     cmd_get_plan, cmd_get_verification_report, cmd_list_recommendations,
-    cmd_list_verification_reports, cmd_set_recommendation_state,
+    cmd_list_verification_reports, cmd_set_recommendation_state, cmd_set_verification_status,
 };
 use tendril_app_lib::commands::{
     cmd_check_service_health, cmd_get_service_info, get_daemon_status,
@@ -54,6 +54,7 @@ async fn env_lock() -> tokio::sync::MutexGuard<'static, ()> {
 struct Observed {
     authorized_requests: usize,
     recommendation_calls: Vec<(String, String, serde_json::Value)>,
+    verification_calls: Vec<(String, String, serde_json::Value)>,
 }
 
 type Shared = Arc<Mutex<Observed>>;
@@ -171,6 +172,32 @@ async fn spawn_mock_daemon(plan_folder: PathBuf, accept_recommendations: bool) -
                         (
                             StatusCode::NOT_FOUND,
                             Json(json!({ "error": "no route for recommendation updates" })),
+                        )
+                    }
+                },
+            ),
+        )
+        .route(
+            "/api/plans/{id}/verifications/{name}",
+            put(
+                move |State(state): State<Shared>,
+                      headers: HeaderMap,
+                      Path((id, name)): Path<(String, String)>,
+                      Json(body): Json<serde_json::Value>| async move {
+                    if !is_authorized(&headers) {
+                        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "no" })));
+                    }
+                    {
+                        let mut observed = state.lock().expect("lock");
+                        observed.authorized_requests += 1;
+                        observed.verification_calls.push((id, name, body));
+                    }
+                    if accept_recommendations {
+                        (StatusCode::OK, Json(json!({ "message": "updated" })))
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(json!({ "error": "no route for verification updates" })),
                         )
                     }
                 },
@@ -509,4 +536,82 @@ async fn a_service_that_refuses_the_write_produces_a_real_failure() {
         err.details
     );
     assert_eq!(daemon.observed().recommendation_calls.len(), 1);
+}
+
+#[tokio::test]
+async fn an_unknown_verification_status_is_rejected_before_any_request() {
+    let _guard = env_lock().await;
+    let (_temp, _folder, daemon) = isolated_env(true).await;
+
+    let err = cmd_set_verification_status(
+        "00021".to_string(),
+        "RustClippy".to_string(),
+        "UnknownStatus".to_string(),
+    )
+    .await
+    .expect_err("'UnknownStatus' is not a verification status");
+
+    assert_eq!(err.code, "VALIDATION_ERROR");
+    assert!(
+        err.message.contains("Pending, Pass, Fail, Skipped"),
+        "the error lists valid statuses: {}",
+        err.message
+    );
+    assert!(
+        daemon.observed().verification_calls.is_empty(),
+        "a rejected status must not reach the daemon"
+    );
+}
+
+#[tokio::test]
+async fn a_verification_status_update_is_addressed_by_name() {
+    let _guard = env_lock().await;
+    let (_temp, _folder, daemon) = isolated_env(true).await;
+
+    cmd_set_verification_status(
+        "00021".to_string(),
+        "RustClippy".to_string(),
+        "Pass".to_string(),
+    )
+    .await
+    .expect("daemon accepted the verification write");
+
+    let observed = daemon.observed();
+    let (plan_id, name, body) = observed
+        .verification_calls
+        .first()
+        .expect("issued one write");
+    assert_eq!(plan_id, "00021");
+    assert_eq!(name, "RustClippy");
+    assert_eq!(body["status"], "Pass");
+}
+
+#[tokio::test]
+async fn a_service_that_refuses_the_verification_write_produces_a_real_failure() {
+    let _guard = env_lock().await;
+    let (_temp, _folder, daemon) = isolated_env(false).await;
+
+    let err = cmd_set_verification_status(
+        "00021".to_string(),
+        "RustClippy".to_string(),
+        "Pass".to_string(),
+    )
+    .await
+    .expect_err("a 404 from the service must surface, not be swallowed");
+
+    assert_eq!(err.code, "VERIFICATION_UPDATE_FAILED");
+    assert!(
+        err.message.contains("RustClippy"),
+        "message names the verification: {}",
+        err.message
+    );
+    assert!(
+        err.details
+            .as_deref()
+            .unwrap_or_default()
+            .contains("no route for verification updates"),
+        "the service response is preserved as details: {:?}",
+        err.details
+    );
+    assert_eq!(daemon.observed().verification_calls.len(), 1);
 }

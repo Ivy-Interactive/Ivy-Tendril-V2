@@ -21,8 +21,6 @@ describe("Migration Parity Matrix", () => {
     expect(tableLines.length).toBeGreaterThan(15); // Header + separator + at least 14 rows
 
     // Skip header and separator
-    const headerLine = tableLines[0];
-    expect(headerLine).toBeDefined();
     const dataRows = tableLines.slice(2);
 
     expect(dataRows.length).toBeGreaterThanOrEqual(14);

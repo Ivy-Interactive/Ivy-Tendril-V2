@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod config;
+pub mod github;
 pub mod jobs;
 pub mod plans;
 pub mod state;

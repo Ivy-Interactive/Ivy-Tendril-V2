@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { PlanActionsController } from "../src/controllers/plan_actions";
+import { uiStore } from "../src/state/uiStore";
 import type { PlanDetail, PlanSummary } from "../src/types/api";
 import { planDetail } from "./fixtures/plan.fixture";
 
@@ -128,6 +129,21 @@ describe("Plan State Transitions & Action Gating Rules", () => {
       expect(PlanActionsController.canRefine({ ...basePlan, state: "Draft" }).allowed).toBe(true);
       expect(PlanActionsController.canRefine({ ...basePlan, state: "Executing" }).allowed).toBe(false);
       expect(PlanActionsController.canRefine({ ...basePlan, state: "Review" }).allowed).toBe(false);
+    });
+  });
+
+  describe("Inbox Navigation & Tab Lifecycle", () => {
+    it("activates inbox and maintains tab lifecycle in uiStore", () => {
+      uiStore.setActiveNav("inbox");
+      expect(uiStore.getState().activeNav).toBe("inbox");
+      expect(uiStore.getState().activeTabIds).toContain("inbox");
+
+      uiStore.openTab("plan-00042");
+      expect(uiStore.getState().activeTabIds).toContain("plan-00042");
+
+      uiStore.closeTab("plan-00042");
+      expect(uiStore.getState().activeTabIds).not.toContain("plan-00042");
+      expect(uiStore.getState().activeNav).toBe("inbox");
     });
   });
 });

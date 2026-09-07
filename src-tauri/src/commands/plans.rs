@@ -119,6 +119,26 @@ pub async fn cmd_set_recommendation_state(
         .await
 }
 
+/// Set a plan's verification status (Pending, Pass, Fail, Skipped).
+#[tauri::command]
+pub async fn cmd_set_verification_status(
+    plan_id: String,
+    name: String,
+    status: String,
+) -> Result<(), BridgeError> {
+    const STATUSES: [&str; 4] = ["Pending", "Pass", "Fail", "Skipped"];
+    if !STATUSES.contains(&status.as_str()) {
+        return Err(BridgeError::validation(format!(
+            "Unknown verification status '{status}', expected one of {}",
+            STATUSES.join(", ")
+        )));
+    }
+
+    get_client_from_master()?
+        .update_verification(&plan_id, &name, &status)
+        .await
+}
+
 async fn plan_folder(plan_id: &str) -> Result<String, BridgeError> {
     let plan = get_client_from_master()?.get_plan(plan_id).await?;
     plan.folder_path

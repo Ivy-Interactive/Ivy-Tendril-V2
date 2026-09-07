@@ -7,6 +7,7 @@ pub mod verification_reports;
 
 pub use commands::chat::*;
 pub use commands::config::*;
+pub use commands::github::*;
 pub use commands::jobs::*;
 pub use commands::plans::*;
 pub use commands::state::*;
@@ -32,6 +33,7 @@ pub fn run() {
             cmd_list_verification_reports,
             cmd_list_recommendations,
             cmd_set_recommendation_state,
+            cmd_set_verification_status,
             cmd_list_jobs,
             cmd_get_job,
             cmd_start_job,
@@ -57,6 +59,7 @@ pub fn run() {
             cmd_enqueue_chat_message,
             cmd_clear_chat_queue,
             cmd_delete_queued_chat_item,
+            cmd_list_github_issues,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
