@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.25.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -10,11 +11,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@spacecorps/components-storybook": "link:/Users/rorychatt/git/components-storybook",
+    "@spacecorps/components-storybook": "link:../components-storybook",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-opener": "^2.2.5",
     "clsx": "^2.1.1",
-    "components-storybook": "link:/Users/rorychatt/git/components-storybook",
     "diff": "^9.0.0",
     "lucide-react": "^0.562.0",
     "react": "19.2.3",
