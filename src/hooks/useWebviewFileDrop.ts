@@ -17,7 +17,7 @@ export function useWebviewFileDrop({ onPaths, onDragStateChange }: Options): boo
     let cancelled = false;
     let unlisten: UnlistenFn | null = null;
 
-    (async () => {
+    void (async () => {
       try {
         const webview = getCurrentWebview();
         const fn = await webview.onDragDropEvent((event) => {

@@ -37,7 +37,7 @@ class UiStore {
 
   private notify(): void {
     this.listeners.forEach((l) => l());
-    this.persist();
+    void this.persist();
   }
 
   public async init(): Promise<void> {

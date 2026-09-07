@@ -64,7 +64,7 @@ export const App: React.FC = () => {
       setServiceState({ ...serviceStore.getState() }),
     );
 
-    uiStore.init();
+    void uiStore.init();
     serviceStore.refreshInfo().catch(() => {});
     plansStore.fetchPlans().catch(() => {});
     jobsStore.fetchJobs().catch(() => {});

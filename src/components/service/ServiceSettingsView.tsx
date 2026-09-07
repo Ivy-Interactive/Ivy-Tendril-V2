@@ -29,7 +29,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
   };
 
   useEffect(() => {
-    fetchLogs();
+    void fetchLogs();
   }, []);
 
   const handleRestart = async () => {
@@ -39,7 +39,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       await bridge.restartService();
       await onRefreshHealth();
       setActionMessage("Service restart initiated.");
-      fetchLogs();
+      void fetchLogs();
     } catch (err) {
       setActionMessage(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -54,7 +54,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       const res = await bridge.repairService();
       await onRefreshHealth();
       setActionMessage(res);
-      fetchLogs();
+      void fetchLogs();
     } catch (err) {
       setActionMessage(`Repair failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -69,7 +69,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       await bridge.switchServiceMode(mode);
       await onRefreshHealth();
       setActionMessage(`Switched service ownership mode to ${mode}.`);
-      fetchLogs();
+      void fetchLogs();
     } catch (err) {
       setActionMessage(`Mode switch failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {

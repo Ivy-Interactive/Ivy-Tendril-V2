@@ -37,7 +37,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
       const items = Array.isArray(payload) ? payload : [payload];
       for (const item of items) {
         chatStore.setInProgressAnswer(message.id, item.questionId, item.answer);
-        chatStore.submitAnswer(message.id, item.questionId, item.answer);
+        void chatStore.submitAnswer(message.id, item.questionId, item.answer);
       }
     },
     [message.id],
