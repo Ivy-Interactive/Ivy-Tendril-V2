@@ -124,9 +124,22 @@ export {
   getLanguageFromFilePath,
   useIsNarrow,
   NARROW_BREAKPOINT,
+  loadLanguage,
+  registerLanguageLoader,
+  registerLanguageLoaders,
+  clearCustomLanguageLoaders,
+  useCustomLanguageLoaders,
+  customLanguageRegistry,
 } from "./components/PlanDiffView";
 
-export type { PlanDiffViewProps, DraftComment } from "./components/PlanDiffView";
+export type {
+  PlanDiffViewProps,
+  DraftComment,
+  LanguageModule,
+  CustomLanguageLoader,
+  CustomLanguageDefinition,
+  CustomLanguageLoaders,
+} from "./components/PlanDiffView";
 
 // Tendril Dashboard Components
 export {

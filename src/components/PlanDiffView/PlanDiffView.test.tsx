@@ -3,7 +3,16 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { parseDiff, getChangeKey } from "react-diff-view";
 
-import { PlanDiffView, loadLanguage } from "./PlanDiffView";
+import {
+  PlanDiffView,
+  loadLanguage,
+  registerLanguageLoader,
+  registerLanguageLoaders,
+  clearCustomLanguageLoaders,
+  useCustomLanguageLoaders,
+  customLanguageRegistry,
+} from "./PlanDiffView";
+import { refractor } from "refractor/core";
 
 describe("PlanDiffView", () => {
   const diff = [
@@ -416,5 +425,344 @@ describe("PlanDiffView language pack dynamic loading and highlighting", () => {
   it("loadLanguage returns false for unrecognized language", async () => {
     const loaded = await loadLanguage("unsupported_xyz_lang");
     expect(loaded).toBe(false);
+  });
+
+  it("registerLanguageLoader registers a custom syntax loader and highlights code with that language", async () => {
+    clearCustomLanguageLoaders();
+    function mockLang1(prism: any) {
+      prism.languages.mocklang1 = {
+        keyword: /\bcustomkw\b/,
+      };
+    }
+    mockLang1.displayName = "mocklang1";
+
+    registerLanguageLoader("mocklang1", async () => mockLang1);
+
+    const diff = [
+      "diff --git a/code.mocklang1 b/code.mocklang1",
+      "--- a/code.mocklang1",
+      "+++ b/code.mocklang1",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+customkw value",
+      "",
+    ].join("\n");
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView id="pdv-cust-1" diff={diff} filePath="code.mocklang1" />,
+      );
+      container = rendered.container;
+    });
+
+    await vi.waitFor(() => {
+      const kw = container.querySelector(".token.keyword");
+      expect(kw).toBeInTheDocument();
+      expect(kw?.textContent).toBe("customkw");
+    });
+  });
+
+  it("registerLanguageLoaders batch registers multiple custom syntax loaders", async () => {
+    clearCustomLanguageLoaders();
+    function mockBatchLangA(prism: any) {
+      prism.languages.batcha = {
+        keyword: /\bbatchakw\b/,
+      };
+    }
+    mockBatchLangA.displayName = "batcha";
+
+    function mockBatchLangB(prism: any) {
+      prism.languages.batchb = {
+        keyword: /\bbatchbkw\b/,
+      };
+    }
+    mockBatchLangB.displayName = "batchb";
+
+    registerLanguageLoaders({
+      batcha: async () => mockBatchLangA,
+      batchb: { loader: async () => mockBatchLangB, aliases: ["bb"] },
+    });
+
+    expect(customLanguageRegistry.has("batcha")).toBe(true);
+    expect(customLanguageRegistry.has("batchb")).toBe(true);
+    expect(customLanguageRegistry.has("bb")).toBe(true);
+
+    const loadedA = await loadLanguage("batcha");
+    const loadedB = await loadLanguage("bb");
+    expect(loadedA).toBe(true);
+    expect(loadedB).toBe(true);
+  });
+
+  it("customLanguageLoaders prop on <PlanDiffView /> provides syntax highlighting without modifying global state", async () => {
+    clearCustomLanguageLoaders();
+    function mockPropLang(prism: any) {
+      prism.languages.proplang = {
+        keyword: /\bpropkw\b/,
+      };
+    }
+    mockPropLang.displayName = "proplang";
+
+    const diff = [
+      "diff --git a/code.proplang b/code.proplang",
+      "--- a/code.proplang",
+      "+++ b/code.proplang",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+propkw here",
+      "",
+    ].join("\n");
+
+    expect(customLanguageRegistry.has("proplang")).toBe(false);
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView
+          id="pdv-prop-lang"
+          diff={diff}
+          filePath="code.proplang"
+          customLanguageLoaders={{
+            proplang: async () => mockPropLang,
+          }}
+        />,
+      );
+      container = rendered.container;
+    });
+
+    await vi.waitFor(() => {
+      const kw = container.querySelector(".token.keyword");
+      expect(kw).toBeInTheDocument();
+      expect(kw?.textContent).toBe("propkw");
+    });
+
+    // Global registry must not be modified by prop-level custom loaders
+    expect(customLanguageRegistry.has("proplang")).toBe(false);
+  });
+
+  it("loads prerequisite dependencies before custom language registers", async () => {
+    clearCustomLanguageLoaders();
+    const loadOrder: string[] = [];
+
+    function mockBaseSyntax(prism: any) {
+      prism.languages.mockbase = {
+        keyword: /\bbasekw\b/,
+      };
+    }
+    mockBaseSyntax.displayName = "mockbase";
+
+    function mockChildSyntax(prism: any) {
+      prism.languages.mockchild = {
+        ...prism.languages.mockbase,
+        string: /"[^"]*"/,
+      };
+    }
+    mockChildSyntax.displayName = "mockchild";
+
+    registerLanguageLoader("mockbase", async () => {
+      loadOrder.push("mockbase");
+      return mockBaseSyntax;
+    });
+
+    registerLanguageLoader("mockchild", {
+      loader: async () => {
+        loadOrder.push("mockchild");
+        return mockChildSyntax;
+      },
+      dependencies: ["mockbase"],
+    });
+
+    const diff = [
+      "diff --git a/test.mockchild b/test.mockchild",
+      "--- a/test.mockchild",
+      "+++ b/test.mockchild",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      '+basekw "hello"',
+      "",
+    ].join("\n");
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView id="pdv-dep-lang" diff={diff} filePath="test.mockchild" />,
+      );
+      container = rendered.container;
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelector(".token.keyword")?.textContent).toBe("basekw");
+      expect(container.querySelector(".token.string")?.textContent).toBe('"hello"');
+    });
+
+    expect(loadOrder).toEqual(["mockbase", "mockchild"]);
+  });
+
+  it("resolves custom language with aliases for matching file extensions", async () => {
+    clearCustomLanguageLoaders();
+    function mockAliasSyntax(prism: any) {
+      prism.languages.mockalias = {
+        keyword: /\baliaskw\b/,
+      };
+    }
+    mockAliasSyntax.displayName = "mockalias";
+
+    registerLanguageLoader("mockalias", {
+      loader: async () => mockAliasSyntax,
+      aliases: ["ma_ext", "ma_alt"],
+    });
+
+    const diff = [
+      "diff --git a/test.ma_ext b/test.ma_ext",
+      "--- a/test.ma_ext",
+      "+++ b/test.ma_ext",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+aliaskw test",
+      "",
+    ].join("\n");
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView id="pdv-alias-lang" diff={diff} filePath="test.ma_ext" />,
+      );
+      container = rendered.container;
+    });
+
+    await vi.waitFor(() => {
+      const kw = container.querySelector(".token.keyword");
+      expect(kw).toBeInTheDocument();
+      expect(kw?.textContent).toBe("aliaskw");
+    });
+  });
+
+  it("useCustomLanguageLoaders hook registers on mount and cleans up on unmount", async () => {
+    clearCustomLanguageLoaders();
+    function mockHookSyntax(prism: any) {
+      prism.languages.hooklang = {
+        keyword: /\bhookkw\b/,
+      };
+    }
+    mockHookSyntax.displayName = "hooklang";
+
+    const diff = [
+      "diff --git a/test.hooklang b/test.hooklang",
+      "--- a/test.hooklang",
+      "+++ b/test.hooklang",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+hookkw action",
+      "",
+    ].join("\n");
+
+    function ConsumerWrapper({ show }: { show: boolean }) {
+      useCustomLanguageLoaders(
+        show
+          ? {
+              hooklang: async () => mockHookSyntax,
+            }
+          : undefined,
+      );
+      return show ? (
+        <PlanDiffView id="pdv-hook" diff={diff} filePath="test.hooklang" />
+      ) : (
+        <div>Hidden</div>
+      );
+    }
+
+    let unmount: () => void;
+    await act(async () => {
+      const res = render(<ConsumerWrapper show={true} />);
+      unmount = res.unmount;
+    });
+
+    expect(customLanguageRegistry.has("hooklang")).toBe(true);
+
+    await vi.waitFor(() => {
+      expect(document.querySelector(".token.keyword")?.textContent).toBe("hookkw");
+    });
+
+    act(() => {
+      unmount();
+    });
+    expect(customLanguageRegistry.has("hooklang")).toBe(false);
+  });
+
+  it("clearCustomLanguageLoaders resets custom language registrations", async () => {
+    clearCustomLanguageLoaders();
+    function mockResetSyntax(prism: any) {
+      prism.languages.resetsyntax = { keyword: /\bresetkw\b/ };
+    }
+    mockResetSyntax.displayName = "resetsyntax";
+
+    registerLanguageLoader("resetsyntax", {
+      loader: async () => mockResetSyntax,
+      aliases: ["rsx"],
+    });
+
+    expect(customLanguageRegistry.has("resetsyntax")).toBe(true);
+    expect(customLanguageRegistry.has("rsx")).toBe(true);
+
+    await loadLanguage("resetsyntax");
+    expect(refractor.registered("resetsyntax")).toBe(true);
+    expect(refractor.registered("rsx")).toBe(true);
+
+    clearCustomLanguageLoaders();
+
+    expect(customLanguageRegistry.size).toBe(0);
+    expect(customLanguageRegistry.has("resetsyntax")).toBe(false);
+    expect(customLanguageRegistry.has("rsx")).toBe(false);
+    expect(refractor.registered("resetsyntax")).toBe(false);
+    expect(refractor.registered("rsx")).toBe(false);
+  });
+
+  it("gracefully falls back when custom loader rejects without throwing", async () => {
+    clearCustomLanguageLoaders();
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const diff = [
+      "diff --git a/test.failing b/test.failing",
+      "--- a/test.failing",
+      "+++ b/test.failing",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+failing content",
+      "",
+    ].join("\n");
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView
+          id="pdv-fail"
+          diff={diff}
+          filePath="test.failing"
+          customLanguageLoaders={{
+            failing: async () => {
+              throw new Error("Network load failure");
+            },
+          }}
+        />,
+      );
+      container = rendered.container;
+    });
+
+    // The diff table renders without throwing
+    expect(container!.querySelector(".diff")).toBeInTheDocument();
+    expect(screen.getByText("failing content")).toBeInTheDocument();
+
+    // No syntax tokens
+    const tokens = container!.querySelectorAll(".diff-line span[class*='token']");
+    expect(tokens.length).toBe(0);
+
+    const loaded = await loadLanguage("failing", {
+      failing: async () => {
+        throw new Error("Network load failure");
+      },
+    });
+    expect(loaded).toBe(false);
+
+    consoleSpy.mockRestore();
   });
 });
