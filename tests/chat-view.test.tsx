@@ -125,11 +125,7 @@ questions:
     }
 
     await waitFor(() => {
-      expect(submitSpy).toHaveBeenCalledWith(
-        "msg-asst-1",
-        "db-flavor",
-        expect.anything()
-      );
+      expect(submitSpy).toHaveBeenCalledWith("msg-asst-1", "db-flavor", expect.anything());
     });
   });
 
@@ -166,7 +162,9 @@ questions:
     const file = new File(["dummy content"], "test-dropped-file.ts", { type: "text/plain" });
     Object.defineProperty(file, "path", { value: "/path/to/test-dropped-file.ts" });
 
-    const composerArea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i).closest("div[class*='border-t']");
+    const composerArea = screen
+      .getByPlaceholderText(/Ask Tendril or discuss plans/i)
+      .closest("div[class*='border-t']");
     expect(composerArea).toBeInTheDocument();
 
     fireEvent.dragEnter(composerArea!, {
@@ -546,7 +544,7 @@ questions:
 
     expect(screen.getByText("file1.ts").closest("div")).toHaveAttribute(
       "title",
-      "/Users/user/project/file1.ts"
+      "/Users/user/project/file1.ts",
     );
   });
 
@@ -614,7 +612,9 @@ questions:
     const messageElement = screen.getByText("What database should we use?");
     const threadContainer = messageElement.closest(".overflow-hidden.relative");
     expect(threadContainer).toBeInTheDocument();
-    expect(threadContainer?.className).not.toContain("[&_button[aria-label='Scroll to bottom']]:hidden");
+    expect(threadContainer?.className).not.toContain(
+      "[&_button[aria-label='Scroll to bottom']]:hidden",
+    );
     expect(threadContainer?.className).toContain("flex-1 overflow-hidden relative");
 
     expect(screen.queryByLabelText("Scroll to bottom")).not.toBeInTheDocument();

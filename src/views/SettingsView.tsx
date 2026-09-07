@@ -8,10 +8,7 @@ interface SettingsViewProps {
   onRefreshHealth: () => Promise<void>;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({
-  serviceInfo,
-  onRefreshHealth,
-}) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefreshHealth }) => {
   const [_config, setConfig] = useState<TendrilConfig | null>(null);
   const [isPinging, setIsPinging] = useState(false);
   const [pingResult, setPingResult] = useState<string | null>(null);
@@ -62,12 +59,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       // In Tendril, config values are updated through the CLI or REST put_config
       // For the UI, we simulate or save settings
-      await bridge.saveUiState("config_preferences", JSON.stringify({
-        codingAgent,
-        jobTimeout,
-        maxConcurrentJobs,
-        theme,
-      }));
+      await bridge.saveUiState(
+        "config_preferences",
+        JSON.stringify({
+          codingAgent,
+          jobTimeout,
+          maxConcurrentJobs,
+          theme,
+        }),
+      );
       setSaveMessage("Configuration preferences saved successfully.");
     } catch (err) {
       setSaveMessage(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
@@ -111,9 +111,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-slate-400">Connection State:</dt>
-              <dd className="font-semibold text-slate-200">
-                {serviceInfo?.state || "NotRunning"}
-              </dd>
+              <dd className="font-semibold text-slate-200">{serviceInfo?.state || "NotRunning"}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-400">Daemon Host & Port:</dt>
@@ -123,13 +121,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-400">Process PID:</dt>
-              <dd className="font-mono text-xs text-slate-300">
-                {serviceInfo?.pid || "N/A"}
-              </dd>
+              <dd className="font-mono text-xs text-slate-300">{serviceInfo?.pid || "N/A"}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-400">TENDRIL_HOME:</dt>
-              <dd className="font-mono text-xs text-slate-300 truncate max-w-[200px]" title={serviceInfo?.tendrilHome}>
+              <dd
+                className="font-mono text-xs text-slate-300 truncate max-w-[200px]"
+                title={serviceInfo?.tendrilHome}
+              >
                 {serviceInfo?.tendrilHome || "~/.tendril"}
               </dd>
             </div>
@@ -162,7 +161,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <form onSubmit={handleSaveConfig} className="mt-4 space-y-4 text-sm">
             <div>
-              <label htmlFor="coding-agent-select" className="block text-xs font-medium text-slate-300 mb-1">
+              <label
+                htmlFor="coding-agent-select"
+                className="block text-xs font-medium text-slate-300 mb-1"
+              >
                 Coding Agent CLI
               </label>
               <select
@@ -180,7 +182,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="job-timeout-input" className="block text-xs font-medium text-slate-300 mb-1">
+                <label
+                  htmlFor="job-timeout-input"
+                  className="block text-xs font-medium text-slate-300 mb-1"
+                >
                   Job Timeout (seconds)
                 </label>
                 <input
@@ -194,7 +199,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
               <div>
-                <label htmlFor="max-concurrent-jobs-input" className="block text-xs font-medium text-slate-300 mb-1">
+                <label
+                  htmlFor="max-concurrent-jobs-input"
+                  className="block text-xs font-medium text-slate-300 mb-1"
+                >
                   Max Concurrent Jobs
                 </label>
                 <input
@@ -209,7 +217,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <div>
-              <label htmlFor="theme-select" className="block text-xs font-medium text-slate-300 mb-1">
+              <label
+                htmlFor="theme-select"
+                className="block text-xs font-medium text-slate-300 mb-1"
+              >
                 Theme
               </label>
               <select
@@ -238,10 +249,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      <ServiceSettingsView
-        serviceInfo={serviceInfo}
-        onRefreshHealth={onRefreshHealth}
-      />
+      <ServiceSettingsView serviceInfo={serviceInfo} onRefreshHealth={onRefreshHealth} />
     </div>
   );
 };

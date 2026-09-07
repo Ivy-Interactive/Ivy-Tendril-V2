@@ -83,9 +83,7 @@ class JobsStore {
 
   public async cancelJob(id: string, message?: string): Promise<void> {
     await bridge.cancelJob(id, message);
-    this.state.jobs = this.state.jobs.map((j) =>
-      j.id === id ? { ...j, status: "Stopped" } : j
-    );
+    this.state.jobs = this.state.jobs.map((j) => (j.id === id ? { ...j, status: "Stopped" } : j));
     this.notify();
   }
 
@@ -93,11 +91,14 @@ class JobsStore {
    * Append stream event with deduplication by event id or compound timestamp+type
    */
   public addStreamEvent(jobOrPlanId: string, event: unknown): boolean {
-    const item = typeof event === "string" ? { message: event } : (event as Record<string, unknown>);
+    const item =
+      typeof event === "string" ? { message: event } : (event as Record<string, unknown>);
     const rawId = (item.id as string) || (item.uuid as string);
     const type = (item.type as string) || (item.action as string) || "status";
     const timestamp = (item.timestamp as number) || (item.time as number) || Date.now();
-    const eventKey = rawId || `${jobOrPlanId}-${type}-${timestamp}-${JSON.stringify(item.step || item.message || "")}`;
+    const eventKey =
+      rawId ||
+      `${jobOrPlanId}-${type}-${timestamp}-${JSON.stringify(item.step || item.message || "")}`;
 
     // Deduplication check
     if (this.processedEventIds.has(eventKey)) {

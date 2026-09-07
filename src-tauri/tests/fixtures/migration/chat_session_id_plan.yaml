@@ -5,16 +5,16 @@ level: Feature
 title: Chat Session Plan
 chatSessionId: 381b81c0e24045a5a95ec513d7dddab2
 repos:
-- /Users/rorychatt/git/ivy-tendril
+  - /Users/rorychatt/git/ivy-tendril
 created: 2026-09-05T09:44:56.8054230Z
 updated: 2026-09-05T10:04:38.2105370Z
 prs: []
 commits:
-- 303bbe8
+  - 303bbe8
 verifications:
-- name: DotnetBuild
-  status: Pass
-- name: DotnetTest
-  status: Pass
+  - name: DotnetBuild
+    status: Pass
+  - name: DotnetTest
+    status: Pass
 relatedPlans: []
 dependsOn: []

@@ -39,7 +39,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>(
-    plan.recommendations || []
+    plan.recommendations || [],
   );
   const [activeNoteDialog, setActiveNoteDialog] = useState<{
     title: string;
@@ -79,7 +79,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    */
   const runAction = async (
     label: string,
-    action: ((planId: string) => void | Promise<void>) | undefined
+    action: ((planId: string) => void | Promise<void>) | undefined,
   ) => {
     if (!action) return;
     setActionError(null);
@@ -110,9 +110,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     const { title, action } = activeNoteDialog;
     const trimmedNote = note?.trim();
     const targetState: RecommendationState =
-      action === "Accept"
-        ? (trimmedNote ? "AcceptedWithNotes" : "Accepted")
-        : "Declined";
+      action === "Accept" ? (trimmedNote ? "AcceptedWithNotes" : "Accepted") : "Declined";
     const notePayload = trimmedNote || undefined;
 
     handleCloseDialog();
@@ -122,24 +120,15 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     const previous = recommendations;
     setRecommendations((prev) =>
       prev.map((r) =>
-        r.title === title
-          ? { ...r, state: targetState, declineReason: notePayload }
-          : r
-      )
+        r.title === title ? { ...r, state: targetState, declineReason: notePayload } : r,
+      ),
     );
 
     try {
-      await bridge.setRecommendationState(
-        plan.id,
-        title,
-        targetState,
-        notePayload
-      );
+      await bridge.setRecommendationState(plan.id, title, targetState, notePayload);
     } catch (err) {
       setRecommendations(previous);
-      setActionError(
-        `Failed to update recommendation "${title}": ${describeBridgeError(err)}`
-      );
+      setActionError(`Failed to update recommendation "${title}": ${describeBridgeError(err)}`);
     }
   };
 
@@ -303,29 +292,21 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 
         {activeSubTab === "diff" && (
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6">
-            <PlanRevisionDiff
-              planId={plan.id}
-              revisionCount={plan.revisionCount ?? 0}
-            />
+            <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
           </div>
         )}
 
         {activeSubTab === "verifications" && (
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6">
             <h3 className="text-sm font-semibold text-slate-200 mb-3">Plan Verifications</h3>
-            <PlanVerifications
-              planId={plan.id}
-              verifications={plan.verifications || []}
-            />
+            <PlanVerifications planId={plan.id} verifications={plan.verifications || []} />
           </div>
         )}
 
         {activeSubTab === "recommendations" && (
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-slate-200">
-                Plan Recommendations
-              </h3>
+              <h3 className="text-sm font-semibold text-slate-200">Plan Recommendations</h3>
               <p className="text-xs text-slate-400">
                 Out-of-scope follow-ups and improvements discovered during execution.
               </p>
@@ -353,7 +334,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         {activeSubTab === "metadata" && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Repositories</h4>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Repositories
+              </h4>
               <ul className="mt-2 space-y-1 text-sm font-mono text-slate-300">
                 {plan.repos && plan.repos.length > 0 ? (
                   plan.repos.map((r, i) => <li key={i}>{r}</li>)
@@ -364,7 +347,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Dependencies</h4>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Dependencies
+              </h4>
               <ul className="mt-2 space-y-1 text-sm font-mono text-slate-300">
                 {plan.dependsOn && plan.dependsOn.length > 0 ? (
                   plan.dependsOn.map((d, i) => <li key={i}>{d}</li>)
@@ -375,7 +360,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Commits</h4>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Commits
+              </h4>
               <ul className="mt-2 space-y-1 text-sm font-mono text-slate-300">
                 {plan.commits && plan.commits.length > 0 ? (
                   plan.commits.map((c, i) => <li key={i}>{c}</li>)
@@ -386,12 +373,19 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             </div>
 
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Pull Requests</h4>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Pull Requests
+              </h4>
               <ul className="mt-2 space-y-1 text-sm text-slate-300">
                 {plan.prs && plan.prs.length > 0 ? (
                   plan.prs.map((p, i) => (
                     <li key={i}>
-                      <a href={p} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline font-mono text-xs">
+                      <a
+                        href={p}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-emerald-400 hover:underline font-mono text-xs"
+                      >
                         {p}
                       </a>
                     </li>

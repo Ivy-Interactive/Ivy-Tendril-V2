@@ -1,9 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type {
-  ChatAttachment,
-  ChatQueuedItem,
-  ChatSession,
-} from "../types/chat";
+import type { ChatAttachment, ChatQueuedItem, ChatSession } from "../types/chat";
 
 export const chatApi = {
   async listSessions(): Promise<ChatSession[]> {
@@ -38,7 +34,7 @@ export const chatApi = {
       enqueue?: boolean;
       attachments?: ChatAttachment[];
       role?: string;
-    }
+    },
   ): Promise<{ started?: boolean; queued?: boolean; id?: string }> {
     return await invoke<{ started?: boolean; queued?: boolean; id?: string }>(
       "cmd_post_chat_message",
@@ -50,7 +46,7 @@ export const chatApi = {
           attachments: options?.attachments,
           role: options?.role,
         },
-      }
+      },
     );
   },
 
@@ -61,7 +57,7 @@ export const chatApi = {
       agentId?: string;
       modelId?: string;
       effort?: string;
-    }
+    },
   ): Promise<void> {
     await invoke("cmd_execute_chat_turn", { id, req: options });
   },
@@ -74,7 +70,7 @@ export const chatApi = {
   async answerQuestions(
     sessionId: string,
     messageId: string,
-    answers: Record<string, string[]>
+    answers: Record<string, string[]>,
   ): Promise<ChatSession> {
     return await invoke<ChatSession>("cmd_answer_chat_questions", {
       sessionId,
@@ -90,7 +86,7 @@ export const chatApi = {
   async enqueueItem(
     id: string,
     prompt: string,
-    attachments?: ChatAttachment[]
+    attachments?: ChatAttachment[],
   ): Promise<ChatQueuedItem> {
     return await invoke<ChatQueuedItem>("cmd_enqueue_chat_message", {
       id,

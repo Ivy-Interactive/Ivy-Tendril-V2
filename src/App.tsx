@@ -13,28 +13,28 @@ import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 
 const DashboardView = React.lazy(() =>
-  import("./views/DashboardView").then((m) => ({ default: m.DashboardView }))
+  import("./views/DashboardView").then((m) => ({ default: m.DashboardView })),
 );
 const PlansView = React.lazy(() =>
-  import("./views/PlansView").then((m) => ({ default: m.PlansView }))
+  import("./views/PlansView").then((m) => ({ default: m.PlansView })),
 );
 const PlanDetailView = React.lazy(() =>
-  import("./views/PlanDetailView").then((m) => ({ default: m.PlanDetailView }))
+  import("./views/PlanDetailView").then((m) => ({ default: m.PlanDetailView })),
 );
 const JobSessionView = React.lazy(() =>
-  import("./views/JobSessionView").then((m) => ({ default: m.JobSessionView }))
+  import("./views/JobSessionView").then((m) => ({ default: m.JobSessionView })),
 );
 const ReviewView = React.lazy(() =>
-  import("./views/ReviewView").then((m) => ({ default: m.ReviewView }))
+  import("./views/ReviewView").then((m) => ({ default: m.ReviewView })),
 );
 const SettingsView = React.lazy(() =>
-  import("./views/SettingsView").then((m) => ({ default: m.SettingsView }))
+  import("./views/SettingsView").then((m) => ({ default: m.SettingsView })),
 );
 const ChatView = React.lazy(() =>
-  import("./views/ChatView").then((m) => ({ default: m.ChatView }))
+  import("./views/ChatView").then((m) => ({ default: m.ChatView })),
 );
 const InboxView = React.lazy(() =>
-  import("./views/InboxView").then((m) => ({ default: m.InboxView }))
+  import("./views/InboxView").then((m) => ({ default: m.InboxView })),
 );
 
 export const App: React.FC = () => {
@@ -60,14 +60,19 @@ export const App: React.FC = () => {
     const unsubUi = uiStore.subscribe(() => setUiState({ ...uiStore.getState() }));
     const unsubPlans = plansStore.subscribe(() => setPlansState({ ...plansStore.getState() }));
     const unsubJobs = jobsStore.subscribe(() => setJobsState({ ...jobsStore.getState() }));
-    const unsubService = serviceStore.subscribe(() => setServiceState({ ...serviceStore.getState() }));
+    const unsubService = serviceStore.subscribe(() =>
+      setServiceState({ ...serviceStore.getState() }),
+    );
 
     uiStore.init();
     serviceStore.refreshInfo().catch(() => {});
     plansStore.fetchPlans().catch(() => {});
     jobsStore.fetchJobs().catch(() => {});
 
-    bridge.listProjects().then(setProjects).catch(() => {});
+    bridge
+      .listProjects()
+      .then(setProjects)
+      .catch(() => {});
 
     return () => {
       unsubUi();
@@ -84,18 +89,26 @@ export const App: React.FC = () => {
     let unsubPlan: (() => void) | undefined;
 
     onServiceStatus((st) => {
-      serviceStore.setStatus(st === "connected" ? "online" : st === "reconnecting" ? "reconnecting" : "offline");
-    }).then((unsub) => (unsubStatus = unsub)).catch(() => {});
+      serviceStore.setStatus(
+        st === "connected" ? "online" : st === "reconnecting" ? "reconnecting" : "offline",
+      );
+    })
+      .then((unsub) => (unsubStatus = unsub))
+      .catch(() => {});
 
     onJobEvent((payload) => {
       const item = payload as Record<string, unknown>;
       const jobId = (item.jobId as string) || (item.id as string) || "live-job";
       jobsStore.addStreamEvent(jobId, payload);
-    }).then((unsub) => (unsubJob = unsub)).catch(() => {});
+    })
+      .then((unsub) => (unsubJob = unsub))
+      .catch(() => {});
 
     onPlanEvent((_payload) => {
       plansStore.fetchPlans().catch(() => {});
-    }).then((unsub) => (unsubPlan = unsub)).catch(() => {});
+    })
+      .then((unsub) => (unsubPlan = unsub))
+      .catch(() => {});
 
     return () => {
       if (unsubStatus) unsubStatus();
@@ -125,7 +138,10 @@ export const App: React.FC = () => {
       } else if (isCmdOrCtrl && e.key.toLowerCase() === "k") {
         e.preventDefault();
         uiStore.setActiveNav("plans");
-      } else if (e.key === "?" && !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement).tagName)) {
+      } else if (
+        e.key === "?" &&
+        !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement).tagName)
+      ) {
         e.preventDefault();
         setIsShortcutsOpen(true);
       } else if (e.key === "Escape") {
@@ -165,9 +181,7 @@ export const App: React.FC = () => {
    * next to the button the operator pressed. Swallowing them here made a
    * refused Execute/Retry/CreatePR look like a no-op.
    */
-  const startJobAndOpenSession = async (
-    args: Parameters<typeof bridge.startJob>[0]
-  ) => {
+  const startJobAndOpenSession = async (args: Parameters<typeof bridge.startJob>[0]) => {
     const res = await bridge.startJob(args);
     handleSelectJob(res.jobId);
   };
@@ -178,10 +192,7 @@ export const App: React.FC = () => {
   const renderActiveView = () => {
     if (activeNav.startsWith("plan-")) {
       const planId = activeNav.replace("plan-", "");
-      const detail =
-        plansState.selectedPlan?.id === planId
-          ? plansState.selectedPlan
-          : null;
+      const detail = plansState.selectedPlan?.id === planId ? plansState.selectedPlan : null;
 
       if (!detail) {
         return (
@@ -195,9 +206,7 @@ export const App: React.FC = () => {
         <PlanDetailView
           plan={detail}
           allPlans={plansState.plans}
-          onExecute={(id) =>
-            startJobAndOpenSession({ type: "ExecutePlan", folderPath: id })
-          }
+          onExecute={(id) => startJobAndOpenSession({ type: "ExecutePlan", folderPath: id })}
           onRetry={(id) =>
             startJobAndOpenSession({
               type: "RetryPlan",
@@ -205,9 +214,7 @@ export const App: React.FC = () => {
               changeRequest: "Please resolve failing issues.",
             })
           }
-          onCreatePr={(id) =>
-            startJobAndOpenSession({ type: "CreatePr", folderPath: id })
-          }
+          onCreatePr={(id) => startJobAndOpenSession({ type: "CreatePr", folderPath: id })}
           onBack={() => uiStore.setActiveNav("plans")}
         />
       );
@@ -229,11 +236,7 @@ export const App: React.FC = () => {
       const events = jobsStore.getSessionEvents(jobId);
 
       return (
-        <JobSessionView
-          job={job}
-          events={events}
-          onCloseTab={() => uiStore.closeTab(activeNav)}
-        />
+        <JobSessionView job={job} events={events} onCloseTab={() => uiStore.closeTab(activeNav)} />
       );
     }
 
@@ -295,9 +298,7 @@ export const App: React.FC = () => {
           <ReviewView
             plans={plansState.plans}
             onSelectPlan={handleSelectPlan}
-            onCreatePr={(id) =>
-              startJobAndOpenSession({ type: "CreatePr", folderPath: id })
-            }
+            onCreatePr={(id) => startJobAndOpenSession({ type: "CreatePr", folderPath: id })}
             onRetry={(id, feedback) =>
               startJobAndOpenSession({
                 type: "RetryPlan",
@@ -377,20 +378,14 @@ export const App: React.FC = () => {
           bridge
             .restartService()
             .then(() => serviceStore.checkHealth())
-            .catch((err) =>
-              setShellError(
-                `Restart service failed: ${describeBridgeError(err)}`
-              )
-            );
+            .catch((err) => setShellError(`Restart service failed: ${describeBridgeError(err)}`));
         }}
         onRepairService={() => {
           setShellError(null);
           bridge
             .repairService()
             .then(() => serviceStore.checkHealth())
-            .catch((err) =>
-              setShellError(`Repair service failed: ${describeBridgeError(err)}`)
-            );
+            .catch((err) => setShellError(`Repair service failed: ${describeBridgeError(err)}`));
         }}
         onViewDiagnostics={() => {
           uiStore.setActiveNav("settings");
@@ -443,10 +438,7 @@ export const App: React.FC = () => {
         }}
       />
 
-      <KeyboardShortcutsHelp
-        isOpen={isShortcutsOpen}
-        onClose={() => setIsShortcutsOpen(false)}
-      />
+      <KeyboardShortcutsHelp isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
     </>
   );
 };

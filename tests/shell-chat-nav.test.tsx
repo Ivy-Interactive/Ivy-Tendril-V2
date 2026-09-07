@@ -37,7 +37,7 @@ describe("ShellLayout & App Chat Navigation Integration", () => {
         onReconnect={() => {}}
       >
         <div>Content</div>
-      </ShellLayout>
+      </ShellLayout>,
     );
 
     const chatNavItem = screen.getByText("Chat");

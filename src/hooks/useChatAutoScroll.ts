@@ -52,12 +52,12 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
       const distanceToBottom = scrollHeight - scrollTop - clientHeight;
       return distanceToBottom <= threshold;
     },
-    [threshold]
+    [threshold],
   );
 
   const handleScroll = useCallback(() => {
-        const container = scrollContainerRef.current;
-        if (!container) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
     const atBottom = checkIsAtBottom(container);
     if (atBottom) {
@@ -100,7 +100,7 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
         }
       }
     },
-    [anchorRef, scrollContainerRef]
+    [anchorRef, scrollContainerRef],
   );
 
   const resetToTail = useCallback(() => {

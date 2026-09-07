@@ -122,12 +122,16 @@ describe("Plan State Transitions & Action Gating Rules", () => {
       expect(PlanActionsController.canRetry({ ...basePlan, state: "Review" }).allowed).toBe(true);
       expect(PlanActionsController.canRetry({ ...basePlan, state: "Failed" }).allowed).toBe(true);
       expect(PlanActionsController.canRetry({ ...basePlan, state: "Draft" }).allowed).toBe(false);
-      expect(PlanActionsController.canRetry({ ...basePlan, state: "Completed" }).allowed).toBe(false);
+      expect(PlanActionsController.canRetry({ ...basePlan, state: "Completed" }).allowed).toBe(
+        false,
+      );
     });
 
     it("allows Expand/Update/SplitPlan only on Draft state", () => {
       expect(PlanActionsController.canRefine({ ...basePlan, state: "Draft" }).allowed).toBe(true);
-      expect(PlanActionsController.canRefine({ ...basePlan, state: "Executing" }).allowed).toBe(false);
+      expect(PlanActionsController.canRefine({ ...basePlan, state: "Executing" }).allowed).toBe(
+        false,
+      );
       expect(PlanActionsController.canRefine({ ...basePlan, state: "Review" }).allowed).toBe(false);
     });
   });

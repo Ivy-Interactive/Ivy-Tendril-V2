@@ -137,10 +137,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                   eventHandler={noop}
                 />
                 <div className="px-2">
-                  <ShellNewPlanButton
-                    id="new-plan-btn"
-                    eventHandler={onNewPlan}
-                  />
+                  <ShellNewPlanButton id="new-plan-btn" eventHandler={onNewPlan} />
                 </div>
               </div>
             ),

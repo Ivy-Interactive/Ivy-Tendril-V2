@@ -3,10 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ReviewView } from "../src/views/ReviewView";
 import { bridge } from "../src/api/bridge";
 import { planSummary } from "./fixtures/plan.fixture";
-import {
-  bridgeError,
-  recommendation,
-} from "./fixtures/recommendation.fixture";
+import { bridgeError, recommendation } from "./fixtures/recommendation.fixture";
 
 const reviewPlan = planSummary({
   id: "00021",
@@ -21,7 +18,7 @@ function renderReview(
   overrides: {
     onCreatePr?: (planId: string) => void | Promise<void>;
     onRetry?: (planId: string, feedback: string) => void | Promise<void>;
-  } = {}
+  } = {},
 ) {
   return render(
     <ReviewView
@@ -29,7 +26,7 @@ function renderReview(
       onSelectPlan={() => {}}
       onCreatePr={overrides.onCreatePr ?? (() => {})}
       onRetry={overrides.onRetry ?? (() => {})}
-    />
+    />,
   );
 }
 
@@ -39,25 +36,21 @@ afterEach(() => {
 
 describe("ReviewView recommendations", () => {
   it("renders the plan's real recommendations from the bridge", async () => {
-    const listRecommendations = vi
-      .spyOn(bridge, "listRecommendations")
-      .mockResolvedValue([
-        recommendation(),
-        recommendation({
-          title: "Deep Link Protocol Handler",
-          description: "Register tendril:// links.",
-          impact: "Small",
-          state: "Declined",
-          declineReason: "Not now",
-        }),
-      ]);
+    const listRecommendations = vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
+      recommendation(),
+      recommendation({
+        title: "Deep Link Protocol Handler",
+        description: "Register tendril:// links.",
+        impact: "Small",
+        state: "Declined",
+        declineReason: "Not now",
+      }),
+    ]);
 
     renderReview();
 
     await waitFor(() =>
-      expect(
-        screen.getByText("Tauri WebDriver E2E Automation")
-      ).toBeInTheDocument()
+      expect(screen.getByText("Tauri WebDriver E2E Automation")).toBeInTheDocument(),
     );
 
     expect(listRecommendations).toHaveBeenCalledWith("00021");
@@ -72,9 +65,7 @@ describe("ReviewView recommendations", () => {
 
     renderReview();
 
-    await waitFor(() =>
-      expect(screen.getByTestId("no-recommendations")).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByTestId("no-recommendations")).toBeInTheDocument());
   });
 
   it("reports a failure to load recommendations instead of showing none", async () => {
@@ -83,36 +74,30 @@ describe("ReviewView recommendations", () => {
         code: "DISCONNECTED",
         message: "Tendril service is not running",
         details: null,
-      })
+      }),
     );
 
     renderReview();
 
     await waitFor(() =>
       expect(screen.getByTestId("recommendations-error")).toHaveTextContent(
-        /Tendril service is not running/
-      )
+        /Tendril service is not running/,
+      ),
     );
     expect(screen.queryByTestId("no-recommendations")).not.toBeInTheDocument();
   });
 
   it("persists an accept decision through the bridge and keeps it on success", async () => {
-    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
-      recommendation(),
-    ]);
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([recommendation()]);
     const setRecommendationState = vi
       .spyOn(bridge, "setRecommendationState")
       .mockResolvedValue(undefined);
 
     renderReview();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
-    expect(
-      screen.getByTestId("recommendation-note-dialog")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("recommendation-note-dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     await waitFor(() =>
@@ -120,36 +105,28 @@ describe("ReviewView recommendations", () => {
         "00021",
         "Tauri WebDriver E2E Automation",
         "Accepted",
-        undefined
-      )
+        undefined,
+      ),
     );
     await waitFor(() => expect(screen.getByText("Accepted")).toBeInTheDocument());
-    expect(
-      screen.queryByTestId("review-action-error")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("review-action-error")).not.toBeInTheDocument();
   });
 
   it("rolls the decision back and reports why when the write is rejected", async () => {
-    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
-      recommendation(),
-    ]);
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([recommendation()]);
     vi.spyOn(bridge, "setRecommendationState").mockRejectedValue(bridgeError());
 
     renderReview();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
-    expect(
-      screen.getByTestId("recommendation-note-dialog")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("recommendation-note-dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     await waitFor(() =>
       expect(screen.getByTestId("review-action-error")).toHaveTextContent(
-        /Could not mark "Tauri WebDriver E2E Automation" as Accepted/
-      )
+        /Could not mark "Tauri WebDriver E2E Automation" as Accepted/,
+      ),
     );
     // Rolled back: still Pending, so the triage buttons are still offered.
     expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
@@ -157,22 +134,18 @@ describe("ReviewView recommendations", () => {
   });
 
   it("records a decline as Declined", async () => {
-    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
-      recommendation(),
-    ]);
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([recommendation()]);
     const setRecommendationState = vi
       .spyOn(bridge, "setRecommendationState")
       .mockResolvedValue(undefined);
 
     renderReview();
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument(),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
-    expect(
-      screen.getByTestId("recommendation-note-dialog")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("recommendation-note-dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     await waitFor(() =>
@@ -180,29 +153,23 @@ describe("ReviewView recommendations", () => {
         "00021",
         "Tauri WebDriver E2E Automation",
         "Declined",
-        undefined
-      )
+        undefined,
+      ),
     );
   });
 
   it("accepts recommendation with note and records AcceptedWithNotes", async () => {
-    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
-      recommendation(),
-    ]);
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([recommendation()]);
     const setRecommendationState = vi
       .spyOn(bridge, "setRecommendationState")
       .mockResolvedValue(undefined);
 
     renderReview();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
 
-    expect(
-      screen.getByTestId("recommendation-note-dialog")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("recommendation-note-dialog")).toBeInTheDocument();
     const textarea = screen.getByRole("textbox", { name: /optional note/i });
     fireEvent.change(textarea, { target: { value: "Ship in next release" } });
 
@@ -213,35 +180,29 @@ describe("ReviewView recommendations", () => {
         "00021",
         "Tauri WebDriver E2E Automation",
         "AcceptedWithNotes",
-        "Ship in next release"
-      )
+        "Ship in next release",
+      ),
     );
 
     expect(screen.getByText("AcceptedWithNotes")).toBeInTheDocument();
     expect(screen.getByText("Notes: Ship in next release")).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("recommendation-note-dialog")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("recommendation-note-dialog")).not.toBeInTheDocument();
   });
 
   it("declines recommendation with reason and records declineReason", async () => {
-    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
-      recommendation(),
-    ]);
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([recommendation()]);
     const setRecommendationState = vi
       .spyOn(bridge, "setRecommendationState")
       .mockResolvedValue(undefined);
 
     renderReview();
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument(),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
 
-    expect(
-      screen.getByTestId("recommendation-note-dialog")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("recommendation-note-dialog")).toBeInTheDocument();
     const textarea = screen.getByRole("textbox", { name: /decline reason/i });
     fireEvent.change(textarea, { target: { value: "Out of scope for this milestone" } });
 
@@ -252,39 +213,29 @@ describe("ReviewView recommendations", () => {
         "00021",
         "Tauri WebDriver E2E Automation",
         "Declined",
-        "Out of scope for this milestone"
-      )
+        "Out of scope for this milestone",
+      ),
     );
 
     expect(screen.getByText("Declined")).toBeInTheDocument();
-    expect(
-      screen.getByText("Decline reason: Out of scope for this milestone")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Decline reason: Out of scope for this milestone")).toBeInTheDocument();
   });
 
   it("canceling the dialog leaves recommendation in Pending", async () => {
-    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
-      recommendation(),
-    ]);
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([recommendation()]);
     const setRecommendationState = vi
       .spyOn(bridge, "setRecommendationState")
       .mockResolvedValue(undefined);
 
     renderReview();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
-    expect(
-      screen.getByTestId("recommendation-note-dialog")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("recommendation-note-dialog")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(
-      screen.queryByTestId("recommendation-note-dialog")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("recommendation-note-dialog")).not.toBeInTheDocument();
     expect(setRecommendationState).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
@@ -295,63 +246,49 @@ describe("ReviewView recommendations", () => {
 describe("ReviewView lifecycle actions", () => {
   it("surfaces a Create PR failure rather than appearing to succeed", async () => {
     vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
-    const onCreatePr = vi
-      .fn()
-      .mockRejectedValue(
-        bridgeError({
-          code: "START_JOB_FAILED",
-          message: "Plan 00021 has a failing verification",
-          details: null,
-        })
-      );
+    const onCreatePr = vi.fn().mockRejectedValue(
+      bridgeError({
+        code: "START_JOB_FAILED",
+        message: "Plan 00021 has a failing verification",
+        details: null,
+      }),
+    );
 
     renderReview({ onCreatePr });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /approve & create pr/i })
-    );
+    fireEvent.click(screen.getByRole("button", { name: /approve & create pr/i }));
 
     await waitFor(() =>
       expect(screen.getByTestId("review-action-error")).toHaveTextContent(
-        /Create PR failed: Plan 00021 has a failing verification/
-      )
+        /Create PR failed: Plan 00021 has a failing verification/,
+      ),
     );
   });
 
   it("keeps the change request in the form when RetryPlan is refused", async () => {
     vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
-    const onRetry = vi
-      .fn()
-      .mockRejectedValue(
-        bridgeError({
-          code: "DISCONNECTED",
-          message: "Tendril service is not running",
-          details: null,
-        })
-      );
+    const onRetry = vi.fn().mockRejectedValue(
+      bridgeError({
+        code: "DISCONNECTED",
+        message: "Tendril service is not running",
+        details: null,
+      }),
+    );
 
     renderReview({ onRetry });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /request changes \(retry\)/i })
-    );
+    fireEvent.click(screen.getByRole("button", { name: /request changes \(retry\)/i }));
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "Fix the failing clippy lint." },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: /submit change request/i })
-    );
+    fireEvent.click(screen.getByRole("button", { name: /submit change request/i }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("review-action-error")).toHaveTextContent(
-        /Retry Plan failed/
-      )
+      expect(screen.getByTestId("review-action-error")).toHaveTextContent(/Retry Plan failed/),
     );
     expect(onRetry).toHaveBeenCalledWith("00021", "Fix the failing clippy lint.");
     // The form stays open with the text intact so it can be resubmitted.
-    expect(screen.getByRole("textbox")).toHaveValue(
-      "Fix the failing clippy lint."
-    );
+    expect(screen.getByRole("textbox")).toHaveValue("Fix the failing clippy lint.");
   });
 
   it("clears the form once RetryPlan is accepted", async () => {
@@ -360,19 +297,13 @@ describe("ReviewView lifecycle actions", () => {
 
     renderReview({ onRetry });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /request changes \(retry\)/i })
-    );
+    fireEvent.click(screen.getByRole("button", { name: /request changes \(retry\)/i }));
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "Please rerun the verifications." },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: /submit change request/i })
-    );
+    fireEvent.click(screen.getByRole("button", { name: /submit change request/i }));
 
     await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
-    expect(
-      screen.queryByTestId("review-action-error")
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("review-action-error")).not.toBeInTheDocument();
   });
 });

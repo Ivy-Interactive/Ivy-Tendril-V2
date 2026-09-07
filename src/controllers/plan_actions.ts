@@ -16,7 +16,7 @@ export class PlanActionsController {
    */
   public static canExecute(
     plan: PlanDetail | PlanSummary,
-    dependencyPlans: PlanSummary[] = []
+    dependencyPlans: PlanSummary[] = [],
   ): ActionGatingResult {
     if (plan.state === "Completed") {
       return { allowed: false, reason: "Plan is already completed." };
@@ -30,7 +30,7 @@ export class PlanActionsController {
       for (const dep of dependsOn) {
         // Find matching dependency plan
         const match = dependencyPlans.find(
-          (p) => p.id === dep || dep.startsWith(p.id) || p.id === dep.split("-")[0]
+          (p) => p.id === dep || dep.startsWith(p.id) || p.id === dep.split("-")[0],
         );
         if (match) {
           if (match.state !== "Completed") {
@@ -114,7 +114,7 @@ export class PlanActionsController {
   public static async executePlan(
     plan: PlanDetail | PlanSummary,
     dependencyPlans: PlanSummary[] = [],
-    note?: string
+    note?: string,
   ): Promise<StartJobResponse> {
     const check = this.canExecute(plan, dependencyPlans);
     if (!check.allowed) {
@@ -133,7 +133,7 @@ export class PlanActionsController {
    */
   public static async retryPlan(
     plan: PlanDetail | PlanSummary,
-    changeRequest: string
+    changeRequest: string,
   ): Promise<StartJobResponse> {
     const check = this.canRetry(plan);
     if (!check.allowed) {
@@ -150,9 +150,7 @@ export class PlanActionsController {
   /**
    * Dispatches CreatePr job with gating checks.
    */
-  public static async createPr(
-    plan: PlanDetail | PlanSummary
-  ): Promise<StartJobResponse> {
+  public static async createPr(plan: PlanDetail | PlanSummary): Promise<StartJobResponse> {
     const check = this.canCreatePr(plan);
     if (!check.allowed) {
       throw new Error(check.reason || "Create PR blocked");
@@ -184,7 +182,7 @@ export class PlanActionsController {
    */
   public static async updatePlan(
     plan: PlanDetail | PlanSummary,
-    instructions: string
+    instructions: string,
   ): Promise<StartJobResponse> {
     const check = this.canRefine(plan);
     if (!check.allowed) {

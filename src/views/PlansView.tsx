@@ -22,11 +22,7 @@ const LIFECYCLE_OPTIONS: BadgeSelectOption[] = [
   { value: "Icebox", label: "Icebox" },
 ];
 
-export const PlansView: React.FC<PlansViewProps> = ({
-  plans,
-  onSelectPlan,
-  onNewPlan,
-}) => {
+export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNewPlan }) => {
   const [search, setSearch] = useState("");
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -71,9 +67,7 @@ export const PlansView: React.FC<PlansViewProps> = ({
         setSelectedIndex((prev) => (prev + 1) % filteredPlans.length);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndex((prev) =>
-          prev <= 0 ? filteredPlans.length - 1 : prev - 1
-        );
+        setSelectedIndex((prev) => (prev <= 0 ? filteredPlans.length - 1 : prev - 1));
       } else if (e.key === "Enter" && document.activeElement !== searchInputRef.current) {
         e.preventDefault();
         const selected = filteredPlans[selectedIndex];
@@ -174,20 +168,18 @@ export const PlansView: React.FC<PlansViewProps> = ({
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-semibold text-slate-400">
-                    {p.id}
-                  </span>
+                  <span className="font-mono text-xs font-semibold text-slate-400">{p.id}</span>
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       p.state === "Completed"
                         ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
                         : p.state === "Review"
-                        ? "bg-amber-950 text-amber-300 border border-amber-800"
-                        : p.state === "Executing"
-                        ? "bg-blue-950 text-blue-300 border border-blue-800"
-                        : p.state === "Failed"
-                        ? "bg-red-950 text-red-300 border border-red-800"
-                        : "bg-slate-800 text-slate-300"
+                          ? "bg-amber-950 text-amber-300 border border-amber-800"
+                          : p.state === "Executing"
+                            ? "bg-blue-950 text-blue-300 border border-blue-800"
+                            : p.state === "Failed"
+                              ? "bg-red-950 text-red-300 border border-red-800"
+                              : "bg-slate-800 text-slate-300"
                     }`}
                   >
                     {p.state}
@@ -212,10 +204,10 @@ export const PlansView: React.FC<PlansViewProps> = ({
                             v.status === "Pass"
                               ? "bg-emerald-400"
                               : v.status === "Fail"
-                              ? "bg-red-400"
-                              : v.status === "Skipped"
-                              ? "bg-slate-600"
-                              : "bg-amber-400"
+                                ? "bg-red-400"
+                                : v.status === "Skipped"
+                                  ? "bg-slate-600"
+                                  : "bg-amber-400"
                           }`}
                         />
                       ))}

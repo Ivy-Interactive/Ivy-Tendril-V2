@@ -53,11 +53,7 @@ export function extractQuestionsFences(markdown: string): string[] {
     } else {
       if (indent <= 3) {
         const closeMatch = trimmedStart.match(/^(`{3,}|~{3,})\s*$/);
-        if (
-          closeMatch &&
-          closeMatch[1][0] === fenceChar &&
-          closeMatch[1].length >= fenceLength
-        ) {
+        if (closeMatch && closeMatch[1][0] === fenceChar && closeMatch[1].length >= fenceLength) {
           bodies.push(currentBody.join("\n"));
           inFence = false;
           currentBody = [];
@@ -81,7 +77,7 @@ export function extractQuestionsFences(markdown: string): string[] {
  */
 export function detectPendingQuestions(
   messages: ChatMessage[],
-  visibleRange?: { startIndex: number; endIndex: number }
+  visibleRange?: { startIndex: number; endIndex: number },
 ): PendingQuestionItem[] {
   const result: PendingQuestionItem[] = [];
 
@@ -133,13 +129,13 @@ export function detectPendingQuestions(
 }
 
 export function usePendingChatQuestions(
-  options: UsePendingChatQuestionsOptions
+  options: UsePendingChatQuestionsOptions,
 ): PendingQuestionItem[] {
   const { messages, visibleRange } = options;
 
   return useMemo(
     () => detectPendingQuestions(messages, visibleRange),
-    [messages, visibleRange?.startIndex, visibleRange?.endIndex]
+    [messages, visibleRange?.startIndex, visibleRange?.endIndex],
   );
 }
 

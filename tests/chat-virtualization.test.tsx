@@ -359,7 +359,7 @@ questions:
       - a
 \`\`\``,
             }
-          : m
+          : m,
       ),
     };
     vi.spyOn(chatApi, "answerQuestions").mockResolvedValue(answeredSession);

@@ -229,7 +229,7 @@ class ChatStore {
 
   public async createSession(
     title?: string,
-    args?: { agentId?: string; modelId?: string; effort?: string }
+    args?: { agentId?: string; modelId?: string; effort?: string },
   ): Promise<ChatSession> {
     try {
       const newSession = await chatApi.createSession({
@@ -304,7 +304,7 @@ class ChatStore {
 
   public async sendMessage(
     prompt: string,
-    options?: { enqueue?: boolean; attachments?: ChatAttachment[]; role?: string }
+    options?: { enqueue?: boolean; attachments?: ChatAttachment[]; role?: string },
   ): Promise<void> {
     if (!prompt.trim() && (!options?.attachments || options.attachments.length === 0)) return;
 
@@ -365,16 +365,12 @@ class ChatStore {
   public async submitAnswer(
     messageId: string,
     questionId: string,
-    answer: string | string[] | undefined | null
+    answer: string | string[] | undefined | null,
   ): Promise<void> {
     if (!this.state.activeSessionId) return;
 
     const values =
-      answer === undefined || answer === null
-        ? []
-        : Array.isArray(answer)
-        ? answer
-        : [answer];
+      answer === undefined || answer === null ? [] : Array.isArray(answer) ? answer : [answer];
 
     const answersPayload: Record<string, string[]> = {
       [questionId]: values,
@@ -384,7 +380,7 @@ class ChatStore {
       const updatedSession = await chatApi.answerQuestions(
         this.state.activeSessionId,
         messageId,
-        answersPayload
+        answersPayload,
       );
 
       if (this.state.activeSessionId === updatedSession.id) {

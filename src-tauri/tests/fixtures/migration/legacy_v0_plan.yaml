@@ -3,16 +3,16 @@ project: ivy-tendril
 level: Feature
 title: Legacy Plan
 repos:
-- /Users/rorychatt/git/ivy-tendril
+  - /Users/rorychatt/git/ivy-tendril
 created: 2026-08-20T10:00:00.0000000Z
 updated: 2026-08-20T11:00:00.0000000Z
 prs: []
 commits:
-- a1b2c3d
+  - a1b2c3d
 verifications:
-- name: DotnetBuild
-  status: Pass
-- name: DotnetTest
-  status: Pass
+  - name: DotnetBuild
+    status: Pass
+  - name: DotnetTest
+    status: Pass
 relatedPlans: []
 dependsOn: []

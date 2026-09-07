@@ -6,7 +6,7 @@ import type { GitHubIssue, GitHubIssuesPage, ProjectSummary } from "../src/types
 
 const makePage = (
   issues: GitHubIssue[],
-  overrides: Partial<GitHubIssuesPage> = {}
+  overrides: Partial<GitHubIssuesPage> = {},
 ): GitHubIssuesPage => ({
   issues,
   totalCount: issues.length,
@@ -63,7 +63,7 @@ describe("InboxView Component & Triage Tests", () => {
 
   beforeEach(() => {
     vi.spyOn(bridge, "listGitHubIssues").mockResolvedValue(
-      makePage(mockIssues, { hasMore: true, totalCount: 60 })
+      makePage(mockIssues, { hasMore: true, totalCount: 60 }),
     );
     vi.spyOn(bridge, "loadUiState").mockResolvedValue(null);
     vi.spyOn(bridge, "saveUiState").mockResolvedValue(undefined);
@@ -102,7 +102,7 @@ describe("InboxView Component & Triage Tests", () => {
         mockProjects[0].repos[0],
         "project-issues",
         1,
-        25
+        25,
       );
     });
   });

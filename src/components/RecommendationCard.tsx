@@ -31,9 +31,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
     >
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h4 className="text-sm font-medium text-slate-200">
-            {recommendation.title}
-          </h4>
+          <h4 className="text-sm font-medium text-slate-200">{recommendation.title}</h4>
           {recommendation.impact && (
             <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
               {recommendation.impact} impact
@@ -46,9 +44,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
         <p className="text-xs text-slate-300">{recommendation.description}</p>
         {recommendation.declineReason && (
           <p className="text-xs text-slate-400">
-            {recommendation.state === "Declined"
-              ? "Decline reason: "
-              : "Notes: "}
+            {recommendation.state === "Declined" ? "Decline reason: " : "Notes: "}
             {recommendation.declineReason}
           </p>
         )}

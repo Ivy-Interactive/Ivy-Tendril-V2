@@ -17,12 +17,12 @@ describe("Persistence and Uninstallation Tests", () => {
     fs.writeFileSync(
       path.join(mockTendrilHome, "config.yaml"),
       "theme: dark\ncodingAgent: ClaudeCode\nprojects: []\n",
-      "utf8"
+      "utf8",
     );
     fs.writeFileSync(
       path.join(mockTendrilHome, "tendril.db"),
       "SQLite format 3\0mock-db-content",
-      "utf8"
+      "utf8",
     );
 
     const plansDir = path.join(mockTendrilHome, "Plans", "00023-TestPlan");
@@ -30,7 +30,7 @@ describe("Persistence and Uninstallation Tests", () => {
     fs.writeFileSync(
       path.join(plansDir, "plan.yaml"),
       "schemaVersion: 1\ntitle: Test Plan\nstate: Draft\n",
-      "utf8"
+      "utf8",
     );
   });
 
@@ -58,9 +58,9 @@ describe("Persistence and Uninstallation Tests", () => {
     expect(fs.existsSync(mockTendrilHome)).toBe(true);
     expect(fs.existsSync(path.join(mockTendrilHome, "config.yaml"))).toBe(true);
     expect(fs.existsSync(path.join(mockTendrilHome, "tendril.db"))).toBe(true);
-    expect(
-      fs.existsSync(path.join(mockTendrilHome, "Plans", "00023-TestPlan", "plan.yaml"))
-    ).toBe(true);
+    expect(fs.existsSync(path.join(mockTendrilHome, "Plans", "00023-TestPlan", "plan.yaml"))).toBe(
+      true,
+    );
   });
 
   it("purges user data only when explicit --purge-data flag is passed to uninstaller", () => {

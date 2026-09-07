@@ -43,25 +43,21 @@ describe("Code-Splitting & Suspense Boundaries", () => {
 
   it("renders DashboardView correctly within a Suspense boundary", () => {
     render(
-      <Suspense
-        fallback={
-          <div data-testid="test-fallback-spinner">Loading dashboard...</div>
-        }
-      >
+      <Suspense fallback={<div data-testid="test-fallback-spinner">Loading dashboard...</div>}>
         <DashboardView
           plans={mockPlans}
           jobs={mockJobs}
           onSelectPlan={() => {}}
           onSelectJob={() => {}}
         />
-      </Suspense>
+      </Suspense>,
     );
 
     expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
     expect(screen.getByText("Tendril Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Active Split Plan")).toBeInTheDocument();
     expect(
-      screen.getByText("Autonomous Pipeline Health and Execution Metrics")
+      screen.getByText("Autonomous Pipeline Health and Execution Metrics"),
     ).toBeInTheDocument();
   });
 
@@ -73,18 +69,14 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     });
 
     render(
-      <Suspense
-        fallback={
-          <div data-testid="lazy-fallback-spinner">Loading dynamic view...</div>
-        }
-      >
+      <Suspense fallback={<div data-testid="lazy-fallback-spinner">Loading dynamic view...</div>}>
         <LazyDashboard
           plans={mockPlans}
           jobs={mockJobs}
           onSelectPlan={() => {}}
           onSelectJob={() => {}}
         />
-      </Suspense>
+      </Suspense>,
     );
 
     await act(async () => {
@@ -99,7 +91,7 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     const distAssetsDir = path.resolve(__dirname, "../dist/assets");
     expect(
       fs.existsSync(distAssetsDir),
-      "dist/assets must exist (run pnpm build before testing)"
+      "dist/assets must exist (run pnpm build before testing)",
     ).toBe(true);
 
     const assetFiles = fs.readdirSync(distAssetsDir);
@@ -116,13 +108,8 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     ];
 
     for (const chunkPrefix of requiredVendorChunks) {
-      const found = assetFiles.some(
-        (file) => file.startsWith(chunkPrefix) && file.endsWith(".js")
-      );
-      expect(
-        found,
-        `Expected chunk starting with ${chunkPrefix} in dist/assets`
-      ).toBe(true);
+      const found = assetFiles.some((file) => file.startsWith(chunkPrefix) && file.endsWith(".js"));
+      expect(found, `Expected chunk starting with ${chunkPrefix} in dist/assets`).toBe(true);
     }
 
     // Check dynamic view chunks
@@ -138,13 +125,8 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     ];
 
     for (const viewName of viewChunks) {
-      const found = assetFiles.some(
-        (file) => file.startsWith(viewName) && file.endsWith(".js")
-      );
-      expect(
-        found,
-        `Expected lazy view chunk for ${viewName} in dist/assets`
-      ).toBe(true);
+      const found = assetFiles.some((file) => file.startsWith(viewName) && file.endsWith(".js"));
+      expect(found, `Expected lazy view chunk for ${viewName} in dist/assets`).toBe(true);
     }
 
     // Find the main index.html entry chunk referenced by dist/index.html

@@ -23,7 +23,7 @@ describe("Optimistic Actions & Error Rollback", () => {
         relatedPlans: [],
         commits: [],
         prs: [],
-      })
+      }),
     );
   });
 
@@ -39,17 +39,15 @@ describe("Optimistic Actions & Error Rollback", () => {
       "00099",
       "title",
       "Brand New Title",
-      undefined
+      undefined,
     );
   });
 
   it("rolls back optimistic plan field update when bridge fails", async () => {
-    vi.spyOn(bridge, "updatePlanField").mockRejectedValueOnce(
-      new Error("Network disconnect")
-    );
+    vi.spyOn(bridge, "updatePlanField").mockRejectedValueOnce(new Error("Network disconnect"));
 
     await expect(
-      plansStore.updateFieldOptimistic("00099", "title", "Failed Title")
+      plansStore.updateFieldOptimistic("00099", "title", "Failed Title"),
     ).rejects.toThrow("Network disconnect");
 
     // State should be rolled back to initial title
@@ -66,19 +64,15 @@ describe("Optimistic Actions & Error Rollback", () => {
 
     let state = plansStore.getState();
     expect(state.plans[0].verifications[0].status).toBe("Pass");
-    expect(bridge.setVerificationStatus).toHaveBeenCalledWith(
-      "00099",
-      "RustBuild",
-      "Pass"
-    );
+    expect(bridge.setVerificationStatus).toHaveBeenCalledWith("00099", "RustBuild", "Pass");
 
     // 2. Failed verification change -> rollback
     vi.spyOn(bridge, "setVerificationStatus").mockRejectedValueOnce(
-      new Error("Conflict on server")
+      new Error("Conflict on server"),
     );
 
     await expect(
-      plansStore.updateVerificationOptimistic("00099", "RustBuild", "Fail")
+      plansStore.updateVerificationOptimistic("00099", "RustBuild", "Fail"),
     ).rejects.toThrow("Conflict on server");
 
     state = plansStore.getState();

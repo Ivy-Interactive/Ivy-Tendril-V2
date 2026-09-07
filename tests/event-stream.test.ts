@@ -48,11 +48,7 @@ describe("Live Event Stream & WebSocket Resilience", () => {
   });
 
   it("calculates exponential backoff reconnect delays correctly", () => {
-    const calculateBackoff = (
-      attempt: number,
-      baseMs = 500,
-      maxMs = 10000
-    ): number => {
+    const calculateBackoff = (attempt: number, baseMs = 500, maxMs = 10000): number => {
       const delay = baseMs * Math.pow(2, attempt);
       return Math.min(delay, maxMs);
     };

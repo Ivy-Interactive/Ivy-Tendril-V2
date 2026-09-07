@@ -45,7 +45,7 @@ describe("useChatAutoScroll hook unit tests", () => {
     });
 
     const { result } = renderHook(() =>
-      useChatAutoScroll({ threshold: 32, scrollContainerRef: { current: container } })
+      useChatAutoScroll({ threshold: 32, scrollContainerRef: { current: container } }),
     );
 
     expect(result.current.isAtBottom).toBe(true);
@@ -88,7 +88,7 @@ describe("useChatAutoScroll hook unit tests", () => {
       useChatAutoScroll({
         scrollContainerRef: { current: container },
         anchorRef: { current: anchor },
-      })
+      }),
     );
 
     act(() => {
@@ -114,7 +114,7 @@ describe("useChatAutoScroll hook unit tests", () => {
       useChatAutoScroll({
         scrollContainerRef: { current: container },
         anchorRef: { current: anchor },
-      })
+      }),
     );
 
     act(() => {
@@ -138,7 +138,7 @@ describe("useChatAutoScroll hook unit tests", () => {
         }),
       {
         initialProps: { content: "initial", isGenerating: true },
-      }
+      },
     );
 
     expect(scrollIntoViewMock).toHaveBeenCalled();

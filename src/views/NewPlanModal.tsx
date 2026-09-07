@@ -25,10 +25,14 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
   initialSourceUrl = "",
 }) => {
   const [description, setDescription] = useState(
-    initialTitle ? (initialDescription ? `${initialTitle}\n\n${initialDescription}` : initialTitle) : initialDescription
+    initialTitle
+      ? initialDescription
+        ? `${initialTitle}\n\n${initialDescription}`
+        : initialTitle
+      : initialDescription,
   );
   const [selectedProject, setSelectedProject] = useState(
-    initialProject || projects[0]?.name || "Tendril-App"
+    initialProject || projects[0]?.name || "Tendril-App",
   );
   const [sourceUrl, setSourceUrl] = useState(initialSourceUrl);
   const [priority, setPriority] = useState(0);
@@ -130,7 +134,10 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
         <div className="mt-4 space-y-4">
           <div className="flex items-center space-x-4">
             <div className="flex-1">
-              <label htmlFor="project-select" className="block text-xs font-medium text-slate-300 mb-1">
+              <label
+                htmlFor="project-select"
+                className="block text-xs font-medium text-slate-300 mb-1"
+              >
                 Target Project
               </label>
               <select
@@ -149,7 +156,10 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
             </div>
 
             <div className="w-32">
-              <label htmlFor="priority-input" className="block text-xs font-medium text-slate-300 mb-1">
+              <label
+                htmlFor="priority-input"
+                className="block text-xs font-medium text-slate-300 mb-1"
+              >
                 Priority
               </label>
               <input

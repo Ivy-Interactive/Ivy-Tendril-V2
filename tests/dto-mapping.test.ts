@@ -1,13 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { bridge } from "../src/api/bridge";
-import type {
-  Job,
-  JobDetail,
-  PlanDetail,
-  PlanSummary,
-  ServiceInfo,
-} from "../src/types/api";
+import type { Job, JobDetail, PlanDetail, PlanSummary, ServiceInfo } from "../src/types/api";
 import { planDetail, planSummary } from "./fixtures/plan.fixture";
 import { failedJobDetail, job } from "./fixtures/job.fixture";
 
@@ -65,26 +59,18 @@ describe("Plan DTOs over the bridge", () => {
     // These three are the fields the closeout added; without them the Diff
     // View, the Verifications tab and the Review view have nothing to read.
     expect(detail.revisionCount).toBe(4);
-    expect(detail.folderPath).toBe(
-      "/home/op/.tendril/Plans/00021-BuildDesktopOperator"
-    );
+    expect(detail.folderPath).toBe("/home/op/.tendril/Plans/00021-BuildDesktopOperator");
     expect(detail.recommendations).toHaveLength(1);
     expect(detail.recommendations[0].state).toBe("Pending");
 
-    expect(detail.dependsOn).toContain(
-      "00022-BootstrapTendrilDesktopApplication"
-    );
-    expect(detail.latestRevisionContent).toContain(
-      "# Build Desktop Operator Experience"
-    );
+    expect(detail.dependsOn).toContain("00022-BootstrapTendrilDesktopApplication");
+    expect(detail.latestRevisionContent).toContain("# Build Desktop Operator Experience");
     expect(detail.executionProfile).toBe("deep");
     expect(detail.priority).toBe(15);
   });
 
   it("treats a plan with no recommendations as an empty list, not undefined", async () => {
-    invokeMock.mockResolvedValueOnce(
-      planDetail({ recommendations: [], revisionCount: 1 })
-    );
+    invokeMock.mockResolvedValueOnce(planDetail({ recommendations: [], revisionCount: 1 }));
 
     const detail = await bridge.getPlan("00007");
 
@@ -150,9 +136,7 @@ describe("Service DTOs over the bridge", () => {
     expect(info.port).toBe(5010);
     expect(info.state).toBe("Connected");
     expect(Object.keys(info)).not.toContain("secret");
-    expect(
-      (info as unknown as Record<string, unknown>).secret
-    ).toBeUndefined();
+    expect((info as unknown as Record<string, unknown>).secret).toBeUndefined();
   });
 
   it("sends verification report requests with a camelCase planId", async () => {
@@ -172,7 +156,7 @@ describe("Service DTOs over the bridge", () => {
       "00021",
       "Deep Link Protocol Handler",
       "Declined",
-      "Not now"
+      "Not now",
     );
 
     expect(invokeMock).toHaveBeenCalledWith("cmd_set_recommendation_state", {

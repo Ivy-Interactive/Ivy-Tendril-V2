@@ -6,11 +6,7 @@ interface OfflineBannerProps {
   onReconnect: () => void;
 }
 
-export const OfflineBanner: React.FC<OfflineBannerProps> = ({
-  status,
-  countdown,
-  onReconnect,
-}) => {
+export const OfflineBanner: React.FC<OfflineBannerProps> = ({ status, countdown, onReconnect }) => {
   if (status === "online") return null;
 
   return (
@@ -27,9 +23,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({
             ? `Tendril-Service disconnected. Auto-reconnecting in ${countdown}s...`
             : "Tendril-Service daemon is unreachable."}
         </span>
-        <span className="text-amber-300/80">
-          (Falling back to cached state)
-        </span>
+        <span className="text-amber-300/80">(Falling back to cached state)</span>
       </div>
       <button
         type="button"

@@ -148,11 +148,7 @@ export interface RevisionResult {
   message: string;
 }
 
-export type RecommendationState =
-  | "Pending"
-  | "Accepted"
-  | "AcceptedWithNotes"
-  | "Declined";
+export type RecommendationState = "Pending" | "Accepted" | "AcceptedWithNotes" | "Declined";
 
 export interface RecommendationItem {
   title: string;
@@ -192,9 +188,7 @@ export interface BridgeError {
 export function isBridgeError(value: unknown): value is BridgeError {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.code === "string" && typeof candidate.message === "string"
-  );
+  return typeof candidate.code === "string" && typeof candidate.message === "string";
 }
 
 /** Human-readable text for any bridge rejection, structured or not. */

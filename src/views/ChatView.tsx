@@ -4,7 +4,10 @@ import { ChatInput, ChatMessageList } from "@spacecorps/components-storybook/ren
 import { chatStore, type ChatState } from "../state/chatStore";
 import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
-import { useChatMessageWindow, CHAT_VIRTUALIZATION_MIN_MESSAGES } from "../hooks/useChatMessageWindow";
+import {
+  useChatMessageWindow,
+  CHAT_VIRTUALIZATION_MIN_MESSAGES,
+} from "../hooks/useChatMessageWindow";
 import { ChatMessageRow } from "./ChatMessageRow";
 import { useWebviewFileDrop } from "../hooks/useWebviewFileDrop";
 import {
@@ -62,8 +65,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     return () => unsub();
   }, []);
 
-  const { sessions, activeSessionId, activeSession, queuedItems, isGenerating, error } =
-    storeState;
+  const { sessions, activeSessionId, activeSession, queuedItems, isGenerating, error } = storeState;
 
   const latestMessage = activeSession?.messages[activeSession.messages.length - 1];
   const streamContentKey = `${activeSession?.id ?? ""}-${activeSession?.messages.length ?? 0}-${latestMessage?.id ?? ""}-${latestMessage?.content.length ?? 0}-${isGenerating}`;
@@ -200,7 +202,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     }
   };
 
-    const handleSendMessage = async () => {
+  const handleSendMessage = async () => {
     const text = inputPrompt.trim();
     if ((!text && attachments.length === 0) || isGenerating) return;
     const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
@@ -237,7 +239,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
         onCreatePlan(content);
       }
     },
-    [onCreatePlan]
+    [onCreatePlan],
   );
 
   const messages = activeSession?.messages ?? [];
@@ -263,7 +265,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     (index: number) => {
       scrollToIndex(index, { smooth: true, align: "center" });
     },
-    [scrollToIndex]
+    [scrollToIndex],
   );
 
   return (
@@ -378,7 +380,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
             </h2>
             {activeSession && (
               <span className="text-xs text-slate-500">
-                {activeSession.messages.length} message{activeSession.messages.length === 1 ? "" : "s"}
+                {activeSession.messages.length} message
+                {activeSession.messages.length === 1 ? "" : "s"}
               </span>
             )}
             {isGenerating && (
@@ -414,9 +417,12 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
           {!activeSession || activeSession.messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center p-6 text-slate-400">
               <div className="max-w-md space-y-2">
-                <h3 className="text-lg font-semibold text-slate-200">Tendril Conversational Agent</h3>
+                <h3 className="text-lg font-semibold text-slate-200">
+                  Tendril Conversational Agent
+                </h3>
                 <p className="text-sm text-slate-400">
-                  Ask questions, research codebase architecture, or plan new features. Interactive question blocks and live streaming will appear here.
+                  Ask questions, research codebase architecture, or plan new features. Interactive
+                  question blocks and live streaming will appear here.
                 </p>
               </div>
             </div>
@@ -478,7 +484,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                 </div>
               )}
 
-              <div ref={anchorRef} data-testid="chat-scroll-anchor" className="h-px w-full pointer-events-none" />
+              <div
+                ref={anchorRef}
+                data-testid="chat-scroll-anchor"
+                className="h-px w-full pointer-events-none"
+              />
             </ChatMessageList>
           )}
 
@@ -529,7 +539,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
               <div className="flex items-center gap-2">
                 <span>Queued Prompts ({queuedItems.length})</span>
               </div>
-              {isQueueExpanded ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />}
+              {isQueueExpanded ? (
+                <ChevronDown className="size-3.5" />
+              ) : (
+                <ChevronUp className="size-3.5" />
+              )}
             </div>
 
             {isQueueExpanded && (
@@ -636,7 +650,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                 <ChatInput
                   ref={textareaRef}
                   value={inputPrompt}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInputPrompt(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setInputPrompt(e.target.value)
+                  }
                   onKeyDown={handleKeyDown}
                   placeholder="Ask Tendril or discuss plans (Enter to send, Shift+Enter for newline)..."
                   disabled={isGenerating}

@@ -170,7 +170,9 @@ describe("ChatStore State Management & Event Handling", () => {
 
     await chatStore.fetchSessions();
 
-    const attachments = [{ name: "screenshot.png", path: "/tmp/screenshot.png", mimeType: "image/png" }];
+    const attachments = [
+      { name: "screenshot.png", path: "/tmp/screenshot.png", mimeType: "image/png" },
+    ];
     await chatStore.sendMessage("Take a look at this", { attachments });
 
     const activeSession = chatStore.getState().activeSession;

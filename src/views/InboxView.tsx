@@ -131,10 +131,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
         // Backwards compatible: handle either a raw array or a GitHubIssuesPage envelope.
         const pageIssues = Array.isArray(data) ? data : data.issues;
-        const pageTotalCount = Array.isArray(data) ? null : data.totalCount ?? null;
-        const pageHasMore = Array.isArray(data)
-          ? pageIssues.length === pageSize
-          : data.hasMore;
+        const pageTotalCount = Array.isArray(data) ? null : (data.totalCount ?? null);
+        const pageHasMore = Array.isArray(data) ? pageIssues.length === pageSize : data.hasMore;
 
         setIssues(pageIssues);
         setTotalCount(pageTotalCount);
@@ -154,7 +152,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         }
       }
     },
-    [selectedCategory, selectedRepo, page, pageSize]
+    [selectedCategory, selectedRepo, page, pageSize],
   );
 
   useEffect(() => {
@@ -232,14 +230,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
   const toggleLabelFilter = (labelName: string) => {
     setSelectedLabels((prev) =>
-      prev.includes(labelName) ? prev.filter((l) => l !== labelName) : [...prev, labelName]
+      prev.includes(labelName) ? prev.filter((l) => l !== labelName) : [...prev, labelName],
     );
     resetToFirstPage();
   };
 
   const toggleAssigneeFilter = (login: string) => {
     setSelectedAssignees((prev) =>
-      prev.includes(login) ? prev.filter((a) => a !== login) : [...prev, login]
+      prev.includes(login) ? prev.filter((a) => a !== login) : [...prev, login],
     );
     resetToFirstPage();
   };
@@ -618,7 +616,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
       {/* Loading State */}
       {isLoading && (
-        <div data-testid="inbox-loading" className="flex h-32 items-center justify-center text-xs text-slate-500">
+        <div
+          data-testid="inbox-loading"
+          className="flex h-32 items-center justify-center text-xs text-slate-500"
+        >
           Loading issues from GitHub...
         </div>
       )}
@@ -762,7 +763,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             {totalCount !== null
               ? `Showing ${Math.min((page - 1) * pageSize + 1, totalCount)}-${Math.min(
                   page * pageSize,
-                  totalCount
+                  totalCount,
                 )} of ${totalCount}`
               : `Page ${page}`}
           </span>
