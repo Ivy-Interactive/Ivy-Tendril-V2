@@ -5,10 +5,45 @@ export interface UseChatMessageWindowOptions {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   getItemKey: (index: number) => string;
   enabled: boolean;
-  estimateSize?: number;
+  estimateSize?: number | ((index: number) => number);
   overscan?: number;
   /** Index that must always be present in `items`, even outside the visible range (e.g. the streaming tail). */
   pinnedIndex?: number;
+}
+
+export interface EstimateChatMessageHeightOptions {
+  role?: "user" | "assistant" | "system";
+  hasAttachments?: boolean;
+}
+
+export function estimateChatMessageHeight(
+  content: string,
+  options?: EstimateChatMessageHeightOptions,
+): number {
+  if (!content) return 80;
+
+  // Base overhead: message bubble padding, avatar/role layout, action bar
+  const isUser = options?.role === "user";
+  let estimated = isUser ? 72 : 96;
+
+  if (options?.hasAttachments) {
+    estimated += 32;
+  }
+
+  // Line count and character wrap heuristic:
+  // Container max-width is max-w-3xl (~768px), approx 80 characters per line for text-sm.
+  const lines = content.split("\n");
+  let totalVisualLines = 0;
+  for (const line of lines) {
+    const wrapped = Math.max(1, Math.ceil(line.length / 80));
+    totalVisualLines += wrapped;
+  }
+
+  // Line height in Tailwind text-sm leading-relaxed is ~22px
+  estimated += totalVisualLines * 22;
+
+  // Clamp to a reasonable minimum
+  return Math.max(isUser ? 64 : 80, estimated);
 }
 
 export interface ChatWindowItem {
@@ -135,18 +170,28 @@ export function useChatMessageWindow(
     return result;
   }, [count, getItemKey]);
 
+  const getEstimate = useCallback(
+    (index: number): number => {
+      if (typeof estimateSize === "function") {
+        return estimateSize(index);
+      }
+      return estimateSize ?? DEFAULT_ESTIMATE_SIZE;
+    },
+    [estimateSize],
+  );
+
   const prefixSums = useMemo(() => {
     const sums = new Array<number>(count + 1);
     sums[0] = 0;
     for (let i = 0; i < count; i++) {
-      const height = heightsRef.current.get(keys[i]) ?? estimateSize;
+      const height = heightsRef.current.get(keys[i]) ?? getEstimate(i);
       sums[i + 1] = sums[i] + height;
     }
     return sums;
     // heightVersion is not read directly, but forces this to recompute whenever
     // a row's measured height changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [count, keys, estimateSize, heightVersion]);
+  }, [count, keys, getEstimate, heightVersion]);
 
   const totalSize = prefixSums[count] ?? 0;
 
@@ -237,7 +282,7 @@ export function useChatMessageWindow(
             block: align,
           });
         }
-        const itemHeight = heightsRef.current.get(keys[index]) ?? estimateSize;
+        const itemHeight = heightsRef.current.get(keys[index]) ?? getEstimate(index);
         const itemStart = prefixSums[index];
         const ch = container.clientHeight || clientHeight;
         let targetTop = itemStart;
@@ -256,7 +301,7 @@ export function useChatMessageWindow(
         return;
       }
 
-      const itemHeight = heightsRef.current.get(keys[index]) ?? estimateSize;
+      const itemHeight = heightsRef.current.get(keys[index]) ?? getEstimate(index);
       const itemStart = prefixSums[index];
       const ch = container.clientHeight || clientHeight;
       let targetTop = itemStart;
@@ -280,7 +325,7 @@ export function useChatMessageWindow(
       scrollContainerRef,
       scrollEl,
       keys,
-      estimateSize,
+      getEstimate,
       prefixSums,
       clientHeight,
       totalSize,
