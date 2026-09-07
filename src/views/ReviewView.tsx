@@ -25,9 +25,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   onRetry,
 }) => {
   const reviewPlans = plans.filter((p) => p.state === "Review");
-  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(
-    reviewPlans[0]?.id || null
-  );
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(reviewPlans[0]?.id || null);
   const [retryFeedback, setRetryFeedback] = useState("");
   const [isRetrying, setIsRetrying] = useState(false);
 
@@ -72,31 +70,20 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
    * previous list is restored — the operator must not be left believing a
    * decision was recorded in plan.yaml when it was not.
    */
-  const setRecState = async (
-    title: string,
-    state: RecommendationState,
-    declineReason?: string
-  ) => {
+  const setRecState = async (title: string, state: RecommendationState, declineReason?: string) => {
     if (!selectedPlanId) return;
 
     const previous = recommendations;
     setRecommendations((prev) =>
-      prev.map((r) => (r.title === title ? { ...r, state, declineReason } : r))
+      prev.map((r) => (r.title === title ? { ...r, state, declineReason } : r)),
     );
     setActionError(null);
 
     try {
-      await bridge.setRecommendationState(
-        selectedPlanId,
-        title,
-        state,
-        declineReason
-      );
+      await bridge.setRecommendationState(selectedPlanId, title, state, declineReason);
     } catch (err) {
       setRecommendations(previous);
-      setActionError(
-        `Could not mark "${title}" as ${state}: ${describeBridgeError(err)}`
-      );
+      setActionError(`Could not mark "${title}" as ${state}: ${describeBridgeError(err)}`);
     }
   };
 
@@ -105,9 +92,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     const { title, action } = activeNoteDialog;
     const trimmedNote = note?.trim();
     const targetState: RecommendationState =
-      action === "Accept"
-        ? (trimmedNote ? "AcceptedWithNotes" : "Accepted")
-        : "Declined";
+      action === "Accept" ? (trimmedNote ? "AcceptedWithNotes" : "Accepted") : "Declined";
     const notePayload = trimmedNote || undefined;
 
     setActiveNoteDialog(null);
@@ -139,7 +124,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   if (reviewPlans.length === 0) {
     return (
       <div data-testid="review-view" className="space-y-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-100">Review & Recommendations</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-100">
+          Review & Recommendations
+        </h1>
         <EmptyState
           title="No plans in Review"
           description="There are currently no completed executions waiting for human review. Run or execute plans to review them here."
@@ -154,7 +141,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     <div className="space-y-6" data-testid="review-view">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100">Review & Recommendations</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-100">
+            Review & Recommendations
+          </h1>
           <p className="text-xs text-slate-400">
             Inspect completed implementations, triage recommendations, and approve or retry.
           </p>
@@ -195,7 +184,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="font-mono text-xs font-bold text-slate-400">{selectedPlan.id}</span>
+                  <span className="font-mono text-xs font-bold text-slate-400">
+                    {selectedPlan.id}
+                  </span>
                   <h2 className="mt-1 text-xl font-bold text-slate-100">{selectedPlan.title}</h2>
                   <p className="text-xs text-slate-400">Project: {selectedPlan.project}</p>
                 </div>
@@ -294,10 +285,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               )}
 
               {!recsError && recommendations.length === 0 && (
-                <p
-                  data-testid="no-recommendations"
-                  className="mt-4 text-xs text-slate-500"
-                >
+                <p data-testid="no-recommendations" className="mt-4 text-xs text-slate-500">
                   ExecutePlan registered no recommendations for this plan.
                 </p>
               )}

@@ -15,7 +15,7 @@ describe("Migration Parity Matrix", () => {
 
     // Find table rows
     const tableLines = lines.filter(
-      (line) => line.trim().startsWith("|") && line.trim().endsWith("|")
+      (line) => line.trim().startsWith("|") && line.trim().endsWith("|"),
     );
 
     expect(tableLines.length).toBeGreaterThan(15); // Header + separator + at least 14 rows
@@ -38,7 +38,7 @@ describe("Migration Parity Matrix", () => {
       for (let j = 0; j < cells.length; j++) {
         expect(
           cells[j],
-          `Row ${i + 1}, column ${j + 1} must not be empty in parity-matrix.md`
+          `Row ${i + 1}, column ${j + 1} must not be empty in parity-matrix.md`,
         ).not.toBe("");
       }
 
@@ -46,7 +46,7 @@ describe("Migration Parity Matrix", () => {
       const statusCell = cells[cells.length - 1];
       expect(
         statusCell,
-        `Row ${i + 1} status '${statusCell}' must match allowed values: 'Verified', 'Gap (plan NNNNN)', or 'Deferred (approved)'`
+        `Row ${i + 1} status '${statusCell}' must match allowed values: 'Verified', 'Gap (plan NNNNN)', or 'Deferred (approved)'`,
       ).toMatch(allowedStatusRegex);
 
       // If Gap, must cite a plan id
@@ -77,10 +77,9 @@ describe("Migration Parity Matrix", () => {
     ];
 
     for (const area of requiredAreas) {
-      expect(
-        content.toLowerCase(),
-        `Parity matrix must cover '${area}'`
-      ).toContain(area.toLowerCase());
+      expect(content.toLowerCase(), `Parity matrix must cover '${area}'`).toContain(
+        area.toLowerCase(),
+      );
     }
   });
 });

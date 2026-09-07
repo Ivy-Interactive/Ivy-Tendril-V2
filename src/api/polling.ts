@@ -6,7 +6,7 @@
  */
 export function getPollingInterval(
   isWsConnected: boolean,
-  resource: "jobs" | "plans"
+  resource: "jobs" | "plans",
 ): number | false {
   if (isWsConnected) {
     return false; // Realtime updates arrive via the native WebSocket bridge

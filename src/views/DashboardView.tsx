@@ -70,12 +70,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-6" data-testid="dashboard-view">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100">
-            Tendril Dashboard
-          </h1>
-          <p className="text-xs text-slate-400">
-            Autonomous Pipeline Health and Execution Metrics
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-100">Tendril Dashboard</h1>
+          <p className="text-xs text-slate-400">Autonomous Pipeline Health and Execution Metrics</p>
         </div>
       </div>
 

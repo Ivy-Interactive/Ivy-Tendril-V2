@@ -79,7 +79,7 @@ describe("ChatView native webview drag-drop", () => {
     });
     expect(screen.getByText("notes.md").closest("div")).toHaveAttribute(
       "title",
-      "/Users/me/notes.md"
+      "/Users/me/notes.md",
     );
   });
 

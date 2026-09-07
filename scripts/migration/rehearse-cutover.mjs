@@ -2,10 +2,10 @@
 
 /**
  * Migration Rehearsal Harness
- * 
+ *
  * Rehearses existing-data compatibility, migration, backup/restore, and rollback
  * on disposable copies only, with an isolated TENDRIL_HOME sandbox.
- * 
+ *
  * Safety Rules:
  * 1. Must refuse to run unless TENDRIL_SANDBOX is explicitly set and under os.tmpdir().
  * 2. Aborts if it resolves to the real home (~/.tendril) or if TENDRIL_HOME is unset or outside sandbox.
@@ -30,13 +30,19 @@ export function validateSandbox(sandboxEnv, homeEnv) {
 
   // Check not real home
   if (resolvedSandbox === REAL_HOME) {
-    return { valid: false, error: "TENDRIL_SANDBOX resolves to the real home directory (~/.tendril). Refusing to run." };
+    return {
+      valid: false,
+      error: "TENDRIL_SANDBOX resolves to the real home directory (~/.tendril). Refusing to run.",
+    };
   }
 
   // Check inside os.tmpdir()
   const relativeToTmp = path.relative(tmpDir, resolvedSandbox);
   if (relativeToTmp.startsWith("..") || path.isAbsolute(relativeToTmp)) {
-    return { valid: false, error: `TENDRIL_SANDBOX (${resolvedSandbox}) is outside os.tmpdir() (${tmpDir}). Refusing to run.` };
+    return {
+      valid: false,
+      error: `TENDRIL_SANDBOX (${resolvedSandbox}) is outside os.tmpdir() (${tmpDir}). Refusing to run.`,
+    };
   }
 
   // Check TENDRIL_HOME is set and inside sandbox
@@ -47,7 +53,10 @@ export function validateSandbox(sandboxEnv, homeEnv) {
   const resolvedHome = path.resolve(homeEnv.trim());
   const relativeToSandbox = path.relative(resolvedSandbox, resolvedHome);
   if (relativeToSandbox.startsWith("..") || path.isAbsolute(relativeToSandbox)) {
-    return { valid: false, error: `TENDRIL_HOME (${resolvedHome}) points outside TENDRIL_SANDBOX (${resolvedSandbox}). Refusing to run.` };
+    return {
+      valid: false,
+      error: `TENDRIL_HOME (${resolvedHome}) points outside TENDRIL_SANDBOX (${resolvedSandbox}). Refusing to run.`,
+    };
   }
 
   return { valid: true, sandbox: resolvedSandbox, home: resolvedHome };
@@ -83,7 +92,9 @@ function runSelfCheck() {
   const c6 = validateSandbox(validSandboxPath, validSandboxPath);
   if (!c6.valid) throw new Error(`Self-check failed: rejected valid sandbox: ${c6.error}`);
 
-  console.log("[PASS] Rehearsal guardrail self-check: All safety checks verified. Refuses unset, outside tmpdir, and real home.");
+  console.log(
+    "[PASS] Rehearsal guardrail self-check: All safety checks verified. Refuses unset, outside tmpdir, and real home.",
+  );
   process.exit(0);
 }
 

@@ -33,17 +33,11 @@ jobs:
           token: ${{ secrets.COMPONENTS_STORYBOOK_TOKEN }}
           path: components-storybook
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.19.0
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: |
-            tendril-app/pnpm-lock.yaml
-            components-storybook/pnpm-lock.yaml
+          cache: true
 
       - name: Install components-storybook dependencies
         working-directory: components-storybook
@@ -57,13 +51,17 @@ jobs:
         working-directory: tendril-app
         run: pnpm install --frozen-lockfile
 
+      - name: Check frontend (lint, format, typecheck)
+        working-directory: tendril-app
+        run: vp check
+
       - name: Build frontend
         working-directory: tendril-app
-        run: pnpm build
+        run: vp build
 
       - name: Test frontend
         working-directory: tendril-app
-        run: pnpm test
+        run: vp test
 
   tauri:
     name: Tauri / Rust

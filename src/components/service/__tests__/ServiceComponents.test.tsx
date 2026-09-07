@@ -41,9 +41,7 @@ describe("ServiceStatusBanner", () => {
     };
 
     render(<ServiceStatusBanner serviceInfo={info} />);
-    expect(screen.getByTestId("service-health-badge")).toHaveTextContent(
-      "Connected (Managed)"
-    );
+    expect(screen.getByTestId("service-health-badge")).toHaveTextContent("Connected (Managed)");
     expect(screen.getByText("Managed")).toBeInTheDocument();
     expect(screen.getByText("127.0.0.1:5010")).toBeInTheDocument();
   });
@@ -61,9 +59,7 @@ describe("ServiceStatusBanner", () => {
     };
 
     render(<ServiceStatusBanner serviceInfo={info} />);
-    expect(screen.getByTestId("service-health-badge")).toHaveTextContent(
-      "Connected (External)"
-    );
+    expect(screen.getByTestId("service-health-badge")).toHaveTextContent("Connected (External)");
   });
 
   it("calls restart, repair, and diagnostics callbacks", () => {
@@ -85,7 +81,7 @@ describe("ServiceStatusBanner", () => {
         onRestart={onRestart}
         onRepair={onRepair}
         onViewDiagnostics={onViewDiagnostics}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByText("Restart Service"));
@@ -127,20 +123,13 @@ describe("ServiceSettingsView", () => {
 
     const refreshMock = vi.fn().mockResolvedValue(undefined);
 
-    render(
-      <ServiceSettingsView
-        serviceInfo={info}
-        onRefreshHealth={refreshMock}
-      />
-    );
+    render(<ServiceSettingsView serviceInfo={info} onRefreshHealth={refreshMock} />);
 
     expect(screen.getByTestId("service-settings-view")).toBeInTheDocument();
     expect(screen.getByText("4321")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("2026-09-06T12:00:00Z [INFO] Service started")
-      ).toBeInTheDocument();
+      expect(screen.getByText("2026-09-06T12:00:00Z [INFO] Service started")).toBeInTheDocument();
       expect(screen.getByText(/REDACTED_BEARER_TOKEN/)).toBeInTheDocument();
     });
 
@@ -148,9 +137,7 @@ describe("ServiceSettingsView", () => {
     await waitFor(() => {
       expect(mockRepair).toHaveBeenCalled();
       expect(refreshMock).toHaveBeenCalled();
-      expect(
-        screen.getByText("Service repair completed successfully.")
-      ).toBeInTheDocument();
+      expect(screen.getByText("Service repair completed successfully.")).toBeInTheDocument();
     });
   });
 });

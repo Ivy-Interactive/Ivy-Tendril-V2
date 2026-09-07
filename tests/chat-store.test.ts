@@ -170,7 +170,9 @@ describe("ChatStore State Management & Event Handling", () => {
 
     await chatStore.fetchSessions();
 
-    const attachments = [{ name: "screenshot.png", path: "/tmp/screenshot.png", mimeType: "image/png" }];
+    const attachments = [
+      { name: "screenshot.png", path: "/tmp/screenshot.png", mimeType: "image/png" },
+    ];
     await chatStore.sendMessage("Take a look at this", { attachments });
 
     const activeSession = chatStore.getState().activeSession;
@@ -256,7 +258,9 @@ describe("ChatStore State Management & Event Handling", () => {
         db: ["postgres"],
       });
       // In-memory message content is optimistically patched
-      expect(chatStore.getState().activeSession?.messages[0].content).toContain('answer: "postgres"');
+      expect(chatStore.getState().activeSession?.messages[0].content).toContain(
+        'answer: "postgres"',
+      );
 
       // Resolve server response
       const updatedSession: ChatSession = {
@@ -265,7 +269,8 @@ describe("ChatStore State Management & Event Handling", () => {
           {
             id: "msg-q",
             role: "assistant",
-            content: "```questions\nquestions:\n  - id: db\n    answer: postgres\n    title: Choose db\n```",
+            content:
+              "```questions\nquestions:\n  - id: db\n    answer: postgres\n    title: Choose db\n```",
             timestamp: "2026-09-07T12:01:00Z",
           },
         ],
@@ -298,7 +303,9 @@ describe("ChatStore State Management & Event Handling", () => {
 
       await chatStore.fetchSessions();
 
-      await expect(chatStore.submitAnswer("msg-q2", "db", "sqlite")).rejects.toThrow("Network timeout");
+      await expect(chatStore.submitAnswer("msg-q2", "db", "sqlite")).rejects.toThrow(
+        "Network timeout",
+      );
 
       // Selection must be retained so user input is not lost
       expect(chatStore.getInProgressAnswers("msg-q2")).toEqual({

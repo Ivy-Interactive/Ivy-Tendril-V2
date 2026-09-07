@@ -22,11 +22,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       const data = await bridge.getServiceLogs(100);
       setLogs(data);
     } catch (err) {
-      setLogs([
-        `Failed to load service logs: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      ]);
+      setLogs([`Failed to load service logs: ${err instanceof Error ? err.message : String(err)}`]);
     } finally {
       setIsLoadingLogs(false);
     }
@@ -45,9 +41,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       setActionMessage("Service restart initiated.");
       fetchLogs();
     } catch (err) {
-      setActionMessage(
-        `Restart failed: ${err instanceof Error ? err.message : String(err)}`
-      );
+      setActionMessage(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsBusy(false);
     }
@@ -62,9 +56,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       setActionMessage(res);
       fetchLogs();
     } catch (err) {
-      setActionMessage(
-        `Repair failed: ${err instanceof Error ? err.message : String(err)}`
-      );
+      setActionMessage(`Repair failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsBusy(false);
     }
@@ -79,9 +71,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       setActionMessage(`Switched service ownership mode to ${mode}.`);
       fetchLogs();
     } catch (err) {
-      setActionMessage(
-        `Mode switch failed: ${err instanceof Error ? err.message : String(err)}`
-      );
+      setActionMessage(`Mode switch failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsBusy(false);
     }
@@ -137,9 +127,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             type="button"
             disabled={isBusy}
             onClick={() =>
-              handleSwitchMode(
-                serviceInfo?.ownership === "Managed" ? "external" : "managed"
-              )
+              handleSwitchMode(serviceInfo?.ownership === "Managed" ? "external" : "managed")
             }
             className="rounded-lg border border-slate-700 bg-slate-950 px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 disabled:opacity-50 transition"
           >
@@ -174,15 +162,11 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
             <dt className="text-slate-500">Process PID</dt>
-            <dd className="mt-1 font-mono text-slate-300">
-              {serviceInfo?.pid || "N/A"}
-            </dd>
+            <dd className="mt-1 font-mono text-slate-300">{serviceInfo?.pid || "N/A"}</dd>
           </div>
           <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
             <dt className="text-slate-500">Crash Count</dt>
-            <dd className="mt-1 font-semibold text-slate-200">
-              {serviceInfo?.crashCount ?? 0}
-            </dd>
+            <dd className="mt-1 font-semibold text-slate-200">{serviceInfo?.crashCount ?? 0}</dd>
           </div>
         </dl>
       </div>
@@ -203,9 +187,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
           className="mt-4 max-h-72 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-300 space-y-1"
         >
           {logs.length === 0 ? (
-            <p className="text-slate-500 italic">
-              No logs recorded yet in service.log.
-            </p>
+            <p className="text-slate-500 italic">No logs recorded yet in service.log.</p>
           ) : (
             logs.map((logLine, idx) => (
               <div key={idx} className="whitespace-pre-wrap break-all leading-relaxed">

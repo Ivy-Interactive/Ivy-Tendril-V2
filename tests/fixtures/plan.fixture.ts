@@ -13,9 +13,7 @@ import type {
  * fixtures at compile time instead of producing tests that silently assert
  * against a shape the bridge no longer returns.
  */
-export function planSummary(
-  overrides: Partial<PlanSummary> = {}
-): PlanSummary {
+export function planSummary(overrides: Partial<PlanSummary> = {}): PlanSummary {
   return {
     id: "00021",
     title: "Build Desktop Operator Experience",
@@ -52,15 +50,12 @@ export function planDetail(overrides: Partial<PlanDetail> = {}): PlanDetail {
   };
 }
 
-export function verification(
-  name: string,
-  status: PlanVerification["status"]
-): PlanVerification {
+export function verification(name: string, status: PlanVerification["status"]): PlanVerification {
   return { name, status };
 }
 
 export function verificationReport(
-  overrides: Partial<VerificationReport> = {}
+  overrides: Partial<VerificationReport> = {},
 ): VerificationReport {
   return {
     name: "RustTest",

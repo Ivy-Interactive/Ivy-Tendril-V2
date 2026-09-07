@@ -69,7 +69,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
   const handleStatusChange = async (name: string, newStatus: VerificationStatus) => {
     const previous = localVerifications;
     setLocalVerifications((prev) =>
-      prev.map((v) => (v.name === name ? { ...v, status: newStatus } : v))
+      prev.map((v) => (v.name === name ? { ...v, status: newStatus } : v)),
     );
     setError(null);
 
@@ -107,22 +107,15 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
         const isOpen = expanded === v.name;
 
         return (
-          <div
-            key={v.name}
-            className="rounded-lg border border-slate-800 bg-slate-950"
-          >
+          <div key={v.name} className="rounded-lg border border-slate-800 bg-slate-950">
             <div className="flex items-center justify-between gap-3 p-3">
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-slate-200">
-                  {v.name}
-                </span>
+                <span className="text-sm font-medium text-slate-200">{v.name}</span>
                 <select
                   aria-label={`Status for ${v.name}`}
                   data-testid={`verification-status-select-${v.name}`}
                   value={v.status}
-                  onChange={(e) =>
-                    handleStatusChange(v.name, e.target.value as VerificationStatus)
-                  }
+                  onChange={(e) => handleStatusChange(v.name, e.target.value as VerificationStatus)}
                   className={`rounded border px-2 py-0.5 text-xs font-medium cursor-pointer ${
                     STATUS_CLASS[v.status] ?? STATUS_CLASS.Pending
                   }`}
@@ -140,9 +133,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                     Skipped
                   </option>
                 </select>
-                {report?.date && (
-                  <span className="text-xs text-slate-500">{report.date}</span>
-                )}
+                {report?.date && <span className="text-xs text-slate-500">{report.date}</span>}
               </div>
 
               {report ? (

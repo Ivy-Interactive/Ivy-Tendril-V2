@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import { ChatView } from "../src/views/ChatView";
@@ -166,7 +166,7 @@ describe("Preserve Unsubmitted Question Selections Across Chat Virtualization", 
 
     // 2. Verify content immediately reflects the selection while in flight
     expect(screen.getByTestId(`plan-markdown-content-${targetMarkdownKey}`).textContent).toContain(
-      'answer: "sqlite"'
+      'answer: "sqlite"',
     );
 
     // 3. Simulate scrolling far down to tail so row 3 unmounts
@@ -210,7 +210,7 @@ describe("Preserve Unsubmitted Question Selections Across Chat Virtualization", 
           ...session.messages[3],
           content: session.messages[3].content.replace(
             "Which database should we use?",
-            "Which database should we use?\n    answer: sqlite"
+            "Which database should we use?\n    answer: sqlite",
           ),
         },
         ...session.messages.slice(4),

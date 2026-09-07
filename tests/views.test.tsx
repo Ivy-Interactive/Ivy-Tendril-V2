@@ -78,7 +78,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
           jobs={mockJobs}
           onSelectPlan={() => {}}
           onSelectJob={() => {}}
-        />
+        />,
       );
 
       expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
@@ -90,13 +90,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
   describe("PlansView", () => {
     it("renders searchable plan list and provides accessible search input", () => {
       const handleSelect = vi.fn();
-      render(
-        <PlansView
-          plans={mockPlans}
-          onSelectPlan={handleSelect}
-          onNewPlan={() => {}}
-        />
-      );
+      render(<PlansView plans={mockPlans} onSelectPlan={handleSelect} onNewPlan={() => {}} />);
 
       expect(screen.getByTestId("plans-view")).toBeInTheDocument();
       const searchBox = screen.getByRole("searchbox", { name: /search plans/i });
@@ -109,13 +103,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
     });
 
     it("renders empty state when no plans match filter", () => {
-      render(
-        <PlansView
-          plans={[]}
-          onSelectPlan={() => {}}
-          onNewPlan={() => {}}
-        />
-      );
+      render(<PlansView plans={[]} onSelectPlan={() => {}} onNewPlan={() => {}} />);
 
       expect(screen.getByText("No plans found")).toBeInTheDocument();
     });
@@ -123,13 +111,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
 
   describe("PlanDetailView", () => {
     it("renders plan title, lifecycle badge, and specification tabs", () => {
-      render(
-        <PlanDetailView
-          plan={mockPlanDetail}
-          allPlans={mockPlans}
-          onExecute={() => {}}
-        />
-      );
+      render(<PlanDetailView plan={mockPlanDetail} allPlans={mockPlans} onExecute={() => {}} />);
 
       expect(screen.getByTestId("plan-detail-view")).toBeInTheDocument();
       expect(screen.getByText("First Accessible Plan")).toBeInTheDocument();
@@ -139,12 +121,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
     });
 
     it("switches to Verifications and Metadata tabs on click", () => {
-      render(
-        <PlanDetailView
-          plan={mockPlanDetail}
-          allPlans={mockPlans}
-        />
-      );
+      render(<PlanDetailView plan={mockPlanDetail} allPlans={mockPlans} />);
 
       const verificationsTab = screen.getByText(/Verifications/);
       fireEvent.click(verificationsTab);
@@ -160,18 +137,14 @@ describe("Operator Views Component & Accessibility Tests", () => {
   describe("NewPlanModal", () => {
     it("renders accessible modal with project picker and submission controls", () => {
       const handleClose = vi.fn();
-      render(
-        <NewPlanModal
-          isOpen={true}
-          onClose={handleClose}
-          projects={mockProjects}
-        />
-      );
+      render(<NewPlanModal isOpen={true} onClose={handleClose} projects={mockProjects} />);
 
       const dialog = screen.getByRole("dialog", { name: /create new plan/i });
       expect(dialog).toBeInTheDocument();
       expect(screen.getByLabelText(/target project/i)).toBeInTheDocument();
-      expect(screen.getAllByRole("button", { name: /start createplan/i }).length).toBeGreaterThan(0);
+      expect(screen.getAllByRole("button", { name: /start createplan/i }).length).toBeGreaterThan(
+        0,
+      );
 
       const closeBtn = screen.getByRole("button", { name: /close modal/i });
       fireEvent.click(closeBtn);
@@ -179,13 +152,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
     });
 
     it("does not render when isOpen is false", () => {
-      render(
-        <NewPlanModal
-          isOpen={false}
-          onClose={() => {}}
-          projects={mockProjects}
-        />
-      );
+      render(<NewPlanModal isOpen={false} onClose={() => {}} projects={mockProjects} />);
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
@@ -200,7 +167,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
           initialDescription="Token refresh fails on redirect"
           initialSourceUrl="https://github.com/SpaceCorps/Tendril-App/issues/88"
           initialProject="Tendril-App"
-        />
+        />,
       );
 
       const textarea = screen.getByLabelText(/task description/i);
@@ -227,7 +194,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onReconnect={() => {}}
         >
           <div>Inbox View Content</div>
-        </ShellLayout>
+        </ShellLayout>,
       );
 
       expect(screen.getByText("Inbox View Content")).toBeInTheDocument();

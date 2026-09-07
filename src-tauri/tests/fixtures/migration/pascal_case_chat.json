@@ -6,10 +6,7 @@
   "AgentId": "antigravity",
   "ModelId": "gemini-3.8-flash",
   "Effort": "default",
-  "SpawnedJobIds": [
-    "00373",
-    "00374"
-  ],
+  "SpawnedJobIds": ["00373", "00374"],
   "Messages": [
     {
       "Id": "dfbfc6a373ea476692dc0ee14eca805e",

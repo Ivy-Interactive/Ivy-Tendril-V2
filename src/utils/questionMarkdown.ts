@@ -18,7 +18,7 @@ function formatAnswerYaml(values: string[]): string {
  */
 export function patchQuestionsMarkdown(
   content: string,
-  answers?: InProgressQuestionAnswers | null
+  answers?: InProgressQuestionAnswers | null,
 ): string {
   if (!content || !answers || Object.keys(answers).length === 0) {
     return content;

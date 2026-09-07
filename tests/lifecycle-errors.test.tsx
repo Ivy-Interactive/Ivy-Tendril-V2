@@ -7,11 +7,7 @@ import { jobsStore } from "../src/state/jobsStore";
 import { planDetail, planSummary } from "./fixtures/plan.fixture";
 import { failedJobDetail, job, jobDetail } from "./fixtures/job.fixture";
 import { bridgeError } from "./fixtures/recommendation.fixture";
-import {
-  bridgeErrorCode,
-  describeBridgeError,
-  isBridgeError,
-} from "../src/types/api";
+import { bridgeErrorCode, describeBridgeError, isBridgeError } from "../src/types/api";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -26,18 +22,16 @@ describe("BridgeError helpers", () => {
   });
 
   it("describes structured, Error and unknown rejections alike", () => {
-    expect(
-      describeBridgeError({ code: "X", message: "boom", details: "detail" })
-    ).toBe("boom (detail)");
+    expect(describeBridgeError({ code: "X", message: "boom", details: "detail" })).toBe(
+      "boom (detail)",
+    );
     expect(describeBridgeError({ code: "X", message: "boom" })).toBe("boom");
     expect(describeBridgeError(new Error("thrown"))).toBe("thrown");
     expect(describeBridgeError("raw")).toBe("raw");
   });
 
   it("exposes the code so callers can branch without string matching", () => {
-    expect(bridgeErrorCode(bridgeError({ code: "DISCONNECTED" }))).toBe(
-      "DISCONNECTED"
-    );
+    expect(bridgeErrorCode(bridgeError({ code: "DISCONNECTED" }))).toBe("DISCONNECTED");
     expect(bridgeErrorCode(new Error("nope"))).toBeUndefined();
   });
 });
@@ -52,15 +46,13 @@ describe("PlanDetailView lifecycle actions", () => {
   });
 
   it("reports an Execute failure instead of silently doing nothing", async () => {
-    const onExecute = vi
-      .fn()
-      .mockRejectedValue(
-        bridgeError({
-          code: "DISCONNECTED",
-          message: "Tendril service is not running",
-          details: "daemon metadata (.master) not found",
-        })
-      );
+    const onExecute = vi.fn().mockRejectedValue(
+      bridgeError({
+        code: "DISCONNECTED",
+        message: "Tendril service is not running",
+        details: "daemon metadata (.master) not found",
+      }),
+    );
 
     render(<PlanDetailView plan={draftPlan} allPlans={[]} onExecute={onExecute} />);
 
@@ -68,8 +60,8 @@ describe("PlanDetailView lifecycle actions", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("plan-action-error")).toHaveTextContent(
-        /Execute Plan failed: Tendril service is not running/
-      )
+        /Execute Plan failed: Tendril service is not running/,
+      ),
     );
     expect(onExecute).toHaveBeenCalledWith("00030");
   });
@@ -95,24 +87,16 @@ describe("PlanDetailView lifecycle actions", () => {
     });
     const onRetry = vi
       .fn()
-      .mockRejectedValue(
-        bridgeError({ code: "START_JOB_FAILED", message: "queue is full" })
-      );
+      .mockRejectedValue(bridgeError({ code: "START_JOB_FAILED", message: "queue is full" }));
 
-    render(
-      <PlanDetailView
-        plan={reviewPlan}
-        allPlans={[planSummary()]}
-        onRetry={onRetry}
-      />
-    );
+    render(<PlanDetailView plan={reviewPlan} allPlans={[planSummary()]} onRetry={onRetry} />);
 
     fireEvent.click(screen.getByRole("button", { name: /retry plan/i }));
 
     await waitFor(() =>
       expect(screen.getByTestId("plan-action-error")).toHaveTextContent(
-        /Retry Plan failed: queue is full/
-      )
+        /Retry Plan failed: queue is full/,
+      ),
     );
   });
 
@@ -125,23 +109,19 @@ describe("PlanDetailView lifecycle actions", () => {
       () =>
         new Promise<void>((_resolve, rej) => {
           reject = rej;
-        })
+        }),
     );
 
     render(<PlanDetailView plan={draftPlan} allPlans={[]} onExecute={onExecute} />);
     fireEvent.click(screen.getByRole("button", { name: /execute plan/i }));
 
     // While in flight the button reflects the pending action.
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /starting/i })).toBeDisabled()
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /starting/i })).toBeDisabled());
 
     reject(bridgeError({ code: "TIMEOUT", message: "service did not respond" }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("plan-action-error")).toHaveTextContent(
-        /service did not respond/
-      )
+      expect(screen.getByTestId("plan-action-error")).toHaveTextContent(/service did not respond/),
     );
   });
 });
@@ -153,7 +133,7 @@ describe("JobSessionView", () => {
     render(<JobSessionView job={failed} events={[]} />);
 
     expect(screen.getByTestId("job-failure-reason")).toHaveTextContent(
-      /RustTest verification failed after 3 attempts/
+      /RustTest verification failed after 3 attempts/,
     );
   });
 
@@ -166,12 +146,10 @@ describe("JobSessionView", () => {
           reportedFailureReason: undefined,
         })}
         events={[]}
-      />
+      />,
     );
 
-    expect(screen.getByTestId("job-failure-reason")).toHaveTextContent(
-      /Blocked on plan 00024/
-    );
+    expect(screen.getByTestId("job-failure-reason")).toHaveTextContent(/Blocked on plan 00024/);
   });
 
   it("shows no failure panel for a running job", () => {
@@ -186,7 +164,7 @@ describe("JobSessionView", () => {
         code: "CANCEL_JOB_FAILED",
         message: "Job 00158 already completed",
         details: null,
-      })
+      }),
     );
 
     render(<JobSessionView job={job()} events={[]} />);
@@ -195,8 +173,8 @@ describe("JobSessionView", () => {
 
     await waitFor(() =>
       expect(screen.getByTestId("job-cancel-error")).toHaveTextContent(
-        /Cancel failed: Job 00158 already completed/
-      )
+        /Cancel failed: Job 00158 already completed/,
+      ),
     );
     // Re-enabled so the operator can try again.
     expect(screen.getByRole("button", { name: /cancel job/i })).toBeEnabled();
@@ -211,9 +189,7 @@ describe("JobSessionView", () => {
     fireEvent.click(screen.getByRole("button", { name: /cancel job/i }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("job-cancel-error")).toHaveTextContent(
-        /Cancel failed: no daemon/
-      )
+      expect(screen.getByTestId("job-cancel-error")).toHaveTextContent(/Cancel failed: no daemon/),
     );
   });
 });
@@ -226,14 +202,14 @@ describe("jobsStore.fetchJobDetail", () => {
     await jobsStore.fetchJobDetail("00159");
 
     expect(jobsStore.getJobDetail("00159")?.reportedFailureReason).toBe(
-      detail.reportedFailureReason
+      detail.reportedFailureReason,
     );
     expect(jobsStore.getState().jobDetails["00159"]).toEqual(detail);
   });
 
   it("propagates a rejection rather than caching a partial job", async () => {
     vi.spyOn(bridge, "getJob").mockRejectedValue(
-      bridgeError({ code: "NOT_FOUND", message: "no such job" })
+      bridgeError({ code: "NOT_FOUND", message: "no such job" }),
     );
 
     await expect(jobsStore.fetchJobDetail("99999")).rejects.toMatchObject({

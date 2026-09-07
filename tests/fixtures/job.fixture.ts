@@ -30,8 +30,7 @@ export function failedJobDetail(overrides: Partial<JobDetail> = {}): JobDetail {
   return jobDetail({
     status: "Failed",
     completedAt: "2026-09-07T08:10:00Z",
-    reportedFailureReason:
-      "RustTest verification failed after 3 attempts: 2 tests still failing.",
+    reportedFailureReason: "RustTest verification failed after 3 attempts: 2 tests still failing.",
     ...overrides,
   });
 }

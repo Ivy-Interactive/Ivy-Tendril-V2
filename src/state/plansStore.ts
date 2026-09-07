@@ -89,13 +89,11 @@ class PlansStore {
     id: string,
     field: string,
     value: string,
-    allowFailed?: boolean
+    allowFailed?: boolean,
   ): Promise<void> {
     // 1. Snapshot previous state for rollback
     const previousPlans = [...this.state.plans];
-    const previousDetail = this.state.selectedPlan
-      ? { ...this.state.selectedPlan }
-      : null;
+    const previousDetail = this.state.selectedPlan ? { ...this.state.selectedPlan } : null;
 
     // 2. Apply optimistic updates
     this.state.plans = this.state.plans.map((p) => {
@@ -136,17 +134,15 @@ class PlansStore {
   public async updateVerificationOptimistic(
     planId: string,
     verificationName: string,
-    newStatus: VerificationStatus
+    newStatus: VerificationStatus,
   ): Promise<void> {
     const previousPlans = [...this.state.plans];
-    const previousDetail = this.state.selectedPlan
-      ? { ...this.state.selectedPlan }
-      : null;
+    const previousDetail = this.state.selectedPlan ? { ...this.state.selectedPlan } : null;
 
     // Optimistically update
     if (this.state.selectedPlan && this.state.selectedPlan.id === planId) {
       const vers = this.state.selectedPlan.verifications.map((v) =>
-        v.name === verificationName ? { ...v, status: newStatus } : v
+        v.name === verificationName ? { ...v, status: newStatus } : v,
       );
       this.state.selectedPlan = { ...this.state.selectedPlan, verifications: vers };
     }
@@ -154,7 +150,7 @@ class PlansStore {
     this.state.plans = this.state.plans.map((p) => {
       if (p.id === planId) {
         const vers = p.verifications.map((v) =>
-          v.name === verificationName ? { ...v, status: newStatus } : v
+          v.name === verificationName ? { ...v, status: newStatus } : v,
         );
         return { ...p, verifications: vers };
       }
@@ -163,11 +159,7 @@ class PlansStore {
     this.notify();
 
     try {
-      await bridge.setVerificationStatus(
-        planId,
-        verificationName,
-        newStatus
-      );
+      await bridge.setVerificationStatus(planId, verificationName, newStatus);
     } catch (err) {
       this.state.plans = previousPlans;
       this.state.selectedPlan = previousDetail;

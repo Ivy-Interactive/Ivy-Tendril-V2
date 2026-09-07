@@ -1,10 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { RecommendationNoteDialog } from "../src/components/RecommendationNoteDialog";
-import {
-  RecommendationCard,
-  REC_STATUS_CLASS,
-} from "../src/components/RecommendationCard";
+import { RecommendationCard, REC_STATUS_CLASS } from "../src/components/RecommendationCard";
 import type { RecommendationItem } from "../src/types/api";
 
 describe("RecommendationNoteDialog", () => {
@@ -16,7 +13,7 @@ describe("RecommendationNoteDialog", () => {
         action="Accept"
         onClose={() => {}}
         onSubmit={() => {}}
-      />
+      />,
     );
     expect(container.firstChild).toBeNull();
   });
@@ -29,16 +26,13 @@ describe("RecommendationNoteDialog", () => {
         action="Accept"
         onClose={() => {}}
         onSubmit={() => {}}
-      />
+      />,
     );
 
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveAttribute("aria-label", "Accept Recommendation");
-    expect(dialog).toHaveAttribute(
-      "data-testid",
-      "recommendation-note-dialog"
-    );
+    expect(dialog).toHaveAttribute("data-testid", "recommendation-note-dialog");
 
     expect(screen.getByText("Accept Recommendation")).toBeInTheDocument();
     expect(screen.getByText("Automate Workflows")).toBeInTheDocument();
@@ -59,13 +53,10 @@ describe("RecommendationNoteDialog", () => {
         action="Decline"
         onClose={() => {}}
         onSubmit={() => {}}
-      />
+      />,
     );
 
-    expect(screen.getByRole("dialog")).toHaveAttribute(
-      "aria-label",
-      "Decline Recommendation"
-    );
+    expect(screen.getByRole("dialog")).toHaveAttribute("aria-label", "Decline Recommendation");
     expect(screen.getByText("Decline Recommendation")).toBeInTheDocument();
     expect(screen.getByText("Decline Reason:")).toBeInTheDocument();
 
@@ -85,7 +76,7 @@ describe("RecommendationNoteDialog", () => {
         action="Accept"
         onClose={onClose}
         onSubmit={() => {}}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -101,7 +92,7 @@ describe("RecommendationNoteDialog", () => {
         action="Accept"
         onClose={() => {}}
         onSubmit={onSubmit}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
@@ -118,7 +109,7 @@ describe("RecommendationNoteDialog", () => {
         initialNote="Initial memo"
         onClose={() => {}}
         onSubmit={onSubmit}
-      />
+      />,
     );
 
     const textarea = screen.getByRole("textbox");
@@ -140,22 +131,14 @@ describe("RecommendationCard", () => {
 
   it("renders card content, impact badge, and Pending status", () => {
     render(
-      <RecommendationCard
-        recommendation={baseRec}
-        onAccept={() => {}}
-        onDecline={() => {}}
-      />
+      <RecommendationCard recommendation={baseRec} onAccept={() => {}} onDecline={() => {}} />,
     );
 
-    expect(
-      screen.getByTestId("recommendation-card-Support Dark Mode")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("recommendation-card-Support Dark Mode")).toBeInTheDocument();
     expect(screen.getByText("Support Dark Mode")).toBeInTheDocument();
     expect(screen.getByText("Implement dark theme palette.")).toBeInTheDocument();
     expect(screen.getByText("High impact")).toBeInTheDocument();
-    expect(screen.getByText("Pending")).toHaveClass(
-      REC_STATUS_CLASS.Pending.split(" ")[0]
-    );
+    expect(screen.getByText("Pending")).toHaveClass(REC_STATUS_CLASS.Pending.split(" ")[0]);
 
     expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
@@ -166,11 +149,7 @@ describe("RecommendationCard", () => {
     const onDecline = vi.fn();
 
     render(
-      <RecommendationCard
-        recommendation={baseRec}
-        onAccept={onAccept}
-        onDecline={onDecline}
-      />
+      <RecommendationCard recommendation={baseRec} onAccept={onAccept} onDecline={onDecline} />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
@@ -187,7 +166,7 @@ describe("RecommendationCard", () => {
         onAccept={() => {}}
         onDecline={() => {}}
         disabled={true}
-      />
+      />,
     );
 
     expect(screen.getByRole("button", { name: "Accept" })).toBeDisabled();
@@ -201,16 +180,10 @@ describe("RecommendationCard", () => {
       declineReason: "Targeting v1.2 release",
     };
 
-    render(
-      <RecommendationCard
-        recommendation={rec}
-        onAccept={() => {}}
-        onDecline={() => {}}
-      />
-    );
+    render(<RecommendationCard recommendation={rec} onAccept={() => {}} onDecline={() => {}} />);
 
     expect(screen.getByText("AcceptedWithNotes")).toHaveClass(
-      REC_STATUS_CLASS.AcceptedWithNotes.split(" ")[0]
+      REC_STATUS_CLASS.AcceptedWithNotes.split(" ")[0],
     );
     expect(screen.getByText("Notes: Targeting v1.2 release")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
@@ -224,20 +197,10 @@ describe("RecommendationCard", () => {
       declineReason: "Not aligned with roadmap",
     };
 
-    render(
-      <RecommendationCard
-        recommendation={rec}
-        onAccept={() => {}}
-        onDecline={() => {}}
-      />
-    );
+    render(<RecommendationCard recommendation={rec} onAccept={() => {}} onDecline={() => {}} />);
 
-    expect(screen.getByText("Declined")).toHaveClass(
-      REC_STATUS_CLASS.Declined.split(" ")[0]
-    );
-    expect(
-      screen.getByText("Decline reason: Not aligned with roadmap")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Declined")).toHaveClass(REC_STATUS_CLASS.Declined.split(" ")[0]);
+    expect(screen.getByText("Decline reason: Not aligned with roadmap")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
   });

@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import {
-  PlanRevisionDiff,
-  buildRevisionPatch,
-} from "../src/views/PlanRevisionDiff";
+import { PlanRevisionDiff, buildRevisionPatch } from "../src/views/PlanRevisionDiff";
 import { bridge } from "../src/api/bridge";
 
 vi.mock("@spacecorps/components-storybook/tendril", async (importOriginal) => {
@@ -60,7 +57,7 @@ describe("buildRevisionPatch", () => {
       1,
       2,
       "# Plan\n",
-      "# Plan\n\n## Solution\n\nStep one.\nStep two.\n"
+      "# Plan\n\n## Solution\n\nStep one.\nStep two.\n",
     );
 
     expect(patch).toContain("+## Solution");
@@ -81,15 +78,11 @@ describe("PlanRevisionDiff", () => {
   it("fetches the two selected revisions and renders their real diff", async () => {
     const getRevision = vi
       .spyOn(bridge, "getRevision")
-      .mockImplementation(async (_id, number) =>
-        number === 1 ? REV_1 : REV_2
-      );
+      .mockImplementation(async (_id, number) => (number === 1 ? REV_1 : REV_2));
 
     render(<PlanRevisionDiff planId="00021" revisionCount={2} />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId("plan-diff-view")).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByTestId("plan-diff-view")).toBeInTheDocument());
 
     expect(getRevision).toHaveBeenCalledWith("00021", 1);
     expect(getRevision).toHaveBeenCalledWith("00021", 2);
@@ -103,9 +96,7 @@ describe("PlanRevisionDiff", () => {
   });
 
   it("bounds both selectors by revisionCount", async () => {
-    const getRevision = vi
-      .spyOn(bridge, "getRevision")
-      .mockResolvedValue(REV_1);
+    const getRevision = vi.spyOn(bridge, "getRevision").mockResolvedValue(REV_1);
 
     render(<PlanRevisionDiff planId="00021" revisionCount={3} />);
     await waitFor(() => expect(getRevision).toHaveBeenCalledTimes(2));
@@ -113,25 +104,15 @@ describe("PlanRevisionDiff", () => {
     const oldSelect = screen.getByLabelText("Old revision") as HTMLSelectElement;
     const newSelect = screen.getByLabelText("New revision") as HTMLSelectElement;
 
-    expect(Array.from(oldSelect.options).map((o) => o.value)).toEqual([
-      "1",
-      "2",
-      "3",
-    ]);
-    expect(Array.from(newSelect.options).map((o) => o.value)).toEqual([
-      "1",
-      "2",
-      "3",
-    ]);
+    expect(Array.from(oldSelect.options).map((o) => o.value)).toEqual(["1", "2", "3"]);
+    expect(Array.from(newSelect.options).map((o) => o.value)).toEqual(["1", "2", "3"]);
     // Defaults compare the newest revision against the one before it.
     expect(oldSelect.value).toBe("2");
     expect(newSelect.value).toBe("3");
   });
 
   it("refetches when the operator picks a different revision", async () => {
-    const getRevision = vi
-      .spyOn(bridge, "getRevision")
-      .mockResolvedValue(REV_1);
+    const getRevision = vi.spyOn(bridge, "getRevision").mockResolvedValue(REV_1);
 
     render(<PlanRevisionDiff planId="00021" revisionCount={3} />);
     await waitFor(() => expect(getRevision).toHaveBeenCalledTimes(2));
@@ -140,9 +121,7 @@ describe("PlanRevisionDiff", () => {
       target: { value: "1" },
     });
 
-    await waitFor(() =>
-      expect(getRevision).toHaveBeenCalledWith("00021", 1)
-    );
+    await waitFor(() => expect(getRevision).toHaveBeenCalledWith("00021", 1));
   });
 
   it("shows an empty state instead of a diff for a single-revision plan", () => {
@@ -165,9 +144,7 @@ describe("PlanRevisionDiff", () => {
     render(<PlanRevisionDiff planId="00021" revisionCount={2} />);
 
     await waitFor(() =>
-      expect(screen.getByTestId("diff-error")).toHaveTextContent(
-        /Failed to get revision/
-      )
+      expect(screen.getByTestId("diff-error")).toHaveTextContent(/Failed to get revision/),
     );
     expect(screen.queryByTestId("plan-diff-view")).not.toBeInTheDocument();
   });
@@ -177,8 +154,6 @@ describe("PlanRevisionDiff", () => {
 
     render(<PlanRevisionDiff planId="00021" revisionCount={2} />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId("diff-identical")).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByTestId("diff-identical")).toBeInTheDocument());
   });
 });

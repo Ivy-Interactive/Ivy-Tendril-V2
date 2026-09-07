@@ -100,8 +100,11 @@ gh secret set COMPONENTS_STORYBOOK_TOKEN --repo SpaceCorps/Tendril-App
 ## Tests
 
 ```sh
-pnpm test                  # vitest
-pnpm exec tsc --noEmit     # typecheck, including tests/
+vp check                   # run format, lint, and type checks
+vp lint                    # oxlint check
+vp fmt --check             # oxfmt check
+vp fmt                     # format files
+vp test                    # run tests
 cd src-tauri && cargo test
 ```
 

@@ -56,7 +56,7 @@ export const bridge = {
     id: string,
     field: string,
     value: string,
-    allowFailed?: boolean
+    allowFailed?: boolean,
   ): Promise<void> {
     return invoke<void>("cmd_update_plan_field", {
       id,
@@ -75,10 +75,7 @@ export const bridge = {
   },
 
   /** Markdown of one `<planFolder>/Verification/<name>.md` report. */
-  async getVerificationReport(
-    planId: string,
-    name: string
-  ): Promise<VerificationReport> {
+  async getVerificationReport(planId: string, name: string): Promise<VerificationReport> {
     return invoke<VerificationReport>("cmd_get_verification_report", {
       planId,
       name,
@@ -95,7 +92,7 @@ export const bridge = {
   async setVerificationStatus(
     planId: string,
     name: string,
-    status: VerificationStatus
+    status: VerificationStatus,
   ): Promise<void> {
     return invoke<void>("cmd_set_verification_status", {
       planId,
@@ -112,7 +109,7 @@ export const bridge = {
     planId: string,
     title: string,
     state: RecommendationState,
-    declineReason?: string
+    declineReason?: string,
   ): Promise<void> {
     return invoke<void>("cmd_set_recommendation_state", {
       planId,
@@ -158,7 +155,7 @@ export const bridge = {
     repo?: string,
     category?: string,
     page?: number,
-    perPage?: number
+    perPage?: number,
   ): Promise<GitHubIssuesPage> {
     return invoke<GitHubIssuesPage>("cmd_list_github_issues", {
       repo,

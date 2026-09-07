@@ -15,7 +15,7 @@ export function buildRevisionPatch(
   oldRevision: number,
   newRevision: number,
   oldContent: string,
-  newContent: string
+  newContent: string,
 ): string {
   return createTwoFilesPatch(
     `plan.md (revision ${oldRevision})`,
@@ -24,7 +24,7 @@ export function buildRevisionPatch(
     newContent,
     undefined,
     undefined,
-    { context: 3 }
+    { context: 3 },
   );
 }
 
@@ -32,20 +32,15 @@ export function buildRevisionPatch(
  * Diff View tab: compares two real revisions fetched from the service, rather
  * than the hand-written patch this tab used to render.
  */
-export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({
-  planId,
-  revisionCount,
-}) => {
+export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revisionCount }) => {
   const revisions = useMemo(
     () => Array.from({ length: revisionCount }, (_, i) => i + 1),
-    [revisionCount]
+    [revisionCount],
   );
 
   const [oldRevision, setOldRevision] = useState(Math.max(1, revisionCount - 1));
   const [newRevision, setNewRevision] = useState(Math.max(1, revisionCount));
-  const [contents, setContents] = useState<{ old: string; new: string } | null>(
-    null
-  );
+  const [contents, setContents] = useState<{ old: string; new: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,10 +57,7 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({
     setIsLoading(true);
     setError(null);
 
-    Promise.all([
-      bridge.getRevision(planId, oldRevision),
-      bridge.getRevision(planId, newRevision),
-    ])
+    Promise.all([bridge.getRevision(planId, oldRevision), bridge.getRevision(planId, newRevision)])
       .then(([oldContent, newContent]) => {
         if (cancelled) return;
         setContents({ old: oldContent, new: newContent });
@@ -86,8 +78,8 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({
   if (revisionCount < 2) {
     return (
       <p data-testid="diff-single-revision" className="text-sm text-slate-400">
-        This plan has only one revision, so there is nothing to compare yet. A
-        diff appears once CreatePlan or RetryPlan writes a new revision.
+        This plan has only one revision, so there is nothing to compare yet. A diff appears once
+        CreatePlan or RetryPlan writes a new revision.
       </p>
     );
   }

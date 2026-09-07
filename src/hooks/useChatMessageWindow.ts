@@ -43,7 +43,7 @@ export const CHAT_VIRTUALIZATION_MIN_MESSAGES = 40;
  * to decide which rows are in view.
  */
 export function useChatMessageWindow(
-  options: UseChatMessageWindowOptions
+  options: UseChatMessageWindowOptions,
 ): UseChatMessageWindowReturn {
   const {
     count,
@@ -164,7 +164,7 @@ export function useChatMessageWindow(
       }
       return Math.min(lo, Math.max(count - 1, 0));
     },
-    [count, prefixSums]
+    [count, prefixSums],
   );
 
   const items = useMemo<ChatWindowItem[]>(() => {
@@ -284,7 +284,7 @@ export function useChatMessageWindow(
       prefixSums,
       clientHeight,
       totalSize,
-    ]
+    ],
   );
 
   if (!enabled) {

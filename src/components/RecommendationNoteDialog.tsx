@@ -9,9 +9,7 @@ export interface RecommendationNoteDialogProps {
   onSubmit: (note?: string) => void | Promise<void>;
 }
 
-export const RecommendationNoteDialog: React.FC<
-  RecommendationNoteDialogProps
-> = ({
+export const RecommendationNoteDialog: React.FC<RecommendationNoteDialogProps> = ({
   isOpen,
   title,
   action,
@@ -46,9 +44,7 @@ export const RecommendationNoteDialog: React.FC<
     >
       <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
         <h3 className="text-sm font-semibold text-slate-100">
-          {action === "Accept"
-            ? "Accept Recommendation"
-            : "Decline Recommendation"}
+          {action === "Accept" ? "Accept Recommendation" : "Decline Recommendation"}
         </h3>
         <p className="mt-1 text-xs text-slate-400">{title}</p>
         <div className="mt-4">
@@ -56,22 +52,16 @@ export const RecommendationNoteDialog: React.FC<
             htmlFor="rec-dialog-note"
             className="block text-xs font-medium text-slate-300 mb-1"
           >
-            {action === "Accept"
-              ? "Optional Operator Note:"
-              : "Decline Reason:"}
+            {action === "Accept" ? "Optional Operator Note:" : "Decline Reason:"}
           </label>
           <textarea
             id="rec-dialog-note"
-            aria-label={
-              action === "Accept" ? "Optional note" : "Decline reason"
-            }
+            aria-label={action === "Accept" ? "Optional note" : "Decline reason"}
             rows={3}
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
             placeholder={
-              action === "Accept"
-                ? "Enter optional notes..."
-                : "Enter reason for declining..."
+              action === "Accept" ? "Enter optional notes..." : "Enter reason for declining..."
             }
             className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
           />

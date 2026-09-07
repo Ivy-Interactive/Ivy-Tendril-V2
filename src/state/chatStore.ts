@@ -20,8 +20,8 @@ function loadStoredInProgressAnswers(): Record<string, InProgressQuestionAnswers
       typeof sessionStorage !== "undefined"
         ? sessionStorage
         : typeof window !== "undefined"
-        ? window.sessionStorage
-        : null;
+          ? window.sessionStorage
+          : null;
     if (storage) {
       const raw = storage.getItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
       if (raw) {
@@ -40,8 +40,8 @@ function saveStoredInProgressAnswers(data: Record<string, InProgressQuestionAnsw
       typeof sessionStorage !== "undefined"
         ? sessionStorage
         : typeof window !== "undefined"
-        ? window.sessionStorage
-        : null;
+          ? window.sessionStorage
+          : null;
     if (storage) {
       if (Object.keys(data).length === 0) {
         storage.removeItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
@@ -276,7 +276,7 @@ class ChatStore {
 
   public async createSession(
     title?: string,
-    args?: { agentId?: string; modelId?: string; effort?: string }
+    args?: { agentId?: string; modelId?: string; effort?: string },
   ): Promise<ChatSession> {
     try {
       const newSession = await chatApi.createSession({
@@ -353,7 +353,7 @@ class ChatStore {
 
   public async sendMessage(
     prompt: string,
-    options?: { enqueue?: boolean; attachments?: ChatAttachment[]; role?: string }
+    options?: { enqueue?: boolean; attachments?: ChatAttachment[]; role?: string },
   ): Promise<void> {
     if (!prompt.trim() && (!options?.attachments || options.attachments.length === 0)) return;
 
@@ -414,16 +414,16 @@ class ChatStore {
   public setInProgressAnswer(
     messageId: string,
     questionId: string,
-    answer: string | string[] | undefined | null
+    answer: string | string[] | undefined | null,
   ): void {
     const values: string[] =
       answer === undefined || answer === null
         ? []
         : Array.isArray(answer)
-        ? answer.map(String)
-        : answer === ""
-        ? []
-        : [String(answer)];
+          ? answer.map(String)
+          : answer === ""
+            ? []
+            : [String(answer)];
 
     if (values.length === 0) {
       if (this.state.inProgressAnswers[messageId]) {
@@ -466,7 +466,7 @@ class ChatStore {
   public async submitAnswer(
     messageId: string,
     questionId: string,
-    answer: string | string[] | undefined | null
+    answer: string | string[] | undefined | null,
   ): Promise<void> {
     if (!this.state.activeSessionId) return;
 
@@ -477,10 +477,10 @@ class ChatStore {
       answer === undefined || answer === null
         ? []
         : Array.isArray(answer)
-        ? answer.map(String)
-        : answer === ""
-        ? []
-        : [String(answer)];
+          ? answer.map(String)
+          : answer === ""
+            ? []
+            : [String(answer)];
 
     const answersPayload: Record<string, string[]> = {
       [questionId]: values,
@@ -505,7 +505,7 @@ class ChatStore {
       const updatedSession = await chatApi.answerQuestions(
         this.state.activeSessionId,
         messageId,
-        answersPayload
+        answersPayload,
       );
 
       if (this.state.activeSessionId === updatedSession.id) {
