@@ -473,6 +473,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                           isCopied={copiedMessageId === msg.id}
                           onCopy={handleCopyMessage}
                           onCreatePlan={handleCreatePlanFromMessage}
+                          inProgressAnswers={storeState.inProgressAnswers[msg.id]}
                         />
                       </div>
                     );
@@ -486,6 +487,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                       isCopied={copiedMessageId === msg.id}
                       onCopy={handleCopyMessage}
                       onCreatePlan={handleCreatePlanFromMessage}
+                      inProgressAnswers={storeState.inProgressAnswers[msg.id]}
                     />
                   </div>
                 ))

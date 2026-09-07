@@ -17,15 +17,34 @@ const IN_PROGRESS_ANSWERS_STORAGE_KEY = "tendril:chat:in_progress_answers";
 function loadStoredInProgressAnswers(): Record<string, InProgressQuestionAnswers> {
   try {
     const storage =
-      typeof sessionStorage !== "undefined"
-        ? sessionStorage
+      typeof localStorage !== "undefined"
+        ? localStorage
         : typeof window !== "undefined"
-          ? window.sessionStorage
+          ? window.localStorage
           : null;
     if (storage) {
       const raw = storage.getItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
       if (raw) {
         return JSON.parse(raw);
+      }
+    }
+
+    // Backward compatibility: check sessionStorage for legacy draft answers
+    const legacyStorage =
+      typeof sessionStorage !== "undefined"
+        ? sessionStorage
+        : typeof window !== "undefined"
+          ? window.sessionStorage
+          : null;
+    if (legacyStorage) {
+      const legacyRaw = legacyStorage.getItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
+      if (legacyRaw) {
+        const parsed = JSON.parse(legacyRaw);
+        if (storage) {
+          storage.setItem(IN_PROGRESS_ANSWERS_STORAGE_KEY, legacyRaw);
+        }
+        legacyStorage.removeItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
+        return parsed;
       }
     }
   } catch {
@@ -37,10 +56,10 @@ function loadStoredInProgressAnswers(): Record<string, InProgressQuestionAnswers
 function saveStoredInProgressAnswers(data: Record<string, InProgressQuestionAnswers>): void {
   try {
     const storage =
-      typeof sessionStorage !== "undefined"
-        ? sessionStorage
+      typeof localStorage !== "undefined"
+        ? localStorage
         : typeof window !== "undefined"
-          ? window.sessionStorage
+          ? window.localStorage
           : null;
     if (storage) {
       if (Object.keys(data).length === 0) {
@@ -68,6 +87,39 @@ class ChatStore {
 
   private listeners: Set<() => void> = new Set();
   private eventUnsubscribe: EventUnsubscribe | null = null;
+  private storageListenerAttached = false;
+
+  constructor() {
+    if (typeof window !== "undefined") {
+      this.attachStorageListener();
+    }
+  }
+
+  private handleStorageEvent = (event: StorageEvent): void => {
+    if (event.key === IN_PROGRESS_ANSWERS_STORAGE_KEY) {
+      try {
+        const next = event.newValue ? JSON.parse(event.newValue) : {};
+        this.state.inProgressAnswers = next;
+        this.notify();
+      } catch {
+        // Ignore malformed external writes
+      }
+    }
+  };
+
+  private attachStorageListener(): void {
+    if (!this.storageListenerAttached && typeof window !== "undefined") {
+      window.addEventListener("storage", this.handleStorageEvent);
+      this.storageListenerAttached = true;
+    }
+  }
+
+  private detachStorageListener(): void {
+    if (this.storageListenerAttached && typeof window !== "undefined") {
+      window.removeEventListener("storage", this.handleStorageEvent);
+      this.storageListenerAttached = false;
+    }
+  }
 
   public getState(): ChatState {
     return this.state;
@@ -84,6 +136,7 @@ class ChatStore {
 
   public async init(): Promise<void> {
     this.state.inProgressAnswers = loadStoredInProgressAnswers();
+    this.attachStorageListener();
     if (!this.eventUnsubscribe) {
       try {
         this.eventUnsubscribe = await onChatEvent((event) => {
@@ -97,6 +150,7 @@ class ChatStore {
   }
 
   public destroy(): void {
+    this.detachStorageListener();
     if (this.eventUnsubscribe) {
       this.eventUnsubscribe();
       this.eventUnsubscribe = null;
@@ -115,6 +169,17 @@ class ChatStore {
       inProgressAnswers: {},
     };
     saveStoredInProgressAnswers({});
+    try {
+      const legacyStorage =
+        typeof sessionStorage !== "undefined"
+          ? sessionStorage
+          : typeof window !== "undefined"
+            ? window.sessionStorage
+            : null;
+      legacyStorage?.removeItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
     this.notify();
   }
 
@@ -425,19 +490,33 @@ class ChatStore {
             ? []
             : [String(answer)];
 
+    const currentMsgAnswers = this.state.inProgressAnswers[messageId] || {};
+    let updatedMsgAnswers: InProgressQuestionAnswers | undefined;
+
     if (values.length === 0) {
-      if (this.state.inProgressAnswers[messageId]) {
-        delete this.state.inProgressAnswers[messageId][questionId];
-        if (Object.keys(this.state.inProgressAnswers[messageId]).length === 0) {
-          delete this.state.inProgressAnswers[messageId];
+      if (currentMsgAnswers[questionId]) {
+        const next = { ...currentMsgAnswers };
+        delete next[questionId];
+        if (Object.keys(next).length > 0) {
+          updatedMsgAnswers = next;
         }
+      } else if (Object.keys(currentMsgAnswers).length > 0) {
+        updatedMsgAnswers = currentMsgAnswers;
       }
     } else {
-      if (!this.state.inProgressAnswers[messageId]) {
-        this.state.inProgressAnswers[messageId] = {};
-      }
-      this.state.inProgressAnswers[messageId][questionId] = values;
+      updatedMsgAnswers = {
+        ...currentMsgAnswers,
+        [questionId]: values,
+      };
     }
+
+    const nextInProgress = { ...this.state.inProgressAnswers };
+    if (updatedMsgAnswers) {
+      nextInProgress[messageId] = updatedMsgAnswers;
+    } else {
+      delete nextInProgress[messageId];
+    }
+    this.state.inProgressAnswers = nextInProgress;
 
     saveStoredInProgressAnswers(this.state.inProgressAnswers);
     this.notify();
@@ -450,14 +529,20 @@ class ChatStore {
   public clearInProgressAnswers(messageId: string, questionId?: string): void {
     if (!this.state.inProgressAnswers[messageId]) return;
 
+    const nextInProgress = { ...this.state.inProgressAnswers };
     if (questionId) {
-      delete this.state.inProgressAnswers[messageId][questionId];
-      if (Object.keys(this.state.inProgressAnswers[messageId]).length === 0) {
-        delete this.state.inProgressAnswers[messageId];
+      const nextMsg = { ...nextInProgress[messageId] };
+      delete nextMsg[questionId];
+      if (Object.keys(nextMsg).length === 0) {
+        delete nextInProgress[messageId];
+      } else {
+        nextInProgress[messageId] = nextMsg;
       }
     } else {
-      delete this.state.inProgressAnswers[messageId];
+      delete nextInProgress[messageId];
     }
+
+    this.state.inProgressAnswers = nextInProgress;
 
     saveStoredInProgressAnswers(this.state.inProgressAnswers);
     this.notify();
