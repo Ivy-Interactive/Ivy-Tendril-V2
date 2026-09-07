@@ -1048,6 +1048,66 @@ verifications: []
         .unwrap();
     assert_eq!(get_ci_resp.status(), reqwest::StatusCode::OK);
 
+    // 4a. PUT /api/verifications/:name with a new prompt returns 200 and the updated body
+    let put_resp = client
+        .put(format!("{}/api/verifications/CustomCheck", base_url))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({ "prompt": "Run updated verification script" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put_resp.status(), reqwest::StatusCode::OK);
+    let put_json: serde_json::Value = put_resp.json().await.unwrap();
+    assert_eq!(put_json["name"], "CustomCheck");
+    assert_eq!(put_json["prompt"], "Run updated verification script");
+
+    // A follow-up GET returns the new prompt
+    let get_after_put = client
+        .get(format!("{}/api/verifications/CustomCheck", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_after_put.status(), reqwest::StatusCode::OK);
+    let get_after_put_json: serde_json::Value = get_after_put.json().await.unwrap();
+    assert_eq!(
+        get_after_put_json["prompt"],
+        "Run updated verification script"
+    );
+
+    // PUT with a lowercase path name succeeds, and the stored name keeps its original casing
+    let put_ci_resp = client
+        .put(format!("{}/api/verifications/customcheck", base_url))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({ "prompt": "Run case-insensitive update" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put_ci_resp.status(), reqwest::StatusCode::OK);
+    let put_ci_json: serde_json::Value = put_ci_resp.json().await.unwrap();
+    assert_eq!(put_ci_json["name"], "CustomCheck");
+    assert_eq!(put_ci_json["prompt"], "Run case-insensitive update");
+
+    // PUT /api/verifications/DoesNotExist returns 404
+    let put_missing = client
+        .put(format!("{}/api/verifications/DoesNotExist", base_url))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({ "prompt": "irrelevant" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put_missing.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // PUT with a body name that doesn't match the path name returns 400
+    let put_rename = client
+        .put(format!("{}/api/verifications/CustomCheck", base_url))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({ "name": "Other", "prompt": "x" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put_rename.status(), reqwest::StatusCode::BAD_REQUEST);
+
     // 5. Query non-existent verification GET /api/verifications/DoesNotExist and assert 404 Not Found
     let get_missing = client
         .get(format!("{}/api/verifications/DoesNotExist", base_url))

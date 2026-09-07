@@ -108,7 +108,25 @@ async fn test_verification_cli_filesystem_fallback() {
     .await
     .expect("Get verification via filesystem");
 
-    // 4. Remove verification
+    // 4. Set (update) verification prompt
+    handle_verification_command(
+        VerificationCommands::Set {
+            name: "MyLint".to_string(),
+            prompt: "cargo clippy --all-targets -- -D warnings".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Set verification via filesystem");
+
+    let cfg_after_set = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg_after_set.verifications.len(), 1);
+    assert_eq!(
+        cfg_after_set.verifications[0].prompt,
+        "cargo clippy --all-targets -- -D warnings"
+    );
+
+    // 5. Remove verification
     handle_verification_command(
         VerificationCommands::Remove {
             name: "MyLint".to_string(),
@@ -171,7 +189,22 @@ async fn test_verification_cli_routed_through_daemon() {
     .await
     .expect("Get verification via daemon");
 
-    // 4. Remove verification through daemon
+    // 4. Set (update) verification prompt through daemon
+    handle_verification_command(
+        VerificationCommands::Set {
+            name: "DaemonCheck".to_string(),
+            prompt: "pytest -vv".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Set verification via daemon");
+
+    let cfg_after_set = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg_after_set.verifications.len(), 1);
+    assert_eq!(cfg_after_set.verifications[0].prompt, "pytest -vv");
+
+    // 5. Remove verification through daemon
     handle_verification_command(
         VerificationCommands::Remove {
             name: "DaemonCheck".to_string(),
@@ -213,6 +246,20 @@ async fn test_verification_cli_error_handling() {
     .unwrap_err();
     assert_eq!(
         err_daemon_rem.to_string(),
+        "Verification 'NonExistent' not found"
+    );
+
+    let err_daemon_set = handle_verification_command(
+        VerificationCommands::Set {
+            name: "NonExistent".to_string(),
+            prompt: "irrelevant".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        err_daemon_set.to_string(),
         "Verification 'NonExistent' not found"
     );
 
@@ -274,6 +321,20 @@ async fn test_verification_cli_error_handling() {
         "Verification 'NonExistent' not found"
     );
 
+    let err_fs_set = handle_verification_command(
+        VerificationCommands::Set {
+            name: "NonExistent".to_string(),
+            prompt: "irrelevant".to_string(),
+        },
+        &fs_home,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(
+        err_fs_set.to_string(),
+        "Verification 'NonExistent' not found"
+    );
+
     handle_verification_command(
         VerificationCommands::Add {
             name: "DupVer".to_string(),
@@ -302,6 +363,7 @@ async fn test_verification_cli_error_handling() {
     assert_eq!(err_daemon_get.to_string(), err_fs_get.to_string());
     assert_eq!(err_daemon_rem.to_string(), err_fs_rem.to_string());
     assert_eq!(err_daemon_dup.to_string(), err_fs_dup.to_string());
+    assert_eq!(err_daemon_set.to_string(), err_fs_set.to_string());
 
     let _ = std::fs::remove_dir_all(&fs_home);
 }
