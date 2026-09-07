@@ -6,6 +6,10 @@ const meta: Meta<typeof ChatMessageList> = {
   title: "Chat/ChatMessageList",
   component: ChatMessageList,
   tags: ["autodocs"],
+  argTypes: {
+    enableAutoScroll: { control: "boolean" },
+    showScrollButton: { control: "boolean" },
+  },
 };
 
 export default meta;
