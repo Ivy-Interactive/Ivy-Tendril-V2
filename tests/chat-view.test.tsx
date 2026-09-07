@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { ChatView } from "../src/views/ChatView";
 import { chatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
 import type { ChatSession } from "../src/types/chat";
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(),
+}));
 
 const scrollIntoViewMock = vi.fn();
 window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
@@ -50,6 +55,7 @@ questions:
   beforeEach(() => {
     chatStore.resetForTesting();
     vi.restoreAllMocks();
+    vi.mocked(open).mockReset();
     scrollIntoViewMock.mockClear();
     window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
   });
@@ -509,5 +515,88 @@ questions:
     fireEvent.click(sendBtn);
 
     expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
+
+  it("invokes native dialog open() and adds attachments when clicking attach button", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    vi.mocked(open).mockResolvedValue([
+      "/Users/user/project/file1.ts",
+      "/Users/user/project/docs/spec.md",
+    ]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+    });
+
+    const attachBtn = screen.getByTitle("Attach files");
+    fireEvent.click(attachBtn);
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalledWith({
+        multiple: true,
+        title: "Select Files to Attach",
+      });
+      expect(screen.getByText("file1.ts")).toBeInTheDocument();
+      expect(screen.getByText("spec.md")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("file1.ts").closest("div")).toHaveAttribute(
+      "title",
+      "/Users/user/project/file1.ts"
+    );
+  });
+
+  it("does not add attachments or trigger file input when native dialog is cancelled", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    vi.mocked(open).mockResolvedValue(null);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+    });
+
+    const fileInput = screen.getByTestId("file-upload-input");
+    const clickSpy = vi.spyOn(fileInput, "click");
+
+    const attachBtn = screen.getByTitle("Attach files");
+    fireEvent.click(attachBtn);
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalled();
+    });
+
+    expect(clickSpy).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("composer-attachment-chips")).not.toBeInTheDocument();
+  });
+
+  it("falls back to standard file input when native dialog open() throws", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    vi.mocked(open).mockRejectedValue(new Error("Native dialog error"));
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+    });
+
+    const fileInput = screen.getByTestId("file-upload-input");
+    const clickSpy = vi.spyOn(fileInput, "click");
+
+    const attachBtn = screen.getByTitle("Attach files");
+    fireEvent.click(attachBtn);
+
+    await waitFor(() => {
+      expect(open).toHaveBeenCalled();
+      expect(clickSpy).toHaveBeenCalled();
+    });
   });
 });
