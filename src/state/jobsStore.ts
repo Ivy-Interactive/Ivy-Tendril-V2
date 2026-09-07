@@ -1,5 +1,5 @@
 import { bridge } from "../api/bridge";
-import type { Job, StartJobArgs, StartJobResponse } from "../types/api";
+import type { Job, JobDetail, StartJobArgs, StartJobResponse } from "../types/api";
 
 export interface StreamEventItem {
   id: string;
@@ -11,6 +11,9 @@ export interface StreamEventItem {
 
 export interface JobsState {
   jobs: Job[];
+  /** Details fetched per job, keyed by job id. Carries the fields the list
+   *  endpoint omits — notably `reportedFailureReason`. */
+  jobDetails: Record<string, JobDetail>;
   activeSessions: Record<string, StreamEventItem[]>;
   isLoading: boolean;
   error: string | null;
@@ -19,6 +22,7 @@ export interface JobsState {
 class JobsStore {
   private state: JobsState = {
     jobs: [],
+    jobDetails: {},
     activeSessions: {},
     isLoading: false,
     error: null,
@@ -56,6 +60,18 @@ class JobsStore {
       this.notify();
       throw err;
     }
+  }
+
+  /** Fetch a single job's detail so the session view can show why it failed. */
+  public async fetchJobDetail(id: string): Promise<JobDetail> {
+    const detail = await bridge.getJob(id);
+    this.state.jobDetails = { ...this.state.jobDetails, [id]: detail };
+    this.notify();
+    return detail;
+  }
+
+  public getJobDetail(id: string): JobDetail | undefined {
+    return this.state.jobDetails[id];
   }
 
   public async startJob(args: StartJobArgs): Promise<StartJobResponse> {

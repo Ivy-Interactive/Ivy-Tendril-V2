@@ -1,18 +1,18 @@
 import React, { useState } from "react";
-import {
-  PlanMarkdown,
-  PlanDiffView,
-  SortableVerificationList,
-} from "components-storybook/tendril";
-import type { PlanDetail, PlanSummary } from "../types/api";
+import { PlanMarkdown } from "components-storybook/tendril";
+import { describeBridgeError, type PlanDetail, type PlanSummary } from "../types/api";
 import { PlanActionsController } from "../controllers/plan_actions";
+import { PlanRevisionDiff } from "./PlanRevisionDiff";
+import { PlanVerifications } from "./PlanVerifications";
 
 interface PlanDetailViewProps {
   plan: PlanDetail;
   allPlans?: PlanSummary[];
-  onExecute?: (planId: string) => void;
-  onRetry?: (planId: string) => void;
-  onCreatePr?: (planId: string) => void;
+  /** Lifecycle handlers reject when the service refuses the job; the rejection
+   *  is surfaced in the action error banner rather than swallowed. */
+  onExecute?: (planId: string) => void | Promise<void>;
+  onRetry?: (planId: string) => void | Promise<void>;
+  onCreatePr?: (planId: string) => void | Promise<void>;
   onBack?: () => void;
 }
 
@@ -26,28 +26,40 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<"spec" | "diff" | "verifications" | "metadata">("spec");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   // Gating checks
   const canExec = PlanActionsController.canExecute(plan, allPlans);
   const canPr = PlanActionsController.canCreatePr(plan);
   const canRetryPlan = PlanActionsController.canRetry(plan);
 
-  const verificationItems = (plan.verifications || []).map((v) => ({
-    name: v.name,
-    enabled: v.status !== "Skipped",
-    required: true,
-  }));
-
   const noop = () => {};
 
-  const handleExecute = () => {
+  /**
+   * Run a lifecycle action, reporting any rejection in the banner. Every one of
+   * these ends up starting a promptware job on the service, which can refuse
+   * (dependency not met, plan in the wrong state, daemon down) — so the
+   * rejection is the operator's only signal that nothing happened.
+   */
+  const runAction = async (
+    label: string,
+    action: ((planId: string) => void | Promise<void>) | undefined
+  ) => {
+    if (!action) return;
+    setActionError(null);
+    setPendingAction(label);
     try {
-      setActionError(null);
-      if (onExecute) onExecute(plan.id);
+      await action(plan.id);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : String(err));
+      setActionError(`${label} failed: ${describeBridgeError(err)}`);
+    } finally {
+      setPendingAction(null);
     }
   };
+
+  const handleExecute = () => runAction("Execute Plan", onExecute);
+  const handleRetry = () => runAction("Retry Plan", onRetry);
+  const handleCreatePr = () => runAction("Create PR", onCreatePr);
 
   return (
     <div className="space-y-6" data-testid="plan-detail-view">
@@ -81,29 +93,29 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             <>
               <button
                 type="button"
-                disabled={!canPr.allowed}
+                disabled={!canPr.allowed || pendingAction !== null}
                 title={canPr.reason}
-                onClick={() => onCreatePr && onCreatePr(plan.id)}
+                onClick={handleCreatePr}
                 className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
                   canPr.allowed
                     ? "bg-emerald-600 text-white hover:bg-emerald-500"
                     : "cursor-not-allowed bg-slate-800 text-slate-500"
                 }`}
               >
-                Create PR
+                {pendingAction === "Create PR" ? "Starting..." : "Create PR"}
               </button>
               <button
                 type="button"
-                disabled={!canRetryPlan.allowed}
+                disabled={!canRetryPlan.allowed || pendingAction !== null}
                 title={canRetryPlan.reason}
-                onClick={() => onRetry && onRetry(plan.id)}
+                onClick={handleRetry}
                 className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
                   canRetryPlan.allowed
                     ? "bg-amber-600 text-white hover:bg-amber-500"
                     : "cursor-not-allowed bg-slate-800 text-slate-500"
                 }`}
               >
-                Retry Plan
+                {pendingAction === "Retry Plan" ? "Starting..." : "Retry Plan"}
               </button>
             </>
           )}
@@ -111,7 +123,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           {plan.state !== "Review" && plan.state !== "Completed" && (
             <button
               type="button"
-              disabled={!canExec.allowed}
+              disabled={!canExec.allowed || pendingAction !== null}
               title={canExec.reason}
               onClick={handleExecute}
               className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
@@ -120,14 +132,18 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                   : "cursor-not-allowed bg-slate-800 text-slate-500"
               }`}
             >
-              Execute Plan
+              {pendingAction === "Execute Plan" ? "Starting..." : "Execute Plan"}
             </button>
           )}
         </div>
       </div>
 
       {actionError && (
-        <div className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300">
+        <div
+          role="alert"
+          data-testid="plan-action-error"
+          className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+        >
           {actionError}
         </div>
       )}
@@ -194,10 +210,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 
         {activeSubTab === "diff" && (
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6">
-            <PlanDiffView
-              id="plan-diff"
-              diff={`--- a/plan.md\n+++ b/plan.md\n@@ -1,3 +1,3 @@\n-# ${plan.title}\n+# ${plan.title} (Updated)\n`}
-              viewType="Unified"
+            <PlanRevisionDiff
+              planId={plan.id}
+              revisionCount={plan.revisionCount ?? 0}
             />
           </div>
         )}
@@ -205,10 +220,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         {activeSubTab === "verifications" && (
           <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6">
             <h3 className="text-sm font-semibold text-slate-200 mb-3">Plan Verifications</h3>
-            <SortableVerificationList
-              id="verification-list"
-              itemsJson={JSON.stringify(verificationItems)}
-              eventHandler={noop}
+            <PlanVerifications
+              planId={plan.id}
+              verifications={plan.verifications || []}
             />
           </div>
         )}

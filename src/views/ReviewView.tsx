@@ -1,13 +1,19 @@
-import React, { useState } from "react";
-import type { PlanSummary, RecommendationItem } from "../types/api";
+import React, { useEffect, useState } from "react";
+import {
+  describeBridgeError,
+  type PlanSummary,
+  type RecommendationItem,
+  type RecommendationState,
+} from "../types/api";
+import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
 import { EmptyState } from "../components/EmptyState";
 
 interface ReviewViewProps {
   plans: PlanSummary[];
   onSelectPlan: (planId: string) => void;
-  onCreatePr: (planId: string) => void;
-  onRetry: (planId: string, feedback: string) => void;
+  onCreatePr: (planId: string) => void | Promise<void>;
+  onRetry: (planId: string, feedback: string) => void | Promise<void>;
 }
 
 export const ReviewView: React.FC<ReviewViewProps> = ({
@@ -25,39 +31,89 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
   const selectedPlan = reviewPlans.find((p) => p.id === selectedPlanId);
 
-  // Mock sample recommendation items for the review view
-  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([
-    {
-      title: "Add Unit Test Coverage for Edge Cases",
-      description: "Consider adding explicit assertions for empty payload responses in downstream clients.",
-      impact: "Medium",
-      state: "Pending",
-    },
-    {
-      title: "Extract Common Helper Function",
-      description: "The urlencoding logic can be generalized into a shared utility function.",
-      impact: "Small",
-      state: "Pending",
-    },
-  ]);
+  // Recommendations come from the selected plan's plan.yaml via the bridge.
+  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
+  const [recsError, setRecsError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const handleAcceptRec = (title: string) => {
+  useEffect(() => {
+    if (!selectedPlanId) {
+      setRecommendations([]);
+      return;
+    }
+
+    let cancelled = false;
+    setRecsError(null);
+
+    bridge
+      .listRecommendations(selectedPlanId)
+      .then((recs) => {
+        if (!cancelled) setRecommendations(recs);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setRecommendations([]);
+        setRecsError(describeBridgeError(err));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlanId]);
+
+  /**
+   * Apply a triage decision optimistically, then persist it. On failure the
+   * previous list is restored — the operator must not be left believing a
+   * decision was recorded in plan.yaml when it was not.
+   */
+  const setRecState = async (
+    title: string,
+    state: RecommendationState,
+    declineReason?: string
+  ) => {
+    if (!selectedPlanId) return;
+
+    const previous = recommendations;
     setRecommendations((prev) =>
-      prev.map((r) => (r.title === title ? { ...r, state: "Accepted" } : r))
+      prev.map((r) => (r.title === title ? { ...r, state, declineReason } : r))
     );
+    setActionError(null);
+
+    try {
+      await bridge.setRecommendationState(
+        selectedPlanId,
+        title,
+        state,
+        declineReason
+      );
+    } catch (err) {
+      setRecommendations(previous);
+      setActionError(
+        `Could not mark "${title}" as ${state}: ${describeBridgeError(err)}`
+      );
+    }
   };
 
-  const handleDeclineRec = (title: string) => {
-    setRecommendations((prev) =>
-      prev.map((r) => (r.title === title ? { ...r, state: "Declined" } : r))
-    );
-  };
-
-  const handleRetrySubmit = () => {
+  const handleRetrySubmit = async () => {
     if (!selectedPlan || !retryFeedback.trim()) return;
-    onRetry(selectedPlan.id, retryFeedback.trim());
-    setIsRetrying(false);
-    setRetryFeedback("");
+    setActionError(null);
+    try {
+      await onRetry(selectedPlan.id, retryFeedback.trim());
+      setIsRetrying(false);
+      setRetryFeedback("");
+    } catch (err) {
+      setActionError(`Retry Plan failed: ${describeBridgeError(err)}`);
+    }
+  };
+
+  const handleCreatePr = async () => {
+    if (!selectedPlan) return;
+    setActionError(null);
+    try {
+      await onCreatePr(selectedPlan.id);
+    } catch (err) {
+      setActionError(`Create PR failed: ${describeBridgeError(err)}`);
+    }
   };
 
   if (reviewPlans.length === 0) {
@@ -138,7 +194,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   type="button"
                   disabled={!canPr.allowed}
                   title={canPr.reason}
-                  onClick={() => onCreatePr(selectedPlan.id)}
+                  onClick={handleCreatePr}
                   className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
                     canPr.allowed
                       ? "bg-emerald-600 text-white hover:bg-emerald-500"
@@ -155,6 +211,16 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   Request Changes (Retry)
                 </button>
               </div>
+
+              {actionError && (
+                <div
+                  role="alert"
+                  data-testid="review-action-error"
+                  className="mt-4 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+                >
+                  {actionError}
+                </div>
+              )}
 
               {/* Retry feedback form */}
               {isRetrying && (
@@ -197,6 +263,25 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 Out-of-scope follow-ups and improvements discovered during execution.
               </p>
 
+              {recsError && (
+                <div
+                  role="alert"
+                  data-testid="recommendations-error"
+                  className="mt-4 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+                >
+                  {recsError}
+                </div>
+              )}
+
+              {!recsError && recommendations.length === 0 && (
+                <p
+                  data-testid="no-recommendations"
+                  className="mt-4 text-xs text-slate-500"
+                >
+                  ExecutePlan registered no recommendations for this plan.
+                </p>
+              )}
+
               <div className="mt-4 space-y-3">
                 {recommendations.map((rec) => (
                   <div
@@ -206,9 +291,11 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     <div>
                       <div className="flex items-center space-x-2">
                         <h4 className="text-sm font-medium text-slate-200">{rec.title}</h4>
-                        <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
-                          {rec.impact} impact
-                        </span>
+                        {rec.impact && (
+                          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
+                            {rec.impact} impact
+                          </span>
+                        )}
                         {rec.state && rec.state !== "Pending" && (
                           <span
                             className={`rounded px-2 py-0.5 text-xs font-medium ${
@@ -222,20 +309,25 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                         )}
                       </div>
                       <p className="mt-1 text-xs text-slate-400">{rec.description}</p>
+                      {rec.state === "Declined" && rec.declineReason && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Declined: {rec.declineReason}
+                        </p>
+                      )}
                     </div>
 
-                    {rec.state === "Pending" && (
+                    {(!rec.state || rec.state === "Pending") && (
                       <div className="flex space-x-2">
                         <button
                           type="button"
-                          onClick={() => handleAcceptRec(rec.title)}
+                          onClick={() => setRecState(rec.title, "Accepted")}
                           className="rounded bg-emerald-600/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-600"
                         >
                           Accept
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeclineRec(rec.title)}
+                          onClick={() => setRecState(rec.title, "Declined")}
                           className="rounded bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700"
                         >
                           Decline

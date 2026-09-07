@@ -5,7 +5,7 @@ import { jobsStore } from "./state/jobsStore";
 import { serviceStore } from "./state/serviceStore";
 import { bridge } from "./api/bridge";
 import { onJobEvent, onPlanEvent, onServiceStatus } from "./api/events";
-import type { ProjectSummary } from "./types/api";
+import { describeBridgeError, type ProjectSummary } from "./types/api";
 
 import { ShellLayout } from "./views/ShellLayout";
 import { DashboardView } from "./views/DashboardView";
@@ -26,6 +26,8 @@ export const App: React.FC = () => {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isNewPlanOpen, setIsNewPlanOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  // Failures from actions the shell itself owns (service restart/repair).
+  const [shellError, setShellError] = useState<string | null>(null);
 
   // Subscribe to stores
   useEffect(() => {
@@ -117,6 +119,24 @@ export const App: React.FC = () => {
   const handleSelectJob = (jobId: string) => {
     uiStore.openTab(`job-${jobId}`);
     uiStore.setActiveNav(`job-${jobId}`);
+    // The list endpoint omits reportedFailureReason, so pull the detail.
+    jobsStore.fetchJobDetail(jobId).catch(() => {
+      // Detail is supplementary; the session view falls back to the list entry.
+    });
+  };
+
+  /**
+   * Start a promptware job and open its session tab.
+   *
+   * Rejections deliberately propagate to the calling view, which renders them
+   * next to the button the operator pressed. Swallowing them here made a
+   * refused Execute/Retry/CreatePR look like a no-op.
+   */
+  const startJobAndOpenSession = async (
+    args: Parameters<typeof bridge.startJob>[0]
+  ) => {
+    const res = await bridge.startJob(args);
+    handleSelectJob(res.jobId);
   };
 
   const activeNav = uiState.activeNav;
@@ -142,34 +162,19 @@ export const App: React.FC = () => {
         <PlanDetailView
           plan={detail}
           allPlans={plansState.plans}
-          onExecute={async (id) => {
-            try {
-              const res = await bridge.startJob({ type: "ExecutePlan", folderPath: id });
-              handleSelectJob(res.jobId);
-            } catch {
-              // Ignore
-            }
-          }}
-          onRetry={async (id) => {
-            try {
-              const res = await bridge.startJob({
-                type: "RetryPlan",
-                folderPath: id,
-                changeRequest: "Please resolve failing issues.",
-              });
-              handleSelectJob(res.jobId);
-            } catch {
-              // Ignore
-            }
-          }}
-          onCreatePr={async (id) => {
-            try {
-              const res = await bridge.startJob({ type: "CreatePr", folderPath: id });
-              handleSelectJob(res.jobId);
-            } catch {
-              // Ignore
-            }
-          }}
+          onExecute={(id) =>
+            startJobAndOpenSession({ type: "ExecutePlan", folderPath: id })
+          }
+          onRetry={(id) =>
+            startJobAndOpenSession({
+              type: "RetryPlan",
+              folderPath: id,
+              changeRequest: "Please resolve failing issues.",
+            })
+          }
+          onCreatePr={(id) =>
+            startJobAndOpenSession({ type: "CreatePr", folderPath: id })
+          }
           onBack={() => uiStore.setActiveNav("plans")}
         />
       );
@@ -177,12 +182,17 @@ export const App: React.FC = () => {
 
     if (activeNav.startsWith("job-")) {
       const jobId = activeNav.replace("job-", "");
-      const job = jobsState.jobs.find((j) => j.id === jobId) || {
-        id: jobId,
-        type: "Promptware Job",
-        project: "Tendril",
-        status: "Running" as const,
-      };
+      const summary = jobsState.jobs.find((j) => j.id === jobId);
+      const detail = jobsState.jobDetails[jobId];
+      // Detail wins where it exists: it is the only source of
+      // reportedFailureReason, which the session view renders.
+      const job = detail ??
+        summary ?? {
+          id: jobId,
+          type: "Promptware Job",
+          project: "Tendril",
+          status: "Running" as const,
+        };
       const events = jobsStore.getSessionEvents(jobId);
 
       return (
@@ -219,18 +229,16 @@ export const App: React.FC = () => {
           <ReviewView
             plans={plansState.plans}
             onSelectPlan={handleSelectPlan}
-            onCreatePr={async (id) => {
-              const res = await bridge.startJob({ type: "CreatePr", folderPath: id });
-              handleSelectJob(res.jobId);
-            }}
-            onRetry={async (id, feedback) => {
-              const res = await bridge.startJob({
+            onCreatePr={(id) =>
+              startJobAndOpenSession({ type: "CreatePr", folderPath: id })
+            }
+            onRetry={(id, feedback) =>
+              startJobAndOpenSession({
                 type: "RetryPlan",
                 folderPath: id,
                 changeRequest: feedback,
-              });
-              handleSelectJob(res.jobId);
-            }}
+              })
+            }
           />
         );
 
@@ -296,21 +304,46 @@ export const App: React.FC = () => {
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onReconnect={() => serviceStore.checkHealth()}
         onRestartService={() => {
+          setShellError(null);
           bridge
             .restartService()
             .then(() => serviceStore.checkHealth())
-            .catch(() => {});
+            .catch((err) =>
+              setShellError(
+                `Restart service failed: ${describeBridgeError(err)}`
+              )
+            );
         }}
         onRepairService={() => {
+          setShellError(null);
           bridge
             .repairService()
             .then(() => serviceStore.checkHealth())
-            .catch(() => {});
+            .catch((err) =>
+              setShellError(`Repair service failed: ${describeBridgeError(err)}`)
+            );
         }}
         onViewDiagnostics={() => {
           uiStore.setActiveNav("settings");
         }}
       >
+        {shellError && (
+          <div
+            role="alert"
+            data-testid="shell-error"
+            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+          >
+            <span>{shellError}</span>
+            <button
+              type="button"
+              onClick={() => setShellError(null)}
+              aria-label="Dismiss error"
+              className="text-red-400 hover:text-red-200"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {renderActiveView()}
       </ShellLayout>
 
