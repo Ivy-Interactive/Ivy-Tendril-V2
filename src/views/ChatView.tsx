@@ -20,7 +20,9 @@ import {
   Paperclip,
   X,
   ArrowDown,
+  HelpCircle,
 } from "lucide-react";
+import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 
 interface ChatViewProps {
   onCreatePlan?: (initialDescription: string) => void;
@@ -242,13 +244,27 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
 
   const getMessageKey = useCallback((index: number) => messages[index].id, [messages]);
 
-  const { isVirtualized, totalSize, items } = useChatMessageWindow({
+  const { isVirtualized, totalSize, items, scrollToIndex, visibleRange } = useChatMessageWindow({
     count: messages.length,
     scrollContainerRef,
     getItemKey: getMessageKey,
     enabled: messages.length >= CHAT_VIRTUALIZATION_MIN_MESSAGES,
     pinnedIndex: messages.length - 1,
   });
+
+  const pendingQuestions = usePendingChatQuestions({
+    messages,
+    visibleRange,
+  });
+
+  const targetPendingQuestion = pendingQuestions.find((q) => q.isScrolledOutOfView);
+
+  const handleJumpToQuestion = useCallback(
+    (index: number) => {
+      scrollToIndex(index, { smooth: true, align: "center" });
+    },
+    [scrollToIndex]
+  );
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-slate-950 text-slate-100">
@@ -438,14 +454,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                   })}
                 </div>
               ) : (
-                messages.map((msg) => (
-                  <ChatMessageRow
-                    key={msg.id}
-                    message={msg}
-                    isCopied={copiedMessageId === msg.id}
-                    onCopy={handleCopyMessage}
-                    onCreatePlan={handleCreatePlanFromMessage}
-                  />
+                messages.map((msg, index) => (
+                  <div key={msg.id} data-index={index}>
+                    <ChatMessageRow
+                      message={msg}
+                      isCopied={copiedMessageId === msg.id}
+                      onCopy={handleCopyMessage}
+                      onCreatePlan={handleCreatePlanFromMessage}
+                    />
+                  </div>
                 ))
               )}
 
@@ -460,14 +477,28 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
             </ChatMessageList>
           )}
 
-          {/* Floating Resume Anchor Button */}
-          {!isAtBottom && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+          {/* Floating Actions: Jump to Pending Question & Scroll to Tail */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2 pointer-events-none">
+            {targetPendingQuestion && (
+              <button
+                type="button"
+                data-testid="chat-jump-to-question-button"
+                onClick={() => handleJumpToQuestion(targetPendingQuestion.messageIndex)}
+                className="pointer-events-auto flex items-center gap-2 rounded-full bg-amber-950/90 border border-amber-700/80 px-3.5 py-1.5 text-xs font-medium text-amber-200 shadow-lg backdrop-blur hover:bg-amber-900 hover:text-amber-100 transition-all cursor-pointer"
+              >
+                <HelpCircle className="size-3.5 text-amber-400" />
+                <span>
+                  Jump to pending question {targetPendingQuestion.direction === "down" ? "↓" : "↑"}
+                </span>
+              </button>
+            )}
+
+            {!isAtBottom && (
               <button
                 type="button"
                 data-testid="chat-scroll-tail-button"
                 onClick={() => scrollToTail(true)}
-                className="flex items-center gap-2 rounded-full bg-slate-900/90 border border-slate-700 px-3.5 py-1.5 text-xs font-medium text-slate-200 shadow-lg backdrop-blur hover:bg-slate-800 hover:text-white transition-all"
+                className="pointer-events-auto flex items-center gap-2 rounded-full bg-slate-900/90 border border-slate-700 px-3.5 py-1.5 text-xs font-medium text-slate-200 shadow-lg backdrop-blur hover:bg-slate-800 hover:text-white transition-all cursor-pointer"
               >
                 <ArrowDown className="size-3.5 text-emerald-400" />
                 {isGenerating ? (
@@ -479,8 +510,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                   <span>Scroll to bottom</span>
                 )}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Queued Items Drawer */}
