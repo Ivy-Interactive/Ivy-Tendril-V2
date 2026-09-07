@@ -9,6 +9,7 @@
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
+    "allowJs": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "moduleDetection": "force",
@@ -24,8 +25,7 @@
     /* Path Aliases */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@spacecorps/components-storybook/*": ["../components-storybook/dist/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src", "tests"]

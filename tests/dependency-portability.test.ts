@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+import { resolveStorybookRoot } from "../scripts/storybook-path.mjs";
 
 const repoRoot = path.resolve(__dirname, "..");
 const readFile = (relativePath: string) =>
@@ -27,11 +28,14 @@ describe("Dependency portability", () => {
     (relativePath) => {
       const content = readFile(relativePath);
       expect(content).not.toMatch(/\/Users\//);
-    }
+    },
   );
 
   it("imports components-storybook only via the scoped @spacecorps package", () => {
-    const files = [...walkFiles(path.resolve(repoRoot, "src")), ...walkFiles(path.resolve(repoRoot, "tests"))];
+    const files = [
+      ...walkFiles(path.resolve(repoRoot, "src")),
+      ...walkFiles(path.resolve(repoRoot, "tests")),
+    ];
 
     const unscopedImports: string[] = [];
     for (const file of files) {
@@ -45,6 +49,34 @@ describe("Dependency portability", () => {
     }
 
     expect(unscopedImports).toEqual([]);
+  });
+
+  it("has every declared dependency installed", () => {
+    const pkg = JSON.parse(readFile("package.json"));
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+    const missing = Object.entries(deps)
+      .filter(([, specifier]) => !String(specifier).startsWith("link:"))
+      .map(([name]) => name)
+      .filter(
+        (name) => !fs.existsSync(path.resolve(repoRoot, "node_modules", name, "package.json")),
+      );
+
+    expect(missing, `missing packages: ${missing.join(", ")} — run pnpm install`).toEqual([]);
+  });
+
+  it.each(["vite.config.ts", "vitest.config.ts"])(
+    "does not hardcode the components-storybook dist path in %s",
+    (relativePath) => {
+      const content = readFile(relativePath);
+      expect(content).not.toMatch(/components-storybook\/dist/);
+    },
+  );
+
+  it("resolves a built components-storybook checkout", () => {
+    const root = resolveStorybookRoot();
+    expect(fs.existsSync(path.join(root, "dist", "tendril.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "dist", "style.css"))).toBe(true);
   });
 
   it("pins the components-storybook checkout in CI to a full commit SHA", () => {

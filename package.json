@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.25.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "node scripts/link-storybook.mjs"
   },
   "dependencies": {
     "@spacecorps/components-storybook": "link:../components-storybook",
@@ -36,5 +36,6 @@
     "typescript": "^5.8.2",
     "vite": "^6.2.0",
     "vitest": "^3.0.7"
-  }
+  },
+  "packageManager": "pnpm@11.25.0"
 }
