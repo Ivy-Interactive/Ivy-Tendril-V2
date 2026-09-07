@@ -5,7 +5,7 @@ use axum::response::IntoResponse;
 use axum::Json;
 use serde_json::json;
 use std::sync::Arc;
-use tendril_core::config::{load_config, save_config, TendrilSettings};
+use tendril_core::config::{load_config, update_config_raw};
 
 pub async fn get_config_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let settings = load_config(&state.config_path).unwrap_or_default();
@@ -14,16 +14,16 @@ pub async fn get_config_handler(State(state): State<Arc<AppState>>) -> impl Into
 
 pub async fn put_config_handler(
     State(state): State<Arc<AppState>>,
-    Json(new_settings): Json<TendrilSettings>,
+    Json(incoming): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    match save_config(&state.config_path, &new_settings) {
+    match update_config_raw(&state.config_path, &incoming) {
         Ok(_) => (
             StatusCode::OK,
             Json(json!({ "status": "ok", "message": "Config updated" })),
         ),
         Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("Failed to update config: {}", e) })),
         ),
     }
 }

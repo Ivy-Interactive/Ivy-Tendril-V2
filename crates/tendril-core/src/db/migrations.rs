@@ -21,7 +21,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             Created TEXT NOT NULL,
             Updated TEXT NOT NULL,
             InitialPrompt TEXT,
-            SourceUrl TEXT
+            SourceUrl TEXT,
+            ChatSessionId TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_plans_state ON Plans(State);
@@ -161,7 +162,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_owner_repo ON PrStatuses(Owner, Repo);
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_status ON PrStatuses(Status);
 
-        PRAGMA user_version = 22;
+        PRAGMA user_version = 23;
         "#,
     )?;
 
@@ -169,6 +170,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
     // earlier version keeps its original column set. Columns added after the fact need an
     // idempotent ALTER pass.
     ensure_columns(conn, "Jobs", &[("PreviousPlanState", "TEXT")])?;
+    ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
 
     Ok(())
 }

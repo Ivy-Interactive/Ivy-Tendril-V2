@@ -34,7 +34,10 @@ pub enum PlanCommands {
     Validate(PlanValidateArgs),
 
     #[command(about = "Check all plans health")]
-    Doctor,
+    Doctor {
+        #[arg(long)]
+        fix: bool,
+    },
 
     #[command(about = "Remove plan worktrees")]
     Cleanup(PlanCleanupArgs),
@@ -121,6 +124,8 @@ pub struct PlanCreateArgs {
     #[arg(long)]
     pub related_plan: Vec<String>,
     #[arg(long)]
+    pub chat_session: Option<String>,
+    #[arg(long)]
     pub plans_dir: Option<PathBuf>,
     #[arg(long)]
     pub no_duplicate_check: bool,
@@ -171,6 +176,8 @@ pub struct PlanWriteRevisionArgs {
     pub stdin: bool,
     #[arg(long)]
     pub plans_dir: Option<PathBuf>,
+    #[arg(long, help = "Bypass question block validation")]
+    pub no_question_check: bool,
 }
 
 #[derive(Args)]
@@ -413,6 +420,7 @@ pub fn handle_plan_command(
                 verifications,
                 depends_on: args.depends_on,
                 related_plans: args.related_plan,
+                chat_session_id: args.chat_session,
             };
 
             let plan_file = create_plan(&p_dir, opts)?;
@@ -533,7 +541,18 @@ pub fn handle_plan_command(
                 }
             }
         }
-        PlanCommands::Doctor => {
+        PlanCommands::Doctor { fix } => {
+            if fix {
+                let migrator = tendril_core::plans::migrations::PlanMigrator::new();
+                let count = migrator.migrate_plans(&plans_dir, None)?;
+                if count > 0 {
+                    println!(
+                        "Migrated {} plan(s) to schema version {}.",
+                        count,
+                        migrator.latest_version()
+                    );
+                }
+            }
             let issues = check_all_plans_health(&plans_dir)?;
             if issues.is_empty() {
                 println!("All plans are healthy.");
@@ -564,7 +583,7 @@ pub fn handle_plan_command(
                 anyhow::bail!("Specify --file <path> or --stdin");
             };
 
-            let rev_num = write_revision(&folder, &content)?;
+            let rev_num = write_revision(&folder, &content, !args.no_question_check)?;
             println!("Revision {:03} written.", rev_num);
 
             if let Ok(pf) = read_plan_file(&folder) {

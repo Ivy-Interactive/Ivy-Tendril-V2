@@ -43,6 +43,9 @@ pub struct TendrilSettings {
 
     #[serde(default)]
     pub beta: bool,
+
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 fn default_coding_agent() -> String {
@@ -112,6 +115,7 @@ impl Default for TendrilSettings {
             telemetry: true,
             theme: default_theme(),
             beta: false,
+            extra: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -256,6 +260,53 @@ pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()>
         .map_err(|e| TendrilError::Config(format!("Failed to serialize settings: {}", e)))?;
 
     std::fs::write(config_path, yaml)?;
+    Ok(())
+}
+
+pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Result<()> {
+    let existing_raw = if config_path.exists() {
+        std::fs::read_to_string(config_path).map_err(|e| {
+            TendrilError::Config(format!("Failed to read {}: {}", config_path.display(), e))
+        })?
+    } else {
+        String::new()
+    };
+
+    let mut existing_val: serde_yaml::Value = if !existing_raw.trim().is_empty() {
+        serde_yaml::from_str(&existing_raw)
+            .unwrap_or_else(|_| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()))
+    } else {
+        serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+    };
+
+    let incoming_yaml: serde_yaml::Value = serde_yaml::to_value(incoming)
+        .map_err(|e| TendrilError::Config(format!("Invalid incoming config: {}", e)))?;
+
+    match (&mut existing_val, incoming_yaml) {
+        (serde_yaml::Value::Mapping(existing_map), serde_yaml::Value::Mapping(incoming_map)) => {
+            for (k, v) in incoming_map {
+                existing_map.insert(k, v);
+            }
+        }
+        _ => {
+            return Err(TendrilError::Config(
+                "Config update payload must be an object".to_string(),
+            ));
+        }
+    }
+
+    let yaml_str = serde_yaml::to_string(&existing_val)
+        .map_err(|e| TendrilError::Config(format!("Failed to serialize merged config: {}", e)))?;
+
+    // Verify merged config is valid
+    serde_yaml::from_str::<TendrilSettings>(&yaml_str)
+        .map_err(|e| TendrilError::Config(format!("Merged config is invalid: {}", e)))?;
+
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    std::fs::write(config_path, yaml_str)?;
     Ok(())
 }
 

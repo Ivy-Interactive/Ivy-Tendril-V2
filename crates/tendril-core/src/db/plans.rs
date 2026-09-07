@@ -9,8 +9,8 @@ pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
         r#"
         INSERT INTO Plans (
             Id, Title, Project, Level, State, FolderPath, FolderName,
-            YamlRaw, RevisionCount, LatestRevisionContent, Created, Updated, InitialPrompt, SourceUrl
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            YamlRaw, RevisionCount, LatestRevisionContent, Created, Updated, InitialPrompt, SourceUrl, ChatSessionId
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
         ON CONFLICT(Id) DO UPDATE SET
             Title = excluded.Title,
             Project = excluded.Project,
@@ -24,7 +24,8 @@ pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
             Created = excluded.Created,
             Updated = excluded.Updated,
             InitialPrompt = excluded.InitialPrompt,
-            SourceUrl = excluded.SourceUrl;
+            SourceUrl = excluded.SourceUrl,
+            ChatSessionId = excluded.ChatSessionId;
         "#,
         params![
             plan.metadata.id,
@@ -41,6 +42,7 @@ pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
             plan.metadata.updated.to_rfc3339(),
             plan.metadata.initial_prompt,
             plan.metadata.source_url,
+            plan.metadata.chat_session_id,
         ],
     )?;
 
@@ -113,7 +115,7 @@ pub fn get_plans(
     project_filter: Option<&str>,
     text_filter: Option<&str>,
 ) -> Result<Vec<PlanFile>> {
-    let mut sql = "SELECT Id, Title, Project, Level, State, FolderPath, FolderName, YamlRaw, RevisionCount, LatestRevisionContent, Created, Updated, InitialPrompt, SourceUrl FROM Plans WHERE 1=1".to_string();
+    let mut sql = "SELECT Id, Title, Project, Level, State, FolderPath, FolderName, YamlRaw, RevisionCount, LatestRevisionContent, Created, Updated, InitialPrompt, SourceUrl, ChatSessionId FROM Plans WHERE 1=1".to_string();
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
     if let Some(status) = status_filter {
@@ -162,6 +164,7 @@ pub fn get_plans(
         let updated_str: String = row.get(11)?;
         let initial_prompt: Option<String> = row.get(12)?;
         let source_url: Option<String> = row.get(13)?;
+        let chat_session_id: Option<String> = row.get(14)?;
 
         let state = PlanStatus::from_str_loose(&state_str).unwrap_or(PlanStatus::Draft);
         let created = DateTime::parse_from_rfc3339(&created_str)
@@ -188,6 +191,7 @@ pub fn get_plans(
             initial_prompt,
             source_url,
             partial_delivery: false,
+            chat_session_id,
         };
 
         plans.push(PlanFile {

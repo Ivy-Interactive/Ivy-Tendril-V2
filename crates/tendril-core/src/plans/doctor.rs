@@ -26,8 +26,8 @@ pub fn check_plan_health(plan_folder: &Path) -> Vec<PlanDoctorIssue> {
         return issues;
     }
 
-    let plan = match read_plan_yaml(plan_folder) {
-        Ok((p, _)) => p,
+    let (plan, raw) = match read_plan_yaml(plan_folder) {
+        Ok((p, r)) => (p, r),
         Err(e) => {
             issues.push(PlanDoctorIssue {
                 plan_folder: folder_name.clone(),
@@ -37,6 +37,22 @@ pub fn check_plan_health(plan_folder: &Path) -> Vec<PlanDoctorIssue> {
             return issues;
         }
     };
+
+    let schema_ver = crate::plans::migrations::PlanSchemaVersion::read(&raw);
+    if schema_ver < crate::models::CURRENT_SCHEMA_VERSION
+        && !plan.state.eq_ignore_ascii_case("Completed")
+        && !plan.state.eq_ignore_ascii_case("Skipped")
+    {
+        issues.push(PlanDoctorIssue {
+            plan_folder: folder_name.clone(),
+            severity: "Warning".to_string(),
+            message: format!(
+                "Outdated schema version {} (current is {})",
+                schema_ver,
+                crate::models::CURRENT_SCHEMA_VERSION
+            ),
+        });
+    }
 
     if plan.title.trim().is_empty() {
         issues.push(PlanDoctorIssue {

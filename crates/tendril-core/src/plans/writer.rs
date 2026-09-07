@@ -25,6 +25,7 @@ pub struct CreatePlanOptions {
     pub verifications: Vec<PlanVerificationEntry>,
     pub depends_on: Vec<String>,
     pub related_plans: Vec<String>,
+    pub chat_session_id: Option<String>,
 }
 
 pub fn create_plan(plans_dir: &Path, opts: CreatePlanOptions) -> Result<PlanFile> {
@@ -67,6 +68,8 @@ pub fn create_plan(plans_dir: &Path, opts: CreatePlanOptions) -> Result<PlanFile
         initial_prompt: opts.initial_prompt,
         source_url: opts.source_url,
         recommendations: None,
+        chat_session_id: opts.chat_session_id,
+        extra: std::collections::BTreeMap::new(),
     };
 
     write_plan_yaml(&plan_folder, &plan_yaml)?;

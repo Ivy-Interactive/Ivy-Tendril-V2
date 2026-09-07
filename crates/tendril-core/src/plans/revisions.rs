@@ -1,4 +1,5 @@
 use crate::error::{Result, TendrilError};
+use crate::questions::{parse_question_blocks, validate_question_blocks, IssueSeverity};
 use std::path::Path;
 
 pub fn get_revision(plan_folder: &Path, number: Option<i32>) -> Result<String> {
@@ -44,7 +45,26 @@ pub fn get_revision(plan_folder: &Path, number: Option<i32>) -> Result<String> {
     }
 }
 
-pub fn write_revision(plan_folder: &Path, content: &str) -> Result<i32> {
+pub fn write_revision(plan_folder: &Path, content: &str, validate_questions: bool) -> Result<i32> {
+    if validate_questions {
+        let blocks = parse_question_blocks(content);
+        let issues = validate_question_blocks(&blocks);
+        let errors: Vec<_> = issues
+            .iter()
+            .filter(|i| i.severity == IssueSeverity::Error)
+            .collect();
+        if !errors.is_empty() {
+            let error_messages: Vec<String> = errors
+                .iter()
+                .map(|e| format!("{}: {}", e.line_number, e.message))
+                .collect();
+            return Err(TendrilError::Validation(format!(
+                "Question block validation failed:\n{}",
+                error_messages.join("\n")
+            )));
+        }
+    }
+
     let rev_dir = plan_folder.join("Revisions");
     std::fs::create_dir_all(&rev_dir)?;
 

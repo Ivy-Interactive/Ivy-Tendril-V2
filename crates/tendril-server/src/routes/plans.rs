@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use tendril_core::db::{get_plans, open_database, sync_plan};
+use tendril_core::error::TendrilError;
 use tendril_core::models::{PlanStatus, PlanVerificationEntry, VerificationStatus};
 use tendril_core::plans::{
     add_plan_verification, add_recommendation, create_plan, get_revision, list_plan_verifications,
@@ -119,6 +120,8 @@ pub struct CreatePlanBody {
     pub depends_on: Vec<String>,
     #[serde(rename = "relatedPlans", default)]
     pub related_plans: Vec<String>,
+    #[serde(rename = "chatSessionId", default)]
+    pub chat_session_id: Option<String>,
 }
 
 pub async fn create_plan_handler(
@@ -137,6 +140,7 @@ pub async fn create_plan_handler(
         verifications: body.verifications,
         depends_on: body.depends_on,
         related_plans: body.related_plans,
+        chat_session_id: body.chat_session_id,
     };
 
     match create_plan(&state.plans_dir, opts) {
@@ -307,6 +311,8 @@ pub async fn get_revision_handler(
 #[derive(Debug, Deserialize)]
 pub struct WriteRevisionBody {
     pub content: String,
+    #[serde(default)]
+    pub no_question_check: bool,
 }
 
 pub async fn write_revision_handler(
@@ -324,7 +330,7 @@ pub async fn write_revision_handler(
         }
     };
 
-    match write_revision(&folder, &body.content) {
+    match write_revision(&folder, &body.content, !body.no_question_check) {
         Ok(rev_num) => {
             // Update plan timestamp and sync to db
             if let Ok((mut plan, _)) = read_plan_yaml(&folder) {
@@ -344,6 +350,10 @@ pub async fn write_revision_handler(
                 })),
             )
         }
+        Err(TendrilError::Validation(e)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("Validation failed: {}", e) })),
+        ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to write revision: {}", e) })),

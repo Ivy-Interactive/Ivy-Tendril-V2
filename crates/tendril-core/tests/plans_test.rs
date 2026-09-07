@@ -63,6 +63,7 @@ fn test_create_plan_and_revisions_lifecycle() {
         }],
         depends_on: vec![],
         related_plans: vec![],
+        chat_session_id: None,
     };
 
     let plan_file = create_plan(&test_dir, opts).expect("Failed to create plan");
@@ -79,7 +80,7 @@ fn test_create_plan_and_revisions_lifecycle() {
     assert!(plan_folder.join("Artifacts").exists());
 
     // Write revisions
-    let rev1_num = write_revision(plan_folder, "# Dark Mode Design\nFirst draft.")
+    let rev1_num = write_revision(plan_folder, "# Dark Mode Design\nFirst draft.", true)
         .expect("Failed to write rev 1");
     assert_eq!(rev1_num, 1);
     assert_eq!(
@@ -90,6 +91,7 @@ fn test_create_plan_and_revisions_lifecycle() {
     let rev2_num = write_revision(
         plan_folder,
         "# Dark Mode Design\nSecond draft with feedback.",
+        true,
     )
     .expect("Failed to write rev 2");
     assert_eq!(rev2_num, 2);
@@ -129,6 +131,7 @@ fn test_plan_recommendations() {
         verifications: vec![],
         depends_on: vec![],
         related_plans: vec![],
+        chat_session_id: None,
     };
 
     let plan = create_plan(&test_dir, opts).unwrap();
@@ -279,6 +282,8 @@ fn test_plan_completion_guard() {
         initial_prompt: None,
         source_url: None,
         recommendations: None,
+        chat_session_id: None,
+        extra: std::collections::BTreeMap::new(),
     };
 
     // Transitioning to Completed with failed verification should fail when allow_failed_verifications is false
@@ -328,6 +333,8 @@ fn test_plan_completion_guard_refuses_completed_from_review_while_a_row_failed()
         initial_prompt: None,
         source_url: None,
         recommendations: None,
+        chat_session_id: None,
+        extra: std::collections::BTreeMap::new(),
     };
 
     assert_eq!(

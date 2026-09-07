@@ -649,3 +649,65 @@ async fn test_job_logs_retrieval_and_streaming_endpoints() {
     assert!(stream_text.contains("event: end"));
     assert!(stream_text.contains("data: Job finished"));
 }
+
+#[tokio::test]
+async fn test_put_config_preserves_unknown_keys() {
+    let server = start_test_server(None).await;
+    let master = read_master(&server.tendril_home).expect("master discovery exists");
+
+    // Write initial config with unmodeled keys
+    let config_path = server.tendril_home.join("config.yaml");
+    let initial_yaml = r#"
+codingAgent: claude
+jobTimeout: 30
+theme: default
+vault:
+  id: test-vault
+  enabled: true
+customSection:
+  nestedField: "hello"
+"#;
+    std::fs::write(&config_path, initial_yaml).unwrap();
+
+    let client = reqwest::Client::new();
+    let url = format!("http://{}:{}/api/config", master.host, master.port);
+
+    // Issue partial update PUT
+    let payload = serde_json::json!({
+        "jobTimeout": 60,
+        "theme": "dark"
+    });
+
+    let resp = client
+        .put(&url)
+        .bearer_auth(&master.secret)
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    // Read back config and verify unmodeled keys are intact
+    let raw = std::fs::read_to_string(&config_path).unwrap();
+    assert!(raw.contains("jobTimeout: 60"));
+    assert!(raw.contains("theme: dark"));
+    assert!(raw.contains("vault:"));
+    assert!(raw.contains("id: test-vault"));
+    assert!(raw.contains("customSection:"));
+    assert!(raw.contains("nestedField: hello"));
+
+    // Check GET /api/config returns all keys
+    let get_resp = client
+        .get(&url)
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), reqwest::StatusCode::OK);
+    let json_body: serde_json::Value = get_resp.json().await.unwrap();
+    assert_eq!(json_body.get("jobTimeout").unwrap(), 60);
+    assert_eq!(json_body.get("theme").unwrap(), "dark");
+    assert!(json_body.get("vault").is_some());
+    assert!(json_body.get("customSection").is_some());
+}
