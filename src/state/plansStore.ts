@@ -163,9 +163,9 @@ class PlansStore {
     this.notify();
 
     try {
-      await bridge.updatePlanField(
+      await bridge.setVerificationStatus(
         planId,
-        `verification.${verificationName}`,
+        verificationName,
         newStatus
       );
     } catch (err) {
