@@ -48,11 +48,13 @@ describe("ShellLayout & App Chat Navigation Integration", () => {
   });
 
   it("switches activeNav to chat on Cmd/Ctrl + Shift + C shortcut", async () => {
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
 
     expect(uiStore.getState().activeNav).toBe("dashboard");
 
-    act(() => {
+    await act(async () => {
       fireEvent.keyDown(window, {
         key: "c",
         code: "KeyC",
