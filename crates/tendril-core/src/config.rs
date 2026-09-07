@@ -673,3 +673,35 @@ impl Drop for MasterGuard {
         }
     }
 }
+
+pub fn find_projects_referencing_verification(
+    settings: &TendrilSettings,
+    verification_name: &str,
+) -> Vec<String> {
+    settings
+        .projects
+        .iter()
+        .filter(|p| {
+            p.verifications
+                .iter()
+                .any(|v| v.name.eq_ignore_ascii_case(verification_name))
+        })
+        .map(|p| p.name.clone())
+        .collect()
+}
+
+pub fn remove_verification_from_projects(
+    settings: &mut TendrilSettings,
+    verification_name: &str,
+) -> Vec<String> {
+    let mut modified = Vec::new();
+    for p in &mut settings.projects {
+        let before_len = p.verifications.len();
+        p.verifications
+            .retain(|v| !v.name.eq_ignore_ascii_case(verification_name));
+        if p.verifications.len() != before_len {
+            modified.push(p.name.clone());
+        }
+    }
+    modified
+}

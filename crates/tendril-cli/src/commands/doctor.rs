@@ -10,7 +10,23 @@ pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
     let cfg_path = get_config_path(tendril_home);
     if cfg_path.exists() {
         match load_config(&cfg_path) {
-            Ok(_) => println!("[OK] Config file valid: {}", cfg_path.display()),
+            Ok(settings) => {
+                println!("[OK] Config file valid: {}", cfg_path.display());
+                for project in &settings.projects {
+                    for v in &project.verifications {
+                        if !settings
+                            .verifications
+                            .iter()
+                            .any(|def| def.name.eq_ignore_ascii_case(&v.name))
+                        {
+                            println!(
+                                "[WARN] Project '{}' references non-existent verification '{}'",
+                                project.name, v.name
+                            );
+                        }
+                    }
+                }
+            }
             Err(e) => println!("[FAIL] Config file error: {}", e),
         }
     } else {
