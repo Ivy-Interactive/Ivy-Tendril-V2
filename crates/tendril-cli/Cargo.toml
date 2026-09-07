@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+name = "tendril_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tendril"
 path = "src/main.rs"
@@ -25,3 +29,6 @@ reqwest = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+axum = { workspace = true }

@@ -1,6 +1,6 @@
 use clap::Subcommand;
 use std::path::Path;
-use tendril_core::config::{get_config_path, load_config, save_config};
+use tendril_core::config::{get_config_path, load_config, read_master, save_config, MasterInfo};
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef};
 
 #[derive(Subcommand)]
@@ -30,7 +30,326 @@ pub enum ProjectCommands {
     RemoveVerification { name: String, verification: String },
 }
 
-pub fn handle_project_command(cmd: ProjectCommands, tendril_home: &Path) -> anyhow::Result<()> {
+enum DaemonOutcome {
+    Handled,
+    Fallback,
+}
+
+pub async fn handle_project_command(
+    cmd: ProjectCommands,
+    tendril_home: &Path,
+) -> anyhow::Result<()> {
+    if let Some(master) = read_master(tendril_home) {
+        match handle_project_command_daemon(&cmd, &master).await {
+            Ok(DaemonOutcome::Handled) => return Ok(()),
+            Ok(DaemonOutcome::Fallback) => {
+                tracing::debug!("Failed to reach master daemon, falling back to filesystem");
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    handle_project_command_fs(cmd, tendril_home)
+}
+
+async fn handle_project_command_daemon(
+    cmd: &ProjectCommands,
+    master: &MasterInfo,
+) -> anyhow::Result<DaemonOutcome> {
+    let client = reqwest::Client::new();
+    let base_url = format!("http://{}:{}", master.host, master.port);
+
+    match cmd {
+        ProjectCommands::List => {
+            let resp = match client
+                .get(format!("{}/api/projects", base_url))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if !resp.status().is_success() {
+                anyhow::bail!("Failed to list projects: HTTP {}", resp.status());
+            }
+
+            let projects: Vec<ProjectConfig> = resp.json().await?;
+            for p in &projects {
+                println!("{}", p.name);
+            }
+        }
+        ProjectCommands::Get { name } => {
+            let resp = match client
+                .get(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to get project '{}': {}", name, err);
+            }
+
+            let p: ProjectConfig = resp.json().await?;
+            println!("Project: {}", p.name);
+            println!("Color: {}", p.color);
+            println!("Repos:");
+            for r in &p.repos {
+                println!("  - {}", r.path);
+            }
+            println!("Verifications:");
+            for v in &p.verifications {
+                println!("  - {} (required: {})", v.name, v.required);
+            }
+        }
+        ProjectCommands::Add { name } => {
+            let resp = match client
+                .post(format!("{}/api/projects", base_url))
+                .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "name": name,
+                    "color": "Blue",
+                    "repos": [],
+                    "verifications": [],
+                }))
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                anyhow::bail!("Project '{}' already exists", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to add project '{}': {}", name, err);
+            }
+
+            println!("Project '{}' added.", name);
+        }
+        ProjectCommands::Remove { name } => {
+            let resp = match client
+                .delete(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to remove project '{}': {}", name, err);
+            }
+
+            println!("Project '{}' removed.", name);
+        }
+        ProjectCommands::AddRepo { name, path } => {
+            let resp = match client
+                .get(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to get project '{}': {}", name, err);
+            }
+
+            let proj: ProjectConfig = resp.json().await?;
+            if !proj.repos.iter().any(|r| r.path.eq_ignore_ascii_case(path)) {
+                let mut repos = proj.repos.clone();
+                repos.push(RepoRef {
+                    path: path.clone(),
+                    base_branch: None,
+                });
+                let update_resp = client
+                    .put(format!("{}/api/projects/{}", base_url, name))
+                    .bearer_auth(&master.secret)
+                    .json(&serde_json::json!({
+                        "repos": repos,
+                    }))
+                    .send()
+                    .await?;
+
+                if update_resp.status() == reqwest::StatusCode::NOT_FOUND {
+                    anyhow::bail!("Project '{}' not found", name);
+                }
+                if !update_resp.status().is_success() {
+                    let err = update_resp.text().await.unwrap_or_default();
+                    anyhow::bail!("Failed to update project '{}': {}", name, err);
+                }
+            }
+
+            println!("Repo '{}' added to project '{}'.", path, name);
+        }
+        ProjectCommands::RemoveRepo { name, path } => {
+            let resp = match client
+                .get(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to get project '{}': {}", name, err);
+            }
+
+            let mut proj: ProjectConfig = resp.json().await?;
+            proj.repos.retain(|r| !r.path.eq_ignore_ascii_case(path));
+
+            let update_resp = client
+                .put(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "repos": proj.repos,
+                }))
+                .send()
+                .await?;
+
+            if update_resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !update_resp.status().is_success() {
+                let err = update_resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to update project '{}': {}", name, err);
+            }
+
+            println!("Repo '{}' removed from project '{}'.", path, name);
+        }
+        ProjectCommands::AddVerification { name, verification } => {
+            let resp = match client
+                .get(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to get project '{}': {}", name, err);
+            }
+
+            let proj: ProjectConfig = resp.json().await?;
+            if !proj
+                .verifications
+                .iter()
+                .any(|v| v.name.eq_ignore_ascii_case(verification))
+            {
+                let mut verifications = proj.verifications.clone();
+                verifications.push(ProjectVerificationRef {
+                    name: verification.clone(),
+                    required: true,
+                });
+                let update_resp = client
+                    .put(format!("{}/api/projects/{}", base_url, name))
+                    .bearer_auth(&master.secret)
+                    .json(&serde_json::json!({
+                        "verifications": verifications,
+                    }))
+                    .send()
+                    .await?;
+
+                if update_resp.status() == reqwest::StatusCode::NOT_FOUND {
+                    anyhow::bail!("Project '{}' not found", name);
+                }
+                if !update_resp.status().is_success() {
+                    let err = update_resp.text().await.unwrap_or_default();
+                    anyhow::bail!("Failed to update project '{}': {}", name, err);
+                }
+            }
+
+            println!(
+                "Verification '{}' added to project '{}'.",
+                verification, name
+            );
+        }
+        ProjectCommands::RemoveVerification { name, verification } => {
+            let resp = match client
+                .get(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to get project '{}': {}", name, err);
+            }
+
+            let mut proj: ProjectConfig = resp.json().await?;
+            proj.verifications
+                .retain(|v| !v.name.eq_ignore_ascii_case(verification));
+
+            let update_resp = client
+                .put(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "verifications": proj.verifications,
+                }))
+                .send()
+                .await?;
+
+            if update_resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !update_resp.status().is_success() {
+                let err = update_resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to update project '{}': {}", name, err);
+            }
+
+            println!(
+                "Verification '{}' removed from project '{}'.",
+                verification, name
+            );
+        }
+    }
+
+    Ok(DaemonOutcome::Handled)
+}
+
+fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyhow::Result<()> {
     let cfg_path = get_config_path(tendril_home);
     let mut settings = load_config(&cfg_path)?;
 
