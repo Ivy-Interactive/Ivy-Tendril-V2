@@ -12,6 +12,7 @@ import "@spacecorps/components-storybook/style.css";
 import type { ServiceInfo } from "../types/api";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceStatusBanner } from "../components/service";
+import { firstStringArg } from "../utils/eventArgs";
 
 interface ShellLayoutProps {
   activeNav: string;
@@ -148,9 +149,8 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                   items={navItems}
                   events={["OnSelect"]}
                   eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-                    if (args && args[0]) {
-                      onSelectNav(String(args[0]));
-                    }
+                    const navId = firstStringArg(args);
+                    if (navId) onSelectNav(navId);
                   }}
                 />
                 <div className="px-4 py-2 border-t border-slate-800/80">
@@ -174,11 +174,10 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                       tabs={shellTabs}
                       events={["OnSelect", "OnClose"]}
                       eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-                        if (evt === "OnSelect" && args && args[0]) {
-                          onSelectTab(String(args[0]));
-                        } else if (evt === "OnClose" && args && args[0]) {
-                          onCloseTab(String(args[0]));
-                        }
+                        const tabId = firstStringArg(args);
+                        if (!tabId) return;
+                        if (evt === "OnSelect") onSelectTab(tabId);
+                        else if (evt === "OnClose") onCloseTab(tabId);
                       }}
                     />
                   </div>
