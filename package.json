@@ -4,10 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "test": "vitest run",
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
+    "test": "vp test",
+    "check": "vp check",
+    "check:fix": "vp check --fix",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check",
     "postinstall": "node scripts/link-storybook.mjs"
   },
   "dependencies": {
@@ -23,19 +29,30 @@
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "4.1.16",
+    "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26.4.1",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
-    "@vitejs/plugin-react": "5.2.0",
+    "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^26.0.0",
-    "tailwindcss": "4.1.16",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.8.2",
     "vite": "^6.2.0",
-    "vitest": "^3.0.7"
+    "vite-plus": "^0.3.0",
+    "vitest": "4.1.11"
   },
-  "packageManager": "pnpm@11.25.0"
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vitest": "4.1.11"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "pnpm": {
+    "overrides": {
+      "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+      "vitest": "4.1.11"
+    }
+  }
 }

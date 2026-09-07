@@ -1,10 +1,19 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 import { resolveStorybookRoot } from "./scripts/storybook-path.mjs";
 
 export default defineConfig({
+  fmt: {
+    ignorePatterns: ["dist/**", "src-tauri/target/**", "node_modules/**"],
+  },
+  lint: {
+    ignorePatterns: ["dist/**", "src-tauri/target/**", "node_modules/**"],
+    options: {
+      typeAware: true,
+    },
+  },
   plugins: [react(), tailwindcss()],
   resolve: {
     dedupe: ["react", "react-dom"],
