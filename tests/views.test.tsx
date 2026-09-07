@@ -201,5 +201,55 @@ describe("Operator Views Component & Accessibility Tests", () => {
       // Verify Inbox tab is rendered in ShellTabs
       expect(screen.getAllByText("Inbox").length).toBeGreaterThan(0);
     });
+
+    it("calls onSelectNav with the item id when a nav item is clicked", () => {
+      const handleSelectNav = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={handleSelectNav}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      fireEvent.click(screen.getByTitle("Jobs"));
+      expect(handleSelectNav).toHaveBeenCalledWith("jobs");
+    });
+
+    it("calls onCloseTab (not onSelectTab) with the tab id when a tab's close control is clicked", () => {
+      const handleSelectTab = vi.fn();
+      const handleCloseTab = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="plans"
+          activeTabs={["dashboard", "plan-00010"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={() => {}}
+          onSelectTab={handleSelectTab}
+          onCloseTab={handleCloseTab}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+        >
+          <div>Plans View Content</div>
+        </ShellLayout>,
+      );
+
+      fireEvent.click(screen.getByLabelText("Close Plan 00010"));
+      expect(handleCloseTab).toHaveBeenCalledWith("plan-00010");
+      expect(handleSelectTab).not.toHaveBeenCalled();
+    });
   });
 });
