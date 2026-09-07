@@ -183,11 +183,10 @@ export function useChatMessageWindow(
     return measureRef;
   }, []);
 
-  const keys = useMemo(() => {
-    const result: string[] = new Array(count);
-    for (let i = 0; i < count; i++) result[i] = getItemKey(i);
-    return result;
-  }, [count, getItemKey]);
+  const keys = useMemo(
+    () => Array.from({ length: count }, (_, i) => getItemKey(i)),
+    [count, getItemKey],
+  );
 
   const getEstimate = useCallback(
     (index: number): number => {
@@ -200,7 +199,7 @@ export function useChatMessageWindow(
   );
 
   const prefixSums = useMemo(() => {
-    const sums = new Array<number>(count + 1);
+    const sums = Array.from<number>({ length: count + 1 });
     sums[0] = 0;
     for (let i = 0; i < count; i++) {
       const height = heightsRef.current.get(keys[i]) ?? getEstimate(i);
