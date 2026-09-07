@@ -34,7 +34,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
         // Use default config values
       }
     }
-    loadConfig();
+    void loadConfig();
   }, []);
 
   const handlePing = async () => {

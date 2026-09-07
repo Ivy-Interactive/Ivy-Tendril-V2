@@ -156,7 +156,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
   );
 
   useEffect(() => {
-    fetchIssues();
+    void fetchIssues();
   }, [fetchIssues]);
 
   // Background polling: silently refetch on the configured interval, skipping
@@ -170,7 +170,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
       if (document.visibilityState === "hidden") {
         return;
       }
-      fetchIssues({ silent: true });
+      void fetchIssues({ silent: true });
     }, intervalMs);
     return () => window.clearInterval(id);
   }, [pollInterval, fetchIssues]);

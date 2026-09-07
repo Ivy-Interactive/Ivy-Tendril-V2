@@ -222,12 +222,12 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      void handleSendMessage();
     }
   };
 
   const handleCopyMessage = useCallback((msg: ChatMessage) => {
-    navigator.clipboard.writeText(msg.content);
+    void navigator.clipboard.writeText(msg.content);
     setCopiedMessageId(msg.id);
     setTimeout(() => {
       setCopiedMessageId(null);
@@ -326,7 +326,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                           value={editTitle}
                           onChange={(e) => setEditTitle(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") handleSaveRename(session.id);
+                            if (e.key === "Enter") void handleSaveRename(session.id);
                             if (e.key === "Escape") setEditingSessionId(null);
                           }}
                           autoFocus
