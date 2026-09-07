@@ -5,13 +5,28 @@ import { useAutoScroll } from "@/hooks/use-auto-scroll";
 
 export interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
   smooth?: boolean;
+  /** Keep the list pinned to the newest message as content grows. Set `false` when the consumer owns scrolling. Defaults to `true`. */
+  enableAutoScroll?: boolean;
+  /** Render the built-in scroll-to-bottom button while the list is scrolled away from the bottom. Defaults to `true`. */
+  showScrollButton?: boolean;
 }
 
 const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
-  ({ className, children, smooth = false, ...props }, ref) => {
+  (
+    {
+      className,
+      children,
+      smooth = false,
+      enableAutoScroll = true,
+      showScrollButton = true,
+      ...props
+    },
+    ref,
+  ) => {
     const { scrollRef, isAtBottom, scrollToBottom, disableAutoScroll } = useAutoScroll({
       smooth,
       content: children,
+      enabled: enableAutoScroll,
     });
 
     React.useImperativeHandle(ref, () => scrollRef.current as HTMLDivElement);
@@ -28,7 +43,7 @@ const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
           <div className="flex flex-col gap-6">{children}</div>
         </div>
 
-        {!isAtBottom && (
+        {showScrollButton && !isAtBottom && (
           <Button
             onClick={() => {
               scrollToBottom();
