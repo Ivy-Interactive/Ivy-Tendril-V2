@@ -840,7 +840,10 @@
   background: color-mix(in srgb, var(--green, #22c55e) 8%, transparent);
 }
 .pmv-alert--tip .pmv-alert-header {
-  color: var(--green, #22c55e);
+  color: #15803d;
+}
+:where(.dark, .dark *) .pmv-alert--tip .pmv-alert-header {
+  color: var(--green, #4ade80);
 }
 
 .pmv-alert--important {
@@ -848,7 +851,10 @@
   background: color-mix(in srgb, var(--amber, #f59e0b) 8%, transparent);
 }
 .pmv-alert--important .pmv-alert-header {
-  color: var(--amber, #f59e0b);
+  color: #92400e;
+}
+:where(.dark, .dark *) .pmv-alert--important .pmv-alert-header {
+  color: var(--amber, #fbbf24);
 }
 
 .pmv-alert--warning {
@@ -856,7 +862,10 @@
   background: color-mix(in srgb, var(--warning, #f59e0b) 8%, transparent);
 }
 .pmv-alert--warning .pmv-alert-header {
-  color: var(--warning, #f59e0b);
+  color: #a16207;
+}
+:where(.dark, .dark *) .pmv-alert--warning .pmv-alert-header {
+  color: var(--warning, #fbbf24);
 }
 
 .pmv-alert--caution {
@@ -864,7 +873,10 @@
   background: color-mix(in srgb, var(--destructive, #ef4444) 8%, transparent);
 }
 .pmv-alert--caution .pmv-alert-header {
-  color: var(--destructive, #ef4444);
+  color: #b91c1c;
+}
+:where(.dark, .dark *) .pmv-alert--caution .pmv-alert-header {
+  color: var(--destructive, #f87171);
 }
 
 /* ─── Questions callout ─────────────────────────────────────────────────

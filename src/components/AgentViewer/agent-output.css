@@ -6,8 +6,8 @@
   --aov-border: var(--border);
   --aov-border-strong: var(--input);
   --aov-fg: var(--foreground);
-  --aov-fg-muted: var(--muted-foreground, color-mix(in srgb, var(--foreground) 70%, transparent));
-  --aov-fg-faint: color-mix(in srgb, var(--foreground) 45%, transparent);
+  --aov-fg-muted: #52525b;
+  --aov-fg-faint: #595962;
   --aov-accent: var(--foreground);
   --aov-accent-soft: color-mix(in srgb, var(--foreground) 6%, transparent);
   --aov-success: var(--success);
@@ -34,6 +34,12 @@
   position: relative;
 }
 
+:is(.dark, [data-theme="dark"]) .aov-shell,
+.dark .aov-shell {
+  --aov-fg-muted: #a1a1aa;
+  --aov-fg-faint: #9ca3af;
+}
+
 .aov-shell * {
   box-sizing: border-box;
 }
@@ -56,11 +62,9 @@
 
 @keyframes aov-stream-in {
   from {
-    opacity: 0;
     transform: translateY(4px);
   }
   to {
-    opacity: 1;
     transform: translateY(0);
   }
 }
@@ -519,7 +523,12 @@
 }
 
 .aov-result.error .aov-result-title {
-  color: var(--aov-danger);
+  color: #b91c1c;
+}
+
+:is(.dark, [data-theme="dark"]) .aov-result.error .aov-result-title,
+.dark .aov-result.error .aov-result-title {
+  color: #f87171;
 }
 
 .aov-result-meta {

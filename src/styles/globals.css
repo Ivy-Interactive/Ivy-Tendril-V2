@@ -14,7 +14,7 @@
   --secondary: #f4f4f5;
   --secondary-foreground: #18181b;
   --muted: #f4f4f5;
-  --muted-foreground: #71717a;
+  --muted-foreground: #64646b;
   --accent: #f4f4f5;
   --accent-foreground: #18181b;
   --destructive: #ef4444;
@@ -25,6 +25,10 @@
   --warning-foreground: #000000;
   --info: #3b82f6;
   --info-foreground: #000000;
+  --cyan: #0369a1;
+  --purple: #7e22ce;
+  --pink: #be185d;
+  --violet: #6d28d9;
   --border: #e4e4e7;
   --input: #e4e4e7;
   --ring: #18181b;
@@ -72,6 +76,10 @@
   --warning-foreground: #ffffff;
   --info: #1d4ed8;
   --info-foreground: #ffffff;
+  --cyan: #38bdf8;
+  --purple: #c084fc;
+  --pink: #f472b6;
+  --violet: #a78bfa;
   --border: #27272a;
   --input: #27272a;
   --ring: #d4d4d8;
