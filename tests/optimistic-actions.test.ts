@@ -28,19 +28,14 @@ describe("Optimistic Actions & Error Rollback", () => {
   });
 
   it("optimistically updates a plan field and keeps changes on bridge success", async () => {
-    vi.spyOn(bridge, "updatePlanField").mockResolvedValueOnce(undefined);
+    const updatePlanFieldSpy = vi.spyOn(bridge, "updatePlanField").mockResolvedValueOnce(undefined);
 
     await plansStore.updateFieldOptimistic("00099", "title", "Brand New Title");
 
     const state = plansStore.getState();
     expect(state.plans[0].title).toBe("Brand New Title");
     expect(state.selectedPlan?.title).toBe("Brand New Title");
-    expect(bridge.updatePlanField).toHaveBeenCalledWith(
-      "00099",
-      "title",
-      "Brand New Title",
-      undefined,
-    );
+    expect(updatePlanFieldSpy).toHaveBeenCalledWith("00099", "title", "Brand New Title", undefined);
   });
 
   it("rolls back optimistic plan field update when bridge fails", async () => {
@@ -59,12 +54,14 @@ describe("Optimistic Actions & Error Rollback", () => {
 
   it("optimistically updates verification status and rolls back on failure", async () => {
     // 1. Successful verification change
-    vi.spyOn(bridge, "setVerificationStatus").mockResolvedValueOnce(undefined);
+    const setVerificationStatusSpy = vi
+      .spyOn(bridge, "setVerificationStatus")
+      .mockResolvedValueOnce(undefined);
     await plansStore.updateVerificationOptimistic("00099", "RustBuild", "Pass");
 
     let state = plansStore.getState();
     expect(state.plans[0].verifications[0].status).toBe("Pass");
-    expect(bridge.setVerificationStatus).toHaveBeenCalledWith("00099", "RustBuild", "Pass");
+    expect(setVerificationStatusSpy).toHaveBeenCalledWith("00099", "RustBuild", "Pass");
 
     // 2. Failed verification change -> rollback
     vi.spyOn(bridge, "setVerificationStatus").mockRejectedValueOnce(

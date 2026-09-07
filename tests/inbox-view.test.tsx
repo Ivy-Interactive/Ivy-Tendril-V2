@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import { InboxView } from "../src/views/InboxView";
 import { bridge } from "../src/api/bridge";
@@ -17,6 +17,8 @@ const makePage = (
 });
 
 describe("InboxView Component & Triage Tests", () => {
+  let listGitHubIssuesSpy: MockInstance;
+
   const mockProjects: ProjectSummary[] = [
     {
       name: "Tendril-App",
@@ -62,9 +64,9 @@ describe("InboxView Component & Triage Tests", () => {
   ];
 
   beforeEach(() => {
-    vi.spyOn(bridge, "listGitHubIssues").mockResolvedValue(
-      makePage(mockIssues, { hasMore: true, totalCount: 60 }),
-    );
+    listGitHubIssuesSpy = vi
+      .spyOn(bridge, "listGitHubIssues")
+      .mockResolvedValue(makePage(mockIssues, { hasMore: true, totalCount: 60 }));
     vi.spyOn(bridge, "loadUiState").mockResolvedValue(null);
     vi.spyOn(bridge, "saveUiState").mockResolvedValue(undefined);
   });
@@ -82,7 +84,7 @@ describe("InboxView Component & Triage Tests", () => {
     expect(screen.getByRole("tab", { name: /project issues/i })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
 
     // Switch to Review Requests
@@ -90,7 +92,7 @@ describe("InboxView Component & Triage Tests", () => {
     fireEvent.click(reviewRequestsTab);
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "review-requests", 1, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "review-requests", 1, 25);
     });
 
     // Switch to Project Issues
@@ -98,7 +100,7 @@ describe("InboxView Component & Triage Tests", () => {
     fireEvent.click(projectIssuesTab);
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(
         mockProjects[0].repos[0],
         "project-issues",
         1,
@@ -117,13 +119,12 @@ describe("InboxView Component & Triage Tests", () => {
 
     // Verify card 101 content
     const card101 = screen.getByTestId("issue-card-101");
-    const { getByText } = within(card101);
-    expect(getByText("#101")).toBeInTheDocument();
-    expect(getByText("Add offline cache for plans")).toBeInTheDocument();
-    expect(getByText("@alice")).toBeInTheDocument();
-    expect(getByText("5")).toBeInTheDocument(); // Comments count
-    expect(getByText("feature")).toBeInTheDocument();
-    expect(getByText("priority-high")).toBeInTheDocument();
+    expect(within(card101).getByText("#101")).toBeInTheDocument();
+    expect(within(card101).getByText("Add offline cache for plans")).toBeInTheDocument();
+    expect(within(card101).getByText("@alice")).toBeInTheDocument();
+    expect(within(card101).getByText("5")).toBeInTheDocument(); // Comments count
+    expect(within(card101).getByText("feature")).toBeInTheDocument();
+    expect(within(card101).getByText("priority-high")).toBeInTheDocument();
   });
 
   it("filters issues correctly by search keyword, label selection, and assignee selection", async () => {
@@ -212,7 +213,7 @@ describe("InboxView Component & Triage Tests", () => {
     render(<InboxView projects={mockProjects} />);
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
 
     expect(screen.getByRole("button", { name: /previous/i })).toBeDisabled();
@@ -220,13 +221,13 @@ describe("InboxView Component & Triage Tests", () => {
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
     });
 
     fireEvent.click(screen.getByRole("button", { name: /previous/i }));
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
   });
 
@@ -234,19 +235,19 @@ describe("InboxView Component & Triage Tests", () => {
     render(<InboxView projects={mockProjects} />);
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
     });
 
     fireEvent.change(screen.getByLabelText(/page size/i), { target: { value: "50" } });
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 50);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 50);
     });
   });
 
@@ -254,13 +255,13 @@ describe("InboxView Component & Triage Tests", () => {
     render(<InboxView projects={mockProjects} />);
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
     });
 
     fireEvent.change(screen.getByRole("searchbox", { name: /search issues/i }), {
@@ -268,7 +269,7 @@ describe("InboxView Component & Triage Tests", () => {
     });
 
     await waitFor(() => {
-      expect(bridge.listGitHubIssues).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
   });
 
@@ -287,7 +288,7 @@ describe("InboxView Component & Triage Tests", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(1);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(1);
 
       fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
         target: { value: "30s" },
@@ -296,7 +297,7 @@ describe("InboxView Component & Triage Tests", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(30_000);
       });
-      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(2);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(2);
 
       fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
         target: { value: "off" },
@@ -305,7 +306,7 @@ describe("InboxView Component & Triage Tests", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(60_000);
       });
-      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(2);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(2);
     });
 
     it("clears the polling interval on unmount", async () => {
@@ -314,7 +315,7 @@ describe("InboxView Component & Triage Tests", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(1);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(1);
 
       fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
         target: { value: "30s" },
@@ -325,7 +326,7 @@ describe("InboxView Component & Triage Tests", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(60_000);
       });
-      expect(bridge.listGitHubIssues).toHaveBeenCalledTimes(1);
+      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

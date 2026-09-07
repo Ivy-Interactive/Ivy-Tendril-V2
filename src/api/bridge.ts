@@ -20,39 +20,40 @@ import type {
 } from "../types/api";
 
 export const bridge = {
-  async checkServiceHealth(): Promise<ServiceHealth> {
+  async checkServiceHealth(this: void): Promise<ServiceHealth> {
     return invoke<ServiceHealth>("cmd_check_service_health");
   },
 
-  async getServiceInfo(): Promise<ServiceInfo> {
+  async getServiceInfo(this: void): Promise<ServiceInfo> {
     return invoke<ServiceInfo>("cmd_get_service_info");
   },
 
-  async getServiceLogs(lines?: number): Promise<string[]> {
+  async getServiceLogs(this: void, lines?: number): Promise<string[]> {
     return invoke<string[]>("cmd_get_service_logs", { lines });
   },
 
-  async restartService(): Promise<ServiceInfo> {
+  async restartService(this: void): Promise<ServiceInfo> {
     return invoke<ServiceInfo>("cmd_restart_service");
   },
 
-  async repairService(): Promise<string> {
+  async repairService(this: void): Promise<string> {
     return invoke<string>("cmd_repair_service");
   },
 
-  async switchServiceMode(mode: string): Promise<ServiceInfo> {
+  async switchServiceMode(this: void, mode: string): Promise<ServiceInfo> {
     return invoke<ServiceInfo>("cmd_switch_service_mode", { mode });
   },
 
-  async listPlans(query?: PlanQuery): Promise<PlanSummary[]> {
+  async listPlans(this: void, query?: PlanQuery): Promise<PlanSummary[]> {
     return invoke<PlanSummary[]>("cmd_list_plans", { query });
   },
 
-  async getPlan(id: string): Promise<PlanDetail> {
+  async getPlan(this: void, id: string): Promise<PlanDetail> {
     return invoke<PlanDetail>("cmd_get_plan", { id });
   },
 
   async updatePlanField(
+    this: void,
     id: string,
     field: string,
     value: string,
@@ -66,16 +67,20 @@ export const bridge = {
     });
   },
 
-  async getRevision(id: string, number?: number): Promise<string> {
+  async getRevision(this: void, id: string, number?: number): Promise<string> {
     return invoke<string>("cmd_get_revision", { id, number });
   },
 
-  async writeRevision(id: string, content: string): Promise<RevisionResult> {
+  async writeRevision(this: void, id: string, content: string): Promise<RevisionResult> {
     return invoke<RevisionResult>("cmd_write_revision", { id, content });
   },
 
   /** Markdown of one `<planFolder>/Verification/<name>.md` report. */
-  async getVerificationReport(planId: string, name: string): Promise<VerificationReport> {
+  async getVerificationReport(
+    this: void,
+    planId: string,
+    name: string,
+  ): Promise<VerificationReport> {
     return invoke<VerificationReport>("cmd_get_verification_report", {
       planId,
       name,
@@ -83,13 +88,14 @@ export const bridge = {
   },
 
   /** Every verification report that exists on disk for a plan. */
-  async listVerificationReports(planId: string): Promise<VerificationReport[]> {
+  async listVerificationReports(this: void, planId: string): Promise<VerificationReport[]> {
     return invoke<VerificationReport[]>("cmd_list_verification_reports", {
       planId,
     });
   },
 
   async setVerificationStatus(
+    this: void,
     planId: string,
     name: string,
     status: VerificationStatus,
@@ -101,11 +107,12 @@ export const bridge = {
     });
   },
 
-  async listRecommendations(planId: string): Promise<RecommendationItem[]> {
+  async listRecommendations(this: void, planId: string): Promise<RecommendationItem[]> {
     return invoke<RecommendationItem[]>("cmd_list_recommendations", { planId });
   },
 
   async setRecommendationState(
+    this: void,
     planId: string,
     title: string,
     state: RecommendationState,
@@ -119,39 +126,40 @@ export const bridge = {
     });
   },
 
-  async listJobs(status?: string, limit?: number): Promise<Job[]> {
+  async listJobs(this: void, status?: string, limit?: number): Promise<Job[]> {
     return invoke<Job[]>("cmd_list_jobs", { status, limit });
   },
 
-  async getJob(id: string): Promise<JobDetail> {
+  async getJob(this: void, id: string): Promise<JobDetail> {
     return invoke<JobDetail>("cmd_get_job", { id });
   },
 
-  async startJob(args: StartJobArgs): Promise<StartJobResponse> {
+  async startJob(this: void, args: StartJobArgs): Promise<StartJobResponse> {
     return invoke<StartJobResponse>("cmd_start_job", { args });
   },
 
-  async cancelJob(id: string, message?: string): Promise<void> {
+  async cancelJob(this: void, id: string, message?: string): Promise<void> {
     return invoke<void>("cmd_cancel_job", { id, message });
   },
 
-  async listProjects(): Promise<ProjectSummary[]> {
+  async listProjects(this: void): Promise<ProjectSummary[]> {
     return invoke<ProjectSummary[]>("cmd_list_projects");
   },
 
-  async getConfig(): Promise<TendrilConfig> {
+  async getConfig(this: void): Promise<TendrilConfig> {
     return invoke<TendrilConfig>("cmd_get_config");
   },
 
-  async saveUiState(key: string, value: string): Promise<void> {
+  async saveUiState(this: void, key: string, value: string): Promise<void> {
     return invoke<void>("cmd_save_ui_state", { key, value });
   },
 
-  async loadUiState(key: string): Promise<string | null> {
+  async loadUiState(this: void, key: string): Promise<string | null> {
     return invoke<string | null>("cmd_load_ui_state", { key });
   },
 
   async listGitHubIssues(
+    this: void,
     repo?: string,
     category?: string,
     page?: number,
