@@ -33,7 +33,13 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const verificationCount = verifications.length;
+
   useEffect(() => {
+    // Nothing to fetch reports for, and asking would mean a pointless round
+    // trip through the service for every plan with no verifications.
+    if (verificationCount === 0) return;
+
     let cancelled = false;
     setError(null);
 
@@ -52,9 +58,9 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [planId]);
+  }, [planId, verificationCount]);
 
-  if (verifications.length === 0) {
+  if (verificationCount === 0) {
     return (
       <p data-testid="no-verifications" className="text-sm text-slate-400">
         This plan has no verifications configured.

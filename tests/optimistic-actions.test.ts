@@ -1,30 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { plansStore } from "../src/state/plansStore";
 import { bridge } from "../src/api/bridge";
-import type { PlanSummary } from "../src/types/api";
+import { planDetail, planSummary } from "./fixtures/plan.fixture";
 
 describe("Optimistic Actions & Error Rollback", () => {
-  const initialPlan: PlanSummary = {
+  const initialPlan = planSummary({
     id: "00099",
     title: "Initial Title",
     state: "Draft",
     project: "DemoProject",
     level: "Feature",
-    verifications: [
-      { name: "RustBuild", status: "Pending" },
-    ],
-  };
+    verifications: [{ name: "RustBuild", status: "Pending" }],
+  });
 
   beforeEach(() => {
     plansStore.setPlans([initialPlan]);
-    plansStore.setSelectedPlan({
-      ...initialPlan,
-      repos: [],
-      dependsOn: [],
-      relatedPlans: [],
-      commits: [],
-      prs: [],
-    });
+    plansStore.setSelectedPlan(
+      planDetail({
+        ...initialPlan,
+        repos: [],
+        dependsOn: [],
+        relatedPlans: [],
+        commits: [],
+        prs: [],
+      })
+    );
   });
 
   it("optimistically updates a plan field and keeps changes on bridge success", async () => {

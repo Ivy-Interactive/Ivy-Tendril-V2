@@ -1,37 +1,34 @@
-import React from "react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DashboardView } from "../src/views/DashboardView";
 import { PlansView } from "../src/views/PlansView";
 import { PlanDetailView } from "../src/views/PlanDetailView";
 import { NewPlanModal } from "../src/views/NewPlanModal";
-import type { PlanDetail, PlanSummary, Job, ProjectSummary } from "../src/types/api";
+import { bridge } from "../src/api/bridge";
+import { planDetail, planSummary } from "./fixtures/plan.fixture";
+import type { PlanSummary, Job, ProjectSummary } from "../src/types/api";
 
-vi.mock("components-storybook/tendril", async (importOriginal) => {
-  const actual = await importOriginal<any>();
-  return {
-    ...actual,
-    SortableVerificationList: ({ verifications }: { verifications?: Array<{ id: string; name: string; status: string }> }) => (
-      <div data-testid="sortable-verifications">
-        {verifications?.map((v) => (
-          <div key={v.id}>{v.name}: {v.status}</div>
-        ))}
-      </div>
-    ),
-  };
+// The verifications tab fetches reports through the bridge; without a stub the
+// tab would try to reach a real daemon over Tauri's invoke().
+beforeEach(() => {
+  vi.spyOn(bridge, "listVerificationReports").mockResolvedValue([]);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("Operator Views Component & Accessibility Tests", () => {
   const mockPlans: PlanSummary[] = [
-    {
+    planSummary({
       id: "00010",
       title: "First Accessible Plan",
       state: "Draft",
       project: "Project-A",
       level: "Feature",
       verifications: [{ name: "RustBuild", status: "Pass" }],
-    },
-    {
+    }),
+    planSummary({
       id: "00020",
       title: "Reviewable Bug Fix",
       state: "Review",
@@ -41,7 +38,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
         { name: "RustClippy", status: "Pass" },
         { name: "RustTest", status: "Pass" },
       ],
-    },
+    }),
   ];
 
   const mockJobs: Job[] = [
@@ -57,7 +54,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
     },
   ];
 
-  const mockPlanDetail: PlanDetail = {
+  const mockPlanDetail = planDetail({
     ...mockPlans[0],
     repos: ["/Users/rorychatt/repos/test"],
     verifications: [{ name: "RustBuild", status: "Pass" }],
@@ -66,7 +63,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
     commits: ["commit-123"],
     prs: [],
     latestRevisionContent: "# Test Revision Content\n\nDetailed problem and solution.",
-  };
+  });
 
   const mockProjects: ProjectSummary[] = [
     { name: "Tendril-App", repos: ["/repos/Tendril-App"], verifications: ["RustBuild"] },
