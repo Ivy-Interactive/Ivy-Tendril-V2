@@ -76,3 +76,27 @@ pub fn resolve_plan_folder(plan_id_or_path: &str, plans_dir: &Path) -> Result<Pa
         plans_dir.display()
     )))
 }
+
+pub fn rename_project_in_plans(plans_dir: &Path, old_name: &str, new_name: &str) -> Result<usize> {
+    if !plans_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut count = 0;
+    for entry in std::fs::read_dir(plans_dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            let plan_folder = entry.path();
+            if let Ok((mut plan, _)) = crate::plans::reader::read_plan_yaml(&plan_folder) {
+                if plan.project.eq_ignore_ascii_case(old_name) {
+                    plan.project = new_name.to_string();
+                    plan.updated = chrono::Utc::now();
+                    crate::plans::writer::write_plan_yaml(&plan_folder, &plan)?;
+                    count += 1;
+                }
+            }
+        }
+    }
+
+    Ok(count)
+}

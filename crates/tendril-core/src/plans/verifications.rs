@@ -82,3 +82,37 @@ pub fn remove_plan_verification(plan_folder: &Path, name: &str) -> Result<()> {
     plan.updated = Utc::now();
     write_plan_yaml(plan_folder, &plan)
 }
+
+pub fn rename_verification_in_plans(
+    plans_dir: &Path,
+    old_name: &str,
+    new_name: &str,
+) -> Result<usize> {
+    if !plans_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut count = 0;
+    for entry in std::fs::read_dir(plans_dir)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            let plan_folder = entry.path();
+            if let Ok((mut plan, _)) = read_plan_yaml(&plan_folder) {
+                let mut modified = false;
+                for v in &mut plan.verifications {
+                    if v.name.eq_ignore_ascii_case(old_name) {
+                        v.name = new_name.to_string();
+                        modified = true;
+                    }
+                }
+                if modified {
+                    plan.updated = Utc::now();
+                    write_plan_yaml(&plan_folder, &plan)?;
+                    count += 1;
+                }
+            }
+        }
+    }
+
+    Ok(count)
+}

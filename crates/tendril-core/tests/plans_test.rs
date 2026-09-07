@@ -5,8 +5,9 @@ use tendril_core::models::{
 use tendril_core::plans::{
     add_plan_verification, add_recommendation, allocate_plan_id, create_plan, get_revision,
     list_plan_verifications, list_recommendations, read_plan_file, remove_plan_verification,
-    remove_recommendation, set_plan_verification_status, set_recommendation_state, to_safe_title,
-    write_revision, CreatePlanOptions, PlanCompletionGuard,
+    remove_recommendation, rename_project_in_plans, rename_verification_in_plans,
+    set_plan_verification_status, set_recommendation_state, to_safe_title, write_revision,
+    CreatePlanOptions, PlanCompletionGuard,
 };
 
 #[test]
@@ -360,4 +361,134 @@ fn test_plan_completion_guard_refuses_completed_from_review_while_a_row_failed()
     assert_eq!(plan.state, PlanStatus::Failed.to_string());
     assert!(PlanCompletionGuard::apply_state(&mut plan, PlanStatus::Draft, false, "00002").is_ok());
     assert_eq!(plan.state, PlanStatus::Draft.to_string());
+}
+
+#[test]
+fn test_rename_verification_in_plans() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-rename-ver-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).unwrap();
+
+    let opts = CreatePlanOptions {
+        title: "Test Verification Rename".to_string(),
+        project: "TestProj".to_string(),
+        level: None,
+        initial_prompt: None,
+        source_url: None,
+        execution_profile: None,
+        priority: None,
+        repos: vec![],
+        verifications: vec![PlanVerificationEntry {
+            name: "OldVer".to_string(),
+            status: VerificationStatus::Pending,
+        }],
+        depends_on: vec![],
+        related_plans: vec![],
+        chat_session_id: None,
+    };
+    let plan = create_plan(&test_dir, opts).unwrap();
+    let plan_folder = Path::new(&plan.folder_path);
+
+    let count = rename_verification_in_plans(&test_dir, "OldVer", "NewVer").unwrap();
+    assert_eq!(count, 1);
+
+    let verifs = list_plan_verifications(plan_folder).unwrap();
+    assert_eq!(verifs[0].name, "NewVer");
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_rename_project_in_plans() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-rename-proj-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).unwrap();
+
+    let opts = CreatePlanOptions {
+        title: "Test Project Rename".to_string(),
+        project: "OldProject".to_string(),
+        level: None,
+        initial_prompt: None,
+        source_url: None,
+        execution_profile: None,
+        priority: None,
+        repos: vec![],
+        verifications: vec![],
+        depends_on: vec![],
+        related_plans: vec![],
+        chat_session_id: None,
+    };
+    let plan = create_plan(&test_dir, opts).unwrap();
+    let plan_folder = Path::new(&plan.folder_path);
+
+    let count = rename_project_in_plans(&test_dir, "OldProject", "NewProject").unwrap();
+    assert_eq!(count, 1);
+
+    let plan_file = read_plan_file(plan_folder).unwrap();
+    assert_eq!(plan_file.metadata.project, "NewProject");
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_db_cascading_renames() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-db-rename-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).unwrap();
+    let db_path = test_dir.join("tendril.db");
+    let conn = tendril_core::db::open_database(&db_path).unwrap();
+
+    conn.execute(
+        "INSERT INTO Plans (Id, Title, Project, Level, State, FolderPath, FolderName, YamlRaw, Created, Updated) VALUES (1, 'Plan 1', 'OldProj', 'Feature', 'Draft', '/p1', '00001-Plan1', '', '2026-01-01', '2026-01-01')",
+        [],
+    ).unwrap();
+    conn.execute(
+        "INSERT INTO Verifications (PlanId, Name, Status) VALUES (1, 'OldCheck', 'Pending')",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO Jobs (Id, Type, PlanFile, Project, Status) VALUES ('J1', 'Test', '', 'OldProj', 'Completed')",
+        [],
+    ).unwrap();
+    conn.execute(
+        "INSERT INTO Recommendations (PlanId, Title, Description, Project, Date) VALUES (1, 'Rec', 'Desc', 'OldProj', '2026-01-01')",
+        [],
+    ).unwrap();
+
+    let ver_count = tendril_core::db::rename_verification(&conn, "OldCheck", "NewCheck").unwrap();
+    assert_eq!(ver_count, 1);
+    let ver_name: String = conn
+        .query_row("SELECT Name FROM Verifications WHERE PlanId = 1", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(ver_name, "NewCheck");
+
+    let proj_count = tendril_core::db::rename_project(&conn, "OldProj", "NewProj").unwrap();
+    assert_eq!(proj_count, 1);
+    let plan_proj: String = conn
+        .query_row("SELECT Project FROM Plans WHERE Id = 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(plan_proj, "NewProj");
+    let job_proj: String = conn
+        .query_row("SELECT Project FROM Jobs WHERE Id = 'J1'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(job_proj, "NewProj");
+    let rec_proj: String = conn
+        .query_row(
+            "SELECT Project FROM Recommendations WHERE PlanId = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rec_proj, "NewProj");
+
+    let _ = std::fs::remove_dir_all(test_dir);
 }
