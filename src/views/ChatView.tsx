@@ -248,12 +248,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
   const getMessageKey = useCallback((index: number) => messages[index].id, [messages]);
 
   const estimateMessageSize = useCallback(
-    (index: number) => {
+    (index: number, clientWidth?: number) => {
       const msg = messages[index];
       if (!msg) return 160;
       return estimateChatMessageHeight(msg.content, {
         role: msg.role,
         hasAttachments: Boolean(msg.attachments && msg.attachments.length > 0),
+        containerWidth: clientWidth,
       });
     },
     [messages],
