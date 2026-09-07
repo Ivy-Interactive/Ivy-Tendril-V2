@@ -16,6 +16,13 @@ pub struct CreateVerificationRequest {
     pub prompt: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateVerificationRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    pub prompt: String,
+}
+
 pub async fn list_verifications(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let settings = load_config(&state.config_path).unwrap_or_default();
     Json(settings.verifications)
@@ -92,6 +99,59 @@ pub async fn add_verification(
     }
 
     (StatusCode::CREATED, Json(created)).into_response()
+}
+
+pub async fn update_verification(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(req): Json<UpdateVerificationRequest>,
+) -> impl IntoResponse {
+    if let Some(new_name) = &req.name {
+        if !new_name.eq_ignore_ascii_case(&name) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Verification name cannot be changed" })),
+            )
+                .into_response();
+        }
+    }
+
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let idx = settings
+        .verifications
+        .iter()
+        .position(|v| v.name.eq_ignore_ascii_case(&name));
+
+    let Some(idx) = idx else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Verification '{}' not found", name) })),
+        )
+            .into_response();
+    };
+
+    settings.verifications[idx].prompt = req.prompt;
+    let updated = settings.verifications[idx].clone();
+
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (StatusCode::OK, Json(updated)).into_response()
 }
 
 pub async fn delete_verification(

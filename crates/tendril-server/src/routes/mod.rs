@@ -129,7 +129,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/api/verifications/:name",
-            get(verifications::get_verification).delete(verifications::delete_verification),
+            get(verifications::get_verification)
+                .put(verifications::update_verification)
+                .delete(verifications::delete_verification),
         )
         // Config
         .route(
