@@ -494,40 +494,54 @@ async fn a_job_that_fails_before_starting_reports_a_real_reason() {
 }
 
 #[tokio::test]
-async fn the_real_service_still_has_no_recommendation_write_route() {
+async fn the_real_service_updates_recommendation_state() {
     let _guard = env_lock().await;
     let Some(bin) = server_binary() else { return };
     let (temp, _service, client) = isolated_service(&bin).await;
 
-    let created = client
-        .create_plan(json!({
+    let (plan_id, folder) = seed_plan(
+        &client,
+        json!({
             "title": "Recommendation Route Probe",
             "project": "E2EProject",
             "level": "Chore",
             "repos": [temp.path().join("repo").to_string_lossy()],
             "verifications": []
-        }))
-        .await
-        .expect("create plan");
-    let plan_id = format!("{:05}", created["metadata"]["id"].as_i64().unwrap_or(1));
+        }),
+    )
+    .await;
 
-    let err = cmd_set_recommendation_state(
-        plan_id,
+    // Seed a recommendation into plan.yaml on disk.
+    let plan_yaml_path = Path::new(&folder).join("plan.yaml");
+    let content = std::fs::read_to_string(&plan_yaml_path).expect("read plan.yaml");
+    let updated = if content.contains("recommendations:") {
+        content.replace(
+            "recommendations: []",
+            "recommendations:\n  - title: \"Tauri WebDriver E2E Automation\"\n    state: Pending",
+        )
+    } else {
+        format!(
+            "{content}\nrecommendations:\n  - title: \"Tauri WebDriver E2E Automation\"\n    state: Pending\n"
+        )
+    };
+    std::fs::write(&plan_yaml_path, updated).expect("seed recommendation into plan.yaml");
+
+    // Mutate the recommendation state via the app's command layer, which calls
+    // PUT /api/plans/:id/recommendations/:title on the running service.
+    cmd_set_recommendation_state(
+        plan_id.clone(),
         "Tauri WebDriver E2E Automation".to_string(),
         "Accepted".to_string(),
         None,
     )
     .await
-    .expect_err("the service exposes no recommendation write route yet");
+    .expect("update recommendation state");
 
-    // Pinned on purpose. The Review view rolls its optimistic update back on
-    // this error instead of the app editing `plan.yaml` behind the daemon's
-    // back; when the service gains the route (plan 00024), this test fails and
-    // says so, which is the signal that the write path can be trusted.
-    assert_eq!(err.code, "RECOMMENDATION_UPDATE_FAILED");
-    assert!(
-        err.message.contains("404"),
-        "the service's status is preserved: {}",
-        err.message
-    );
+    // Verify the state transition end-to-end against the real service.
+    let recommendations = cmd_list_recommendations(plan_id)
+        .await
+        .expect("list recommendations");
+    assert_eq!(recommendations.len(), 1);
+    assert_eq!(recommendations[0].title, "Tauri WebDriver E2E Automation");
+    assert_eq!(recommendations[0].state, "Accepted");
 }

@@ -184,10 +184,9 @@ impl TendrilClient {
     /// in tendril-core and the `tendril plan rec accept|decline` CLI, both of
     /// which look the entry up by title rather than by index.
     ///
-    /// The service does not expose this route yet (plan 00024 adds it). Until
-    /// then the call fails with a real `RECOMMENDATION_UPDATE_FAILED` carrying
-    /// the service's 404, which the Review view surfaces and rolls back — the
-    /// app does not write `plan.yaml` behind the daemon's back.
+    /// The route is live in `tendril-server` (shipped in Plan 00068 via
+    /// `PUT /api/plans/:id/recommendations/:title`). The desktop app delegates
+    /// mutation to the daemon rather than writing `plan.yaml` behind its back.
     pub async fn update_recommendation(
         &self,
         plan_id: &str,
