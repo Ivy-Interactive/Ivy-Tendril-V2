@@ -198,7 +198,8 @@ fn depends_on_of(plans_dir: &Path, folder_name: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn get_gh_pr_state(pr_url: &str) -> Result<String> {
+/// Resolves a PR URL to its state with the `gh` CLI. This is the production [`PrStateResolver`].
+pub fn get_gh_pr_state(pr_url: &str) -> Result<String> {
     let output = Command::new("gh")
         .args(["pr", "view", pr_url, "--json", "state", "-q", ".state"])
         .output();

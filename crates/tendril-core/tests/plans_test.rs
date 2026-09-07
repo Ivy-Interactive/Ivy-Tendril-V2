@@ -221,3 +221,62 @@ fn test_plan_completion_guard() {
     assert!(plan.partial_delivery);
     assert_eq!(plan.state, PlanStatus::Completed.to_string());
 }
+
+/// The job engine now routes every plan state write through the guard, so the Completed-over-Fail
+/// rule has to hold from `Review` as well, not only from `Executing`.
+#[test]
+fn test_plan_completion_guard_refuses_completed_from_review_while_a_row_failed() {
+    let mut plan = PlanYaml {
+        schema_version: 3,
+        state: PlanStatus::Review.to_string(),
+        project: "Test".to_string(),
+        level: "Feature".to_string(),
+        title: "Review With Failure".to_string(),
+        repos: vec![],
+        created: chrono::Utc::now(),
+        updated: chrono::Utc::now(),
+        prs: vec![],
+        commits: vec![],
+        verifications: vec![
+            PlanVerificationEntry {
+                name: "Build".to_string(),
+                status: VerificationStatus::Pass,
+            },
+            PlanVerificationEntry {
+                name: "UnitTests".to_string(),
+                status: VerificationStatus::Fail,
+            },
+        ],
+        related_plans: vec![],
+        depends_on: vec![],
+        priority: 0,
+        partial_delivery: false,
+        execution_profile: None,
+        initial_prompt: None,
+        source_url: None,
+        recommendations: None,
+    };
+
+    assert_eq!(
+        PlanCompletionGuard::failed_verifications(&plan),
+        vec!["UnitTests".to_string()]
+    );
+
+    let refused =
+        PlanCompletionGuard::apply_state(&mut plan, PlanStatus::Completed, false, "00002");
+    assert!(refused.is_err(), "Completed must still be refused");
+    assert_eq!(
+        plan.state,
+        PlanStatus::Review.to_string(),
+        "a refused transition must not mutate the plan"
+    );
+    assert!(!plan.partial_delivery);
+
+    // Every other target state is unaffected by the rule.
+    assert!(
+        PlanCompletionGuard::apply_state(&mut plan, PlanStatus::Failed, false, "00002").is_ok()
+    );
+    assert_eq!(plan.state, PlanStatus::Failed.to_string());
+    assert!(PlanCompletionGuard::apply_state(&mut plan, PlanStatus::Draft, false, "00002").is_ok());
+    assert_eq!(plan.state, PlanStatus::Draft.to_string());
+}

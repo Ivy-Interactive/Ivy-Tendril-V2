@@ -4,7 +4,7 @@ use crate::db::open_database;
 use crate::error::Result;
 use crate::jobs::manager::{apply_plan_state, revert_plan_state};
 use crate::models::{JobItem, JobStatus, PlanStatus};
-use crate::plans::dependencies::unblock_satisfied_plans;
+use crate::plans::dependencies::{get_gh_pr_state, unblock_satisfied_plans_with, PrStateResolver};
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::verification_gate::resolve_post_execution_state;
 use chrono::Utc;
@@ -36,6 +36,24 @@ pub struct ReconcileReport {
 pub async fn reconcile_jobs_on_startup(
     tendril_home: &Path,
     settings: &TendrilSettings,
+) -> Result<ReconcileReport> {
+    reconcile_jobs_with(
+        tendril_home,
+        &get_plans_dir(tendril_home),
+        settings,
+        &get_gh_pr_state,
+    )
+    .await
+}
+
+/// [`reconcile_jobs_on_startup`] with the plans directory and the PR-state lookup supplied
+/// explicitly, so tests can point it at a fixture without inheriting `TENDRIL_PLANS` and without
+/// invoking `gh`.
+pub async fn reconcile_jobs_with(
+    tendril_home: &Path,
+    plans_dir: &Path,
+    settings: &TendrilSettings,
+    resolve_pr_state: PrStateResolver<'_>,
 ) -> Result<ReconcileReport> {
     let mut report = ReconcileReport::default();
 
@@ -95,9 +113,9 @@ pub async fn reconcile_jobs_on_startup(
         }
     }
 
-    let plans_dir = get_plans_dir(tendril_home);
-    report.unblocked_plans = unblock_satisfied_plans(&plans_dir).unwrap_or_default();
-    report.reverted_plans = revert_orphaned_plans(&plans_dir, &live_plan_folders);
+    report.unblocked_plans =
+        unblock_satisfied_plans_with(plans_dir, resolve_pr_state).unwrap_or_default();
+    report.reverted_plans = revert_orphaned_plans(plans_dir, &live_plan_folders);
 
     let _ = settings;
     Ok(report)
