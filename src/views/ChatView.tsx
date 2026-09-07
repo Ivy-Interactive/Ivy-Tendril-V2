@@ -10,6 +10,7 @@ import {
 import { PlanMarkdown } from "components-storybook/tendril";
 import { chatStore, type ChatState } from "../state/chatStore";
 import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
+import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import {
   Plus,
   Edit2,
@@ -24,6 +25,7 @@ import {
   Loader2,
   Paperclip,
   X,
+  ArrowDown,
 } from "lucide-react";
 
 interface ChatViewProps {
@@ -66,6 +68,22 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
 
   const { sessions, activeSessionId, activeSession, queuedItems, isGenerating, error } =
     storeState;
+
+  const latestMessage = activeSession?.messages[activeSession.messages.length - 1];
+  const streamContentKey = `${activeSession?.id ?? ""}-${activeSession?.messages.length ?? 0}-${latestMessage?.id ?? ""}-${latestMessage?.content.length ?? 0}-${isGenerating}`;
+
+  const {
+    scrollContainerRef,
+    anchorRef,
+    autoScrollEnabled,
+    isAtBottom,
+    toggleAutoScroll,
+    scrollToTail,
+    resetToTail,
+  } = useChatAutoScroll({
+    content: streamContentKey,
+    isGenerating,
+  });
 
   const processFiles = (fileList: FileList | File[]) => {
     const incoming = Array.from(fileList).map((file) => ({
@@ -157,12 +175,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     }
   };
 
-  const handleSendMessage = async () => {
+    const handleSendMessage = async () => {
     const text = inputPrompt.trim();
     if ((!text && attachments.length === 0) || isGenerating) return;
     const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
     setInputPrompt("");
     setAttachments([]);
+    resetToTail();
     try {
       await chatStore.sendMessage(text, {
         attachments: currentAttachments,
@@ -297,8 +316,47 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
           </div>
         )}
 
+        {/* Header Toolbar */}
+        <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/40 px-4 py-2.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <h2 className="text-sm font-medium text-slate-200 truncate">
+              {activeSession ? activeSession.title : "No Active Chat"}
+            </h2>
+            {activeSession && (
+              <span className="text-xs text-slate-500">
+                {activeSession.messages.length} message{activeSession.messages.length === 1 ? "" : "s"}
+              </span>
+            )}
+            {isGenerating && (
+              <div className="flex items-center gap-1.5 rounded-full bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span>Streaming...</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              data-testid="chat-autoscroll-toggle"
+              onClick={toggleAutoScroll}
+              className={`rounded px-2 py-1 text-xs font-medium transition ${
+                autoScrollEnabled
+                  ? "bg-slate-800 text-emerald-400 border border-slate-700"
+                  : "bg-slate-900 text-slate-400 border border-slate-800"
+              }`}
+              title="Toggle auto-scrolling to streaming deltas"
+            >
+              Auto-scroll: {autoScrollEnabled ? "ON" : "OFF"}
+            </button>
+          </div>
+        </div>
+
         {/* Message Thread List */}
-        <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-hidden relative [&_button[aria-label='Scroll to bottom']]:hidden">
           {!activeSession || activeSession.messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center p-6 text-slate-400">
               <div className="max-w-md space-y-2">
@@ -309,7 +367,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
               </div>
             </div>
           ) : (
-            <ChatMessageList className="h-full">
+            <ChatMessageList ref={scrollContainerRef} className="h-full">
               {activeSession.messages.map((msg) => {
                 const isUser = msg.role === "user";
 
@@ -398,7 +456,31 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                   <span>Generating response...</span>
                 </div>
               )}
+
+              <div ref={anchorRef} data-testid="chat-scroll-anchor" className="h-px w-full pointer-events-none" />
             </ChatMessageList>
+          )}
+
+          {/* Floating Resume Anchor Button */}
+          {!isAtBottom && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
+              <button
+                type="button"
+                data-testid="chat-scroll-tail-button"
+                onClick={() => scrollToTail(true)}
+                className="flex items-center gap-2 rounded-full bg-slate-900/90 border border-slate-700 px-3.5 py-1.5 text-xs font-medium text-slate-200 shadow-lg backdrop-blur hover:bg-slate-800 hover:text-white transition-all"
+              >
+                <ArrowDown className="size-3.5 text-emerald-400" />
+                {isGenerating ? (
+                  <>
+                    <span>Scroll to streaming tail</span>
+                    <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  </>
+                ) : (
+                  <span>Scroll to bottom</span>
+                )}
+              </button>
+            </div>
           )}
         </div>
 
