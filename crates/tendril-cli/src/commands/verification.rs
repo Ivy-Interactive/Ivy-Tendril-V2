@@ -21,6 +21,13 @@ pub enum VerificationCommands {
         prompt: String,
     },
 
+    #[command(about = "Update a verification definition's prompt")]
+    Set {
+        name: String,
+        #[arg(long)]
+        prompt: String,
+    },
+
     #[command(about = "Remove a verification definition")]
     Remove { name: String },
 }
@@ -127,6 +134,30 @@ async fn handle_verification_command_daemon(
 
             println!("Verification '{}' added.", name);
         }
+        VerificationCommands::Set { name, prompt } => {
+            let resp = match client
+                .put(format!("{}/api/verifications/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "prompt": prompt,
+                }))
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Verification '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to update verification '{}': {}", name, err);
+            }
+
+            println!("Verification '{}' updated.", name);
+        }
         VerificationCommands::Remove { name } => {
             let resp = match client
                 .delete(format!("{}/api/verifications/{}", base_url, name))
@@ -196,6 +227,19 @@ fn handle_verification_command_fs(
             });
             save_config(&cfg_path, &settings)?;
             println!("Verification '{}' added.", name);
+        }
+        VerificationCommands::Set { name, prompt } => {
+            if let Some(v) = settings
+                .verifications
+                .iter_mut()
+                .find(|v| v.name.eq_ignore_ascii_case(&name))
+            {
+                v.prompt = prompt;
+            } else {
+                anyhow::bail!("Verification '{}' not found", name);
+            }
+            save_config(&cfg_path, &settings)?;
+            println!("Verification '{}' updated.", name);
         }
         VerificationCommands::Remove { name } => {
             let before = settings.verifications.len();
