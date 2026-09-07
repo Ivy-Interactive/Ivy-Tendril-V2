@@ -129,7 +129,7 @@
     --secondary: #26262b;
     --secondary-foreground: #f8f8f8;
     --destructive: #dd5860;
-    --destructive-foreground: #f8f8f8;
+    --destructive-foreground: #000000;
     --success: #86d26f;
     --success-foreground: #000000;
     --warning: #deb145;
