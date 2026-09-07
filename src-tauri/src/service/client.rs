@@ -198,8 +198,8 @@ impl TendrilClient {
         let url = format!(
             "{}/api/plans/{}/recommendations/{}",
             self.base_url,
-            urlencoding(plan_id),
-            urlencoding(title)
+            path_segment(plan_id),
+            path_segment(title)
         );
         let body = json!({ "state": state, "declineReason": decline_reason });
 
@@ -800,4 +800,53 @@ impl TendrilClient {
 
 fn urlencoding(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}
+
+/// Percent-encode one path segment.
+///
+/// `urlencoding` is form encoding, which turns a space into `+`. That is correct
+/// in a query string and wrong in a path: `+` is a literal plus there, so a
+/// recommendation titled "Deep Link Protocol Handler" would be looked up as
+/// "Deep+Link+Protocol+Handler" and never found. Plan and job ids are digits, so
+/// only the title-keyed recommendation route is affected.
+fn path_segment(s: &str) -> String {
+    let mut encoded = String::with_capacity(s.len());
+    for byte in s.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(*byte as char)
+            }
+            other => encoded.push_str(&format!("%{other:02X}")),
+        }
+    }
+    encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_path_segment_encodes_spaces_as_percent_20_not_plus() {
+        assert_eq!(
+            path_segment("Deep Link Protocol Handler"),
+            "Deep%20Link%20Protocol%20Handler"
+        );
+        // A `+` in the title survives as a `+`, which form encoding would have
+        // turned into a space on the way back out.
+        assert_eq!(path_segment("C++ bindings"), "C%2B%2B%20bindings");
+        assert_eq!(path_segment("00021"), "00021");
+        assert_eq!(path_segment("a-b_c.d~e"), "a-b_c.d~e");
+    }
+
+    #[test]
+    fn a_path_segment_cannot_smuggle_in_extra_path_or_query() {
+        assert_eq!(path_segment("../../etc/passwd"), "..%2F..%2Fetc%2Fpasswd");
+        assert_eq!(path_segment("title?admin=1"), "title%3Fadmin%3D1");
+    }
+
+    #[test]
+    fn a_path_segment_encodes_non_ascii_as_utf8_bytes() {
+        assert_eq!(path_segment("résumé"), "r%C3%A9sum%C3%A9");
+    }
 }

@@ -11,6 +11,11 @@
 //! * `PlanMetadata` has no `priority`, `executionProfile` or `recommendations`.
 //!   Those live only in `plan.yaml`, which the response exposes verbatim as
 //!   `yaml_raw`, so they are parsed back out of that.
+//! * `GET /api/plans` and `GET /api/plans/:id` do **not** agree on how complete
+//!   `metadata` is: the list projection comes back with `verifications` and
+//!   `repos` empty, while the detail response reads them from `plan.yaml`. Both
+//!   responses carry the authoritative `yaml_raw`, so that is used as the
+//!   fallback and the list view still shows verification status.
 
 use crate::models::{PlanDetailDto, PlanSummaryDto, PlanVerificationDto, RecommendationDto};
 use serde::Deserialize;
@@ -25,6 +30,12 @@ struct PlanYamlExtras {
     execution_profile: Option<String>,
     #[serde(default)]
     recommendations: Option<Vec<RecommendationDto>>,
+    /// Only used when the response's `metadata` came back without them, which
+    /// is what the list endpoint does.
+    #[serde(default)]
+    verifications: Option<Vec<PlanVerificationDto>>,
+    #[serde(default)]
+    repos: Option<Vec<String>>,
 }
 
 impl PlanYamlExtras {
@@ -69,6 +80,26 @@ fn string_list(source: &Value, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Verifications from `metadata`, falling back to `plan.yaml` when the response
+/// omitted them.
+fn resolve_verifications(metadata: &Value, extras: &PlanYamlExtras) -> Vec<PlanVerificationDto> {
+    let from_metadata = verifications(metadata);
+    if from_metadata.is_empty() {
+        extras.verifications.clone().unwrap_or_default()
+    } else {
+        from_metadata
+    }
+}
+
+fn resolve_repos(metadata: &Value, extras: &PlanYamlExtras) -> Vec<String> {
+    let from_metadata = string_list(metadata, "repos");
+    if from_metadata.is_empty() {
+        extras.repos.clone().unwrap_or_default()
+    } else {
+        from_metadata
+    }
+}
+
 fn verifications(metadata: &Value) -> Vec<PlanVerificationDto> {
     metadata
         .get("verifications")
@@ -105,7 +136,7 @@ pub fn map_plan_summary(value: &Value, fallback_id: &str) -> PlanSummaryDto {
         priority: extras.priority,
         created: string_field(metadata, "created"),
         updated: string_field(metadata, "updated"),
-        verifications: verifications(metadata),
+        verifications: resolve_verifications(metadata, &extras),
     }
 }
 
@@ -113,6 +144,8 @@ pub fn map_plan_summary(value: &Value, fallback_id: &str) -> PlanSummaryDto {
 pub fn map_plan_detail(value: &Value, fallback_id: &str) -> PlanDetailDto {
     let metadata = value.get("metadata").unwrap_or(value);
     let extras = PlanYamlExtras::parse(value.get("yaml_raw").and_then(|v| v.as_str()));
+    let repos = resolve_repos(metadata, &extras);
+    let verifications = resolve_verifications(metadata, &extras);
 
     PlanDetailDto {
         id: plan_id(metadata, fallback_id),
@@ -126,8 +159,8 @@ pub fn map_plan_detail(value: &Value, fallback_id: &str) -> PlanDetailDto {
         source_url: string_field(metadata, "source_url"),
         created: string_field(metadata, "created"),
         updated: string_field(metadata, "updated"),
-        repos: string_list(metadata, "repos"),
-        verifications: verifications(metadata),
+        repos,
+        verifications,
         depends_on: string_list(metadata, "depends_on"),
         related_plans: string_list(metadata, "related_plans"),
         commits: string_list(metadata, "commits"),
@@ -270,6 +303,55 @@ mod tests {
         assert_eq!(detail.priority, None);
         assert_eq!(detail.revision_count, 1);
         assert!(detail.latest_revision_content.is_none());
+    }
+
+    /// `GET /api/plans` really does return this: metadata with `verifications`
+    /// and `repos` emptied out, and the truth left in `yaml_raw`. Taken from a
+    /// live `tendril-server` response.
+    #[test]
+    fn recovers_verifications_the_list_endpoint_drops_from_metadata() {
+        let list_payload = json!({
+            "metadata": {
+                "id": 1,
+                "title": "E2E Seeded Plan",
+                "state": "Draft",
+                "project": "E2EProject",
+                "level": "Feature",
+                "repos": [],
+                "verifications": [],
+                "depends_on": []
+            },
+            "folder_path": "/tmp/home/Plans/00001-E2ESeededPlan",
+            "revision_count": 1,
+            "yaml_raw": "schemaVersion: 3\nstate: Draft\nproject: E2EProject\nlevel: Feature\ntitle: E2E Seeded Plan\nrepos:\n- /tmp/repo\nverifications:\n- name: RustClippy\n  status: Pass\n- name: RustTest\n  status: Fail\npriority: 0\n"
+        });
+
+        let summary = map_plan_summary(&list_payload, "00001");
+        assert_eq!(summary.verifications.len(), 2);
+        assert_eq!(summary.verifications[1].name, "RustTest");
+        assert_eq!(summary.verifications[1].status, "Fail");
+
+        let detail = map_plan_detail(&list_payload, "00001");
+        assert_eq!(detail.verifications.len(), 2);
+        assert_eq!(detail.repos, vec!["/tmp/repo".to_string()]);
+    }
+
+    #[test]
+    fn prefers_metadata_over_yaml_when_both_carry_verifications() {
+        // The detail endpoint fills metadata in from plan.yaml, so metadata is
+        // the fresher of the two and must win.
+        let payload = json!({
+            "metadata": {
+                "id": 1,
+                "title": "Plan",
+                "verifications": [{ "name": "RustTest", "status": "Pass" }]
+            },
+            "yaml_raw": "verifications:\n- name: RustTest\n  status: Pending\n"
+        });
+
+        let detail = map_plan_detail(&payload, "00001");
+        assert_eq!(detail.verifications.len(), 1);
+        assert_eq!(detail.verifications[0].status, "Pass");
     }
 
     #[test]

@@ -94,9 +94,11 @@ async fn spawn_mock_service(secret: &'static str) -> (SocketAddr, tokio::task::J
                                 "level": "Feature",
                                 "repos": ["/path/to/repo"],
                                 "verifications": [{ "name": "RustBuild", "status": "Pending" }],
-                                "dependsOn": []
+                                // snake_case: `PlanFile`/`PlanMetadata` carry no
+                                // `rename_all`. See service::plan_mapping docs.
+                                "depends_on": []
                             },
-                            "latestRevision": "# Plan Spec Markdown"
+                            "latest_revision_content": "# Plan Spec Markdown"
                         })),
                     )
                 } else {
