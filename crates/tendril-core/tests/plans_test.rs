@@ -62,6 +62,7 @@ fn test_create_plan_and_revisions_lifecycle() {
         }],
         depends_on: vec![],
         related_plans: vec![],
+        chat_session_id: None,
     };
 
     let plan_file = create_plan(&test_dir, opts).expect("Failed to create plan");
@@ -128,6 +129,7 @@ fn test_plan_recommendations() {
         verifications: vec![],
         depends_on: vec![],
         related_plans: vec![],
+        chat_session_id: None,
     };
 
     let plan = create_plan(&test_dir, opts).unwrap();
@@ -206,6 +208,8 @@ fn test_plan_completion_guard() {
         initial_prompt: None,
         source_url: None,
         recommendations: None,
+        chat_session_id: None,
+        extra: std::collections::BTreeMap::new(),
     };
 
     // Transitioning to Completed with failed verification should fail when allow_failed_verifications is false
@@ -255,6 +259,8 @@ fn test_plan_completion_guard_refuses_completed_from_review_while_a_row_failed()
         initial_prompt: None,
         source_url: None,
         recommendations: None,
+        chat_session_id: None,
+        extra: std::collections::BTreeMap::new(),
     };
 
     assert_eq!(

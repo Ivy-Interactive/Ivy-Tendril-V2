@@ -116,6 +116,8 @@ pub struct CreatePlanBody {
     pub depends_on: Vec<String>,
     #[serde(rename = "relatedPlans", default)]
     pub related_plans: Vec<String>,
+    #[serde(rename = "chatSessionId", default)]
+    pub chat_session_id: Option<String>,
 }
 
 pub async fn create_plan_handler(
@@ -134,6 +136,7 @@ pub async fn create_plan_handler(
         verifications: body.verifications,
         depends_on: body.depends_on,
         related_plans: body.related_plans,
+        chat_session_id: body.chat_session_id,
     };
 
     match create_plan(&state.plans_dir, opts) {
