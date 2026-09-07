@@ -34,7 +34,10 @@ pub enum PlanCommands {
     Validate(PlanValidateArgs),
 
     #[command(about = "Check all plans health")]
-    Doctor,
+    Doctor {
+        #[arg(long)]
+        fix: bool,
+    },
 
     #[command(about = "Remove plan worktrees")]
     Cleanup(PlanCleanupArgs),
@@ -534,7 +537,18 @@ pub fn handle_plan_command(
                 }
             }
         }
-        PlanCommands::Doctor => {
+        PlanCommands::Doctor { fix } => {
+            if fix {
+                let migrator = tendril_core::plans::migrations::PlanMigrator::new();
+                let count = migrator.migrate_plans(&plans_dir, None)?;
+                if count > 0 {
+                    println!(
+                        "Migrated {} plan(s) to schema version {}.",
+                        count,
+                        migrator.latest_version()
+                    );
+                }
+            }
             let issues = check_all_plans_health(&plans_dir)?;
             if issues.is_empty() {
                 println!("All plans are healthy.");

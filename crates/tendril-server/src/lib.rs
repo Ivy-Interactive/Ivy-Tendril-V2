@@ -66,6 +66,21 @@ async fn reconcile_after_restart(tendril_home: &std::path::Path) {
         }
         Err(e) => tracing::warn!("Startup reconciliation failed: {}", e),
     }
+
+    let plans_dir = tendril_core::config::get_plans_dir(tendril_home);
+    let migrator = tendril_core::plans::migrations::PlanMigrator::new();
+    match migrator.migrate_plans(&plans_dir, None) {
+        Ok(migrated_count) => {
+            if migrated_count > 0 {
+                tracing::info!(
+                    "Migrated {} plan(s) to schema version {}",
+                    migrated_count,
+                    migrator.latest_version()
+                );
+            }
+        }
+        Err(e) => tracing::warn!("Plan migration failed: {}", e),
+    }
 }
 
 async fn shutdown_signal() {
