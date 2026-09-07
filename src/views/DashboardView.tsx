@@ -4,7 +4,7 @@ import {
   TendrilProcessViewer,
   type DashboardKpiDto,
   type DashboardJobDto,
-} from "components-storybook/tendril";
+} from "@spacecorps/components-storybook/tendril";
 import type { PlanSummary, Job } from "../types/api";
 
 interface DashboardViewProps {

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { AgentViewer } from "components-storybook/tendril";
+import { AgentViewer } from "@spacecorps/components-storybook/tendril";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { jobsStore, type StreamEventItem } from "../state/jobsStore";
 

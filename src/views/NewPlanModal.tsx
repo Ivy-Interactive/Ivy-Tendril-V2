@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { ContentInput } from "components-storybook/tendril";
+import { ContentInput } from "@spacecorps/components-storybook/tendril";
 import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
 

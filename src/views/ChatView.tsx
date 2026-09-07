@@ -7,8 +7,8 @@ import {
   ChatBubbleActionWrapper,
   ChatInput,
   ChatMessageList,
-} from "components-storybook/renderers";
-import { PlanMarkdown } from "components-storybook/tendril";
+} from "@spacecorps/components-storybook/renderers";
+import { PlanMarkdown } from "@spacecorps/components-storybook/tendril";
 import { chatStore, type ChatState } from "../state/chatStore";
 import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";

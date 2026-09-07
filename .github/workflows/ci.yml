@@ -20,6 +20,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          path: tendril-app
+
+      - name: Checkout components-storybook
+        uses: actions/checkout@v4
+        with:
+          repository: SpaceCorps/components-storybook
+          path: components-storybook
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -29,14 +37,28 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          cache-dependency-path: |
+            tendril-app/pnpm-lock.yaml
+            components-storybook/pnpm-lock.yaml
+
+      - name: Install components-storybook dependencies
+        working-directory: components-storybook
+        run: pnpm install --frozen-lockfile
+
+      - name: Build components-storybook
+        working-directory: components-storybook
+        run: pnpm build
 
       - name: Install dependencies
+        working-directory: tendril-app
         run: pnpm install --frozen-lockfile
 
       - name: Build frontend
+        working-directory: tendril-app
         run: pnpm build
 
       - name: Test frontend
+        working-directory: tendril-app
         run: pnpm test
 
   tauri:

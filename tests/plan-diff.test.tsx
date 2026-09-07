@@ -6,7 +6,7 @@ import {
 } from "../src/views/PlanRevisionDiff";
 import { bridge } from "../src/api/bridge";
 
-vi.mock("components-storybook/tendril", async (importOriginal) => {
+vi.mock("@spacecorps/components-storybook/tendril", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,
