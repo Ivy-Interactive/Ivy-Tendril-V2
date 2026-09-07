@@ -1,0 +1,35 @@
+{
+  "Id": "381b81c0e24045a5a95ec513d7dddab2",
+  "Title": "Chat Input and Sidebar Stability",
+  "CreatedAt": "2026-09-07T10:28:47.543264+00:00",
+  "UpdatedAt": "2026-09-07T10:42:59.343634+00:00",
+  "AgentId": "antigravity",
+  "ModelId": "gemini-3.8-flash",
+  "Effort": "default",
+  "SpawnedJobIds": [
+    "00373",
+    "00374"
+  ],
+  "Messages": [
+    {
+      "Id": "dfbfc6a373ea476692dc0ee14eca805e",
+      "Role": "user",
+      "Content": "Investigate migration parity for chat",
+      "Timestamp": "2026-09-07T10:29:33.99747+00:00",
+      "AgentId": "antigravity",
+      "ModelId": "gemini-3.8-flash",
+      "RawStream": null,
+      "Effort": "default"
+    },
+    {
+      "Id": "07f186f71b96487eb079ee24c36ec36f",
+      "Role": "assistant",
+      "Content": "Here are the parity results and question blocks.",
+      "Timestamp": "2026-09-07T10:29:34.002346+00:00",
+      "AgentId": "antigravity",
+      "ModelId": "gemini-3.8-flash",
+      "RawStream": "{\"kind\":\"session_init\"}",
+      "Effort": "default"
+    }
+  ]
+}

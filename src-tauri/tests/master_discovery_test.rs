@@ -72,3 +72,38 @@ async fn test_master_discovery_port_and_secret_extraction() {
     assert_eq!(extracted.api_version, 2);
     assert_eq!(extracted.pid, std::process::id());
 }
+
+#[tokio::test]
+async fn test_master_discovery_foreign_ivy_shape() {
+    let temp_dir = tempfile::tempdir().expect("tempdir creation");
+    let discovery = MasterDiscovery::with_home(temp_dir.path());
+
+    // Real Ivy shape from live system
+    let ivy_json = r#"{
+        "pid": 31677,
+        "port": 5010,
+        "scheme": "https",
+        "startedAt": "2026-09-07T10:14:00.318863Z",
+        "heartbeat": "2026-09-07T11:50:00.375398Z"
+    }"#;
+    std::fs::write(discovery.master_path(), ivy_json).unwrap();
+
+    // read_master should reject foreign master
+    let read_res = discovery.read_master();
+    assert!(read_res.is_err());
+    assert!(read_res.unwrap_err().contains("Foreign daemon detected"));
+
+    // get_service_info should report ForeignMaster state with clear actionable message
+    let info = discovery.get_service_info().await;
+    assert_eq!(info.state, "ForeignMaster");
+    assert!(info.message.contains("Foreign or legacy daemon detected"));
+    assert!(info.message.contains("Ivy Tendril"));
+
+    // check_service_health should report ForeignMaster and not healthy
+    let health = discovery
+        .check_service_health()
+        .await
+        .expect("health check should return response");
+    assert!(!health.is_healthy);
+    assert!(health.status.contains("ForeignMaster"));
+}

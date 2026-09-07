@@ -1,6 +1,6 @@
 use crate::daemon::{
-    is_pid_alive, parse_master_json, probe_daemon_health, resolve_tendril_home,
-    DaemonConnectionState, MasterInfo,
+    detect_foreign_master, is_pid_alive, parse_master_json, probe_daemon_health,
+    resolve_tendril_home, DaemonConnectionState, MasterInfo,
 };
 use crate::models::{ServiceHealthDto, ServiceInfoDto};
 use std::path::PathBuf;
@@ -34,6 +34,10 @@ impl MasterDiscovery {
     }
 
     pub fn read_master(&self) -> Result<MasterInfo, String> {
+        crate::daemon::read_master(&self.tendril_home)
+    }
+
+    pub async fn check_service_health(&self) -> Result<ServiceHealthDto, String> {
         let path = self.master_path();
         if !path.exists() {
             return Err(format!("Master file not found at {}", path.display()));
@@ -42,11 +46,17 @@ impl MasterDiscovery {
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("Failed to read .master file: {e}"))?;
 
-        parse_master_json(&content)
-    }
+        if let Some(foreign_reason) = detect_foreign_master(&content) {
+            return Ok(ServiceHealthDto {
+                status: format!("ForeignMaster: {foreign_reason}"),
+                is_healthy: false,
+                port: None,
+                api_version: None,
+                capabilities: Vec::new(),
+            });
+        }
 
-    pub async fn check_service_health(&self) -> Result<ServiceHealthDto, String> {
-        let master = self.read_master()?;
+        let master = parse_master_json(&content)?;
 
         if !is_pid_alive(master.pid) {
             return Ok(ServiceHealthDto {
@@ -89,8 +99,71 @@ impl MasterDiscovery {
 
     pub async fn get_service_info(&self) -> ServiceInfoDto {
         let tendril_home_str = self.tendril_home.to_string_lossy().to_string();
+        let path = self.master_path();
 
-        let master = match self.read_master() {
+        if !path.exists() {
+            return ServiceInfoDto {
+                state: "NotRunning".to_string(),
+                tendril_home: tendril_home_str,
+                port: None,
+                host: None,
+                scheme: None,
+                version: None,
+                api_version: None,
+                pid: None,
+                capabilities: Vec::new(),
+                message: format!(
+                    "Tendril daemon metadata (.master) not found at {}",
+                    path.display()
+                ),
+                ownership: None,
+                status_badge: Some("NotRunning".to_string()),
+                crash_count: None,
+            };
+        }
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(err) => {
+                return ServiceInfoDto {
+                    state: "NotRunning".to_string(),
+                    tendril_home: tendril_home_str,
+                    port: None,
+                    host: None,
+                    scheme: None,
+                    version: None,
+                    api_version: None,
+                    pid: None,
+                    capabilities: Vec::new(),
+                    message: format!("Failed to read .master file: {err}"),
+                    ownership: None,
+                    status_badge: Some("NotRunning".to_string()),
+                    crash_count: None,
+                };
+            }
+        };
+
+        if let Some(foreign_reason) = detect_foreign_master(&content) {
+            return ServiceInfoDto {
+                state: "ForeignMaster".to_string(),
+                tendril_home: tendril_home_str,
+                port: None,
+                host: None,
+                scheme: None,
+                version: None,
+                api_version: None,
+                pid: None,
+                capabilities: Vec::new(),
+                message: format!(
+                    "Foreign or legacy daemon detected: {foreign_reason}. The SpaceCorps desktop app requires the Rust Tendril-Service daemon with bearer authentication."
+                ),
+                ownership: None,
+                status_badge: Some("ForeignMaster".to_string()),
+                crash_count: None,
+            };
+        }
+
+        let master = match parse_master_json(&content) {
             Ok(m) => m,
             Err(err) => {
                 return ServiceInfoDto {
@@ -103,7 +176,7 @@ impl MasterDiscovery {
                     api_version: None,
                     pid: None,
                     capabilities: Vec::new(),
-                    message: format!("Tendril daemon metadata (.master) not found: {err}"),
+                    message: format!("Tendril daemon metadata (.master) malformed: {err}"),
                     ownership: None,
                     status_badge: Some("NotRunning".to_string()),
                     crash_count: None,

@@ -46,6 +46,7 @@ pub enum DaemonConnectionState {
     Disconnected,
     Unauthenticated,
     NotRunning,
+    ForeignMaster,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -82,6 +83,33 @@ pub fn resolve_tendril_home() -> PathBuf {
     PathBuf::from(".tendril")
 }
 
+pub fn detect_foreign_master(content: &str) -> Option<String> {
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
+        if let Some(obj) = val.as_object() {
+            if obj.contains_key("heartbeat") {
+                return Some(
+                    "Detected foreign Ivy Tendril daemon (.master contains 'heartbeat' field)"
+                        .to_string(),
+                );
+            }
+            let has_secret = obj
+                .get("secret")
+                .and_then(|s| s.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            let has_version = obj
+                .get("version")
+                .and_then(|v| v.as_str())
+                .map(|v| !v.trim().is_empty())
+                .unwrap_or(false);
+            if !has_secret || !has_version {
+                return Some("Detected foreign or legacy daemon (.master is missing required 'secret' or 'version' fields)".to_string());
+            }
+        }
+    }
+    None
+}
+
 pub fn parse_master_json(content: &str) -> Result<MasterInfo, String> {
     serde_json::from_str(content).map_err(|e| format!("Failed to parse .master json: {e}"))
 }
@@ -97,6 +125,10 @@ pub fn read_master(tendril_home: &Path) -> Result<MasterInfo, String> {
 
     let content = std::fs::read_to_string(&master_file)
         .map_err(|e| format!("Failed to read .master file: {e}"))?;
+
+    if let Some(foreign_reason) = detect_foreign_master(&content) {
+        return Err(format!("Foreign daemon detected: {foreign_reason}"));
+    }
 
     parse_master_json(&content)
 }
@@ -173,7 +205,61 @@ pub async fn discover_daemon_status() -> DaemonStatusResponse {
     let tendril_home = resolve_tendril_home();
     let tendril_home_str = tendril_home.to_string_lossy().to_string();
 
-    let master_info = match read_master(&tendril_home) {
+    let master_path = tendril_home.join(".master");
+    if !master_path.exists() {
+        return DaemonStatusResponse {
+            state: DaemonConnectionState::NotRunning,
+            tendril_home: tendril_home_str,
+            port: None,
+            host: None,
+            scheme: None,
+            secret: None,
+            pid: None,
+            api_version: None,
+            capabilities: Vec::new(),
+            message: format!(
+                "Tendril daemon metadata (.master) not found at {}",
+                master_path.display()
+            ),
+        };
+    }
+
+    let content = match std::fs::read_to_string(&master_path) {
+        Ok(c) => c,
+        Err(err) => {
+            return DaemonStatusResponse {
+                state: DaemonConnectionState::NotRunning,
+                tendril_home: tendril_home_str,
+                port: None,
+                host: None,
+                scheme: None,
+                secret: None,
+                pid: None,
+                api_version: None,
+                capabilities: Vec::new(),
+                message: format!("Failed to read .master file: {err}"),
+            };
+        }
+    };
+
+    if let Some(foreign_reason) = detect_foreign_master(&content) {
+        return DaemonStatusResponse {
+            state: DaemonConnectionState::ForeignMaster,
+            tendril_home: tendril_home_str,
+            port: None,
+            host: None,
+            scheme: None,
+            secret: None,
+            pid: None,
+            api_version: None,
+            capabilities: Vec::new(),
+            message: format!(
+                "Foreign or legacy daemon detected: {foreign_reason}. The SpaceCorps desktop app requires the Rust Tendril-Service daemon with bearer authentication."
+            ),
+        };
+    }
+
+    let master_info = match parse_master_json(&content) {
         Ok(info) => info,
         Err(err) => {
             return DaemonStatusResponse {
@@ -186,7 +272,7 @@ pub async fn discover_daemon_status() -> DaemonStatusResponse {
                 pid: None,
                 api_version: None,
                 capabilities: Vec::new(),
-                message: format!("Tendril daemon metadata (.master) not found: {err}"),
+                message: format!("Tendril daemon metadata (.master) malformed: {err}"),
             };
         }
     };
