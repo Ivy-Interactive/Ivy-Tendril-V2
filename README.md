@@ -59,7 +59,7 @@ The `tendril` executable matches the full Tendril CLI surface:
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [Rust](https://rustup.rs/) (1.80+ or latest stable)
+- [Rust](https://rustup.rs/) — the pinned toolchain in `rust-toolchain.toml` is installed automatically by `rustup` on first build
 - `git`
 - GitHub CLI (`gh`) for PR tracking
 
