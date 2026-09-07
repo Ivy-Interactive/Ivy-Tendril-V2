@@ -1,8 +1,9 @@
 use crate::error::BridgeError;
 use crate::models::{
-    JobDetailDto, JobDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, PlanVerificationDto,
-    ProjectSummaryDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
+    JobDetailDto, JobDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, ProjectSummaryDto,
+    RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
 };
+use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::json;
 
@@ -87,76 +88,8 @@ impl TendrilClient {
 
         let raw_plans: Vec<serde_json::Value> = resp.json().await?;
         let summaries = raw_plans
-            .into_iter()
-            .map(|val| {
-                let id = val
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let title = val
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let state = val
-                    .get("state")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Draft")
-                    .to_string();
-                let project = val
-                    .get("project")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let level = val
-                    .get("level")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Feature")
-                    .to_string();
-                let priority = val
-                    .get("priority")
-                    .and_then(|v| v.as_i64())
-                    .map(|p| p as i32);
-                let created = val
-                    .get("created")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let updated = val
-                    .get("updated")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-
-                let verifications = val
-                    .get("verifications")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|item| {
-                                let name = item.get("name").and_then(|n| n.as_str())?.to_string();
-                                let status = item
-                                    .get("status")
-                                    .and_then(|s| s.as_str())
-                                    .unwrap_or("Pending")
-                                    .to_string();
-                                Some(PlanVerificationDto { name, status })
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-
-                PlanSummaryDto {
-                    id,
-                    title,
-                    state,
-                    project,
-                    level,
-                    priority,
-                    created,
-                    updated,
-                    verifications,
-                }
-            })
+            .iter()
+            .map(|val| map_plan_summary(val, ""))
             .collect();
 
         Ok(summaries)
@@ -182,151 +115,7 @@ impl TendrilClient {
         }
 
         let val: serde_json::Value = resp.json().await?;
-        let metadata = val.get("metadata").unwrap_or(&val);
-
-        let id = metadata
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or(plan_id)
-            .to_string();
-        let title = metadata
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let state = metadata
-            .get("state")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Draft")
-            .to_string();
-        let project = metadata
-            .get("project")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let level = metadata
-            .get("level")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Feature")
-            .to_string();
-        let priority = metadata
-            .get("priority")
-            .and_then(|v| v.as_i64())
-            .map(|p| p as i32);
-        let execution_profile = metadata
-            .get("executionProfile")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let initial_prompt = metadata
-            .get("initialPrompt")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let source_url = metadata
-            .get("sourceUrl")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let created = metadata
-            .get("created")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let updated = metadata
-            .get("updated")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        let repos = metadata
-            .get("repos")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let verifications = metadata
-            .get("verifications")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| {
-                        let name = item.get("name").and_then(|n| n.as_str())?.to_string();
-                        let status = item
-                            .get("status")
-                            .and_then(|s| s.as_str())
-                            .unwrap_or("Pending")
-                            .to_string();
-                        Some(PlanVerificationDto { name, status })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let depends_on = metadata
-            .get("dependsOn")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let related_plans = metadata
-            .get("relatedPlans")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let commits = metadata
-            .get("commits")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let prs = metadata
-            .get("prs")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let latest_revision_content = val
-            .get("latestRevision")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        Ok(PlanDetailDto {
-            id,
-            title,
-            state,
-            project,
-            level,
-            priority,
-            execution_profile,
-            initial_prompt,
-            source_url,
-            created,
-            updated,
-            repos,
-            verifications,
-            depends_on,
-            related_plans,
-            commits,
-            prs,
-            latest_revision_content,
-        })
+        Ok(map_plan_detail(&val, plan_id))
     }
 
     pub async fn create_plan(

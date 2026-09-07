@@ -56,6 +56,38 @@ pub struct PlanSummaryDto {
     pub verifications: Vec<PlanVerificationDto>,
 }
 
+/// Mirrors `Recommendation` in tendril-core `models/plan.rs`. Sourced from the
+/// `recommendations` block of the plan's `plan.yaml`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecommendationDto {
+    pub title: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "default_recommendation_state")]
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decline_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub impact: Option<String>,
+}
+
+fn default_recommendation_state() -> String {
+    "Pending".to_string()
+}
+
+/// One verification report read from `<planFolder>/Verification/<name>.md`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationReportDto {
+    pub name: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanDetailDto {
@@ -90,6 +122,15 @@ pub struct PlanDetailDto {
     pub prs: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_revision_content: Option<String>,
+    /// Absolute plan folder path (`PlanFile.folder_path`), used to locate
+    /// verification reports on disk.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_path: Option<String>,
+    /// `PlanFile.revision_count` — bounds the Diff View revision selectors.
+    #[serde(default)]
+    pub revision_count: i32,
+    #[serde(default)]
+    pub recommendations: Vec<RecommendationDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
