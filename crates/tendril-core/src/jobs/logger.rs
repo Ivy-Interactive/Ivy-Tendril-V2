@@ -90,3 +90,103 @@ pub fn append_agent_log(
 
     Ok(log_path)
 }
+
+pub fn find_log_file(tendril_home: &Path, job_id: &str, suffix: &str) -> Option<PathBuf> {
+    // 1. Direct match in Logs/Jobs/{job_id}{suffix}
+    let direct_logs = tendril_home
+        .join("Logs")
+        .join("Jobs")
+        .join(format!("{}{}", job_id, suffix));
+    if direct_logs.is_file() {
+        return Some(direct_logs);
+    }
+
+    // 2. Direct match in Jobs/{job_id}{suffix}
+    let direct_jobs = tendril_home
+        .join("Jobs")
+        .join(format!("{}{}", job_id, suffix));
+    if direct_jobs.is_file() {
+        return Some(direct_jobs);
+    }
+
+    // 3. Prefix match in Logs/Jobs
+    let logs_dir = tendril_home.join("Logs").join("Jobs");
+    if let Ok(entries) = std::fs::read_dir(&logs_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(job_id) && name.ends_with(suffix) {
+                if suffix == ".md" && name.ends_with(".prompt.md") {
+                    continue;
+                }
+                return Some(entry.path());
+            }
+        }
+    }
+
+    // 4. Prefix match in Jobs
+    let jobs_dir = tendril_home.join("Jobs");
+    if let Ok(entries) = std::fs::read_dir(&jobs_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with(job_id) && name.ends_with(suffix) {
+                if suffix == ".md" && name.ends_with(".prompt.md") {
+                    continue;
+                }
+                return Some(entry.path());
+            }
+        }
+    }
+
+    None
+}
+
+fn read_lines_tail(path: &Path, tail: Option<usize>) -> Result<Vec<String>> {
+    use std::io::BufRead;
+    let file = std::fs::File::open(path)?;
+    let reader = std::io::BufReader::new(file);
+    let mut lines = Vec::new();
+    for line in reader.lines() {
+        lines.push(line?);
+    }
+    if let Some(n) = tail {
+        if lines.len() > n {
+            lines = lines[lines.len() - n..].to_vec();
+        }
+    }
+    Ok(lines)
+}
+
+pub fn read_job_log(tendril_home: &Path, job_id: &str) -> Result<Option<String>> {
+    if let Some(path) = find_log_file(tendril_home, job_id, ".md") {
+        let content = std::fs::read_to_string(path)?;
+        Ok(Some(content))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn read_raw_log(
+    tendril_home: &Path,
+    job_id: &str,
+    tail: Option<usize>,
+) -> Result<Option<Vec<String>>> {
+    if let Some(path) = find_log_file(tendril_home, job_id, ".raw.jsonl") {
+        let lines = read_lines_tail(&path, tail)?;
+        Ok(Some(lines))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn read_eventwire_log(
+    tendril_home: &Path,
+    job_id: &str,
+    tail: Option<usize>,
+) -> Result<Option<Vec<String>>> {
+    if let Some(path) = find_log_file(tendril_home, job_id, ".eventwire.jsonl") {
+        let lines = read_lines_tail(&path, tail)?;
+        Ok(Some(lines))
+    } else {
+        Ok(None)
+    }
+}
