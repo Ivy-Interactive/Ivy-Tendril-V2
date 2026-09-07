@@ -8,6 +8,8 @@ import {
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
 import { EmptyState } from "../components/EmptyState";
+import { RecommendationCard } from "../components/RecommendationCard";
+import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 
 interface ReviewViewProps {
   plans: PlanSummary[];
@@ -35,6 +37,10 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
   const [recsError, setRecsError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [activeNoteDialog, setActiveNoteDialog] = useState<{
+    title: string;
+    action: "Accept" | "Decline";
+  } | null>(null);
 
   useEffect(() => {
     if (!selectedPlanId) {
@@ -92,6 +98,20 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
         `Could not mark "${title}" as ${state}: ${describeBridgeError(err)}`
       );
     }
+  };
+
+  const handleDialogSubmit = async (note?: string) => {
+    if (!activeNoteDialog) return;
+    const { title, action } = activeNoteDialog;
+    const trimmedNote = note?.trim();
+    const targetState: RecommendationState =
+      action === "Accept"
+        ? (trimmedNote ? "AcceptedWithNotes" : "Accepted")
+        : "Declined";
+    const notePayload = trimmedNote || undefined;
+
+    setActiveNoteDialog(null);
+    await setRecState(title, targetState, notePayload);
   };
 
   const handleRetrySubmit = async () => {
@@ -284,63 +304,26 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
               <div className="mt-4 space-y-3">
                 {recommendations.map((rec) => (
-                  <div
+                  <RecommendationCard
                     key={rec.title}
-                    className="flex items-start justify-between rounded-lg border border-slate-800 bg-slate-950 p-4"
-                  >
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <h4 className="text-sm font-medium text-slate-200">{rec.title}</h4>
-                        {rec.impact && (
-                          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
-                            {rec.impact} impact
-                          </span>
-                        )}
-                        {rec.state && rec.state !== "Pending" && (
-                          <span
-                            className={`rounded px-2 py-0.5 text-xs font-medium ${
-                              rec.state === "Accepted"
-                                ? "bg-emerald-950 text-emerald-300"
-                                : "bg-slate-800 text-slate-400"
-                            }`}
-                          >
-                            {rec.state}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-slate-400">{rec.description}</p>
-                      {rec.state === "Declined" && rec.declineReason && (
-                        <p className="mt-1 text-xs text-slate-500">
-                          Declined: {rec.declineReason}
-                        </p>
-                      )}
-                    </div>
-
-                    {(!rec.state || rec.state === "Pending") && (
-                      <div className="flex space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => setRecState(rec.title, "Accepted")}
-                          className="rounded bg-emerald-600/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-600"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRecState(rec.title, "Declined")}
-                          className="rounded bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                    recommendation={rec}
+                    onAccept={(title) => setActiveNoteDialog({ title, action: "Accept" })}
+                    onDecline={(title) => setActiveNoteDialog({ title, action: "Decline" })}
+                  />
                 ))}
               </div>
             </div>
           </div>
         )}
       </div>
+
+      <RecommendationNoteDialog
+        isOpen={activeNoteDialog !== null}
+        title={activeNoteDialog?.title ?? ""}
+        action={activeNoteDialog?.action ?? "Accept"}
+        onClose={() => setActiveNoteDialog(null)}
+        onSubmit={handleDialogSubmit}
+      />
     </div>
   );
 };
