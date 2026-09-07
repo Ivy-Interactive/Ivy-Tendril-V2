@@ -9,7 +9,9 @@ use crate::error::{Result, TendrilError};
 use crate::jobs::firmware_values::{
     build_firmware_values, execution_profile_override, resolve_project, resolve_working_directory,
 };
-use crate::jobs::logger::{append_agent_log, append_to_eventwire, append_to_raw_log, write_prompt};
+use crate::jobs::logger::{
+    append_agent_log, append_to_eventwire, append_to_raw_log, find_log_file, write_prompt,
+};
 use crate::jobs::process_tree::{kill_tree, DEFAULT_KILL_GRACE};
 use crate::models::{JobArgs, JobItem, JobStatus, PlanStatus, PlanYaml};
 use crate::plans::dependencies::check_dependencies;
@@ -31,12 +33,29 @@ use tokio::sync::{watch, Mutex, RwLock, Semaphore};
 pub type SpecBuilder = Arc<dyn Fn(&str, &AgentLaunchConfig) -> AgentProcessSpec + Send + Sync>;
 
 /// Live control surface for a running job.
-struct JobHandle {
-    cancel_tx: watch::Sender<bool>,
+pub struct JobHandle {
+    pub cancel_tx: watch::Sender<bool>,
     /// 0 until the agent process is spawned.
-    pid: Arc<AtomicU32>,
+    pub pid: Arc<AtomicU32>,
     /// Claimed exactly once, by whichever of cancellation and normal completion gets there first.
-    completion_claimed: Arc<AtomicBool>,
+    pub completion_claimed: Arc<AtomicBool>,
+}
+
+impl JobHandle {
+    pub fn new() -> Self {
+        let (cancel_tx, _) = watch::channel(false);
+        Self {
+            cancel_tx,
+            pid: Arc::new(AtomicU32::new(0)),
+            completion_claimed: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+impl Default for JobHandle {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Claims the right to write a job's terminal state. Returns `true` for the first caller only.
@@ -632,10 +651,185 @@ fn classify_outcome(
     }
 }
 
+fn resolve_numerical_plan_id(job: &JobItem) -> Option<i32> {
+    if let Some(ref id_str) = job.reported_plan_id {
+        if let Ok(id) = id_str.trim().parse::<i32>() {
+            return Some(id);
+        }
+    }
+    let file_name = std::path::Path::new(&job.plan_file)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(&job.plan_file);
+    let digits: String = file_name
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    if !digits.is_empty() {
+        if let Ok(id) = digits.parse::<i32>() {
+            return Some(id);
+        }
+    }
+    None
+}
+
+pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
+    let mut extracted_timestamp: Option<String> = None;
+
+    let needs_tokens = job.tokens.is_none();
+    let needs_cost = job.cost.is_none();
+    let needs_breakdown = job.input_tokens.is_none()
+        || job.output_tokens.is_none()
+        || job.cache_read_tokens.is_none()
+        || job.cache_write_tokens.is_none();
+
+    if needs_tokens || needs_cost || needs_breakdown {
+        if let Some(log_path) = find_log_file(tendril_home, &job.id, ".eventwire.jsonl")
+            .or_else(|| find_log_file(tendril_home, &job.id, ".raw.jsonl"))
+        {
+            if let Ok(file) = std::fs::File::open(&log_path) {
+                use std::io::{BufRead, BufReader};
+                let reader = BufReader::new(file);
+                for line in reader.lines().map_while(|l| l.ok()) {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                        let is_result = v.get("kind").and_then(|k| k.as_str()) == Some("result")
+                            || v.get("type").and_then(|t| t.as_str()) == Some("result")
+                            || v.get("type").and_then(|t| t.as_str()) == Some("turn.completed");
+
+                        let usage_opt = v.get("usage");
+                        if is_result || usage_opt.is_some() {
+                            if let Some(ts) = v.get("timestamp").and_then(|t| t.as_str()) {
+                                extracted_timestamp = Some(ts.to_string());
+                            }
+                            if let Some(m) = v.get("model").and_then(|m| m.as_str()) {
+                                if job.model.is_none() {
+                                    job.model = Some(m.to_string());
+                                }
+                            }
+                            if let Some(usage) = usage_opt {
+                                if let Some(m) = usage.get("model").and_then(|m| m.as_str()) {
+                                    if job.model.is_none() {
+                                        job.model = Some(m.to_string());
+                                    }
+                                }
+
+                                let in_tok = usage
+                                    .get("input_tokens")
+                                    .or_else(|| usage.get("inputTokens"))
+                                    .and_then(|n| n.as_i64())
+                                    .unwrap_or(0);
+
+                                let out_tok = usage
+                                    .get("output_tokens")
+                                    .or_else(|| usage.get("outputTokens"))
+                                    .and_then(|n| n.as_i64())
+                                    .unwrap_or(0);
+
+                                let cache_read_tok = usage
+                                    .get("cache_read_tokens")
+                                    .or_else(|| usage.get("cacheReadTokens"))
+                                    .or_else(|| usage.get("cached_input_tokens"))
+                                    .and_then(|n| n.as_i64())
+                                    .unwrap_or(0);
+
+                                let cache_write_tok = usage
+                                    .get("cache_write_tokens")
+                                    .or_else(|| usage.get("cacheWriteTokens"))
+                                    .or_else(|| usage.get("cache_write_input_tokens"))
+                                    .and_then(|n| n.as_i64())
+                                    .unwrap_or(0);
+
+                                let reasoning_tok = usage
+                                    .get("reasoning_tokens")
+                                    .or_else(|| usage.get("reasoningTokens"))
+                                    .or_else(|| usage.get("reasoning_output_tokens"))
+                                    .and_then(|n| n.as_i64());
+
+                                let total_tok = in_tok + out_tok + cache_read_tok + cache_write_tok;
+
+                                job.input_tokens = Some(in_tok);
+                                job.output_tokens = Some(out_tok);
+                                job.cache_read_tokens = Some(cache_read_tok);
+                                job.cache_write_tokens = Some(cache_write_tok);
+                                if reasoning_tok.is_some() {
+                                    job.reasoning_tokens = reasoning_tok;
+                                }
+                                job.tokens = Some(total_tok);
+
+                                let provider_cost = usage
+                                    .get("cost")
+                                    .or_else(|| v.get("cost"))
+                                    .or_else(|| v.get("total_cost"))
+                                    .and_then(|c| c.as_f64());
+
+                                if let Some(cost) = provider_cost {
+                                    job.cost = Some(cost);
+                                    job.cost_source = Some("agent".to_string());
+                                } else if job.cost.is_none() {
+                                    let model_name =
+                                        job.model.as_deref().unwrap_or("claude-3-5-sonnet");
+                                    let calculated = crate::agents::pricing::calculate_cost(
+                                        model_name,
+                                        in_tok,
+                                        out_tok,
+                                        cache_read_tok,
+                                        cache_write_tok,
+                                    );
+                                    job.cost = Some(calculated);
+                                    job.cost_source = Some("estimated".to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let tokens = job.tokens.unwrap_or(0);
+    let cost = job.cost.unwrap_or(0.0);
+
+    if job.tokens.is_some() || job.cost.is_some() {
+        if let Some(pid) = resolve_numerical_plan_id(job) {
+            let db_path = crate::config::get_database_path(tendril_home);
+            if let Ok(conn) = open_database(&db_path) {
+                let plan_exists: bool = conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM Plans WHERE Id = ?1)",
+                        rusqlite::params![pid],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(false);
+
+                if plan_exists {
+                    let log_timestamp = extracted_timestamp
+                        .or_else(|| job.completed_at.map(|dt| dt.to_rfc3339()))
+                        .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+
+                    if let Err(e) = crate::db::costs::insert_cost(
+                        &conn,
+                        pid,
+                        &job.job_type,
+                        tokens,
+                        cost,
+                        Some(&log_timestamp),
+                    ) {
+                        tracing::warn!("Failed to insert cost record for plan {}: {}", pid, e);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Writes a job's terminal state and moves its plan, claiming completion first so a simultaneous
 /// cancellation cannot be overwritten.
 #[allow(clippy::too_many_arguments)]
-async fn finish_job(
+pub async fn finish_job(
     tendril_home: &Path,
     jobs_map: &Arc<RwLock<HashMap<String, JobItem>>>,
     handles: &Arc<RwLock<HashMap<String, JobHandle>>>,
@@ -670,6 +864,8 @@ async fn finish_job(
     } else {
         revert_plan_state(&job);
     }
+
+    extract_and_record_usage(tendril_home, &mut job);
 
     persist(tendril_home, jobs_map, &job).await;
     handles.write().await.remove(&job.id);
