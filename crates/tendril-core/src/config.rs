@@ -181,7 +181,7 @@ pub fn get_default_tendril_home_with_env(env: &impl EnvSource) -> PathBuf {
         }
     }
 
-    if let Some(home) = dirs_home() {
+    if let Some(home) = dirs_home_with_env(env) {
         let pointer_file = home.join(".tendril_location");
         if pointer_file.is_file() {
             if let Ok(loc) = std::fs::read_to_string(&pointer_file) {
@@ -202,7 +202,7 @@ pub fn get_default_tendril_home_with_env(env: &impl EnvSource) -> PathBuf {
         if d_tendril.exists() {
             return d_tendril;
         }
-        if let Some(home) = dirs_home() {
+        if let Some(home) = dirs_home_with_env(env) {
             let user_tendril = home.join(".tendril");
             if user_tendril.exists() {
                 return user_tendril;
@@ -212,7 +212,7 @@ pub fn get_default_tendril_home_with_env(env: &impl EnvSource) -> PathBuf {
         if Path::new(r"D:\").exists() {
             return PathBuf::from(r"D:\.tendril");
         }
-        if let Some(home) = dirs_home() {
+        if let Some(home) = dirs_home_with_env(env) {
             return home.join(".tendril");
         }
         PathBuf::from(r"D:\.tendril")
@@ -220,7 +220,7 @@ pub fn get_default_tendril_home_with_env(env: &impl EnvSource) -> PathBuf {
 
     #[cfg(not(windows))]
     {
-        if let Some(home) = dirs_home() {
+        if let Some(home) = dirs_home_with_env(env) {
             home.join(".tendril")
         } else {
             PathBuf::from("/tmp/.tendril")
@@ -244,14 +244,14 @@ pub fn normalize_slashes(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-pub fn expand_variables(input: &str, tendril_home: &str) -> String {
+pub fn expand_variables_with_env(input: &str, tendril_home: &str, env: &impl EnvSource) -> String {
     let mut res = input
         .replace("%TENDRIL_HOME%", tendril_home)
         .replace("${TENDRIL_HOME}", tendril_home)
         .replace("$TENDRIL_HOME", tendril_home);
 
     if res.starts_with('~') {
-        if let Some(home) = dirs_home() {
+        if let Some(home) = dirs_home_with_env(env) {
             let home_str = home.to_string_lossy();
             if res == "~" {
                 res = home_str.to_string();
@@ -264,14 +264,28 @@ pub fn expand_variables(input: &str, tendril_home: &str) -> String {
     res
 }
 
-fn dirs_home() -> Option<PathBuf> {
-    if let Ok(userprofile) = std::env::var("USERPROFILE") {
-        return Some(PathBuf::from(userprofile));
+pub fn expand_variables(input: &str, tendril_home: &str) -> String {
+    expand_variables_with_env(input, tendril_home, &SystemEnv)
+}
+
+pub fn dirs_home_with_env(env: &impl EnvSource) -> Option<PathBuf> {
+    if let Some(val) = env.get_var("USERPROFILE") {
+        let trimmed = val.trim().trim_matches('"');
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
+        }
     }
-    if let Ok(home) = std::env::var("HOME") {
-        return Some(PathBuf::from(home));
+    if let Some(val) = env.get_var("HOME") {
+        let trimmed = val.trim().trim_matches('"');
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
+        }
     }
     None
+}
+
+pub fn dirs_home() -> Option<PathBuf> {
+    dirs_home_with_env(&SystemEnv)
 }
 
 pub fn get_config_path_with_env(tendril_home: &Path, env: &impl EnvSource) -> PathBuf {
