@@ -210,3 +210,45 @@ export function describeBridgeError(err: unknown): string {
 export function bridgeErrorCode(err: unknown): string | undefined {
   return isBridgeError(err) ? err.code : undefined;
 }
+
+export interface GitHubUser {
+  login: string;
+  name?: string;
+  avatarUrl?: string;
+}
+
+export interface GitHubLabel {
+  id?: string;
+  name: string;
+  color: string;
+  description?: string;
+}
+
+export interface GitHubRepository {
+  name: string;
+  nameWithOwner: string;
+}
+
+export interface GitHubIssue {
+  number: number;
+  title: string;
+  body: string;
+  state: string;
+  author?: GitHubUser;
+  assignees: GitHubUser[];
+  labels: GitHubLabel[];
+  commentsCount: number;
+  createdAt: string;
+  updatedAt: string;
+  url: string;
+  repository?: GitHubRepository;
+  isPullRequest?: boolean;
+}
+
+export interface GitHubIssueFilter {
+  category?: "my-issues" | "review-requests" | "project-issues";
+  repo?: string;
+  search?: string;
+  labels?: string[];
+  assignees?: string[];
+}

@@ -235,3 +235,56 @@ pub struct PlanQueryDto {
     pub project: Option<String>,
     pub q: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubUserDto {
+    pub login: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubLabelDto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub name: String,
+    pub color: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubRepositoryDto {
+    pub name: String,
+    pub name_with_owner: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubIssueDto {
+    pub number: u64,
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author: Option<GitHubUserDto>,
+    #[serde(default)]
+    pub assignees: Vec<GitHubUserDto>,
+    #[serde(default)]
+    pub labels: Vec<GitHubLabelDto>,
+    #[serde(default)]
+    pub comments_count: u64,
+    pub created_at: String,
+    pub updated_at: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repository: Option<GitHubRepositoryDto>,
+    #[serde(default)]
+    pub is_pull_request: bool,
+}

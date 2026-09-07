@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ContentInput } from "components-storybook/tendril";
 import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
@@ -8,6 +8,10 @@ interface NewPlanModalProps {
   onClose: () => void;
   projects: ProjectSummary[];
   onJobStarted?: (res: StartJobResponse) => void;
+  initialTitle?: string;
+  initialDescription?: string;
+  initialProject?: string;
+  initialSourceUrl?: string;
 }
 
 export const NewPlanModal: React.FC<NewPlanModalProps> = ({
@@ -15,14 +19,39 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
   onClose,
   projects,
   onJobStarted,
+  initialTitle = "",
+  initialDescription = "",
+  initialProject = "",
+  initialSourceUrl = "",
 }) => {
-  const [description, setDescription] = useState("");
-  const [selectedProject, setSelectedProject] = useState(
-    projects[0]?.name || "Tendril-App"
+  const [description, setDescription] = useState(
+    initialTitle ? (initialDescription ? `${initialTitle}\n\n${initialDescription}` : initialTitle) : initialDescription
   );
+  const [selectedProject, setSelectedProject] = useState(
+    initialProject || projects[0]?.name || "Tendril-App"
+  );
+  const [sourceUrl, setSourceUrl] = useState(initialSourceUrl);
   const [priority, setPriority] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      const combinedDesc = initialTitle
+        ? initialDescription
+          ? `${initialTitle}\n\n${initialDescription}`
+          : initialTitle
+        : initialDescription;
+      setDescription(combinedDesc);
+      if (initialProject && projects.some((p) => p.name === initialProject)) {
+        setSelectedProject(initialProject);
+      } else if (projects[0]?.name) {
+        setSelectedProject(projects[0].name);
+      }
+      setSourceUrl(initialSourceUrl);
+      setError(null);
+    }
+  }, [isOpen, initialTitle, initialDescription, initialProject, initialSourceUrl, projects]);
 
   if (!isOpen) return null;
 
@@ -44,10 +73,12 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
         project: selectedProject,
         description: description.trim(),
         priority,
+        sourceUrl: sourceUrl.trim() || undefined,
       });
 
       setIsSubmitting(false);
       setDescription("");
+      setSourceUrl("");
       if (onJobStarted) {
         onJobStarted(res);
       }
