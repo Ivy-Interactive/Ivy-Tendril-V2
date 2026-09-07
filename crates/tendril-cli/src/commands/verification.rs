@@ -21,11 +21,13 @@ pub enum VerificationCommands {
         prompt: String,
     },
 
-    #[command(about = "Update a verification definition's prompt")]
+    #[command(about = "Update a verification definition's prompt or name")]
     Set {
         name: String,
+        #[arg(long = "new-name")]
+        new_name: Option<String>,
         #[arg(long)]
-        prompt: String,
+        prompt: Option<String>,
     },
 
     #[command(about = "Remove a verification definition")]
@@ -134,13 +136,23 @@ async fn handle_verification_command_daemon(
 
             println!("Verification '{}' added.", name);
         }
-        VerificationCommands::Set { name, prompt } => {
+        VerificationCommands::Set {
+            name,
+            new_name,
+            prompt,
+        } => {
+            let mut body = serde_json::Map::new();
+            if let Some(nn) = new_name {
+                body.insert("newName".to_string(), serde_json::Value::String(nn.clone()));
+            }
+            if let Some(p) = prompt {
+                body.insert("prompt".to_string(), serde_json::Value::String(p.clone()));
+            }
+
             let resp = match client
                 .put(format!("{}/api/verifications/{}", base_url, name))
                 .bearer_auth(&master.secret)
-                .json(&serde_json::json!({
-                    "prompt": prompt,
-                }))
+                .json(&serde_json::Value::Object(body))
                 .send()
                 .await
             {
@@ -150,6 +162,13 @@ async fn handle_verification_command_daemon(
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
                 anyhow::bail!("Verification '{}' not found", name);
+            }
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                if let Some(nn) = new_name {
+                    anyhow::bail!("Verification '{}' already exists", nn);
+                } else {
+                    anyhow::bail!("Verification already exists");
+                }
             }
             if !resp.status().is_success() {
                 let err = resp.text().await.unwrap_or_default();
@@ -228,16 +247,57 @@ fn handle_verification_command_fs(
             save_config(&cfg_path, &settings)?;
             println!("Verification '{}' added.", name);
         }
-        VerificationCommands::Set { name, prompt } => {
-            if let Some(v) = settings
+        VerificationCommands::Set {
+            name,
+            new_name,
+            prompt,
+        } => {
+            let idx = settings
                 .verifications
-                .iter_mut()
-                .find(|v| v.name.eq_ignore_ascii_case(&name))
-            {
-                v.prompt = prompt;
-            } else {
-                anyhow::bail!("Verification '{}' not found", name);
+                .iter()
+                .position(|v| v.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| anyhow::anyhow!("Verification '{}' not found", name))?;
+
+            if let Some(nn) = new_name {
+                let trimmed = nn.trim().to_string();
+                if trimmed.is_empty() {
+                    anyhow::bail!("Verification name cannot be empty");
+                }
+                if !trimmed.eq_ignore_ascii_case(&name)
+                    && settings
+                        .verifications
+                        .iter()
+                        .any(|v| v.name.eq_ignore_ascii_case(&trimmed))
+                {
+                    anyhow::bail!("Verification '{}' already exists", trimmed);
+                }
+
+                settings.verifications[idx].name = trimmed.clone();
+
+                for p in &mut settings.projects {
+                    for v in &mut p.verifications {
+                        if v.name.eq_ignore_ascii_case(&name) {
+                            v.name = trimmed.clone();
+                        }
+                    }
+                }
+
+                let plans_dir = tendril_core::config::get_plans_dir_with_settings(
+                    tendril_home,
+                    Some(&settings),
+                );
+                tendril_core::plans::rename_verification_in_plans(&plans_dir, &name, &trimmed)?;
+
+                let db_path = tendril_core::config::get_database_path(tendril_home);
+                if let Ok(conn) = tendril_core::db::open_database(&db_path) {
+                    let _ = tendril_core::db::rename_verification(&conn, &name, &trimmed);
+                }
             }
+
+            if let Some(p) = prompt {
+                settings.verifications[idx].prompt = p;
+            }
+
             save_config(&cfg_path, &settings)?;
             println!("Verification '{}' updated.", name);
         }

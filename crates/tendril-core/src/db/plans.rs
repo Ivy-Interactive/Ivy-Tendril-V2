@@ -267,3 +267,29 @@ pub fn delete_plan(conn: &Connection, id: i32) -> Result<()> {
     conn.execute("DELETE FROM Plans WHERE Id = ?1", params![id])?;
     Ok(())
 }
+
+pub fn rename_verification(conn: &Connection, old_name: &str, new_name: &str) -> Result<usize> {
+    let count = conn.execute(
+        "UPDATE Verifications SET Name = ?1 WHERE LOWER(Name) = LOWER(?2)",
+        params![new_name, old_name],
+    )?;
+    Ok(count)
+}
+
+pub fn rename_project(conn: &Connection, old_name: &str, new_name: &str) -> Result<usize> {
+    let tx = conn.unchecked_transaction()?;
+    let count = tx.execute(
+        "UPDATE Plans SET Project = ?1 WHERE LOWER(Project) = LOWER(?2)",
+        params![new_name, old_name],
+    )?;
+    tx.execute(
+        "UPDATE Jobs SET Project = ?1 WHERE LOWER(Project) = LOWER(?2)",
+        params![new_name, old_name],
+    )?;
+    tx.execute(
+        "UPDATE Recommendations SET Project = ?1 WHERE LOWER(Project) = LOWER(?2)",
+        params![new_name, old_name],
+    )?;
+    tx.commit()?;
+    Ok(count)
+}

@@ -112,7 +112,8 @@ async fn test_verification_cli_filesystem_fallback() {
     handle_verification_command(
         VerificationCommands::Set {
             name: "MyLint".to_string(),
-            prompt: "cargo clippy --all-targets -- -D warnings".to_string(),
+            new_name: None,
+            prompt: Some("cargo clippy --all-targets -- -D warnings".to_string()),
         },
         &tendril_home,
     )
@@ -193,7 +194,8 @@ async fn test_verification_cli_routed_through_daemon() {
     handle_verification_command(
         VerificationCommands::Set {
             name: "DaemonCheck".to_string(),
-            prompt: "pytest -vv".to_string(),
+            new_name: None,
+            prompt: Some("pytest -vv".to_string()),
         },
         &server.tendril_home,
     )
@@ -252,7 +254,8 @@ async fn test_verification_cli_error_handling() {
     let err_daemon_set = handle_verification_command(
         VerificationCommands::Set {
             name: "NonExistent".to_string(),
-            prompt: "irrelevant".to_string(),
+            new_name: None,
+            prompt: Some("irrelevant".to_string()),
         },
         &server.tendril_home,
     )
@@ -324,7 +327,8 @@ async fn test_verification_cli_error_handling() {
     let err_fs_set = handle_verification_command(
         VerificationCommands::Set {
             name: "NonExistent".to_string(),
-            prompt: "irrelevant".to_string(),
+            new_name: None,
+            prompt: Some("irrelevant".to_string()),
         },
         &fs_home,
     )
@@ -366,4 +370,74 @@ async fn test_verification_cli_error_handling() {
     assert_eq!(err_daemon_set.to_string(), err_fs_set.to_string());
 
     let _ = std::fs::remove_dir_all(&fs_home);
+}
+
+#[tokio::test]
+async fn test_verification_cli_rename_filesystem_fallback() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-ver-rename-fs-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    handle_verification_command(
+        VerificationCommands::Add {
+            name: "VerOrig".to_string(),
+            prompt: "cargo test".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add verification");
+
+    handle_verification_command(
+        VerificationCommands::Set {
+            name: "VerOrig".to_string(),
+            new_name: Some("VerRenamed".to_string()),
+            prompt: None,
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Rename verification via fs");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.verifications.len(), 1);
+    assert_eq!(cfg.verifications[0].name, "VerRenamed");
+    assert_eq!(cfg.verifications[0].prompt, "cargo test");
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+#[tokio::test]
+async fn test_verification_cli_rename_routed_through_daemon() {
+    let server = start_test_server().await;
+    let cfg_path = get_config_path(&server.tendril_home);
+
+    handle_verification_command(
+        VerificationCommands::Add {
+            name: "DaemonVerOrig".to_string(),
+            prompt: "cargo clippy".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Add verification via daemon");
+
+    handle_verification_command(
+        VerificationCommands::Set {
+            name: "DaemonVerOrig".to_string(),
+            new_name: Some("DaemonVerRenamed".to_string()),
+            prompt: None,
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Rename verification via daemon");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.verifications.len(), 1);
+    assert_eq!(cfg.verifications[0].name, "DaemonVerRenamed");
+    assert_eq!(cfg.verifications[0].prompt, "cargo clippy");
 }

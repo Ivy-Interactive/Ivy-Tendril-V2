@@ -8,6 +8,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tendril_core::config::{load_config, save_config};
+use tendril_core::db::open_database;
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
 use tendril_core::plans::helpers::resolve_plan_folder;
@@ -296,6 +297,7 @@ pub async fn update_project(
     };
 
     let rename_target = req.new_name.or(req.name);
+    let mut renamed_to: Option<String> = None;
     if let Some(target) = rename_target {
         let trimmed = target.trim().to_string();
         if trimmed.is_empty() {
@@ -316,6 +318,9 @@ pub async fn update_project(
                 Json(json!({ "error": format!("Project '{}' already exists", trimmed) })),
             )
                 .into_response();
+        }
+        if !trimmed.eq_ignore_ascii_case(&name) {
+            renamed_to = Some(trimmed.clone());
         }
         settings.projects[proj_idx].name = trimmed;
     }
@@ -359,6 +364,13 @@ pub async fn update_project(
             Json(json!({ "error": format!("Failed to save config: {}", e) })),
         )
             .into_response();
+    }
+
+    if let Some(new_name) = renamed_to {
+        let _ = tendril_core::plans::rename_project_in_plans(&state.plans_dir, &name, &new_name);
+        if let Ok(conn) = open_database(&state.db_path) {
+            let _ = tendril_core::db::rename_project(&conn, &name, &new_name);
+        }
     }
 
     (StatusCode::OK, Json(json!(updated_project))).into_response()

@@ -431,3 +431,67 @@ async fn test_project_cli_error_handling() {
 
     let _ = std::fs::remove_dir_all(&fs_home);
 }
+
+#[tokio::test]
+async fn test_project_cli_rename_filesystem_fallback() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-proj-rename-fs-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "ProjOrig".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add project");
+
+    handle_project_command(
+        ProjectCommands::Rename {
+            name: "ProjOrig".to_string(),
+            new_name: "ProjRenamed".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Rename project via fs");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects.len(), 1);
+    assert_eq!(cfg.projects[0].name, "ProjRenamed");
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+#[tokio::test]
+async fn test_project_cli_rename_routed_through_daemon() {
+    let server = start_test_server().await;
+    let cfg_path = get_config_path(&server.tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "DaemonProjOrig".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Add project via daemon");
+
+    handle_project_command(
+        ProjectCommands::Rename {
+            name: "DaemonProjOrig".to_string(),
+            new_name: "DaemonProjRenamed".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Rename project via daemon");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects.len(), 1);
+    assert_eq!(cfg.projects[0].name, "DaemonProjRenamed");
+}

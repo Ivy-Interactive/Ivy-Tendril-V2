@@ -1,6 +1,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-use tendril_core::config::{read_master, MasterGuard};
+use tendril_core::config::{
+    get_config_path, get_database_path, load_config, read_master, MasterGuard,
+};
+use tendril_core::db::open_database;
+use tendril_core::plans::reader::read_plan_yaml;
 use tendril_server::{create_router, AppState};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
@@ -1098,15 +1102,15 @@ verifications: []
         .unwrap();
     assert_eq!(put_missing.status(), reqwest::StatusCode::NOT_FOUND);
 
-    // PUT with a body name that doesn't match the path name returns 400
-    let put_rename = client
+    // PUT with an empty name returns 400
+    let put_empty = client
         .put(format!("{}/api/verifications/CustomCheck", base_url))
         .bearer_auth(&master.secret)
-        .json(&serde_json::json!({ "name": "Other", "prompt": "x" }))
+        .json(&serde_json::json!({ "name": "", "prompt": "x" }))
         .send()
         .await
         .unwrap();
-    assert_eq!(put_rename.status(), reqwest::StatusCode::BAD_REQUEST);
+    assert_eq!(put_empty.status(), reqwest::StatusCode::BAD_REQUEST);
 
     // 5. Query non-existent verification GET /api/verifications/DoesNotExist and assert 404 Not Found
     let get_missing = client
@@ -1377,4 +1381,222 @@ async fn test_dedicated_project_repo_and_verification_endpoints() {
     let vers = proj_json3["verifications"].as_array().unwrap();
     assert_eq!(vers.len(), 1);
     assert_eq!(vers[0]["name"], "RustBuild");
+}
+
+#[tokio::test]
+async fn test_verification_rename_cascading() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    // 1. Create verification CheckA
+    let create_ver_resp = client
+        .post(format!("{}/api/verifications", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "name": "CheckA",
+            "prompt": "cargo check"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_ver_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 2. Create project ProjAlpha referencing CheckA
+    let create_proj_resp = client
+        .post(format!("{}/api/projects", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "name": "ProjAlpha",
+            "verifications": [
+                { "name": "CheckA", "required": true }
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_proj_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 3. Create mock plan on disk and in DB
+    let create_plan_resp = client
+        .post(format!("{}/api/plans", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": "Verif Cascade Plan",
+            "project": "ProjAlpha",
+            "level": "Feature",
+            "verifications": [
+                { "name": "CheckA", "status": "Pending" }
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_plan_resp.status(), reqwest::StatusCode::CREATED);
+    let plan_data: serde_json::Value = create_plan_resp.json().await.unwrap();
+    let plan_folder_path = plan_data["folder_path"].as_str().unwrap();
+    let plan_id = plan_data["metadata"]["id"].as_i64().unwrap();
+
+    // 4. Rename verification CheckA -> CheckB via PUT /api/verifications/:name
+    let rename_resp = client
+        .put(format!("{}/api/verifications/CheckA", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "newName": "CheckB"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rename_resp.status(), reqwest::StatusCode::OK);
+    let rename_json: serde_json::Value = rename_resp.json().await.unwrap();
+    assert_eq!(rename_json["name"], "CheckB");
+    assert_eq!(rename_json["prompt"], "cargo check");
+
+    // 5. Verify config.yaml
+    let cfg = load_config(&get_config_path(&server.tendril_home)).unwrap();
+    assert!(cfg.verifications.iter().any(|v| v.name == "CheckB"));
+    assert!(!cfg.verifications.iter().any(|v| v.name == "CheckA"));
+    let proj = cfg.projects.iter().find(|p| p.name == "ProjAlpha").unwrap();
+    assert_eq!(proj.verifications[0].name, "CheckB");
+
+    // 6. Verify plan YAML on disk
+    let (plan_yaml, _) = read_plan_yaml(std::path::Path::new(plan_folder_path)).unwrap();
+    assert_eq!(plan_yaml.verifications[0].name, "CheckB");
+
+    // 7. Verify SQLite DB
+    let conn = open_database(&get_database_path(&server.tendril_home)).unwrap();
+    let db_ver_name: String = conn
+        .query_row(
+            "SELECT Name FROM Verifications WHERE PlanId = ?1",
+            [plan_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(db_ver_name, "CheckB");
+}
+
+#[tokio::test]
+async fn test_verification_rename_conflict() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    // Create Check1 and Check2
+    client
+        .post(format!("{}/api/verifications", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({ "name": "Check1", "prompt": "" }))
+        .send()
+        .await
+        .unwrap();
+
+    client
+        .post(format!("{}/api/verifications", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({ "name": "Check2", "prompt": "" }))
+        .send()
+        .await
+        .unwrap();
+
+    // Attempt rename Check1 -> Check2
+    let conflict_resp = client
+        .put(format!("{}/api/verifications/Check1", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({ "newName": "Check2" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(conflict_resp.status(), reqwest::StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_project_rename_cascading() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    // 1. Create project AlphaProject
+    let create_proj_resp = client
+        .post(format!("{}/api/projects", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "name": "AlphaProject"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_proj_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 2. Create mock plan for AlphaProject
+    let create_plan_resp = client
+        .post(format!("{}/api/plans", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": "Alpha Project Plan",
+            "project": "AlphaProject",
+            "level": "Feature"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_plan_resp.status(), reqwest::StatusCode::CREATED);
+    let plan_data: serde_json::Value = create_plan_resp.json().await.unwrap();
+    let plan_folder_path = plan_data["folder_path"].as_str().unwrap();
+    let plan_id = plan_data["metadata"]["id"].as_i64().unwrap();
+
+    // 3. Insert Job and Recommendation in SQLite
+    let conn = open_database(&get_database_path(&server.tendril_home)).unwrap();
+    conn.execute(
+        "INSERT INTO Jobs (Id, Type, PlanFile, Project, Status) VALUES ('00099', 'ExecutePlan', '', 'AlphaProject', 'Completed')",
+        [],
+    ).unwrap();
+    conn.execute(
+        "INSERT INTO Recommendations (PlanId, Title, Description, Project, Date) VALUES (?1, 'Rec Title', 'Rec Description', 'AlphaProject', '2026-09-07T00:00:00Z')",
+        [plan_id],
+    ).unwrap();
+
+    // 4. Rename AlphaProject -> BetaProject
+    let rename_resp = client
+        .put(format!("{}/api/projects/AlphaProject", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "newName": "BetaProject"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rename_resp.status(), reqwest::StatusCode::OK);
+
+    // 5. Verify config.yaml
+    let cfg = load_config(&get_config_path(&server.tendril_home)).unwrap();
+    assert!(cfg.projects.iter().any(|p| p.name == "BetaProject"));
+    assert!(!cfg.projects.iter().any(|p| p.name == "AlphaProject"));
+
+    // 6. Verify plan YAML on disk
+    let (plan_yaml, _) = read_plan_yaml(std::path::Path::new(plan_folder_path)).unwrap();
+    assert_eq!(plan_yaml.project, "BetaProject");
+
+    // 7. Verify SQLite tables (Plans, Jobs, Recommendations)
+    let plan_proj: String = conn
+        .query_row("SELECT Project FROM Plans WHERE Id = ?1", [plan_id], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(plan_proj, "BetaProject");
+
+    let job_proj: String = conn
+        .query_row("SELECT Project FROM Jobs WHERE Id = '00099'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(job_proj, "BetaProject");
+
+    let rec_proj: String = conn
+        .query_row(
+            "SELECT Project FROM Recommendations WHERE PlanId = ?1",
+            [plan_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rec_proj, "BetaProject");
 }
