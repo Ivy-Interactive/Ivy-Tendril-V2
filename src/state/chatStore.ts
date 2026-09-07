@@ -394,6 +394,19 @@ class ChatStore {
 
   public async deleteSession(id: string): Promise<void> {
     try {
+      let deletedSession: ChatSession | undefined =
+        this.state.activeSession?.id === id
+          ? this.state.activeSession
+          : this.state.sessions.find((s) => s.id === id);
+
+      if (!deletedSession?.messages?.length) {
+        try {
+          deletedSession = await chatApi.getSession(id);
+        } catch {
+          // Deletion should proceed even if we can't fetch the session's messages
+        }
+      }
+
       await chatApi.deleteSession(id);
       this.state.sessions = this.state.sessions.filter((s) => s.id !== id);
 
@@ -406,8 +419,23 @@ class ChatStore {
           this.state.queuedItems = [];
         }
       }
-      this.state.inProgressAnswers = {};
-      saveStoredInProgressAnswers({});
+
+      const messageIds = new Set(deletedSession?.messages?.map((m) => m.id) ?? []);
+      if (messageIds.size > 0) {
+        const nextInProgress = { ...this.state.inProgressAnswers };
+        let changed = false;
+        for (const messageId of Object.keys(nextInProgress)) {
+          if (messageIds.has(messageId)) {
+            delete nextInProgress[messageId];
+            changed = true;
+          }
+        }
+        if (changed) {
+          this.state.inProgressAnswers = nextInProgress;
+          saveStoredInProgressAnswers(nextInProgress);
+        }
+      }
+
       this.notify();
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);
