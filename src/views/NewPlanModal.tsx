@@ -174,7 +174,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
               projects={projectNames}
               selectedProject={selectedProject}
               submitLabel="Start CreatePlan Job"
-              eventHandler={(_evt, _id, args) => {
+              eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
                 if (args && args[0]) {
                   setDescription(String(args[0]));
                 }

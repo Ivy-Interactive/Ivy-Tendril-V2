@@ -120,7 +120,7 @@ export const PlansView: React.FC<PlansViewProps> = ({
               value={selectedStates}
               placeholder="Filter by state..."
               multiple={true}
-              eventHandler={(_evt, _id, args) => {
+              eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
                 if (args && Array.isArray(args[0])) {
                   setSelectedStates(args[0] as string[]);
                 }

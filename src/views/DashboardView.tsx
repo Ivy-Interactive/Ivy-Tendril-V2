@@ -87,7 +87,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         completedCount={completedCount}
         failedCount={0}
         events={["OnJob"]}
-        eventHandler={(_evt, _id, args) => {
+        eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
           if (args && args[0] && onSelectJob) {
             onSelectJob(String(args[0]));
           }
@@ -104,7 +104,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 executingPlansCount={executingCount}
                 creatingPlansCount={creatingCount}
                 updatingPlansCount={updatingCount}
-                eventHandler={(_evt, _id, args) => {
+                eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
                   if (args && args[0] && onSelectPlan) {
                     onSelectPlan(String(args[0]));
                   }

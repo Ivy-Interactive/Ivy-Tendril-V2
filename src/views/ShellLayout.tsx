@@ -150,7 +150,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                   id="shell-nav"
                   items={navItems}
                   events={["OnSelect"]}
-                  eventHandler={(_evt, _id, args) => {
+                  eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
                     if (args && args[0]) {
                       onSelectNav(String(args[0]));
                     }
@@ -176,7 +176,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                       id="shell-tabs"
                       tabs={shellTabs}
                       events={["OnSelect", "OnClose"]}
-                      eventHandler={(evt, _id, args) => {
+                      eventHandler={(evt: string, _id: string, args?: unknown[]) => {
                         if (evt === "OnSelect" && args && args[0]) {
                           onSelectTab(String(args[0]));
                         } else if (evt === "OnClose" && args && args[0]) {
