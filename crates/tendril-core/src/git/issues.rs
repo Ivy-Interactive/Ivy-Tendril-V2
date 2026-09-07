@@ -3,9 +3,10 @@ use crate::error::{Result, TendrilError};
 use crate::git::service::run_git;
 use crate::models::ProjectConfig;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
-use std::time::Duration;
+use std::sync::{LazyLock, RwLock};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GitHubIssue {
@@ -506,6 +507,26 @@ pub async fn query_project_issues(
     Ok(paginate_issues(all_issues, filters.page, filters.limit))
 }
 
+const METADATA_CACHE_TTL: Duration = Duration::from_secs(300);
+
+#[derive(Debug, Clone)]
+struct CachedRepoMetadata {
+    labels: Vec<String>,
+    assignees: Vec<String>,
+    fetched_at: Instant,
+}
+
+static ISSUE_METADATA_CACHE: LazyLock<RwLock<HashMap<String, CachedRepoMetadata>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Clear all entries from the in-memory issue metadata cache.
+pub fn clear_issue_metadata_cache() {
+    let mut cache = ISSUE_METADATA_CACHE
+        .write()
+        .unwrap_or_else(|p| p.into_inner());
+    cache.clear();
+}
+
 pub async fn get_project_issues_metadata(
     repos: &[(String, String)],
 ) -> Result<IssueMetadataResponse> {
@@ -519,6 +540,31 @@ pub async fn get_project_issues_metadata(
 
     for (owner, repo) in repos {
         let repo_slug = format!("{}/{}", owner, repo);
+        let cache_key = repo_slug.to_lowercase();
+
+        let cached = {
+            let cache = ISSUE_METADATA_CACHE
+                .read()
+                .unwrap_or_else(|p| p.into_inner());
+            if let Some(entry) = cache.get(&cache_key) {
+                if entry.fetched_at.elapsed() < METADATA_CACHE_TTL {
+                    Some((entry.labels.clone(), entry.assignees.clone()))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        if let Some((labels, assignees)) = cached {
+            labels_set.extend(labels);
+            assignees_set.extend(assignees);
+            continue;
+        }
+
+        let mut repo_labels_set = BTreeSet::new();
+        let mut repo_assignees_set = BTreeSet::new();
 
         // Fetch labels: gh label list --repo {owner}/{repo} --json name
         let label_args = vec![
@@ -534,7 +580,9 @@ pub async fn get_project_issues_metadata(
                 for l in labels {
                     let trimmed = l.name.trim();
                     if !trimmed.is_empty() {
-                        labels_set.insert(trimmed.to_string());
+                        let label_str = trimmed.to_string();
+                        labels_set.insert(label_str.clone());
+                        repo_labels_set.insert(label_str);
                     }
                 }
             }
@@ -551,9 +599,25 @@ pub async fn get_project_issues_metadata(
             for line in stdout.lines() {
                 let trimmed = line.trim();
                 if !trimmed.is_empty() {
-                    assignees_set.insert(trimmed.to_string());
+                    let assignee_str = trimmed.to_string();
+                    assignees_set.insert(assignee_str.clone());
+                    repo_assignees_set.insert(assignee_str);
                 }
             }
+        }
+
+        {
+            let mut cache = ISSUE_METADATA_CACHE
+                .write()
+                .unwrap_or_else(|p| p.into_inner());
+            cache.insert(
+                cache_key,
+                CachedRepoMetadata {
+                    labels: repo_labels_set.into_iter().collect(),
+                    assignees: repo_assignees_set.into_iter().collect(),
+                    fetched_at: Instant::now(),
+                },
+            );
         }
     }
 
@@ -808,5 +872,77 @@ mod tests {
         assert_eq!(page2.page, 2);
         assert_eq!(page2.issues.len(), 1);
         assert_eq!(page2.issues[0].number, 1);
+    }
+
+    #[tokio::test]
+    async fn test_issue_metadata_cache_hit_and_expiration() {
+        clear_issue_metadata_cache();
+
+        let repo_key = "spacecorps/test-cached-repo";
+        {
+            let mut cache = ISSUE_METADATA_CACHE.write().unwrap();
+            cache.insert(
+                repo_key.to_string(),
+                CachedRepoMetadata {
+                    labels: vec!["bug".to_string(), "enhancement".to_string()],
+                    assignees: vec!["alice".to_string()],
+                    fetched_at: Instant::now(),
+                },
+            );
+        }
+
+        // Within TTL: cached values should be returned
+        let repos = vec![("SpaceCorps".to_string(), "test-cached-repo".to_string())];
+        let meta = get_project_issues_metadata(&repos).await.unwrap();
+        assert_eq!(meta.labels, vec!["bug", "enhancement"]);
+        assert_eq!(meta.assignees, vec!["alice"]);
+
+        // Expire the cache entry manually
+        {
+            let mut cache = ISSUE_METADATA_CACHE.write().unwrap();
+            if let Some(entry) = cache.get_mut(repo_key) {
+                entry.fetched_at = Instant::now()
+                    .checked_sub(METADATA_CACHE_TTL + Duration::from_secs(5))
+                    .unwrap();
+            }
+        }
+
+        // Check that the entry is now considered stale (elapsed >= TTL)
+        {
+            let cache = ISSUE_METADATA_CACHE.read().unwrap();
+            let entry = cache.get(repo_key).unwrap();
+            assert!(entry.fetched_at.elapsed() >= METADATA_CACHE_TTL);
+        }
+
+        clear_issue_metadata_cache();
+    }
+
+    #[test]
+    fn test_clear_issue_metadata_cache() {
+        clear_issue_metadata_cache();
+
+        {
+            let mut cache = ISSUE_METADATA_CACHE.write().unwrap();
+            cache.insert(
+                "spacecorps/repo-to-clear".to_string(),
+                CachedRepoMetadata {
+                    labels: vec!["label1".to_string()],
+                    assignees: vec!["user1".to_string()],
+                    fetched_at: Instant::now(),
+                },
+            );
+        }
+
+        {
+            let cache = ISSUE_METADATA_CACHE.read().unwrap();
+            assert!(cache.contains_key("spacecorps/repo-to-clear"));
+        }
+
+        clear_issue_metadata_cache();
+
+        {
+            let cache = ISSUE_METADATA_CACHE.read().unwrap();
+            assert!(cache.is_empty());
+        }
     }
 }
