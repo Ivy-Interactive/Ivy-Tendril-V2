@@ -78,6 +78,17 @@ managed-service supervisor, which does not own your `cargo run` process.
 iterate on for pure layout work. Anything that calls `invoke()` fails there,
 because there is no Rust host — use `pnpm tauri dev` for real data.
 
+### UI dependency pin
+
+CI checks out `SpaceCorps/components-storybook` at a pinned commit SHA in
+`.github/workflows/ci.yml`; local development uses whatever sibling checkout
+`link:../components-storybook` resolves to, so local and CI can disagree — CI
+is the pinned one. To bump: resolve the new SHA
+(`gh api repos/SpaceCorps/components-storybook/commits/main --jq .sha`),
+replace the `ref:` value, and let CI prove the build. Nothing bumps it
+automatically. The library publishes no tags or releases, which is why the
+pin is a SHA.
+
 ## Tests
 
 ```sh

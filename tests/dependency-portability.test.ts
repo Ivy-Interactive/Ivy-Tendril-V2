@@ -78,4 +78,21 @@ describe("Dependency portability", () => {
     expect(fs.existsSync(path.join(root, "dist", "tendril.mjs"))).toBe(true);
     expect(fs.existsSync(path.join(root, "dist", "style.css"))).toBe(true);
   });
+
+  it("pins the components-storybook checkout in CI to a full commit SHA", () => {
+    const workflow = readFile(".github/workflows/ci.yml");
+    const stepMatch = workflow.match(
+      /- name: Checkout components-storybook\n(?:(?!\n {6}- name:)[\s\S])*/
+    );
+
+    expect(stepMatch, "could not find the 'Checkout components-storybook' step in ci.yml").not.toBeNull();
+
+    const step = stepMatch![0];
+    const refMatch = step.match(/^\s*ref:\s*(\S+)\s*$/m);
+
+    expect(
+      refMatch?.[1],
+      "pin components-storybook to a full commit SHA"
+    ).toMatch(/^[0-9a-f]{40}$/);
+  });
 });
