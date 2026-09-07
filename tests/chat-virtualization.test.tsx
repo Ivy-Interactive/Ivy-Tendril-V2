@@ -422,6 +422,31 @@ describe("estimateChatMessageHeight", () => {
   it("returns default minimum fallback on empty content", () => {
     expect(estimateChatMessageHeight("")).toBe(80);
   });
+
+  it("scales character wrap threshold when containerWidth is provided", () => {
+    // 240 chars:
+    // at 768px -> wrapChars = 80 -> ceil(240/80) = 3 lines
+    // at 384px -> wrapChars = 40 -> ceil(240/40) = 6 lines
+    const text = "a".repeat(240);
+    const wide = estimateChatMessageHeight(text, { role: "assistant", containerWidth: 768 });
+    const narrow = estimateChatMessageHeight(text, { role: "assistant", containerWidth: 384 });
+    expect(narrow - wide).toBe(3 * 22);
+  });
+
+  it("defaults to 80-character threshold when containerWidth is omitted or non-positive", () => {
+    const text = "a".repeat(240);
+    const standard = estimateChatMessageHeight(text, { role: "assistant" });
+    const withZero = estimateChatMessageHeight(text, { role: "assistant", containerWidth: 0 });
+    const withNegative = estimateChatMessageHeight(text, {
+      role: "assistant",
+      containerWidth: -100,
+    });
+    const explicit768 = estimateChatMessageHeight(text, { role: "assistant", containerWidth: 768 });
+
+    expect(withZero).toBe(standard);
+    expect(withNegative).toBe(standard);
+    expect(explicit768).toBe(standard);
+  });
 });
 
 describe("useChatMessageWindow dynamic estimation", () => {
@@ -442,5 +467,32 @@ describe("useChatMessageWindow dynamic estimation", () => {
     expect(result.current.items[1].start).toBe(100);
     expect(result.current.items[2].start).toBe(400);
     expect(result.current.items[3].start).toBe(500);
+  });
+
+  it("passes clientWidth to estimateSize callback", async () => {
+    const containerEl = document.createElement("div");
+    Object.defineProperty(containerEl, "clientWidth", {
+      configurable: true,
+      value: 480,
+    });
+    const dummyContainer = { current: containerEl };
+
+    const estimateSpy = vi.fn((_index: number, _clientWidth?: number) => 150);
+
+    const { result } = renderHook(() =>
+      useChatMessageWindow({
+        count: 2,
+        scrollContainerRef: dummyContainer,
+        getItemKey: (i) => `item-${i}`,
+        enabled: true,
+        estimateSize: estimateSpy,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(estimateSpy).toHaveBeenCalledWith(0, 480);
+      expect(estimateSpy).toHaveBeenCalledWith(1, 480);
+    });
+    expect(result.current.totalSize).toBe(300);
   });
 });

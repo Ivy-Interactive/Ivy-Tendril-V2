@@ -5,7 +5,7 @@ export interface UseChatMessageWindowOptions {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   getItemKey: (index: number) => string;
   enabled: boolean;
-  estimateSize?: number | ((index: number) => number);
+  estimateSize?: number | ((index: number, clientWidth?: number) => number);
   overscan?: number;
   /** Index that must always be present in `items`, even outside the visible range (e.g. the streaming tail). */
   pinnedIndex?: number;
@@ -14,6 +14,7 @@ export interface UseChatMessageWindowOptions {
 export interface EstimateChatMessageHeightOptions {
   role?: "user" | "assistant" | "system";
   hasAttachments?: boolean;
+  containerWidth?: number;
 }
 
 export function estimateChatMessageHeight(
@@ -32,10 +33,16 @@ export function estimateChatMessageHeight(
 
   // Line count and character wrap heuristic:
   // Container max-width is max-w-3xl (~768px), approx 80 characters per line for text-sm.
+  const containerWidth = options?.containerWidth;
+  const wrapChars =
+    typeof containerWidth === "number" && containerWidth > 0
+      ? Math.max(20, Math.round(80 * Math.min(1, containerWidth / 768)))
+      : 80;
+
   const lines = content.split("\n");
   let totalVisualLines = 0;
   for (const line of lines) {
-    const wrapped = Math.max(1, Math.ceil(line.length / 80));
+    const wrapped = Math.max(1, Math.ceil(line.length / wrapChars));
     totalVisualLines += wrapped;
   }
 
@@ -98,6 +105,7 @@ export function useChatMessageWindow(
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [clientHeight, setClientHeight] = useState(0);
+  const [clientWidth, setClientWidth] = useState(0);
 
   useEffect(() => {
     const current = scrollContainerRef.current;
@@ -112,12 +120,23 @@ export function useChatMessageWindow(
     const readGeometry = () => {
       setScrollTop(scrollEl.scrollTop);
       setClientHeight(scrollEl.clientHeight);
+      setClientWidth(scrollEl.clientWidth);
     };
 
     readGeometry();
     scrollEl.addEventListener("scroll", readGeometry, { passive: true });
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(readGeometry);
+      resizeObserver.observe(scrollEl);
+    }
+    window.addEventListener("resize", readGeometry);
+
     return () => {
       scrollEl.removeEventListener("scroll", readGeometry);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", readGeometry);
     };
   }, [scrollEl]);
 
@@ -173,11 +192,11 @@ export function useChatMessageWindow(
   const getEstimate = useCallback(
     (index: number): number => {
       if (typeof estimateSize === "function") {
-        return estimateSize(index);
+        return estimateSize(index, clientWidth);
       }
       return estimateSize ?? DEFAULT_ESTIMATE_SIZE;
     },
-    [estimateSize],
+    [estimateSize, clientWidth],
   );
 
   const prefixSums = useMemo(() => {
