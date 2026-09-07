@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ContentInput } from "@spacecorps/components-storybook/tendril";
 import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
+import { firstStringArg } from "../utils/eventArgs";
 
 interface NewPlanModalProps {
   isOpen: boolean;
@@ -184,10 +185,10 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
               projects={projectNames}
               selectedProject={selectedProject}
               submitLabel="Start CreatePlan Job"
-              eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-                if (args && args[0]) {
-                  setDescription(String(args[0]));
-                }
+              eventHandler={(evt: string, _id: string, args?: unknown[]) => {
+                if (evt !== "OnChange") return;
+                const text = firstStringArg(args);
+                if (text !== undefined) setDescription(text);
               }}
             />
             {/* Fallback textarea for direct editing */}
