@@ -19,6 +19,10 @@ two-terminal flow.
 - Rust toolchain (stable) and the [Tauri v2 system dependencies](https://v2.tauri.app/start/prerequisites/)
 - `pnpm`
 - A `Tendril-Service` checkout next to this one
+- A `components-storybook` checkout with a built `dist/` (`pnpm install && pnpm build` in it),
+  expected at `../components-storybook`. If your checkout lives elsewhere, set
+  `COMPONENTS_STORYBOOK_PATH` to its root — export it from your shell profile so agent-driven runs
+  pick it up too, same as `TENDRIL_E2E_SERVER_BIN` below.
 - `pnpm install` in this repo
 
 ### Terminal 1 — the service
@@ -85,6 +89,10 @@ cd src-tauri && cargo test
 `tsconfig.json` deliberately includes `tests/`: the fixtures in `tests/fixtures/`
 are annotated against the DTOs in `src/types/api.ts`, so a contract change breaks
 the typecheck instead of silently drifting.
+
+A stale `node_modules` (e.g. after a dependency lands in `package.json` but before
+you've reinstalled) now fails `tests/dependency-portability.test.ts` by name instead
+of surfacing as an opaque Vite import-resolution error. `pnpm install` is the fix.
 
 `src-tauri/tests/e2e_operator_test.rs` runs the operator flow against a real
 service rather than a mock. It skips unless you tell it where the binary is:
