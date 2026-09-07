@@ -31,6 +31,7 @@ pub fn run() {
             cmd_list_verification_reports,
             cmd_list_recommendations,
             cmd_set_recommendation_state,
+            cmd_set_verification_status,
             cmd_list_jobs,
             cmd_get_job,
             cmd_start_job,
