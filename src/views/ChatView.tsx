@@ -7,6 +7,7 @@ import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import {
   useChatMessageWindow,
   CHAT_VIRTUALIZATION_MIN_MESSAGES,
+  estimateChatMessageHeight,
 } from "../hooks/useChatMessageWindow";
 import { ChatMessageRow } from "./ChatMessageRow";
 import { useWebviewFileDrop } from "../hooks/useWebviewFileDrop";
@@ -246,11 +247,24 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
 
   const getMessageKey = useCallback((index: number) => messages[index].id, [messages]);
 
+  const estimateMessageSize = useCallback(
+    (index: number) => {
+      const msg = messages[index];
+      if (!msg) return 160;
+      return estimateChatMessageHeight(msg.content, {
+        role: msg.role,
+        hasAttachments: Boolean(msg.attachments && msg.attachments.length > 0),
+      });
+    },
+    [messages],
+  );
+
   const { isVirtualized, totalSize, items, scrollToIndex, visibleRange } = useChatMessageWindow({
     count: messages.length,
     scrollContainerRef,
     getItemKey: getMessageKey,
     enabled: messages.length >= CHAT_VIRTUALIZATION_MIN_MESSAGES,
+    estimateSize: estimateMessageSize,
     pinnedIndex: messages.length - 1,
   });
 

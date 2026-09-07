@@ -1,10 +1,11 @@
 import React, { useEffect } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, screen, act, waitFor, renderHook } from "@testing-library/react";
 import { ChatView } from "../src/views/ChatView";
 import { chatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
 import type { ChatSession, ChatMessage } from "../src/types/chat";
+import { estimateChatMessageHeight, useChatMessageWindow } from "../src/hooks/useChatMessageWindow";
 
 const { planMarkdownMountCounts } = vi.hoisted(() => ({
   planMarkdownMountCounts: new Map<string, number>(),
@@ -376,5 +377,70 @@ questions:
     await waitFor(() => {
       expect(screen.queryByTestId("chat-jump-to-question-button")).not.toBeInTheDocument();
     });
+  });
+});
+
+describe("estimateChatMessageHeight", () => {
+  it("returns compact base height (~80-120px) for short single-line messages", () => {
+    const userHeight = estimateChatMessageHeight("Hi there", { role: "user" });
+    expect(userHeight).toBeGreaterThanOrEqual(80);
+    expect(userHeight).toBeLessThanOrEqual(120);
+
+    const assistantHeight = estimateChatMessageHeight("Hi there", { role: "assistant" });
+    expect(assistantHeight).toBeGreaterThanOrEqual(80);
+    expect(assistantHeight).toBeLessThanOrEqual(120);
+  });
+
+  it("scales multiline messages with newline count", () => {
+    const singleLine = estimateChatMessageHeight("Line 1", { role: "assistant" });
+    const multiLine = estimateChatMessageHeight("Line 1\nLine 2\nLine 3\nLine 4\nLine 5", {
+      role: "assistant",
+    });
+    expect(multiLine).toBeGreaterThan(singleLine);
+    expect(multiLine - singleLine).toBe(4 * 22);
+  });
+
+  it("scales long continuous strings with character wrap estimation", () => {
+    const shortText = estimateChatMessageHeight("a".repeat(40));
+    const longWrappedText = estimateChatMessageHeight("a".repeat(240));
+    expect(longWrappedText).toBeGreaterThan(shortText);
+    expect(longWrappedText - shortText).toBe(2 * 22);
+  });
+
+  it("includes attachment height offset when message has attachments", () => {
+    const withoutAttachments = estimateChatMessageHeight("Check this out", {
+      role: "user",
+      hasAttachments: false,
+    });
+    const withAttachments = estimateChatMessageHeight("Check this out", {
+      role: "user",
+      hasAttachments: true,
+    });
+    expect(withAttachments - withoutAttachments).toBe(32);
+  });
+
+  it("returns default minimum fallback on empty content", () => {
+    expect(estimateChatMessageHeight("")).toBe(80);
+  });
+});
+
+describe("useChatMessageWindow dynamic estimation", () => {
+  it("computes variable prefix-sum offsets when given an estimateSize callback", () => {
+    const dummyContainer = { current: document.createElement("div") };
+    const { result } = renderHook(() =>
+      useChatMessageWindow({
+        count: 4,
+        scrollContainerRef: dummyContainer,
+        getItemKey: (i) => `item-${i}`,
+        enabled: true,
+        estimateSize: (index) => (index % 2 === 0 ? 100 : 300),
+      }),
+    );
+
+    expect(result.current.totalSize).toBe(800);
+    expect(result.current.items[0].start).toBe(0);
+    expect(result.current.items[1].start).toBe(100);
+    expect(result.current.items[2].start).toBe(400);
+    expect(result.current.items[3].start).toBe(500);
   });
 });
