@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use tendril_core::chat::execution::ChatExecutionManager;
-use tendril_core::config::{get_config_path, get_database_path, get_plans_dir, load_config};
+use tendril_core::config::{
+    get_config_path, get_database_path, get_plans_dir_with_settings, load_config,
+};
 use tendril_core::jobs::JobManager;
 use tokio::sync::broadcast;
 
@@ -19,7 +21,9 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(tendril_home: PathBuf, secret: String) -> Self {
-        let plans_dir = get_plans_dir(&tendril_home);
+        let config_path = get_config_path(&tendril_home);
+        let settings = load_config(&config_path).unwrap_or_default();
+        let plans_dir = get_plans_dir_with_settings(&tendril_home, Some(&settings));
         Self::with_plans_dir(tendril_home, plans_dir, secret)
     }
 

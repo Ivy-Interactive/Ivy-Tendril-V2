@@ -32,6 +32,13 @@ pub struct TendrilSettings {
     #[serde(rename = "planTemplate", default)]
     pub plan_template: String,
 
+    #[serde(
+        rename = "planFolder",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub plan_folder: Option<String>,
+
     #[serde(default = "default_levels")]
     pub levels: Vec<LevelConfig>,
 
@@ -111,6 +118,7 @@ impl Default for TendrilSettings {
             projects: Vec::new(),
             verifications: Vec::new(),
             plan_template: String::new(),
+            plan_folder: None,
             levels: default_levels(),
             telemetry: true,
             theme: default_theme(),
@@ -218,13 +226,56 @@ pub fn get_config_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("config.yaml")
 }
 
-pub fn get_plans_dir(tendril_home: &Path) -> PathBuf {
+pub fn get_plans_dir_with_settings(
+    tendril_home: &Path,
+    settings: Option<&TendrilSettings>,
+) -> PathBuf {
     if let Ok(val) = std::env::var("TENDRIL_PLANS") {
-        if !val.trim().is_empty() {
-            return PathBuf::from(val.trim());
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
         }
     }
+
+    let loaded;
+    let effective_settings = match settings {
+        Some(s) => Some(s),
+        None => {
+            let config_path = get_config_path(tendril_home);
+            if let Ok(s) = load_config(&config_path) {
+                loaded = s;
+                Some(&loaded)
+            } else {
+                None
+            }
+        }
+    };
+
+    if let Some(s) = effective_settings {
+        if let Some(ref folder) = s.plan_folder {
+            let trimmed = folder.trim();
+            if !trimmed.is_empty() {
+                let expanded = expand_variables(trimmed, &tendril_home.to_string_lossy());
+                let p = PathBuf::from(&expanded);
+                return if p.is_absolute()
+                    || trimmed.contains("%TENDRIL_HOME%")
+                    || trimmed.contains("${TENDRIL_HOME}")
+                    || trimmed.contains("$TENDRIL_HOME")
+                    || trimmed.starts_with('~')
+                {
+                    p
+                } else {
+                    tendril_home.join(p)
+                };
+            }
+        }
+    }
+
     tendril_home.join("Plans")
+}
+
+pub fn get_plans_dir(tendril_home: &Path) -> PathBuf {
+    get_plans_dir_with_settings(tendril_home, None)
 }
 
 pub fn get_database_path(tendril_home: &Path) -> PathBuf {

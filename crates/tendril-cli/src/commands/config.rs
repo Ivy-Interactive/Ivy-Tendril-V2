@@ -24,6 +24,7 @@ pub fn handle_config_command(cmd: ConfigCommands, tendril_home: &Path) -> anyhow
                 "gittimeout" => settings.git_timeout.to_string(),
                 "maxconcurrentjobs" => settings.max_concurrent_jobs.to_string(),
                 "plantemplate" => settings.plan_template,
+                "planfolder" => settings.plan_folder.unwrap_or_default(),
                 "theme" => settings.theme,
                 _ => {
                     if let Some((_, v)) = settings
@@ -50,6 +51,13 @@ pub fn handle_config_command(cmd: ConfigCommands, tendril_home: &Path) -> anyhow
                 "gittimeout" => settings.git_timeout = value.parse()?,
                 "maxconcurrentjobs" => settings.max_concurrent_jobs = value.parse()?,
                 "plantemplate" => settings.plan_template = value,
+                "planfolder" => {
+                    settings.plan_folder = if value.trim().is_empty() {
+                        None
+                    } else {
+                        Some(value)
+                    }
+                }
                 "theme" => settings.theme = value,
                 _ => {
                     if let Some(existing_key) = settings

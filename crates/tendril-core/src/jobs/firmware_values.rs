@@ -1,4 +1,4 @@
-use crate::config::{expand_variables, get_plans_dir, TendrilSettings};
+use crate::config::{expand_variables, get_plans_dir_with_settings, TendrilSettings};
 use crate::models::{JobArgs, JobItem, PlanYaml, ProjectConfig};
 use crate::plans::reader::read_plan_yaml;
 use std::collections::{HashMap, HashSet};
@@ -33,7 +33,9 @@ pub fn build_firmware_values(
             values.insert("TaskDescription".to_string(), a.description.clone());
             values.insert(
                 "TendrilPlansFolder".to_string(),
-                get_plans_dir(tendril_home).to_string_lossy().to_string(),
+                get_plans_dir_with_settings(tendril_home, Some(settings))
+                    .to_string_lossy()
+                    .to_string(),
             );
             if a.force {
                 values.insert("Force".to_string(), "true".to_string());

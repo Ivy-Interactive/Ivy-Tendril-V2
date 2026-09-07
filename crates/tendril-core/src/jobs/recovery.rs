@@ -1,4 +1,6 @@
-use crate::config::{get_database_path, get_plans_dir, is_process_running, TendrilSettings};
+use crate::config::{
+    get_database_path, get_plans_dir_with_settings, is_process_running, TendrilSettings,
+};
 use crate::db::jobs::{insert_job, list_non_terminal_jobs};
 use crate::db::open_database;
 use crate::error::Result;
@@ -39,7 +41,7 @@ pub async fn reconcile_jobs_on_startup(
 ) -> Result<ReconcileReport> {
     reconcile_jobs_with(
         tendril_home,
-        &get_plans_dir(tendril_home),
+        &get_plans_dir_with_settings(tendril_home, Some(settings)),
         settings,
         &get_gh_pr_state,
     )
