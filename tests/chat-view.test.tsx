@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import React from "react";
 import { ChatView } from "../src/views/ChatView";
 import { chatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
@@ -146,5 +145,166 @@ questions:
 
     fireEvent.click(createPlanButtons[0]);
     expect(onCreatePlanMock).toHaveBeenCalledWith("What database should we use?");
+  });
+
+  it("adds attachment chips to the list on drag-and-drop file drop onto composer", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+    });
+
+    const file = new File(["dummy content"], "test-dropped-file.ts", { type: "text/plain" });
+    Object.defineProperty(file, "path", { value: "/path/to/test-dropped-file.ts" });
+
+    const composerArea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i).closest("div[class*='border-t']");
+    expect(composerArea).toBeInTheDocument();
+
+    fireEvent.dragEnter(composerArea!, {
+      dataTransfer: { files: [file] },
+    });
+    expect(screen.getByText("Drop files here to attach")).toBeInTheDocument();
+
+    fireEvent.drop(composerArea!, {
+      dataTransfer: { files: [file] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("test-dropped-file.ts")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Drop files here to attach")).not.toBeInTheDocument();
+  });
+
+  it("adds attachment chips when selecting files via file input", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+    });
+
+    const file = new File(["selected content"], "config.json", { type: "application/json" });
+    Object.defineProperty(file, "path", { value: "/repos/config.json" });
+
+    const fileInput = screen.getByTestId("file-upload-input");
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("config.json")).toBeInTheDocument();
+    });
+  });
+
+  it("removes attachment chip when clicking its remove button", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+    });
+
+    const file = new File(["hello"], "to-remove.md", { type: "text/markdown" });
+    const fileInput = screen.getByTestId("file-upload-input");
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("to-remove.md")).toBeInTheDocument();
+    });
+
+    const removeBtn = screen.getByTitle("Remove to-remove.md");
+    fireEvent.click(removeBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByText("to-remove.md")).not.toBeInTheDocument();
+    });
+  });
+
+  it("passes attachments array in options on message send and clears chip list", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Architecture Planning")).toBeInTheDocument();
+    });
+
+    const file = new File(["data"], "payload.txt", { type: "text/plain" });
+    Object.defineProperty(file, "path", { value: "/data/payload.txt" });
+
+    const fileInput = screen.getByTestId("file-upload-input");
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByText("payload.txt")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
+    fireEvent.change(textarea, { target: { value: "Review this file" } });
+
+    const sendBtn = screen.getByTitle("Send message");
+    fireEvent.click(sendBtn);
+
+    await waitFor(() => {
+      expect(postSpy).toHaveBeenCalledWith("session-10", "Review this file", {
+        attachments: [
+          {
+            name: "payload.txt",
+            path: "/data/payload.txt",
+            mimeType: "text/plain",
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("composer-attachment-chips")).not.toBeInTheDocument();
+    });
+  });
+
+  it("displays attachment chips on messages rendered in the chat thread", async () => {
+    const sessionWithAttachments: ChatSession = {
+      ...mockSessionWithQuestions,
+      messages: [
+        {
+          id: "msg-with-att",
+          role: "user",
+          content: "Here is the log file",
+          timestamp: "2026-09-07T12:00:00Z",
+          attachments: [
+            {
+              name: "system.log",
+              path: "/var/log/system.log",
+              mimeType: "text/plain",
+            },
+          ],
+        },
+      ],
+    };
+
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionWithAttachments]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(sessionWithAttachments);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Here is the log file")).toBeInTheDocument();
+    });
+
+    const attachmentChip = screen.getByText("system.log");
+    expect(attachmentChip).toBeInTheDocument();
+    expect(attachmentChip.closest("div")).toHaveAttribute("title", "/var/log/system.log");
   });
 });

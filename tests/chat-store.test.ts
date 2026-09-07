@@ -150,4 +150,37 @@ describe("ChatStore State Management & Event Handling", () => {
     expect(deleteQueueSpy).toHaveBeenCalledWith("session-1", "queue-1");
     expect(chatStore.getState().queuedItems).toHaveLength(0);
   });
+
+  it("includes attachments in optimistic user message and passes attachments to chatApi.postMessage", async () => {
+    const testSession: ChatSession = {
+      ...mockSession,
+      messages: [
+        {
+          id: "msg-1",
+          role: "user",
+          content: "Hello",
+          timestamp: "2026-09-07T12:00:00Z",
+        },
+      ],
+    };
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([testSession]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(testSession);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+
+    await chatStore.fetchSessions();
+
+    const attachments = [{ name: "screenshot.png", path: "/tmp/screenshot.png", mimeType: "image/png" }];
+    await chatStore.sendMessage("Take a look at this", { attachments });
+
+    const activeSession = chatStore.getState().activeSession;
+    expect(activeSession?.messages).toHaveLength(2);
+    const lastMsg = activeSession?.messages[1];
+    expect(lastMsg?.content).toBe("Take a look at this");
+    expect(lastMsg?.attachments).toEqual(attachments);
+
+    expect(postSpy).toHaveBeenCalledWith("session-1", "Take a look at this", {
+      attachments,
+    });
+  });
 });

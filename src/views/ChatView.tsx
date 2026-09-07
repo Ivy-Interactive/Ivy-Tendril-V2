@@ -9,7 +9,7 @@ import {
 } from "components-storybook/renderers";
 import { PlanMarkdown } from "components-storybook/tendril";
 import { chatStore, type ChatState } from "../state/chatStore";
-import type { ChatMessage, ChatSession } from "../types/chat";
+import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
 import {
   Plus,
   Edit2,
@@ -22,6 +22,8 @@ import {
   ChevronUp,
   FilePlus,
   Loader2,
+  Paperclip,
+  X,
 } from "lucide-react";
 
 interface ChatViewProps {
@@ -49,7 +51,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
   const [editTitle, setEditTitle] = useState("");
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const unsub = chatStore.subscribe(() => {
@@ -61,6 +66,57 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
 
   const { sessions, activeSessionId, activeSession, queuedItems, isGenerating, error } =
     storeState;
+
+  const processFiles = (fileList: FileList | File[]) => {
+    const incoming = Array.from(fileList).map((file) => ({
+      name: file.name,
+      path: (file as unknown as { path?: string }).path || file.name,
+      mimeType: file.type || undefined,
+    }));
+    setAttachments((prev) => {
+      const existingPaths = new Set(prev.map((a) => a.path));
+      const filtered = incoming.filter((a) => !existingPaths.has(a.path));
+      return [...prev, ...filtered];
+    });
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(e.target.files);
+      e.target.value = "";
+    }
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+    }
+  };
 
   const handleCreateSession = async () => {
     try {
@@ -103,10 +159,14 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
 
   const handleSendMessage = async () => {
     const text = inputPrompt.trim();
-    if (!text || isGenerating) return;
+    if ((!text && attachments.length === 0) || isGenerating) return;
+    const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
     setInputPrompt("");
+    setAttachments([]);
     try {
-      await chatStore.sendMessage(text);
+      await chatStore.sendMessage(text, {
+        attachments: currentAttachments,
+      });
     } catch {
       // Handled in store
     }
@@ -286,6 +346,28 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                             />
                           </div>
                         )}
+
+                        {msg.attachments && msg.attachments.length > 0 && (
+                          <div
+                            data-testid="message-attachments"
+                            className={`mt-2 flex flex-wrap gap-1.5 pt-1.5 border-t ${
+                              isUser ? "border-emerald-500/40" : "border-slate-800"
+                            }`}
+                          >
+                            {msg.attachments.map((att, idx) => (
+                              <div
+                                key={`${att.path}-${idx}`}
+                                className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
+                                  isUser ? "bg-black/20 text-white/95" : "bg-slate-800 text-slate-300"
+                                }`}
+                                title={att.path}
+                              >
+                                <Paperclip className="size-3 opacity-75 shrink-0" />
+                                <span className="max-w-[140px] truncate">{att.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </ChatBubbleMessage>
 
                       {/* Action bar on message */}
@@ -357,40 +439,115 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
         )}
 
         {/* Composer Input Area */}
-        <div className="border-t border-slate-800 bg-slate-900 p-4">
-          <div className="flex items-end gap-2 max-w-4xl mx-auto">
-            <div className="flex-1 relative">
-              <ChatInput
-                ref={textareaRef}
-                value={inputPrompt}
-                onChange={(e) => setInputPrompt(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask Tendril or discuss plans (Enter to send, Shift+Enter for newline)..."
-                disabled={isGenerating}
-                className="w-full min-h-[48px] max-h-32 bg-slate-950 text-slate-100 border-slate-800 focus-visible:ring-emerald-500"
-              />
+        <div
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`relative border-t p-4 transition-colors ${
+            isDraggingOver
+              ? "border-emerald-500 bg-emerald-950/20 ring-2 ring-emerald-500/50 ring-dashed"
+              : "border-slate-800 bg-slate-900"
+          }`}
+        >
+          {isDraggingOver && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs border-2 border-dashed border-emerald-500 pointer-events-none">
+              <div className="flex items-center gap-2 text-emerald-400 font-medium text-sm">
+                <Paperclip className="size-5 animate-bounce" />
+                <span>Drop files here to attach</span>
+              </div>
             </div>
+          )}
 
-            {isGenerating ? (
-              <button
-                type="button"
-                onClick={() => chatStore.cancelGeneration()}
-                className="flex items-center justify-center rounded-lg bg-rose-600 p-3 text-white shadow hover:bg-rose-500 transition-colors"
-                title="Stop generation"
+          <div className="max-w-4xl mx-auto space-y-2">
+            {/* Attachment chip list */}
+            {attachments.length > 0 && (
+              <div
+                data-testid="composer-attachment-chips"
+                className="flex flex-wrap items-center gap-1.5 pb-1"
               >
-                <Square className="size-5" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSendMessage}
-                disabled={!inputPrompt.trim()}
-                className="flex items-center justify-center rounded-lg bg-emerald-600 p-3 text-white shadow hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title="Send message"
-              >
-                <Send className="size-5" />
-              </button>
+                {attachments.map((att, index) => (
+                  <div
+                    key={`${att.path}-${index}`}
+                    className="flex items-center gap-1 rounded-md bg-slate-800 border border-slate-700 px-2 py-1 text-xs text-slate-200 shadow-sm"
+                    title={att.path}
+                  >
+                    <Paperclip className="size-3 text-slate-400 shrink-0" />
+                    <span className="max-w-[140px] truncate">{att.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAttachment(index)}
+                      className="ml-0.5 rounded p-0.5 text-slate-400 hover:bg-slate-700 hover:text-slate-100"
+                      title={`Remove ${att.name}`}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+                {attachments.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setAttachments([])}
+                    className="text-[11px] text-slate-400 hover:text-rose-400 px-1.5 py-0.5 rounded transition-colors"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
             )}
+
+            <div className="flex items-end gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                data-testid="file-upload-input"
+                onChange={handleFileInputChange}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isGenerating}
+                className="flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800 p-3 text-slate-300 shadow hover:bg-slate-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Attach files"
+              >
+                <Paperclip className="size-5" />
+              </button>
+
+              <div className="flex-1 relative">
+                <ChatInput
+                  ref={textareaRef}
+                  value={inputPrompt}
+                  onChange={(e) => setInputPrompt(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask Tendril or discuss plans (Enter to send, Shift+Enter for newline)..."
+                  disabled={isGenerating}
+                  className="w-full min-h-[48px] max-h-32 bg-slate-950 text-slate-100 border-slate-800 focus-visible:ring-emerald-500"
+                />
+              </div>
+
+              {isGenerating ? (
+                <button
+                  type="button"
+                  onClick={() => chatStore.cancelGeneration()}
+                  className="flex items-center justify-center rounded-lg bg-rose-600 p-3 text-white shadow hover:bg-rose-500 transition-colors"
+                  title="Stop generation"
+                >
+                  <Square className="size-5" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSendMessage}
+                  disabled={!inputPrompt.trim() && attachments.length === 0}
+                  className="flex items-center justify-center rounded-lg bg-emerald-600 p-3 text-white shadow hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="Send message"
+                >
+                  <Send className="size-5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </main>
