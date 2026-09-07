@@ -6,6 +6,7 @@ import {
   type DashboardJobDto,
 } from "@spacecorps/components-storybook/tendril";
 import type { PlanSummary, Job } from "../types/api";
+import { firstStringArg } from "../utils/eventArgs";
 
 interface DashboardViewProps {
   plans: PlanSummary[];
@@ -83,10 +84,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         completedCount={completedCount}
         failedCount={0}
         events={["OnJob"]}
-        eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-          if (args && args[0] && onSelectJob) {
-            onSelectJob(String(args[0]));
-          }
+        eventHandler={(evt: string, _id: string, args?: unknown[]) => {
+          const jobId = firstStringArg(args);
+          if (evt === "OnJob" && jobId && onSelectJob) onSelectJob(jobId);
         }}
         kpis={kpis}
         jobs={dashboardJobs}
@@ -101,9 +101,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 creatingPlansCount={creatingCount}
                 updatingPlansCount={updatingCount}
                 eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-                  if (args && args[0] && onSelectPlan) {
-                    onSelectPlan(String(args[0]));
-                  }
+                  const planId = firstStringArg(args);
+                  if (planId && onSelectPlan) onSelectPlan(planId);
                 }}
               />
             </div>
