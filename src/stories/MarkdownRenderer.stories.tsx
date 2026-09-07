@@ -12,7 +12,7 @@ This is an **interactive demonstration** of the Ivy markdown rendering engine.
 > [!WARNING]
 > Important warning callout block.
 
-### Features
+## Features
 - GitHub Flavored Markdown (GFM)
 - Mathematical equations via KaTeX: $E = mc^2$
 - Code syntax highlighting with Prism

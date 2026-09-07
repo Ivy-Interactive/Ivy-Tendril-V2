@@ -30,6 +30,7 @@ const ScrollArea = React.forwardRef<
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
+        tabIndex={0}
         className={cn("h-full w-full rounded-[inherit]", viewportClassName)}
         style={viewportStyle}
       >

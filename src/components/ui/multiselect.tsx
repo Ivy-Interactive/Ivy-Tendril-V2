@@ -165,6 +165,13 @@ const MultipleSelector = React.forwardRef<
       }
     }, [open]);
 
+    React.useLayoutEffect(() => {
+      if (!open && inputRef.current) {
+        inputRef.current.removeAttribute("aria-controls");
+        inputRef.current.setAttribute("aria-expanded", "false");
+      }
+    }, [open]);
+
     const setupBadgeCalculation = React.useCallback(() => {
       if (maxVisibleBadges !== undefined) {
         setVisibleCount(maxVisibleBadges);

@@ -24,6 +24,7 @@ export function Calendar({
   formatters,
   components,
   density,
+  labels,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"];
@@ -45,6 +46,10 @@ export function Calendar({
       formatters={{
         formatMonthDropdown: (date) => date.toLocaleString("default", { month: "short" }),
         ...formatters,
+      }}
+      labels={{
+        ...(props["aria-label"] ? { labelNav: () => `${props["aria-label"]} navigation` } : {}),
+        ...labels,
       }}
       classNames={{
         root: cn("w-fit", defaultClassNames.root),

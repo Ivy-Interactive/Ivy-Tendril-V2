@@ -55,13 +55,31 @@ CommandInput.displayName = CommandPrimitive.Input.displayName;
 const CommandList = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.List
-    ref={ref}
-    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
-    {...props}
-  />
-));
+>(({ className, ...props }, ref) => {
+  const innerRef = React.useRef<HTMLDivElement>(null);
+  React.useImperativeHandle(ref, () => innerRef.current!);
+
+  React.useLayoutEffect(() => {
+    if (innerRef.current) {
+      const sizer = innerRef.current.querySelector("[cmdk-list-sizer]");
+      if (sizer) {
+        sizer.setAttribute("role", "presentation");
+      }
+      const separators = innerRef.current.querySelectorAll("[cmdk-separator]");
+      separators.forEach((sep) => {
+        sep.setAttribute("role", "presentation");
+      });
+    }
+  });
+
+  return (
+    <CommandPrimitive.List
+      ref={innerRef}
+      className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
+      {...props}
+    />
+  );
+});
 
 CommandList.displayName = CommandPrimitive.List.displayName;
 
@@ -93,13 +111,24 @@ CommandGroup.displayName = CommandPrimitive.Group.displayName;
 const CommandSeparator = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Separator>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Separator>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.Separator
-    ref={ref}
-    className={cn("-mx-1 h-px bg-border", className)}
-    {...props}
-  />
-));
+>(({ className, ...props }, ref) => {
+  const innerRef = React.useRef<HTMLDivElement>(null);
+  React.useImperativeHandle(ref, () => innerRef.current!);
+
+  React.useLayoutEffect(() => {
+    if (innerRef.current) {
+      innerRef.current.setAttribute("role", "presentation");
+    }
+  });
+
+  return (
+    <CommandPrimitive.Separator
+      ref={innerRef}
+      className={cn("-mx-1 h-px bg-border", className)}
+      {...props}
+    />
+  );
+});
 CommandSeparator.displayName = CommandPrimitive.Separator.displayName;
 
 const CommandItem = React.forwardRef<

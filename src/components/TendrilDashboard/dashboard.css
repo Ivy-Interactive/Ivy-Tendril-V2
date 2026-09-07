@@ -9,7 +9,7 @@
   --tdb-block-border: color-mix(in srgb, var(--foreground, #000000) 6%, var(--background, #ffffff));
   --tdb-fg: var(--foreground, #000000);
   --tdb-muted: color-mix(in srgb, var(--foreground, #000000) 60%, transparent);
-  --tdb-faint: color-mix(in srgb, var(--foreground, #000000) 28%, transparent);
+  --tdb-faint: color-mix(in srgb, var(--foreground, #000000) 56%, transparent);
   --tdb-divider: color-mix(in srgb, var(--foreground, #000000) 20%, transparent);
   --tdb-pill-bg: color-mix(in srgb, var(--foreground, #000000) 6%, transparent);
   --tdb-popover: var(--popover, #ffffff);

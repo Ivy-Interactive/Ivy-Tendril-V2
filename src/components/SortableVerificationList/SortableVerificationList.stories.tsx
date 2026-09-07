@@ -52,9 +52,9 @@ export const WithStatusBadges = () => {
   const [items, setItems] = useState(itemsWithStatuses);
 
   const statusColor: Record<string, string> = {
-    Pass: "#16a34a",
+    Pass: "#15803d",
     Fail: "#dc2626",
-    Pending: "#ca8a04",
+    Pending: "#a16207",
   };
 
   return (

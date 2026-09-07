@@ -32,11 +32,11 @@ const ControlsGrid = ({ density }: { density: Densities }) => (
       </div>
       <div className="flex items-center gap-4">
         <span className="w-32 text-sm font-medium">NumberInput:</span>
-        <NumberInput value={42} className="w-48" />
+        <NumberInput value={42} className="w-48" aria-label="Controls number input" />
       </div>
       <div className="flex items-center gap-4">
         <span className="w-32 text-sm font-medium">Slider:</span>
-        <Slider defaultValue={[50]} className="w-48" />
+        <Slider defaultValue={[50]} className="w-48" aria-label="Controls slider" />
       </div>
       <div className="flex items-center gap-4">
         <span className="w-32 text-sm font-medium">MultipleSelector:</span>

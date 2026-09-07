@@ -72,7 +72,7 @@ export const AllDensities: Story = {
 
             <div className="space-y-4">
               <h3 className="text-sm font-medium">Pagination</h3>
-              <Pagination>
+              <Pagination aria-label={`${density} density pagination`}>
                 <PaginationContent>
                   <PaginationItem>
                     <PaginationPrevious href="#" />
@@ -100,7 +100,7 @@ export const AllDensities: Story = {
 
             <div className="space-y-4">
               <h3 className="text-sm font-medium">Calendar</h3>
-              <Calendar mode="single" />
+              <Calendar mode="single" aria-label={`${density} density calendar`} />
             </div>
           </div>
         </DensityProvider>
@@ -138,7 +138,7 @@ export const PaginationOnly: Story = {
       <div>
         <p className="text-sm mb-2">Small Density</p>
         <DensityProvider density={Densities.Small}>
-          <Pagination>
+          <Pagination aria-label="Small density pagination">
             <PaginationContent>
               <PaginationItem>
                 <PaginationPrevious href="#" />
@@ -168,7 +168,7 @@ export const PaginationOnly: Story = {
       <div>
         <p className="text-sm mb-2">Large Density</p>
         <DensityProvider density={Densities.Large}>
-          <Pagination>
+          <Pagination aria-label="Large density pagination">
             <PaginationContent>
               <PaginationItem>
                 <PaginationPrevious href="#" />
@@ -204,14 +204,14 @@ export const CalendarOnly: Story = {
       <div>
         <p className="text-sm mb-2">Small Density</p>
         <DensityProvider density={Densities.Small}>
-          <Calendar mode="single" />
+          <Calendar mode="single" aria-label="Small density calendar" />
         </DensityProvider>
       </div>
 
       <div>
         <p className="text-sm mb-2">Large Density</p>
         <DensityProvider density={Densities.Large}>
-          <Calendar mode="single" />
+          <Calendar mode="single" aria-label="Large density calendar" />
         </DensityProvider>
       </div>
     </div>

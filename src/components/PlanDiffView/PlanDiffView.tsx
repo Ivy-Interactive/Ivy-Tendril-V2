@@ -606,7 +606,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                       {comment.author?.trim() ? comment.author.trim() : "Agent Instruction (Draft)"}
                     </span>
                     {isResolved && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[10px] font-medium rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[10px] font-medium rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
                         ✓ Resolved
                       </span>
                     )}
@@ -631,7 +631,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                           className={`hover:underline cursor-pointer ${
                             isResolved
                               ? "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                              : "text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 font-medium"
+                              : "text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 font-medium"
                           }`}
                           onClick={() =>
                             onUpdateComment({
@@ -649,7 +649,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                     {canDelete && (
                       <button
                         type="button"
-                        className="hover:underline text-[var(--destructive)] cursor-pointer"
+                        className="hover:underline text-red-700 dark:text-red-400 cursor-pointer"
                         onClick={() => onDeleteComment(comment)}
                         title="Delete comment"
                       >
@@ -1123,9 +1123,11 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                   {/* Additions / Deletions count */}
                   <span className="flex items-center gap-1 font-mono text-xs tabular-nums">
                     <span className="flex items-center justify-end gap-1 min-w-[4.5rem]">
-                      {additions > 0 && <span className="text-[var(--success)]">+{additions}</span>}
+                      {additions > 0 && (
+                        <span className="text-emerald-700 dark:text-emerald-400">+{additions}</span>
+                      )}
                       {deletions > 0 && (
-                        <span className="text-[var(--destructive)]">-{deletions}</span>
+                        <span className="text-red-700 dark:text-red-400">-{deletions}</span>
                       )}
                     </span>
                     {renderDiffSquares(additions, deletions)}

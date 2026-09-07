@@ -31,6 +31,8 @@ export interface NumberInputProps {
   className?: string;
   density?: Densities;
   "data-testid"?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
 }
 
 export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(

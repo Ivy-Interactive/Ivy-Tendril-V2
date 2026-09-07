@@ -68,14 +68,15 @@ const config: TestRunnerConfig = {
           axeOptions: storyContext.parameters?.a11y?.options,
         });
       } catch (error) {
-        if (storyContext.parameters?.a11y?.failOnViolation === true) {
-          throw error;
+        if (storyContext.parameters?.a11y?.failOnViolation === false) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(
+            `[a11y warning] Accessibility violation in story "${storyContext.id}":\n${message}`,
+          );
+          return;
         }
 
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[a11y warning] Accessibility violation in story "${storyContext.id}":\n${message}`,
-        );
+        throw error;
       }
 
       return;

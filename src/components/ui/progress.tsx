@@ -11,6 +11,7 @@ const Progress = React.forwardRef<React.ElementRef<typeof ProgressPrimitive.Root
   ({ className, value, indeterminate, ...props }, ref) => (
     <ProgressPrimitive.Root
       ref={ref}
+      aria-label={props["aria-label"] ?? "Progress"}
       style={{
         backgroundColor: "color-mix(in srgb, var(--primary) 10%, transparent)",
       }}

@@ -302,53 +302,83 @@ export function BadgeSelect({
       document.body,
     );
 
+  const triggerContent = (
+    <>
+      <NamedIcon name={triggerIcon} className="bselect-trigger-icon" />
+      <div ref={badgesRef} className="bselect-badges">
+        {selected.length === 0 ? (
+          <span className="bselect-placeholder">{placeholder}</span>
+        ) : (
+          <>
+            {selected.map((v, i) => {
+              const opt = options.find((o) => o.value === v);
+              const canRemove = multiple && opt?.removable !== false;
+              return (
+                <span
+                  key={v}
+                  data-badge
+                  className="bselect-badge"
+                  style={{ display: i < visibleCount ? undefined : "none" }}
+                >
+                  <span className="bselect-badge-label">{opt?.label ?? v}</span>
+                  {canRemove && (
+                    <button
+                      type="button"
+                      className="bselect-badge-x"
+                      aria-label={`Remove ${opt?.label ?? v}`}
+                      onClick={(e) => remove(v, e)}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+            {visibleCount < selected.length && (
+              <span className="bselect-count">+{selected.length - visibleCount}</span>
+            )}
+          </>
+        )}
+      </div>
+      <ChevronDown size={14} className="bselect-chevron" />
+    </>
+  );
+
   return (
     <div ref={rootRef} className="bselect" style={parseWidth(width)} title={tooltip}>
-      <button
-        type="button"
-        className="bselect-trigger"
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <NamedIcon name={triggerIcon} className="bselect-trigger-icon" />
-        <div ref={badgesRef} className="bselect-badges">
-          {selected.length === 0 ? (
-            <span className="bselect-placeholder">{placeholder}</span>
-          ) : (
-            <>
-              {selected.map((v, i) => {
-                const opt = options.find((o) => o.value === v);
-                const canRemove = multiple && opt?.removable !== false;
-                return (
-                  <span
-                    key={v}
-                    data-badge
-                    className="bselect-badge"
-                    style={{ display: i < visibleCount ? undefined : "none" }}
-                  >
-                    <span className="bselect-badge-label">{opt?.label ?? v}</span>
-                    {canRemove && (
-                      <button
-                        type="button"
-                        className="bselect-badge-x"
-                        aria-label={`Remove ${opt?.label ?? v}`}
-                        onClick={(e) => remove(v, e)}
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </span>
-                );
-              })}
-              {visibleCount < selected.length && (
-                <span className="bselect-count">+{selected.length - visibleCount}</span>
-              )}
-            </>
-          )}
+      {selected.length === 0 ? (
+        <button
+          type="button"
+          aria-label={placeholder || tooltip || "Select"}
+          className="bselect-trigger"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          onClick={() => setOpen((v) => !v)}
+        >
+          {triggerContent}
+        </button>
+      ) : (
+        <div
+          role="combobox"
+          tabIndex={0}
+          aria-label={placeholder || tooltip || "Select"}
+          className="bselect-trigger"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest(".bselect-badge-x")) return;
+            setOpen((v) => !v);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
+              e.preventDefault();
+              setOpen((v) => !v);
+            }
+          }}
+        >
+          {triggerContent}
         </div>
-        <ChevronDown size={14} className="bselect-chevron" />
-      </button>
+      )}
       {menu}
     </div>
   );

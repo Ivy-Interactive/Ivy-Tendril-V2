@@ -514,6 +514,19 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       hr: memo((props: React.HTMLAttributes<HTMLHRElement>) => (
         <hr className={typography.hr} {...props} />
       )),
+      input: memo(({ type, checked, ...props }: React.InputHTMLAttributes<HTMLInputElement>) => {
+        if (type === "checkbox") {
+          return (
+            <input
+              type="checkbox"
+              checked={checked}
+              aria-label={checked ? "Completed task" : "Pending task"}
+              {...props}
+            />
+          );
+        }
+        return <input type={type} checked={checked} {...props} />;
+      }),
       details: memo(({ children, ...props }: React.DetailsHTMLAttributes<HTMLDetailsElement>) => (
         <details className={cn(typography.details, "group")} {...props}>
           {children}
