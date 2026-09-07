@@ -1,14 +1,23 @@
 use crate::state::AppState;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
-use tendril_core::config::{load_config, save_config};
+use tendril_core::config::{
+    find_projects_referencing_verification, load_config, remove_verification_from_projects,
+    save_config,
+};
 use tendril_core::db::open_database;
 use tendril_core::models::VerificationConfig;
+
+#[derive(Debug, Deserialize, Default)]
+pub struct DeleteVerificationQuery {
+    #[serde(default)]
+    pub force: bool,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateVerificationRequest {
@@ -200,6 +209,7 @@ pub async fn update_verification(
 pub async fn delete_verification(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
+    Query(query): Query<DeleteVerificationQuery>,
 ) -> impl IntoResponse {
     let mut settings = match load_config(&state.config_path) {
         Ok(s) => s,
@@ -225,7 +235,28 @@ pub async fn delete_verification(
             .into_response();
     };
 
-    let _removed = settings.verifications.remove(idx);
+    let referencing = find_projects_referencing_verification(&settings, &name);
+    if !referencing.is_empty() && !query.force {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": format!(
+                    "Cannot delete verification '{}' because it is referenced by project(s): {}",
+                    name,
+                    referencing.join(", ")
+                ),
+                "projects": referencing,
+            })),
+        )
+            .into_response();
+    }
+
+    settings.verifications.remove(idx);
+    let cleaned_projects = if !referencing.is_empty() {
+        remove_verification_from_projects(&mut settings, &name)
+    } else {
+        Vec::new()
+    };
 
     if let Err(e) = save_config(&state.config_path, &settings) {
         return (
@@ -237,7 +268,10 @@ pub async fn delete_verification(
 
     (
         StatusCode::OK,
-        Json(json!({ "message": format!("Verification '{}' removed", name) })),
+        Json(json!({
+            "message": format!("Verification '{}' removed", name),
+            "cleanedProjects": cleaned_projects,
+        })),
     )
         .into_response()
 }

@@ -1,10 +1,11 @@
 use std::path::{Path, PathBuf};
 use tendril_core::config::{
-    delete_master, expand_variables, get_config_path, get_config_path_with_env,
-    get_default_tendril_home, get_default_tendril_home_with_env, get_plans_dir,
-    get_plans_dir_with_env, get_plans_dir_with_settings, get_tendril_home,
-    get_tendril_home_with_env, load_config, normalize_slashes, read_master, save_config,
-    write_master, EnvSource, SystemEnv, TendrilSettings,
+    delete_master, expand_variables, find_projects_referencing_verification, get_config_path,
+    get_config_path_with_env, get_default_tendril_home, get_default_tendril_home_with_env,
+    get_plans_dir, get_plans_dir_with_env, get_plans_dir_with_settings, get_tendril_home,
+    get_tendril_home_with_env, load_config, normalize_slashes, read_master,
+    remove_verification_from_projects, save_config, write_master, EnvSource, SystemEnv,
+    TendrilSettings,
 };
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef};
 
@@ -332,4 +333,72 @@ fn test_get_plans_dir_precedence() {
     );
 
     let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_find_and_remove_projects_referencing_verification() {
+    let mut settings = TendrilSettings::default();
+    settings.projects.push(ProjectConfig {
+        name: "ProjectA".to_string(),
+        color: "Blue".to_string(),
+        repos: vec![],
+        verifications: vec![
+            ProjectVerificationRef {
+                name: "RustClippy".to_string(),
+                required: true,
+            },
+            ProjectVerificationRef {
+                name: "RustTest".to_string(),
+                required: false,
+            },
+        ],
+        context: "".to_string(),
+        stack_hash: None,
+        review_actions: vec![],
+        build_dependencies: vec![],
+    });
+    settings.projects.push(ProjectConfig {
+        name: "ProjectB".to_string(),
+        color: "Red".to_string(),
+        repos: vec![],
+        verifications: vec![ProjectVerificationRef {
+            name: "rustclippy".to_string(), // case-insensitive check
+            required: true,
+        }],
+        context: "".to_string(),
+        stack_hash: None,
+        review_actions: vec![],
+        build_dependencies: vec![],
+    });
+    settings.projects.push(ProjectConfig {
+        name: "ProjectC".to_string(),
+        color: "Green".to_string(),
+        repos: vec![],
+        verifications: vec![ProjectVerificationRef {
+            name: "RustTest".to_string(),
+            required: true,
+        }],
+        context: "".to_string(),
+        stack_hash: None,
+        review_actions: vec![],
+        build_dependencies: vec![],
+    });
+
+    let referencing = find_projects_referencing_verification(&settings, "RustClippy");
+    assert_eq!(referencing, vec!["ProjectA", "ProjectB"]);
+
+    let referencing_none = find_projects_referencing_verification(&settings, "NonExistent");
+    assert!(referencing_none.is_empty());
+
+    let modified = remove_verification_from_projects(&mut settings, "RUSTCLIPPY");
+    assert_eq!(modified, vec!["ProjectA", "ProjectB"]);
+
+    assert_eq!(settings.projects[0].verifications.len(), 1);
+    assert_eq!(settings.projects[0].verifications[0].name, "RustTest");
+    assert_eq!(settings.projects[1].verifications.len(), 0);
+    assert_eq!(settings.projects[2].verifications.len(), 1);
+    assert_eq!(settings.projects[2].verifications[0].name, "RustTest");
+
+    let modified_again = remove_verification_from_projects(&mut settings, "RustClippy");
+    assert!(modified_again.is_empty());
 }

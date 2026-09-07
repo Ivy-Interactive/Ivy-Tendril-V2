@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use tendril_cli::commands::verification::{handle_verification_command, VerificationCommands};
-use tendril_core::config::{get_config_path, load_config};
+use tendril_core::config::{get_config_path, load_config, save_config};
+use tendril_core::models::{ProjectConfig, ProjectVerificationRef, VerificationConfig};
 use tendril_server::{create_router, AppState, MasterGuard};
 
 struct TestServer {
@@ -131,6 +132,7 @@ async fn test_verification_cli_filesystem_fallback() {
     handle_verification_command(
         VerificationCommands::Remove {
             name: "MyLint".to_string(),
+            force: false,
         },
         &tendril_home,
     )
@@ -210,6 +212,7 @@ async fn test_verification_cli_routed_through_daemon() {
     handle_verification_command(
         VerificationCommands::Remove {
             name: "DaemonCheck".to_string(),
+            force: false,
         },
         &server.tendril_home,
     )
@@ -241,6 +244,7 @@ async fn test_verification_cli_error_handling() {
     let err_daemon_rem = handle_verification_command(
         VerificationCommands::Remove {
             name: "NonExistent".to_string(),
+            force: false,
         },
         &server.tendril_home,
     )
@@ -314,6 +318,7 @@ async fn test_verification_cli_error_handling() {
     let err_fs_rem = handle_verification_command(
         VerificationCommands::Remove {
             name: "NonExistent".to_string(),
+            force: false,
         },
         &fs_home,
     )
@@ -440,4 +445,163 @@ async fn test_verification_cli_rename_routed_through_daemon() {
     assert_eq!(cfg.verifications.len(), 1);
     assert_eq!(cfg.verifications[0].name, "DaemonVerRenamed");
     assert_eq!(cfg.verifications[0].prompt, "cargo clippy");
+}
+
+#[tokio::test]
+async fn test_verification_cli_remove_referenced_blocked_and_force_cleans_fs() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-ver-ref-fs-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    let mut settings = load_config(&cfg_path).unwrap();
+    settings.verifications.push(VerificationConfig {
+        name: "CheckLint".to_string(),
+        prompt: "cargo clippy".to_string(),
+    });
+    settings.projects.push(ProjectConfig {
+        name: "ProjectAlpha".to_string(),
+        color: "Blue".to_string(),
+        repos: vec![],
+        verifications: vec![ProjectVerificationRef {
+            name: "CheckLint".to_string(),
+            required: true,
+        }],
+        context: "".to_string(),
+        stack_hash: None,
+        review_actions: vec![],
+        build_dependencies: vec![],
+    });
+    save_config(&cfg_path, &settings).unwrap();
+
+    // 1. Without force, remove should fail with conflict message
+    let err = handle_verification_command(
+        VerificationCommands::Remove {
+            name: "CheckLint".to_string(),
+            force: false,
+        },
+        &tendril_home,
+    )
+    .await
+    .unwrap_err();
+
+    let err_msg = err.to_string();
+    assert!(err_msg.contains("ProjectAlpha"));
+    assert!(err_msg.contains("Use --force"));
+
+    // Verify verification and project reference still exist
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.verifications.len(), 1);
+    assert_eq!(cfg.projects[0].verifications.len(), 1);
+
+    // 2. With force, remove should succeed and clean project references
+    handle_verification_command(
+        VerificationCommands::Remove {
+            name: "CheckLint".to_string(),
+            force: true,
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Remove with force should succeed");
+
+    let cfg_after = load_config(&cfg_path).unwrap();
+    assert!(cfg_after.verifications.is_empty());
+    assert!(cfg_after.projects[0].verifications.is_empty());
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+#[tokio::test]
+async fn test_verification_cli_remove_referenced_blocked_and_force_cleans_daemon() {
+    let server = start_test_server().await;
+    let cfg_path = get_config_path(&server.tendril_home);
+
+    let mut settings = load_config(&cfg_path).unwrap();
+    settings.verifications.push(VerificationConfig {
+        name: "DaemonLint".to_string(),
+        prompt: "cargo clippy".to_string(),
+    });
+    settings.projects.push(ProjectConfig {
+        name: "ProjectBeta".to_string(),
+        color: "Red".to_string(),
+        repos: vec![],
+        verifications: vec![ProjectVerificationRef {
+            name: "DaemonLint".to_string(),
+            required: true,
+        }],
+        context: "".to_string(),
+        stack_hash: None,
+        review_actions: vec![],
+        build_dependencies: vec![],
+    });
+    save_config(&cfg_path, &settings).unwrap();
+
+    // 1. Without force, remove should fail with conflict message
+    let err = handle_verification_command(
+        VerificationCommands::Remove {
+            name: "DaemonLint".to_string(),
+            force: false,
+        },
+        &server.tendril_home,
+    )
+    .await
+    .unwrap_err();
+
+    let err_msg = err.to_string();
+    assert!(err_msg.contains("ProjectBeta"));
+    assert!(err_msg.contains("Use --force"));
+
+    // Verify verification and project reference still exist
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.verifications.len(), 1);
+    assert_eq!(cfg.projects[0].verifications.len(), 1);
+
+    // 2. With force, remove should succeed and clean project references
+    handle_verification_command(
+        VerificationCommands::Remove {
+            name: "DaemonLint".to_string(),
+            force: true,
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Remove with force should succeed");
+
+    let cfg_after = load_config(&cfg_path).unwrap();
+    assert!(cfg_after.verifications.is_empty());
+    assert!(cfg_after.projects[0].verifications.is_empty());
+}
+
+#[test]
+fn test_doctor_warns_on_non_existent_verification() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-doc-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    let mut settings = load_config(&cfg_path).unwrap();
+    settings.projects.push(ProjectConfig {
+        name: "DoctorProj".to_string(),
+        color: "Blue".to_string(),
+        repos: vec![],
+        verifications: vec![ProjectVerificationRef {
+            name: "GhostVerification".to_string(),
+            required: true,
+        }],
+        context: "".to_string(),
+        stack_hash: None,
+        review_actions: vec![],
+        build_dependencies: vec![],
+    });
+    save_config(&cfg_path, &settings).unwrap();
+
+    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home);
+    assert!(res.is_ok());
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
 }

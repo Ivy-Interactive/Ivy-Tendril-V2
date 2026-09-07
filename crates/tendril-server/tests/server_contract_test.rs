@@ -1600,3 +1600,194 @@ async fn test_project_rename_cascading() {
         .unwrap();
     assert_eq!(rec_proj, "BetaProject");
 }
+
+#[tokio::test]
+async fn test_delete_verification_referenced_by_project_blocked() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    // 1. Create verification LintCheck
+    let create_ver_resp = client
+        .post(format!("{}/api/verifications", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "name": "LintCheck",
+            "prompt": "cargo clippy"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_ver_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 2. Create project ReferencingProject referencing LintCheck
+    let create_proj_resp = client
+        .post(format!("{}/api/projects", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "name": "ReferencingProject",
+            "verifications": [
+                { "name": "LintCheck", "required": true }
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_proj_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 3. DELETE /api/verifications/LintCheck without force -> 409 Conflict
+    let del_resp = client
+        .delete(format!("{}/api/verifications/LintCheck", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_resp.status(), reqwest::StatusCode::CONFLICT);
+
+    let del_body: serde_json::Value = del_resp.json().await.unwrap();
+    assert!(del_body["error"]
+        .as_str()
+        .unwrap()
+        .contains("ReferencingProject"));
+    let projects = del_body["projects"].as_array().unwrap();
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0], "ReferencingProject");
+
+    // 4. Verify verification still exists
+    let get_ver = client
+        .get(format!("{}/api/verifications/LintCheck", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_ver.status(), reqwest::StatusCode::OK);
+
+    // 5. Verify project still references verification
+    let get_proj = client
+        .get(format!("{}/api/projects/ReferencingProject", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_proj.status(), reqwest::StatusCode::OK);
+    let proj_body: serde_json::Value = get_proj.json().await.unwrap();
+    let verifs = proj_body["verifications"].as_array().unwrap();
+    assert!(verifs.iter().any(|v| v["name"] == "LintCheck"));
+}
+
+#[tokio::test]
+async fn test_delete_verification_with_force_cleans_projects() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    // 1. Create verification ForceCheck
+    let create_ver_resp = client
+        .post(format!("{}/api/verifications", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "name": "ForceCheck",
+            "prompt": "cargo clippy"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_ver_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 2. Create project ForceProject referencing ForceCheck
+    let create_proj_resp = client
+        .post(format!("{}/api/projects", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "name": "ForceProject",
+            "verifications": [
+                { "name": "ForceCheck", "required": true }
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_proj_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 3. DELETE /api/verifications/ForceCheck?force=true -> 200 OK
+    let del_resp = client
+        .delete(format!(
+            "{}/api/verifications/ForceCheck?force=true",
+            base_url
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_resp.status(), reqwest::StatusCode::OK);
+
+    let del_body: serde_json::Value = del_resp.json().await.unwrap();
+    assert_eq!(del_body["message"], "Verification 'ForceCheck' removed");
+    let cleaned = del_body["cleanedProjects"].as_array().unwrap();
+    assert!(cleaned.iter().any(|p| p == "ForceProject"));
+
+    // 4. Verify verification is removed
+    let get_ver = client
+        .get(format!("{}/api/verifications/ForceCheck", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_ver.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // 5. Verify project verifications cleaned up
+    let get_proj = client
+        .get(format!("{}/api/projects/ForceProject", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_proj.status(), reqwest::StatusCode::OK);
+    let proj_body: serde_json::Value = get_proj.json().await.unwrap();
+    let verifs = proj_body["verifications"].as_array().unwrap();
+    assert!(!verifs.iter().any(|v| v["name"] == "ForceCheck"));
+}
+
+#[tokio::test]
+async fn test_delete_verification_unreferenced_succeeds() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    // 1. Create verification UnreferencedCheck
+    let create_ver_resp = client
+        .post(format!("{}/api/verifications", base_url))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "name": "UnreferencedCheck",
+            "prompt": "cargo clippy"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_ver_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 2. DELETE /api/verifications/UnreferencedCheck without force -> 200 OK
+    let del_resp = client
+        .delete(format!("{}/api/verifications/UnreferencedCheck", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_resp.status(), reqwest::StatusCode::OK);
+
+    let del_body: serde_json::Value = del_resp.json().await.unwrap();
+    assert_eq!(
+        del_body["message"],
+        "Verification 'UnreferencedCheck' removed"
+    );
+
+    // 3. Verify verification is removed
+    let get_ver = client
+        .get(format!("{}/api/verifications/UnreferencedCheck", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_ver.status(), reqwest::StatusCode::NOT_FOUND);
+}

@@ -1,6 +1,9 @@
 use clap::Subcommand;
 use std::path::Path;
-use tendril_core::config::{get_config_path, load_config, read_master, save_config, MasterInfo};
+use tendril_core::config::{
+    find_projects_referencing_verification, get_config_path, load_config, read_master,
+    remove_verification_from_projects, save_config, MasterInfo,
+};
 use tendril_core::models::VerificationConfig;
 
 #[derive(Subcommand)]
@@ -31,7 +34,11 @@ pub enum VerificationCommands {
     },
 
     #[command(about = "Remove a verification definition")]
-    Remove { name: String },
+    Remove {
+        name: String,
+        #[arg(long, short)]
+        force: bool,
+    },
 }
 
 enum DaemonOutcome {
@@ -177,9 +184,12 @@ async fn handle_verification_command_daemon(
 
             println!("Verification '{}' updated.", name);
         }
-        VerificationCommands::Remove { name } => {
+        VerificationCommands::Remove { name, force } => {
             let resp = match client
-                .delete(format!("{}/api/verifications/{}", base_url, name))
+                .delete(format!(
+                    "{}/api/verifications/{}?force={}",
+                    base_url, name, force
+                ))
                 .bearer_auth(&master.secret)
                 .send()
                 .await
@@ -191,9 +201,33 @@ async fn handle_verification_command_daemon(
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
                 anyhow::bail!("Verification '{}' not found", name);
             }
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                let err_body: serde_json::Value = resp.json().await.unwrap_or_default();
+                let err_msg = err_body["error"]
+                    .as_str()
+                    .unwrap_or("Verification is referenced by active projects");
+                anyhow::bail!(
+                    "{}. Use --force to remove it and clean up project references.",
+                    err_msg
+                );
+            }
             if !resp.status().is_success() {
                 let err = resp.text().await.unwrap_or_default();
                 anyhow::bail!("Failed to remove verification '{}': {}", name, err);
+            }
+
+            let body: serde_json::Value = resp.json().await.unwrap_or_default();
+            if let Some(cleaned) = body["cleanedProjects"].as_array() {
+                if !cleaned.is_empty() {
+                    let project_names: Vec<&str> =
+                        cleaned.iter().filter_map(|p| p.as_str()).collect();
+                    println!(
+                        "Verification '{}' removed (cleaned up references in: {}).",
+                        name,
+                        project_names.join(", ")
+                    );
+                    return Ok(DaemonOutcome::Handled);
+                }
             }
 
             println!("Verification '{}' removed.", name);
@@ -301,16 +335,45 @@ fn handle_verification_command_fs(
             save_config(&cfg_path, &settings)?;
             println!("Verification '{}' updated.", name);
         }
-        VerificationCommands::Remove { name } => {
-            let before = settings.verifications.len();
+        VerificationCommands::Remove { name, force } => {
+            let idx = settings
+                .verifications
+                .iter()
+                .position(|v| v.name.eq_ignore_ascii_case(&name));
+            if idx.is_none() {
+                anyhow::bail!("Verification '{}' not found", name);
+            }
+
+            let referencing = find_projects_referencing_verification(&settings, &name);
+            if !referencing.is_empty() && !force {
+                anyhow::bail!(
+                    "Cannot remove verification '{}': it is referenced by project(s): {}. Use --force to remove it and clean up project references.",
+                    name,
+                    referencing.join(", ")
+                );
+            }
+
             settings
                 .verifications
                 .retain(|v| !v.name.eq_ignore_ascii_case(&name));
-            if settings.verifications.len() == before {
-                anyhow::bail!("Verification '{}' not found", name);
-            }
+
+            let cleaned = if !referencing.is_empty() {
+                remove_verification_from_projects(&mut settings, &name)
+            } else {
+                Vec::new()
+            };
+
             save_config(&cfg_path, &settings)?;
-            println!("Verification '{}' removed.", name);
+
+            if !cleaned.is_empty() {
+                println!(
+                    "Verification '{}' removed (cleaned up references in: {}).",
+                    name,
+                    cleaned.join(", ")
+                );
+            } else {
+                println!("Verification '{}' removed.", name);
+            }
         }
     }
 
