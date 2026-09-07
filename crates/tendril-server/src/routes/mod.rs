@@ -123,7 +123,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
         )
-        .route("/api/verifications", get(verifications::list_verifications))
+        .route(
+            "/api/verifications",
+            get(verifications::list_verifications).post(verifications::add_verification),
+        )
+        .route(
+            "/api/verifications/:name",
+            get(verifications::get_verification).delete(verifications::delete_verification),
+        )
         // Config
         .route(
             "/api/config",

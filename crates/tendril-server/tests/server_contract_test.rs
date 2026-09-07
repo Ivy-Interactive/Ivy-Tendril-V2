@@ -967,6 +967,134 @@ level: Feature
 }
 
 #[tokio::test]
+async fn test_verification_crud_lifecycle_and_unknown_keys_preservation() {
+    let server = start_test_server(None).await;
+    let master = read_master(&server.tendril_home).expect("master discovery exists");
+
+    // Write initial config with unmodeled keys and empty verifications
+    let config_path = server.tendril_home.join("config.yaml");
+    let initial_yaml = r#"
+codingAgent: claude
+jobTimeout: 30
+editor:
+  command: code
+  args: ["-n"]
+customSettings:
+  nestedKey: 42
+verifications: []
+"#;
+    std::fs::write(&config_path, initial_yaml).unwrap();
+
+    let client = reqwest::Client::new();
+    let base_url = format!("http://{}:{}", master.host, master.port);
+
+    // 1. Query GET /api/verifications and assert list
+    let list_resp = client
+        .get(format!("{}/api/verifications", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list_resp.status(), reqwest::StatusCode::OK);
+    let verifications: Vec<serde_json::Value> = list_resp.json().await.unwrap();
+    assert!(verifications.is_empty());
+
+    // 2. Post new verification POST /api/verifications and assert 201 Created
+    let create_payload = serde_json::json!({
+        "name": "CustomCheck",
+        "prompt": "Run custom verification script"
+    });
+
+    let create_resp = client
+        .post(format!("{}/api/verifications", base_url))
+        .bearer_auth(&master.secret)
+        .json(&create_payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+    let created_json: serde_json::Value = create_resp.json().await.unwrap();
+    assert_eq!(created_json["name"], "CustomCheck");
+    assert_eq!(created_json["prompt"], "Run custom verification script");
+
+    // 3. Post duplicate verification POST /api/verifications and assert 409 Conflict
+    let dup_resp = client
+        .post(format!("{}/api/verifications", base_url))
+        .bearer_auth(&master.secret)
+        .json(&create_payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(dup_resp.status(), reqwest::StatusCode::CONFLICT);
+
+    // 4. Query GET /api/verifications/:name and verify name and prompt match
+    let get_resp = client
+        .get(format!("{}/api/verifications/CustomCheck", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), reqwest::StatusCode::OK);
+    let get_json: serde_json::Value = get_resp.json().await.unwrap();
+    assert_eq!(get_json["name"], "CustomCheck");
+    assert_eq!(get_json["prompt"], "Run custom verification script");
+
+    // Also verify case-insensitivity on GET
+    let get_ci_resp = client
+        .get(format!("{}/api/verifications/customcheck", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_ci_resp.status(), reqwest::StatusCode::OK);
+
+    // 5. Query non-existent verification GET /api/verifications/DoesNotExist and assert 404 Not Found
+    let get_missing = client
+        .get(format!("{}/api/verifications/DoesNotExist", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_missing.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // 6. Delete verification DELETE /api/verifications/:name and assert 200 OK
+    let del_resp = client
+        .delete(format!("{}/api/verifications/CustomCheck", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_resp.status(), reqwest::StatusCode::OK);
+    let del_json: serde_json::Value = del_resp.json().await.unwrap();
+    assert_eq!(del_json["message"], "Verification 'CustomCheck' removed");
+
+    // 7. Delete non-existent verification and assert 404 Not Found
+    let del_missing = client
+        .delete(format!("{}/api/verifications/DoesNotExist", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_missing.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // 8. Confirm unmodeled configuration keys in config.yaml are preserved across mutations
+    let raw_config = std::fs::read_to_string(&config_path).unwrap();
+    assert!(raw_config.contains("editor:"));
+    assert!(raw_config.contains("command: code"));
+    assert!(raw_config.contains("customSettings:"));
+    assert!(raw_config.contains("nestedKey: 42"));
+
+    // 9. Query GET after delete and assert 404 Not Found
+    let get_after_del = client
+        .get(format!("{}/api/verifications/CustomCheck", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_after_del.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn test_dedicated_project_repo_and_verification_endpoints() {
     let server = start_test_server(None).await;
     let master = read_master(&server.tendril_home).expect("master discovery exists");

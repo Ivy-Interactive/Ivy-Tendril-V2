@@ -1,6 +1,6 @@
 use clap::Subcommand;
 use std::path::Path;
-use tendril_core::config::{get_config_path, load_config, save_config};
+use tendril_core::config::{get_config_path, load_config, read_master, save_config, MasterInfo};
 use tendril_core::models::VerificationConfig;
 
 #[derive(Subcommand)]
@@ -25,7 +25,135 @@ pub enum VerificationCommands {
     Remove { name: String },
 }
 
-pub fn handle_verification_command(
+enum DaemonOutcome {
+    Handled,
+    Fallback,
+}
+
+pub async fn handle_verification_command(
+    cmd: VerificationCommands,
+    tendril_home: &Path,
+) -> anyhow::Result<()> {
+    if let Some(master) = read_master(tendril_home) {
+        match handle_verification_command_daemon(&cmd, &master).await {
+            Ok(DaemonOutcome::Handled) => return Ok(()),
+            Ok(DaemonOutcome::Fallback) => {
+                tracing::debug!("Failed to reach master daemon, falling back to filesystem");
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
+    handle_verification_command_fs(cmd, tendril_home)
+}
+
+async fn handle_verification_command_daemon(
+    cmd: &VerificationCommands,
+    master: &MasterInfo,
+) -> anyhow::Result<DaemonOutcome> {
+    let client = reqwest::Client::new();
+    let base_url = format!("http://{}:{}", master.host, master.port);
+
+    match cmd {
+        VerificationCommands::List { json } => {
+            let resp = match client
+                .get(format!("{}/api/verifications", base_url))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if !resp.status().is_success() {
+                anyhow::bail!("Failed to list verifications: HTTP {}", resp.status());
+            }
+
+            let verifications: Vec<VerificationConfig> = resp.json().await?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&verifications)?);
+            } else {
+                for v in &verifications {
+                    println!("{}", v.name);
+                }
+            }
+        }
+        VerificationCommands::Get { name } => {
+            let resp = match client
+                .get(format!("{}/api/verifications/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Verification '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to get verification '{}': {}", name, err);
+            }
+
+            let v: VerificationConfig = resp.json().await?;
+            println!("Name: {}", v.name);
+            println!("Prompt:\n{}", v.prompt);
+        }
+        VerificationCommands::Add { name, prompt } => {
+            let resp = match client
+                .post(format!("{}/api/verifications", base_url))
+                .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "name": name,
+                    "prompt": prompt,
+                }))
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                anyhow::bail!("Verification '{}' already exists", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to add verification '{}': {}", name, err);
+            }
+
+            println!("Verification '{}' added.", name);
+        }
+        VerificationCommands::Remove { name } => {
+            let resp = match client
+                .delete(format!("{}/api/verifications/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Verification '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to remove verification '{}': {}", name, err);
+            }
+
+            println!("Verification '{}' removed.", name);
+        }
+    }
+
+    Ok(DaemonOutcome::Handled)
+}
+
+fn handle_verification_command_fs(
     cmd: VerificationCommands,
     tendril_home: &Path,
 ) -> anyhow::Result<()> {
