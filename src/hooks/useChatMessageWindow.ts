@@ -18,17 +18,18 @@ export interface ChatWindowItem {
   measureRef: (el: HTMLElement | null) => void;
 }
 
+export interface ScrollToIndexOptions {
+  smooth?: boolean;
+  align?: "start" | "center" | "end";
+}
+
 export interface UseChatMessageWindowReturn {
   isVirtualized: boolean;
   totalSize: number;
   items: ChatWindowItem[];
+  scrollToIndex: (index: number, options?: ScrollToIndexOptions) => void;
+  visibleRange: { startIndex: number; endIndex: number };
 }
-
-const DISABLED_RESULT: UseChatMessageWindowReturn = {
-  isVirtualized: false,
-  totalSize: 0,
-  items: [],
-};
 
 const DEFAULT_ESTIMATE_SIZE = 160;
 const DEFAULT_OVERSCAN = 6;
@@ -64,7 +65,6 @@ export function useChatMessageWindow(
   const [clientHeight, setClientHeight] = useState(0);
 
   useEffect(() => {
-    if (!enabled) return;
     const current = scrollContainerRef.current;
     if (current !== scrollEl) {
       setScrollEl(current);
@@ -72,7 +72,7 @@ export function useChatMessageWindow(
   });
 
   useEffect(() => {
-    if (!enabled || !scrollEl) return;
+    if (!scrollEl) return;
 
     const readGeometry = () => {
       setScrollTop(scrollEl.scrollTop);
@@ -84,7 +84,7 @@ export function useChatMessageWindow(
     return () => {
       scrollEl.removeEventListener("scroll", readGeometry);
     };
-  }, [enabled, scrollEl]);
+  }, [scrollEl]);
 
   useEffect(() => {
     return () => {
@@ -211,14 +211,98 @@ export function useChatMessageWindow(
     pinnedIndex,
   ]);
 
+  const visibleRange = useMemo(() => {
+    if (count === 0) return { startIndex: -1, endIndex: -1 };
+    if (clientHeight === 0) return { startIndex: 0, endIndex: count - 1 };
+    return {
+      startIndex: findIndex(scrollTop),
+      endIndex: findIndex(scrollTop + clientHeight),
+    };
+  }, [count, clientHeight, findIndex, scrollTop]);
+
+  const scrollToIndex = useCallback(
+    (index: number, options?: ScrollToIndexOptions) => {
+      if (index < 0 || index >= count) return;
+      const smooth = options?.smooth ?? false;
+      const align = options?.align ?? "start";
+
+      const container = scrollContainerRef.current ?? scrollEl;
+      if (!container) return;
+
+      if (!enabled) {
+        const targetEl = container.querySelector(`[data-index="${index}"]`);
+        if (targetEl && typeof (targetEl as HTMLElement).scrollIntoView === "function") {
+          (targetEl as HTMLElement).scrollIntoView({
+            behavior: smooth ? "smooth" : "auto",
+            block: align,
+          });
+        }
+        const itemHeight = heightsRef.current.get(keys[index]) ?? estimateSize;
+        const itemStart = prefixSums[index];
+        const ch = container.clientHeight || clientHeight;
+        let targetTop = itemStart;
+        if (align === "center") {
+          targetTop = itemStart - (ch - itemHeight) / 2;
+        } else if (align === "end") {
+          targetTop = itemStart - ch + itemHeight;
+        }
+        const maxScroll = Math.max(0, totalSize - ch);
+        targetTop = Math.max(0, Math.min(targetTop, maxScroll));
+        if (typeof container.scrollTo === "function") {
+          container.scrollTo({ top: targetTop, behavior: smooth ? "smooth" : "auto" });
+        }
+        container.scrollTop = targetTop;
+        setScrollTop(targetTop);
+        return;
+      }
+
+      const itemHeight = heightsRef.current.get(keys[index]) ?? estimateSize;
+      const itemStart = prefixSums[index];
+      const ch = container.clientHeight || clientHeight;
+      let targetTop = itemStart;
+      if (align === "center") {
+        targetTop = itemStart - (ch - itemHeight) / 2;
+      } else if (align === "end") {
+        targetTop = itemStart - ch + itemHeight;
+      }
+      const maxScroll = Math.max(0, totalSize - ch);
+      targetTop = Math.max(0, Math.min(targetTop, maxScroll));
+
+      if (typeof container.scrollTo === "function") {
+        container.scrollTo({ top: targetTop, behavior: smooth ? "smooth" : "auto" });
+      }
+      container.scrollTop = targetTop;
+      setScrollTop(targetTop);
+    },
+    [
+      count,
+      enabled,
+      scrollContainerRef,
+      scrollEl,
+      keys,
+      estimateSize,
+      prefixSums,
+      clientHeight,
+      totalSize,
+    ]
+  );
+
   if (!enabled) {
-    return DISABLED_RESULT;
+    return {
+      isVirtualized: false,
+      totalSize: 0,
+      items: [],
+      scrollToIndex,
+      visibleRange,
+    };
   }
 
   return {
     isVirtualized: true,
     totalSize,
     items,
+    scrollToIndex,
+    visibleRange,
   };
 }
 
