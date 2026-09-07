@@ -6,6 +6,7 @@ pub mod helpers;
 pub mod reader;
 pub mod recommendations;
 pub mod revisions;
+pub mod verification_gate;
 pub mod writer;
 
 pub use dependencies::*;
@@ -16,4 +17,5 @@ pub use helpers::*;
 pub use reader::*;
 pub use recommendations::*;
 pub use revisions::*;
+pub use verification_gate::*;
 pub use writer::*;
