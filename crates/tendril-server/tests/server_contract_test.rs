@@ -1093,3 +1093,228 @@ verifications: []
         .unwrap();
     assert_eq!(get_after_del.status(), reqwest::StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn test_dedicated_project_repo_and_verification_endpoints() {
+    let server = start_test_server(None).await;
+    let master = read_master(&server.tendril_home).expect("master discovery exists");
+    let client = reqwest::Client::new();
+    let base_url = format!("http://{}:{}", master.host, master.port);
+
+    // 1. Create a project
+    let create_payload = serde_json::json!({
+        "name": "DedicatedTestProject",
+        "repos": [],
+        "verifications": []
+    });
+
+    let create_resp = client
+        .post(format!("{}/api/projects", base_url))
+        .bearer_auth(&master.secret)
+        .json(&create_payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 2. Test 404 on all 4 endpoints for non-existent project
+    let non_existent = "NonExistentProject";
+    let post_repo_404 = client
+        .post(format!("{}/api/projects/{}/repos", base_url, non_existent))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({ "path": "/some/path" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(post_repo_404.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let delete_repo_404 = client
+        .delete(format!("{}/api/projects/{}/repos", base_url, non_existent))
+        .bearer_auth(&master.secret)
+        .query(&[("path", "/some/path")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(delete_repo_404.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let post_ver_404 = client
+        .post(format!(
+            "{}/api/projects/{}/verifications",
+            base_url, non_existent
+        ))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({ "name": "RustBuild", "required": true }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(post_ver_404.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let delete_ver_404 = client
+        .delete(format!(
+            "{}/api/projects/{}/verifications/RustBuild",
+            base_url, non_existent
+        ))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(delete_ver_404.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // 3. POST /api/projects/:name/repos: test adding new repo
+    let add_repo_resp = client
+        .post(format!(
+            "{}/api/projects/DedicatedTestProject/repos",
+            base_url
+        ))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({
+            "path": "/repos/main-service",
+            "baseBranch": "main"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(add_repo_resp.status(), reqwest::StatusCode::CREATED);
+    let added_repo_json: serde_json::Value = add_repo_resp.json().await.unwrap();
+    assert_eq!(added_repo_json["path"], "/repos/main-service");
+    assert_eq!(added_repo_json["baseBranch"], "main");
+
+    // Verify idempotency when adding duplicate path (case-insensitive)
+    let dup_repo_resp = client
+        .post(format!(
+            "{}/api/projects/DedicatedTestProject/repos",
+            base_url
+        ))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({
+            "path": "/REPOS/MAIN-SERVICE",
+            "baseBranch": "main"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(dup_repo_resp.status(), reqwest::StatusCode::OK);
+
+    // Verify project only has 1 repo
+    let get_proj_resp = client
+        .get(format!("{}/api/projects/DedicatedTestProject", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    let proj_json: serde_json::Value = get_proj_resp.json().await.unwrap();
+    assert_eq!(proj_json["repos"].as_array().unwrap().len(), 1);
+
+    // Add another repo as string
+    let add_repo2_resp = client
+        .post(format!(
+            "{}/api/projects/DedicatedTestProject/repos",
+            base_url
+        ))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!("/repos/secondary-service"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(add_repo2_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 4. DELETE /api/projects/:name/repos: test removing repo by query parameter
+    let del_repo_resp = client
+        .delete(format!(
+            "{}/api/projects/DedicatedTestProject/repos",
+            base_url
+        ))
+        .bearer_auth(&master.secret)
+        .query(&[("path", "/repos/main-service")])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_repo_resp.status(), reqwest::StatusCode::OK);
+
+    // Verify repo was removed and secondary-service remains
+    let get_proj_resp2 = client
+        .get(format!("{}/api/projects/DedicatedTestProject", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    let proj_json2: serde_json::Value = get_proj_resp2.json().await.unwrap();
+    let repos = proj_json2["repos"].as_array().unwrap();
+    assert_eq!(repos.len(), 1);
+    assert_eq!(repos[0]["path"], "/repos/secondary-service");
+
+    // 5. POST /api/projects/:name/verifications: test adding verification, verify required status
+    let add_ver_resp = client
+        .post(format!(
+            "{}/api/projects/DedicatedTestProject/verifications",
+            base_url
+        ))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({
+            "name": "RustClippy",
+            "required": true
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(add_ver_resp.status(), reqwest::StatusCode::CREATED);
+    let added_ver_json: serde_json::Value = add_ver_resp.json().await.unwrap();
+    assert_eq!(added_ver_json["name"], "RustClippy");
+    assert_eq!(added_ver_json["required"], true);
+
+    // Update required status
+    let update_ver_resp = client
+        .post(format!(
+            "{}/api/projects/DedicatedTestProject/verifications",
+            base_url
+        ))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({
+            "name": "RustClippy",
+            "required": false
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update_ver_resp.status(), reqwest::StatusCode::OK);
+    let updated_ver_json: serde_json::Value = update_ver_resp.json().await.unwrap();
+    assert_eq!(updated_ver_json["name"], "RustClippy");
+    assert_eq!(updated_ver_json["required"], false);
+
+    // Add a second verification as string
+    let add_ver2_resp = client
+        .post(format!(
+            "{}/api/projects/DedicatedTestProject/verifications",
+            base_url
+        ))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!("RustBuild"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(add_ver2_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 6. DELETE /api/projects/:name/verifications/:verification: test removing verification by route parameter
+    let del_ver_resp = client
+        .delete(format!(
+            "{}/api/projects/DedicatedTestProject/verifications/RustClippy",
+            base_url
+        ))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_ver_resp.status(), reqwest::StatusCode::OK);
+
+    // Verify verification was removed and RustBuild remains
+    let get_proj_resp3 = client
+        .get(format!("{}/api/projects/DedicatedTestProject", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    let proj_json3: serde_json::Value = get_proj_resp3.json().await.unwrap();
+    let vers = proj_json3["verifications"].as_array().unwrap();
+    assert_eq!(vers.len(), 1);
+    assert_eq!(vers[0]["name"], "RustBuild");
+}

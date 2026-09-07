@@ -108,6 +108,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(projects::get_project_issues_metadata),
         )
         .route(
+            "/api/projects/:name/repos",
+            post(projects::add_project_repo).delete(projects::remove_project_repo),
+        )
+        .route(
+            "/api/projects/:name/verifications",
+            post(projects::add_project_verification),
+        )
+        .route(
+            "/api/projects/:name/verifications/:verification",
+            delete(projects::remove_project_verification),
+        )
+        .route(
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
         )

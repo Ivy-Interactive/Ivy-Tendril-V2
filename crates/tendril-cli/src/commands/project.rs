@@ -161,8 +161,11 @@ async fn handle_project_command_daemon(
         }
         ProjectCommands::AddRepo { name, path } => {
             let resp = match client
-                .get(format!("{}/api/projects/{}", base_url, name))
+                .post(format!("{}/api/projects/{}/repos", base_url, name))
                 .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "path": path,
+                }))
                 .send()
                 .await
             {
@@ -175,40 +178,16 @@ async fn handle_project_command_daemon(
             }
             if !resp.status().is_success() {
                 let err = resp.text().await.unwrap_or_default();
-                anyhow::bail!("Failed to get project '{}': {}", name, err);
-            }
-
-            let proj: ProjectConfig = resp.json().await?;
-            if !proj.repos.iter().any(|r| r.path.eq_ignore_ascii_case(path)) {
-                let mut repos = proj.repos.clone();
-                repos.push(RepoRef {
-                    path: path.clone(),
-                    base_branch: None,
-                });
-                let update_resp = client
-                    .put(format!("{}/api/projects/{}", base_url, name))
-                    .bearer_auth(&master.secret)
-                    .json(&serde_json::json!({
-                        "repos": repos,
-                    }))
-                    .send()
-                    .await?;
-
-                if update_resp.status() == reqwest::StatusCode::NOT_FOUND {
-                    anyhow::bail!("Project '{}' not found", name);
-                }
-                if !update_resp.status().is_success() {
-                    let err = update_resp.text().await.unwrap_or_default();
-                    anyhow::bail!("Failed to update project '{}': {}", name, err);
-                }
+                anyhow::bail!("Failed to add repo to project '{}': {}", name, err);
             }
 
             println!("Repo '{}' added to project '{}'.", path, name);
         }
         ProjectCommands::RemoveRepo { name, path } => {
             let resp = match client
-                .get(format!("{}/api/projects/{}", base_url, name))
+                .delete(format!("{}/api/projects/{}/repos", base_url, name))
                 .bearer_auth(&master.secret)
+                .query(&[("path", path.as_str())])
                 .send()
                 .await
             {
@@ -221,35 +200,19 @@ async fn handle_project_command_daemon(
             }
             if !resp.status().is_success() {
                 let err = resp.text().await.unwrap_or_default();
-                anyhow::bail!("Failed to get project '{}': {}", name, err);
-            }
-
-            let mut proj: ProjectConfig = resp.json().await?;
-            proj.repos.retain(|r| !r.path.eq_ignore_ascii_case(path));
-
-            let update_resp = client
-                .put(format!("{}/api/projects/{}", base_url, name))
-                .bearer_auth(&master.secret)
-                .json(&serde_json::json!({
-                    "repos": proj.repos,
-                }))
-                .send()
-                .await?;
-
-            if update_resp.status() == reqwest::StatusCode::NOT_FOUND {
-                anyhow::bail!("Project '{}' not found", name);
-            }
-            if !update_resp.status().is_success() {
-                let err = update_resp.text().await.unwrap_or_default();
-                anyhow::bail!("Failed to update project '{}': {}", name, err);
+                anyhow::bail!("Failed to remove repo from project '{}': {}", name, err);
             }
 
             println!("Repo '{}' removed from project '{}'.", path, name);
         }
         ProjectCommands::AddVerification { name, verification } => {
             let resp = match client
-                .get(format!("{}/api/projects/{}", base_url, name))
+                .post(format!("{}/api/projects/{}/verifications", base_url, name))
                 .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "name": verification,
+                    "required": true,
+                }))
                 .send()
                 .await
             {
@@ -262,36 +225,7 @@ async fn handle_project_command_daemon(
             }
             if !resp.status().is_success() {
                 let err = resp.text().await.unwrap_or_default();
-                anyhow::bail!("Failed to get project '{}': {}", name, err);
-            }
-
-            let proj: ProjectConfig = resp.json().await?;
-            if !proj
-                .verifications
-                .iter()
-                .any(|v| v.name.eq_ignore_ascii_case(verification))
-            {
-                let mut verifications = proj.verifications.clone();
-                verifications.push(ProjectVerificationRef {
-                    name: verification.clone(),
-                    required: true,
-                });
-                let update_resp = client
-                    .put(format!("{}/api/projects/{}", base_url, name))
-                    .bearer_auth(&master.secret)
-                    .json(&serde_json::json!({
-                        "verifications": verifications,
-                    }))
-                    .send()
-                    .await?;
-
-                if update_resp.status() == reqwest::StatusCode::NOT_FOUND {
-                    anyhow::bail!("Project '{}' not found", name);
-                }
-                if !update_resp.status().is_success() {
-                    let err = update_resp.text().await.unwrap_or_default();
-                    anyhow::bail!("Failed to update project '{}': {}", name, err);
-                }
+                anyhow::bail!("Failed to add verification to project '{}': {}", name, err);
             }
 
             println!(
@@ -301,7 +235,10 @@ async fn handle_project_command_daemon(
         }
         ProjectCommands::RemoveVerification { name, verification } => {
             let resp = match client
-                .get(format!("{}/api/projects/{}", base_url, name))
+                .delete(format!(
+                    "{}/api/projects/{}/verifications/{}",
+                    base_url, name, verification
+                ))
                 .bearer_auth(&master.secret)
                 .send()
                 .await
@@ -315,28 +252,11 @@ async fn handle_project_command_daemon(
             }
             if !resp.status().is_success() {
                 let err = resp.text().await.unwrap_or_default();
-                anyhow::bail!("Failed to get project '{}': {}", name, err);
-            }
-
-            let mut proj: ProjectConfig = resp.json().await?;
-            proj.verifications
-                .retain(|v| !v.name.eq_ignore_ascii_case(verification));
-
-            let update_resp = client
-                .put(format!("{}/api/projects/{}", base_url, name))
-                .bearer_auth(&master.secret)
-                .json(&serde_json::json!({
-                    "verifications": proj.verifications,
-                }))
-                .send()
-                .await?;
-
-            if update_resp.status() == reqwest::StatusCode::NOT_FOUND {
-                anyhow::bail!("Project '{}' not found", name);
-            }
-            if !update_resp.status().is_success() {
-                let err = update_resp.text().await.unwrap_or_default();
-                anyhow::bail!("Failed to update project '{}': {}", name, err);
+                anyhow::bail!(
+                    "Failed to remove verification from project '{}': {}",
+                    name,
+                    err
+                );
             }
 
             println!(

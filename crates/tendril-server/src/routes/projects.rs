@@ -410,6 +410,272 @@ pub async fn delete_project(
         .into_response()
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct RemoveRepoParams {
+    pub path: Option<String>,
+}
+
+pub async fn add_project_repo(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(input): Json<RepoInput>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let repo_ref: RepoRef = input.into();
+    if repo_ref.path.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Repo path cannot be empty" })),
+        )
+            .into_response();
+    }
+
+    if let Some(existing) = settings.projects[proj_idx]
+        .repos
+        .iter()
+        .find(|r| r.path.eq_ignore_ascii_case(&repo_ref.path))
+    {
+        return (StatusCode::OK, Json(json!(existing))).into_response();
+    }
+
+    settings.projects[proj_idx].repos.push(repo_ref.clone());
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (StatusCode::CREATED, Json(json!(repo_ref))).into_response()
+}
+
+pub async fn remove_project_repo(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Query(query): Query<RemoveRepoParams>,
+    body_bytes: axum::body::Bytes,
+) -> impl IntoResponse {
+    let target_path = if let Some(p) = query.path.filter(|s| !s.trim().is_empty()) {
+        p
+    } else if !body_bytes.is_empty() {
+        if let Ok(input) = serde_json::from_slice::<RepoInput>(&body_bytes) {
+            let r: RepoRef = input.into();
+            r.path
+        } else if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+            val.get("path")
+                .and_then(|p| p.as_str())
+                .unwrap_or_default()
+                .to_string()
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    if target_path.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Repo path is required" })),
+        )
+            .into_response();
+    }
+
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    settings.projects[proj_idx]
+        .repos
+        .retain(|r| !r.path.eq_ignore_ascii_case(&target_path));
+
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "message": format!("Repo '{}' removed from project '{}'", target_path, name)
+        })),
+    )
+        .into_response()
+}
+
+pub async fn add_project_verification(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(input): Json<VerificationInput>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let ver_ref: ProjectVerificationRef = input.into();
+    if ver_ref.name.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Verification name cannot be empty" })),
+        )
+            .into_response();
+    }
+
+    if let Some(existing) = settings.projects[proj_idx]
+        .verifications
+        .iter_mut()
+        .find(|v| v.name.eq_ignore_ascii_case(&ver_ref.name))
+    {
+        existing.required = ver_ref.required;
+        let updated = existing.clone();
+        if let Err(e) = save_config(&state.config_path, &settings) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to save config: {}", e) })),
+            )
+                .into_response();
+        }
+        return (StatusCode::OK, Json(json!(updated))).into_response();
+    }
+
+    settings.projects[proj_idx]
+        .verifications
+        .push(ver_ref.clone());
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (StatusCode::CREATED, Json(json!(ver_ref))).into_response()
+}
+
+pub async fn remove_project_verification(
+    State(state): State<Arc<AppState>>,
+    Path((name, verification)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    settings.projects[proj_idx]
+        .verifications
+        .retain(|v| !v.name.eq_ignore_ascii_case(&verification));
+
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "message": format!("Verification '{}' removed from project '{}'", verification, name)
+        })),
+    )
+        .into_response()
+}
+
 pub async fn execute_review_action(
     State(state): State<Arc<AppState>>,
     Path((project_name, action_name)): Path<(String, String)>,
