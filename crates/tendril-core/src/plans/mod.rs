@@ -8,6 +8,7 @@ pub mod reader;
 pub mod recommendations;
 pub mod revisions;
 pub mod verification_gate;
+pub mod verifications;
 pub mod writer;
 
 pub use dependencies::*;
@@ -20,4 +21,5 @@ pub use reader::*;
 pub use recommendations::*;
 pub use revisions::*;
 pub use verification_gate::*;
+pub use verifications::*;
 pub use writer::*;

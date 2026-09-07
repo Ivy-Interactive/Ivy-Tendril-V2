@@ -1,11 +1,12 @@
 use crate::state::AppState;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
+use tendril_core::jobs::{find_log_file, read_eventwire_log, read_job_log, read_raw_log};
 use tendril_core::models::{JobArgs, JobStatus};
 
 #[derive(Debug, Deserialize)]
@@ -188,4 +189,212 @@ pub async fn add_log(
             Json(json!({ "error": format!("Failed to write log: {}", e) })),
         ),
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JobLogsQuery {
+    pub format: Option<String>,
+    pub tail: Option<usize>,
+}
+
+pub async fn get_job_logs(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+    Query(query): Query<JobLogsQuery>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let job_exists = match state.job_manager.get_job(&job_id).await {
+        Ok(Some(_)) => true,
+        _ => {
+            find_log_file(&state.tendril_home, &job_id, ".md").is_some()
+                || find_log_file(&state.tendril_home, &job_id, ".raw.jsonl").is_some()
+                || find_log_file(&state.tendril_home, &job_id, ".eventwire.jsonl").is_some()
+        }
+    };
+
+    if !job_exists {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Job not found" })),
+        )
+            .into_response();
+    }
+
+    let format_str = query.format.unwrap_or_else(|| "markdown".to_string());
+    let (content, exists) = match format_str.to_ascii_lowercase().as_str() {
+        "raw" => match read_raw_log(&state.tendril_home, &job_id, query.tail) {
+            Ok(Some(lines)) => (lines.join("\n"), true),
+            _ => (String::new(), false),
+        },
+        "eventwire" => match read_eventwire_log(&state.tendril_home, &job_id, query.tail) {
+            Ok(Some(lines)) => (lines.join("\n"), true),
+            _ => (String::new(), false),
+        },
+        _ => match read_job_log(&state.tendril_home, &job_id) {
+            Ok(Some(mut text)) => {
+                if let Some(n) = query.tail {
+                    let lines: Vec<&str> = text.lines().collect();
+                    if lines.len() > n {
+                        text = lines[lines.len() - n..].join("\n");
+                    }
+                }
+                (text, true)
+            }
+            _ => (String::new(), false),
+        },
+    };
+
+    let accepts_plain = headers
+        .get(axum::http::header::ACCEPT)
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.contains("text/plain"))
+        .unwrap_or(false);
+
+    if accepts_plain {
+        (
+            StatusCode::OK,
+            [("content-type", "text/plain; charset=utf-8")],
+            content,
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::OK,
+            Json(json!({
+                "jobId": job_id,
+                "format": format_str,
+                "content": content,
+                "exists": exists,
+            })),
+        )
+            .into_response()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StreamLogsQuery {
+    pub format: Option<String>,
+    #[serde(rename = "since_line")]
+    pub since_line: Option<usize>,
+}
+
+pub async fn stream_job_logs(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+    Query(query): Query<StreamLogsQuery>,
+) -> impl IntoResponse {
+    let job_exists = match state.job_manager.get_job(&job_id).await {
+        Ok(Some(_)) => true,
+        _ => {
+            find_log_file(&state.tendril_home, &job_id, ".raw.jsonl").is_some()
+                || find_log_file(&state.tendril_home, &job_id, ".md").is_some()
+                || find_log_file(&state.tendril_home, &job_id, ".eventwire.jsonl").is_some()
+        }
+    };
+
+    if !job_exists {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Job not found" })),
+        )
+            .into_response();
+    }
+
+    let format_str = query.format.unwrap_or_else(|| "raw".to_string());
+    let suffix = match format_str.to_ascii_lowercase().as_str() {
+        "markdown" => ".md",
+        "eventwire" => ".eventwire.jsonl",
+        _ => ".raw.jsonl",
+    };
+
+    let tendril_home = state.tendril_home.clone();
+    let job_manager = state.job_manager.clone();
+    let since_line = query.since_line.unwrap_or(0);
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<
+        Result<axum::response::sse::Event, std::convert::Infallible>,
+    >(64);
+
+    tokio::spawn(async move {
+        let mut emitted_lines = 0usize;
+
+        loop {
+            let lines = match suffix {
+                ".raw.jsonl" => read_raw_log(&tendril_home, &job_id, None)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default(),
+                ".eventwire.jsonl" => read_eventwire_log(&tendril_home, &job_id, None)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default(),
+                _ => match read_job_log(&tendril_home, &job_id) {
+                    Ok(Some(c)) => c.lines().map(|s| s.to_string()).collect(),
+                    _ => Vec::new(),
+                },
+            };
+
+            while emitted_lines < lines.len() {
+                if emitted_lines >= since_line {
+                    let event = axum::response::sse::Event::default()
+                        .event("log")
+                        .data(&lines[emitted_lines]);
+                    if tx.send(Ok(event)).await.is_err() {
+                        return;
+                    }
+                }
+                emitted_lines += 1;
+            }
+
+            let is_terminal = match job_manager.get_job(&job_id).await {
+                Ok(Some(j)) => matches!(
+                    j.status,
+                    JobStatus::Completed
+                        | JobStatus::Failed
+                        | JobStatus::Stopped
+                        | JobStatus::Timeout
+                ),
+                _ => true,
+            };
+
+            if is_terminal {
+                let final_lines = match suffix {
+                    ".raw.jsonl" => read_raw_log(&tendril_home, &job_id, None)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default(),
+                    ".eventwire.jsonl" => read_eventwire_log(&tendril_home, &job_id, None)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default(),
+                    _ => match read_job_log(&tendril_home, &job_id) {
+                        Ok(Some(c)) => c.lines().map(|s| s.to_string()).collect(),
+                        _ => Vec::new(),
+                    },
+                };
+                while emitted_lines < final_lines.len() {
+                    if emitted_lines >= since_line {
+                        let event = axum::response::sse::Event::default()
+                            .event("log")
+                            .data(&final_lines[emitted_lines]);
+                        if tx.send(Ok(event)).await.is_err() {
+                            return;
+                        }
+                    }
+                    emitted_lines += 1;
+                }
+
+                let end_event = axum::response::sse::Event::default()
+                    .event("end")
+                    .data("Job finished");
+                let _ = tx.send(Ok(end_event)).await;
+                break;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+        }
+    });
+
+    let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
+    axum::response::sse::Sse::new(stream).into_response()
 }

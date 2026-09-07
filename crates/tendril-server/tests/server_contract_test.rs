@@ -39,7 +39,13 @@ async fn start_test_server(host: Option<String>) -> TestServer {
     let secret = tendril_core::config::generate_bearer_secret();
     let guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str).unwrap();
 
-    let state = Arc::new(AppState::new(tendril_home.clone(), secret.clone()));
+    let plans_dir = tendril_home.join("Plans");
+    std::fs::create_dir_all(&plans_dir).unwrap();
+    let state = Arc::new(AppState::with_plans_dir(
+        tendril_home.clone(),
+        plans_dir,
+        secret.clone(),
+    ));
     let app = create_router(state);
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
@@ -299,6 +305,349 @@ async fn test_cli_client_authenticates_successfully() {
         .unwrap();
 
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_recommendations_mutation_endpoints() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    // 1. Create a plan to test on
+    let create_resp = client
+        .post(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": "Rec Test Plan",
+            "project": "RecTestProject",
+            "level": "Feature",
+            "verifications": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+    let plan_data: serde_json::Value = create_resp.json().await.unwrap();
+    let plan_id = format!("{:05}", plan_data["metadata"]["id"].as_i64().unwrap());
+
+    // 2. Unauthenticated request must return 401
+    let unauth_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations",
+            server.port, plan_id
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauth_resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    // 3. GET recommendations on new plan returns empty list
+    let list_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list_resp.status(), reqwest::StatusCode::OK);
+    let recs: Vec<serde_json::Value> = list_resp.json().await.unwrap();
+    assert!(recs.is_empty());
+
+    // 4. POST recommendation creates new recommendation
+    let add_resp = client
+        .post(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": "Add Database Index",
+            "description": "Add index for performance",
+            "impact": "High"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(add_resp.status(), reqwest::StatusCode::CREATED);
+    let added: serde_json::Value = add_resp.json().await.unwrap();
+    assert_eq!(added["title"], "Add Database Index");
+    assert_eq!(added["state"], "Pending");
+
+    // 5. PUT updates state and optional declineReason
+    let update_resp = client
+        .put(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations/Add%20Database%20Index",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "state": "Accepted",
+            "declineReason": null
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update_resp.status(), reqwest::StatusCode::OK);
+
+    // Verify updated state
+    let list_resp2 = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    let recs2: Vec<serde_json::Value> = list_resp2.json().await.unwrap();
+    assert_eq!(recs2.len(), 1);
+    assert_eq!(recs2[0]["state"], "Accepted");
+
+    // 6. DELETE removes recommendation
+    let del_resp = client
+        .delete(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations/Add%20Database%20Index",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_resp.status(), reqwest::StatusCode::OK);
+
+    let list_resp3 = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    let recs3: Vec<serde_json::Value> = list_resp3.json().await.unwrap();
+    assert!(recs3.is_empty());
+}
+
+#[tokio::test]
+async fn test_per_plan_verifications_mutation_endpoints() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    // 1. Create a plan with a seeded verification
+    let create_resp = client
+        .post(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": "Verif Test Plan",
+            "project": "VerifTestProject",
+            "level": "Feature",
+            "verifications": [
+                { "name": "RustBuild", "status": "Pending" }
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+    let plan_data: serde_json::Value = create_resp.json().await.unwrap();
+    let plan_id = format!("{:05}", plan_data["metadata"]["id"].as_i64().unwrap());
+
+    // 2. GET returns seeded verifications
+    let list_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}/verifications",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list_resp.status(), reqwest::StatusCode::OK);
+    let verifs: Vec<serde_json::Value> = list_resp.json().await.unwrap();
+    assert_eq!(verifs.len(), 1);
+    assert_eq!(verifs[0]["name"], "RustBuild");
+    assert_eq!(verifs[0]["status"], "Pending");
+
+    // 3. PUT updates status to Pass
+    let put_resp = client
+        .put(format!(
+            "http://127.0.0.1:{}/api/plans/{}/verifications/RustBuild",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "status": "Pass"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(put_resp.status(), reqwest::StatusCode::OK);
+
+    let list_resp2 = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}/verifications",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    let verifs2: Vec<serde_json::Value> = list_resp2.json().await.unwrap();
+    assert_eq!(verifs2[0]["status"], "Pass");
+
+    // 4. PUT with invalid status returns 400 Bad Request
+    let bad_put = client
+        .put(format!(
+            "http://127.0.0.1:{}/api/plans/{}/verifications/RustBuild",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "status": "NotAValidStatus"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_put.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // 5. PUT legacy format verification.<name> works
+    let legacy_resp = client
+        .put(format!(
+            "http://127.0.0.1:{}/api/plans/{}",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "field": "verification.RustBuild",
+            "value": "Skipped"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(legacy_resp.status(), reqwest::StatusCode::OK);
+
+    let list_resp3 = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}/verifications",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    let verifs3: Vec<serde_json::Value> = list_resp3.json().await.unwrap();
+    assert_eq!(verifs3[0]["status"], "Skipped");
+
+    // 6. POST adds a new verification
+    let post_resp = client
+        .post(format!(
+            "http://127.0.0.1:{}/api/plans/{}/verifications",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "name": "RustTest",
+            "status": "Pending"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(post_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 7. DELETE removes verification
+    let del_resp = client
+        .delete(format!(
+            "http://127.0.0.1:{}/api/plans/{}/verifications/RustTest",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_resp.status(), reqwest::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_job_logs_retrieval_and_streaming_endpoints() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let job_id = "00999";
+    let logs_dir = server.tendril_home.join("Logs").join("Jobs");
+    std::fs::create_dir_all(&logs_dir).unwrap();
+
+    let md_content = "# Job 00999 Narrative Log\nStep 1: Done\nStep 2: Done";
+    std::fs::write(logs_dir.join(format!("{}.md", job_id)), md_content).unwrap();
+
+    let raw_content = "{\"line\":1}\n{\"line\":2}\n{\"line\":3}\n";
+    std::fs::write(logs_dir.join(format!("{}.raw.jsonl", job_id)), raw_content).unwrap();
+
+    // 1. GET markdown log
+    let md_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/{}/logs",
+            server.port, job_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(md_resp.status(), reqwest::StatusCode::OK);
+    let md_json: serde_json::Value = md_resp.json().await.unwrap();
+    assert_eq!(md_json["jobId"], job_id);
+    assert_eq!(md_json["format"], "markdown");
+    assert_eq!(md_json["content"], md_content);
+    assert_eq!(md_json["exists"], true);
+
+    // 2. GET raw jsonl log
+    let raw_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/{}/logs?format=raw",
+            server.port, job_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(raw_resp.status(), reqwest::StatusCode::OK);
+    let raw_json: serde_json::Value = raw_resp.json().await.unwrap();
+    assert_eq!(raw_json["format"], "raw");
+    assert_eq!(
+        raw_json["content"],
+        "{\"line\":1}\n{\"line\":2}\n{\"line\":3}"
+    );
+    assert_eq!(raw_json["exists"], true);
+
+    // 3. GET nonexistent job returns 404
+    let not_found_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/nonexistent/logs",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(not_found_resp.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // 4. GET stream SSE endpoint
+    let stream_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/{}/logs/stream?format=raw",
+            server.port, job_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stream_resp.status(), reqwest::StatusCode::OK);
+
+    let stream_text = stream_resp.text().await.unwrap();
+    assert!(stream_text.contains("event: log"));
+    assert!(stream_text.contains("data: {\"line\":1}"));
+    assert!(stream_text.contains("event: end"));
+    assert!(stream_text.contains("data: Job finished"));
 }
 
 #[tokio::test]

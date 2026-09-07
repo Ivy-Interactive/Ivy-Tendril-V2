@@ -8,9 +8,9 @@ use tendril_core::git::worktree::cleanup_worktrees;
 use tendril_core::models::{PlanStatus, PlanVerificationEntry, VerificationStatus};
 use tendril_core::plans::{
     add_recommendation, check_all_plans_health, check_plan_health, create_plan, get_revision,
-    list_recommendations, read_plan_file, read_plan_yaml, resolve_plan_folder,
-    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
-    DuplicateCandidateFinder, PlanCompletionGuard,
+    list_recommendations, read_plan_file, read_plan_yaml, remove_recommendation,
+    resolve_plan_folder, set_plan_verification_status, set_recommendation_state, write_plan_yaml,
+    write_revision, CreatePlanOptions, DuplicateCandidateFinder, PlanCompletionGuard,
 };
 
 #[derive(Subcommand)]
@@ -264,6 +264,8 @@ pub enum PlanRecCommands {
         #[arg(long)]
         reason: Option<String>,
     },
+    #[command(about = "Remove recommendation")]
+    Remove { plan_id: String, title: String },
 }
 
 pub fn handle_plan_command(
@@ -687,25 +689,10 @@ pub fn handle_plan_command(
         }
         PlanCommands::SetVerification(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
-            let (mut plan, _) = read_plan_yaml(&folder)?;
             let status = VerificationStatus::from_str_loose(&args.status)
                 .ok_or_else(|| anyhow::anyhow!("Invalid verification status: {}", args.status))?;
 
-            if let Some(entry) = plan
-                .verifications
-                .iter_mut()
-                .find(|v| v.name.eq_ignore_ascii_case(&args.name))
-            {
-                entry.status = status;
-            } else {
-                plan.verifications.push(PlanVerificationEntry {
-                    name: args.name,
-                    status,
-                });
-            }
-
-            plan.updated = Utc::now();
-            write_plan_yaml(&folder, &plan)?;
+            set_plan_verification_status(&folder, &args.name, status)?;
             println!("Verification updated.");
         }
         PlanCommands::Rec(rec_cmd) => match rec_cmd {
@@ -739,6 +726,11 @@ pub fn handle_plan_command(
                 let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
                 set_recommendation_state(&folder, &title, "Declined", reason.as_deref())?;
                 println!("Recommendation declined.");
+            }
+            PlanRecCommands::Remove { plan_id, title } => {
+                let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
+                remove_recommendation(&folder, &title)?;
+                println!("Recommendation removed.");
             }
         },
     }

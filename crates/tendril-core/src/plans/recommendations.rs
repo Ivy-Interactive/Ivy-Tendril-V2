@@ -62,3 +62,22 @@ pub fn set_recommendation_state(
     plan.updated = Utc::now();
     write_plan_yaml(plan_folder, &plan)
 }
+
+pub fn remove_recommendation(plan_folder: &Path, title: &str) -> Result<()> {
+    let (mut plan, _) = read_plan_yaml(plan_folder)?;
+    let mut list = plan.recommendations.unwrap_or_default();
+
+    let initial_len = list.len();
+    list.retain(|r| !r.title.eq_ignore_ascii_case(title));
+
+    if list.len() == initial_len {
+        return Err(TendrilError::Plan(format!(
+            "Recommendation '{}' not found",
+            title
+        )));
+    }
+
+    plan.recommendations = Some(list);
+    plan.updated = Utc::now();
+    write_plan_yaml(plan_folder, &plan)
+}

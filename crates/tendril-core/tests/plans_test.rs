@@ -3,9 +3,10 @@ use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
 };
 use tendril_core::plans::{
-    add_recommendation, allocate_plan_id, create_plan, get_revision, list_recommendations,
-    read_plan_file, set_recommendation_state, to_safe_title, write_revision, CreatePlanOptions,
-    PlanCompletionGuard,
+    add_plan_verification, add_recommendation, allocate_plan_id, create_plan, get_revision,
+    list_plan_verifications, list_recommendations, read_plan_file, remove_plan_verification,
+    remove_recommendation, set_plan_verification_status, set_recommendation_state, to_safe_title,
+    write_revision, CreatePlanOptions, PlanCompletionGuard,
 };
 
 #[test]
@@ -180,6 +181,78 @@ fn test_plan_recommendations() {
         recs_declined[0].decline_reason.as_deref(),
         Some("Not needed right now")
     );
+
+    // Remove recommendation
+    remove_recommendation(plan_folder, "Add Index").expect("Failed to remove recommendation");
+    let recs_after_remove = list_recommendations(plan_folder).unwrap();
+    assert_eq!(recs_after_remove.len(), 0);
+
+    // Removing again should error
+    assert!(remove_recommendation(plan_folder, "Add Index").is_err());
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_plan_verifications() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-verifs-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let opts = CreatePlanOptions {
+        title: "Test Plan Verifications".to_string(),
+        project: "TestProject".to_string(),
+        level: Some("Feature".to_string()),
+        initial_prompt: None,
+        source_url: None,
+        execution_profile: None,
+        priority: None,
+        repos: vec![],
+        verifications: vec![PlanVerificationEntry {
+            name: "RustBuild".to_string(),
+            status: VerificationStatus::Pending,
+        }],
+        depends_on: vec![],
+        related_plans: vec![],
+    };
+
+    let plan = create_plan(&test_dir, opts).unwrap();
+    let plan_folder = Path::new(&plan.folder_path);
+
+    // List seeded verifications
+    let verifs = list_plan_verifications(plan_folder).unwrap();
+    assert_eq!(verifs.len(), 1);
+    assert_eq!(verifs[0].name, "RustBuild");
+    assert_eq!(verifs[0].status, VerificationStatus::Pending);
+
+    // Add new verification
+    let added = add_plan_verification(plan_folder, "RustTest", Some(VerificationStatus::Pending))
+        .expect("Failed to add verification");
+    assert_eq!(added.name, "RustTest");
+    assert_eq!(added.status, VerificationStatus::Pending);
+
+    // Duplicate add should fail
+    assert!(add_plan_verification(plan_folder, "RustTest", None).is_err());
+
+    // Update status
+    let updated = set_plan_verification_status(plan_folder, "RustTest", VerificationStatus::Pass)
+        .expect("Failed to set verification status");
+    assert_eq!(updated.status, VerificationStatus::Pass);
+
+    let verifs_after_update = list_plan_verifications(plan_folder).unwrap();
+    assert_eq!(verifs_after_update.len(), 2);
+    assert_eq!(verifs_after_update[1].status, VerificationStatus::Pass);
+
+    // Remove verification
+    remove_plan_verification(plan_folder, "RustBuild").expect("Failed to remove verification");
+    let verifs_after_remove = list_plan_verifications(plan_folder).unwrap();
+    assert_eq!(verifs_after_remove.len(), 1);
+    assert_eq!(verifs_after_remove[0].name, "RustTest");
+
+    // Remove nonexistent verification should fail
+    assert!(remove_plan_verification(plan_folder, "NonExistent").is_err());
 
     let _ = std::fs::remove_dir_all(test_dir);
 }
