@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  GitHubIssue,
   Job,
   JobDetail,
   PlanDetail,
@@ -138,5 +139,9 @@ export const bridge = {
 
   async loadUiState(key: string): Promise<string | null> {
     return invoke<string | null>("cmd_load_ui_state", { key });
+  },
+
+  async listGitHubIssues(repo?: string, category?: string): Promise<GitHubIssue[]> {
+    return invoke<GitHubIssue[]>("cmd_list_github_issues", { repo, category });
   },
 };
