@@ -1,0 +1,48 @@
+# Ivy Tendril to SpaceCorps Migration Parity Matrix
+
+This document provides the authoritative feature-by-feature parity matrix comparing the reference **Ivy Tendril** implementation with the **Tendril-Service** (Rust) and **Tendril-App** (Tauri + React) rewrite.
+
+Every feature row contains:
+- **Area**: The functional area or subsystem.
+- **Ivy Reference**: Source file path in the reference Ivy Tendril codebase.
+- **Required Behavior**: Expected behavioral contract for parity.
+- **Current Rewrite State**: Verified state with concrete technical evidence.
+- **Owner Repo**: Repository responsible for delivering or maintaining the feature.
+- **Gate Evidence Command**: The specific automated test command verifying this item.
+- **Status**: Exactly one of `Verified`, `Gap (plan NNNNN)`, or `Deferred (approved)`.
+
+---
+
+## Parity Table
+
+| # | Area | Ivy Reference | Required Behavior | Current Rewrite State with Evidence | Owner Repo | Gate Evidence Command | Status |
+|---|------|---------------|-------------------|--------------------------------------|------------|-----------------------|--------|
+| 1 | Chat sessions and persistence | src/Ivy.Tendril/Services/ChatHistoryService.cs | Read, write, list, and persist chat sessions in PascalCase JSON (`Chats/*.json`) without dropping fields such as `Id`, `Title`, `Messages`, `RawStream`, and `SpawnedJobIds`. | Absent in both repos. `crates/tendril-core` and `crates/tendril-server` contain no references to `Chats` or `ChatSession`. | Tendril-Service + Tendril-App | cargo test --test migration_compat_test | Gap (plan 00065) |
+| 2 | Chat execution and streaming | src/Ivy.Tendril/Services/ChatExecutionService.cs | Autonomous chat execution with coding agent tool invocation, stream-json event parsing, status updates, interactive question block answering, and spawned CreatePlan tracking. | Absent in `Tendril-Service` and `Tendril-App`. | Tendril-Service + Tendril-App | cargo test --test real_service_test | Gap (plan 00065) |
+| 3 | Question blocks: parse, lint, answer | src/Ivy.Tendril/Models/QuestionModels.cs | Parse fenced `questions` blocks in markdown; validate schema and lint rules on `write-revision`; preserve user answers across stream updates without UI focus reset. | No `questions` schema validator in `crates/tendril-core/src/plans/revisions.rs`; revision writes are unvalidated. | Tendril-Service + Tendril-App | pnpm vitest run tests/migration-parity.test.ts | Gap (plan 00065) |
+| 4 | Projects | src/Ivy.Tendril/Services/ConfigService.cs | Discover and query registered projects, list project repositories, validate paths on disk, and surface configured verifications and review actions. | `GET /api/projects` and `GET /api/projects/:name` exist in `tendril-server`; project mutation, validation, and review action execution are missing. | Tendril-Service | cargo test --test e2e_operator_test | Gap (plan 00019) |
+| 5 | Plans list, detail, revisions | src/Ivy.Tendril/Services/Plans/PlanReaderService.cs | Read and parse `plan.yaml`, list plans with lifecycle filters, query plan details, read revisions (`revisions/NNN.md`), and append revisions. | Implemented and verified in `crates/tendril-server/src/routes/plans.rs` and mapped in `src-tauri/src/service/plan_mapping.rs`. | Tendril-Service + Tendril-App | cargo test --test master_discovery_test | Verified |
+| 6 | Jobs and logs | src/Ivy.Tendril/Services/Jobs/JobLogWriter.cs | Start jobs via `POST /api/jobs`, track statuses (`Pending`, `Queued`, `Running`, `Completed`, `Failed`, `Stopped`, `Blocked`, `Timeout`), stream updates, and read `.md` and `.jsonl` logs over REST. | Job execution and status streaming supported in `tendril-server`, but no HTTP read endpoint exists for `.md` logs, `.raw.jsonl`, or `.eventwire.jsonl`. | Tendril-Service | cargo test --test e2e_operator_test | Gap (plan 00019) |
+| 7 | Dependencies and blocking | src/Ivy.Tendril/Services/Plans/DependencyChecker.cs | Enforce plan dependency graph (`dependsOn`), verify dependencies are `Completed` with merged PRs on GitHub, and expose dependency relations over REST. | Core dependency checking implemented in `crates/tendril-core/src/plans/dependencies.rs` via Plan 00058; REST endpoints absent, leading to client-side heuristics. | Tendril-Service + Tendril-App | cargo test --test e2e_operator_test | Gap (plan 00019) |
+| 8 | Recommendations | src/Ivy.Tendril/Apps/Recommendations | Record follow-up recommendations in `Artifacts/recommendations.md` and `plan.yaml`, list recommendations, and accept/decline with notes via REST. | `recommendations.rs` in `tendril-core` supports recommendations; `PUT /api/plans/:id/recommendations/:title` route is missing in `tendril-server`. | Tendril-Service + Tendril-App | cargo test --test e2e_operator_test | Gap (plan 00019) |
+| 9 | Verification state | src/Ivy.Tendril/Apps/Plans/VerificationsCardView.cs | Query verification definitions and toggle/update per-plan verification statuses (`Pending`, `Pass`, `Fail`, `Skipped`) over REST. | `GET /api/verifications` lists project definitions; per-plan verification status mutation route is missing in `tendril-server`. | Tendril-Service | cargo test --test e2e_operator_test | Gap (plan 00019) |
+| 10 | Review, retry, PR, cancel actions | src/Ivy.Tendril/Apps/Review | Transition plans to Review upon verification success; allow operators to trigger `RetryPlan` with change requests, `CreatePr`, and job cancellation. | Fully implemented via `POST /api/jobs` with typed arguments in `Tendril-Service` (Plan 00058) and wired in `Tendril-App`. | Tendril-App + Tendril-Service | pnpm vitest run tests/review-actions.test.tsx | Verified |
+| 11 | Settings | src/Ivy.Tendril/Services/ConfigService.cs | Read and update `config.yaml` preserving unknown and legacy keys (`editor`, `promptwares`, `codingAgents`, `vault`, `tunnel`, `desktopNotifications`, etc.). | Lossy `PUT /api/config` in `tendril-server` deserializes into a 12-field struct, destroying unmodeled keys in live 479-line `config.yaml`. | Tendril-Service | cargo test --test migration_compat_test | Gap (plan 00066) |
+| 12 | History and costs | src/Ivy.Tendril/Database/DashboardRepository.cs | Track job token consumption and monetary costs; record and aggregate daily/weekly/monthly cost series; provide SQLite persistence and forecasting. | `Costs` table exists in `crates/tendril-core/src/db/migrations.rs` but is neither written nor queried; `DashboardView.tsx` only computes in-memory sums. | Tendril-Service + Tendril-App | pnpm vitest run tests/dto-mapping.test.ts | Gap (plan 00019) |
+| 13 | Realtime events, reconnect, resume | src/Ivy.Tendril/Services/Plans/PlanWatcherService.rs | Stream WebSocket events with scoped envelopes (`jobId`, `planId`, monotonic `seq`), support client reconnect with backfill (`?since=<seq>`), and display offline status. | Placeholder simulation in `ws.rs`; client reconnect, offline banner, and polling fallback are implemented in `Tendril-App`. Full server contract pending. | Tendril-Service | pnpm vitest run tests/event-stream.test.ts | Gap (plan 00024) |
+| 14 | Peripherals: vault, tunnel/share, telemetry, inbox watcher, onboarding, news | src/Ivy.Tendril/Services/Vault | Remote vault repository sync, tunnel sharing via Cloudflare, telemetry reporting, inbox directory watcher, onboarding walkthrough, and news alerts. | Verified absent in `Tendril-Service` crates; deferred by explicit decision as peripheral to the core plan intake and execution workflow. | Tendril-Service | node scripts/migration/rehearse-cutover.mjs --self-check | Deferred (approved) |
+| 15 | Promptware coverage | src/Ivy.Tendril/Promptwares | Deploy and compile all 11 promptware programs: CreatePlan, ExecutePlan, UpdatePlan, SplitPlan, ExpandPlan, CreatePr, CreateIssue, SetupProject, AddProject, RetryPlan, IvyFrameworkVerification. | All 11 promptwares are deployed in `/Users/rorychatt/git/Tendril-Service/promptwares` and supported by `deployer.rs`. | Tendril-Service | cargo test --test master_discovery_test | Verified |
+| 16 | Daemon discovery & .master compatibility | src/Ivy.Tendril/TendrilServer.cs | Detect and differentiate between Rust `Tendril-Service` (with secret token) and Ivy Tendril (with heartbeat), preventing erroneous adoption and auth failure. | `detect_foreign_master` implemented in `src-tauri/src/daemon.rs` and `src-tauri/src/service/master.rs`, reporting distinct `ForeignMaster` state with actionable advice. | Tendril-App | cargo test --test master_discovery_test | Verified |
+
+---
+
+## Parity Summary
+
+- **Total Areas Tracked**: 16
+- **Verified (at parity)**: 4 (Plans, Review/Retry/PR Actions, Promptwares, Daemon Discovery)
+- **Deferred (approved)**: 1 (Peripherals: Vault, Tunnel, Telemetry, Inbox Watcher, Onboarding, News)
+- **Gaps (tracked with follow-up plans)**: 11
+  - **Plan 00065** (Tendril-Service): Chat execution, streaming, session persistence, and question block handling.
+  - **Plan 00066** (Tendril-Service): Non-destructive config PUT preserving unknown keys and plan.yaml schema migration framework.
+  - **Plan 00019** (Tendril-Service): REST expansion for projects, job logs, dependencies, recommendations, verifications, and costs.
+  - **Plan 00024** (Tendril-Service): WebSocket realtime contract with scoped envelopes, resume, and backfill.
