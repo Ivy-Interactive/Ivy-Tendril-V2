@@ -85,10 +85,14 @@ class ChatStore {
           return;
         }
         const messages = this.state.activeSession.messages;
-        const targetMsg = messages.find((m) => m.id === event.messageId);
+        const targetIndex = messages.findIndex((m) => m.id === event.messageId);
 
-        if (targetMsg) {
-          targetMsg.content += event.delta;
+        if (targetIndex >= 0) {
+          const targetMsg = messages[targetIndex];
+          // Replace with a new object (rather than mutating targetMsg.content in place) so
+          // ChatMessageRow's React.memo sees a changed `message` prop reference and re-renders
+          // the streaming row; other rows keep their untouched message references and skip re-render.
+          messages[targetIndex] = { ...targetMsg, content: targetMsg.content + event.delta };
         } else {
           // If message does not exist yet, create a streaming assistant message
           messages.push({
