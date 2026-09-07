@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod config;
+pub mod costs;
 pub mod health;
 pub mod inbox;
 pub mod jobs;
@@ -96,6 +97,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
         )
+        // Costs
+        .route("/api/costs/summary", get(costs::get_costs_summary))
+        .route("/api/costs/series", get(costs::get_costs_series))
         // Chat
         .route(
             "/api/chat/sessions",
