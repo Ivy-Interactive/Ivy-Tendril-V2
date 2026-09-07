@@ -1,5 +1,7 @@
 use std::path::Path;
-use tendril_core::config::{get_config_path, get_database_path, get_plans_dir, load_config};
+use tendril_core::config::{
+    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
+};
 use tendril_core::db::open_database;
 
 pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
@@ -23,6 +25,23 @@ pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
                                 "[WARN] Project '{}' references non-existent verification '{}'",
                                 project.name, v.name
                             );
+                        }
+                    }
+
+                    for r in &project.repos {
+                        let expanded = expand_variables(&r.path, &tendril_home.to_string_lossy());
+                        if !Path::new(&expanded).exists() {
+                            if expanded != r.path {
+                                println!(
+                                    "[WARN] Project '{}' repository path does not exist: {} (resolved: {})",
+                                    project.name, r.path, expanded
+                                );
+                            } else {
+                                println!(
+                                    "[WARN] Project '{}' repository path does not exist: {}",
+                                    project.name, r.path
+                                );
+                            }
                         }
                     }
                 }
