@@ -242,6 +242,7 @@ describe("Preserve Unsubmitted Question Selections Across Chat Virtualization", 
 describe("Debounce Write-In Other Text Persistence", () => {
   beforeEach(() => {
     chatStore.resetForTesting();
+    localStorage.clear();
     sessionStorage.clear();
     vi.restoreAllMocks();
   });
@@ -365,7 +366,7 @@ questions:
     expect(setInProgressSpy).toHaveBeenCalledWith("msg-test-1", "db-flavor", ["custom-db"]);
     expect(submitSpy).toHaveBeenCalledTimes(1);
     expect(submitSpy).toHaveBeenCalledWith("msg-test-1", "db-flavor", ["custom-db"]);
-    expect(sessionStorage.getItem("tendril:chat:in_progress_answers")).toContain("custom-db");
+    expect(localStorage.getItem("tendril:chat:in_progress_answers")).toContain("custom-db");
   });
 
   it("cancels pending write-in timer when an option is clicked before debounce expires", () => {

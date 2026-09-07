@@ -205,7 +205,7 @@ describe("ChatStore State Management & Event Handling", () => {
       });
 
       // 4. Verify storage persistence
-      const stored = sessionStorage.getItem("tendril:chat:in_progress_answers");
+      const stored = localStorage.getItem("tendril:chat:in_progress_answers");
       expect(stored).not.toBeNull();
       expect(JSON.parse(stored!)).toEqual({
         "msg-1": {
@@ -223,6 +223,61 @@ describe("ChatStore State Management & Event Handling", () => {
       // 6. Clear entire message
       chatStore.clearInProgressAnswers("msg-1");
       expect(chatStore.getInProgressAnswers("msg-1")).toBeUndefined();
+    });
+
+    it("migrates legacy in-progress answers from sessionStorage to localStorage on init", async () => {
+      localStorage.removeItem("tendril:chat:in_progress_answers");
+      sessionStorage.setItem(
+        "tendril:chat:in_progress_answers",
+        JSON.stringify({
+          "legacy-msg": { "legacy-q": ["choice-1"] },
+        }),
+      );
+
+      await chatStore.init();
+
+      expect(chatStore.getInProgressAnswers("legacy-msg")).toEqual({
+        "legacy-q": ["choice-1"],
+      });
+      expect(localStorage.getItem("tendril:chat:in_progress_answers")).toBe(
+        JSON.stringify({ "legacy-msg": { "legacy-q": ["choice-1"] } }),
+      );
+      expect(sessionStorage.getItem("tendril:chat:in_progress_answers")).toBeNull();
+    });
+
+    it("synchronizes in-progress answers across windows via StorageEvent", () => {
+      const listener = vi.fn();
+      const unsub = chatStore.subscribe(listener);
+
+      // Dispatch StorageEvent originating from another window
+      const externalAnswers = {
+        "ext-msg": { "ext-q": ["option-a", "option-b"] },
+      };
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "tendril:chat:in_progress_answers",
+          newValue: JSON.stringify(externalAnswers),
+        }),
+      );
+
+      expect(chatStore.getInProgressAnswers("ext-msg")).toEqual({
+        "ext-q": ["option-a", "option-b"],
+      });
+      expect(listener).toHaveBeenCalled();
+
+      // Dispatch StorageEvent clearing answers (newValue = null)
+      listener.mockClear();
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "tendril:chat:in_progress_answers",
+          newValue: null,
+        }),
+      );
+
+      expect(chatStore.getInProgressAnswers("ext-msg")).toBeUndefined();
+      expect(listener).toHaveBeenCalled();
+
+      unsub();
     });
 
     it("records selection in inProgressAnswers and clears upon successful server response", async () => {

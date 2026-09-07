@@ -8,7 +8,7 @@ import {
 import { PlanMarkdown } from "@spacecorps/components-storybook/tendril";
 import { Copy, FilePlus, Paperclip } from "lucide-react";
 import { chatStore } from "../state/chatStore";
-import type { ChatMessage } from "../types/chat";
+import type { ChatMessage, InProgressQuestionAnswers } from "../types/chat";
 import { isWriteInAnswer, patchQuestionsMarkdown } from "../utils/questionMarkdown";
 
 export interface ChatMessageRowProps {
@@ -16,6 +16,7 @@ export interface ChatMessageRowProps {
   isCopied: boolean;
   onCopy: (message: ChatMessage) => void;
   onCreatePlan: (content: string) => void;
+  inProgressAnswers?: InProgressQuestionAnswers;
 }
 
 export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function ChatMessageRow({
@@ -23,6 +24,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   isCopied,
   onCopy,
   onCreatePlan,
+  inProgressAnswers: propInProgressAnswers,
 }) {
   const isUser = message.role === "user";
 
@@ -81,7 +83,9 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     [message.id, message.content],
   );
 
-  const inProgressAnswers = isUser ? undefined : chatStore.getInProgressAnswers(message.id);
+  const inProgressAnswers = isUser
+    ? undefined
+    : (propInProgressAnswers ?? chatStore.getInProgressAnswers(message.id));
   const content = useMemo(() => {
     if (isUser || !inProgressAnswers) return message.content;
     return patchQuestionsMarkdown(message.content, inProgressAnswers);
