@@ -56,6 +56,10 @@ pub struct DaemonStatusResponse {
     pub port: Option<u16>,
     pub host: Option<String>,
     pub scheme: Option<String>,
+    /// Bearer secret from `.master`. Never serialized: `get_daemon_status` is a
+    /// Tauri command, so serializing this would hand the daemon credential to
+    /// the webview. Native callers read the field directly instead.
+    #[serde(skip_serializing, default)]
     pub secret: Option<String>,
     pub pid: Option<u32>,
     pub api_version: Option<u32>,

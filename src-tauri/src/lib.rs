@@ -3,6 +3,7 @@ pub mod daemon;
 pub mod error;
 pub mod models;
 pub mod service;
+pub mod verification_reports;
 
 pub use commands::config::*;
 pub use commands::jobs::*;
@@ -26,6 +27,10 @@ pub fn run() {
             cmd_update_plan_field,
             cmd_get_revision,
             cmd_write_revision,
+            cmd_get_verification_report,
+            cmd_list_verification_reports,
+            cmd_list_recommendations,
+            cmd_set_recommendation_state,
             cmd_list_jobs,
             cmd_get_job,
             cmd_start_job,

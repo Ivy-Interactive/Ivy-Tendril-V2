@@ -178,6 +178,52 @@ impl TendrilClient {
         Ok(())
     }
 
+    /// Accept or decline one of a plan's recommendations.
+    ///
+    /// Recommendations are keyed by title, matching `set_recommendation_state`
+    /// in tendril-core and the `tendril plan rec accept|decline` CLI, both of
+    /// which look the entry up by title rather than by index.
+    ///
+    /// The service does not expose this route yet (plan 00024 adds it). Until
+    /// then the call fails with a real `RECOMMENDATION_UPDATE_FAILED` carrying
+    /// the service's 404, which the Review view surfaces and rolls back — the
+    /// app does not write `plan.yaml` behind the daemon's back.
+    pub async fn update_recommendation(
+        &self,
+        plan_id: &str,
+        title: &str,
+        state: &str,
+        decline_reason: Option<&str>,
+    ) -> Result<(), BridgeError> {
+        let url = format!(
+            "{}/api/plans/{}/recommendations/{}",
+            self.base_url,
+            urlencoding(plan_id),
+            urlencoding(title)
+        );
+        let body = json!({ "state": state, "declineReason": decline_reason });
+
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "RECOMMENDATION_UPDATE_FAILED",
+                format!("Failed to set recommendation '{title}' to {state} ({status})"),
+                text,
+            ));
+        }
+
+        Ok(())
+    }
+
     pub async fn get_revision(&self, id: &str, number: Option<i32>) -> Result<String, BridgeError> {
         let mut url = format!("{}/api/plans/{}/revisions", self.base_url, urlencoding(id));
         if let Some(num) = number {
