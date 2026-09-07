@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ChatBubble,
   ChatBubbleMessage,
@@ -9,7 +9,7 @@ import { PlanMarkdown } from "@spacecorps/components-storybook/tendril";
 import { Copy, FilePlus, Paperclip } from "lucide-react";
 import { chatStore } from "../state/chatStore";
 import type { ChatMessage, InProgressQuestionAnswers } from "../types/chat";
-import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
+import { isWriteInAnswer, patchQuestionsMarkdown } from "../utils/questionMarkdown";
 
 export interface ChatMessageRowProps {
   message: ChatMessage;
@@ -28,6 +28,22 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
 }) {
   const isUser = message.role === "user";
 
+  const pendingDebounceTimersRef = useRef<
+    Map<string, { timer: ReturnType<typeof setTimeout>; commit: () => void }>
+  >(new Map());
+
+  // Flush all pending debounced commits immediately before unmounting so typed text is never lost
+  useEffect(() => {
+    return () => {
+      const pending = Array.from(pendingDebounceTimersRef.current.values());
+      pendingDebounceTimersRef.current.clear();
+      for (const { timer, commit } of pending) {
+        clearTimeout(timer);
+        commit();
+      }
+    };
+  }, []);
+
   const handleAnswersChange = useCallback(
     (eventName: string, _widgetId: string, args: unknown[]) => {
       if (eventName !== "OnAnswersChange") return;
@@ -36,11 +52,35 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
         | { questionId: string; answer: string[] | null };
       const items = Array.isArray(payload) ? payload : [payload];
       for (const item of items) {
-        chatStore.setInProgressAnswer(message.id, item.questionId, item.answer);
-        chatStore.submitAnswer(message.id, item.questionId, item.answer);
+        const hasPending = pendingDebounceTimersRef.current.has(item.questionId);
+        const writeIn = isWriteInAnswer(message.content, item.questionId, item.answer, hasPending);
+
+        if (writeIn) {
+          const existing = pendingDebounceTimersRef.current.get(item.questionId);
+          if (existing) {
+            clearTimeout(existing.timer);
+          }
+
+          const commit = () => {
+            pendingDebounceTimersRef.current.delete(item.questionId);
+            chatStore.setInProgressAnswer(message.id, item.questionId, item.answer);
+            void chatStore.submitAnswer(message.id, item.questionId, item.answer);
+          };
+
+          const timer = setTimeout(commit, 300);
+          pendingDebounceTimersRef.current.set(item.questionId, { timer, commit });
+        } else {
+          const existing = pendingDebounceTimersRef.current.get(item.questionId);
+          if (existing) {
+            clearTimeout(existing.timer);
+            pendingDebounceTimersRef.current.delete(item.questionId);
+          }
+          chatStore.setInProgressAnswer(message.id, item.questionId, item.answer);
+          void chatStore.submitAnswer(message.id, item.questionId, item.answer);
+        }
       }
     },
-    [message.id],
+    [message.id, message.content],
   );
 
   const inProgressAnswers = isUser
