@@ -605,7 +605,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                 <ChatInput
                   ref={textareaRef}
                   value={inputPrompt}
-                  onChange={(e) => setInputPrompt(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setInputPrompt(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask Tendril or discuss plans (Enter to send, Shift+Enter for newline)..."
                   disabled={isGenerating}
