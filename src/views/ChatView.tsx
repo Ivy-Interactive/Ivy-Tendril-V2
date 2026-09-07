@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   ChatBubble,
   ChatBubbleMessage,
@@ -102,6 +103,30 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     if (e.target.files && e.target.files.length > 0) {
       processFiles(e.target.files);
       e.target.value = "";
+    }
+  };
+
+  const handleAttachClick = async () => {
+    try {
+      const selected = await open({
+        multiple: true,
+        title: "Select Files to Attach",
+      });
+      if (selected === null) {
+        return;
+      }
+      const paths = Array.isArray(selected) ? selected : [selected];
+      const incoming: ChatAttachment[] = paths.map((path) => ({
+        name: path.split(/[/\\]/).pop() || path,
+        path,
+      }));
+      setAttachments((prev) => {
+        const existingPaths = new Set(prev.map((a) => a.path));
+        const filtered = incoming.filter((a) => !existingPaths.has(a.path));
+        return [...prev, ...filtered];
+      });
+    } catch {
+      fileInputRef.current?.click();
     }
   };
 
@@ -589,7 +614,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
               />
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={handleAttachClick}
                 disabled={isGenerating}
                 className="flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800 p-3 text-slate-300 shadow hover:bg-slate-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title="Attach files"
