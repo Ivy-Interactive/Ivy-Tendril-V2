@@ -100,6 +100,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(projects::delete_project),
         )
         .route(
+            "/api/projects/:name/issues",
+            get(projects::get_project_issues),
+        )
+        .route(
+            "/api/projects/:name/issues/metadata",
+            get(projects::get_project_issues_metadata),
+        )
+        .route(
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
         )

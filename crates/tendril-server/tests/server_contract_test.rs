@@ -713,6 +713,39 @@ customSection:
 }
 
 #[tokio::test]
+async fn test_project_issues_routes_not_found() {
+    let server = start_test_server(None).await;
+    let master = read_master(&server.tendril_home).unwrap();
+    let client = reqwest::Client::new();
+
+    // GET /api/projects/NonExistentProject/issues -> 404
+    let issues_url = format!(
+        "http://{}:{}/api/projects/NonExistentProject/issues",
+        master.host, master.port
+    );
+    let resp = client
+        .get(&issues_url)
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // GET /api/projects/NonExistentProject/issues/metadata -> 404
+    let metadata_url = format!(
+        "http://{}:{}/api/projects/NonExistentProject/issues/metadata",
+        master.host, master.port
+    );
+    let resp = client
+        .get(&metadata_url)
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn test_project_crud_lifecycle_and_unknown_keys_preservation() {
     let server = start_test_server(None).await;
     let master = read_master(&server.tendril_home).expect("master discovery exists");
