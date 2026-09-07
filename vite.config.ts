@@ -2,19 +2,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
+import { resolveStorybookRoot } from "./scripts/storybook-path.mjs";
 
 export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(),
-  ],
+  plugins: [react(), tailwindcss()],
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
       react: path.resolve(__dirname, "./node_modules/react"),
       "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
-      "@spacecorps/components-storybook": path.resolve(__dirname, "../components-storybook/dist"),
     },
   },
   server: {
@@ -22,10 +19,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     fs: {
-      allow: [
-        path.resolve(__dirname),
-        path.resolve(__dirname, "../components-storybook"),
-      ],
+      allow: [path.resolve(__dirname), resolveStorybookRoot()],
     },
   },
   clearScreen: false,

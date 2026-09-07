@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
+import { resolveStorybookRoot } from "./scripts/storybook-path.mjs";
 
 export default defineConfig({
   plugins: [react()],
@@ -17,10 +18,7 @@ export default defineConfig({
   },
   server: {
     fs: {
-      allow: [
-        path.resolve(__dirname),
-        path.resolve(__dirname, "../components-storybook"),
-      ],
+      allow: [path.resolve(__dirname), resolveStorybookRoot()],
     },
   },
   resolve: {
@@ -29,7 +27,6 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
       react: path.resolve(__dirname, "./node_modules/react"),
       "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
-      "@spacecorps/components-storybook": path.resolve(__dirname, "../components-storybook/dist"),
     },
   },
 });
