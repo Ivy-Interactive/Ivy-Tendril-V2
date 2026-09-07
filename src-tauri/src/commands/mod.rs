@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod config;
 pub mod jobs;
 pub mod plans;

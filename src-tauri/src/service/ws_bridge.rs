@@ -85,15 +85,8 @@ impl WsBridge {
                                     match msg_opt {
                                         Some(Ok(Message::Text(txt))) => {
                                             let text_str = txt.to_string();
-                                            if let Ok(server_msg) = serde_json::from_str::<WSServerMessage>(&text_str) {
-                                                if server_msg.msg_type == "state" || server_msg.msg_type == "status" {
-                                                    let _ = app_handle.emit("plan-event", &server_msg);
-                                                } else {
-                                                    let _ = app_handle.emit("job-event", &server_msg);
-                                                }
-                                            } else {
-                                                let _ = app_handle.emit("job-event", text_str);
-                                            }
+                                            let (event_name, payload) = route_ws_message(&text_str);
+                                            let _ = app_handle.emit(event_name, &payload);
                                         }
                                         Some(Ok(Message::Close(_))) | None | Some(Err(_)) => {
                                             break;
@@ -138,5 +131,60 @@ impl WsBridge {
 
     pub fn is_connected(&self) -> bool {
         self.is_connected.load(Ordering::SeqCst)
+    }
+}
+
+pub fn route_ws_message(text_str: &str) -> (&'static str, serde_json::Value) {
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(text_str) {
+        let msg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if msg_type.starts_with("chat.") {
+            ("chat-event", val)
+        } else if msg_type == "state" || msg_type == "status" {
+            ("plan-event", val)
+        } else {
+            ("job-event", val)
+        }
+    } else {
+        ("job-event", serde_json::Value::String(text_str.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_route_chat_events() {
+        let delta_json =
+            r#"{"type":"chat.stream_delta","sessionId":"s1","messageId":"m1","delta":"Hello"}"#;
+        let (channel, payload) = route_ws_message(delta_json);
+        assert_eq!(channel, "chat-event");
+        assert_eq!(payload["delta"], "Hello");
+
+        let msg_added_json = r#"{"type":"chat.message_added","sessionId":"s1","message":{"id":"m1","role":"user","content":"Hi"}}"#;
+        let (channel, payload) = route_ws_message(msg_added_json);
+        assert_eq!(channel, "chat-event");
+        assert_eq!(payload["sessionId"], "s1");
+
+        let gen_state_json =
+            r#"{"type":"chat.generating_state","sessionId":"s1","isGenerating":true}"#;
+        let (channel, payload) = route_ws_message(gen_state_json);
+        assert_eq!(channel, "chat-event");
+        assert_eq!(payload["isGenerating"], true);
+    }
+
+    #[test]
+    fn test_route_plan_and_job_events() {
+        let state_json = r#"{"type":"state","planId":"00010"}"#;
+        let (channel, _) = route_ws_message(state_json);
+        assert_eq!(channel, "plan-event");
+
+        let status_json = r#"{"type":"status","planId":"00010"}"#;
+        let (channel, _) = route_ws_message(status_json);
+        assert_eq!(channel, "plan-event");
+
+        let job_json = r#"{"type":"job_started","jobId":"00100"}"#;
+        let (channel, _) = route_ws_message(job_json);
+        assert_eq!(channel, "job-event");
     }
 }
