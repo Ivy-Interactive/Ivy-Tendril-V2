@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use tendril_core::chat::execution::ChatExecutionManager;
 use tendril_core::config::{get_config_path, get_database_path, get_plans_dir, load_config};
 use tendril_core::jobs::JobManager;
 use tokio::sync::broadcast;
@@ -11,6 +12,7 @@ pub struct AppState {
     pub plans_dir: PathBuf,
     pub db_path: PathBuf,
     pub job_manager: Arc<JobManager>,
+    pub chat_manager: Arc<ChatExecutionManager>,
     pub ws_tx: broadcast::Sender<String>,
     pub secret: String,
 }
@@ -23,7 +25,19 @@ impl AppState {
 
         let settings = load_config(&config_path).unwrap_or_default();
         let job_manager = Arc::new(JobManager::new(tendril_home.clone(), settings));
+        let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
+
+        // Forward chat events to WebSocket clients
+        let mut chat_rx = chat_manager.subscribe_events();
+        let ws_tx_clone = ws_tx.clone();
+        tokio::spawn(async move {
+            while let Ok(evt) = chat_rx.recv().await {
+                if let Ok(json) = serde_json::to_string(&evt) {
+                    let _ = ws_tx_clone.send(json);
+                }
+            }
+        });
 
         Self {
             tendril_home,
@@ -31,6 +45,7 @@ impl AppState {
             plans_dir,
             db_path,
             job_manager,
+            chat_manager,
             ws_tx,
             secret,
         }

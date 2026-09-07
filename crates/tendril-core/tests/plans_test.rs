@@ -78,7 +78,7 @@ fn test_create_plan_and_revisions_lifecycle() {
     assert!(plan_folder.join("Artifacts").exists());
 
     // Write revisions
-    let rev1_num = write_revision(plan_folder, "# Dark Mode Design\nFirst draft.")
+    let rev1_num = write_revision(plan_folder, "# Dark Mode Design\nFirst draft.", true)
         .expect("Failed to write rev 1");
     assert_eq!(rev1_num, 1);
     assert_eq!(
@@ -89,6 +89,7 @@ fn test_create_plan_and_revisions_lifecycle() {
     let rev2_num = write_revision(
         plan_folder,
         "# Dark Mode Design\nSecond draft with feedback.",
+        true,
     )
     .expect("Failed to write rev 2");
     assert_eq!(rev2_num, 2);

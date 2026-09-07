@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod chat;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -8,6 +9,7 @@ pub mod mcp;
 pub mod models;
 pub mod plans;
 pub mod promptware;
+pub mod questions;
 
 pub use config::*;
 pub use error::*;

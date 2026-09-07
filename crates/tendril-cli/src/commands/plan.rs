@@ -171,6 +171,8 @@ pub struct PlanWriteRevisionArgs {
     pub stdin: bool,
     #[arg(long)]
     pub plans_dir: Option<PathBuf>,
+    #[arg(long, help = "Bypass question block validation")]
+    pub no_question_check: bool,
 }
 
 #[derive(Args)]
@@ -562,7 +564,7 @@ pub fn handle_plan_command(
                 anyhow::bail!("Specify --file <path> or --stdin");
             };
 
-            let rev_num = write_revision(&folder, &content)?;
+            let rev_num = write_revision(&folder, &content, !args.no_question_check)?;
             println!("Revision {:03} written.", rev_num);
 
             if let Ok(pf) = read_plan_file(&folder) {
