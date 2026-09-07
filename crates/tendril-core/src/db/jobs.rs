@@ -1,41 +1,58 @@
 use crate::models::{JobItem, JobStatus};
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, Result, Row};
 
-pub fn insert_job(conn: &Connection, job: &JobItem) -> Result<()> {
+/// Column list shared by every read path, so the positional `row_to_job` mapping cannot drift
+/// between `get_job`, `list_jobs` and `list_non_terminal_jobs`.
+const JOB_COLUMNS: &str = "Id, Type, PlanFile, Project, Status, Provider, StartedAt, CompletedAt, \
+     DurationSeconds, Cost, Tokens, StatusMessage, Args, WorkingDirectory, \
+     CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, \
+     Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, \
+     ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState";
+
+const INSERT_SQL: &str = r#"
+    INSERT INTO Jobs (
+        Id, Type, PlanFile, Project, Status, Provider, StartedAt, CompletedAt,
+        DurationSeconds, Cost, Tokens, StatusMessage, Args, WorkingDirectory,
+        CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
+        Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
+        ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState
+    ) VALUES (
+        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
+        ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30
+    )
+"#;
+
+const UPSERT_TAIL: &str = r#"
+    ON CONFLICT(Id) DO UPDATE SET
+        Status = excluded.Status,
+        CompletedAt = excluded.CompletedAt,
+        DurationSeconds = excluded.DurationSeconds,
+        Cost = excluded.Cost,
+        Tokens = excluded.Tokens,
+        StatusMessage = excluded.StatusMessage,
+        ReportedPlanId = excluded.ReportedPlanId,
+        ReportedPlanTitle = excluded.ReportedPlanTitle,
+        ReportedFailureReason = excluded.ReportedFailureReason,
+        Model = excluded.Model,
+        InputTokens = excluded.InputTokens,
+        OutputTokens = excluded.OutputTokens,
+        CacheReadTokens = excluded.CacheReadTokens,
+        CacheWriteTokens = excluded.CacheWriteTokens,
+        ReasoningTokens = excluded.ReasoningTokens,
+        CostSource = excluded.CostSource,
+        WorkingDirectory = excluded.WorkingDirectory,
+        CliCommand = excluded.CliCommand,
+        ProcessId = excluded.ProcessId,
+        PreviousPlanState = excluded.PreviousPlanState;
+"#;
+
+fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
     let started_at_str = job.started_at.map(|t| t.to_rfc3339());
     let completed_at_str = job.completed_at.map(|t| t.to_rfc3339());
 
     conn.execute(
-        r#"
-        INSERT INTO Jobs (
-            Id, Type, PlanFile, Project, Status, Provider, StartedAt, CompletedAt,
-            DurationSeconds, Cost, Tokens, StatusMessage, Args, WorkingDirectory,
-            CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
-            Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
-            ReasoningTokens, CostSource, ExecutionProfile, Effort
-        ) VALUES (
-            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-            ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28
-        )
-        ON CONFLICT(Id) DO UPDATE SET
-            Status = excluded.Status,
-            CompletedAt = excluded.CompletedAt,
-            DurationSeconds = excluded.DurationSeconds,
-            Cost = excluded.Cost,
-            Tokens = excluded.Tokens,
-            StatusMessage = excluded.StatusMessage,
-            ReportedPlanId = excluded.ReportedPlanId,
-            ReportedPlanTitle = excluded.ReportedPlanTitle,
-            ReportedFailureReason = excluded.ReportedFailureReason,
-            Model = excluded.Model,
-            InputTokens = excluded.InputTokens,
-            OutputTokens = excluded.OutputTokens,
-            CacheReadTokens = excluded.CacheReadTokens,
-            CacheWriteTokens = excluded.CacheWriteTokens,
-            ReasoningTokens = excluded.ReasoningTokens,
-            CostSource = excluded.CostSource;
-        "#,
+        sql,
         params![
             job.id,
             job.job_type,
@@ -65,96 +82,91 @@ pub fn insert_job(conn: &Connection, job: &JobItem) -> Result<()> {
             job.cost_source,
             job.execution_profile,
             job.effort,
+            job.process_id.map(|p| p as i64),
+            job.previous_plan_state,
         ],
     )?;
 
     Ok(())
 }
 
-pub fn get_job(conn: &Connection, id: &str) -> Result<Option<JobItem>> {
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT Id, Type, PlanFile, Project, Status, Provider, StartedAt, CompletedAt,
-               DurationSeconds, Cost, Tokens, StatusMessage, Args, WorkingDirectory,
-               CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
-               Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
-               ReasoningTokens, CostSource, ExecutionProfile, Effort
-        FROM Jobs WHERE Id = ?
-        "#,
-    )?;
+/// Inserts or updates a job row. Used for every state change after the job first exists.
+pub fn insert_job(conn: &Connection, job: &JobItem) -> Result<()> {
+    let sql = format!("{}{}", INSERT_SQL, UPSERT_TAIL);
+    execute_write(conn, &sql, job)
+}
 
-    let mut rows = stmt.query([id])?;
-    if let Some(row) = rows.next()? {
-        let id: String = row.get(0)?;
-        let job_type: String = row.get(1)?;
-        let plan_file: String = row.get(2)?;
-        let project: String = row.get(3)?;
-        let status_str: String = row.get(4)?;
-        let provider: String = row.get(5)?;
-        let started_at_str: Option<String> = row.get(6)?;
-        let completed_at_str: Option<String> = row.get(7)?;
-        let duration_seconds: Option<i64> = row.get(8)?;
-        let cost: Option<f64> = row.get(9)?;
-        let tokens: Option<i64> = row.get(10)?;
-        let status_message: Option<String> = row.get(11)?;
-        let args: Option<String> = row.get(12)?;
-        let working_directory: Option<String> = row.get(13)?;
-        let cli_command: Option<String> = row.get(14)?;
-        let cleared_int: i32 = row.get(15)?;
-        let reported_plan_id: Option<String> = row.get(16)?;
-        let reported_plan_title: Option<String> = row.get(17)?;
-        let reported_failure_reason: Option<String> = row.get(18)?;
-        let model: Option<String> = row.get(19)?;
-        let input_tokens: Option<i64> = row.get(20)?;
-        let output_tokens: Option<i64> = row.get(21)?;
-        let cache_read_tokens: Option<i64> = row.get(22)?;
-        let cache_write_tokens: Option<i64> = row.get(23)?;
-        let reasoning_tokens: Option<i64> = row.get(24)?;
-        let cost_source: Option<String> = row.get(25)?;
-        let execution_profile: Option<String> = row.get(26)?;
-        let effort: Option<String> = row.get(27)?;
+/// Inserts a job that must not already exist. Unlike [`insert_job`] this is a plain `INSERT`, so an
+/// ID collision surfaces as a primary-key error instead of silently overwriting a live job.
+pub fn insert_new_job(conn: &Connection, job: &JobItem) -> Result<()> {
+    let sql = format!("{};", INSERT_SQL);
+    execute_write(conn, &sql, job)
+}
 
-        let status = JobStatus::from_str_loose(&status_str).unwrap_or(JobStatus::Pending);
-        let started_at = started_at_str.and_then(|s| {
+fn row_to_job(row: &Row<'_>) -> Result<JobItem> {
+    let id: String = row.get(0)?;
+    let job_type: String = row.get(1)?;
+    let plan_file: String = row.get(2)?;
+    let project: String = row.get(3)?;
+    let status_str: String = row.get(4)?;
+    let provider: String = row.get(5)?;
+    let started_at_str: Option<String> = row.get(6)?;
+    let completed_at_str: Option<String> = row.get(7)?;
+    let cleared_int: i32 = row.get(15)?;
+    let process_id: Option<i64> = row.get(28)?;
+
+    let parse_ts = |s: Option<String>| -> Option<DateTime<Utc>> {
+        s.and_then(|s| {
             DateTime::parse_from_rfc3339(&s)
                 .ok()
                 .map(|dt| dt.with_timezone(&Utc))
-        });
-        let completed_at = completed_at_str.and_then(|s| {
-            DateTime::parse_from_rfc3339(&s)
-                .ok()
-                .map(|dt| dt.with_timezone(&Utc))
-        });
+        })
+    };
 
-        let mut item = JobItem::new(id, job_type, plan_file, project);
-        item.status = status;
-        item.provider = provider;
-        item.started_at = started_at;
-        item.completed_at = completed_at;
-        item.duration_seconds = duration_seconds;
-        item.cost = cost;
-        item.tokens = tokens;
-        item.status_message = status_message;
-        item.args = args;
-        item.working_directory = working_directory;
-        item.cli_command = cli_command;
-        item.cleared = cleared_int != 0;
-        item.reported_plan_id = reported_plan_id;
-        item.reported_plan_title = reported_plan_title;
-        item.reported_failure_reason = reported_failure_reason;
-        item.model = model;
-        item.input_tokens = input_tokens;
-        item.output_tokens = output_tokens;
-        item.cache_read_tokens = cache_read_tokens;
-        item.cache_write_tokens = cache_write_tokens;
-        item.reasoning_tokens = reasoning_tokens;
-        item.cost_source = cost_source;
-        item.execution_profile = execution_profile;
-        item.effort = effort;
+    let mut item = JobItem::new(id, job_type, plan_file, project);
+    item.status = JobStatus::from_str_loose(&status_str).unwrap_or(JobStatus::Pending);
+    item.provider = provider;
+    item.started_at = parse_ts(started_at_str);
+    item.completed_at = parse_ts(completed_at_str);
+    item.duration_seconds = row.get(8)?;
+    item.cost = row.get(9)?;
+    item.tokens = row.get(10)?;
+    item.status_message = row.get(11)?;
+    item.args = row.get(12)?;
+    item.working_directory = row.get(13)?;
+    item.cli_command = row.get(14)?;
+    item.cleared = cleared_int != 0;
+    item.reported_plan_id = row.get(16)?;
+    item.reported_plan_title = row.get(17)?;
+    item.reported_failure_reason = row.get(18)?;
+    item.model = row.get(19)?;
+    item.input_tokens = row.get(20)?;
+    item.output_tokens = row.get(21)?;
+    item.cache_read_tokens = row.get(22)?;
+    item.cache_write_tokens = row.get(23)?;
+    item.reasoning_tokens = row.get(24)?;
+    item.cost_source = row.get(25)?;
+    item.execution_profile = row.get(26)?;
+    item.effort = row.get(27)?;
+    item.process_id = process_id.and_then(|p| u32::try_from(p).ok());
+    item.previous_plan_state = row.get(29)?;
 
-        return Ok(Some(item));
+    // `typed_args` has no column of its own; it is rehydrated from the Args JSON so a job loaded
+    // after a daemon restart still knows what it was launched with.
+    if let Some(args_json) = &item.args {
+        item.typed_args = serde_json::from_str(args_json).ok();
     }
 
+    Ok(item)
+}
+
+pub fn get_job(conn: &Connection, id: &str) -> Result<Option<JobItem>> {
+    let sql = format!("SELECT {} FROM Jobs WHERE Id = ?", JOB_COLUMNS);
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([id])?;
+    if let Some(row) = rows.next()? {
+        return Ok(Some(row_to_job(row)?));
+    }
     Ok(None)
 }
 
@@ -163,7 +175,7 @@ pub fn list_jobs(
     status_filter: Option<JobStatus>,
     limit: usize,
 ) -> Result<Vec<JobItem>> {
-    let mut sql = "SELECT Id, Type, PlanFile, Project, Status, Provider, StartedAt, CompletedAt, DurationSeconds, Cost, Tokens, StatusMessage, Args, WorkingDirectory, CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, ReasoningTokens, CostSource, ExecutionProfile, Effort FROM Jobs".to_string();
+    let mut sql = format!("SELECT {} FROM Jobs", JOB_COLUMNS);
 
     if let Some(status) = status_filter {
         sql.push_str(&format!(" WHERE Status = '{}'", status.as_str()));
@@ -174,77 +186,40 @@ pub fn list_jobs(
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query([])?;
     let mut jobs = Vec::new();
-
     while let Some(row) = rows.next()? {
-        let id: String = row.get(0)?;
-        let job_type: String = row.get(1)?;
-        let plan_file: String = row.get(2)?;
-        let project: String = row.get(3)?;
-        let status_str: String = row.get(4)?;
-        let provider: String = row.get(5)?;
-        let started_at_str: Option<String> = row.get(6)?;
-        let completed_at_str: Option<String> = row.get(7)?;
-        let duration_seconds: Option<i64> = row.get(8)?;
-        let cost: Option<f64> = row.get(9)?;
-        let tokens: Option<i64> = row.get(10)?;
-        let status_message: Option<String> = row.get(11)?;
-        let args: Option<String> = row.get(12)?;
-        let working_directory: Option<String> = row.get(13)?;
-        let cli_command: Option<String> = row.get(14)?;
-        let cleared_int: i32 = row.get(15)?;
-        let reported_plan_id: Option<String> = row.get(16)?;
-        let reported_plan_title: Option<String> = row.get(17)?;
-        let reported_failure_reason: Option<String> = row.get(18)?;
-        let model: Option<String> = row.get(19)?;
-        let input_tokens: Option<i64> = row.get(20)?;
-        let output_tokens: Option<i64> = row.get(21)?;
-        let cache_read_tokens: Option<i64> = row.get(22)?;
-        let cache_write_tokens: Option<i64> = row.get(23)?;
-        let reasoning_tokens: Option<i64> = row.get(24)?;
-        let cost_source: Option<String> = row.get(25)?;
-        let execution_profile: Option<String> = row.get(26)?;
-        let effort: Option<String> = row.get(27)?;
-
-        let status = JobStatus::from_str_loose(&status_str).unwrap_or(JobStatus::Pending);
-        let started_at = started_at_str.and_then(|s| {
-            DateTime::parse_from_rfc3339(&s)
-                .ok()
-                .map(|dt| dt.with_timezone(&Utc))
-        });
-        let completed_at = completed_at_str.and_then(|s| {
-            DateTime::parse_from_rfc3339(&s)
-                .ok()
-                .map(|dt| dt.with_timezone(&Utc))
-        });
-
-        let mut item = JobItem::new(id, job_type, plan_file, project);
-        item.status = status;
-        item.provider = provider;
-        item.started_at = started_at;
-        item.completed_at = completed_at;
-        item.duration_seconds = duration_seconds;
-        item.cost = cost;
-        item.tokens = tokens;
-        item.status_message = status_message;
-        item.args = args;
-        item.working_directory = working_directory;
-        item.cli_command = cli_command;
-        item.cleared = cleared_int != 0;
-        item.reported_plan_id = reported_plan_id;
-        item.reported_plan_title = reported_plan_title;
-        item.reported_failure_reason = reported_failure_reason;
-        item.model = model;
-        item.input_tokens = input_tokens;
-        item.output_tokens = output_tokens;
-        item.cache_read_tokens = cache_read_tokens;
-        item.cache_write_tokens = cache_write_tokens;
-        item.reasoning_tokens = reasoning_tokens;
-        item.cost_source = cost_source;
-        item.execution_profile = execution_profile;
-        item.effort = effort;
-
-        jobs.push(item);
+        jobs.push(row_to_job(row)?);
     }
 
     Ok(jobs)
+}
+
+/// Every job row that has not reached a terminal status. This is the input to startup
+/// reconciliation: anything listed here was mid-flight when the daemon stopped.
+pub fn list_non_terminal_jobs(conn: &Connection) -> Result<Vec<JobItem>> {
+    let sql = format!(
+        "SELECT {} FROM Jobs WHERE Status IN ('Pending', 'Queued', 'Running', 'Blocked') \
+         ORDER BY Id ASC",
+        JOB_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([])?;
+    let mut jobs = Vec::new();
+    while let Some(row) = rows.next()? {
+        jobs.push(row_to_job(row)?);
+    }
+
+    Ok(jobs)
+}
+
+/// Highest allocated 5-digit job ID, or 0 when the table holds none.
+pub fn max_numeric_job_id(conn: &Connection) -> Result<i32> {
+    let mut stmt = conn.prepare(
+        "SELECT Id FROM Jobs WHERE Id GLOB '[0-9][0-9][0-9][0-9][0-9]' ORDER BY Id DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query([])?;
+    if let Some(row) = rows.next()? {
+        let id_str: String = row.get(0)?;
+        return Ok(id_str.parse::<i32>().unwrap_or(0));
+    }
+    Ok(0)
 }

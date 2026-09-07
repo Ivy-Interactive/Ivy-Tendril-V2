@@ -262,6 +262,11 @@ pub struct JobItem {
     pub working_directory: Option<String>,
     #[serde(rename = "cliCommand", skip_serializing_if = "Option::is_none")]
     pub cli_command: Option<String>,
+    #[serde(rename = "processId", skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<u32>,
+    /// Plan state captured at launch, restored when the job fails, times out, or is cancelled.
+    #[serde(rename = "previousPlanState", skip_serializing_if = "Option::is_none")]
+    pub previous_plan_state: Option<String>,
     #[serde(rename = "reportedPlanId", skip_serializing_if = "Option::is_none")]
     pub reported_plan_id: Option<String>,
     #[serde(rename = "reportedPlanTitle", skip_serializing_if = "Option::is_none")]
@@ -307,6 +312,8 @@ impl JobItem {
             typed_args: None,
             working_directory: None,
             cli_command: None,
+            process_id: None,
+            previous_plan_state: None,
             reported_plan_id: None,
             reported_plan_title: None,
             reported_failure_reason: None,

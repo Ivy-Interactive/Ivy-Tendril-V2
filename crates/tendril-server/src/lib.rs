@@ -36,11 +36,36 @@ pub async fn run_server(
 
     let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host)?;
 
+    // Only the master reconciles: a daemon that lost the race must never reap the winner's jobs.
+    reconcile_after_restart(&tendril_home).await;
+
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
     Ok(())
+}
+
+/// Realigns persisted job and plan state with reality. A failure here is logged rather than fatal:
+/// the daemon is more useful up with stale rows than refusing to start.
+async fn reconcile_after_restart(tendril_home: &std::path::Path) {
+    let config_path = tendril_core::config::get_config_path(tendril_home);
+    let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
+
+    match tendril_core::jobs::recovery::reconcile_jobs_on_startup(tendril_home, &settings).await {
+        Ok(report) => {
+            tracing::info!(
+                "Startup reconciliation: {} live, {} completed, {} failed, {} queued, {} unblocked, {} plans reverted",
+                report.live_jobs.len(),
+                report.completed_jobs.len(),
+                report.failed_jobs.len(),
+                report.queued_jobs.len(),
+                report.unblocked_plans.len(),
+                report.reverted_plans.len(),
+            );
+        }
+        Err(e) => tracing::warn!("Startup reconciliation failed: {}", e),
+    }
 }
 
 async fn shutdown_signal() {

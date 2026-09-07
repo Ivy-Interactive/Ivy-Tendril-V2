@@ -143,7 +143,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             ReasoningTokens INTEGER,
             CostSource TEXT,
             ExecutionProfile TEXT,
-            Effort TEXT
+            Effort TEXT,
+            PreviousPlanState TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
         CREATE INDEX IF NOT EXISTS idx_jobs_completed ON Jobs(CompletedAt DESC);
@@ -160,9 +161,38 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_owner_repo ON PrStatuses(Owner, Repo);
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_status ON PrStatuses(Status);
 
-        PRAGMA user_version = 21;
+        PRAGMA user_version = 22;
         "#,
     )?;
+
+    // The schema above is declarative `CREATE TABLE IF NOT EXISTS`, so a database created by an
+    // earlier version keeps its original column set. Columns added after the fact need an
+    // idempotent ALTER pass.
+    ensure_columns(conn, "Jobs", &[("PreviousPlanState", "TEXT")])?;
+
+    Ok(())
+}
+
+/// Adds any of `columns` that `table` does not already have. Idempotent: existing columns are left
+/// untouched, so this is safe to run on every connection open.
+pub fn ensure_columns(conn: &Connection, table: &str, columns: &[(&str, &str)]) -> Result<()> {
+    let mut existing = std::collections::HashSet::new();
+    {
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            existing.insert(row.get::<_, String>(1)?);
+        }
+    }
+
+    for (name, sql_type) in columns {
+        if !existing.contains(*name) {
+            conn.execute(
+                &format!("ALTER TABLE {} ADD COLUMN {} {}", table, name, sql_type),
+                [],
+            )?;
+        }
+    }
 
     Ok(())
 }

@@ -1,25 +1,61 @@
-use crate::agents::providers::{build_agent_spec, AgentLaunchConfig};
-use crate::agents::runner::run_agent_process;
-use crate::config::TendrilSettings;
-use crate::db::jobs::{get_job, insert_job, list_jobs};
+use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
+use crate::agents::runner::{run_agent_process, AgentRunOutcome, TerminationReason};
+use crate::config::{get_plans_dir, TendrilSettings};
+use crate::db::jobs::{
+    get_job, insert_job, insert_new_job, list_jobs, list_non_terminal_jobs, max_numeric_job_id,
+};
 use crate::db::open_database;
-use crate::error::Result;
-use crate::jobs::logger::{append_agent_log, append_to_eventwire, append_to_raw_log};
-use crate::models::{JobArgs, JobItem, JobStatus, PlanStatus};
+use crate::error::{Result, TendrilError};
+use crate::jobs::firmware_values::{
+    build_firmware_values, execution_profile_override, resolve_project, resolve_working_directory,
+};
+use crate::jobs::logger::{append_agent_log, append_to_eventwire, append_to_raw_log, write_prompt};
+use crate::jobs::process_tree::{kill_tree, DEFAULT_KILL_GRACE};
+use crate::models::{JobArgs, JobItem, JobStatus, PlanStatus, PlanYaml};
+use crate::plans::dependencies::check_dependencies;
+use crate::plans::guards::PlanCompletionGuard;
 use crate::plans::reader::read_plan_yaml;
+use crate::plans::verification_gate::resolve_post_execution_state;
 use crate::plans::writer::write_plan_yaml;
 use crate::promptware::compiler::compile_firmware;
 use chrono::Utc;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use tokio::sync::{RwLock, Semaphore};
+use std::time::Duration;
+use tokio::sync::{watch, Mutex, RwLock, Semaphore};
+
+/// Builds the process spec for an agent launch. Injectable so tests can exercise the whole launch
+/// path against a throwaway script instead of a real agent CLI.
+pub type SpecBuilder = Arc<dyn Fn(&str, &AgentLaunchConfig) -> AgentProcessSpec + Send + Sync>;
+
+/// Live control surface for a running job.
+struct JobHandle {
+    cancel_tx: watch::Sender<bool>,
+    /// 0 until the agent process is spawned.
+    pid: Arc<AtomicU32>,
+    /// Claimed exactly once, by whichever of cancellation and normal completion gets there first.
+    completion_claimed: Arc<AtomicBool>,
+}
+
+/// Claims the right to write a job's terminal state. Returns `true` for the first caller only.
+fn claim(flag: &AtomicBool) -> bool {
+    !flag.swap(true, Ordering::SeqCst)
+}
 
 pub struct JobManager {
     tendril_home: PathBuf,
     settings: Arc<RwLock<TendrilSettings>>,
     jobs: Arc<RwLock<HashMap<String, JobItem>>>,
+    handles: Arc<RwLock<HashMap<String, JobHandle>>>,
     semaphore: Arc<Semaphore>,
+    /// Serialises ID allocation with the first insert, so two concurrent `start_job` calls cannot
+    /// allocate the same ID.
+    alloc_lock: Arc<Mutex<()>>,
+    spec_builder: SpecBuilder,
+    /// Overrides the `jobTimeout` setting. Only used by tests, which need sub-minute timeouts.
+    job_timeout_override: Option<Duration>,
 }
 
 impl JobManager {
@@ -29,176 +65,287 @@ impl JobManager {
             tendril_home,
             settings: Arc::new(RwLock::new(settings)),
             jobs: Arc::new(RwLock::new(HashMap::new())),
+            handles: Arc::new(RwLock::new(HashMap::new())),
             semaphore: Arc::new(Semaphore::new(max_jobs)),
+            alloc_lock: Arc::new(Mutex::new(())),
+            spec_builder: Arc::new(build_agent_spec),
+            job_timeout_override: None,
         }
+    }
+
+    /// Replaces the agent spec builder. Intended for tests.
+    pub fn with_spec_builder(mut self, builder: SpecBuilder) -> Self {
+        self.spec_builder = builder;
+        self
+    }
+
+    /// Overrides the configured job timeout, which is expressed in whole minutes. Intended for tests.
+    pub fn with_job_timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.job_timeout_override = timeout;
+        self
     }
 
     pub async fn allocate_job_id(&self) -> Result<String> {
         let db_path = crate::config::get_database_path(&self.tendril_home);
         let conn = open_database(&db_path)?;
-
-        let mut stmt = conn.prepare("SELECT Id FROM Jobs WHERE Id GLOB '[0-9][0-9][0-9][0-9][0-9]' ORDER BY Id DESC LIMIT 1")?;
-        let mut rows = stmt.query([])?;
-        let max_id = if let Some(row) = rows.next()? {
-            let id_str: String = row.get(0)?;
-            id_str.parse::<i32>().unwrap_or(0)
-        } else {
-            0
-        };
-
+        let max_id = max_numeric_job_id(&conn)?;
         Ok(format!("{:05}", max_id + 1))
     }
 
     pub async fn start_job(&self, args: JobArgs) -> Result<String> {
-        let job_id = self.allocate_job_id().await?;
         let job_type = args.job_type().to_string();
         let plan_folder_str = args.plan_folder().unwrap_or("").to_string();
+        let plan_folder = PathBuf::from(&plan_folder_str);
 
         let settings = self.settings.read().await.clone();
-        let default_agent = settings.coding_agent.clone();
+
+        // Snapshot the plan state before anything mutates it, so a failure, timeout or cancel can
+        // put the plan back where it was.
+        let previous_plan_state = read_plan_state(&plan_folder);
+
+        // The dependency gate runs before the plan is marked Executing: a blocked plan must not look
+        // like it started.
+        let block_reason =
+            if matches!(job_type.as_str(), "ExecutePlan" | "RetryPlan") && plan_folder.is_dir() {
+                let plans_dir = plan_folder
+                    .parent()
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_else(|| get_plans_dir(&self.tendril_home));
+                match check_dependencies(&plan_folder, &plans_dir) {
+                    Ok(res) if !res.ok => Some(
+                        res.block_reason
+                            .unwrap_or_else(|| "Dependencies are not satisfied".to_string()),
+                    ),
+                    Ok(_) => None,
+                    Err(e) => {
+                        tracing::warn!("Dependency check failed for {}: {}", plan_folder_str, e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
 
         let mut job = JobItem::new(
-            job_id.clone(),
+            String::new(),
             job_type.clone(),
             plan_folder_str.clone(),
             "Auto".to_string(),
         );
-        job.provider = default_agent;
-        job.status = JobStatus::Queued;
+        job.provider = settings.coding_agent.clone();
         job.started_at = Some(Utc::now());
         job.typed_args = Some(args.clone());
         job.args = serde_json::to_string(&args).ok();
+        job.previous_plan_state = previous_plan_state.map(|s| s.to_string());
+        job.project = resolve_project(&job, &settings);
 
-        // Update plan state if applicable
-        if !plan_folder_str.is_empty() {
-            let p_folder = PathBuf::from(&plan_folder_str);
-            if p_folder.exists() {
-                if let Ok((mut plan, _)) = read_plan_yaml(&p_folder) {
-                    if job_type == "ExecutePlan" || job_type == "RetryPlan" {
-                        plan.state = PlanStatus::Executing.to_string();
-                    } else if job_type == "CreatePlan" || job_type == "ExpandPlan" {
-                        plan.state = PlanStatus::Creating.to_string();
-                    } else if job_type == "UpdatePlan" || job_type == "SplitPlan" {
-                        plan.state = PlanStatus::Updating.to_string();
-                    }
-                    plan.updated = Utc::now();
-                    let _ = write_plan_yaml(&p_folder, &plan);
-                }
-            }
+        if let Some(reason) = &block_reason {
+            job.status = JobStatus::Blocked;
+            job.status_message = Some(reason.clone());
+            job.completed_at = Some(Utc::now());
+        } else {
+            job.status = JobStatus::Queued;
         }
 
-        // Persist to DB and memory
-        {
-            let mut map = self.jobs.write().await;
-            map.insert(job_id.clone(), job.clone());
+        // Move the plan to its in-flight (or Blocked) state.
+        let target_plan_state = if block_reason.is_some() {
+            Some(PlanStatus::Blocked)
+        } else {
+            in_flight_plan_state(&job_type)
+        };
+        if let Some(state) = target_plan_state {
+            self.set_plan_state(&plan_folder, state);
         }
 
-        let db_path = crate::config::get_database_path(&self.tendril_home);
-        if let Ok(conn) = open_database(&db_path) {
-            let _ = insert_job(&conn, &job);
+        // Allocate the ID and insert the row under one lock, so a concurrent start cannot reuse it.
+        let job_id = {
+            let _guard = self.alloc_lock.lock().await;
+            let job_id = self.allocate_job_id().await?;
+            job.id = job_id.clone();
+
+            let db_path = crate::config::get_database_path(&self.tendril_home);
+            let conn = open_database(&db_path)?;
+            insert_new_job(&conn, &job).map_err(|e| {
+                TendrilError::Other(format!("Failed to persist job {}: {}", job_id, e))
+            })?;
+
+            self.jobs.write().await.insert(job_id.clone(), job.clone());
+            job_id
+        };
+
+        if block_reason.is_some() {
+            return Ok(job_id);
         }
 
-        // Spawn async execution
-        let tendril_home_clone = self.tendril_home.clone();
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let pid = Arc::new(AtomicU32::new(0));
+        let completion_claimed = Arc::new(AtomicBool::new(false));
+        self.handles.write().await.insert(
+            job_id.clone(),
+            JobHandle {
+                cancel_tx,
+                pid: pid.clone(),
+                completion_claimed: completion_claimed.clone(),
+            },
+        );
+
+        self.spawn_runner(job, cancel_rx, pid, completion_claimed, settings);
+
+        Ok(job_id)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn spawn_runner(
+        &self,
+        mut job: JobItem,
+        cancel_rx: watch::Receiver<bool>,
+        pid: Arc<AtomicU32>,
+        completion_claimed: Arc<AtomicBool>,
+        settings: TendrilSettings,
+    ) {
+        let tendril_home = self.tendril_home.clone();
         let jobs_map = self.jobs.clone();
+        let handles = self.handles.clone();
         let sem = self.semaphore.clone();
-        let job_id_clone = job_id.clone();
+        let spec_builder = self.spec_builder.clone();
+        let timeout = self
+            .job_timeout_override
+            .or_else(|| job_timeout_duration(&settings));
 
         tokio::spawn(async move {
+            let job_id = job.id.clone();
             let _permit = match sem.acquire().await {
                 Ok(p) => p,
                 Err(_) => return,
             };
 
-            // Transition to Running
-            {
-                let mut map = jobs_map.write().await;
-                if let Some(j) = map.get_mut(&job_id_clone) {
-                    j.status = JobStatus::Running;
+            // A job cancelled while it was still queued never had a process; cancel_job has already
+            // written its terminal state, so there is nothing left to do.
+            if *cancel_rx.borrow() {
+                return;
+            }
+
+            job.status = JobStatus::Running;
+            persist(&tendril_home, &jobs_map, &job).await;
+
+            let promptware_folder = tendril_home.join("Promptwares").join(&job.job_type);
+            if !promptware_folder.is_dir() {
+                let msg = format!(
+                    "Promptware folder not found: {}",
+                    promptware_folder.display()
+                );
+                finish_job(
+                    &tendril_home,
+                    &jobs_map,
+                    &handles,
+                    &completion_claimed,
+                    job,
+                    JobStatus::Failed,
+                    msg,
+                    None,
+                )
+                .await;
+                return;
+            }
+
+            let values = build_firmware_values(&job, &tendril_home, &settings);
+            let compiled_prompt = match compile_firmware(&promptware_folder, &values) {
+                Ok(p) => p,
+                Err(e) => {
+                    let msg = format!(
+                        "Failed to compile firmware from {}: {}",
+                        promptware_folder.display(),
+                        e
+                    );
+                    finish_job(
+                        &tendril_home,
+                        &jobs_map,
+                        &handles,
+                        &completion_claimed,
+                        job,
+                        JobStatus::Failed,
+                        msg,
+                        None,
+                    )
+                    .await;
+                    return;
+                }
+            };
+
+            if let Err(e) = write_prompt(&tendril_home, &job_id, &compiled_prompt) {
+                tracing::warn!("Failed to persist prompt for job {}: {}", job_id, e);
+            }
+
+            let working_dir =
+                resolve_working_directory(&job, &settings, &tendril_home, &promptware_folder);
+
+            if let Ok((plan, _)) = read_plan_yaml(Path::new(&job.plan_file)) {
+                if let Some(profile) = execution_profile_override(&job, &plan) {
+                    job.execution_profile = Some(profile);
                 }
             }
 
-            let start_time = std::time::Instant::now();
-            let mut promptware_values = HashMap::new();
-            promptware_values.insert("TendrilJobId".to_string(), job_id_clone.clone());
-
-            let promptware_folder = tendril_home_clone.join("Promptwares").join(&job_type);
-            let compiled_prompt = if promptware_folder.exists() {
-                compile_firmware(&promptware_folder, &promptware_values)
-                    .unwrap_or_else(|_| "Execute job".to_string())
-            } else {
-                format!("Execute {} for plan {}", job_type, plan_folder_str)
-            };
-
-            let working_dir = if !plan_folder_str.is_empty() {
-                PathBuf::from(&plan_folder_str)
-            } else {
-                tendril_home_clone.clone()
-            };
-
             let launch_config = AgentLaunchConfig {
                 prompt: compiled_prompt,
-                working_directory: working_dir,
+                working_directory: working_dir.clone(),
                 model: job.model.clone(),
                 effort: job.effort.clone(),
                 ..Default::default()
             };
 
-            let spec = build_agent_spec(&job.provider, &launch_config);
+            let spec = (spec_builder)(&job.provider, &launch_config);
+            job.working_directory = Some(working_dir.to_string_lossy().to_string());
+            job.cli_command = Some(format!("{} {}", spec.command, spec.args.join(" ")));
 
-            let th = tendril_home_clone.clone();
-            let jid = job_id_clone.clone();
+            let start_time = std::time::Instant::now();
+            let th = tendril_home.clone();
+            let jid = job_id.clone();
+            let pid_slot = pid.clone();
+            let jobs_for_pid = jobs_map.clone();
+            let home_for_pid = tendril_home.clone();
+            let job_for_pid = job.clone();
 
-            let run_res = run_agent_process(spec, move |evt| {
-                let _ = append_to_raw_log(&th, &jid, &evt.raw_line);
-                let _ = append_to_eventwire(&th, &jid, &evt.raw_line);
-            })
+            let run_res = run_agent_process(
+                spec,
+                move |evt| {
+                    let _ = append_to_raw_log(&th, &jid, &evt.raw_line);
+                    let _ = append_to_eventwire(&th, &jid, &evt.raw_line);
+                },
+                move |spawned_pid| {
+                    pid_slot.store(spawned_pid, Ordering::SeqCst);
+                    // Persist the PID immediately: startup reconciliation uses it to tell a
+                    // detached agent from an interrupted one.
+                    let mut with_pid = job_for_pid;
+                    with_pid.process_id = Some(spawned_pid);
+                    tokio::spawn(async move {
+                        persist(&home_for_pid, &jobs_for_pid, &with_pid).await;
+                    });
+                },
+                cancel_rx,
+                timeout,
+            )
             .await;
 
+            job.process_id = Some(pid.load(Ordering::SeqCst)).filter(|p| *p != 0);
             let duration = start_time.elapsed().as_secs() as i64;
-            let (final_status, msg) = match run_res {
-                Ok(0) => (JobStatus::Completed, "Completed successfully".to_string()),
-                Ok(code) => (
-                    JobStatus::Failed,
-                    format!("Process exited with code {}", code),
-                ),
-                Err(e) => (JobStatus::Failed, format!("Execution failed: {}", e)),
-            };
+            let (final_status, msg) = classify_outcome(run_res, timeout);
 
-            // Update in-memory & DB
-            {
-                let mut map = jobs_map.write().await;
-                if let Some(j) = map.get_mut(&job_id_clone) {
-                    j.status = final_status;
-                    j.completed_at = Some(Utc::now());
-                    j.duration_seconds = Some(duration);
-                    j.status_message = Some(msg);
-
-                    // If completed, update plan state if needed
-                    if !j.plan_file.is_empty() && final_status == JobStatus::Completed {
-                        let pf = PathBuf::from(&j.plan_file);
-                        if pf.exists() {
-                            if let Ok((mut plan, _)) = read_plan_yaml(&pf) {
-                                if j.job_type == "ExecutePlan" {
-                                    plan.state = PlanStatus::Review.to_string();
-                                } else if j.job_type == "CreatePlan" || j.job_type == "UpdatePlan" {
-                                    plan.state = PlanStatus::Draft.to_string();
-                                }
-                                plan.updated = Utc::now();
-                                let _ = write_plan_yaml(&pf, &plan);
-                            }
-                        }
-                    }
-
-                    let db_path = crate::config::get_database_path(&tendril_home_clone);
-                    if let Ok(conn) = open_database(&db_path) {
-                        let _ = insert_job(&conn, j);
-                    }
-                }
-            }
+            finish_job(
+                &tendril_home,
+                &jobs_map,
+                &handles,
+                &completion_claimed,
+                job,
+                final_status,
+                msg,
+                Some(duration),
+            )
+            .await;
         });
+    }
 
-        Ok(job_id)
+    fn set_plan_state(&self, plan_folder: &Path, state: PlanStatus) {
+        apply_plan_state(plan_folder, state);
     }
 
     pub async fn get_job(&self, id: &str) -> Result<Option<JobItem>> {
@@ -221,57 +368,92 @@ impl JobManager {
         plan_id: Option<&str>,
         plan_title: Option<&str>,
     ) -> Result<bool> {
-        let mut map = self.jobs.write().await;
-        if let Some(job) = map.get_mut(id) {
-            job.status_message = Some(message.to_string());
-            if let Some(pid) = plan_id {
-                job.reported_plan_id = Some(pid.to_string());
-            }
-            if let Some(title) = plan_title {
-                job.reported_plan_title = Some(title.to_string());
-            }
+        let Some(mut job) = self.get_job(id).await? else {
+            return Ok(false);
+        };
 
-            let db_path = crate::config::get_database_path(&self.tendril_home);
-            if let Ok(conn) = open_database(&db_path) {
-                let _ = insert_job(&conn, job);
-            }
-            return Ok(true);
+        job.status_message = Some(message.to_string());
+        if let Some(pid) = plan_id {
+            job.reported_plan_id = Some(pid.to_string());
         }
-        Ok(false)
+        if let Some(title) = plan_title {
+            job.reported_plan_title = Some(title.to_string());
+        }
+
+        persist(&self.tendril_home, &self.jobs, &job).await;
+        Ok(true)
     }
 
     pub async fn report_job_failure(&self, id: &str, message: &str) -> Result<bool> {
-        let mut map = self.jobs.write().await;
-        if let Some(job) = map.get_mut(id) {
-            job.status = JobStatus::Failed;
-            job.reported_failure_reason = Some(message.to_string());
-            job.completed_at = Some(Utc::now());
+        let Some(mut job) = self.get_job(id).await? else {
+            return Ok(false);
+        };
 
-            let db_path = crate::config::get_database_path(&self.tendril_home);
-            if let Ok(conn) = open_database(&db_path) {
-                let _ = insert_job(&conn, job);
-            }
-            return Ok(true);
-        }
-        Ok(false)
+        job.status = JobStatus::Failed;
+        job.reported_failure_reason = Some(message.to_string());
+        job.completed_at = Some(Utc::now());
+
+        persist(&self.tendril_home, &self.jobs, &job).await;
+        Ok(true)
     }
 
+    /// Stops a job and everything it spawned.
+    ///
+    /// The cancel flag is raised before the completion claim, so an agent exiting at this exact
+    /// instant still sees it and cannot flip the plan to `Review` behind the cancellation. Returns
+    /// `false` when the job does not exist or had already finished.
     pub async fn cancel_job(&self, id: &str, message: Option<&str>) -> Result<bool> {
-        let mut map = self.jobs.write().await;
-        if let Some(job) = map.get_mut(id) {
-            job.status = JobStatus::Stopped;
-            if let Some(msg) = message {
-                job.status_message = Some(msg.to_string());
-            }
-            job.completed_at = Some(Utc::now());
+        let handle_state = {
+            let handles = self.handles.read().await;
+            handles.get(id).map(|h| {
+                let _ = h.cancel_tx.send(true);
+                (h.pid.clone(), h.completion_claimed.clone())
+            })
+        };
 
-            let db_path = crate::config::get_database_path(&self.tendril_home);
-            if let Ok(conn) = open_database(&db_path) {
-                let _ = insert_job(&conn, job);
+        let mut killed_pid = None;
+        if let Some((pid, completion_claimed)) = &handle_state {
+            if !claim(completion_claimed) {
+                // The job finished on its own first; its terminal state stands.
+                return Ok(false);
             }
-            return Ok(true);
+            let p = pid.load(Ordering::SeqCst);
+            if p != 0 {
+                let _ = tokio::task::spawn_blocking(move || kill_tree(p, DEFAULT_KILL_GRACE)).await;
+                killed_pid = Some(p);
+            }
         }
-        Ok(false)
+
+        let Some(mut job) = self.get_job(id).await? else {
+            return Ok(false);
+        };
+
+        if handle_state.is_none() {
+            // A job this process did not start (e.g. after a restart): kill by recorded PID.
+            if let Some(p) = job
+                .process_id
+                .filter(|p| crate::config::is_process_running(*p))
+            {
+                let _ = tokio::task::spawn_blocking(move || kill_tree(p, DEFAULT_KILL_GRACE)).await;
+                killed_pid = Some(p);
+            }
+            if is_terminal(job.status) {
+                return Ok(false);
+            }
+        }
+
+        if let Some(p) = killed_pid {
+            tracing::info!("Job {}: killed process tree {}", id, p);
+        }
+
+        job.status = JobStatus::Stopped;
+        job.status_message = Some(message.unwrap_or("Cancelled").to_string());
+        job.completed_at = Some(Utc::now());
+        revert_plan_state(&job);
+        persist(&self.tendril_home, &self.jobs, &job).await;
+        self.handles.write().await.remove(id);
+
+        Ok(true)
     }
 
     pub fn add_log(&self, id: &str, action: &str, summary: Option<&str>) -> Result<PathBuf> {
@@ -286,5 +468,228 @@ impl JobManager {
         let db_path = crate::config::get_database_path(&self.tendril_home);
         let conn = open_database(&db_path)?;
         list_jobs(&conn, status_filter, limit).map_err(Into::into)
+    }
+
+    /// Job rows still in a non-terminal status, straight from SQLite.
+    pub async fn list_non_terminal_jobs(&self) -> Result<Vec<JobItem>> {
+        let db_path = crate::config::get_database_path(&self.tendril_home);
+        let conn = open_database(&db_path)?;
+        list_non_terminal_jobs(&conn).map_err(Into::into)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Plan state transitions
+// ---------------------------------------------------------------------------
+
+/// The state a plan takes while its job runs.
+pub fn in_flight_plan_state(job_type: &str) -> Option<PlanStatus> {
+    match job_type {
+        "ExecutePlan" | "RetryPlan" => Some(PlanStatus::Executing),
+        "CreatePlan" | "ExpandPlan" => Some(PlanStatus::Creating),
+        "UpdatePlan" | "SplitPlan" => Some(PlanStatus::Updating),
+        _ => None,
+    }
+}
+
+/// Where a plan lands when its job exits successfully.
+///
+/// `ExecutePlan` and `RetryPlan` go through the verification gate, so a plan with a `Pending` or
+/// `Fail` row — or a rejected pre-execution check — cannot reach `Review`. `CreatePr` is absent on
+/// purpose: that promptware sets `Completed` itself.
+pub fn plan_state_on_success(
+    job_type: &str,
+    plan: &PlanYaml,
+    plan_folder: &Path,
+) -> Option<PlanStatus> {
+    match job_type {
+        "ExecutePlan" | "RetryPlan" => Some(resolve_post_execution_state(plan, plan_folder)),
+        "CreatePlan" | "UpdatePlan" | "ExpandPlan" => Some(PlanStatus::Draft),
+        "SplitPlan" => Some(PlanStatus::Skipped),
+        "CreateIssue" => Some(PlanStatus::Completed),
+        _ => None,
+    }
+}
+
+/// The state to fall back to when no `previousPlanState` was captured — after a restart, say.
+pub fn fallback_previous_state(job_type: &str) -> Option<PlanStatus> {
+    match job_type {
+        "ExecutePlan" | "ExpandPlan" | "UpdatePlan" | "SplitPlan" | "CreatePlan" => {
+            Some(PlanStatus::Draft)
+        }
+        "RetryPlan" => Some(PlanStatus::Review),
+        _ => None,
+    }
+}
+
+/// Resolves the state a plan should be restored to after a failed, timed-out or cancelled job.
+/// `Blocked` maps to `Draft`: re-entering `Blocked` without re-running the gate would strand the plan.
+pub fn revert_target(previous_plan_state: Option<&str>, job_type: &str) -> Option<PlanStatus> {
+    let target = previous_plan_state
+        .and_then(PlanStatus::from_str_loose)
+        .or_else(|| fallback_previous_state(job_type))?;
+
+    Some(if target == PlanStatus::Blocked {
+        PlanStatus::Draft
+    } else {
+        target
+    })
+}
+
+/// Restores the plan to its pre-job state. No-op for jobs without a plan.
+pub fn revert_plan_state(job: &JobItem) {
+    if job.plan_file.is_empty() {
+        return;
+    }
+    if let Some(target) = revert_target(job.previous_plan_state.as_deref(), &job.job_type) {
+        apply_plan_state(Path::new(&job.plan_file), target);
+    }
+}
+
+/// Writes a plan state through [`PlanCompletionGuard`], so the `Completed`-over-`Fail` rule holds for
+/// every transition the job engine makes.
+pub(crate) fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
+    if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
+        return;
+    }
+    let Ok((mut plan, _)) = read_plan_yaml(plan_folder) else {
+        return;
+    };
+    let plan_id = plan_folder
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+
+    match PlanCompletionGuard::apply_state(&mut plan, state, false, plan_id) {
+        Ok(warning) => {
+            if let Some(w) = warning {
+                tracing::warn!("{}", w);
+            }
+            plan.updated = Utc::now();
+            if let Err(e) = write_plan_yaml(plan_folder, &plan) {
+                tracing::warn!("Failed to write plan state for {}: {}", plan_id, e);
+            }
+        }
+        Err(e) => tracing::warn!("Plan {} state transition refused: {}", plan_id, e),
+    }
+}
+
+fn read_plan_state(plan_folder: &Path) -> Option<PlanStatus> {
+    if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
+        return None;
+    }
+    read_plan_yaml(plan_folder)
+        .ok()
+        .and_then(|(plan, _)| PlanStatus::from_str_loose(&plan.state))
+}
+
+// ---------------------------------------------------------------------------
+// Completion
+// ---------------------------------------------------------------------------
+
+fn is_terminal(status: JobStatus) -> bool {
+    matches!(
+        status,
+        JobStatus::Completed | JobStatus::Failed | JobStatus::Timeout | JobStatus::Stopped
+    )
+}
+
+fn job_timeout_duration(settings: &TendrilSettings) -> Option<Duration> {
+    if settings.job_timeout > 0 {
+        Some(Duration::from_secs(settings.job_timeout as u64 * 60))
+    } else {
+        None
+    }
+}
+
+fn classify_outcome(
+    run_res: Result<AgentRunOutcome>,
+    timeout: Option<Duration>,
+) -> (JobStatus, String) {
+    match run_res {
+        Ok(outcome) => match outcome.terminated {
+            TerminationReason::Exited => match outcome.exit_code {
+                Some(0) => (JobStatus::Completed, "Completed successfully".to_string()),
+                Some(code) => (
+                    JobStatus::Failed,
+                    format!("Process exited with code {}", code),
+                ),
+                None => (
+                    JobStatus::Failed,
+                    "Process terminated without an exit code".to_string(),
+                ),
+            },
+            TerminationReason::Cancelled => (JobStatus::Stopped, "Cancelled".to_string()),
+            TerminationReason::TimedOut => (
+                JobStatus::Timeout,
+                format!(
+                    "Job timed out after {} seconds",
+                    timeout.map(|t| t.as_secs()).unwrap_or_default()
+                ),
+            ),
+        },
+        Err(e) => (JobStatus::Failed, format!("Execution failed: {}", e)),
+    }
+}
+
+/// Writes a job's terminal state and moves its plan, claiming completion first so a simultaneous
+/// cancellation cannot be overwritten.
+#[allow(clippy::too_many_arguments)]
+async fn finish_job(
+    tendril_home: &Path,
+    jobs_map: &Arc<RwLock<HashMap<String, JobItem>>>,
+    handles: &Arc<RwLock<HashMap<String, JobHandle>>>,
+    completion_claimed: &AtomicBool,
+    mut job: JobItem,
+    final_status: JobStatus,
+    msg: String,
+    duration_seconds: Option<i64>,
+) {
+    if !claim(completion_claimed) {
+        // Cancellation got there first and has already written the terminal state.
+        return;
+    }
+
+    job.status = final_status;
+    job.completed_at = Some(Utc::now());
+    job.duration_seconds = duration_seconds;
+    job.status_message = Some(match &job.reported_failure_reason {
+        Some(reason) if final_status == JobStatus::Failed => reason.clone(),
+        _ => msg,
+    });
+
+    if final_status == JobStatus::Completed {
+        let plan_folder = PathBuf::from(&job.plan_file);
+        if plan_folder.is_dir() {
+            if let Ok((plan, _)) = read_plan_yaml(&plan_folder) {
+                if let Some(state) = plan_state_on_success(&job.job_type, &plan, &plan_folder) {
+                    apply_plan_state(&plan_folder, state);
+                }
+            }
+        }
+    } else {
+        revert_plan_state(&job);
+    }
+
+    persist(tendril_home, jobs_map, &job).await;
+    handles.write().await.remove(&job.id);
+}
+
+/// Writes a job to the in-memory map and SQLite.
+async fn persist(
+    tendril_home: &Path,
+    jobs_map: &Arc<RwLock<HashMap<String, JobItem>>>,
+    job: &JobItem,
+) {
+    jobs_map.write().await.insert(job.id.clone(), job.clone());
+
+    let db_path = crate::config::get_database_path(tendril_home);
+    match open_database(&db_path) {
+        Ok(conn) => {
+            if let Err(e) = insert_job(&conn, job) {
+                tracing::warn!("Failed to persist job {}: {}", job.id, e);
+            }
+        }
+        Err(e) => tracing::warn!("Failed to open database to persist job {}: {}", job.id, e),
     }
 }
