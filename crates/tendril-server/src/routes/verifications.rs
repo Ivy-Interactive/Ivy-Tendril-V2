@@ -7,6 +7,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use tendril_core::config::{load_config, save_config};
+use tendril_core::db::open_database;
 use tendril_core::models::VerificationConfig;
 
 #[derive(Debug, Deserialize)]
@@ -20,7 +21,9 @@ pub struct CreateVerificationRequest {
 pub struct UpdateVerificationRequest {
     #[serde(default)]
     pub name: Option<String>,
-    pub prompt: String,
+    #[serde(rename = "newName", alias = "new_name")]
+    pub new_name: Option<String>,
+    pub prompt: Option<String>,
 }
 
 pub async fn list_verifications(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -106,16 +109,6 @@ pub async fn update_verification(
     Path(name): Path<String>,
     Json(req): Json<UpdateVerificationRequest>,
 ) -> impl IntoResponse {
-    if let Some(new_name) = &req.name {
-        if !new_name.eq_ignore_ascii_case(&name) {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Verification name cannot be changed" })),
-            )
-                .into_response();
-        }
-    }
-
     let mut settings = match load_config(&state.config_path) {
         Ok(s) => s,
         Err(e) => {
@@ -140,7 +133,49 @@ pub async fn update_verification(
             .into_response();
     };
 
-    settings.verifications[idx].prompt = req.prompt;
+    let rename_target = req.new_name.or(req.name);
+    let mut renamed_to: Option<String> = None;
+    if let Some(target) = rename_target {
+        let trimmed = target.trim().to_string();
+        if trimmed.is_empty() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Verification name cannot be empty" })),
+            )
+                .into_response();
+        }
+
+        if !trimmed.eq_ignore_ascii_case(&name) {
+            if settings
+                .verifications
+                .iter()
+                .any(|v| v.name.eq_ignore_ascii_case(&trimmed))
+            {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(json!({ "error": format!("Verification '{}' already exists", trimmed) })),
+                )
+                    .into_response();
+            }
+
+            settings.verifications[idx].name = trimmed.clone();
+
+            for p in &mut settings.projects {
+                for v in &mut p.verifications {
+                    if v.name.eq_ignore_ascii_case(&name) {
+                        v.name = trimmed.clone();
+                    }
+                }
+            }
+
+            renamed_to = Some(trimmed);
+        }
+    }
+
+    if let Some(prompt) = req.prompt {
+        settings.verifications[idx].prompt = prompt;
+    }
+
     let updated = settings.verifications[idx].clone();
 
     if let Err(e) = save_config(&state.config_path, &settings) {
@@ -149,6 +184,14 @@ pub async fn update_verification(
             Json(json!({ "error": format!("Failed to save config: {}", e) })),
         )
             .into_response();
+    }
+
+    if let Some(new_name) = renamed_to {
+        let _ =
+            tendril_core::plans::rename_verification_in_plans(&state.plans_dir, &name, &new_name);
+        if let Ok(conn) = open_database(&state.db_path) {
+            let _ = tendril_core::db::rename_verification(&conn, &name, &new_name);
+        }
     }
 
     (StatusCode::OK, Json(updated)).into_response()
