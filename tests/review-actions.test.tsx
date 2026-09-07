@@ -62,7 +62,7 @@ describe("ReviewView recommendations", () => {
 
     expect(listRecommendations).toHaveBeenCalledWith("00021");
     expect(screen.getByText("Deep Link Protocol Handler")).toBeInTheDocument();
-    expect(screen.getByText("Declined: Not now")).toBeInTheDocument();
+    expect(screen.getByText("Decline reason: Not now")).toBeInTheDocument();
     // A declined recommendation offers no further triage buttons.
     expect(screen.getAllByRole("button", { name: "Accept" })).toHaveLength(1);
   });
@@ -110,6 +110,10 @@ describe("ReviewView recommendations", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    expect(
+      screen.getByTestId("recommendation-note-dialog")
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     await waitFor(() =>
       expect(setRecommendationState).toHaveBeenCalledWith(
@@ -137,6 +141,10 @@ describe("ReviewView recommendations", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    expect(
+      screen.getByTestId("recommendation-note-dialog")
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     await waitFor(() =>
       expect(screen.getByTestId("review-action-error")).toHaveTextContent(
@@ -162,6 +170,10 @@ describe("ReviewView recommendations", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+    expect(
+      screen.getByTestId("recommendation-note-dialog")
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     await waitFor(() =>
       expect(setRecommendationState).toHaveBeenCalledWith(
@@ -171,6 +183,112 @@ describe("ReviewView recommendations", () => {
         undefined
       )
     );
+  });
+
+  it("accepts recommendation with note and records AcceptedWithNotes", async () => {
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
+      recommendation(),
+    ]);
+    const setRecommendationState = vi
+      .spyOn(bridge, "setRecommendationState")
+      .mockResolvedValue(undefined);
+
+    renderReview();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument()
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+
+    expect(
+      screen.getByTestId("recommendation-note-dialog")
+    ).toBeInTheDocument();
+    const textarea = screen.getByRole("textbox", { name: /optional note/i });
+    fireEvent.change(textarea, { target: { value: "Ship in next release" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() =>
+      expect(setRecommendationState).toHaveBeenCalledWith(
+        "00021",
+        "Tauri WebDriver E2E Automation",
+        "AcceptedWithNotes",
+        "Ship in next release"
+      )
+    );
+
+    expect(screen.getByText("AcceptedWithNotes")).toBeInTheDocument();
+    expect(screen.getByText("Notes: Ship in next release")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("recommendation-note-dialog")
+    ).not.toBeInTheDocument();
+  });
+
+  it("declines recommendation with reason and records declineReason", async () => {
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
+      recommendation(),
+    ]);
+    const setRecommendationState = vi
+      .spyOn(bridge, "setRecommendationState")
+      .mockResolvedValue(undefined);
+
+    renderReview();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument()
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Decline" }));
+
+    expect(
+      screen.getByTestId("recommendation-note-dialog")
+    ).toBeInTheDocument();
+    const textarea = screen.getByRole("textbox", { name: /decline reason/i });
+    fireEvent.change(textarea, { target: { value: "Out of scope for this milestone" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    await waitFor(() =>
+      expect(setRecommendationState).toHaveBeenCalledWith(
+        "00021",
+        "Tauri WebDriver E2E Automation",
+        "Declined",
+        "Out of scope for this milestone"
+      )
+    );
+
+    expect(screen.getByText("Declined")).toBeInTheDocument();
+    expect(
+      screen.getByText("Decline reason: Out of scope for this milestone")
+    ).toBeInTheDocument();
+  });
+
+  it("canceling the dialog leaves recommendation in Pending", async () => {
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([
+      recommendation(),
+    ]);
+    const setRecommendationState = vi
+      .spyOn(bridge, "setRecommendationState")
+      .mockResolvedValue(undefined);
+
+    renderReview();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument()
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    expect(
+      screen.getByTestId("recommendation-note-dialog")
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(
+      screen.queryByTestId("recommendation-note-dialog")
+    ).not.toBeInTheDocument();
+    expect(setRecommendationState).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
   });
 });
 
