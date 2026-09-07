@@ -1,16 +1,40 @@
 import React, { useState, useRef, useEffect } from "react";
-import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
 import { VoiceRecorder, type VoiceStatus } from "./voice-recorder";
 import "./content-input.css";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
 
-if (typeof window !== "undefined") {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-}
+type PdfJsLib = typeof import("pdfjs-dist");
+let pdfjsPromise: Promise<PdfJsLib> | null = null;
 
-const PdfThumbnail: React.FC<{ url: string }> = ({ url }) => {
+export const loadPdfJs = async (): Promise<PdfJsLib> => {
+  if (!pdfjsPromise) {
+    pdfjsPromise = Promise.all([
+      import("pdfjs-dist"),
+      import("pdfjs-dist/build/pdf.worker.mjs?url"),
+    ])
+      .then(([pdfjsLib, workerModule]) => {
+        const lib = (pdfjsLib as any).getDocument
+          ? pdfjsLib
+          : ((pdfjsLib as any).default ?? pdfjsLib);
+        if (typeof window !== "undefined" && lib.GlobalWorkerOptions) {
+          lib.GlobalWorkerOptions.workerSrc = workerModule.default;
+        }
+        return lib;
+      })
+      .catch((err) => {
+        pdfjsPromise = null;
+        throw err;
+      });
+  }
+  return pdfjsPromise;
+};
+
+export const resetPdfJsCacheForTest = () => {
+  pdfjsPromise = null;
+};
+
+export const PdfThumbnail: React.FC<{ url: string }> = ({ url }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState(false);
 
@@ -19,6 +43,8 @@ const PdfThumbnail: React.FC<{ url: string }> = ({ url }) => {
 
     const renderPdf = async () => {
       try {
+        const pdfjsLib = await loadPdfJs();
+        if (!active) return;
         const loadingTask = pdfjsLib.getDocument({ url });
         const pdf = await loadingTask.promise;
         if (!active) return;
