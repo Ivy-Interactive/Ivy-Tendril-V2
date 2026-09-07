@@ -1,6 +1,8 @@
 import { useMemo } from "react";
-import { parseQuestions } from "@spacecorps/components-storybook/tendril";
 import type { ChatMessage } from "../types/chat";
+import { extractPlanQuestions, extractQuestionsFences } from "../utils/questionMarkdown";
+
+export { extractPlanQuestions, extractQuestionsFences };
 
 export interface PendingQuestionItem {
   messageIndex: number;
@@ -13,62 +15,6 @@ export interface PendingQuestionItem {
 export interface UsePendingChatQuestionsOptions {
   messages: ChatMessage[];
   visibleRange?: { startIndex: number; endIndex: number };
-}
-
-/**
- * Extracts raw fence bodies for fenced code blocks with info string "questions".
- * Follows CommonMark fence rules (supporting 3+ backticks or tildes).
- */
-export function extractQuestionsFences(markdown: string): string[] {
-  if (!markdown) return [];
-
-  const lines = markdown.split(/\r?\n/);
-  const bodies: string[] = [];
-  let inFence = false;
-  let fenceChar = "";
-  let fenceLength = 0;
-  let currentBody: string[] = [];
-
-  for (const line of lines) {
-    const trimmedStart = line.trimStart();
-    const indent = line.length - trimmedStart.length;
-
-    if (!inFence) {
-      if (indent <= 3) {
-        const match = trimmedStart.match(/^(`{3,}|~{3,})(.*)$/);
-        if (match) {
-          const delim = match[1];
-          const char = delim[0];
-          const info = match[2].trim();
-          const firstWord = info.split(/\s+/)[0];
-          if (firstWord === "questions") {
-            inFence = true;
-            fenceChar = char;
-            fenceLength = delim.length;
-            currentBody = [];
-            continue;
-          }
-        }
-      }
-    } else {
-      if (indent <= 3) {
-        const closeMatch = trimmedStart.match(/^(`{3,}|~{3,})\s*$/);
-        if (closeMatch && closeMatch[1][0] === fenceChar && closeMatch[1].length >= fenceLength) {
-          bodies.push(currentBody.join("\n"));
-          inFence = false;
-          currentBody = [];
-          continue;
-        }
-      }
-      currentBody.push(line);
-    }
-  }
-
-  if (inFence && currentBody.length > 0) {
-    bodies.push(currentBody.join("\n"));
-  }
-
-  return bodies;
 }
 
 /**
@@ -85,21 +31,10 @@ export function detectPendingQuestions(
     const msg = messages[i];
     if (msg.role !== "assistant" || !msg.content) continue;
 
-    const fenceBodies = extractQuestionsFences(msg.content);
-    if (fenceBodies.length === 0) continue;
+    const questions = extractPlanQuestions(msg.content);
+    if (questions.length === 0) continue;
 
-    const pendingQuestionIds: string[] = [];
-
-    for (const body of fenceBodies) {
-      const parsed = parseQuestions(body);
-      if (parsed.kind === "questions") {
-        for (const q of parsed.questions) {
-          if (!q.answerPresent) {
-            pendingQuestionIds.push(q.id);
-          }
-        }
-      }
-    }
+    const pendingQuestionIds = questions.filter((q) => !q.answerPresent).map((q) => q.id);
 
     if (pendingQuestionIds.length > 0) {
       let isScrolledOutOfView = false;
