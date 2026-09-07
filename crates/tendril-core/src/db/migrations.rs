@@ -89,6 +89,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_costs_plan ON Costs(PlanId);
         CREATE INDEX IF NOT EXISTS idx_costs_plan_logtimestamp ON Costs(PlanId, LogTimestamp);
+        CREATE INDEX IF NOT EXISTS idx_costs_logtimestamp ON Costs(LogTimestamp);
 
         CREATE TABLE IF NOT EXISTS Recommendations (
             Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,7 +163,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_owner_repo ON PrStatuses(Owner, Repo);
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_status ON PrStatuses(Status);
 
-        PRAGMA user_version = 23;
+        PRAGMA user_version = 24;
         "#,
     )?;
 

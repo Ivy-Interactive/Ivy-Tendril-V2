@@ -744,3 +744,224 @@ async fn test_project_issues_routes_not_found() {
         .unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn test_project_crud_lifecycle_and_unknown_keys_preservation() {
+    let server = start_test_server(None).await;
+    let master = read_master(&server.tendril_home).expect("master discovery exists");
+
+    // Write initial config with unmodeled keys
+    let config_path = server.tendril_home.join("config.yaml");
+    let initial_yaml = r#"
+codingAgent: claude
+jobTimeout: 30
+editor:
+  command: code
+  args: ["-n"]
+customSettings:
+  nestedKey: 42
+projects: []
+"#;
+    std::fs::write(&config_path, initial_yaml).unwrap();
+
+    let client = reqwest::Client::new();
+    let base_url = format!("http://{}:{}", master.host, master.port);
+
+    // 1. Register a new project via POST /api/projects
+    let create_payload = serde_json::json!({
+        "name": "WidgetService",
+        "color": "Green",
+        "repos": [
+            { "path": "/repos/widget-service", "baseBranch": "main" }
+        ],
+        "verifications": [
+            { "name": "RustBuild", "required": true }
+        ],
+        "context": "Context description",
+        "stackHash": "rs:axum",
+        "reviewActions": [
+            { "name": "TestRun", "condition": "", "command": "echo test" }
+        ],
+        "buildDependencies": ["dep-a"]
+    });
+
+    let create_resp = client
+        .post(format!("{}/api/projects", base_url))
+        .bearer_auth(&master.secret)
+        .json(&create_payload)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+    let created_json: serde_json::Value = create_resp.json().await.unwrap();
+    assert_eq!(created_json["name"], "WidgetService");
+    assert_eq!(created_json["color"], "Green");
+    assert_eq!(created_json["repos"][0]["path"], "/repos/widget-service");
+    assert_eq!(created_json["repos"][0]["baseBranch"], "main");
+    assert_eq!(created_json["verifications"][0]["name"], "RustBuild");
+    assert_eq!(created_json["reviewActions"][0]["name"], "TestRun");
+
+    // 2. Attempt to register the same project name again -> 409 Conflict
+    let dup_resp = client
+        .post(format!("{}/api/projects", base_url))
+        .bearer_auth(&master.secret)
+        .json(&create_payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(dup_resp.status(), reqwest::StatusCode::CONFLICT);
+
+    // 3. Query GET /api/projects and GET /api/projects/:name
+    let list_resp = client
+        .get(format!("{}/api/projects", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list_resp.status(), reqwest::StatusCode::OK);
+    let projects: Vec<serde_json::Value> = list_resp.json().await.unwrap();
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0]["name"], "WidgetService");
+
+    let get_resp = client
+        .get(format!("{}/api/projects/WidgetService", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_resp.status(), reqwest::StatusCode::OK);
+    let proj: serde_json::Value = get_resp.json().await.unwrap();
+    assert_eq!(proj["name"], "WidgetService");
+    assert_eq!(proj["color"], "Green");
+
+    // 4. Update the project using PUT /api/projects/:name
+    let update_payload = serde_json::json!({
+        "color": "Purple",
+        "repos": [
+            { "path": "/repos/widget-service-updated", "baseBranch": "dev" }
+        ],
+        "verifications": [
+            { "name": "RustClippy", "required": true },
+            { "name": "RustTest", "required": false }
+        ],
+        "context": "Updated context",
+        "reviewActions": [
+            { "name": "EchoAction", "condition": "", "command": "echo updated" }
+        ]
+    });
+
+    let update_resp = client
+        .put(format!("{}/api/projects/WidgetService", base_url))
+        .bearer_auth(&master.secret)
+        .json(&update_payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update_resp.status(), reqwest::StatusCode::OK);
+    let updated_json: serde_json::Value = update_resp.json().await.unwrap();
+    assert_eq!(updated_json["color"], "Purple");
+    assert_eq!(
+        updated_json["repos"][0]["path"],
+        "/repos/widget-service-updated"
+    );
+    assert_eq!(updated_json["verifications"].as_array().unwrap().len(), 2);
+    assert_eq!(updated_json["reviewActions"][0]["name"], "EchoAction");
+
+    // 5. Verify unmodeled keys in config.yaml remain intact after mutations
+    let raw_config = std::fs::read_to_string(&config_path).unwrap();
+    assert!(raw_config.contains("editor:"));
+    assert!(raw_config.contains("command: code"));
+    assert!(raw_config.contains("customSettings:"));
+    assert!(raw_config.contains("nestedKey: 42"));
+
+    // 6. Deregister the project using DELETE /api/projects/:name
+    let del_resp = client
+        .delete(format!("{}/api/projects/WidgetService", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(del_resp.status(), reqwest::StatusCode::OK);
+    let del_json: serde_json::Value = del_resp.json().await.unwrap();
+    assert_eq!(del_json["message"], "Project 'WidgetService' removed");
+
+    // 7. Query GET /api/projects/:name -> 404 Not Found
+    let get_after_del = client
+        .get(format!("{}/api/projects/WidgetService", base_url))
+        .bearer_auth(&master.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_after_del.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_review_action_execution_streaming() {
+    let server = start_test_server(None).await;
+    let master = read_master(&server.tendril_home).expect("master discovery exists");
+
+    let client = reqwest::Client::new();
+    let base_url = format!("http://{}:{}", master.host, master.port);
+
+    // 1. Register a project with a review action
+    let project_payload = serde_json::json!({
+        "name": "StreamingProject",
+        "color": "Blue",
+        "repos": [],
+        "verifications": [],
+        "reviewActions": [
+            {
+                "name": "EchoOutput",
+                "condition": "",
+                "command": "echo line1 && echo line2"
+            }
+        ]
+    });
+
+    let create_proj_resp = client
+        .post(format!("{}/api/projects", base_url))
+        .bearer_auth(&master.secret)
+        .json(&project_payload)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_proj_resp.status(), reqwest::StatusCode::CREATED);
+
+    // 2. Create a test plan folder in plans_dir
+    let plan_dir = server.tendril_home.join("Plans").join("00001-TestPlan");
+    std::fs::create_dir_all(&plan_dir).unwrap();
+    let plan_yaml_content = r#"
+title: Test Plan
+project: StreamingProject
+level: Feature
+"#;
+    std::fs::write(plan_dir.join("plan.yaml"), plan_yaml_content).unwrap();
+
+    // 3. Trigger review action execution via POST /api/projects/:name/review-actions/:action/execute
+    let exec_resp = client
+        .post(format!(
+            "{}/api/projects/StreamingProject/review-actions/EchoOutput/execute",
+            base_url
+        ))
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({
+            "plan_id": "00001"
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(exec_resp.status(), reqwest::StatusCode::OK);
+    let sse_text = exec_resp.text().await.unwrap();
+
+    // 4. Verify SSE stream contains log events and end event
+    assert!(sse_text.contains("event: log"), "Should contain log event");
+    assert!(sse_text.contains("line1"), "Should contain stdout line 1");
+    assert!(sse_text.contains("line2"), "Should contain stdout line 2");
+    assert!(sse_text.contains("event: end"), "Should contain end event");
+    assert!(
+        sse_text.contains("Process exited with code 0"),
+        "Should indicate success code 0"
+    );
+}

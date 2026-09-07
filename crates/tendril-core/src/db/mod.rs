@@ -1,7 +1,9 @@
+pub mod costs;
 pub mod jobs;
 pub mod migrations;
 pub mod plans;
 
+pub use costs::*;
 pub use jobs::*;
 pub use migrations::*;
 pub use plans::*;

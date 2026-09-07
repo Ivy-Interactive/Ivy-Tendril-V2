@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod config;
+pub mod costs;
 pub mod health;
 pub mod inbox;
 pub mod jobs;
@@ -88,8 +89,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/jobs/:id/logs/stream", get(jobs::stream_job_logs))
         // Projects & Verifications
-        .route("/api/projects", get(projects::list_projects))
-        .route("/api/projects/:name", get(projects::get_project))
+        .route(
+            "/api/projects",
+            get(projects::list_projects).post(projects::create_project),
+        )
+        .route(
+            "/api/projects/:name",
+            get(projects::get_project)
+                .put(projects::update_project)
+                .delete(projects::delete_project),
+        )
         .route(
             "/api/projects/:name/issues",
             get(projects::get_project_issues),
@@ -98,12 +107,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/issues/metadata",
             get(projects::get_project_issues_metadata),
         )
+        .route(
+            "/api/projects/:name/review-actions/:action/execute",
+            post(projects::execute_review_action),
+        )
         .route("/api/verifications", get(verifications::list_verifications))
         // Config
         .route(
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
         )
+        // Costs
+        .route("/api/costs/summary", get(costs::get_costs_summary))
+        .route("/api/costs/series", get(costs::get_costs_series))
         // Chat
         .route(
             "/api/chat/sessions",
