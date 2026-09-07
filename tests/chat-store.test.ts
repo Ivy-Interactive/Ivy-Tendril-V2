@@ -185,4 +185,156 @@ describe("ChatStore State Management & Event Handling", () => {
       attachments,
     });
   });
+
+  describe("In-Progress Question Answers", () => {
+    it("manages in-progress question selections (set, get, clear) and syncs to storage", () => {
+      // 1. Initially undefined
+      expect(chatStore.getInProgressAnswers("msg-1")).toBeUndefined();
+
+      // 2. Set answer for question
+      chatStore.setInProgressAnswer("msg-1", "q-db", "sqlite");
+      expect(chatStore.getInProgressAnswers("msg-1")).toEqual({
+        "q-db": ["sqlite"],
+      });
+
+      // 3. Set multi-select answer
+      chatStore.setInProgressAnswer("msg-1", "q-features", ["auth", "logging"]);
+      expect(chatStore.getInProgressAnswers("msg-1")).toEqual({
+        "q-db": ["sqlite"],
+        "q-features": ["auth", "logging"],
+      });
+
+      // 4. Verify storage persistence
+      const stored = sessionStorage.getItem("tendril:chat:in_progress_answers");
+      expect(stored).not.toBeNull();
+      expect(JSON.parse(stored!)).toEqual({
+        "msg-1": {
+          "q-db": ["sqlite"],
+          "q-features": ["auth", "logging"],
+        },
+      });
+
+      // 5. Clear specific question
+      chatStore.clearInProgressAnswers("msg-1", "q-db");
+      expect(chatStore.getInProgressAnswers("msg-1")).toEqual({
+        "q-features": ["auth", "logging"],
+      });
+
+      // 6. Clear entire message
+      chatStore.clearInProgressAnswers("msg-1");
+      expect(chatStore.getInProgressAnswers("msg-1")).toBeUndefined();
+    });
+
+    it("records selection in inProgressAnswers and clears upon successful server response", async () => {
+      const sessionWithQuestion: ChatSession = {
+        ...mockSession,
+        messages: [
+          {
+            id: "msg-q",
+            role: "assistant",
+            content: "```questions\nquestions:\n  - id: db\n    title: Choose db\n```",
+            timestamp: "2026-09-07T12:00:00Z",
+          },
+        ],
+      };
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionWithQuestion]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(sessionWithQuestion);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+      let resolveApi!: (val: ChatSession) => void;
+      const apiPromise = new Promise<ChatSession>((resolve) => {
+        resolveApi = resolve;
+      });
+      vi.spyOn(chatApi, "answerQuestions").mockReturnValue(apiPromise);
+
+      await chatStore.fetchSessions();
+
+      // Initiate submission
+      const submitPromise = chatStore.submitAnswer("msg-q", "db", "postgres");
+
+      // While in flight, inProgressAnswers has the selection
+      expect(chatStore.getInProgressAnswers("msg-q")).toEqual({
+        db: ["postgres"],
+      });
+      // In-memory message content is optimistically patched
+      expect(chatStore.getState().activeSession?.messages[0].content).toContain(
+        'answer: "postgres"',
+      );
+
+      // Resolve server response
+      const updatedSession: ChatSession = {
+        ...sessionWithQuestion,
+        messages: [
+          {
+            id: "msg-q",
+            role: "assistant",
+            content:
+              "```questions\nquestions:\n  - id: db\n    answer: postgres\n    title: Choose db\n```",
+            timestamp: "2026-09-07T12:01:00Z",
+          },
+        ],
+      };
+      resolveApi(updatedSession);
+      await submitPromise;
+
+      // Upon completion, cleared from inProgressAnswers
+      expect(chatStore.getInProgressAnswers("msg-q")).toBeUndefined();
+      expect(chatStore.getState().activeSession?.messages[0].content).toContain("answer: postgres");
+    });
+
+    it("retains in-progress selection and records error when chatApi.answerQuestions rejects", async () => {
+      const sessionWithQuestion: ChatSession = {
+        ...mockSession,
+        messages: [
+          {
+            id: "msg-q2",
+            role: "assistant",
+            content: "```questions\nquestions:\n  - id: db\n    title: Choose db\n```",
+            timestamp: "2026-09-07T12:00:00Z",
+          },
+        ],
+      };
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionWithQuestion]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(sessionWithQuestion);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      vi.spyOn(chatApi, "answerQuestions").mockRejectedValue(new Error("Network timeout"));
+
+      await chatStore.fetchSessions();
+
+      await expect(chatStore.submitAnswer("msg-q2", "db", "sqlite")).rejects.toThrow(
+        "Network timeout",
+      );
+
+      // Selection must be retained so user input is not lost
+      expect(chatStore.getInProgressAnswers("msg-q2")).toEqual({
+        db: ["sqlite"],
+      });
+      expect(chatStore.getState().error).toBe("Network timeout");
+    });
+
+    it("clears inProgressAnswers and storage on resetForTesting and deleteSession", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSession]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSession);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      vi.spyOn(chatApi, "deleteSession").mockResolvedValue();
+
+      await chatStore.fetchSessions();
+      chatStore.setInProgressAnswer("msg-1", "q-test", "val");
+      expect(chatStore.getInProgressAnswers("msg-1")).toBeDefined();
+
+      // resetForTesting
+      chatStore.resetForTesting();
+      expect(chatStore.getInProgressAnswers("msg-1")).toBeUndefined();
+      expect(sessionStorage.getItem("tendril:chat:in_progress_answers")).toBeNull();
+
+      // Set again and test deleteSession
+      await chatStore.fetchSessions();
+      chatStore.setInProgressAnswer("msg-1", "q-test", "val");
+      await chatStore.deleteSession("session-1");
+      expect(chatStore.getInProgressAnswers("msg-1")).toBeUndefined();
+      expect(sessionStorage.getItem("tendril:chat:in_progress_answers")).toBeNull();
+    });
+  });
 });

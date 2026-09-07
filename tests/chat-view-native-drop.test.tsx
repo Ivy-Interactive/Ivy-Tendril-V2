@@ -24,9 +24,6 @@ vi.mock("@tauri-apps/api/webview", () => ({
 
 const scrollIntoViewMock = vi.fn();
 window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
-if (!window.HTMLElement.prototype.scrollTo) {
-  window.HTMLElement.prototype.scrollTo = vi.fn();
-}
 
 const mockSession: ChatSession = {
   id: "session-native-drop",

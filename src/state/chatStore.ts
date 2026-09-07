@@ -4,18 +4,54 @@ import type {
   ChatAttachment,
   ChatEvent,
   ChatMessage,
-  ChatQueuedItem,
   ChatSession,
+  ChatState,
+  InProgressQuestionAnswers,
 } from "../types/chat";
+import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
 
-export interface ChatState {
-  sessions: ChatSession[];
-  activeSessionId: string | null;
-  activeSession: ChatSession | null;
-  queuedItems: ChatQueuedItem[];
-  isGenerating: boolean;
-  isLoading: boolean;
-  error: string | null;
+export type { ChatState, InProgressQuestionAnswers } from "../types/chat";
+
+const IN_PROGRESS_ANSWERS_STORAGE_KEY = "tendril:chat:in_progress_answers";
+
+function loadStoredInProgressAnswers(): Record<string, InProgressQuestionAnswers> {
+  try {
+    const storage =
+      typeof sessionStorage !== "undefined"
+        ? sessionStorage
+        : typeof window !== "undefined"
+          ? window.sessionStorage
+          : null;
+    if (storage) {
+      const raw = storage.getItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    }
+  } catch {
+    // Fallback to in-memory if storage is restricted or throws
+  }
+  return {};
+}
+
+function saveStoredInProgressAnswers(data: Record<string, InProgressQuestionAnswers>): void {
+  try {
+    const storage =
+      typeof sessionStorage !== "undefined"
+        ? sessionStorage
+        : typeof window !== "undefined"
+          ? window.sessionStorage
+          : null;
+    if (storage) {
+      if (Object.keys(data).length === 0) {
+        storage.removeItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
+      } else {
+        storage.setItem(IN_PROGRESS_ANSWERS_STORAGE_KEY, JSON.stringify(data));
+      }
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
 }
 
 class ChatStore {
@@ -27,6 +63,7 @@ class ChatStore {
     isGenerating: false,
     isLoading: false,
     error: null,
+    inProgressAnswers: loadStoredInProgressAnswers(),
   };
 
   private listeners: Set<() => void> = new Set();
@@ -46,6 +83,7 @@ class ChatStore {
   }
 
   public async init(): Promise<void> {
+    this.state.inProgressAnswers = loadStoredInProgressAnswers();
     if (!this.eventUnsubscribe) {
       try {
         this.eventUnsubscribe = await onChatEvent((event) => {
@@ -74,7 +112,9 @@ class ChatStore {
       isGenerating: false,
       isLoading: false,
       error: null,
+      inProgressAnswers: {},
     };
+    saveStoredInProgressAnswers({});
     this.notify();
   }
 
@@ -133,6 +173,13 @@ class ChatStore {
 
       case "chat.question_answered": {
         if (this.state.activeSessionId === event.sessionId && this.state.activeSession) {
+          if (event.answers) {
+            for (const qId of Object.keys(event.answers)) {
+              this.clearInProgressAnswers(event.messageId, qId);
+            }
+          } else {
+            this.clearInProgressAnswers(event.messageId);
+          }
           // Refresh session to get server-rendered answered state
           this.refreshActiveSession().catch(() => {});
         }
@@ -294,6 +341,8 @@ class ChatStore {
           this.state.queuedItems = [];
         }
       }
+      this.state.inProgressAnswers = {};
+      saveStoredInProgressAnswers({});
       this.notify();
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);
@@ -362,6 +411,58 @@ class ChatStore {
     }
   }
 
+  public setInProgressAnswer(
+    messageId: string,
+    questionId: string,
+    answer: string | string[] | undefined | null,
+  ): void {
+    const values: string[] =
+      answer === undefined || answer === null
+        ? []
+        : Array.isArray(answer)
+          ? answer.map(String)
+          : answer === ""
+            ? []
+            : [String(answer)];
+
+    if (values.length === 0) {
+      if (this.state.inProgressAnswers[messageId]) {
+        delete this.state.inProgressAnswers[messageId][questionId];
+        if (Object.keys(this.state.inProgressAnswers[messageId]).length === 0) {
+          delete this.state.inProgressAnswers[messageId];
+        }
+      }
+    } else {
+      if (!this.state.inProgressAnswers[messageId]) {
+        this.state.inProgressAnswers[messageId] = {};
+      }
+      this.state.inProgressAnswers[messageId][questionId] = values;
+    }
+
+    saveStoredInProgressAnswers(this.state.inProgressAnswers);
+    this.notify();
+  }
+
+  public getInProgressAnswers(messageId: string): InProgressQuestionAnswers | undefined {
+    return this.state.inProgressAnswers[messageId];
+  }
+
+  public clearInProgressAnswers(messageId: string, questionId?: string): void {
+    if (!this.state.inProgressAnswers[messageId]) return;
+
+    if (questionId) {
+      delete this.state.inProgressAnswers[messageId][questionId];
+      if (Object.keys(this.state.inProgressAnswers[messageId]).length === 0) {
+        delete this.state.inProgressAnswers[messageId];
+      }
+    } else {
+      delete this.state.inProgressAnswers[messageId];
+    }
+
+    saveStoredInProgressAnswers(this.state.inProgressAnswers);
+    this.notify();
+  }
+
   public async submitAnswer(
     messageId: string,
     questionId: string,
@@ -369,12 +470,36 @@ class ChatStore {
   ): Promise<void> {
     if (!this.state.activeSessionId) return;
 
+    // Immediately record into inProgressAnswers
+    this.setInProgressAnswer(messageId, questionId, answer);
+
     const values =
-      answer === undefined || answer === null ? [] : Array.isArray(answer) ? answer : [answer];
+      answer === undefined || answer === null
+        ? []
+        : Array.isArray(answer)
+          ? answer.map(String)
+          : answer === ""
+            ? []
+            : [String(answer)];
 
     const answersPayload: Record<string, string[]> = {
       [questionId]: values,
     };
+
+    // Optimistically patch in-memory message content
+    if (this.state.activeSession) {
+      const messages = this.state.activeSession.messages;
+      const targetIndex = messages.findIndex((m) => m.id === messageId);
+      if (targetIndex >= 0) {
+        const targetMsg = messages[targetIndex];
+        const pendingForMsg = this.getInProgressAnswers(messageId) || { [questionId]: values };
+        messages[targetIndex] = {
+          ...targetMsg,
+          content: patchQuestionsMarkdown(targetMsg.content, pendingForMsg),
+        };
+      }
+    }
+    this.notify();
 
     try {
       const updatedSession = await chatApi.answerQuestions(
@@ -391,6 +516,7 @@ class ChatStore {
         this.state.sessions[idx] = updatedSession;
       }
 
+      this.clearInProgressAnswers(messageId, questionId);
       this.notify();
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);

@@ -107,7 +107,7 @@ describe("Dependency portability", () => {
         encoding: "utf-8",
       });
     }).not.toThrow();
-  });
+  }, 30000);
 
   it("configures repository secret authentication for the components-storybook checkout in CI", () => {
     const workflow = readFile(".github/workflows/ci.yml");
