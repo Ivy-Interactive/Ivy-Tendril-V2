@@ -649,3 +649,46 @@ fn test_doctor_warns_on_non_existent_repository_path() {
 
     let _ = std::fs::remove_dir_all(&tendril_home);
 }
+
+#[test]
+fn test_doctor_warns_on_non_git_repository_path() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-doc-non-git-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    let non_git_repo = tendril_home.join("non-git-repo");
+    std::fs::create_dir_all(&non_git_repo).unwrap();
+
+    let git_repo = tendril_home.join("git-repo");
+    std::fs::create_dir_all(git_repo.join(".git")).unwrap();
+
+    let mut settings = load_config(&cfg_path).unwrap();
+    settings.projects.push(ProjectConfig {
+        name: "DoctorNonGitProj".to_string(),
+        color: "Blue".to_string(),
+        repos: vec![
+            RepoRef {
+                path: non_git_repo.to_string_lossy().to_string(),
+                base_branch: None,
+            },
+            RepoRef {
+                path: git_repo.to_string_lossy().to_string(),
+                base_branch: None,
+            },
+        ],
+        verifications: vec![],
+        context: "".to_string(),
+        stack_hash: None,
+        review_actions: vec![],
+        build_dependencies: vec![],
+    });
+    save_config(&cfg_path, &settings).unwrap();
+
+    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home);
+    assert!(res.is_ok());
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
