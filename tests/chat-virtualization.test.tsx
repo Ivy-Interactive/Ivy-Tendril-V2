@@ -29,6 +29,9 @@ vi.mock("@spacecorps/components-storybook/tendril", async (importOriginal) => {
 });
 
 const scrollIntoViewMock = vi.fn();
+if (!window.HTMLElement.prototype.scrollTo) {
+  window.HTMLElement.prototype.scrollTo = vi.fn();
+}
 
 function buildLongSession(count: number): ChatSession {
   const messages: ChatMessage[] = [];
