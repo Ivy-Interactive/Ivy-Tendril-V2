@@ -28,3 +28,13 @@ export async function onPlanEvent(
   });
   return () => unlisten();
 }
+
+export async function onChatEvent(
+  handler: (event: import("../types/chat").ChatEvent) => void
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<import("../types/chat").ChatEvent>("chat-event", (event) => {
+    handler(event.payload);
+  });
+  return () => unlisten();
+}
+

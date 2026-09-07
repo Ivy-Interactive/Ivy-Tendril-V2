@@ -14,6 +14,7 @@ import { PlanDetailView } from "./views/PlanDetailView";
 import { JobSessionView } from "./views/JobSessionView";
 import { ReviewView } from "./views/ReviewView";
 import { SettingsView } from "./views/SettingsView";
+import { ChatView } from "./views/ChatView";
 import { InboxView } from "./views/InboxView";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
@@ -90,7 +91,10 @@ export const App: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
 
-      if (isCmdOrCtrl && e.key.toLowerCase() === "b") {
+      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        uiStore.setActiveNav("chat");
+      } else if (isCmdOrCtrl && e.key.toLowerCase() === "b") {
         e.preventDefault();
         uiStore.toggleSidebar();
       } else if (isCmdOrCtrl && e.key.toLowerCase() === "i") {
@@ -223,6 +227,16 @@ export const App: React.FC = () => {
             jobs={jobsState.jobs}
             onSelectPlan={handleSelectPlan}
             onSelectJob={handleSelectJob}
+          />
+        );
+
+      case "chat":
+        return (
+          <ChatView
+            onCreatePlan={(initialDesc) => {
+              setNewPlanPrefill({ description: initialDesc });
+              setIsNewPlanOpen(true);
+            }}
           />
         );
 

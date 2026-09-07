@@ -288,3 +288,131 @@ pub struct GitHubIssueDto {
     #[serde(default)]
     pub is_pull_request: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatAttachmentDto {
+    #[serde(alias = "Name")]
+    pub name: String,
+    #[serde(alias = "Path")]
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "MimeType")]
+    pub mime_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatMessageDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "Role")]
+    pub role: String,
+    #[serde(alias = "Content")]
+    pub content: String,
+    #[serde(alias = "Timestamp")]
+    pub timestamp: String,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "AgentId")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "ModelId")]
+    pub model_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "RawStream")]
+    pub raw_stream: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "Effort")]
+    pub effort: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatQueuedItemDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "Prompt")]
+    pub prompt: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "Attachments"
+    )]
+    pub attachments: Option<Vec<ChatAttachmentDto>>,
+    #[serde(alias = "CreatedAt")]
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSessionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "Title")]
+    pub title: String,
+    #[serde(alias = "CreatedAt")]
+    pub created_at: String,
+    #[serde(alias = "UpdatedAt")]
+    pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "AgentId")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "ModelId")]
+    pub model_id: Option<String>,
+    #[serde(default, alias = "Messages")]
+    pub messages: Vec<ChatMessageDto>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "Effort")]
+    pub effort: Option<String>,
+    #[serde(default, alias = "SpawnedJobIds")]
+    pub spawned_job_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSessionDto {
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "Title")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "AgentId")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "ModelId")]
+    pub model_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "Effort")]
+    pub effort: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PostMessageDto {
+    #[serde(alias = "Prompt")]
+    pub prompt: String,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "Enqueue")]
+    pub enqueue: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "Attachments"
+    )]
+    pub attachments: Option<Vec<ChatAttachmentDto>>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "Role")]
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteTurnDto {
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "Prompt")]
+    pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "AgentId")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "ModelId")]
+    pub model_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "Effort")]
+    pub effort: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EnqueueItemDto {
+    #[serde(alias = "Prompt")]
+    pub prompt: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "Attachments"
+    )]
+    pub attachments: Option<Vec<ChatAttachmentDto>>,
+}

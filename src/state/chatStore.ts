@@ -1,0 +1,411 @@
+import { chatApi } from "../api/chatApi";
+import { onChatEvent, type EventUnsubscribe } from "../api/events";
+import type {
+  ChatAttachment,
+  ChatEvent,
+  ChatMessage,
+  ChatQueuedItem,
+  ChatSession,
+} from "../types/chat";
+
+export interface ChatState {
+  sessions: ChatSession[];
+  activeSessionId: string | null;
+  activeSession: ChatSession | null;
+  queuedItems: ChatQueuedItem[];
+  isGenerating: boolean;
+  isLoading: boolean;
+  error: string | null;
+}
+
+class ChatStore {
+  private state: ChatState = {
+    sessions: [],
+    activeSessionId: null,
+    activeSession: null,
+    queuedItems: [],
+    isGenerating: false,
+    isLoading: false,
+    error: null,
+  };
+
+  private listeners: Set<() => void> = new Set();
+  private eventUnsubscribe: EventUnsubscribe | null = null;
+
+  public getState(): ChatState {
+    return this.state;
+  }
+
+  public subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(): void {
+    this.listeners.forEach((l) => l());
+  }
+
+  public async init(): Promise<void> {
+    if (!this.eventUnsubscribe) {
+      try {
+        this.eventUnsubscribe = await onChatEvent((event) => {
+          this.handleChatEvent(event);
+        });
+      } catch {
+        // May fail in mock/testing environments without Tauri runtime
+      }
+    }
+    await this.fetchSessions();
+  }
+
+  public destroy(): void {
+    if (this.eventUnsubscribe) {
+      this.eventUnsubscribe();
+      this.eventUnsubscribe = null;
+    }
+  }
+
+  public resetForTesting(): void {
+    this.state = {
+      sessions: [],
+      activeSessionId: null,
+      activeSession: null,
+      queuedItems: [],
+      isGenerating: false,
+      isLoading: false,
+      error: null,
+    };
+    this.notify();
+  }
+
+  public handleChatEvent(event: ChatEvent): void {
+    switch (event.type) {
+      case "chat.stream_delta": {
+        if (!this.state.activeSession || this.state.activeSession.id !== event.sessionId) {
+          return;
+        }
+        const messages = this.state.activeSession.messages;
+        const targetMsg = messages.find((m) => m.id === event.messageId);
+
+        if (targetMsg) {
+          targetMsg.content += event.delta;
+        } else {
+          // If message does not exist yet, create a streaming assistant message
+          messages.push({
+            id: event.messageId,
+            role: "assistant",
+            content: event.delta,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        this.state.isGenerating = true;
+        this.notify();
+        break;
+      }
+
+      case "chat.message_added": {
+        if (!this.state.activeSession || this.state.activeSession.id !== event.sessionId) {
+          return;
+        }
+        const messages = this.state.activeSession.messages;
+        const index = messages.findIndex((m) => m.id === event.message.id);
+        if (index >= 0) {
+          messages[index] = event.message;
+        } else {
+          messages.push(event.message);
+        }
+        this.state.activeSession.updatedAt = event.message.timestamp || new Date().toISOString();
+        this.notify();
+        break;
+      }
+
+      case "chat.generating_state": {
+        if (this.state.activeSessionId === event.sessionId) {
+          this.state.isGenerating = event.isGenerating;
+          this.notify();
+        }
+        break;
+      }
+
+      case "chat.question_answered": {
+        if (this.state.activeSessionId === event.sessionId && this.state.activeSession) {
+          // Refresh session to get server-rendered answered state
+          this.refreshActiveSession().catch(() => {});
+        }
+        break;
+      }
+
+      case "chat.job_spawned": {
+        if (this.state.activeSessionId === event.sessionId && this.state.activeSession) {
+          if (!this.state.activeSession.spawnedJobIds.includes(event.jobId)) {
+            this.state.activeSession.spawnedJobIds.push(event.jobId);
+            this.notify();
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  public async fetchSessions(): Promise<ChatSession[]> {
+    this.state.isLoading = true;
+    this.state.error = null;
+    this.notify();
+
+    try {
+      const sessions = await chatApi.listSessions();
+      this.state.sessions = sessions;
+      this.state.isLoading = false;
+
+      // Select first session if none active
+      if (!this.state.activeSessionId && sessions.length > 0) {
+        await this.selectSession(sessions[0].id);
+      } else if (this.state.activeSessionId) {
+        // Re-verify current active session still exists
+        const exists = sessions.some((s) => s.id === this.state.activeSessionId);
+        if (!exists && sessions.length > 0) {
+          await this.selectSession(sessions[0].id);
+        } else if (!exists) {
+          this.state.activeSessionId = null;
+          this.state.activeSession = null;
+          this.state.queuedItems = [];
+        }
+      }
+
+      this.notify();
+      return sessions;
+    } catch (err) {
+      this.state.isLoading = false;
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+      return [];
+    }
+  }
+
+  public async selectSession(id: string): Promise<void> {
+    this.state.activeSessionId = id;
+    this.state.error = null;
+    this.notify();
+
+    try {
+      const [session, queue] = await Promise.all([
+        chatApi.getSession(id),
+        chatApi.getQueue(id).catch(() => []),
+      ]);
+      this.state.activeSession = session;
+      this.state.queuedItems = queue;
+      this.notify();
+    } catch (err) {
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+    }
+  }
+
+  public async refreshActiveSession(): Promise<void> {
+    if (!this.state.activeSessionId) return;
+    try {
+      const [session, queue] = await Promise.all([
+        chatApi.getSession(this.state.activeSessionId),
+        chatApi.getQueue(this.state.activeSessionId).catch(() => []),
+      ]);
+      this.state.activeSession = session;
+      this.state.queuedItems = queue;
+
+      // Also update in sessions list
+      const idx = this.state.sessions.findIndex((s) => s.id === session.id);
+      if (idx >= 0) {
+        this.state.sessions[idx] = session;
+      }
+
+      this.notify();
+    } catch {
+      // Ignore refresh error
+    }
+  }
+
+  public async createSession(
+    title?: string,
+    args?: { agentId?: string; modelId?: string; effort?: string }
+  ): Promise<ChatSession> {
+    try {
+      const newSession = await chatApi.createSession({
+        title,
+        ...args,
+      });
+      this.state.sessions = [newSession, ...this.state.sessions];
+      this.state.activeSessionId = newSession.id;
+      this.state.activeSession = newSession;
+      this.state.queuedItems = [];
+      this.state.isGenerating = false;
+      this.notify();
+      return newSession;
+    } catch (err) {
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+      throw err;
+    }
+  }
+
+  public async renameSession(id: string, title: string): Promise<ChatSession> {
+    // Optimistic update
+    const sessionInList = this.state.sessions.find((s) => s.id === id);
+    if (sessionInList) {
+      sessionInList.title = title;
+    }
+    if (this.state.activeSession && this.state.activeSession.id === id) {
+      this.state.activeSession.title = title;
+    }
+    this.notify();
+
+    try {
+      const updated = await chatApi.updateSession(id, title);
+      if (sessionInList) {
+        sessionInList.title = updated.title;
+        sessionInList.updatedAt = updated.updatedAt;
+      }
+      if (this.state.activeSession && this.state.activeSession.id === id) {
+        this.state.activeSession.title = updated.title;
+        this.state.activeSession.updatedAt = updated.updatedAt;
+      }
+      this.notify();
+      return updated;
+    } catch (err) {
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+      throw err;
+    }
+  }
+
+  public async deleteSession(id: string): Promise<void> {
+    try {
+      await chatApi.deleteSession(id);
+      this.state.sessions = this.state.sessions.filter((s) => s.id !== id);
+
+      if (this.state.activeSessionId === id) {
+        if (this.state.sessions.length > 0) {
+          await this.selectSession(this.state.sessions[0].id);
+        } else {
+          this.state.activeSessionId = null;
+          this.state.activeSession = null;
+          this.state.queuedItems = [];
+        }
+      }
+      this.notify();
+    } catch (err) {
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+      throw err;
+    }
+  }
+
+  public async sendMessage(
+    prompt: string,
+    options?: { enqueue?: boolean; attachments?: ChatAttachment[]; role?: string }
+  ): Promise<void> {
+    if (!prompt.trim()) return;
+
+    let sessionId = this.state.activeSessionId;
+    if (!sessionId) {
+      const newSession = await this.createSession();
+      sessionId = newSession.id;
+    }
+
+    if (!options?.enqueue) {
+      // Optimistic user message
+      const userMsg: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        role: "user",
+        content: prompt,
+        timestamp: new Date().toISOString(),
+      };
+      if (this.state.activeSession) {
+        this.state.activeSession.messages.push(userMsg);
+      }
+      this.state.isGenerating = true;
+      this.notify();
+    }
+
+    try {
+      const res = await chatApi.postMessage(sessionId, prompt, options);
+      if (res.queued) {
+        const queue = await chatApi.getQueue(sessionId);
+        this.state.queuedItems = queue;
+        this.notify();
+      }
+    } catch (err) {
+      this.state.isGenerating = false;
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+      throw err;
+    }
+  }
+
+  public async cancelGeneration(): Promise<void> {
+    if (!this.state.activeSessionId) return;
+    try {
+      await chatApi.cancelTurn(this.state.activeSessionId);
+      this.state.isGenerating = false;
+      this.notify();
+    } catch (err) {
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+    }
+  }
+
+  public async submitAnswer(
+    messageId: string,
+    questionId: string,
+    answer: string | string[] | undefined | null
+  ): Promise<void> {
+    if (!this.state.activeSessionId) return;
+
+    const values =
+      answer === undefined || answer === null
+        ? []
+        : Array.isArray(answer)
+        ? answer
+        : [answer];
+
+    const answersPayload: Record<string, string[]> = {
+      [questionId]: values,
+    };
+
+    try {
+      const updatedSession = await chatApi.answerQuestions(
+        this.state.activeSessionId,
+        messageId,
+        answersPayload
+      );
+
+      if (this.state.activeSessionId === updatedSession.id) {
+        this.state.activeSession = updatedSession;
+      }
+      const idx = this.state.sessions.findIndex((s) => s.id === updatedSession.id);
+      if (idx >= 0) {
+        this.state.sessions[idx] = updatedSession;
+      }
+
+      this.notify();
+    } catch (err) {
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+      throw err;
+    }
+  }
+
+  public async deleteQueuedMessage(itemId: string): Promise<void> {
+    if (!this.state.activeSessionId) return;
+
+    this.state.queuedItems = this.state.queuedItems.filter((item) => item.id !== itemId);
+    this.notify();
+
+    try {
+      await chatApi.deleteQueuedItem(this.state.activeSessionId, itemId);
+    } catch (err) {
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+    }
+  }
+}
+
+export const chatStore = new ChatStore();

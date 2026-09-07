@@ -5,6 +5,7 @@ pub mod models;
 pub mod service;
 pub mod verification_reports;
 
+pub use commands::chat::*;
 pub use commands::config::*;
 pub use commands::github::*;
 pub use commands::jobs::*;
@@ -45,6 +46,19 @@ pub fn run() {
             cmd_restart_service,
             cmd_repair_service,
             cmd_switch_service_mode,
+            cmd_list_chat_sessions,
+            cmd_create_chat_session,
+            cmd_get_chat_session,
+            cmd_update_chat_session,
+            cmd_delete_chat_session,
+            cmd_post_chat_message,
+            cmd_execute_chat_turn,
+            cmd_cancel_chat_turn,
+            cmd_answer_chat_questions,
+            cmd_get_chat_queue,
+            cmd_enqueue_chat_message,
+            cmd_clear_chat_queue,
+            cmd_delete_queued_chat_item,
             cmd_list_github_issues,
         ])
         .run(tauri::generate_context!())

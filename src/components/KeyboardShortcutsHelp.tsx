@@ -13,6 +13,7 @@ export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
 
   const shortcuts = [
     { key: "Cmd/Ctrl + B", desc: "Toggle sidebar collapse" },
+    { key: "Cmd/Ctrl + Shift + C", desc: "Switch to Chat" },
     { key: "Cmd/Ctrl + I", desc: "Open GitHub issue inbox" },
     { key: "Cmd/Ctrl + K", desc: "Focus quick search across plans" },
     { key: "Cmd/Ctrl + N", desc: "Open new plan intake modal" },
