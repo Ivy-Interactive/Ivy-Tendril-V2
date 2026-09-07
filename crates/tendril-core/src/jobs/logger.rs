@@ -16,6 +16,22 @@ pub fn ensure_log_dirs(tendril_home: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn get_prompt_path(tendril_home: &Path, job_id: &str) -> PathBuf {
+    tendril_home
+        .join("Logs")
+        .join("Jobs")
+        .join(format!("{}.prompt.md", job_id))
+}
+
+/// Persists the compiled firmware prompt before the agent is spawned, so it survives a job that is
+/// killed or times out and can be inspected afterwards.
+pub fn write_prompt(tendril_home: &Path, job_id: &str, prompt: &str) -> Result<PathBuf> {
+    ensure_log_dirs(tendril_home)?;
+    let path = get_prompt_path(tendril_home, job_id);
+    std::fs::write(&path, prompt)?;
+    Ok(path)
+}
+
 pub fn append_to_raw_log(tendril_home: &Path, job_id: &str, line: &str) -> Result<()> {
     let path = tendril_home
         .join("Logs")

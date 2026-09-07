@@ -219,17 +219,27 @@ pub async fn handle_promptware_command(
             };
 
             let spec = build_agent_spec(&provider, &launch_config);
-            let code = run_agent_process(spec, |evt| {
-                if !evt.is_stderr {
-                    println!("{}", evt.raw_line);
-                } else {
-                    eprintln!("{}", evt.raw_line);
-                }
-            })
+            // Nothing cancels a foreground `promptware run`; Ctrl-C reaches the child directly.
+            let (_cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            let outcome = run_agent_process(
+                spec,
+                |evt| {
+                    if !evt.is_stderr {
+                        println!("{}", evt.raw_line);
+                    } else {
+                        eprintln!("{}", evt.raw_line);
+                    }
+                },
+                |_pid| {},
+                cancel_rx,
+                None,
+            )
             .await?;
 
-            if code != 0 {
-                std::process::exit(code);
+            if let Some(code) = outcome.exit_code {
+                if code != 0 {
+                    std::process::exit(code);
+                }
             }
         }
     }
