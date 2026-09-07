@@ -345,23 +345,22 @@ async fn test_chat_websocket_broadcast() {
 
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
     while tokio::time::Instant::now() < deadline {
-        match tokio::time::timeout(std::time::Duration::from_millis(500), read.next()).await {
-            Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(txt)))) => {
-                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt) {
-                    if let Some(t) = val.get("type").and_then(|v| v.as_str()) {
-                        if t == "chat.stream_delta" {
-                            received_delta = true;
-                        }
-                        if t == "chat.generating_state" {
-                            received_generating_state = true;
-                        }
+        if let Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Text(txt)))) =
+            tokio::time::timeout(std::time::Duration::from_millis(500), read.next()).await
+        {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&txt) {
+                if let Some(t) = val.get("type").and_then(|v| v.as_str()) {
+                    if t == "chat.stream_delta" {
+                        received_delta = true;
+                    }
+                    if t == "chat.generating_state" {
+                        received_generating_state = true;
                     }
                 }
-                if received_delta && received_generating_state {
-                    break;
-                }
             }
-            _ => {}
+            if received_delta && received_generating_state {
+                break;
+            }
         }
     }
 
