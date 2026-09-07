@@ -5,12 +5,18 @@ import { parseDiff, getChangeKey } from "react-diff-view";
 
 import {
   PlanDiffView,
+  getLanguageFromFilePath,
   loadLanguage,
   registerLanguageLoader,
   registerLanguageLoaders,
   clearCustomLanguageLoaders,
   useCustomLanguageLoaders,
   customLanguageRegistry,
+  customExtensionRegistry,
+  registerExtensionMapping,
+  registerExtensionMappings,
+  clearCustomExtensionMappings,
+  useCustomExtensionMappings,
 } from "./PlanDiffView";
 import { refractor } from "refractor/core";
 
@@ -764,5 +770,117 @@ describe("PlanDiffView language pack dynamic loading and highlighting", () => {
     expect(loaded).toBe(false);
 
     consoleSpy.mockRestore();
+  });
+
+  describe("Custom extension mappings in PlanDiffView", () => {
+    it("resolves standard extensions using built-in switch", () => {
+      expect(getLanguageFromFilePath("file.ts")).toBe("typescript");
+      expect(getLanguageFromFilePath("script.py")).toBe("python");
+      expect(getLanguageFromFilePath("Program.cs")).toBe("csharp");
+      expect(getLanguageFromFilePath("")).toBe("text");
+    });
+
+    it("resolves custom extension from customMappings parameter with or without leading dot and case insensitivity", () => {
+      expect(getLanguageFromFilePath("index.module", { ".module": "javascript" })).toBe(
+        "javascript",
+      );
+      expect(getLanguageFromFilePath("bundle.es", { es: "javascript" })).toBe("javascript");
+      expect(getLanguageFromFilePath("component.MODULE", { module: "javascript" })).toBe(
+        "javascript",
+      );
+      expect(getLanguageFromFilePath("test.ES", { ".es": "javascript" })).toBe("javascript");
+    });
+
+    it("resolves custom extension registered via registerExtensionMapping or registerExtensionMappings", () => {
+      clearCustomExtensionMappings();
+      expect(customExtensionRegistry.size).toBe(0);
+
+      registerExtensionMapping(".customjs", "javascript");
+      expect(getLanguageFromFilePath("file.customjs")).toBe("javascript");
+      expect(getLanguageFromFilePath("file.CUSTOMJS")).toBe("javascript");
+
+      registerExtensionMappings({
+        ".custompy": "python",
+        customrb: "ruby",
+      });
+      expect(getLanguageFromFilePath("script.custompy")).toBe("python");
+      expect(getLanguageFromFilePath("script.customrb")).toBe("ruby");
+
+      clearCustomExtensionMappings();
+      expect(customExtensionRegistry.size).toBe(0);
+      expect(getLanguageFromFilePath("file.customjs")).toBe("customjs");
+    });
+
+    it("registers custom extensions via CustomLanguageDefinition and clearCustomLanguageLoaders resets them", () => {
+      clearCustomLanguageLoaders();
+
+      function mockKotlinSyntax(prism: any) {
+        prism.languages.kotlin = { keyword: /\bval\b/ };
+      }
+      mockKotlinSyntax.displayName = "kotlin";
+
+      registerLanguageLoader("kotlin", {
+        loader: async () => mockKotlinSyntax,
+        extensions: [".kts", "kt"],
+      });
+
+      expect(getLanguageFromFilePath("build.kts")).toBe("kotlin");
+      expect(getLanguageFromFilePath("App.kt")).toBe("kotlin");
+
+      clearCustomLanguageLoaders();
+      expect(customExtensionRegistry.has("kts")).toBe(false);
+      expect(customExtensionRegistry.has("kt")).toBe(false);
+      expect(getLanguageFromFilePath("build.kts")).toBe("kts");
+    });
+
+    it("useCustomExtensionMappings hook registers on mount and cleans up on unmount", () => {
+      clearCustomExtensionMappings();
+
+      function HookTestComponent({ show }: { show: boolean }) {
+        useCustomExtensionMappings(show ? { customext: "python" } : undefined);
+        return <div>{show ? "Mounted" : "Hidden"}</div>;
+      }
+
+      const { unmount } = render(<HookTestComponent show={true} />);
+      expect(customExtensionRegistry.has("customext")).toBe(true);
+      expect(getLanguageFromFilePath("file.customext")).toBe("python");
+
+      unmount();
+      expect(customExtensionRegistry.has("customext")).toBe(false);
+      expect(getLanguageFromFilePath("file.customext")).toBe("customext");
+    });
+
+    it("renders PlanDiffView with customExtensionMappings and highlights syntax tokens", async () => {
+      clearCustomExtensionMappings();
+
+      const jsDiff = [
+        "diff --git a/app.module b/app.module",
+        "--- a/app.module",
+        "+++ b/app.module",
+        "@@ -1,1 +1,1 @@",
+        "-const a = 1;",
+        "+const greeting = 'hello';",
+        "",
+      ].join("\n");
+
+      let container: HTMLElement;
+      await act(async () => {
+        const rendered = render(
+          <PlanDiffView
+            id="pdv-custom-ext"
+            diff={jsDiff}
+            filePath="app.module"
+            customExtensionMappings={{ module: "javascript" }}
+          />,
+        );
+        container = rendered.container;
+      });
+
+      await vi.waitFor(() => {
+        const keywordToken = container!.querySelector(".token.keyword");
+        expect(keywordToken).not.toBeNull();
+        expect(keywordToken?.textContent).toBe("const");
+      });
+    });
   });
 });

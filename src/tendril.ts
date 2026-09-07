@@ -130,6 +130,11 @@ export {
   clearCustomLanguageLoaders,
   useCustomLanguageLoaders,
   customLanguageRegistry,
+  customExtensionRegistry,
+  registerExtensionMapping,
+  registerExtensionMappings,
+  clearCustomExtensionMappings,
+  useCustomExtensionMappings,
 } from "./components/PlanDiffView";
 
 export type {
@@ -139,6 +144,7 @@ export type {
   CustomLanguageLoader,
   CustomLanguageDefinition,
   CustomLanguageLoaders,
+  CustomExtensionMappings,
 } from "./components/PlanDiffView";
 
 // Tendril Dashboard Components
