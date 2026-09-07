@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 use tendril_core::config::{
     expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
@@ -28,6 +29,35 @@ pub(crate) fn classify_repo_path(path: &Path) -> RepoPathStatus {
     RepoPathStatus::NotAGitRepo
 }
 
+pub(crate) fn repo_path_warning(
+    project_name: &str,
+    kind: &str,
+    raw_path: &str,
+    tendril_home: &Path,
+) -> Option<String> {
+    let expanded = expand_variables(raw_path, &tendril_home.to_string_lossy());
+    let resolved_suffix = if expanded != raw_path {
+        format!(" (resolved: {})", expanded)
+    } else {
+        String::new()
+    };
+    match classify_repo_path(Path::new(&expanded)) {
+        RepoPathStatus::Missing => Some(format!(
+            "[WARN] Project '{}' {} does not exist: {}{}",
+            project_name, kind, raw_path, resolved_suffix
+        )),
+        RepoPathStatus::NotADirectory => Some(format!(
+            "[WARN] Project '{}' {} is not a directory: {}{}",
+            project_name, kind, raw_path, resolved_suffix
+        )),
+        RepoPathStatus::NotAGitRepo => Some(format!(
+            "[WARN] Project '{}' {} is not a git repository (no .git found): {}{}",
+            project_name, kind, raw_path, resolved_suffix
+        )),
+        RepoPathStatus::Ok => None,
+    }
+}
+
 pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
     println!("Checking Tendril system health...");
 
@@ -52,27 +82,33 @@ pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
                         }
                     }
 
+                    let mut expanded_repo_paths: HashSet<String> = HashSet::new();
                     for r in &project.repos {
-                        let expanded = expand_variables(&r.path, &tendril_home.to_string_lossy());
-                        let resolved_suffix = if expanded != r.path {
-                            format!(" (resolved: {})", expanded)
-                        } else {
-                            String::new()
-                        };
-                        match classify_repo_path(Path::new(&expanded)) {
-                            RepoPathStatus::Missing => println!(
-                                "[WARN] Project '{}' repository path does not exist: {}{}",
-                                project.name, r.path, resolved_suffix
-                            ),
-                            RepoPathStatus::NotADirectory => println!(
-                                "[WARN] Project '{}' repository path is not a directory: {}{}",
-                                project.name, r.path, resolved_suffix
-                            ),
-                            RepoPathStatus::NotAGitRepo => println!(
-                                "[WARN] Project '{}' repository path is not a git repository (no .git found): {}{}",
-                                project.name, r.path, resolved_suffix
-                            ),
-                            RepoPathStatus::Ok => {}
+                        expanded_repo_paths
+                            .insert(expand_variables(&r.path, &tendril_home.to_string_lossy()));
+                        if let Some(warning) = repo_path_warning(
+                            &project.name,
+                            "repository path",
+                            &r.path,
+                            tendril_home,
+                        ) {
+                            println!("{}", warning);
+                        }
+                    }
+
+                    for dep_path in &project.build_dependencies {
+                        let expanded_dep =
+                            expand_variables(dep_path, &tendril_home.to_string_lossy());
+                        if expanded_repo_paths.contains(&expanded_dep) {
+                            continue;
+                        }
+                        if let Some(warning) = repo_path_warning(
+                            &project.name,
+                            "build dependency path",
+                            dep_path,
+                            tendril_home,
+                        ) {
+                            println!("{}", warning);
                         }
                     }
                 }
@@ -184,5 +220,76 @@ mod tests {
         std::fs::create_dir_all(dir.join("refs")).unwrap();
         assert_eq!(classify_repo_path(&dir), RepoPathStatus::Ok);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn repo_path_warning_none_for_valid_repo() {
+        let dir = scratch_dir("tendril-doctor-warning-valid");
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        let tendril_home = scratch_dir("tendril-doctor-warning-valid-home");
+        assert_eq!(
+            repo_path_warning(
+                "Proj",
+                "repository path",
+                &dir.to_string_lossy(),
+                &tendril_home
+            ),
+            None
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&tendril_home);
+    }
+
+    #[test]
+    fn repo_path_warning_missing_build_dependency() {
+        let tendril_home = scratch_dir("tendril-doctor-warning-missing-home");
+        let missing = tendril_home.join("does-not-exist");
+        let warning = repo_path_warning(
+            "Proj",
+            "build dependency path",
+            &missing.to_string_lossy(),
+            &tendril_home,
+        )
+        .expect("expected a warning");
+        assert!(warning.contains("build dependency path"));
+        assert!(warning.contains("does not exist"));
+        let _ = std::fs::remove_dir_all(&tendril_home);
+    }
+
+    #[test]
+    fn repo_path_warning_non_git_build_dependency() {
+        let dir = scratch_dir("tendril-doctor-warning-non-git");
+        let tendril_home = scratch_dir("tendril-doctor-warning-non-git-home");
+        let warning = repo_path_warning(
+            "Proj",
+            "build dependency path",
+            &dir.to_string_lossy(),
+            &tendril_home,
+        )
+        .expect("expected a warning");
+        assert!(warning.contains("is not a git repository"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&tendril_home);
+    }
+
+    #[test]
+    fn repo_path_warning_keeps_repository_wording() {
+        let tendril_home = scratch_dir("tendril-doctor-warning-wording-home");
+        let missing = tendril_home.join("does-not-exist");
+        let warning = repo_path_warning(
+            "Proj",
+            "repository path",
+            &missing.to_string_lossy(),
+            &tendril_home,
+        )
+        .expect("expected a warning");
+        assert_eq!(
+            warning,
+            format!(
+                "[WARN] Project 'Proj' repository path does not exist: {}",
+                missing.to_string_lossy()
+            )
+        );
+        let _ = std::fs::remove_dir_all(&tendril_home);
     }
 }
