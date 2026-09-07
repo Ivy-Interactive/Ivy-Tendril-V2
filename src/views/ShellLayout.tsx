@@ -50,6 +50,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
 }) => {
   const navItems: ShellNavItemDto[] = [
     { id: "dashboard", label: "Dashboard", icon: "ChartBar", isActive: activeNav === "dashboard" },
+    { id: "chat", label: "Chat", icon: "MessageSquare", isActive: activeNav === "chat" },
     { id: "plans", label: "Plans", icon: "Feather", isActive: activeNav === "plans" },
     { id: "review", label: "Review", icon: "ThumbsUp", isActive: activeNav === "review" },
     { id: "jobs", label: "Jobs", icon: "Activity", isActive: activeNav === "jobs" },
@@ -64,6 +65,10 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
     if (tabId === "dashboard") {
       title = "Dashboard";
       icon = "ChartBar";
+      isClosable = false;
+    } else if (tabId === "chat") {
+      title = "Chat";
+      icon = "MessageSquare";
       isClosable = false;
     } else if (tabId === "plans") {
       title = "Plans Explorer";

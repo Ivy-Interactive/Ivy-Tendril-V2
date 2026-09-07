@@ -14,6 +14,7 @@ import { PlanDetailView } from "./views/PlanDetailView";
 import { JobSessionView } from "./views/JobSessionView";
 import { ReviewView } from "./views/ReviewView";
 import { SettingsView } from "./views/SettingsView";
+import { ChatView } from "./views/ChatView";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
 
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isNewPlanOpen, setIsNewPlanOpen] = useState(false);
+  const [initialPlanDescription, setInitialPlanDescription] = useState<string | undefined>(undefined);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   // Failures from actions the shell itself owns (service restart/repair).
   const [shellError, setShellError] = useState<string | null>(null);
@@ -83,7 +85,10 @@ export const App: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
 
-      if (isCmdOrCtrl && e.key.toLowerCase() === "b") {
+      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        uiStore.setActiveNav("chat");
+      } else if (isCmdOrCtrl && e.key.toLowerCase() === "b") {
         e.preventDefault();
         uiStore.toggleSidebar();
       } else if (isCmdOrCtrl && e.key.toLowerCase() === "n") {
@@ -212,6 +217,16 @@ export const App: React.FC = () => {
             jobs={jobsState.jobs}
             onSelectPlan={handleSelectPlan}
             onSelectJob={handleSelectJob}
+          />
+        );
+
+      case "chat":
+        return (
+          <ChatView
+            onCreatePlan={(initialDesc) => {
+              setInitialPlanDescription(initialDesc);
+              setIsNewPlanOpen(true);
+            }}
           />
         );
 
@@ -349,8 +364,12 @@ export const App: React.FC = () => {
 
       <NewPlanModal
         isOpen={isNewPlanOpen}
-        onClose={() => setIsNewPlanOpen(false)}
+        onClose={() => {
+          setIsNewPlanOpen(false);
+          setInitialPlanDescription(undefined);
+        }}
         projects={projects}
+        initialDescription={initialPlanDescription}
         onJobStarted={(res) => {
           handleSelectJob(res.jobId);
         }}

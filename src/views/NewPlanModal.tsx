@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ContentInput } from "components-storybook/tendril";
 import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
@@ -8,6 +8,7 @@ interface NewPlanModalProps {
   onClose: () => void;
   projects: ProjectSummary[];
   onJobStarted?: (res: StartJobResponse) => void;
+  initialDescription?: string;
 }
 
 export const NewPlanModal: React.FC<NewPlanModalProps> = ({
@@ -15,8 +16,15 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
   onClose,
   projects,
   onJobStarted,
+  initialDescription,
 }) => {
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(initialDescription || "");
+
+  useEffect(() => {
+    if (isOpen) {
+      setDescription(initialDescription || "");
+    }
+  }, [isOpen, initialDescription]);
   const [selectedProject, setSelectedProject] = useState(
     projects[0]?.name || "Tendril-App"
   );
