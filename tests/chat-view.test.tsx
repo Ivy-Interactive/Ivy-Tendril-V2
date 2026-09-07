@@ -12,9 +12,6 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 
 const scrollIntoViewMock = vi.fn();
 window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
-if (!window.HTMLElement.prototype.scrollTo) {
-  window.HTMLElement.prototype.scrollTo = vi.fn();
-}
 
 describe("ChatView Component & Interaction Tests", () => {
   const mockSessionWithQuestions: ChatSession = {
