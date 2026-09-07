@@ -1,10 +1,11 @@
 use std::path::{Path, PathBuf};
 use tendril_core::config::{
-    delete_master, expand_variables, get_config_path, get_config_path_with_env,
-    get_default_tendril_home, get_default_tendril_home_with_env, get_plans_dir,
-    get_plans_dir_with_env, get_plans_dir_with_settings, get_tendril_home,
-    get_tendril_home_with_env, load_config, normalize_slashes, read_master, save_config,
-    write_master, EnvSource, SystemEnv, TendrilSettings,
+    delete_master, dirs_home, dirs_home_with_env, expand_variables, expand_variables_with_env,
+    get_config_path, get_config_path_with_env, get_default_tendril_home,
+    get_default_tendril_home_with_env, get_plans_dir, get_plans_dir_with_env,
+    get_plans_dir_with_settings, get_tendril_home, get_tendril_home_with_env, load_config,
+    normalize_slashes, read_master, save_config, write_master, EnvSource, SystemEnv,
+    TendrilSettings,
 };
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef};
 
@@ -330,6 +331,93 @@ fn test_get_plans_dir_precedence() {
         get_plans_dir_with_env(&test_dir, Some(&configured_settings), &closure_env),
         env_override_path
     );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_dirs_home_with_env() {
+    let empty_env = std::collections::HashMap::<&str, &str>::new();
+    assert_eq!(dirs_home_with_env(&empty_env), None);
+
+    let mut blank_env = std::collections::HashMap::new();
+    blank_env.insert("USERPROFILE", "   ");
+    blank_env.insert("HOME", "");
+    assert_eq!(dirs_home_with_env(&blank_env), None);
+
+    let mut env_home = std::collections::HashMap::new();
+    env_home.insert("HOME", "/mock/home");
+    assert_eq!(
+        dirs_home_with_env(&env_home),
+        Some(PathBuf::from("/mock/home"))
+    );
+
+    let mut env_userprofile = std::collections::HashMap::new();
+    env_userprofile.insert("USERPROFILE", "/mock/userprofile");
+    assert_eq!(
+        dirs_home_with_env(&env_userprofile),
+        Some(PathBuf::from("/mock/userprofile"))
+    );
+
+    let mut env_both = std::collections::HashMap::new();
+    env_both.insert("USERPROFILE", "/mock/userprofile");
+    env_both.insert("HOME", "/mock/home");
+    assert_eq!(
+        dirs_home_with_env(&env_both),
+        Some(PathBuf::from("/mock/userprofile"))
+    );
+
+    let _ = dirs_home();
+}
+
+#[test]
+fn test_expand_variables_with_env() {
+    let mut mock_env = std::collections::HashMap::new();
+    mock_env.insert("HOME", "/mock/home");
+
+    assert_eq!(
+        expand_variables_with_env("~/projects", "/tendril", &mock_env),
+        "/mock/home/projects"
+    );
+    assert_eq!(
+        expand_variables_with_env("~", "/tendril", &mock_env),
+        "/mock/home"
+    );
+
+    let empty_env = std::collections::HashMap::<&str, &str>::new();
+    assert_eq!(
+        expand_variables_with_env("~/projects", "/tendril", &empty_env),
+        "~/projects"
+    );
+}
+
+#[test]
+fn test_get_default_tendril_home_fallback_with_env() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-fallback-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let custom_home = test_dir.join("custom_home");
+    let tendril_dir = custom_home.join(".tendril");
+    std::fs::create_dir_all(&tendril_dir).expect("Failed to create custom home tendril dir");
+
+    let mut mock_env = std::collections::HashMap::new();
+    let custom_home_str = custom_home.to_string_lossy().to_string();
+    mock_env.insert("HOME", custom_home_str.clone());
+    #[cfg(windows)]
+    mock_env.insert("USERPROFILE", custom_home_str);
+
+    let resolved = get_default_tendril_home_with_env(&mock_env);
+
+    #[cfg(not(windows))]
+    assert_eq!(resolved, custom_home.join(".tendril"));
+
+    #[cfg(windows)]
+    {
+        if !Path::new(r"D:\.tendril").exists() {
+            assert_eq!(resolved, custom_home.join(".tendril"));
+        }
+    }
 
     let _ = std::fs::remove_dir_all(test_dir);
 }
