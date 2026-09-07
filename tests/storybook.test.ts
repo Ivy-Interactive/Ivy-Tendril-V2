@@ -106,4 +106,59 @@ describe("Storybook Configuration", () => {
       expect(checkA11y).not.toHaveBeenCalled();
     }
   });
+
+  it("catches axe audit violations and logs a warning via console.warn without throwing", async () => {
+    vi.clearAllMocks();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const mockPage = {} as any;
+    const mockContext = {
+      id: "test--violation",
+      title: "Test",
+      name: "Violation",
+      parameters: {
+        a11y: {},
+      },
+    };
+
+    const violationError = new Error("Found 2 accessibility violations");
+    vi.mocked(checkA11y).mockRejectedValueOnce(violationError);
+
+    if (testRunnerConfig.postVisit) {
+      await expect(testRunnerConfig.postVisit(mockPage, mockContext as any)).resolves.not.toThrow();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("test--violation"));
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Found 2 accessibility violations"),
+      );
+    }
+
+    warnSpy.mockRestore();
+  });
+
+  it("rethrows axe audit violations when failOnViolation is true", async () => {
+    vi.clearAllMocks();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const mockPage = {} as any;
+    const mockContext = {
+      id: "test--strict-violation",
+      title: "Test",
+      name: "Strict Violation",
+      parameters: {
+        a11y: {
+          failOnViolation: true,
+        },
+      },
+    };
+
+    const violationError = new Error("Strict accessibility violation");
+    vi.mocked(checkA11y).mockRejectedValueOnce(violationError);
+
+    if (testRunnerConfig.postVisit) {
+      await expect(testRunnerConfig.postVisit(mockPage, mockContext as any)).rejects.toThrow(
+        "Strict accessibility violation",
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+    }
+
+    warnSpy.mockRestore();
+  });
 });
