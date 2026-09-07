@@ -128,8 +128,53 @@ impl Default for TendrilSettings {
     }
 }
 
-pub fn get_default_tendril_home() -> PathBuf {
-    if let Ok(val) = std::env::var("TENDRIL_HOME") {
+pub trait EnvSource {
+    fn get_var(&self, key: &str) -> Option<String>;
+}
+
+pub struct SystemEnv;
+
+impl EnvSource for SystemEnv {
+    fn get_var(&self, key: &str) -> Option<String> {
+        std::env::var(key).ok()
+    }
+}
+
+impl<F> EnvSource for F
+where
+    F: Fn(&str) -> Option<String>,
+{
+    fn get_var(&self, key: &str) -> Option<String> {
+        self(key)
+    }
+}
+
+impl EnvSource for std::collections::HashMap<String, String> {
+    fn get_var(&self, key: &str) -> Option<String> {
+        self.get(key).cloned()
+    }
+}
+
+impl EnvSource for std::collections::HashMap<&str, &str> {
+    fn get_var(&self, key: &str) -> Option<String> {
+        self.get(key).map(|v| (*v).to_string())
+    }
+}
+
+impl EnvSource for std::collections::HashMap<&str, String> {
+    fn get_var(&self, key: &str) -> Option<String> {
+        self.get(key).cloned()
+    }
+}
+
+impl EnvSource for std::collections::HashMap<String, &str> {
+    fn get_var(&self, key: &str) -> Option<String> {
+        self.get(key).map(|v| (*v).to_string())
+    }
+}
+
+pub fn get_default_tendril_home_with_env(env: &impl EnvSource) -> PathBuf {
+    if let Some(val) = env.get_var("TENDRIL_HOME") {
         let trimmed = val.trim().trim_matches('"');
         if !trimmed.is_empty() {
             return PathBuf::from(trimmed);
@@ -183,6 +228,18 @@ pub fn get_default_tendril_home() -> PathBuf {
     }
 }
 
+pub fn get_default_tendril_home() -> PathBuf {
+    get_default_tendril_home_with_env(&SystemEnv)
+}
+
+pub fn get_tendril_home_with_env(env: &impl EnvSource) -> PathBuf {
+    get_default_tendril_home_with_env(env)
+}
+
+pub fn get_tendril_home() -> PathBuf {
+    get_default_tendril_home()
+}
+
 pub fn normalize_slashes(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -217,20 +274,26 @@ fn dirs_home() -> Option<PathBuf> {
     None
 }
 
-pub fn get_config_path(tendril_home: &Path) -> PathBuf {
-    if let Ok(val) = std::env::var("TENDRIL_CONFIG") {
-        if !val.trim().is_empty() {
-            return PathBuf::from(val.trim());
+pub fn get_config_path_with_env(tendril_home: &Path, env: &impl EnvSource) -> PathBuf {
+    if let Some(val) = env.get_var("TENDRIL_CONFIG") {
+        let trimmed = val.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
         }
     }
     tendril_home.join("config.yaml")
 }
 
-pub fn get_plans_dir_with_settings(
+pub fn get_config_path(tendril_home: &Path) -> PathBuf {
+    get_config_path_with_env(tendril_home, &SystemEnv)
+}
+
+pub fn get_plans_dir_with_env(
     tendril_home: &Path,
     settings: Option<&TendrilSettings>,
+    env: &impl EnvSource,
 ) -> PathBuf {
-    if let Ok(val) = std::env::var("TENDRIL_PLANS") {
+    if let Some(val) = env.get_var("TENDRIL_PLANS") {
         let trimmed = val.trim();
         if !trimmed.is_empty() {
             return PathBuf::from(trimmed);
@@ -241,7 +304,7 @@ pub fn get_plans_dir_with_settings(
     let effective_settings = match settings {
         Some(s) => Some(s),
         None => {
-            let config_path = get_config_path(tendril_home);
+            let config_path = get_config_path_with_env(tendril_home, env);
             if let Ok(s) = load_config(&config_path) {
                 loaded = s;
                 Some(&loaded)
@@ -272,6 +335,13 @@ pub fn get_plans_dir_with_settings(
     }
 
     tendril_home.join("Plans")
+}
+
+pub fn get_plans_dir_with_settings(
+    tendril_home: &Path,
+    settings: Option<&TendrilSettings>,
+) -> PathBuf {
+    get_plans_dir_with_env(tendril_home, settings, &SystemEnv)
 }
 
 pub fn get_plans_dir(tendril_home: &Path) -> PathBuf {
