@@ -107,7 +107,7 @@ describe("Storybook Configuration", () => {
     }
   });
 
-  it("catches axe audit violations and logs a warning via console.warn without throwing", async () => {
+  it("throws axe audit violations by default", async () => {
     vi.clearAllMocks();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const mockPage = {} as any;
@@ -124,39 +124,39 @@ describe("Storybook Configuration", () => {
     vi.mocked(checkA11y).mockRejectedValueOnce(violationError);
 
     if (testRunnerConfig.postVisit) {
-      await expect(testRunnerConfig.postVisit(mockPage, mockContext as any)).resolves.not.toThrow();
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("test--violation"));
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Found 2 accessibility violations"),
+      await expect(testRunnerConfig.postVisit(mockPage, mockContext as any)).rejects.toThrow(
+        "Found 2 accessibility violations",
       );
+      expect(warnSpy).not.toHaveBeenCalled();
     }
 
     warnSpy.mockRestore();
   });
 
-  it("rethrows axe audit violations when failOnViolation is true", async () => {
+  it("catches axe audit violations and logs a warning via console.warn without throwing when failOnViolation is false", async () => {
     vi.clearAllMocks();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const mockPage = {} as any;
     const mockContext = {
-      id: "test--strict-violation",
+      id: "test--opted-out-violation",
       title: "Test",
-      name: "Strict Violation",
+      name: "Opted Out Violation",
       parameters: {
         a11y: {
-          failOnViolation: true,
+          failOnViolation: false,
         },
       },
     };
 
-    const violationError = new Error("Strict accessibility violation");
+    const violationError = new Error("Opted-out accessibility violation");
     vi.mocked(checkA11y).mockRejectedValueOnce(violationError);
 
     if (testRunnerConfig.postVisit) {
-      await expect(testRunnerConfig.postVisit(mockPage, mockContext as any)).rejects.toThrow(
-        "Strict accessibility violation",
+      await expect(testRunnerConfig.postVisit(mockPage, mockContext as any)).resolves.not.toThrow();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("test--opted-out-violation"));
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Opted-out accessibility violation"),
       );
-      expect(warnSpy).not.toHaveBeenCalled();
     }
 
     warnSpy.mockRestore();

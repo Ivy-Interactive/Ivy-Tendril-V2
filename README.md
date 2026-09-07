@@ -337,6 +337,23 @@ Run Storybook tests in CI mode (builds static files first):
 pnpm run test-storybook:ci
 ```
 
+#### Accessibility testing
+
+Accessibility audits run automatically via `@storybook/addon-a11y` and `axe-playwright` during Storybook test runs.
+By default, any axe accessibility violations fail the test suite.
+
+To opt out a story when a violation is inherent to what is being demonstrated (such as a typography scale demo showing multiple heading levels):
+use a scoped per-rule disable with an explanatory comment directly above the parameter:
+
+```ts
+parameters: {
+  // heading-order: this story demonstrates the heading scale directly
+  a11y: { config: { rules: [{ id: "heading-order", enabled: false }] } },
+},
+```
+
+Every opt-out must include an explanatory comment justifying why the rule cannot be satisfied. If a per-rule disable does not fit, `failOnViolation: false` downgrades violations to logged warnings, or `disable: true` can be used for components that cannot be audited in isolation.
+
 #### Visual regression
 
 Every story is screenshotted and compared against a committed PNG baseline in `.storybook/__image_snapshots__/`, named `<story-id>-<theme>-<density>.png`. A story matches its baseline when at most 1% of pixels differ.
