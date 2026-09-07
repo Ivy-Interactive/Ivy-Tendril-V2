@@ -111,3 +111,62 @@ describe("Destructive theme contrast compliance (WCAG 2.1 AA)", () => {
     expect(contrast).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+describe("Semantic theme contrast compliance (WCAG 2.1 AA)", () => {
+  const rootDir = resolve(__dirname, "..");
+  const globalsCssPath = resolve(rootDir, "src/styles/globals.css");
+  const indexCssPath = resolve(rootDir, "src/styles/index.css");
+
+  it.each(["success", "warning"] as const)(
+    "globals.css light mode --%s-foreground is #000000 and meets AA contrast (>= 4.5:1)",
+    (token) => {
+      const globalsCss = readFileSync(globalsCssPath, "utf-8");
+      const rootBlock = /:root\s*\{([^}]+)\}/s.exec(globalsCss)?.[1] ?? "";
+      const background = new RegExp(`--${token}:\\s*([^;]+);`).exec(rootBlock)?.[1].trim();
+      const foreground = new RegExp(`--${token}-foreground:\\s*([^;]+);`)
+        .exec(rootBlock)?.[1]
+        .trim();
+
+      expect(background).toBeDefined();
+      expect(foreground).toBe("#000000");
+      const contrast = getContrastRatio(background!, foreground!);
+      expect(contrast).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  it.each(["success", "warning"] as const)(
+    "globals.css dark mode --%s-foreground is #ffffff and meets AA contrast (>= 4.5:1)",
+    (token) => {
+      const globalsCss = readFileSync(globalsCssPath, "utf-8");
+      const darkBlock = /\.dark\s*\{([^}]+)\}/s.exec(globalsCss)?.[1] ?? "";
+      const background = new RegExp(`--${token}:\\s*([^;]+);`).exec(darkBlock)?.[1].trim();
+      const foreground = new RegExp(`--${token}-foreground:\\s*([^;]+);`)
+        .exec(darkBlock)?.[1]
+        .trim();
+
+      expect(background).toBeDefined();
+      expect(foreground).toBe("#ffffff");
+      const contrast = getContrastRatio(background!, foreground!);
+      expect(contrast).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  it.each(["success", "warning"] as const)(
+    "index.css light and dark mode --%s-foreground is #000000 and meets AA contrast (>= 4.5:1)",
+    (token) => {
+      const indexCss = readFileSync(indexCssPath, "utf-8");
+      const rootBlock = /:root\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
+      const darkBlock = /\.dark\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
+
+      for (const block of [rootBlock, darkBlock]) {
+        const background = new RegExp(`--${token}:\\s*([^;]+);`).exec(block)?.[1].trim();
+        const foreground = new RegExp(`--${token}-foreground:\\s*([^;]+);`).exec(block)?.[1].trim();
+
+        expect(background).toBeDefined();
+        expect(foreground).toBe("#000000");
+        const contrast = getContrastRatio(background!, foreground!);
+        expect(contrast).toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
+});
