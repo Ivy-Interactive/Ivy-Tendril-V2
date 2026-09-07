@@ -83,3 +83,46 @@ export const WithComments = {
     );
   },
 };
+
+function mockKotlinSyntax(prism: any) {
+  prism.languages.kotlin = {
+    keyword: /\b(package|import|val|var|fun|class|interface|object|return)\b/,
+    string: /"[^"]*"/,
+    function: /\b[a-z_]\w*(?=\s*\()/i,
+    number: /\b\d+\b/,
+  };
+}
+mockKotlinSyntax.displayName = "kotlin";
+mockKotlinSyntax.aliases = ["kt", "kts"];
+
+const KOTLIN_DIFF = `--- a/src/services/UserService.kt
++++ b/src/services/UserService.kt
+@@ -1,6 +1,8 @@
+ package com.example.service
+ 
+-fun getUser(id: String): User? = null
++fun getUser(id: String): User? {
++    val user = userRepository.findById(id)
++    return user
+ }`;
+
+export const CustomLanguage = {
+  render: () => {
+    return (
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "1.5rem" }}>
+        <PlanDiffView
+          id="diff-custom-lang"
+          diff={KOTLIN_DIFF}
+          filePath="src/services/UserService.kt"
+          viewType="Unified"
+          customLanguageLoaders={{
+            kotlin: {
+              loader: async () => mockKotlinSyntax,
+              aliases: ["kt", "kts"],
+            },
+          }}
+        />
+      </div>
+    );
+  },
+};

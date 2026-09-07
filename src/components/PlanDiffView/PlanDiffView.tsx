@@ -19,7 +19,79 @@ import { refractor, type Syntax } from "refractor/core";
 import { prismTheme } from "@/lib/prismTheme";
 import { getInitials } from "../PlanMarkdown/annotationUtils";
 
-type LanguageModule = { default: Syntax };
+export type LanguageModule = { default: Syntax } | Syntax;
+export type CustomLanguageLoader = () => Promise<LanguageModule>;
+
+export interface CustomLanguageDefinition {
+  loader: CustomLanguageLoader;
+  dependencies?: string[];
+  aliases?: string[];
+}
+
+export type CustomLanguageLoaders = Record<string, CustomLanguageLoader | CustomLanguageDefinition>;
+
+export const customLanguageRegistry = new Map<string, CustomLanguageDefinition>();
+const customRegisteredLanguages = new Set<string>();
+
+export function registerLanguageLoader(
+  name: string,
+  loaderOrDef: CustomLanguageLoader | CustomLanguageDefinition,
+): void {
+  const normalized = name.toLowerCase();
+  const def: CustomLanguageDefinition =
+    typeof loaderOrDef === "function" ? { loader: loaderOrDef } : loaderOrDef;
+
+  customLanguageRegistry.set(normalized, def);
+  if (def.aliases) {
+    for (const alias of def.aliases) {
+      customLanguageRegistry.set(alias.toLowerCase(), def);
+    }
+  }
+}
+
+export function registerLanguageLoaders(loaders: CustomLanguageLoaders): void {
+  for (const [name, loaderOrDef] of Object.entries(loaders)) {
+    registerLanguageLoader(name, loaderOrDef);
+  }
+}
+
+export function clearCustomLanguageLoaders(): void {
+  customLanguageRegistry.clear();
+  for (const lang of customRegisteredLanguages) {
+    delete (refractor.languages as Record<string, unknown>)[lang];
+  }
+  customRegisteredLanguages.clear();
+}
+
+export function useCustomLanguageLoaders(loaders?: CustomLanguageLoaders): void {
+  if (loaders) {
+    for (const [name, loaderOrDef] of Object.entries(loaders)) {
+      registerLanguageLoader(name, loaderOrDef);
+    }
+  }
+
+  useEffect(() => {
+    if (!loaders) return;
+    const registeredKeys: string[] = [];
+    for (const [name, loaderOrDef] of Object.entries(loaders)) {
+      const normalized = name.toLowerCase();
+      registeredKeys.push(normalized);
+      const def: CustomLanguageDefinition =
+        typeof loaderOrDef === "function" ? { loader: loaderOrDef } : loaderOrDef;
+      if (def.aliases) {
+        for (const alias of def.aliases) {
+          registeredKeys.push(alias.toLowerCase());
+        }
+      }
+    }
+
+    return () => {
+      for (const key of registeredKeys) {
+        customLanguageRegistry.delete(key);
+      }
+    };
+  }, [loaders]);
+}
 
 const languageLoaders: Record<string, () => Promise<LanguageModule>> = {
   typescript: () => import("refractor/typescript"),
@@ -82,14 +154,53 @@ const languageDependencies: Record<string, string[]> = {
 
 const loadingLanguages = new Map<string, Promise<boolean>>();
 
-export async function loadLanguage(lang: string): Promise<boolean> {
+export async function loadLanguage(
+  lang: string,
+  customLoaders?: CustomLanguageLoaders,
+): Promise<boolean> {
   if (!lang) return false;
   const normalized = lang.toLowerCase();
   if (refractor.registered(normalized)) {
     return true;
   }
-  const loader = languageLoaders[normalized];
-  if (!loader) {
+
+  let loaderDef: CustomLanguageDefinition | undefined;
+  let isCustom = false;
+
+  if (customLoaders) {
+    const direct = customLoaders[normalized] ?? customLoaders[lang];
+    if (direct) {
+      loaderDef = typeof direct === "function" ? { loader: direct } : direct;
+      isCustom = true;
+    } else {
+      for (const [, val] of Object.entries(customLoaders)) {
+        if (typeof val === "object" && val !== null && val.aliases) {
+          if (val.aliases.some((a) => a.toLowerCase() === normalized)) {
+            loaderDef = val;
+            isCustom = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (!loaderDef) {
+    const regDef = customLanguageRegistry.get(normalized);
+    if (regDef) {
+      loaderDef = regDef;
+      isCustom = true;
+    }
+  }
+
+  if (!loaderDef) {
+    const builtIn = languageLoaders[normalized];
+    if (builtIn) {
+      loaderDef = { loader: builtIn };
+    }
+  }
+
+  if (!loaderDef) {
     return false;
   }
 
@@ -100,13 +211,45 @@ export async function loadLanguage(lang: string): Promise<boolean> {
 
   const loadPromise = (async () => {
     try {
-      const deps = languageDependencies[normalized];
-      if (deps && deps.length > 0) {
-        await Promise.all(deps.map((dep) => loadLanguage(dep)));
+      const customDeps = loaderDef.dependencies ?? [];
+      const builtInDeps = languageDependencies[normalized] ?? [];
+      const combinedDeps = Array.from(new Set([...customDeps, ...builtInDeps]));
+
+      if (combinedDeps.length > 0) {
+        await Promise.all(combinedDeps.map((dep) => loadLanguage(dep, customLoaders)));
       }
-      const mod = await loader();
-      if (mod?.default) {
-        refractor.register(mod.default);
+
+      const mod = await loaderDef.loader();
+      const syntax = (mod as any)?.default ?? mod;
+      if (typeof syntax === "function") {
+        refractor.register(syntax);
+        const targetLang = (syntax as any).displayName || normalized;
+
+        const aliasesToRegister = new Set<string>();
+        if (loaderDef.aliases) {
+          for (const a of loaderDef.aliases) {
+            aliasesToRegister.add(a.toLowerCase());
+          }
+        }
+        if (Array.isArray((syntax as any).aliases)) {
+          for (const a of (syntax as any).aliases) {
+            aliasesToRegister.add(String(a).toLowerCase());
+          }
+        }
+        aliasesToRegister.add(normalized);
+        aliasesToRegister.delete(targetLang.toLowerCase());
+
+        if (isCustom) {
+          customRegisteredLanguages.add(targetLang.toLowerCase());
+          customRegisteredLanguages.add(normalized);
+          for (const a of aliasesToRegister) {
+            customRegisteredLanguages.add(a);
+          }
+        }
+
+        if (aliasesToRegister.size > 0 && typeof refractor.alias === "function") {
+          refractor.alias(targetLang, Array.from(aliasesToRegister));
+        }
       }
       return refractor.registered(normalized);
     } catch (err) {
@@ -269,6 +412,7 @@ export interface PlanDiffViewProps {
   comments?: DraftComment[];
   filePath?: string;
   currentAuthor?: string;
+  customLanguageLoaders?: CustomLanguageLoaders;
 }
 
 function getLineNumber(change: ChangeData | null): number {
@@ -512,6 +656,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
   comments = [],
   filePath = "",
   currentAuthor,
+  customLanguageLoaders,
 }) => {
   const dispatchEvent = eventHandler || onIvyEvent;
   const files = useMemo(() => {
@@ -678,18 +823,18 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
 
     if (requiredLangs.size === 0) return;
 
-    void Promise.all(Array.from(requiredLangs).map((lang) => loadLanguage(lang))).then(
-      (results) => {
-        if (mounted && results.some(Boolean)) {
-          setLanguageLoadedVersion((v) => v + 1);
-        }
-      },
-    );
+    void Promise.all(
+      Array.from(requiredLangs).map((lang) => loadLanguage(lang, customLanguageLoaders)),
+    ).then((results) => {
+      if (mounted && results.some(Boolean)) {
+        setLanguageLoadedVersion((v) => v + 1);
+      }
+    });
 
     return () => {
       mounted = false;
     };
-  }, [files, fileMeta, filePath, language]);
+  }, [files, fileMeta, filePath, language, customLanguageLoaders]);
 
   // Pre-tokenize all files and hunks once when files/language change, instead of synchronously tokenizing on every render
   const tokensByFile = useMemo(() => {
@@ -712,7 +857,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
       }
       return undefined;
     });
-  }, [files, fileMeta, filePath, language, languageLoadedVersion]);
+  }, [files, fileMeta, filePath, language, languageLoadedVersion, customLanguageLoaders]);
 
   const style: React.CSSProperties = {
     ...getWidth(width),
