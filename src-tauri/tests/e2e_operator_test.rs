@@ -14,7 +14,13 @@
 //!   operator's real plans directory even though `TENDRIL_HOME` points at a
 //!   temp dir.
 //! * The server binds loopback only, on a port picked by binding `:0` first.
-//! * No job is ever started, so no coding-agent credentials are involved.
+//!
+//! **No job here ever reaches a coding agent.** `build_agent_spec` in
+//! tendril-core maps an unrecognised provider name onto the real `claude` CLI,
+//! so there is no configuration that substitutes a stub. The job cases below are
+//! therefore limited to the outcomes the service decides by itself — dependency
+//! blocking, a missing promptware, and cancellation — which is every job path
+//! reachable without spending tokens or letting an agent loose on a repo.
 //!
 //! The binary is located through `TENDRIL_E2E_SERVER_BIN`. When that is unset
 //! the suite skips: a checkout with no built service must not fail the build.
@@ -24,6 +30,10 @@
 //! TENDRIL_E2E_SERVER_BIN=~/git/Tendril-Service/target/debug/tendril-server \
 //!   cargo test --test e2e_operator_test
 //! ```
+//!
+//! Rebuild that binary first (`cargo build -p tendril-server`). A stale one
+//! passes just as happily while asserting last week's service behaviour, which
+//! defeats the point of the suite.
 
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -31,7 +41,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
-use tendril_app_lib::commands::jobs::cmd_list_jobs;
+use tendril_app_lib::commands::jobs::{cmd_cancel_job, cmd_get_job, cmd_list_jobs, cmd_start_job};
 use tendril_app_lib::commands::plans::{
     cmd_get_plan, cmd_get_revision, cmd_list_plans, cmd_list_recommendations,
     cmd_list_verification_reports, cmd_set_recommendation_state, cmd_write_revision,
@@ -323,6 +333,164 @@ async fn the_operator_flow_works_against_a_real_service() {
         .join("Plans")
         .join(created["folder_name"].as_str().unwrap_or_default())
         .is_dir());
+}
+
+/// Seed a plan and return `(plan_id, folder_path)`.
+async fn seed_plan(client: &TendrilClient, body: serde_json::Value) -> (String, String) {
+    let created = client.create_plan(body).await.expect("create plan");
+    let id = created["metadata"]["id"]
+        .as_i64()
+        .map(|id| format!("{id:05}"))
+        .expect("created plan has a numeric metadata id");
+    let folder = created["folder_path"]
+        .as_str()
+        .expect("created plan reports its folder")
+        .to_string();
+    (id, folder)
+}
+
+/// Poll a job until it stops moving. Jobs that fail before spawning a process
+/// settle in well under a second; the generous deadline is only so a loaded
+/// machine does not turn this into a flake.
+async fn wait_for_terminal_job(job_id: &str) -> tendril_app_lib::models::JobDetailDto {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let job = cmd_get_job(job_id.to_string()).await.expect("job detail");
+        if matches!(
+            job.status.as_str(),
+            "Completed" | "Failed" | "Stopped" | "Blocked" | "TimedOut"
+        ) {
+            return job;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "job {job_id} never reached a terminal status (last: {})",
+            job.status
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+#[tokio::test]
+async fn a_job_blocked_by_its_dependency_never_starts_and_says_why() {
+    let _guard = env_lock().await;
+    let Some(bin) = server_binary() else { return };
+    let (temp, _service, client) = isolated_service(&bin).await;
+
+    // The dependency is left in Draft, which is the whole point: only a
+    // Completed dependency satisfies the gate. It gets no PRs, so the gate never
+    // reaches out to GitHub.
+    let dep = client
+        .create_plan(json!({
+            "title": "Dependency Plan",
+            "project": "E2EProject",
+            "level": "Chore",
+            "repos": [temp.path().join("repo").to_string_lossy()],
+            "verifications": []
+        }))
+        .await
+        .expect("create dependency plan");
+    let dep_folder_name = dep["folder_name"]
+        .as_str()
+        .expect("dependency reports its folder name")
+        .to_string();
+
+    let (plan_id, folder_path) = seed_plan(
+        &client,
+        json!({
+            "title": "Gated Plan",
+            "project": "E2EProject",
+            "level": "Feature",
+            "repos": [temp.path().join("repo").to_string_lossy()],
+            "verifications": [{ "name": "RustTest", "status": "Pending" }],
+            "dependsOn": [dep_folder_name.clone()]
+        }),
+    )
+    .await;
+
+    let started = cmd_start_job(json!({ "type": "ExecutePlan", "folderPath": folder_path }))
+        .await
+        .expect("starting a blocked job is not itself an error");
+
+    // `Blocked` is the JobStatus this plan added to the DTOs; the service decides
+    // it synchronously, before allocating a process, so there is nothing to poll.
+    let job = cmd_get_job(started.job_id.clone())
+        .await
+        .expect("job detail");
+    assert_eq!(job.status, "Blocked");
+    let message = job.status_message.expect("a blocked job explains itself");
+    assert!(
+        message.contains(&dep_folder_name) && message.contains("not Completed"),
+        "the operator is told which dependency blocked them: {message}"
+    );
+
+    // The plan must not look like it started.
+    let plan = cmd_get_plan(plan_id).await.expect("plan detail");
+    assert_eq!(plan.state, "Blocked");
+
+    // It is listed under its own status, so the dashboard can show it.
+    let jobs = cmd_list_jobs(Some("Blocked".to_string()), None)
+        .await
+        .expect("list blocked jobs");
+    assert!(jobs.iter().any(|j| j.id == started.job_id));
+
+    // A blocked job has no process, but the service still lets it be cancelled,
+    // which is how an operator clears one out of the list.
+    cmd_cancel_job(started.job_id.clone(), Some("Not now".to_string()))
+        .await
+        .expect("a blocked job can be cancelled");
+    let cancelled = cmd_get_job(started.job_id).await.expect("job detail");
+    assert_eq!(cancelled.status, "Stopped");
+}
+
+#[tokio::test]
+async fn a_job_that_fails_before_starting_reports_a_real_reason() {
+    let _guard = env_lock().await;
+    let Some(bin) = server_binary() else { return };
+    let (temp, _service, client) = isolated_service(&bin).await;
+
+    // No `Promptwares/ExecutePlan` exists under this temp home, so the runner
+    // fails at the promptware lookup — before it builds an agent command line,
+    // which is what keeps this test agent-free.
+    let (plan_id, folder_path) = seed_plan(
+        &client,
+        json!({
+            "title": "No Promptware Plan",
+            "project": "E2EProject",
+            "level": "Chore",
+            "repos": [temp.path().join("repo").to_string_lossy()],
+            "verifications": []
+        }),
+    )
+    .await;
+
+    let started = cmd_start_job(json!({ "type": "ExecutePlan", "folderPath": folder_path }))
+        .await
+        .expect("the job starts; it fails afterwards");
+    let job = wait_for_terminal_job(&started.job_id).await;
+
+    assert_eq!(job.status, "Failed");
+    let message = job
+        .status_message
+        .expect("a failed job carries the reason the session header renders");
+    assert!(
+        message.contains("Promptware folder not found"),
+        "the service's own reason survives to the command layer: {message}"
+    );
+    assert_eq!(job.job_type, "ExecutePlan");
+    assert!(job.completed_at.is_some());
+
+    // The plan is put back where it was rather than left Executing.
+    let plan = cmd_get_plan(plan_id).await.expect("plan detail");
+    assert_eq!(plan.state, "Draft");
+
+    // Cancelling a job that already finished is a real error, not a silent
+    // no-op — the cancel button in JobSessionView surfaces this rather than
+    // pretending it worked.
+    let err = cmd_cancel_job(started.job_id, None)
+        .await
+        .expect_err("a finished job cannot be cancelled");
+    assert_eq!(err.code, "CANCEL_JOB_FAILED");
 }
 
 #[tokio::test]

@@ -90,9 +90,13 @@ the typecheck instead of silently drifting.
 service rather than a mock. It skips unless you tell it where the binary is:
 
 ```sh
+cd ~/git/Tendril-Service && cargo build -p tendril-server   # keep it current
 TENDRIL_E2E_SERVER_BIN=~/git/Tendril-Service/target/debug/tendril-server \
   cargo test --test e2e_operator_test
 ```
+
+Rebuild the binary before running it. A stale one passes while asserting last
+week's service behaviour, which defeats the point of the suite.
 
 It spawns that binary on loopback against a `TempDir` home and starts no jobs, so
 it never touches your real `~/.tendril` or any coding-agent credentials.
