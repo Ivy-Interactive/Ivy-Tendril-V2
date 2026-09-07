@@ -34,6 +34,10 @@ pub fn run() {
             cmd_get_config,
             cmd_save_ui_state,
             cmd_load_ui_state,
+            cmd_get_service_logs,
+            cmd_restart_service,
+            cmd_repair_service,
+            cmd_switch_service_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

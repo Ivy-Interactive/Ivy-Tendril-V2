@@ -23,6 +23,12 @@ pub struct ServiceInfoDto {
     pub pid: Option<u32>,
     pub capabilities: Vec<String>,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ownership: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_badge: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub crash_count: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

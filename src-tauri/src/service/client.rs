@@ -41,12 +41,7 @@ impl TendrilClient {
 
     pub async fn ping(&self) -> Result<String, BridgeError> {
         let url = format!("{}/api/ping", self.base_url);
-        let resp = self
-            .client
-            .get(&url)
-            .headers(self.headers())
-            .send()
-            .await?;
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
 
         if !resp.status().is_success() {
             return Err(BridgeError::new(
@@ -79,12 +74,7 @@ impl TendrilClient {
             }
         }
 
-        let resp = self
-            .client
-            .get(&url)
-            .headers(self.headers())
-            .send()
-            .await?;
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -99,24 +89,61 @@ impl TendrilClient {
         let summaries = raw_plans
             .into_iter()
             .map(|val| {
-                let id = val.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                let title = val.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                let state = val.get("state").and_then(|v| v.as_str()).unwrap_or("Draft").to_string();
-                let project = val.get("project").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                let level = val.get("level").and_then(|v| v.as_str()).unwrap_or("Feature").to_string();
-                let priority = val.get("priority").and_then(|v| v.as_i64()).map(|p| p as i32);
-                let created = val.get("created").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let updated = val.get("updated").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let id = val
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let title = val
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let state = val
+                    .get("state")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Draft")
+                    .to_string();
+                let project = val
+                    .get("project")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let level = val
+                    .get("level")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Feature")
+                    .to_string();
+                let priority = val
+                    .get("priority")
+                    .and_then(|v| v.as_i64())
+                    .map(|p| p as i32);
+                let created = val
+                    .get("created")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let updated = val
+                    .get("updated")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
-                let verifications = val.get("verifications")
+                let verifications = val
+                    .get("verifications")
                     .and_then(|v| v.as_array())
                     .map(|arr| {
-                        arr.iter().filter_map(|item| {
-                            let name = item.get("name").and_then(|n| n.as_str())?.to_string();
-                            let status = item.get("status").and_then(|s| s.as_str()).unwrap_or("Pending").to_string();
-                            Some(PlanVerificationDto { name, status })
-                        }).collect()
-                    }).unwrap_or_default();
+                        arr.iter()
+                            .filter_map(|item| {
+                                let name = item.get("name").and_then(|n| n.as_str())?.to_string();
+                                let status = item
+                                    .get("status")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("Pending")
+                                    .to_string();
+                                Some(PlanVerificationDto { name, status })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
 
                 PlanSummaryDto {
                     id,
@@ -137,15 +164,12 @@ impl TendrilClient {
 
     pub async fn get_plan(&self, plan_id: &str) -> Result<PlanDetailDto, BridgeError> {
         let url = format!("{}/api/plans/{}", self.base_url, urlencoding(plan_id));
-        let resp = self
-            .client
-            .get(&url)
-            .headers(self.headers())
-            .send()
-            .await?;
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
 
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(BridgeError::not_found(format!("Plan '{plan_id}' not found")));
+            return Err(BridgeError::not_found(format!(
+                "Plan '{plan_id}' not found"
+            )));
         }
 
         if !resp.status().is_success() {
@@ -160,54 +184,128 @@ impl TendrilClient {
         let val: serde_json::Value = resp.json().await?;
         let metadata = val.get("metadata").unwrap_or(&val);
 
-        let id = metadata.get("id").and_then(|v| v.as_str()).unwrap_or(plan_id).to_string();
-        let title = metadata.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let state = metadata.get("state").and_then(|v| v.as_str()).unwrap_or("Draft").to_string();
-        let project = metadata.get("project").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let level = metadata.get("level").and_then(|v| v.as_str()).unwrap_or("Feature").to_string();
-        let priority = metadata.get("priority").and_then(|v| v.as_i64()).map(|p| p as i32);
-        let execution_profile = metadata.get("executionProfile").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let initial_prompt = metadata.get("initialPrompt").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let source_url = metadata.get("sourceUrl").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let created = metadata.get("created").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let updated = metadata.get("updated").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let id = metadata
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(plan_id)
+            .to_string();
+        let title = metadata
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let state = metadata
+            .get("state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Draft")
+            .to_string();
+        let project = metadata
+            .get("project")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let level = metadata
+            .get("level")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Feature")
+            .to_string();
+        let priority = metadata
+            .get("priority")
+            .and_then(|v| v.as_i64())
+            .map(|p| p as i32);
+        let execution_profile = metadata
+            .get("executionProfile")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let initial_prompt = metadata
+            .get("initialPrompt")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let source_url = metadata
+            .get("sourceUrl")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let created = metadata
+            .get("created")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let updated = metadata
+            .get("updated")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
-        let repos = metadata.get("repos")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
-            .unwrap_or_default();
-
-        let verifications = metadata.get("verifications")
+        let repos = metadata
+            .get("repos")
             .and_then(|v| v.as_array())
             .map(|arr| {
-                arr.iter().filter_map(|item| {
-                    let name = item.get("name").and_then(|n| n.as_str())?.to_string();
-                    let status = item.get("status").and_then(|s| s.as_str()).unwrap_or("Pending").to_string();
-                    Some(PlanVerificationDto { name, status })
-                }).collect()
-            }).unwrap_or_default();
-
-        let depends_on = metadata.get("dependsOn")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
+                arr.iter()
+                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
 
-        let related_plans = metadata.get("relatedPlans")
+        let verifications = metadata
+            .get("verifications")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| {
+                        let name = item.get("name").and_then(|n| n.as_str())?.to_string();
+                        let status = item
+                            .get("status")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("Pending")
+                            .to_string();
+                        Some(PlanVerificationDto { name, status })
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
-        let commits = metadata.get("commits")
+        let depends_on = metadata
+            .get("dependsOn")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
 
-        let prs = metadata.get("prs")
+        let related_plans = metadata
+            .get("relatedPlans")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|r| r.as_str().map(|s| s.to_string())).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
 
-        let latest_revision_content = val.get("latestRevision").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let commits = metadata
+            .get("commits")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let prs = metadata
+            .get("prs")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let latest_revision_content = val
+            .get("latestRevision")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         Ok(PlanDetailDto {
             id,
@@ -231,7 +329,10 @@ impl TendrilClient {
         })
     }
 
-    pub async fn create_plan(&self, body: serde_json::Value) -> Result<serde_json::Value, BridgeError> {
+    pub async fn create_plan(
+        &self,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, BridgeError> {
         let url = format!("{}/api/plans", self.base_url);
         let resp = self
             .client
@@ -288,22 +389,13 @@ impl TendrilClient {
         Ok(())
     }
 
-    pub async fn get_revision(
-        &self,
-        id: &str,
-        number: Option<i32>,
-    ) -> Result<String, BridgeError> {
+    pub async fn get_revision(&self, id: &str, number: Option<i32>) -> Result<String, BridgeError> {
         let mut url = format!("{}/api/plans/{}/revisions", self.base_url, urlencoding(id));
         if let Some(num) = number {
             url = format!("{url}?number={num}");
         }
 
-        let resp = self
-            .client
-            .get(&url)
-            .headers(self.headers())
-            .send()
-            .await?;
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -344,7 +436,11 @@ impl TendrilClient {
 
         let result: serde_json::Value = resp.json().await?;
         let rev_num = result.get("revision").and_then(|r| r.as_i64()).unwrap_or(1) as i32;
-        let message = result.get("message").and_then(|m| m.as_str()).unwrap_or("Revision written").to_string();
+        let message = result
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("Revision written")
+            .to_string();
 
         Ok(RevisionResultDto {
             revision: rev_num,
@@ -369,12 +465,7 @@ impl TendrilClient {
             url = format!("{}?{}", url, params.join("&"));
         }
 
-        let resp = self
-            .client
-            .get(&url)
-            .headers(self.headers())
-            .send()
-            .await?;
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
 
         if !resp.status().is_success() {
             let status_code = resp.status();
@@ -389,15 +480,48 @@ impl TendrilClient {
         let jobs = raw_jobs
             .into_iter()
             .map(|val| {
-                let id = val.get("id").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                let job_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-                let plan_id = val.get("reportedPlanId").or_else(|| val.get("planId")).and_then(|v| v.as_str()).map(|s| s.to_string());
-                let plan_title = val.get("reportedPlanTitle").or_else(|| val.get("planTitle")).and_then(|v| v.as_str()).map(|s| s.to_string());
-                let project = val.get("project").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                let status = val.get("status").and_then(|v| v.as_str()).unwrap_or("Pending").to_string();
-                let status_message = val.get("statusMessage").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let started_at = val.get("startedAt").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let completed_at = val.get("completedAt").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let id = val
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let job_type = val
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
+                let plan_id = val
+                    .get("reportedPlanId")
+                    .or_else(|| val.get("planId"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let plan_title = val
+                    .get("reportedPlanTitle")
+                    .or_else(|| val.get("planTitle"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let project = val
+                    .get("project")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let status = val
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Pending")
+                    .to_string();
+                let status_message = val
+                    .get("statusMessage")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let started_at = val
+                    .get("startedAt")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let completed_at = val
+                    .get("completedAt")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 let cost = val.get("cost").and_then(|v| v.as_f64());
                 let tokens = val.get("tokens").and_then(|v| v.as_i64());
 
@@ -422,12 +546,7 @@ impl TendrilClient {
 
     pub async fn get_job(&self, job_id: &str) -> Result<JobDetailDto, BridgeError> {
         let url = format!("{}/api/jobs/{}", self.base_url, urlencoding(job_id));
-        let resp = self
-            .client
-            .get(&url)
-            .headers(self.headers())
-            .send()
-            .await?;
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -441,20 +560,62 @@ impl TendrilClient {
         let val: serde_json::Value = resp.json().await?;
         let details = val.get("details").unwrap_or(&val);
 
-        let id = details.get("id").and_then(|v| v.as_str()).unwrap_or(job_id).to_string();
-        let job_type = details.get("type").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
-        let plan_id = details.get("reportedPlanId").or_else(|| details.get("planId")).and_then(|v| v.as_str()).map(|s| s.to_string());
-        let plan_title = details.get("reportedPlanTitle").or_else(|| details.get("planTitle")).and_then(|v| v.as_str()).map(|s| s.to_string());
-        let project = details.get("project").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let status = details.get("status").and_then(|v| v.as_str()).unwrap_or("Pending").to_string();
-        let status_message = details.get("statusMessage").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let args = details.get("args").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let working_directory = details.get("workingDirectory").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let started_at = details.get("startedAt").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let completed_at = details.get("completedAt").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let id = details
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(job_id)
+            .to_string();
+        let job_type = details
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown")
+            .to_string();
+        let plan_id = details
+            .get("reportedPlanId")
+            .or_else(|| details.get("planId"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let plan_title = details
+            .get("reportedPlanTitle")
+            .or_else(|| details.get("planTitle"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let project = details
+            .get("project")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let status = details
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Pending")
+            .to_string();
+        let status_message = details
+            .get("statusMessage")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let args = details
+            .get("args")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let working_directory = details
+            .get("workingDirectory")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let started_at = details
+            .get("startedAt")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let completed_at = details
+            .get("completedAt")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         let cost = details.get("cost").and_then(|v| v.as_f64());
         let tokens = details.get("tokens").and_then(|v| v.as_i64());
-        let reported_failure_reason = details.get("reportedFailureReason").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let reported_failure_reason = details
+            .get("reportedFailureReason")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         Ok(JobDetailDto {
             id,
@@ -474,7 +635,10 @@ impl TendrilClient {
         })
     }
 
-    pub async fn start_job(&self, args: serde_json::Value) -> Result<StartJobResponseDto, BridgeError> {
+    pub async fn start_job(
+        &self,
+        args: serde_json::Value,
+    ) -> Result<StartJobResponseDto, BridgeError> {
         let url = format!("{}/api/jobs", self.base_url);
         let resp = self
             .client
@@ -494,8 +658,16 @@ impl TendrilClient {
         }
 
         let val: serde_json::Value = resp.json().await?;
-        let job_id = val.get("jobId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let status = val.get("status").and_then(|v| v.as_str()).unwrap_or("Started").to_string();
+        let job_id = val
+            .get("jobId")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let status = val
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Started")
+            .to_string();
 
         Ok(StartJobResponseDto { job_id, status })
     }
@@ -620,18 +792,17 @@ impl TendrilClient {
         }
 
         let val: serde_json::Value = resp.json().await?;
-        let msg = val.get("message").and_then(|v| v.as_str()).unwrap_or("Log added").to_string();
+        let msg = val
+            .get("message")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Log added")
+            .to_string();
         Ok(msg)
     }
 
     pub async fn list_projects(&self) -> Result<Vec<ProjectSummaryDto>, BridgeError> {
         let url = format!("{}/api/projects", self.base_url);
-        let resp = self
-            .client
-            .get(&url)
-            .headers(self.headers())
-            .send()
-            .await?;
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -646,26 +817,42 @@ impl TendrilClient {
         let summaries = raw_projects
             .into_iter()
             .map(|val| {
-                let name = val.get("name").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-                let repos = val.get("repos")
+                let name = val
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let repos = val
+                    .get("repos")
                     .and_then(|v| v.as_array())
                     .map(|arr| {
-                        arr.iter().filter_map(|r| {
-                            r.as_str()
-                                .map(|s| s.to_string())
-                                .or_else(|| r.get("path").and_then(|p| p.as_str()).map(|p| p.to_string()))
-                        }).collect()
-                    }).unwrap_or_default();
+                        arr.iter()
+                            .filter_map(|r| {
+                                r.as_str().map(|s| s.to_string()).or_else(|| {
+                                    r.get("path")
+                                        .and_then(|p| p.as_str())
+                                        .map(|p| p.to_string())
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
 
-                let verifications = val.get("verifications")
+                let verifications = val
+                    .get("verifications")
                     .and_then(|v| v.as_array())
                     .map(|arr| {
-                        arr.iter().filter_map(|item| {
-                            item.as_str()
-                                .map(|s| s.to_string())
-                                .or_else(|| item.get("name").and_then(|n| n.as_str()).map(|n| n.to_string()))
-                        }).collect()
-                    }).unwrap_or_default();
+                        arr.iter()
+                            .filter_map(|item| {
+                                item.as_str().map(|s| s.to_string()).or_else(|| {
+                                    item.get("name")
+                                        .and_then(|n| n.as_str())
+                                        .map(|n| n.to_string())
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
 
                 ProjectSummaryDto {
                     name,
@@ -680,12 +867,7 @@ impl TendrilClient {
 
     pub async fn get_config(&self) -> Result<TendrilConfigDto, BridgeError> {
         let url = format!("{}/api/config", self.base_url);
-        let resp = self
-            .client
-            .get(&url)
-            .headers(self.headers())
-            .send()
-            .await?;
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -697,11 +879,23 @@ impl TendrilClient {
         }
 
         let val: serde_json::Value = resp.json().await?;
-        let coding_agent = val.get("codingAgent").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let coding_agent = val
+            .get("codingAgent")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         let job_timeout = val.get("jobTimeout").and_then(|v| v.as_u64());
-        let max_concurrent_jobs = val.get("maxConcurrentJobs").and_then(|v| v.as_u64()).map(|n| n as usize);
-        let plan_template = val.get("planTemplate").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let theme = val.get("theme").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let max_concurrent_jobs = val
+            .get("maxConcurrentJobs")
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize);
+        let plan_template = val
+            .get("planTemplate")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let theme = val
+            .get("theme")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
         Ok(TendrilConfigDto {
             coding_agent,

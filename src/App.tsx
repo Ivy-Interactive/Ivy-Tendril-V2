@@ -295,6 +295,21 @@ export const App: React.FC = () => {
         onNewPlan={() => setIsNewPlanOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onReconnect={() => serviceStore.checkHealth()}
+        onRestartService={() => {
+          bridge
+            .restartService()
+            .then(() => serviceStore.checkHealth())
+            .catch(() => {});
+        }}
+        onRepairService={() => {
+          bridge
+            .repairService()
+            .then(() => serviceStore.checkHealth())
+            .catch(() => {});
+        }}
+        onViewDiagnostics={() => {
+          uiStore.setActiveNav("settings");
+        }}
       >
         {renderActiveView()}
       </ShellLayout>

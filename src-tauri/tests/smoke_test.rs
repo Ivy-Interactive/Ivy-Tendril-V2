@@ -8,10 +8,7 @@ use tokio::net::TcpListener;
 
 async fn spawn_mock_daemon(secret: &'static str) -> (SocketAddr, tokio::task::JoinHandle<()>) {
     let app = Router::new()
-        .route(
-            "/api/ping",
-            get(|| async { "pong" }),
-        )
+        .route("/api/ping", get(|| async { "pong" }))
         .route(
             "/api/health",
             get(move |headers: axum::http::HeaderMap| async move {
@@ -56,7 +53,10 @@ async fn test_mock_daemon_discovery_flow() {
 
     // Test probe_daemon_health with valid secret
     let health_res = probe_daemon_health("http", "127.0.0.1", addr.port(), secret).await;
-    assert!(health_res.is_ok(), "Probe health should succeed with valid secret");
+    assert!(
+        health_res.is_ok(),
+        "Probe health should succeed with valid secret"
+    );
     let (api_version, capabilities) = health_res.unwrap();
     assert_eq!(api_version, 1);
     assert_eq!(capabilities, vec!["plans", "jobs", "realtime"]);
@@ -76,7 +76,11 @@ async fn test_mock_daemon_discovery_flow() {
         scheme: "http".to_string(),
         version: "0.1.0".to_string(),
         api_version: 1,
-        capabilities: vec!["plans".to_string(), "jobs".to_string(), "realtime".to_string()],
+        capabilities: vec![
+            "plans".to_string(),
+            "jobs".to_string(),
+            "realtime".to_string(),
+        ],
     };
 
     let master_json = serde_json::to_string_pretty(&master_info).unwrap();
