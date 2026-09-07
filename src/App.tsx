@@ -7,17 +7,35 @@ import { bridge } from "./api/bridge";
 import { onJobEvent, onPlanEvent, onServiceStatus } from "./api/events";
 import { describeBridgeError, type ProjectSummary } from "./types/api";
 
+import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
-import { DashboardView } from "./views/DashboardView";
-import { PlansView } from "./views/PlansView";
-import { PlanDetailView } from "./views/PlanDetailView";
-import { JobSessionView } from "./views/JobSessionView";
-import { ReviewView } from "./views/ReviewView";
-import { SettingsView } from "./views/SettingsView";
-import { ChatView } from "./views/ChatView";
-import { InboxView } from "./views/InboxView";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
+
+const DashboardView = React.lazy(() =>
+  import("./views/DashboardView").then((m) => ({ default: m.DashboardView }))
+);
+const PlansView = React.lazy(() =>
+  import("./views/PlansView").then((m) => ({ default: m.PlansView }))
+);
+const PlanDetailView = React.lazy(() =>
+  import("./views/PlanDetailView").then((m) => ({ default: m.PlanDetailView }))
+);
+const JobSessionView = React.lazy(() =>
+  import("./views/JobSessionView").then((m) => ({ default: m.JobSessionView }))
+);
+const ReviewView = React.lazy(() =>
+  import("./views/ReviewView").then((m) => ({ default: m.ReviewView }))
+);
+const SettingsView = React.lazy(() =>
+  import("./views/SettingsView").then((m) => ({ default: m.SettingsView }))
+);
+const ChatView = React.lazy(() =>
+  import("./views/ChatView").then((m) => ({ default: m.ChatView }))
+);
+const InboxView = React.lazy(() =>
+  import("./views/InboxView").then((m) => ({ default: m.InboxView }))
+);
 
 export const App: React.FC = () => {
   const [uiState, setUiState] = useState<UiState>(uiStore.getState());
@@ -395,7 +413,18 @@ export const App: React.FC = () => {
             </button>
           </div>
         )}
-        {renderActiveView()}
+        <React.Suspense
+          fallback={
+            <div
+              className="flex h-64 items-center justify-center text-slate-400"
+              data-testid="view-fallback-spinner"
+            >
+              <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+            </div>
+          }
+        >
+          {renderActiveView()}
+        </React.Suspense>
       </ShellLayout>
 
       <NewPlanModal
