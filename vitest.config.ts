@@ -19,7 +19,7 @@ export default defineConfig({
     fs: {
       allow: [
         path.resolve(__dirname),
-        "/Users/rorychatt/git/components-storybook",
+        path.resolve(__dirname, "../components-storybook"),
       ],
     },
   },
@@ -29,8 +29,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
       react: path.resolve(__dirname, "./node_modules/react"),
       "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
-      "components-storybook": path.resolve("/Users/rorychatt/git/components-storybook/dist"),
-      "@spacecorps/components-storybook": path.resolve("/Users/rorychatt/git/components-storybook/dist"),
+      "@spacecorps/components-storybook": path.resolve(__dirname, "../components-storybook/dist"),
     },
   },
 });
