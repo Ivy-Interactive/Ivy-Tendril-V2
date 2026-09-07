@@ -20,6 +20,7 @@ type Story = StoryObj<typeof NumberInput>;
 export const Decimal: Story = {
   args: {
     value: 1234.56,
+    "aria-label": "Decimal number",
   },
 };
 
@@ -27,5 +28,6 @@ export const Bytes: Story = {
   args: {
     value: 10485760,
     isBytesFormat: true,
+    "aria-label": "Bytes amount",
   },
 };

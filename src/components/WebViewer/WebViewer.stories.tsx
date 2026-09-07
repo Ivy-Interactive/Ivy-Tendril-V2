@@ -137,6 +137,7 @@ export const AnnotationDemo: Story = {
       </div>
     );
   },
+  // WebViewer renders an external iframe whose third-party DOM is outside this library's control.
   parameters: {
     a11y: {
       disable: true,

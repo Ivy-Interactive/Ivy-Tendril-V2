@@ -80,7 +80,7 @@ function ThemeDemo() {
               )}
             >
               <span className="font-medium text-sm">{color.name}</span>
-              <span className="text-xs opacity-75 font-mono mt-2">{color.bg}</span>
+              <span className="text-xs font-mono mt-2">{color.bg}</span>
             </div>
           ))}
         </div>

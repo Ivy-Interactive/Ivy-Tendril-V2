@@ -31,9 +31,9 @@ export const Conversation: Story = {
             The plan is well-structured and all 23+ components are ready to port.
           </ChatBubbleMessage>
           <ChatBubbleActionWrapper>
-            <ChatBubbleAction icon={<Copy className="size-3" />} />
-            <ChatBubbleAction icon={<ThumbsUp className="size-3" />} />
-            <ChatBubbleAction icon={<ThumbsDown className="size-3" />} />
+            <ChatBubbleAction icon={<Copy className="size-3" />} aria-label="Copy message" />
+            <ChatBubbleAction icon={<ThumbsUp className="size-3" />} aria-label="Thumbs up" />
+            <ChatBubbleAction icon={<ThumbsDown className="size-3" />} aria-label="Thumbs down" />
           </ChatBubbleActionWrapper>
         </div>
       </ChatBubble>

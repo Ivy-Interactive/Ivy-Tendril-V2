@@ -32,7 +32,7 @@ export const AllComponents: Story = {
           <div className="flex flex-wrap items-center gap-4 p-4 border rounded-lg bg-card">
             <Button>Button</Button>
             <Button variant="outline">Outline</Button>
-            <Input placeholder="Input field" className="w-48" />
+            <Input placeholder="Input field" className="w-48" aria-label="Small input field" />
             <Badge>Badge</Badge>
             <Badge variant="secondary">Secondary</Badge>
             <div className="flex items-center gap-2">
@@ -40,7 +40,7 @@ export const AllComponents: Story = {
               <Label htmlFor="small-check">Checkbox</Label>
             </div>
             <Select>
-              <SelectTrigger className="w-48">
+              <SelectTrigger className="w-48" aria-label="Small select">
                 <SelectValue placeholder="Select..." />
               </SelectTrigger>
               <SelectContent>
@@ -58,7 +58,7 @@ export const AllComponents: Story = {
           <div className="flex flex-wrap items-center gap-4 p-4 border rounded-lg bg-card">
             <Button>Button</Button>
             <Button variant="outline">Outline</Button>
-            <Input placeholder="Input field" className="w-48" />
+            <Input placeholder="Input field" className="w-48" aria-label="Medium input field" />
             <Badge>Badge</Badge>
             <Badge variant="secondary">Secondary</Badge>
             <div className="flex items-center gap-2">
@@ -66,7 +66,7 @@ export const AllComponents: Story = {
               <Label htmlFor="medium-check">Checkbox</Label>
             </div>
             <Select>
-              <SelectTrigger className="w-48">
+              <SelectTrigger className="w-48" aria-label="Medium select">
                 <SelectValue placeholder="Select..." />
               </SelectTrigger>
               <SelectContent>
@@ -84,7 +84,7 @@ export const AllComponents: Story = {
           <div className="flex flex-wrap items-center gap-4 p-4 border rounded-lg bg-card">
             <Button>Button</Button>
             <Button variant="outline">Outline</Button>
-            <Input placeholder="Input field" className="w-48" />
+            <Input placeholder="Input field" className="w-48" aria-label="Large input field" />
             <Badge>Badge</Badge>
             <Badge variant="secondary">Secondary</Badge>
             <div className="flex items-center gap-2">
@@ -92,7 +92,7 @@ export const AllComponents: Story = {
               <Label htmlFor="large-check">Checkbox</Label>
             </div>
             <Select>
-              <SelectTrigger className="w-48">
+              <SelectTrigger className="w-48" aria-label="Large select">
                 <SelectValue placeholder="Select..." />
               </SelectTrigger>
               <SelectContent>
