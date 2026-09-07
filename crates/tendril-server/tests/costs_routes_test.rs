@@ -174,3 +174,188 @@ async fn test_costs_routes_contract() {
         assert!(point.get("tokens").is_some());
     }
 }
+
+#[tokio::test]
+async fn test_costs_routes_filtering() {
+    let server = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let db_path = get_database_path(&server.tendril_home);
+    let conn = open_database(&db_path).expect("open database");
+
+    // Insert two plans for different projects
+    conn.execute(
+        r#"
+        INSERT INTO Plans (
+            Id, Title, Project, Level, State, FolderPath, FolderName,
+            YamlRaw, RevisionCount, LatestRevisionContent, Created, Updated
+        ) VALUES (10, 'Plan 10', 'AlphaProject', 'Feature', 'Draft', '/path/10', '00010-Plan', '', 1, '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')
+        "#,
+        [],
+    )
+    .expect("insert plan 10");
+
+    conn.execute(
+        r#"
+        INSERT INTO Plans (
+            Id, Title, Project, Level, State, FolderPath, FolderName,
+            YamlRaw, RevisionCount, LatestRevisionContent, Created, Updated
+        ) VALUES (20, 'Plan 20', 'BetaProject', 'Feature', 'Draft', '/path/20', '00020-Plan', '', 1, '', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')
+        "#,
+        [],
+    )
+    .expect("insert plan 20");
+
+    let now = Utc::now();
+    let today = now.to_rfc3339();
+    let two_days_ago = (now - Duration::days(2)).to_rfc3339();
+    let ten_days_ago = (now - Duration::days(10)).to_rfc3339();
+
+    // Plan 10 (AlphaProject):
+    // - CreatePlan: 10.0 (today)
+    // - ExecutePlan: 20.0 (two days ago)
+    insert_cost(&conn, 10, "CreatePlan", 1000, 10.0, Some(&today)).unwrap();
+    insert_cost(&conn, 10, "ExecutePlan", 2000, 20.0, Some(&two_days_ago)).unwrap();
+
+    // Plan 20 (BetaProject):
+    // - CreatePlan: 30.0 (today)
+    // - ExecutePlan: 40.0 (two days ago)
+    // - UpdatePlan: 50.0 (ten days ago)
+    insert_cost(&conn, 20, "CreatePlan", 3000, 30.0, Some(&today)).unwrap();
+    insert_cost(&conn, 20, "ExecutePlan", 4000, 40.0, Some(&two_days_ago)).unwrap();
+    insert_cost(&conn, 20, "UpdatePlan", 5000, 50.0, Some(&ten_days_ago)).unwrap();
+
+    // 1. GET /api/costs/summary?project=AlphaProject
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/costs/summary?project=AlphaProject",
+            server.port
+        ))
+        .header("Authorization", format!("Bearer {}", server.secret))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    assert!((json["totalSpend"].as_f64().unwrap() - 30.0).abs() < 1e-6);
+    assert!((json["thirtyDaySpend"].as_f64().unwrap() - 30.0).abs() < 1e-6);
+    assert!((json["sevenDaySpend"].as_f64().unwrap() - 30.0).abs() < 1e-6);
+    assert!((json["dailyRunRate"].as_f64().unwrap() - (30.0 / 7.0)).abs() < 1e-6);
+
+    // Case-insensitivity check on project
+    let resp_ci = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/costs/summary?project=alphaproject",
+            server.port
+        ))
+        .header("Authorization", format!("Bearer {}", server.secret))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_ci.status(), reqwest::StatusCode::OK);
+    let json_ci: serde_json::Value = resp_ci.json().await.unwrap();
+    assert!((json_ci["totalSpend"].as_f64().unwrap() - 30.0).abs() < 1e-6);
+
+    // 2. GET /api/costs/summary?promptware=CreatePlan
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/costs/summary?promptware=CreatePlan",
+            server.port
+        ))
+        .header("Authorization", format!("Bearer {}", server.secret))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    // 10.0 (Plan 10) + 30.0 (Plan 20) = 40.0
+    assert!((json["totalSpend"].as_f64().unwrap() - 40.0).abs() < 1e-6);
+    assert!((json["thirtyDaySpend"].as_f64().unwrap() - 40.0).abs() < 1e-6);
+    assert!((json["sevenDaySpend"].as_f64().unwrap() - 40.0).abs() < 1e-6);
+    assert!((json["dailyRunRate"].as_f64().unwrap() - (40.0 / 7.0)).abs() < 1e-6);
+
+    // 3. GET /api/costs/summary?project=AlphaProject&promptware=ExecutePlan
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/costs/summary?project=AlphaProject&promptware=ExecutePlan",
+            server.port
+        ))
+        .header("Authorization", format!("Bearer {}", server.secret))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    assert!((json["totalSpend"].as_f64().unwrap() - 20.0).abs() < 1e-6);
+    assert!((json["thirtyDaySpend"].as_f64().unwrap() - 20.0).abs() < 1e-6);
+    assert!((json["sevenDaySpend"].as_f64().unwrap() - 20.0).abs() < 1e-6);
+    assert!((json["dailyRunRate"].as_f64().unwrap() - (20.0 / 7.0)).abs() < 1e-6);
+
+    // Non-matching project in summary
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/costs/summary?project=UnknownProject",
+            server.port
+        ))
+        .header("Authorization", format!("Bearer {}", server.secret))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(json["totalSpend"].as_f64().unwrap(), 0.0);
+    assert_eq!(json["thirtyDaySpend"].as_f64().unwrap(), 0.0);
+    assert_eq!(json["sevenDaySpend"].as_f64().unwrap(), 0.0);
+    assert_eq!(json["dailyRunRate"].as_f64().unwrap(), 0.0);
+
+    // 4. GET /api/costs/series?period=daily&project=AlphaProject
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/costs/series?period=daily&project=AlphaProject",
+            server.port
+        ))
+        .header("Authorization", format!("Bearer {}", server.secret))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    let arr = json.as_array().expect("series is array");
+    let total_cost: f64 = arr.iter().map(|p| p["cost"].as_f64().unwrap()).sum();
+    let total_tokens: i64 = arr.iter().map(|p| p["tokens"].as_i64().unwrap()).sum();
+    assert!((total_cost - 30.0).abs() < 1e-6);
+    assert_eq!(total_tokens, 3000);
+
+    // 5. GET /api/costs/series?period=weekly&promptware=CreatePlan
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/costs/series?period=weekly&promptware=CreatePlan",
+            server.port
+        ))
+        .header("Authorization", format!("Bearer {}", server.secret))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    let arr = json.as_array().expect("series is array");
+    let total_cost: f64 = arr.iter().map(|p| p["cost"].as_f64().unwrap()).sum();
+    let total_tokens: i64 = arr.iter().map(|p| p["tokens"].as_i64().unwrap()).sum();
+    assert!((total_cost - 40.0).abs() < 1e-6);
+    assert_eq!(total_tokens, 4000);
+
+    // 6. Non-matching filter in series returns empty array
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/costs/series?project=UnknownProject",
+            server.port
+        ))
+        .header("Authorization", format!("Bearer {}", server.secret))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    let arr = json.as_array().expect("series is array");
+    assert!(arr.is_empty());
+}
