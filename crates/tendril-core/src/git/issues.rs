@@ -642,6 +642,8 @@ pub async fn get_project_issues_metadata(
 mod tests {
     use super::*;
 
+    static CACHE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_parse_github_remote_url_https() {
         assert_eq!(
@@ -887,6 +889,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_issue_metadata_cache_hit_and_expiration() {
+        let _guard = CACHE_TEST_LOCK.lock().unwrap();
         clear_issue_metadata_cache();
 
         let repo_key = "spacecorps/test-cached-repo";
@@ -930,6 +933,7 @@ mod tests {
 
     #[test]
     fn test_clear_issue_metadata_cache() {
+        let _guard = CACHE_TEST_LOCK.lock().unwrap();
         clear_issue_metadata_cache();
 
         {
@@ -959,6 +963,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_project_issues_metadata_concurrent_cache_hits_and_misses() {
+        let _guard = CACHE_TEST_LOCK.lock().unwrap();
         clear_issue_metadata_cache();
 
         let repo1_key = "spacecorps/repo-cached-1";
@@ -1012,6 +1017,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_project_issues_metadata_empty_repos() {
+        let _guard = CACHE_TEST_LOCK.lock().unwrap();
         clear_issue_metadata_cache();
 
         let meta = get_project_issues_metadata(&[]).await.unwrap();
