@@ -1,8 +1,15 @@
 import { describe, it, expect } from "vitest";
 import {
   detectPendingQuestions,
-  extractQuestionsFences,
+  extractPlanQuestions as extractPlanQuestionsFromHook,
+  extractQuestionsFences as extractQuestionsFencesFromHook,
 } from "../src/hooks/usePendingChatQuestions";
+import {
+  extractPlanQuestions,
+  extractQuestionsFences,
+  patchQuestionsMarkdown,
+  scanQuestionsFences,
+} from "../src/utils/questionMarkdown";
 import type { ChatMessage } from "../src/types/chat";
 
 describe("extractQuestionsFences", () => {
@@ -65,6 +72,101 @@ const a = 1;
 \`\`\``;
 
     expect(extractQuestionsFences(md)).toHaveLength(0);
+  });
+
+  it("handles unclosed fences at EOF safely", () => {
+    const md = `\`\`\`questions
+questions:
+  - id: unclosed-q
+    title: Still typing?`;
+
+    const fences = extractQuestionsFences(md);
+    expect(fences).toHaveLength(1);
+    expect(fences[0]).toContain("unclosed-q");
+  });
+
+  it("supports case-insensitive info string and indented fences up to 3 spaces", () => {
+    const md = `   \`\`\`Questions
+questions:
+  - id: indented-q
+    title: Indented question?
+   \`\`\``;
+
+    const fences = extractQuestionsFences(md);
+    expect(fences).toHaveLength(1);
+    expect(fences[0]).toContain("indented-q");
+  });
+
+  it("preserves compatibility through re-export from usePendingChatQuestions", () => {
+    expect(extractQuestionsFencesFromHook).toBe(extractQuestionsFences);
+    expect(extractPlanQuestionsFromHook).toBe(extractPlanQuestions);
+  });
+});
+
+describe("extractPlanQuestions", () => {
+  it("parses PlanQuestion items from questions fences", () => {
+    const md = `\`\`\`questions
+questions:
+  - id: db-choice
+    title: Which database?
+    options:
+      - title: SQLite
+        value: sqlite
+      - title: PostgreSQL
+        value: postgres
+\`\`\``;
+
+    const questions = extractPlanQuestions(md);
+    expect(questions).toHaveLength(1);
+    expect(questions[0].id).toBe("db-choice");
+    expect(questions[0].title).toBe("Which database?");
+    expect(questions[0].options).toHaveLength(2);
+  });
+
+  it("aggregates questions across multiple blocks and skips invalid non-question blocks", () => {
+    const md = `\`\`\`questions
+questions:
+  - id: q1
+    title: Question 1
+\`\`\`
+
+\`\`\`questions
+This is legacy unparseable free text block without questions key.
+\`\`\`
+
+~~~questions
+questions:
+  - id: q2
+    title: Question 2
+~~~`;
+
+    const questions = extractPlanQuestions(md);
+    expect(questions).toHaveLength(2);
+    expect(questions.map((q) => q.id)).toEqual(["q1", "q2"]);
+  });
+});
+
+describe("consistency between fence scanning and patchQuestionsMarkdown", () => {
+  it("matches scanned fences with patched markdown regions", () => {
+    const md = `Prefix text
+\`\`\`questions
+questions:
+  - id: q1
+    title: Question 1?
+\`\`\`
+Suffix text`;
+
+    const scanned = scanQuestionsFences(md);
+    expect(scanned).toHaveLength(1);
+    expect(scanned[0].body).toContain("id: q1");
+
+    const patched = patchQuestionsMarkdown(md, {
+      q1: ["answered-value"],
+    });
+
+    expect(patched).toContain('answer: "answered-value"');
+    expect(patched.startsWith("Prefix text\n```questions")).toBe(true);
+    expect(patched.endsWith("```\nSuffix text")).toBe(true);
   });
 });
 

@@ -1,6 +1,122 @@
-import { parseQuestions } from "@spacecorps/components-storybook/tendril";
-import { extractQuestionsFences } from "../hooks/usePendingChatQuestions";
+import { parseQuestions, type PlanQuestion } from "@spacecorps/components-storybook/tendril";
 import type { InProgressQuestionAnswers } from "../types/chat";
+
+export interface QuestionsFence {
+  openLineIndex: number;
+  openLine: string;
+  closeLineIndex?: number;
+  closeLine?: string;
+  bodyLines: string[];
+  body: string;
+}
+
+/**
+ * Scans markdown content for code fences with info string "questions" following CommonMark rules.
+ * Handles 3+ backticks or tildes, indentation up to 3 spaces, case-insensitive info string,
+ * matching closing fence length and delimiter, and unterminated fences at EOF.
+ */
+export function scanQuestionsFences(markdown: string): QuestionsFence[] {
+  if (!markdown) return [];
+
+  const lines = markdown.split(/\r?\n/);
+  const fences: QuestionsFence[] = [];
+
+  let inFence = false;
+  let fenceChar = "";
+  let fenceLength = 0;
+  let openLineIndex = -1;
+  let openLine = "";
+  let currentBody: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (!inFence) {
+      // CommonMark: 0-3 spaces/tabs indentation, 3+ backticks or tildes
+      const match = line.match(/^([ \t]{0,3})(`{3,}|~{3,})(.*)$/);
+      if (match) {
+        const delim = match[2];
+        const char = delim[0];
+        const info = match[3].trim();
+        const firstWord = info.split(/\s+/)[0]?.toLowerCase();
+        if (firstWord === "questions") {
+          inFence = true;
+          fenceChar = char;
+          fenceLength = delim.length;
+          openLineIndex = i;
+          openLine = line;
+          currentBody = [];
+          continue;
+        }
+      }
+    } else {
+      // Closing fence: 0-3 spaces/tabs indentation, same delimiter character, length >= opening fence length
+      const closeMatch = line.match(/^([ \t]{0,3})(`{3,}|~{3,})[ \t]*$/);
+      if (closeMatch) {
+        const closeDelim = closeMatch[2];
+        if (closeDelim[0] === fenceChar && closeDelim.length >= fenceLength) {
+          fences.push({
+            openLineIndex,
+            openLine,
+            closeLineIndex: i,
+            closeLine: line,
+            bodyLines: currentBody,
+            body: currentBody.join("\n"),
+          });
+          inFence = false;
+          fenceChar = "";
+          fenceLength = 0;
+          openLineIndex = -1;
+          openLine = "";
+          currentBody = [];
+          continue;
+        }
+      }
+      currentBody.push(line);
+    }
+  }
+
+  if (inFence) {
+    fences.push({
+      openLineIndex,
+      openLine,
+      bodyLines: currentBody,
+      body: currentBody.join("\n"),
+    });
+  }
+
+  return fences;
+}
+
+/**
+ * Extracts raw fence bodies for fenced code blocks with info string "questions".
+ * Follows CommonMark fence rules (supporting 3+ backticks or tildes).
+ */
+export function extractQuestionsFences(markdown: string): string[] {
+  if (!markdown) return [];
+  return scanQuestionsFences(markdown)
+    .filter((fence) => fence.closeLineIndex !== undefined || fence.bodyLines.length > 0)
+    .map((fence) => fence.body);
+}
+
+/**
+ * Extracts and parses all PlanQuestion items from questions fences in markdown content.
+ * Returns only items from valid questions blocks.
+ */
+export function extractPlanQuestions(markdown: string): PlanQuestion[] {
+  if (!markdown) return [];
+  const fenceBodies = extractQuestionsFences(markdown);
+  const questions: PlanQuestion[] = [];
+
+  for (const body of fenceBodies) {
+    const parsed = parseQuestions(body);
+    if (parsed.kind === "questions") {
+      questions.push(...parsed.questions);
+    }
+  }
+
+  return questions;
+}
 
 /**
  * Determines whether a question answer interaction is a write-in text response (such as typing in "Other"
@@ -33,21 +149,16 @@ export function isWriteInAnswer(
     return Boolean(hasPendingDebounce);
   }
 
-  const fenceBodies = extractQuestionsFences(content);
-  for (const body of fenceBodies) {
-    const parsed = parseQuestions(body);
-    if (parsed.kind === "questions") {
-      const question = parsed.questions.find((q) => q.id === questionId);
-      if (question) {
-        const options = question.options || [];
-        if (options.length > 0) {
-          const optionValues = new Set(options.map((o) => o.value));
-          const allMatchOptions = values.every((v) => optionValues.has(v));
-          return !allMatchOptions;
-        }
-        return true;
-      }
+  const questions = extractPlanQuestions(content);
+  const question = questions.find((q) => q.id === questionId);
+  if (question) {
+    const options = question.options || [];
+    if (options.length > 0) {
+      const optionValues = new Set(options.map((o) => o.value));
+      const allMatchOptions = values.every((v) => optionValues.has(v));
+      return !allMatchOptions;
     }
+    return true;
   }
 
   return true;
@@ -77,58 +188,38 @@ export function patchQuestionsMarkdown(
     return content;
   }
 
-  // Regex to detect opening fence: 0-3 spaces, 3+ backticks or tildes, info string starting with questions
-  const fenceOpenRegex = /^([ \t]{0,3})(`{3,}|~{3,})[ \t]*(\S*)/;
-  const lines = content.split("\n");
+  const fences = scanQuestionsFences(content);
+  if (fences.length === 0) {
+    return content;
+  }
+
+  const lines = content.split(/\r?\n/);
   const outputLines: string[] = [];
+  let currentLineIndex = 0;
 
-  let inQuestionsFence = false;
-  let fenceChar = "";
-  let fenceLength = 0;
-  let fenceBodyLines: string[] = [];
+  for (const fence of fences) {
+    while (currentLineIndex < fence.openLineIndex) {
+      outputLines.push(lines[currentLineIndex]);
+      currentLineIndex++;
+    }
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    outputLines.push(fence.openLine);
+    currentLineIndex = fence.openLineIndex + 1;
 
-    if (!inQuestionsFence) {
-      const match = line.match(fenceOpenRegex);
-      if (match) {
-        const char = match[2][0];
-        const len = match[2].length;
-        const info = match[3] || "";
-        if (info.toLowerCase().startsWith("questions")) {
-          inQuestionsFence = true;
-          fenceChar = char;
-          fenceLength = len;
-          fenceBodyLines = [];
-          outputLines.push(line);
-          continue;
-        }
-      }
-      outputLines.push(line);
+    const patchedBodyLines = patchFenceBody(fence.bodyLines, answers);
+    outputLines.push(...patchedBodyLines);
+
+    if (fence.closeLineIndex !== undefined && fence.closeLine !== undefined) {
+      outputLines.push(fence.closeLine);
+      currentLineIndex = fence.closeLineIndex + 1;
     } else {
-      // Check for closing fence
-      const closeRegex = new RegExp(`^[ \\t]{0,3}\\${fenceChar}{${fenceLength},}[ \\t]*$`);
-      if (closeRegex.test(line)) {
-        // Process fenceBodyLines
-        const patchedBodyLines = patchFenceBody(fenceBodyLines, answers);
-        outputLines.push(...patchedBodyLines);
-        outputLines.push(line);
-
-        inQuestionsFence = false;
-        fenceChar = "";
-        fenceLength = 0;
-        fenceBodyLines = [];
-      } else {
-        fenceBodyLines.push(line);
-      }
+      currentLineIndex = lines.length;
     }
   }
 
-  // If fence was unterminated, process any accumulated body lines
-  if (inQuestionsFence && fenceBodyLines.length > 0) {
-    const patchedBodyLines = patchFenceBody(fenceBodyLines, answers);
-    outputLines.push(...patchedBodyLines);
+  while (currentLineIndex < lines.length) {
+    outputLines.push(lines[currentLineIndex]);
+    currentLineIndex++;
   }
 
   return outputLines.join("\n");
