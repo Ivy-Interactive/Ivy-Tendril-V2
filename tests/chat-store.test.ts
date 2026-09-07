@@ -382,14 +382,94 @@ describe("ChatStore State Management & Event Handling", () => {
       // resetForTesting
       chatStore.resetForTesting();
       expect(chatStore.getInProgressAnswers("msg-1")).toBeUndefined();
-      expect(sessionStorage.getItem("tendril:chat:in_progress_answers")).toBeNull();
+      expect(localStorage.getItem("tendril:chat:in_progress_answers")).toBeNull();
 
       // Set again and test deleteSession
       await chatStore.fetchSessions();
       chatStore.setInProgressAnswer("msg-1", "q-test", "val");
       await chatStore.deleteSession("session-1");
       expect(chatStore.getInProgressAnswers("msg-1")).toBeUndefined();
-      expect(sessionStorage.getItem("tendril:chat:in_progress_answers")).toBeNull();
+      expect(localStorage.getItem("tendril:chat:in_progress_answers")).toBeNull();
+    });
+
+    it("deleting a session only removes drafts for that session's messages, preserving other sessions' drafts", async () => {
+      const sessionA: ChatSession = {
+        ...mockSession,
+        id: "session-a",
+        messages: [
+          { id: "msg-a1", role: "user", content: "Hello A", timestamp: "2026-09-07T12:00:00Z" },
+        ],
+      };
+      const sessionB: ChatSession = {
+        ...mockSession,
+        id: "session-b",
+        messages: [
+          { id: "msg-b1", role: "user", content: "Hello B", timestamp: "2026-09-07T12:00:00Z" },
+        ],
+      };
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionA, sessionB]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(sessionA);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      vi.spyOn(chatApi, "deleteSession").mockResolvedValue();
+
+      await chatStore.fetchSessions();
+      chatStore.setInProgressAnswer("msg-a1", "q-a", "val-a");
+      chatStore.setInProgressAnswer("msg-b1", "q-b", "val-b");
+
+      await chatStore.deleteSession("session-a");
+
+      expect(chatStore.getInProgressAnswers("msg-a1")).toBeUndefined();
+      expect(chatStore.getInProgressAnswers("msg-b1")).toEqual({ "q-b": ["val-b"] });
+
+      const stored = JSON.parse(localStorage.getItem("tendril:chat:in_progress_answers") ?? "{}");
+      expect(stored["msg-a1"]).toBeUndefined();
+      expect(stored["msg-b1"]).toEqual({ "q-b": ["val-b"] });
+    });
+
+    it("sweeps drafts for an inactive session's messages fetched via chatApi.getSession, without touching the active session's drafts", async () => {
+      const activeSession: ChatSession = {
+        ...mockSession,
+        id: "session-active",
+        messages: [
+          { id: "msg-active", role: "user", content: "Active", timestamp: "2026-09-07T12:00:00Z" },
+        ],
+      };
+      const inactiveSessionSummary: ChatSession = {
+        ...mockSession,
+        id: "session-inactive",
+        messages: [],
+      };
+      const inactiveSessionFull: ChatSession = {
+        ...mockSession,
+        id: "session-inactive",
+        messages: [
+          {
+            id: "msg-inactive",
+            role: "user",
+            content: "Inactive",
+            timestamp: "2026-09-07T12:00:00Z",
+          },
+        ],
+      };
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([activeSession, inactiveSessionSummary]);
+      vi.spyOn(chatApi, "getSession").mockImplementation((id: string) =>
+        Promise.resolve(id === "session-active" ? activeSession : inactiveSessionFull),
+      );
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      vi.spyOn(chatApi, "deleteSession").mockResolvedValue();
+
+      await chatStore.fetchSessions();
+      chatStore.setInProgressAnswer("msg-active", "q-active", "val-active");
+      chatStore.setInProgressAnswer("msg-inactive", "q-inactive", "val-inactive");
+
+      await chatStore.deleteSession("session-inactive");
+
+      expect(chatStore.getInProgressAnswers("msg-inactive")).toBeUndefined();
+      expect(chatStore.getInProgressAnswers("msg-active")).toEqual({
+        "q-active": ["val-active"],
+      });
     });
   });
 });
