@@ -15,6 +15,7 @@ import type {
   StartJobResponse,
   TendrilConfig,
   VerificationReport,
+  VerificationStatus,
 } from "../types/api";
 
 export const bridge = {
@@ -87,6 +88,18 @@ export const bridge = {
   async listVerificationReports(planId: string): Promise<VerificationReport[]> {
     return invoke<VerificationReport[]>("cmd_list_verification_reports", {
       planId,
+    });
+  },
+
+  async setVerificationStatus(
+    planId: string,
+    name: string,
+    status: VerificationStatus
+  ): Promise<void> {
+    return invoke<void>("cmd_set_verification_status", {
+      planId,
+      name,
+      status,
     });
   },
 

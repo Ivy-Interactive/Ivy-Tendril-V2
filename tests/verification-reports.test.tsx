@@ -25,9 +25,15 @@ describe("PlanVerifications", () => {
       expect(screen.getByTestId("plan-verifications")).toBeInTheDocument()
     );
     expect(screen.getByText("RustClippy")).toBeInTheDocument();
-    expect(screen.getByText("Pass")).toBeInTheDocument();
-    expect(screen.getByText("Fail")).toBeInTheDocument();
-    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("verification-status-select-RustClippy")
+    ).toHaveValue("Pass");
+    expect(
+      screen.getByTestId("verification-status-select-RustTest")
+    ).toHaveValue("Fail");
+    expect(
+      screen.getByTestId("verification-status-select-CheckResult")
+    ).toHaveValue("Pending");
   });
 
   it("expands a report so a failure can be diagnosed in-app", async () => {
