@@ -1,6 +1,6 @@
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
 use crate::agents::runner::{run_agent_process, AgentRunOutcome, TerminationReason};
-use crate::config::{get_plans_dir, TendrilSettings};
+use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
     get_job, insert_job, insert_new_job, list_jobs, list_non_terminal_jobs, max_numeric_job_id,
 };
@@ -110,7 +110,9 @@ impl JobManager {
                 let plans_dir = plan_folder
                     .parent()
                     .map(|p| p.to_path_buf())
-                    .unwrap_or_else(|| get_plans_dir(&self.tendril_home));
+                    .unwrap_or_else(|| {
+                        get_plans_dir_with_settings(&self.tendril_home, Some(&settings))
+                    });
                 match check_dependencies(&plan_folder, &plans_dir) {
                     Ok(res) if !res.ok => Some(
                         res.block_reason

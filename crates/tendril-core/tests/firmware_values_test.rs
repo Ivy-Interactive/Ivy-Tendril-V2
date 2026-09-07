@@ -71,6 +71,44 @@ fn create_plan_emits_its_task_description_and_omits_force_when_false() {
 }
 
 #[test]
+fn create_plan_reflects_explicit_plan_folder_setting() {
+    let prev_env = std::env::var("TENDRIL_PLANS").ok();
+    unsafe {
+        std::env::remove_var("TENDRIL_PLANS");
+    }
+
+    let home = HomeFixture::new("fw-createplan-custom-folder");
+    let job = job_for(
+        JobArgs::CreatePlan(CreatePlanArgs {
+            description: "Custom plan folder".to_string(),
+            project: "Widgets".to_string(),
+            priority: 0,
+            force: false,
+            source_path: None,
+        }),
+        "",
+    );
+
+    let mut settings = TendrilSettings::default();
+    settings.plan_folder = Some("CustomPlans".to_string());
+
+    let v = build_firmware_values(&job, &home.path, &settings);
+    assert_eq!(
+        v.get("TendrilPlansFolder").unwrap(),
+        &home.path.join("CustomPlans").to_string_lossy().to_string()
+    );
+
+    match prev_env {
+        Some(v) => unsafe {
+            std::env::set_var("TENDRIL_PLANS", v);
+        },
+        None => unsafe {
+            std::env::remove_var("TENDRIL_PLANS");
+        },
+    }
+}
+
+#[test]
 fn create_plan_emits_force_and_source_path_when_set() {
     let home = HomeFixture::new("fw-createplan-force");
     let job = job_for(

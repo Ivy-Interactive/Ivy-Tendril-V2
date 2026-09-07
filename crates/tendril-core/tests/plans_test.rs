@@ -216,6 +216,7 @@ fn test_plan_verifications() {
         }],
         depends_on: vec![],
         related_plans: vec![],
+        chat_session_id: None,
     };
 
     let plan = create_plan(&test_dir, opts).unwrap();
