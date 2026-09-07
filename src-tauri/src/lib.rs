@@ -6,6 +6,7 @@ pub mod service;
 pub mod verification_reports;
 
 pub use commands::config::*;
+pub use commands::github::*;
 pub use commands::jobs::*;
 pub use commands::plans::*;
 pub use commands::state::*;
@@ -43,6 +44,7 @@ pub fn run() {
             cmd_restart_service,
             cmd_repair_service,
             cmd_switch_service_mode,
+            cmd_list_github_issues,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
