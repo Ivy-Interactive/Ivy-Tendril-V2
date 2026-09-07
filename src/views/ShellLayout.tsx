@@ -7,8 +7,8 @@ import {
   ShellNewPlanButton,
   type ShellNavItemDto,
   type ShellTabDto,
-} from "components-storybook/tendril";
-import "components-storybook/style.css";
+} from "@spacecorps/components-storybook/tendril";
+import "@spacecorps/components-storybook/style.css";
 import type { ServiceInfo } from "../types/api";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceStatusBanner } from "../components/service";

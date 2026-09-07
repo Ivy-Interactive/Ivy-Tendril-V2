@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createTwoFilesPatch } from "diff";
-import { PlanDiffView } from "components-storybook/tendril";
+import { PlanDiffView } from "@spacecorps/components-storybook/tendril";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 

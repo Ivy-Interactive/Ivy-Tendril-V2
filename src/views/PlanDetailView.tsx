@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { PlanMarkdown } from "components-storybook/tendril";
+import { PlanMarkdown } from "@spacecorps/components-storybook/tendril";
 import {
   describeBridgeError,
   type PlanDetail,
