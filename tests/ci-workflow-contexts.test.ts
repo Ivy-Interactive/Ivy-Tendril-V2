@@ -13,6 +13,7 @@ interface GitHubWorkflow {
     string,
     {
       name?: string;
+      needs?: string | string[];
       steps?: Array<{
         name?: string;
         uses?: string;
@@ -119,5 +120,21 @@ describe("CI workflow and ruleset alignment", () => {
       const actualCommand = vpSteps[0]?.run?.trim();
       expect(actualCommand).toBe(expectedCommand);
     }
+  });
+
+  it("Unit Tests job declares needs build and contains an actions/download-artifact step", () => {
+    const workflow = readWorkflow();
+    const testJob = workflow.jobs.test;
+    expect(testJob).toBeDefined();
+
+    const needs = Array.isArray(testJob?.needs) ? testJob.needs : [testJob?.needs];
+    expect(needs).toContain("build");
+
+    const downloadStep = testJob?.steps?.find((step) =>
+      step.uses?.startsWith("actions/download-artifact"),
+    );
+    expect(downloadStep).toBeDefined();
+    expect(downloadStep?.with?.name).toBe("dist");
+    expect(downloadStep?.with?.path).toBe("dist/");
   });
 });

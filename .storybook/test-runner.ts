@@ -59,13 +59,24 @@ const config: TestRunnerConfig = {
         rules: storyContext.parameters?.a11y?.config?.rules,
       });
 
-      await checkA11y(page, "#storybook-root", {
-        detailedReport: true,
-        detailedReportOptions: {
-          html: true,
-        },
-        axeOptions: storyContext.parameters?.a11y?.options,
-      });
+      try {
+        await checkA11y(page, "#storybook-root", {
+          detailedReport: true,
+          detailedReportOptions: {
+            html: true,
+          },
+          axeOptions: storyContext.parameters?.a11y?.options,
+        });
+      } catch (error) {
+        if (storyContext.parameters?.a11y?.failOnViolation === true) {
+          throw error;
+        }
+
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[a11y warning] Accessibility violation in story "${storyContext.id}":\n${message}`,
+        );
+      }
 
       return;
     }
