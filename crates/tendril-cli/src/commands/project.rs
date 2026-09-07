@@ -17,6 +17,9 @@ pub enum ProjectCommands {
     #[command(about = "Remove a project")]
     Remove { name: String },
 
+    #[command(about = "Rename a project")]
+    Rename { name: String, new_name: String },
+
     #[command(about = "Add a repository to a project")]
     AddRepo { name: String, path: String },
 
@@ -158,6 +161,33 @@ async fn handle_project_command_daemon(
             }
 
             println!("Project '{}' removed.", name);
+        }
+        ProjectCommands::Rename { name, new_name } => {
+            let resp = match client
+                .put(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "newName": new_name,
+                }))
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                anyhow::bail!("Project '{}' already exists", new_name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to rename project '{}': {}", name, err);
+            }
+
+            println!("Project '{}' renamed to '{}'.", name, new_name);
         }
         ProjectCommands::AddRepo { name, path } => {
             let resp = match client
@@ -330,6 +360,40 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             }
             save_config(&cfg_path, &settings)?;
             println!("Project '{}' removed.", name);
+        }
+        ProjectCommands::Rename { name, new_name } => {
+            let trimmed = new_name.trim().to_string();
+            if trimmed.is_empty() {
+                anyhow::bail!("Project name cannot be empty");
+            }
+            let proj_idx = settings
+                .projects
+                .iter()
+                .position(|p| p.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
+
+            if !trimmed.eq_ignore_ascii_case(&name)
+                && settings
+                    .projects
+                    .iter()
+                    .any(|p| p.name.eq_ignore_ascii_case(&trimmed))
+            {
+                anyhow::bail!("Project '{}' already exists", trimmed);
+            }
+
+            settings.projects[proj_idx].name = trimmed.clone();
+            save_config(&cfg_path, &settings)?;
+
+            let plans_dir =
+                tendril_core::config::get_plans_dir_with_settings(tendril_home, Some(&settings));
+            tendril_core::plans::rename_project_in_plans(&plans_dir, &name, &trimmed)?;
+
+            let db_path = tendril_core::config::get_database_path(tendril_home);
+            if let Ok(conn) = tendril_core::db::open_database(&db_path) {
+                let _ = tendril_core::db::rename_project(&conn, &name, &trimmed);
+            }
+
+            println!("Project '{}' renamed to '{}'.", name, trimmed);
         }
         ProjectCommands::AddRepo { name, path } => {
             let proj = settings
