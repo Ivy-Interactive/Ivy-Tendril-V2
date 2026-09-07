@@ -56,15 +56,21 @@ export function ChatBubbleMessage({
   );
 }
 
-export interface ChatBubbleActionProps {
+export interface ChatBubbleActionProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: React.ReactNode;
   onClick?: () => void;
   className?: string;
 }
 
-export function ChatBubbleAction({ icon, onClick, className }: ChatBubbleActionProps) {
+export function ChatBubbleAction({ icon, onClick, className, ...props }: ChatBubbleActionProps) {
   return (
-    <Button variant="ghost" size="icon" className={cn("size-6", className)} onClick={onClick}>
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn("size-6", className)}
+      onClick={onClick}
+      {...props}
+    >
       {icon}
     </Button>
   );

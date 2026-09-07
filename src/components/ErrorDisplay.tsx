@@ -48,9 +48,9 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
       </div>
 
       {stackTrace && (
-        <div className="flex-1 min-h-0 overflow-auto">
+        <div className="flex-1 min-h-0">
           <h4 className="text-sm font-medium mb-2">Stack Trace</h4>
-          <div className="w-full overflow-auto border border-border rounded-md">
+          <div tabIndex={0} className="w-full overflow-auto border border-border rounded-md">
             <SyntaxHighlighter
               language="csharp"
               style={prismTheme}

@@ -32,22 +32,25 @@ export const ShellTabs: React.FC<ShellTabsProps> = ({
           key={tab.id}
           className="tsh-tab"
           data-active={tab.id === selectedId}
-          role="tab"
-          aria-selected={tab.id === selectedId}
-          tabIndex={0}
           onClick={() => fire("OnSelect", [tab.id])}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") fire("OnSelect", [tab.id]);
-          }}
           onAuxClick={(e) => {
             if (e.button === 1) fire("OnClose", [tab.id]);
           }}
         >
-          <span className="tsh-tab-main">
+          <span
+            className="tsh-tab-main"
+            role="button"
+            tabIndex={0}
+            aria-label={tab.title}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") fire("OnSelect", [tab.id]);
+            }}
+          >
             <SquareTerminal size={16} className="tsh-tab-icon" />
             <span className="tsh-tab-label">{tab.title}</span>
           </span>
           <button
+            type="button"
             className="tsh-tab-close"
             aria-label={`Close ${tab.title}`}
             onClick={(e) => {
@@ -59,7 +62,12 @@ export const ShellTabs: React.FC<ShellTabsProps> = ({
           </button>
         </div>
       ))}
-      <button className="tsh-tab-new" aria-label="New agent session" onClick={() => fire("OnNew")}>
+      <button
+        type="button"
+        className="tsh-tab-new"
+        aria-label="New agent session"
+        onClick={() => fire("OnNew")}
+      >
         <Plus size={16} />
       </button>
     </div>

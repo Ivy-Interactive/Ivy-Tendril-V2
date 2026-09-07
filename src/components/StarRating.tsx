@@ -83,6 +83,7 @@ export function StarRating({
               <m.button
                 key={star}
                 type="button"
+                aria-label={`Rate ${star} star${star === 1 ? "" : "s"}`}
                 className={cn(
                   "relative focus-visible:outline-none focus-visible:ring-2",
                   "focus-visible:ring-ring focus-visible:ring-offset-2",

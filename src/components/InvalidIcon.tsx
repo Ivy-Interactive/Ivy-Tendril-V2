@@ -18,6 +18,7 @@ export const InvalidIcon: React.FC<InvalidIconProps> = ({ message, className, ic
             type="button"
             tabIndex={-1}
             data-invalid-icon="true"
+            aria-label={message || "Validation error"}
             className={cn(
               "inline-flex shrink-0 cursor-pointer items-center justify-center border-0 bg-transparent p-0 shadow-none outline-none leading-none",
               "pointer-events-auto focus-visible:ring-1 focus-visible:ring-ring",
