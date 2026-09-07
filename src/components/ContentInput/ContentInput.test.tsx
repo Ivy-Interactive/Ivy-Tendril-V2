@@ -5,7 +5,7 @@ import "@testing-library/jest-dom/vitest";
 vi.mock("pdfjs-dist", () => ({ GlobalWorkerOptions: {}, getDocument: vi.fn() }));
 vi.mock("pdfjs-dist/build/pdf.worker.mjs?url", () => ({ default: "" }));
 
-import { ContentInput } from "./ContentInput";
+import { ContentInput, PdfThumbnail, resetPdfJsCacheForTest } from "./ContentInput";
 
 describe("ContentInput", () => {
   it("enables the submit button when only a file is attached (no text)", () => {
@@ -214,5 +214,44 @@ describe("ContentInput", () => {
     render(<ContentInput id="civ-1" value="" />);
     expect(document.querySelector(".civ-mode-selector-container")).toBeNull();
     expect(screen.queryByTitle("Select job execution mode")).toBeNull();
+  });
+
+  it("loads PDF.js dynamically and renders canvas when given a PDF URL", async () => {
+    resetPdfJsCacheForTest();
+    const mockRender = vi.fn().mockReturnValue({ promise: Promise.resolve() });
+    const mockPage = {
+      getViewport: vi.fn().mockReturnValue({ width: 140, height: 105 }),
+      render: mockRender,
+    };
+    const mockPdf = {
+      getPage: vi.fn().mockResolvedValue(mockPage),
+    };
+    const mockGetDocument = vi.fn().mockReturnValue({
+      promise: Promise.resolve(mockPdf),
+    });
+
+    const pdfjs = await import("pdfjs-dist");
+    (pdfjs as any).getDocument = mockGetDocument;
+
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue({} as any);
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(<PdfThumbnail url="blob:http://localhost/doc.pdf" />);
+      container = rendered.container;
+    });
+
+    await vi.waitFor(() => {
+      expect(mockGetDocument).toHaveBeenCalledWith({ url: "blob:http://localhost/doc.pdf" });
+      expect(mockPdf.getPage).toHaveBeenCalledWith(1);
+      expect(mockRender).toHaveBeenCalled();
+    });
+
+    const canvas = container!.querySelector("canvas");
+    expect(canvas).toBeInTheDocument();
+
+    getContextSpy.mockRestore();
   });
 });

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { parseDiff, getChangeKey } from "react-diff-view";
 
-import { PlanDiffView } from "./PlanDiffView";
+import { PlanDiffView, loadLanguage } from "./PlanDiffView";
 
 describe("PlanDiffView", () => {
   const diff = [
@@ -356,5 +356,65 @@ describe("PlanDiffView collapse scoping", () => {
     const checkbox = screen.getByRole("checkbox");
     expect(checkbox).toBeInTheDocument();
     expect(checkbox).toHaveAttribute("aria-checked", "false");
+  });
+});
+
+describe("PlanDiffView language pack dynamic loading and highlighting", () => {
+  const pythonDiff = [
+    "diff --git a/app.py b/app.py",
+    "--- a/app.py",
+    "+++ b/app.py",
+    "@@ -1,1 +1,1 @@",
+    "-def old_fn(): pass",
+    "+def new_fn(): return True",
+    "",
+  ].join("\n");
+
+  const unknownLangDiff = [
+    "diff --git a/file.customxyz b/file.customxyz",
+    "--- a/file.customxyz",
+    "+++ b/file.customxyz",
+    "@@ -1,1 +1,1 @@",
+    "-alpha",
+    "+beta",
+    "",
+  ].join("\n");
+
+  it("dynamically loads language pack and highlights diff tokens", async () => {
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(<PlanDiffView id="pdv-py" diff={pythonDiff} filePath="app.py" />);
+      container = rendered.container;
+    });
+
+    // Wait for the dynamic language pack to load and tokenized elements to render
+    await vi.waitFor(() => {
+      // Prism/refractor tokenizes `def` as a keyword and `True` as a boolean
+      const tokenSpans = container.querySelectorAll(".diff-line span[class*='token']");
+      expect(tokenSpans.length).toBeGreaterThan(0);
+    });
+
+    const keywordToken = container!.querySelector(".token.keyword");
+    expect(keywordToken).toBeInTheDocument();
+    expect(keywordToken?.textContent).toBe("def");
+  });
+
+  it("gracefully falls back to unhighlighted diff for unrecognized or loading languages without errors", async () => {
+    const { container } = render(
+      <PlanDiffView id="pdv-unk" diff={unknownLangDiff} filePath="file.customxyz" />,
+    );
+
+    // Renders the diff table without throwing
+    expect(container.querySelector(".diff")).toBeInTheDocument();
+    expect(screen.getByText("beta")).toBeInTheDocument();
+
+    // No syntax highlight token spans inside the diff line
+    const tokenSpans = container.querySelectorAll(".diff-line span[class*='token']");
+    expect(tokenSpans.length).toBe(0);
+  });
+
+  it("loadLanguage returns false for unrecognized language", async () => {
+    const loaded = await loadLanguage("unsupported_xyz_lang");
+    expect(loaded).toBe(false);
   });
 });
