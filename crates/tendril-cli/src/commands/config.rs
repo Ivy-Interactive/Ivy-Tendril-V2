@@ -25,7 +25,20 @@ pub fn handle_config_command(cmd: ConfigCommands, tendril_home: &Path) -> anyhow
                 "maxconcurrentjobs" => settings.max_concurrent_jobs.to_string(),
                 "plantemplate" => settings.plan_template,
                 "theme" => settings.theme,
-                _ => anyhow::bail!("Unknown config key: {}", key),
+                _ => {
+                    if let Some((_, v)) = settings
+                        .extra
+                        .iter()
+                        .find(|(k, _)| k.eq_ignore_ascii_case(&key))
+                    {
+                        match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        }
+                    } else {
+                        anyhow::bail!("Unknown config key: {}", key)
+                    }
+                }
             };
             println!("{}", val);
         }
@@ -38,7 +51,22 @@ pub fn handle_config_command(cmd: ConfigCommands, tendril_home: &Path) -> anyhow
                 "maxconcurrentjobs" => settings.max_concurrent_jobs = value.parse()?,
                 "plantemplate" => settings.plan_template = value,
                 "theme" => settings.theme = value,
-                _ => anyhow::bail!("Unknown config key: {}", key),
+                _ => {
+                    if let Some(existing_key) = settings
+                        .extra
+                        .keys()
+                        .find(|k| k.eq_ignore_ascii_case(&key))
+                        .cloned()
+                    {
+                        let parsed: serde_json::Value = serde_json::from_str(&value)
+                            .unwrap_or(serde_json::Value::String(value));
+                        settings.extra.insert(existing_key, parsed);
+                    } else {
+                        let parsed: serde_json::Value = serde_json::from_str(&value)
+                            .unwrap_or(serde_json::Value::String(value));
+                        settings.extra.insert(key, parsed);
+                    }
+                }
             };
             save_config(&cfg_path, &settings)?;
             println!("Config updated.");

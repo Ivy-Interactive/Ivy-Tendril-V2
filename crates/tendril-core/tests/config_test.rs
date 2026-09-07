@@ -43,9 +43,11 @@ fn test_config_load_and_save() {
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
     let config_file = test_dir.join("config.yaml");
 
-    let mut settings = TendrilSettings::default();
-    settings.coding_agent = "gemini".to_string();
-    settings.job_timeout = 45;
+    let mut settings = TendrilSettings {
+        coding_agent: "gemini".to_string(),
+        job_timeout: 45,
+        ..TendrilSettings::default()
+    };
     settings.projects.push(ProjectConfig {
         name: "TestProject".to_string(),
         color: "Blue".to_string(),
