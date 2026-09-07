@@ -90,6 +90,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Projects & Verifications
         .route("/api/projects", get(projects::list_projects))
         .route("/api/projects/:name", get(projects::get_project))
+        .route(
+            "/api/projects/:name/issues",
+            get(projects::get_project_issues),
+        )
+        .route(
+            "/api/projects/:name/issues/metadata",
+            get(projects::get_project_issues_metadata),
+        )
         .route("/api/verifications", get(verifications::list_verifications))
         // Config
         .route(
