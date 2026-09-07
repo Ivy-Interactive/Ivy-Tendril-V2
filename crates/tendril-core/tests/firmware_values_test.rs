@@ -5,8 +5,9 @@ use std::collections::HashMap;
 use std::path::Path;
 use tendril_core::config::TendrilSettings;
 use tendril_core::jobs::firmware_values::{
-    build_firmware_values, build_repo_configs_yaml, execution_profile_override,
-    extract_plan_id_from_folder, resolve_project, resolve_working_directory,
+    build_firmware_values, build_firmware_values_with, build_repo_configs_yaml,
+    execution_profile_override, extract_plan_id_from_folder, resolve_project,
+    resolve_working_directory,
 };
 use tendril_core::models::{
     AddProjectArgs, CreateIssueArgs, CreatePlanArgs, CreatePrArgs, ExecutePlanArgs, ExpandPlanArgs,
@@ -27,7 +28,12 @@ fn job_for(args: JobArgs, plan_folder: &str) -> JobItem {
 }
 
 fn values(job: &JobItem, home: &HomeFixture) -> HashMap<String, String> {
-    build_firmware_values(job, &home.path, &TendrilSettings::default())
+    build_firmware_values_with(
+        job,
+        &home.path,
+        &TendrilSettings::default(),
+        &home.plans_dir(),
+    )
 }
 
 /// The three values every promptware receives, regardless of job type.
@@ -57,13 +63,9 @@ fn create_plan_emits_its_task_description_and_omits_force_when_false() {
     let v = values(&job, &home);
     assert_always_present(&v, &home, "Widgets");
     assert_eq!(v.get("TaskDescription").unwrap(), "Add dark mode");
-    // CreatePlan has no plan folder to derive this from, so it comes from the configured plans
-    // directory — which an operator may redirect with TENDRIL_PLANS.
     assert_eq!(
         v.get("TendrilPlansFolder").unwrap(),
-        &tendril_core::config::get_plans_dir(&home.path)
-            .to_string_lossy()
-            .to_string()
+        &home.plans_dir().to_string_lossy().to_string()
     );
     assert!(!v.contains_key("Force"), "Force must be omitted when false");
     assert!(!v.contains_key("SourcePath"));
@@ -72,11 +74,6 @@ fn create_plan_emits_its_task_description_and_omits_force_when_false() {
 
 #[test]
 fn create_plan_reflects_explicit_plan_folder_setting() {
-    let prev_env = std::env::var("TENDRIL_PLANS").ok();
-    unsafe {
-        std::env::remove_var("TENDRIL_PLANS");
-    }
-
     let home = HomeFixture::new("fw-createplan-custom-folder");
     let job = job_for(
         JobArgs::CreatePlan(CreatePlanArgs {
@@ -89,23 +86,60 @@ fn create_plan_reflects_explicit_plan_folder_setting() {
         "",
     );
 
-    let mut settings = TendrilSettings::default();
-    settings.plan_folder = Some("CustomPlans".to_string());
-
-    let v = build_firmware_values(&job, &home.path, &settings);
+    let custom_plans = home.path.join("CustomPlans");
+    let v =
+        build_firmware_values_with(&job, &home.path, &TendrilSettings::default(), &custom_plans);
     assert_eq!(
         v.get("TendrilPlansFolder").unwrap(),
-        &home.path.join("CustomPlans").to_string_lossy().to_string()
+        &custom_plans.to_string_lossy().to_string()
+    );
+}
+
+#[test]
+fn build_firmware_values_with_isolates_plans_folder_from_ambient_env() {
+    let home = HomeFixture::new("fw-createplan-seam");
+    let job = job_for(
+        JobArgs::CreatePlan(CreatePlanArgs {
+            description: "Isolated plan folder".to_string(),
+            project: "Widgets".to_string(),
+            priority: 0,
+            force: false,
+            source_path: None,
+        }),
+        "",
     );
 
-    match prev_env {
-        Some(v) => unsafe {
-            std::env::set_var("TENDRIL_PLANS", v);
-        },
-        None => unsafe {
-            std::env::remove_var("TENDRIL_PLANS");
-        },
-    }
+    let explicit_plans = home.path.join("ExplicitPlans");
+    let v = build_firmware_values_with(
+        &job,
+        &home.path,
+        &TendrilSettings::default(),
+        &explicit_plans,
+    );
+    assert_eq!(
+        v.get("TendrilPlansFolder").unwrap(),
+        &explicit_plans.to_string_lossy().to_string()
+    );
+}
+
+#[test]
+fn build_firmware_values_default_entrypoint_emits_expected_keys() {
+    let home = HomeFixture::new("fw-default-entrypoint");
+    let job = job_for(
+        JobArgs::CreatePlan(CreatePlanArgs {
+            description: "Default entrypoint".to_string(),
+            project: "Widgets".to_string(),
+            priority: 0,
+            force: false,
+            source_path: None,
+        }),
+        "",
+    );
+
+    let v = build_firmware_values(&job, &home.path, &TendrilSettings::default());
+    assert_eq!(v.get("TaskDescription").unwrap(), "Default entrypoint");
+    assert_eq!(v.get("TendrilProject").unwrap(), "Widgets");
+    assert!(v.contains_key("TendrilPlansFolder"));
 }
 
 #[test]

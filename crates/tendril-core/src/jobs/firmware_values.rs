@@ -16,6 +16,24 @@ pub fn build_firmware_values(
     tendril_home: &Path,
     settings: &TendrilSettings,
 ) -> HashMap<String, String> {
+    build_firmware_values_with(
+        job,
+        tendril_home,
+        settings,
+        &get_plans_dir_with_settings(tendril_home, Some(settings)),
+    )
+}
+
+/// Builds the firmware header values for a job with an explicit plans directory.
+///
+/// This seam allows tests and callers to supply a plans directory directly rather than relying on
+/// ambient TENDRIL_PLANS environment resolution.
+pub fn build_firmware_values_with(
+    job: &JobItem,
+    tendril_home: &Path,
+    settings: &TendrilSettings,
+    plans_dir: &Path,
+) -> HashMap<String, String> {
     let mut values = HashMap::new();
     values.insert("TendrilJobId".to_string(), job.id.clone());
     values.insert(
@@ -33,9 +51,7 @@ pub fn build_firmware_values(
             values.insert("TaskDescription".to_string(), a.description.clone());
             values.insert(
                 "TendrilPlansFolder".to_string(),
-                get_plans_dir_with_settings(tendril_home, Some(settings))
-                    .to_string_lossy()
-                    .to_string(),
+                plans_dir.to_string_lossy().to_string(),
             );
             if a.force {
                 values.insert("Force".to_string(), "true".to_string());
