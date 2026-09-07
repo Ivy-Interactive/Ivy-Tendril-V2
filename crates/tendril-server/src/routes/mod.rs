@@ -56,6 +56,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/plans/:id/revisions",
             get(plans::get_revision_handler).post(plans::write_revision_handler),
         )
+        .route(
+            "/api/plans/:id/recommendations",
+            get(plans::list_recommendations_handler).post(plans::add_recommendation_handler),
+        )
+        .route(
+            "/api/plans/:id/recommendations/:title",
+            put(plans::update_recommendation_handler).delete(plans::delete_recommendation_handler),
+        )
+        .route(
+            "/api/plans/:id/verifications",
+            get(plans::list_plan_verifications_handler).post(plans::add_plan_verification_handler),
+        )
+        .route(
+            "/api/plans/:id/verifications/:name",
+            put(plans::update_plan_verification_handler)
+                .delete(plans::delete_plan_verification_handler),
+        )
         // Inbox
         .route("/api/inbox", post(inbox::post_inbox))
         // Jobs
@@ -64,7 +81,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/jobs/:id/status", put(jobs::update_job_status))
         .route("/api/jobs/:id/fail", put(jobs::report_job_failure))
         .route("/api/jobs/:id/cancel", post(jobs::cancel_job))
-        .route("/api/jobs/:id/logs", post(jobs::add_log))
+        .route(
+            "/api/jobs/:id/logs",
+            get(jobs::get_job_logs).post(jobs::add_log),
+        )
+        .route("/api/jobs/:id/logs/stream", get(jobs::stream_job_logs))
         // Projects & Verifications
         .route("/api/projects", get(projects::list_projects))
         .route("/api/projects/:name", get(projects::get_project))

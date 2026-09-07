@@ -17,8 +17,12 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(tendril_home: PathBuf, secret: String) -> Self {
-        let config_path = get_config_path(&tendril_home);
         let plans_dir = get_plans_dir(&tendril_home);
+        Self::with_plans_dir(tendril_home, plans_dir, secret)
+    }
+
+    pub fn with_plans_dir(tendril_home: PathBuf, plans_dir: PathBuf, secret: String) -> Self {
+        let config_path = get_config_path(&tendril_home);
         let db_path = get_database_path(&tendril_home);
 
         let settings = load_config(&config_path).unwrap_or_default();
