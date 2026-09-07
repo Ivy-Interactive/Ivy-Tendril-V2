@@ -1,7 +1,10 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tendril_core::config::{
-    delete_master, expand_variables, get_plans_dir, get_plans_dir_with_settings, load_config,
-    normalize_slashes, read_master, save_config, write_master, TendrilSettings,
+    delete_master, expand_variables, get_config_path, get_config_path_with_env,
+    get_default_tendril_home, get_default_tendril_home_with_env, get_plans_dir,
+    get_plans_dir_with_env, get_plans_dir_with_settings, get_tendril_home,
+    get_tendril_home_with_env, load_config, normalize_slashes, read_master, save_config,
+    write_master, EnvSource, SystemEnv, TendrilSettings,
 };
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef};
 
@@ -130,39 +133,89 @@ fn test_plan_folder_serialization() {
     assert_eq!(loaded.plan_folder, Some("D:/Tendril/MyPlans".to_string()));
 }
 
-static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-struct EnvGuard {
-    prev_env: Option<String>,
+#[test]
+fn test_system_env() {
+    let env = SystemEnv;
+    assert!(env.get_var("PATH").is_some());
+    assert!(env.get_var("NON_EXISTENT_VAR_TENDRIL_TEST_XYZ").is_none());
 }
 
-impl EnvGuard {
-    fn unsetting_tendril_plans() -> Self {
-        let prev_env = std::env::var("TENDRIL_PLANS").ok();
-        unsafe {
-            std::env::remove_var("TENDRIL_PLANS");
+#[test]
+fn test_mock_env_sources() {
+    let closure_env = |k: &str| {
+        if k == "FOO" {
+            Some("bar".to_string())
+        } else {
+            None
         }
-        Self { prev_env }
-    }
+    };
+    assert_eq!(closure_env.get_var("FOO"), Some("bar".to_string()));
+    assert_eq!(closure_env.get_var("BAZ"), None);
+
+    let mut map_owned = std::collections::HashMap::new();
+    map_owned.insert("KEY".to_string(), "VAL".to_string());
+    assert_eq!(map_owned.get_var("KEY"), Some("VAL".to_string()));
+    assert_eq!(map_owned.get_var("OTHER"), None);
+
+    let mut map_ref = std::collections::HashMap::new();
+    map_ref.insert("KEY", "VAL");
+    assert_eq!(map_ref.get_var("KEY"), Some("VAL".to_string()));
+    assert_eq!(map_ref.get_var("OTHER"), None);
+
+    let mut map_str_string = std::collections::HashMap::new();
+    map_str_string.insert("KEY", "VAL".to_string());
+    assert_eq!(map_str_string.get_var("KEY"), Some("VAL".to_string()));
+    assert_eq!(map_str_string.get_var("OTHER"), None);
+
+    let mut map_string_str = std::collections::HashMap::new();
+    map_string_str.insert("KEY".to_string(), "VAL");
+    assert_eq!(map_string_str.get_var("KEY"), Some("VAL".to_string()));
+    assert_eq!(map_string_str.get_var("OTHER"), None);
 }
 
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        match &self.prev_env {
-            Some(v) => unsafe {
-                std::env::set_var("TENDRIL_PLANS", v);
-            },
-            None => unsafe {
-                std::env::remove_var("TENDRIL_PLANS");
-            },
-        }
-    }
+#[test]
+fn test_config_path_and_tendril_home_with_env() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-envpaths-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    let empty_env = std::collections::HashMap::<&str, &str>::new();
+    assert_eq!(
+        get_config_path_with_env(&test_dir, &empty_env),
+        test_dir.join("config.yaml")
+    );
+
+    let mut custom_config_env = std::collections::HashMap::new();
+    custom_config_env.insert("TENDRIL_CONFIG", "/custom/path/config.yaml");
+    assert_eq!(
+        get_config_path_with_env(&test_dir, &custom_config_env),
+        PathBuf::from("/custom/path/config.yaml")
+    );
+
+    let mut custom_home_env = std::collections::HashMap::new();
+    custom_home_env.insert("TENDRIL_HOME", "/custom/tendril/home");
+    assert_eq!(
+        get_default_tendril_home_with_env(&custom_home_env),
+        PathBuf::from("/custom/tendril/home")
+    );
+    assert_eq!(
+        get_tendril_home_with_env(&custom_home_env),
+        PathBuf::from("/custom/tendril/home")
+    );
+
+    // Verify backward-compatible wrappers
+    assert!(
+        get_config_path(&test_dir).ends_with("config.yaml")
+            || get_config_path(&test_dir).is_absolute()
+    );
+    assert!(!get_default_tendril_home().as_os_str().is_empty());
+    assert_eq!(get_tendril_home(), get_default_tendril_home());
 }
 
 #[test]
 fn test_get_plans_dir_with_explicit_setting() {
-    let _lock = ENV_LOCK.lock().unwrap();
-    let _env = EnvGuard::unsetting_tendril_plans();
+    let empty_env = std::collections::HashMap::<&str, &str>::new();
 
     let test_dir = std::env::temp_dir().join(format!(
         "tendril-plansdir-test-{}",
@@ -173,23 +226,28 @@ fn test_get_plans_dir_with_explicit_setting() {
     let mut settings = TendrilSettings::default();
     settings.plan_folder = Some("MyPlans".to_string());
 
-    let plans_dir = get_plans_dir_with_settings(&test_dir, Some(&settings));
+    let plans_dir = get_plans_dir_with_env(&test_dir, Some(&settings), &empty_env);
     assert_eq!(plans_dir, test_dir.join("MyPlans"));
 
     let config_file = test_dir.join("config.yaml");
     save_config(&config_file, &settings).expect("Failed to save config");
 
-    // When settings is None, get_plans_dir_with_settings should load from config.yaml
-    let loaded_plans_dir = get_plans_dir_with_settings(&test_dir, None);
+    // When settings is None, get_plans_dir_with_env should load from config.yaml
+    let loaded_plans_dir = get_plans_dir_with_env(&test_dir, None, &empty_env);
     assert_eq!(loaded_plans_dir, test_dir.join("MyPlans"));
 
     // Also get_plans_dir delegates to get_plans_dir_with_settings(&test_dir, None)
-    let delegated_plans_dir = get_plans_dir(&test_dir);
-    assert_eq!(delegated_plans_dir, test_dir.join("MyPlans"));
+    // which delegates to get_plans_dir_with_env(&test_dir, None, &SystemEnv)
+    if std::env::var("TENDRIL_PLANS").is_err() {
+        let delegated_plans_dir = get_plans_dir(&test_dir);
+        assert_eq!(delegated_plans_dir, test_dir.join("MyPlans"));
+        let settings_plans_dir = get_plans_dir_with_settings(&test_dir, Some(&settings));
+        assert_eq!(settings_plans_dir, test_dir.join("MyPlans"));
+    }
 
     // Default fallback when plan_folder is None
     let default_settings = TendrilSettings::default();
-    let fallback_dir = get_plans_dir_with_settings(&test_dir, Some(&default_settings));
+    let fallback_dir = get_plans_dir_with_env(&test_dir, Some(&default_settings), &empty_env);
     assert_eq!(fallback_dir, test_dir.join("Plans"));
 
     let _ = std::fs::remove_dir_all(test_dir);
@@ -197,8 +255,7 @@ fn test_get_plans_dir_with_explicit_setting() {
 
 #[test]
 fn test_get_plans_dir_variable_expansion() {
-    let _lock = ENV_LOCK.lock().unwrap();
-    let _env = EnvGuard::unsetting_tendril_plans();
+    let empty_env = std::collections::HashMap::<&str, &str>::new();
 
     let test_dir = std::env::temp_dir().join(format!(
         "tendril-varexp-test-{}",
@@ -209,16 +266,16 @@ fn test_get_plans_dir_variable_expansion() {
     let mut settings = TendrilSettings::default();
     settings.plan_folder = Some("%TENDRIL_HOME%/CustomPlans".to_string());
 
-    let plans_dir = get_plans_dir_with_settings(&test_dir, Some(&settings));
+    let plans_dir = get_plans_dir_with_env(&test_dir, Some(&settings), &empty_env);
     assert_eq!(plans_dir, test_dir.join("CustomPlans"));
 
     settings.plan_folder = Some("${TENDRIL_HOME}/Nested/Plans".to_string());
-    let plans_dir = get_plans_dir_with_settings(&test_dir, Some(&settings));
+    let plans_dir = get_plans_dir_with_env(&test_dir, Some(&settings), &empty_env);
     assert_eq!(plans_dir, test_dir.join("Nested/Plans"));
 
     // Relative path without variable expansion
     settings.plan_folder = Some("RelativePlans".to_string());
-    let plans_dir = get_plans_dir_with_settings(&test_dir, Some(&settings));
+    let plans_dir = get_plans_dir_with_env(&test_dir, Some(&settings), &empty_env);
     assert_eq!(plans_dir, test_dir.join("RelativePlans"));
 
     let _ = std::fs::remove_dir_all(test_dir);
@@ -226,8 +283,7 @@ fn test_get_plans_dir_variable_expansion() {
 
 #[test]
 fn test_get_plans_dir_precedence() {
-    let _lock = ENV_LOCK.lock().unwrap();
-    let _env = EnvGuard::unsetting_tendril_plans();
+    let empty_env = std::collections::HashMap::<&str, &str>::new();
 
     let test_dir = std::env::temp_dir().join(format!(
         "tendril-precedence-test-{}",
@@ -238,7 +294,7 @@ fn test_get_plans_dir_precedence() {
     // 1. Fallback when neither TENDRIL_PLANS nor planFolder is set
     let default_settings = TendrilSettings::default();
     assert_eq!(
-        get_plans_dir_with_settings(&test_dir, Some(&default_settings)),
+        get_plans_dir_with_env(&test_dir, Some(&default_settings), &empty_env),
         test_dir.join("Plans")
     );
 
@@ -246,20 +302,32 @@ fn test_get_plans_dir_precedence() {
     let mut configured_settings = TendrilSettings::default();
     configured_settings.plan_folder = Some("CustomFolder".to_string());
     assert_eq!(
-        get_plans_dir_with_settings(&test_dir, Some(&configured_settings)),
+        get_plans_dir_with_env(&test_dir, Some(&configured_settings), &empty_env),
         test_dir.join("CustomFolder")
     );
 
     // 3. TENDRIL_PLANS overrides planFolder in settings
     let env_override_path = test_dir.join("EnvOverride");
-    unsafe {
-        std::env::set_var(
-            "TENDRIL_PLANS",
-            env_override_path.to_string_lossy().to_string(),
-        );
-    }
+    let mut env_with_override = std::collections::HashMap::new();
+    env_with_override.insert(
+        "TENDRIL_PLANS",
+        env_override_path.to_string_lossy().to_string(),
+    );
     assert_eq!(
-        get_plans_dir_with_settings(&test_dir, Some(&configured_settings)),
+        get_plans_dir_with_env(&test_dir, Some(&configured_settings), &env_with_override),
+        env_override_path
+    );
+
+    // Also verify with closure environment source
+    let closure_env = |k: &str| {
+        if k == "TENDRIL_PLANS" {
+            Some(env_override_path.to_string_lossy().to_string())
+        } else {
+            None
+        }
+    };
+    assert_eq!(
+        get_plans_dir_with_env(&test_dir, Some(&configured_settings), &closure_env),
         env_override_path
     );
 
