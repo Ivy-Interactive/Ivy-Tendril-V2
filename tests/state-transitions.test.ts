@@ -1,14 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { PlanActionsController } from "../src/controllers/plan_actions";
 import type { PlanDetail, PlanSummary } from "../src/types/api";
+import { planDetail } from "./fixtures/plan.fixture";
 
 describe("Plan State Transitions & Action Gating Rules", () => {
-  const basePlan: PlanDetail = {
-    id: "00021",
+  const basePlan = planDetail({
     title: "Test Plan",
     state: "Draft",
-    project: "Tendril-App",
-    level: "Feature",
     repos: ["/repo"],
     verifications: [
       { name: "RustClippy", status: "Pass" },
@@ -20,7 +18,7 @@ describe("Plan State Transitions & Action Gating Rules", () => {
     relatedPlans: [],
     commits: [],
     prs: [],
-  };
+  });
 
   describe("ExecutePlan Gating", () => {
     it("blocks ExecutePlan if a dependency plan is not Completed", () => {

@@ -1,8 +1,9 @@
 use crate::error::BridgeError;
 use crate::models::{
-    JobDetailDto, JobDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, PlanVerificationDto,
-    ProjectSummaryDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
+    JobDetailDto, JobDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, ProjectSummaryDto,
+    RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
 };
+use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::json;
 
@@ -87,76 +88,8 @@ impl TendrilClient {
 
         let raw_plans: Vec<serde_json::Value> = resp.json().await?;
         let summaries = raw_plans
-            .into_iter()
-            .map(|val| {
-                let id = val
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let title = val
-                    .get("title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let state = val
-                    .get("state")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Draft")
-                    .to_string();
-                let project = val
-                    .get("project")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let level = val
-                    .get("level")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Feature")
-                    .to_string();
-                let priority = val
-                    .get("priority")
-                    .and_then(|v| v.as_i64())
-                    .map(|p| p as i32);
-                let created = val
-                    .get("created")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let updated = val
-                    .get("updated")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-
-                let verifications = val
-                    .get("verifications")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|item| {
-                                let name = item.get("name").and_then(|n| n.as_str())?.to_string();
-                                let status = item
-                                    .get("status")
-                                    .and_then(|s| s.as_str())
-                                    .unwrap_or("Pending")
-                                    .to_string();
-                                Some(PlanVerificationDto { name, status })
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-
-                PlanSummaryDto {
-                    id,
-                    title,
-                    state,
-                    project,
-                    level,
-                    priority,
-                    created,
-                    updated,
-                    verifications,
-                }
-            })
+            .iter()
+            .map(|val| map_plan_summary(val, ""))
             .collect();
 
         Ok(summaries)
@@ -182,151 +115,7 @@ impl TendrilClient {
         }
 
         let val: serde_json::Value = resp.json().await?;
-        let metadata = val.get("metadata").unwrap_or(&val);
-
-        let id = metadata
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or(plan_id)
-            .to_string();
-        let title = metadata
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let state = metadata
-            .get("state")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Draft")
-            .to_string();
-        let project = metadata
-            .get("project")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let level = metadata
-            .get("level")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Feature")
-            .to_string();
-        let priority = metadata
-            .get("priority")
-            .and_then(|v| v.as_i64())
-            .map(|p| p as i32);
-        let execution_profile = metadata
-            .get("executionProfile")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let initial_prompt = metadata
-            .get("initialPrompt")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let source_url = metadata
-            .get("sourceUrl")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let created = metadata
-            .get("created")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        let updated = metadata
-            .get("updated")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        let repos = metadata
-            .get("repos")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let verifications = metadata
-            .get("verifications")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| {
-                        let name = item.get("name").and_then(|n| n.as_str())?.to_string();
-                        let status = item
-                            .get("status")
-                            .and_then(|s| s.as_str())
-                            .unwrap_or("Pending")
-                            .to_string();
-                        Some(PlanVerificationDto { name, status })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let depends_on = metadata
-            .get("dependsOn")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let related_plans = metadata
-            .get("relatedPlans")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let commits = metadata
-            .get("commits")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let prs = metadata
-            .get("prs")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|r| r.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let latest_revision_content = val
-            .get("latestRevision")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-
-        Ok(PlanDetailDto {
-            id,
-            title,
-            state,
-            project,
-            level,
-            priority,
-            execution_profile,
-            initial_prompt,
-            source_url,
-            created,
-            updated,
-            repos,
-            verifications,
-            depends_on,
-            related_plans,
-            commits,
-            prs,
-            latest_revision_content,
-        })
+        Ok(map_plan_detail(&val, plan_id))
     }
 
     pub async fn create_plan(
@@ -383,6 +172,52 @@ impl TendrilClient {
             return Err(BridgeError::new(
                 "UPDATE_FIELD_FAILED",
                 format!("Failed to update plan field ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Accept or decline one of a plan's recommendations.
+    ///
+    /// Recommendations are keyed by title, matching `set_recommendation_state`
+    /// in tendril-core and the `tendril plan rec accept|decline` CLI, both of
+    /// which look the entry up by title rather than by index.
+    ///
+    /// The service does not expose this route yet (plan 00024 adds it). Until
+    /// then the call fails with a real `RECOMMENDATION_UPDATE_FAILED` carrying
+    /// the service's 404, which the Review view surfaces and rolls back — the
+    /// app does not write `plan.yaml` behind the daemon's back.
+    pub async fn update_recommendation(
+        &self,
+        plan_id: &str,
+        title: &str,
+        state: &str,
+        decline_reason: Option<&str>,
+    ) -> Result<(), BridgeError> {
+        let url = format!(
+            "{}/api/plans/{}/recommendations/{}",
+            self.base_url,
+            path_segment(plan_id),
+            path_segment(title)
+        );
+        let body = json!({ "state": state, "declineReason": decline_reason });
+
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "RECOMMENDATION_UPDATE_FAILED",
+                format!("Failed to set recommendation '{title}' to {state} ({status})"),
+                text,
             ));
         }
 
@@ -965,4 +800,53 @@ impl TendrilClient {
 
 fn urlencoding(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+}
+
+/// Percent-encode one path segment.
+///
+/// `urlencoding` is form encoding, which turns a space into `+`. That is correct
+/// in a query string and wrong in a path: `+` is a literal plus there, so a
+/// recommendation titled "Deep Link Protocol Handler" would be looked up as
+/// "Deep+Link+Protocol+Handler" and never found. Plan and job ids are digits, so
+/// only the title-keyed recommendation route is affected.
+fn path_segment(s: &str) -> String {
+    let mut encoded = String::with_capacity(s.len());
+    for byte in s.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(*byte as char)
+            }
+            other => encoded.push_str(&format!("%{other:02X}")),
+        }
+    }
+    encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_path_segment_encodes_spaces_as_percent_20_not_plus() {
+        assert_eq!(
+            path_segment("Deep Link Protocol Handler"),
+            "Deep%20Link%20Protocol%20Handler"
+        );
+        // A `+` in the title survives as a `+`, which form encoding would have
+        // turned into a space on the way back out.
+        assert_eq!(path_segment("C++ bindings"), "C%2B%2B%20bindings");
+        assert_eq!(path_segment("00021"), "00021");
+        assert_eq!(path_segment("a-b_c.d~e"), "a-b_c.d~e");
+    }
+
+    #[test]
+    fn a_path_segment_cannot_smuggle_in_extra_path_or_query() {
+        assert_eq!(path_segment("../../etc/passwd"), "..%2F..%2Fetc%2Fpasswd");
+        assert_eq!(path_segment("title?admin=1"), "title%3Fadmin%3D1");
+    }
+
+    #[test]
+    fn a_path_segment_encodes_non_ascii_as_utf8_bytes() {
+        assert_eq!(path_segment("résumé"), "r%C3%A9sum%C3%A9");
+    }
 }

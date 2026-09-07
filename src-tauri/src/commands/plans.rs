@@ -1,16 +1,20 @@
 use super::get_client_from_master;
-use crate::models::{PlanDetailDto, PlanQueryDto, PlanSummaryDto, RevisionResultDto};
+use crate::error::BridgeError;
+use crate::models::{
+    PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto, RevisionResultDto,
+    VerificationReportDto,
+};
 
 #[tauri::command]
-pub async fn cmd_list_plans(query: Option<PlanQueryDto>) -> Result<Vec<PlanSummaryDto>, String> {
-    let client = get_client_from_master()?;
-    client.list_plans(query).await.map_err(|e| e.to_string())
+pub async fn cmd_list_plans(
+    query: Option<PlanQueryDto>,
+) -> Result<Vec<PlanSummaryDto>, BridgeError> {
+    get_client_from_master()?.list_plans(query).await
 }
 
 #[tauri::command]
-pub async fn cmd_get_plan(id: String) -> Result<PlanDetailDto, String> {
-    let client = get_client_from_master()?;
-    client.get_plan(&id).await.map_err(|e| e.to_string())
+pub async fn cmd_get_plan(id: String) -> Result<PlanDetailDto, BridgeError> {
+    get_client_from_master()?.get_plan(&id).await
 }
 
 #[tauri::command]
@@ -19,28 +23,104 @@ pub async fn cmd_update_plan_field(
     field: String,
     value: String,
     allow_failed: Option<bool>,
-) -> Result<(), String> {
-    let client = get_client_from_master()?;
-    client
+) -> Result<(), BridgeError> {
+    get_client_from_master()?
         .update_plan_field(&id, &field, &value, allow_failed.unwrap_or(false))
         .await
-        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn cmd_get_revision(id: String, number: Option<i32>) -> Result<String, String> {
-    let client = get_client_from_master()?;
-    client
-        .get_revision(&id, number)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn cmd_get_revision(id: String, number: Option<i32>) -> Result<String, BridgeError> {
+    get_client_from_master()?.get_revision(&id, number).await
 }
 
 #[tauri::command]
-pub async fn cmd_write_revision(id: String, content: String) -> Result<RevisionResultDto, String> {
-    let client = get_client_from_master()?;
-    client
+pub async fn cmd_write_revision(
+    id: String,
+    content: String,
+) -> Result<RevisionResultDto, BridgeError> {
+    get_client_from_master()?
         .write_revision(&id, &content)
         .await
-        .map_err(|e| e.to_string())
+}
+
+/// Read one verification report for a plan.
+///
+/// Verification reports are markdown files ExecutePlan writes into
+/// `<planFolder>/Verification/<name>.md`. The service exposes no route for
+/// their content — only the global verification *definitions* — but the plan
+/// folder is on the same machine as the app (the daemon is loopback-only and
+/// its `.master` file lives under `TENDRIL_HOME`), so the native side reads
+/// them straight off disk using `folderPath` from the plan detail.
+#[tauri::command]
+pub async fn cmd_get_verification_report(
+    plan_id: String,
+    name: String,
+) -> Result<VerificationReportDto, BridgeError> {
+    let folder = plan_folder(&plan_id).await?;
+    crate::verification_reports::read_report(std::path::Path::new(&folder), &name)
+}
+
+/// Read every verification report that exists on disk for a plan. A
+/// verification that has not run yet has no report file and is simply absent
+/// from the result.
+#[tauri::command]
+pub async fn cmd_list_verification_reports(
+    plan_id: String,
+) -> Result<Vec<VerificationReportDto>, BridgeError> {
+    let client = get_client_from_master()?;
+    let plan = client.get_plan(&plan_id).await?;
+    let folder = plan.folder_path.clone().ok_or_else(|| {
+        BridgeError::not_found(format!("Plan '{plan_id}' reported no folder path"))
+    })?;
+    let folder = std::path::Path::new(&folder);
+
+    let mut reports = Vec::new();
+    for verification in &plan.verifications {
+        match crate::verification_reports::read_report(folder, &verification.name) {
+            Ok(report) => reports.push(report),
+            Err(err) if err.code == "NOT_FOUND" => {}
+            Err(err) => return Err(err),
+        }
+    }
+
+    Ok(reports)
+}
+
+/// The plan's recommendations, as recorded in its `plan.yaml`.
+#[tauri::command]
+pub async fn cmd_list_recommendations(
+    plan_id: String,
+) -> Result<Vec<RecommendationDto>, BridgeError> {
+    let plan = get_client_from_master()?.get_plan(&plan_id).await?;
+    Ok(plan.recommendations)
+}
+
+/// Accept or decline a recommendation. `state` must be one of `Accepted`,
+/// `AcceptedWithNotes`, `Declined` or `Pending`; `declineReason` is only
+/// meaningful for `Declined`.
+#[tauri::command]
+pub async fn cmd_set_recommendation_state(
+    plan_id: String,
+    title: String,
+    state: String,
+    decline_reason: Option<String>,
+) -> Result<(), BridgeError> {
+    const STATES: [&str; 4] = ["Pending", "Accepted", "AcceptedWithNotes", "Declined"];
+    if !STATES.contains(&state.as_str()) {
+        return Err(BridgeError::validation(format!(
+            "Unknown recommendation state '{state}', expected one of {}",
+            STATES.join(", ")
+        )));
+    }
+
+    get_client_from_master()?
+        .update_recommendation(&plan_id, &title, &state, decline_reason.as_deref())
+        .await
+}
+
+async fn plan_folder(plan_id: &str) -> Result<String, BridgeError> {
+    let plan = get_client_from_master()?.get_plan(plan_id).await?;
+    plan.folder_path
+        .ok_or_else(|| BridgeError::not_found(format!("Plan '{plan_id}' reported no folder path")))
 }

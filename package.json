@@ -11,11 +11,11 @@
   },
   "dependencies": {
     "@spacecorps/components-storybook": "link:/Users/rorychatt/git/components-storybook",
-    "@tanstack/react-query": "^5.67.2",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-opener": "^2.2.5",
     "clsx": "^2.1.1",
     "components-storybook": "link:/Users/rorychatt/git/components-storybook",
+    "diff": "^9.0.0",
     "lucide-react": "^0.562.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.16",
+    "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26.4.1",

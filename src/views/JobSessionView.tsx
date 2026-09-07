@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { AgentViewer } from "components-storybook/tendril";
-import type { Job } from "../types/api";
+import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { jobsStore, type StreamEventItem } from "../state/jobsStore";
 
 interface JobSessionViewProps {
-  job: Job;
+  job: Job | JobDetail;
   events: StreamEventItem[];
-  onCancel?: (jobId: string) => void;
+  onCancel?: (jobId: string) => void | Promise<void>;
   onCloseTab?: () => void;
 }
 
@@ -18,6 +18,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
 }) => {
   const [autoScroll, setAutoScroll] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   // Convert event items into jsonStream lines
   const jsonStream = events
@@ -26,18 +27,28 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
 
   const handleCancel = async () => {
     setIsCancelling(true);
+    setCancelError(null);
     try {
       if (onCancel) {
-        onCancel(job.id);
+        await onCancel(job.id);
       } else {
         await jobsStore.cancelJob(job.id);
       }
+    } catch (err) {
+      // A failed cancel means the job is still running; saying nothing would
+      // leave the operator thinking they had stopped it.
+      setCancelError(`Cancel failed: ${describeBridgeError(err)}`);
     } finally {
       setIsCancelling(false);
     }
   };
 
   const isRunning = job.status === "Running" || job.status === "Queued";
+  const failureReason = (job as JobDetail).reportedFailureReason;
+  const hasFailed =
+    job.status === "Failed" ||
+    job.status === "Timeout" ||
+    job.status === "Blocked";
   const noop = () => {};
 
   return (
@@ -105,6 +116,32 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           )}
         </div>
       </div>
+
+      {cancelError && (
+        <div
+          role="alert"
+          data-testid="job-cancel-error"
+          className="rounded-xl border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+        >
+          {cancelError}
+        </div>
+      )}
+
+      {/* The promptware's own account of why it stopped. Without this the
+          operator only sees a red status pill and has to read the raw stream. */}
+      {hasFailed && (failureReason || job.statusMessage) && (
+        <div
+          data-testid="job-failure-reason"
+          className="rounded-xl border border-red-800 bg-red-950/40 p-4"
+        >
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-red-300">
+            Reported failure reason
+          </h3>
+          <p className="mt-1 text-sm whitespace-pre-wrap text-red-200">
+            {failureReason || job.statusMessage}
+          </p>
+        </div>
+      )}
 
       {/* Stream Viewer */}
       <div className="flex-1 overflow-hidden rounded-xl border border-slate-800 bg-slate-950">

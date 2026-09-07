@@ -6,12 +6,15 @@ import type {
   PlanQuery,
   PlanSummary,
   ProjectSummary,
+  RecommendationItem,
+  RecommendationState,
   RevisionResult,
   ServiceHealth,
   ServiceInfo,
   StartJobArgs,
   StartJobResponse,
   TendrilConfig,
+  VerificationReport,
 } from "../types/api";
 
 export const bridge = {
@@ -67,6 +70,42 @@ export const bridge = {
 
   async writeRevision(id: string, content: string): Promise<RevisionResult> {
     return invoke<RevisionResult>("cmd_write_revision", { id, content });
+  },
+
+  /** Markdown of one `<planFolder>/Verification/<name>.md` report. */
+  async getVerificationReport(
+    planId: string,
+    name: string
+  ): Promise<VerificationReport> {
+    return invoke<VerificationReport>("cmd_get_verification_report", {
+      planId,
+      name,
+    });
+  },
+
+  /** Every verification report that exists on disk for a plan. */
+  async listVerificationReports(planId: string): Promise<VerificationReport[]> {
+    return invoke<VerificationReport[]>("cmd_list_verification_reports", {
+      planId,
+    });
+  },
+
+  async listRecommendations(planId: string): Promise<RecommendationItem[]> {
+    return invoke<RecommendationItem[]>("cmd_list_recommendations", { planId });
+  },
+
+  async setRecommendationState(
+    planId: string,
+    title: string,
+    state: RecommendationState,
+    declineReason?: string
+  ): Promise<void> {
+    return invoke<void>("cmd_set_recommendation_state", {
+      planId,
+      title,
+      state,
+      declineReason,
+    });
   },
 
   async listJobs(status?: string, limit?: number): Promise<Job[]> {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { jobsStore } from "../src/state/jobsStore";
-import { getPollingInterval } from "../src/api/queryClient";
+import { getPollingInterval } from "../src/api/polling";
 
 describe("Live Event Stream & WebSocket Resilience", () => {
   beforeEach(() => {

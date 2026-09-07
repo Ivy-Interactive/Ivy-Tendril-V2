@@ -29,5 +29,5 @@
       "@spacecorps/components-storybook/*": ["/Users/rorychatt/git/components-storybook/dist/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "tests"]
 }
