@@ -599,4 +599,24 @@ questions:
       expect(clickSpy).toHaveBeenCalled();
     });
   });
+
+  it("renders thread list without CSS scroll-button hack and suppresses library scroll button", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("What database should we use?")).toBeInTheDocument();
+    });
+
+    const messageElement = screen.getByText("What database should we use?");
+    const threadContainer = messageElement.closest(".overflow-hidden.relative");
+    expect(threadContainer).toBeInTheDocument();
+    expect(threadContainer?.className).not.toContain("[&_button[aria-label='Scroll to bottom']]:hidden");
+    expect(threadContainer?.className).toContain("flex-1 overflow-hidden relative");
+
+    expect(screen.queryByLabelText("Scroll to bottom")).not.toBeInTheDocument();
+  });
 });
