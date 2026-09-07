@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
-import { spawn, spawnSync, execSync } from "node:child_process";
+import { execSync } from "node:child_process";
 
 const REAL_HOME = path.resolve(os.homedir(), ".tendril");
 
@@ -179,7 +179,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { sandbox, home } = check;
+  const { sandbox } = check;
   console.log(`Starting cutover rehearsal on sandbox: ${sandbox}`);
 
   const results = [];
