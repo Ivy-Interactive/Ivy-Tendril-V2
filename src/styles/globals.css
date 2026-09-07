@@ -20,9 +20,9 @@
   --destructive: #ef4444;
   --destructive-foreground: #000000;
   --success: #22c55e;
-  --success-foreground: #ffffff;
+  --success-foreground: #000000;
   --warning: #f59e0b;
-  --warning-foreground: #ffffff;
+  --warning-foreground: #000000;
   --info: #3b82f6;
   --info-foreground: #ffffff;
   --border: #e4e4e7;
