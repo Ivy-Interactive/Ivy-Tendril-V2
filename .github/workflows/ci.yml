@@ -30,6 +30,7 @@ jobs:
           # Pinned so a change on components-storybook main cannot break this repo's CI
           # without a commit here. Bump: see "UI dependency pin" in README.md.
           ref: 6b0049203305004085d5ccb945ecfc4c6099343b
+          token: ${{ secrets.COMPONENTS_STORYBOOK_TOKEN }}
           path: components-storybook
 
       - name: Setup pnpm

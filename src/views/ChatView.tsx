@@ -394,7 +394,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
         </div>
 
         {/* Message Thread List */}
-        <div className="flex-1 overflow-hidden relative [&_button[aria-label='Scroll to bottom']]:hidden">
+        <div className="flex-1 overflow-hidden relative">
           {!activeSession || activeSession.messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center p-6 text-slate-400">
               <div className="max-w-md space-y-2">
@@ -405,7 +405,12 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
               </div>
             </div>
           ) : (
-            <ChatMessageList ref={scrollContainerRef} className="h-full">
+            <ChatMessageList
+              ref={scrollContainerRef}
+              className="h-full"
+              enableAutoScroll={false}
+              showScrollButton={false}
+            >
               {isVirtualized ? (
                 <div
                   style={{ height: totalSize, position: "relative" }}

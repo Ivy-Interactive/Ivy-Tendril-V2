@@ -106,4 +106,21 @@ describe("Dependency portability", () => {
       });
     }).not.toThrow();
   });
+
+  it("configures repository secret authentication for the components-storybook checkout in CI", () => {
+    const workflow = readFile(".github/workflows/ci.yml");
+    const stepMatch = workflow.match(
+      /- name: Checkout components-storybook\n(?:(?!\n {6}- name:)[\s\S])*/
+    );
+
+    expect(stepMatch, "could not find the 'Checkout components-storybook' step in ci.yml").not.toBeNull();
+
+    const step = stepMatch![0];
+    const authMatch = step.match(/^\s*(?:token|ssh-key):\s*\${{\s*secrets\.(COMPONENTS_STORYBOOK_[A-Z0-9_]+)\s*}}\s*$/m);
+
+    expect(
+      authMatch,
+      "expected components-storybook checkout to configure repository secret authentication (token or ssh-key referencing secrets.COMPONENTS_STORYBOOK_*)"
+    ).not.toBeNull();
+  });
 });

@@ -22,5 +22,60 @@ export default defineConfig({
       allow: [path.resolve(__dirname), resolveStorybookRoot()],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalized = id.replace(/\\/g, "/");
+          if (
+            normalized.includes("node_modules/refractor") ||
+            normalized.includes("node_modules/.pnpm/refractor")
+          ) {
+            return "vendor-refractor";
+          }
+          if (
+            normalized.includes("node_modules/pdfjs-dist") ||
+            normalized.includes("node_modules/.pnpm/pdfjs-dist")
+          ) {
+            return "vendor-pdfjs";
+          }
+          if (
+            normalized.includes("node_modules/react-diff-view") ||
+            normalized.includes("node_modules/.pnpm/react-diff-view") ||
+            normalized.includes("node_modules/diff") ||
+            normalized.includes("node_modules/.pnpm/diff")
+          ) {
+            return "vendor-diff";
+          }
+          if (
+            normalized.includes("node_modules/mermaid") ||
+            normalized.includes("node_modules/.pnpm/mermaid")
+          ) {
+            return "vendor-mermaid";
+          }
+          if (
+            normalized.includes("node_modules/@hpcc-js") ||
+            normalized.includes("node_modules/.pnpm/@hpcc-js")
+          ) {
+            return "vendor-graphviz";
+          }
+          if (
+            normalized.includes("node_modules/katex") ||
+            normalized.includes("node_modules/.pnpm/katex")
+          ) {
+            return "vendor-katex";
+          }
+          if (
+            normalized.includes("node_modules/react/") ||
+            normalized.includes("node_modules/react-dom/") ||
+            normalized.includes("node_modules/.pnpm/react@") ||
+            normalized.includes("node_modules/.pnpm/react-dom@")
+          ) {
+            return "vendor-react";
+          }
+        },
+      },
+    },
+  },
   clearScreen: false,
 });
