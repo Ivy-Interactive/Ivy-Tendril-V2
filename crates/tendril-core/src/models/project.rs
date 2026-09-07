@@ -3,7 +3,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RepoRef {
     pub path: String,
-    #[serde(rename = "baseBranch", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "baseBranch",
+        alias = "base_branch",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub base_branch: Option<String>,
 }
 
