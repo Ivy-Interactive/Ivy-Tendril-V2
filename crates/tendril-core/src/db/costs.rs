@@ -2,6 +2,13 @@ use crate::error::Result;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostsFilter {
+    pub project: Option<String>,
+    pub promptware: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CostsSummary {
@@ -30,6 +37,35 @@ pub struct CostRecord {
     pub log_timestamp: Option<String>,
 }
 
+fn build_filter_sql(filter: &CostsFilter) -> (String, Vec<String>, Vec<String>) {
+    let mut joins = Vec::new();
+    let mut where_clauses: Vec<String> = Vec::new();
+    let mut params = Vec::new();
+
+    if let Some(project) = &filter.project {
+        if !project.trim().is_empty() {
+            joins.push("JOIN Plans ON Costs.PlanId = Plans.Id");
+            where_clauses.push("LOWER(Plans.Project) = LOWER(?)".to_string());
+            params.push(project.clone());
+        }
+    }
+
+    if let Some(promptware) = &filter.promptware {
+        if !promptware.trim().is_empty() {
+            where_clauses.push("LOWER(Costs.Promptware) = LOWER(?)".to_string());
+            params.push(promptware.clone());
+        }
+    }
+
+    let join_str = if joins.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", joins.join(" "))
+    };
+
+    (join_str, where_clauses, params)
+}
+
 pub fn insert_cost(
     conn: &Connection,
     plan_id: i32,
@@ -48,21 +84,53 @@ pub fn insert_cost(
     Ok(conn.last_insert_rowid())
 }
 
-pub fn get_costs_summary(conn: &Connection) -> Result<CostsSummary> {
-    let total_spend: f64 =
-        conn.query_row("SELECT COALESCE(SUM(Cost), 0.0) FROM Costs", [], |row| {
-            row.get(0)
-        })?;
+pub fn get_costs_summary(conn: &Connection, filter: &CostsFilter) -> Result<CostsSummary> {
+    let (join_sql, where_clauses, params) = build_filter_sql(filter);
 
-    let thirty_day_spend: f64 = conn.query_row(
-        "SELECT COALESCE(SUM(Cost), 0.0) FROM Costs WHERE datetime(COALESCE(LogTimestamp, datetime('now'))) >= datetime('now', '-30 days')",
-        [],
+    let total_where = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", where_clauses.join(" AND "))
+    };
+    let total_sql = format!(
+        "SELECT COALESCE(SUM(Costs.Cost), 0.0) FROM Costs{}{}",
+        join_sql, total_where
+    );
+    let total_spend: f64 = conn.query_row(
+        &total_sql,
+        rusqlite::params_from_iter(params.iter()),
         |row| row.get(0),
     )?;
 
+    let mut thirty_day_clauses = where_clauses.clone();
+    thirty_day_clauses.push(
+        "datetime(COALESCE(Costs.LogTimestamp, datetime('now'))) >= datetime('now', '-30 days')"
+            .to_string(),
+    );
+    let thirty_day_sql = format!(
+        "SELECT COALESCE(SUM(Costs.Cost), 0.0) FROM Costs{} WHERE {}",
+        join_sql,
+        thirty_day_clauses.join(" AND ")
+    );
+    let thirty_day_spend: f64 = conn.query_row(
+        &thirty_day_sql,
+        rusqlite::params_from_iter(params.iter()),
+        |row| row.get(0),
+    )?;
+
+    let mut seven_day_clauses = where_clauses.clone();
+    seven_day_clauses.push(
+        "datetime(COALESCE(Costs.LogTimestamp, datetime('now'))) >= datetime('now', '-7 days')"
+            .to_string(),
+    );
+    let seven_day_sql = format!(
+        "SELECT COALESCE(SUM(Costs.Cost), 0.0) FROM Costs{} WHERE {}",
+        join_sql,
+        seven_day_clauses.join(" AND ")
+    );
     let seven_day_spend: f64 = conn.query_row(
-        "SELECT COALESCE(SUM(Cost), 0.0) FROM Costs WHERE datetime(COALESCE(LogTimestamp, datetime('now'))) >= datetime('now', '-7 days')",
-        [],
+        &seven_day_sql,
+        rusqlite::params_from_iter(params.iter()),
         |row| row.get(0),
     )?;
 
@@ -82,31 +150,39 @@ pub fn get_costs_summary(conn: &Connection) -> Result<CostsSummary> {
     })
 }
 
-pub fn get_costs_series(conn: &Connection, period: &str) -> Result<Vec<CostSeriesPoint>> {
-    let sql = if period.eq_ignore_ascii_case("weekly") {
-        r#"
-        SELECT
-            strftime('%Y-W%W', COALESCE(LogTimestamp, datetime('now'))) AS period,
-            COALESCE(SUM(Cost), 0.0) AS cost,
-            COALESCE(SUM(Tokens), 0) AS tokens
-        FROM Costs
-        GROUP BY period
-        ORDER BY period ASC
-        "#
+pub fn get_costs_series(
+    conn: &Connection,
+    period: &str,
+    filter: &CostsFilter,
+) -> Result<Vec<CostSeriesPoint>> {
+    let (join_sql, where_clauses, params) = build_filter_sql(filter);
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
     } else {
-        r#"
-        SELECT
-            DATE(COALESCE(LogTimestamp, datetime('now'))) AS period,
-            COALESCE(SUM(Cost), 0.0) AS cost,
-            COALESCE(SUM(Tokens), 0) AS tokens
-        FROM Costs
-        GROUP BY period
-        ORDER BY period ASC
-        "#
+        format!(" WHERE {}", where_clauses.join(" AND "))
     };
 
-    let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map([], |row| {
+    let period_expr = if period.eq_ignore_ascii_case("weekly") {
+        "strftime('%Y-W%W', COALESCE(Costs.LogTimestamp, datetime('now')))"
+    } else {
+        "DATE(COALESCE(Costs.LogTimestamp, datetime('now')))"
+    };
+
+    let sql = format!(
+        r#"
+        SELECT
+            {} AS period,
+            COALESCE(SUM(Costs.Cost), 0.0) AS cost,
+            COALESCE(SUM(Costs.Tokens), 0) AS tokens
+        FROM Costs{}{}
+        GROUP BY period
+        ORDER BY period ASC
+        "#,
+        period_expr, join_sql, where_sql
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |row| {
         Ok(CostSeriesPoint {
             period: row.get(0)?,
             cost: row.get(1)?,

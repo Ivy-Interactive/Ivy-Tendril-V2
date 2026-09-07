@@ -90,6 +90,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_costs_plan ON Costs(PlanId);
         CREATE INDEX IF NOT EXISTS idx_costs_plan_logtimestamp ON Costs(PlanId, LogTimestamp);
         CREATE INDEX IF NOT EXISTS idx_costs_logtimestamp ON Costs(LogTimestamp);
+        CREATE INDEX IF NOT EXISTS idx_costs_promptware ON Costs(Promptware);
+        CREATE INDEX IF NOT EXISTS idx_costs_promptware_logtimestamp ON Costs(Promptware, LogTimestamp);
 
         CREATE TABLE IF NOT EXISTS Recommendations (
             Id INTEGER PRIMARY KEY AUTOINCREMENT,
