@@ -12,6 +12,7 @@ import { PlanMarkdown } from "@spacecorps/components-storybook/tendril";
 import { chatStore, type ChatState } from "../state/chatStore";
 import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
+import { useWebviewFileDrop } from "../hooks/useWebviewFileDrop";
 import {
   Plus,
   Edit2,
@@ -86,18 +87,30 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     isGenerating,
   });
 
+  const addAttachments = (incoming: ChatAttachment[]) => {
+    setAttachments((prev) => {
+      const existingPaths = new Set(prev.map((a) => a.path));
+      return [...prev, ...incoming.filter((a) => !existingPaths.has(a.path))];
+    });
+  };
+
+  const addAttachmentPaths = (paths: string[]) => {
+    addAttachments(paths.map((path) => ({ name: path.split(/[/\\]/).pop() || path, path })));
+  };
+
   const processFiles = (fileList: FileList | File[]) => {
     const incoming = Array.from(fileList).map((file) => ({
       name: file.name,
       path: (file as unknown as { path?: string }).path || file.name,
       mimeType: file.type || undefined,
     }));
-    setAttachments((prev) => {
-      const existingPaths = new Set(prev.map((a) => a.path));
-      const filtered = incoming.filter((a) => !existingPaths.has(a.path));
-      return [...prev, ...filtered];
-    });
+    addAttachments(incoming);
   };
+
+  const nativeDropActive = useWebviewFileDrop({
+    onPaths: addAttachmentPaths,
+    onDragStateChange: setIsDraggingOver,
+  });
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -116,15 +129,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
         return;
       }
       const paths = Array.isArray(selected) ? selected : [selected];
-      const incoming: ChatAttachment[] = paths.map((path) => ({
-        name: path.split(/[/\\]/).pop() || path,
-        path,
-      }));
-      setAttachments((prev) => {
-        const existingPaths = new Set(prev.map((a) => a.path));
-        const filtered = incoming.filter((a) => !existingPaths.has(a.path));
-        return [...prev, ...filtered];
-      });
+      addAttachmentPaths(paths);
     } catch {
       fileInputRef.current?.click();
     }
@@ -156,6 +161,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingOver(false);
+    if (nativeDropActive) return;
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       processFiles(e.dataTransfer.files);
     }
