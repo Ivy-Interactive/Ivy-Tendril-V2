@@ -117,7 +117,7 @@ describe("Semantic theme contrast compliance (WCAG 2.1 AA)", () => {
   const globalsCssPath = resolve(rootDir, "src/styles/globals.css");
   const indexCssPath = resolve(rootDir, "src/styles/index.css");
 
-  it.each(["success", "warning"] as const)(
+  it.each(["info", "success", "warning"] as const)(
     "globals.css light mode --%s-foreground is #000000 and meets AA contrast (>= 4.5:1)",
     (token) => {
       const globalsCss = readFileSync(globalsCssPath, "utf-8");
@@ -134,7 +134,7 @@ describe("Semantic theme contrast compliance (WCAG 2.1 AA)", () => {
     },
   );
 
-  it.each(["success", "warning"] as const)(
+  it.each(["info", "success", "warning"] as const)(
     "globals.css dark mode --%s-foreground is #ffffff and meets AA contrast (>= 4.5:1)",
     (token) => {
       const globalsCss = readFileSync(globalsCssPath, "utf-8");
@@ -169,4 +169,20 @@ describe("Semantic theme contrast compliance (WCAG 2.1 AA)", () => {
       }
     },
   );
+
+  it("index.css light and dark mode --info-foreground is #ffffff and meets AA contrast (>= 4.5:1)", () => {
+    const indexCss = readFileSync(indexCssPath, "utf-8");
+    const rootBlock = /:root\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
+    const darkBlock = /\.dark\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
+
+    for (const block of [rootBlock, darkBlock]) {
+      const background = new RegExp(`--info:\\s*([^;]+);`).exec(block)?.[1].trim();
+      const foreground = new RegExp(`--info-foreground:\\s*([^;]+);`).exec(block)?.[1].trim();
+
+      expect(background).toBeDefined();
+      expect(foreground).toBe("#ffffff");
+      const contrast = getContrastRatio(background!, foreground!);
+      expect(contrast).toBeGreaterThanOrEqual(4.5);
+    }
+  });
 });
