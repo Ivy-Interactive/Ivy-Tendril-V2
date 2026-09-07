@@ -77,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
             commands::project::handle_project_command(cmd, &tendril_home).await?
         }
         Commands::Verification(cmd) => {
-            commands::verification::handle_verification_command(cmd, &tendril_home)?
+            commands::verification::handle_verification_command(cmd, &tendril_home).await?
         }
         Commands::Promptware(cmd) => {
             commands::promptware::handle_promptware_command(cmd, &tendril_home).await?
