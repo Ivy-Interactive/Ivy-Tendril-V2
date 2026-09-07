@@ -576,7 +576,21 @@ pub async fn get_project_issues_metadata(
                 "--json".to_string(),
                 "name".to_string(),
             ];
-            if let Ok(stdout) = run_gh_command(&label_args, None).await {
+
+            // Fetch assignees: gh api repos/{owner}/{repo}/assignees --jq '.[].login'
+            let assignee_args = vec![
+                "api".to_string(),
+                format!("repos/{}/assignees", repo_slug),
+                "--jq".to_string(),
+                ".[].login".to_string(),
+            ];
+
+            let (label_result, assignee_result) = tokio::join!(
+                run_gh_command(&label_args, None),
+                run_gh_command(&assignee_args, None),
+            );
+
+            if let Ok(stdout) = label_result {
                 if let Ok(labels) = serde_json::from_str::<Vec<GhLabelName>>(&stdout) {
                     for l in labels {
                         let trimmed = l.name.trim();
@@ -587,14 +601,7 @@ pub async fn get_project_issues_metadata(
                 }
             }
 
-            // Fetch assignees: gh api repos/{owner}/{repo}/assignees --jq '.[].login'
-            let assignee_args = vec![
-                "api".to_string(),
-                format!("repos/{}/assignees", repo_slug),
-                "--jq".to_string(),
-                ".[].login".to_string(),
-            ];
-            if let Ok(stdout) = run_gh_command(&assignee_args, None).await {
+            if let Ok(stdout) = assignee_result {
                 for line in stdout.lines() {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() {
@@ -1010,6 +1017,27 @@ mod tests {
             assert!(cache.contains_key("spacecorps/repo-uncached"));
             let uncached_entry = cache.get("spacecorps/repo-uncached").unwrap();
             assert!(uncached_entry.fetched_at.elapsed() < METADATA_CACHE_TTL);
+        }
+
+        clear_issue_metadata_cache();
+    }
+
+    #[tokio::test]
+    async fn test_get_project_issues_metadata_uncached_repo_caches_after_join() {
+        let _guard = CACHE_TEST_LOCK.lock().unwrap();
+        clear_issue_metadata_cache();
+
+        let repos = vec![("SpaceCorps".to_string(), "repo-join-test".to_string())];
+
+        let result = get_project_issues_metadata(&repos).await;
+        assert!(result.is_ok());
+
+        {
+            let cache = ISSUE_METADATA_CACHE.read().unwrap();
+            let entry = cache
+                .get("spacecorps/repo-join-test")
+                .expect("cache entry should be written after concurrent join");
+            assert!(entry.fetched_at.elapsed() < METADATA_CACHE_TTL);
         }
 
         clear_issue_metadata_cache();
