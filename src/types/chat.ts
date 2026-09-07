@@ -13,6 +13,7 @@ export interface ChatMessage {
   modelId?: string;
   rawStream?: string;
   effort?: string;
+  attachments?: ChatAttachment[];
 }
 
 export interface ChatQueuedItem {

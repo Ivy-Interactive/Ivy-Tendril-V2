@@ -302,7 +302,7 @@ class ChatStore {
     prompt: string,
     options?: { enqueue?: boolean; attachments?: ChatAttachment[]; role?: string }
   ): Promise<void> {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() && (!options?.attachments || options.attachments.length === 0)) return;
 
     let sessionId = this.state.activeSessionId;
     if (!sessionId) {
@@ -317,6 +317,7 @@ class ChatStore {
         role: "user",
         content: prompt,
         timestamp: new Date().toISOString(),
+        attachments: options?.attachments,
       };
       if (this.state.activeSession) {
         this.state.activeSession.messages.push(userMsg);
@@ -326,7 +327,12 @@ class ChatStore {
     }
 
     try {
-      const res = await chatApi.postMessage(sessionId, prompt, options);
+      const hasOptions =
+        options &&
+        (options.enqueue !== undefined ||
+          options.role !== undefined ||
+          (options.attachments !== undefined && options.attachments.length > 0));
+      const res = await chatApi.postMessage(sessionId, prompt, hasOptions ? options : undefined);
       if (res.queued) {
         const queue = await chatApi.getQueue(sessionId);
         this.state.queuedItems = queue;
