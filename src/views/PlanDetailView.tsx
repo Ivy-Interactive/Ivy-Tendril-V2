@@ -11,6 +11,8 @@ import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
+import { RecommendationCard } from "../components/RecommendationCard";
+import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 
 interface PlanDetailViewProps {
   plan: PlanDetail;
@@ -22,13 +24,6 @@ interface PlanDetailViewProps {
   onCreatePr?: (planId: string) => void | Promise<void>;
   onBack?: () => void;
 }
-
-const REC_STATUS_CLASS: Record<string, string> = {
-  Accepted: "bg-emerald-950 text-emerald-300 border border-emerald-800",
-  AcceptedWithNotes: "bg-emerald-950 text-emerald-300 border border-emerald-800",
-  Declined: "bg-slate-800 text-slate-400 border border-slate-700",
-  Pending: "bg-amber-950 text-amber-300 border border-amber-800",
-};
 
 export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   plan,
@@ -50,7 +45,6 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     title: string;
     action: "Accept" | "Decline";
   } | null>(null);
-  const [noteText, setNoteText] = useState("");
 
   useEffect(() => {
     setRecommendations(plan.recommendations || []);
@@ -105,18 +99,16 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 
   const handleOpenDialog = (title: string, action: "Accept" | "Decline") => {
     setActiveNoteDialog({ title, action });
-    setNoteText("");
   };
 
   const handleCloseDialog = () => {
     setActiveNoteDialog(null);
-    setNoteText("");
   };
 
-  const handleSubmitDialog = async () => {
+  const handleSubmitDialog = async (note?: string) => {
     if (!activeNoteDialog) return;
     const { title, action } = activeNoteDialog;
-    const trimmedNote = noteText.trim();
+    const trimmedNote = note?.trim();
     const targetState: RecommendationState =
       action === "Accept"
         ? (trimmedNote ? "AcceptedWithNotes" : "Accepted")
@@ -346,57 +338,12 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             ) : (
               <div className="space-y-3">
                 {recommendations.map((rec) => (
-                  <div
+                  <RecommendationCard
                     key={rec.title}
-                    data-testid={`recommendation-card-${rec.title}`}
-                    className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4 sm:flex-row sm:items-start sm:justify-between"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-sm font-medium text-slate-200">
-                          {rec.title}
-                        </h4>
-                        {rec.impact && (
-                          <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
-                            {rec.impact} impact
-                          </span>
-                        )}
-                        <span
-                          className={`rounded px-2 py-0.5 text-xs font-medium ${
-                            REC_STATUS_CLASS[rec.state || "Pending"] ?? REC_STATUS_CLASS.Pending
-                          }`}
-                        >
-                          {rec.state || "Pending"}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-300">{rec.description}</p>
-                      {rec.declineReason && (
-                        <p className="text-xs text-slate-400">
-                          {rec.state === "Declined" ? "Decline reason: " : "Notes: "}
-                          {rec.declineReason}
-                        </p>
-                      )}
-                    </div>
-
-                    {(!rec.state || rec.state === "Pending") && (
-                      <div className="flex shrink-0 items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDialog(rec.title, "Accept")}
-                          className="rounded bg-emerald-600/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-600"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDialog(rec.title, "Decline")}
-                          className="rounded bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                    recommendation={rec}
+                    onAccept={(title) => handleOpenDialog(title, "Accept")}
+                    onDecline={(title) => handleOpenDialog(title, "Decline")}
+                  />
                 ))}
               </div>
             )}
@@ -459,73 +406,13 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       </div>
 
       {/* Optional Note Dialog */}
-      {activeNoteDialog && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`${activeNoteDialog.action} Recommendation`}
-          data-testid="recommendation-note-dialog"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-        >
-          <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
-            <h3 className="text-sm font-semibold text-slate-100">
-              {activeNoteDialog.action === "Accept"
-                ? "Accept Recommendation"
-                : "Decline Recommendation"}
-            </h3>
-            <p className="mt-1 text-xs text-slate-400">
-              {activeNoteDialog.title}
-            </p>
-            <div className="mt-4">
-              <label
-                htmlFor="rec-dialog-note"
-                className="block text-xs font-medium text-slate-300 mb-1"
-              >
-                {activeNoteDialog.action === "Accept"
-                  ? "Optional Operator Note:"
-                  : "Decline Reason:"}
-              </label>
-              <textarea
-                id="rec-dialog-note"
-                aria-label={
-                  activeNoteDialog.action === "Accept"
-                    ? "Optional note"
-                    : "Decline reason"
-                }
-                rows={3}
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                placeholder={
-                  activeNoteDialog.action === "Accept"
-                    ? "Enter optional notes..."
-                    : "Enter reason for declining..."
-                }
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
-              />
-            </div>
-            <div className="mt-4 flex justify-end space-x-2">
-              <button
-                type="button"
-                onClick={handleCloseDialog}
-                className="rounded px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmitDialog}
-                className={`rounded px-4 py-1.5 text-xs font-medium text-white transition ${
-                  activeNoteDialog.action === "Accept"
-                    ? "bg-emerald-600 hover:bg-emerald-500"
-                    : "bg-red-600 hover:bg-red-500"
-                }`}
-              >
-                Submit
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <RecommendationNoteDialog
+        isOpen={activeNoteDialog !== null}
+        title={activeNoteDialog?.title ?? ""}
+        action={activeNoteDialog?.action ?? "Accept"}
+        onClose={handleCloseDialog}
+        onSubmit={handleSubmitDialog}
+      />
     </div>
   );
 };
