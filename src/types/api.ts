@@ -96,7 +96,7 @@ export interface ServiceHealth {
 }
 
 export interface ServiceInfo {
-  state: "Connected" | "Disconnected" | "Unauthenticated" | "NotRunning";
+  state: "Connected" | "Disconnected" | "Unauthenticated" | "NotRunning" | "ForeignMaster";
   tendrilHome: string;
   port?: number;
   host?: string;
