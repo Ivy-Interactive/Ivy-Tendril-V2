@@ -44,6 +44,12 @@ pub enum TendrilError {
     #[error("Promptware error: {0}")]
     Promptware(String),
 
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Chat error: {0}")]
+    Chat(String),
+
     #[error("{0}")]
     Other(String),
 }

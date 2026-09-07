@@ -27,6 +27,9 @@ enum Commands {
     #[command(subcommand, about = "Manage jobs")]
     Job(commands::job::JobCommands),
 
+    #[command(subcommand, about = "Manage chat sessions and execution")]
+    Chat(commands::chat::ChatCommands),
+
     #[command(subcommand, about = "Manage projects")]
     Project(commands::project::ProjectCommands),
 
@@ -69,6 +72,7 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Plan(cmd) => commands::plan::handle_plan_command(cmd, &tendril_home)?,
         Commands::Job(cmd) => commands::job::handle_job_command(cmd, &tendril_home).await?,
+        Commands::Chat(cmd) => commands::chat::handle_chat_command(cmd, &tendril_home).await?,
         Commands::Project(cmd) => commands::project::handle_project_command(cmd, &tendril_home)?,
         Commands::Verification(cmd) => {
             commands::verification::handle_verification_command(cmd, &tendril_home)?

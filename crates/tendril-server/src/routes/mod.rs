@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod config;
 pub mod health;
 pub mod inbox;
@@ -10,7 +11,7 @@ pub mod ws;
 
 use crate::state::AppState;
 use axum::http::{HeaderValue, Method};
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -73,6 +74,43 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
+        )
+        // Chat
+        .route(
+            "/api/chat/sessions",
+            get(chat::list_sessions_handler).post(chat::create_session_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id",
+            get(chat::get_session_handler)
+                .put(chat::update_session_handler)
+                .delete(chat::delete_session_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/messages",
+            post(chat::post_message_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/execute",
+            post(chat::execute_turn_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/cancel",
+            post(chat::cancel_turn_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/messages/:msg_id/answers",
+            post(chat::answer_questions_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/queue",
+            get(chat::get_queue_handler)
+                .post(chat::enqueue_handler)
+                .delete(chat::clear_queue_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/queue/:item_id",
+            delete(chat::delete_queued_item_handler),
         )
         // WebSocket
         .route("/api/ws", get(ws::ws_handler))

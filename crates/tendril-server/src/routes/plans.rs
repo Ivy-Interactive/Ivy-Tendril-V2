@@ -8,6 +8,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use tendril_core::db::{get_plans, open_database, sync_plan};
+use tendril_core::error::TendrilError;
 use tendril_core::models::{PlanStatus, PlanVerificationEntry};
 use tendril_core::plans::{
     create_plan, get_revision, read_plan_file, read_plan_yaml, resolve_plan_folder,
@@ -281,6 +282,8 @@ pub async fn get_revision_handler(
 #[derive(Debug, Deserialize)]
 pub struct WriteRevisionBody {
     pub content: String,
+    #[serde(default)]
+    pub no_question_check: bool,
 }
 
 pub async fn write_revision_handler(
@@ -298,7 +301,7 @@ pub async fn write_revision_handler(
         }
     };
 
-    match write_revision(&folder, &body.content) {
+    match write_revision(&folder, &body.content, !body.no_question_check) {
         Ok(rev_num) => {
             // Update plan timestamp and sync to db
             if let Ok((mut plan, _)) = read_plan_yaml(&folder) {
@@ -318,6 +321,10 @@ pub async fn write_revision_handler(
                 })),
             )
         }
+        Err(TendrilError::Validation(e)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("Validation failed: {}", e) })),
+        ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to write revision: {}", e) })),

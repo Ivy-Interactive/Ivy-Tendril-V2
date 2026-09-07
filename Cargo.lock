@@ -1598,6 +1598,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "futures-util",
  "reqwest",
  "serde",
  "serde_json",
@@ -1605,8 +1606,10 @@ dependencies = [
  "tendril-core",
  "tendril-server",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
