@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use tendril_core::config::get_default_tendril_home;
 
-mod commands;
+use tendril_cli::commands;
 
 #[derive(Parser)]
 #[command(
@@ -73,7 +73,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Plan(cmd) => commands::plan::handle_plan_command(cmd, &tendril_home)?,
         Commands::Job(cmd) => commands::job::handle_job_command(cmd, &tendril_home).await?,
         Commands::Chat(cmd) => commands::chat::handle_chat_command(cmd, &tendril_home).await?,
-        Commands::Project(cmd) => commands::project::handle_project_command(cmd, &tendril_home)?,
+        Commands::Project(cmd) => {
+            commands::project::handle_project_command(cmd, &tendril_home).await?
+        }
         Commands::Verification(cmd) => {
             commands::verification::handle_verification_command(cmd, &tendril_home)?
         }
