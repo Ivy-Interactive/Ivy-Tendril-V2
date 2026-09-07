@@ -1,11 +1,117 @@
 use crate::state::AppState;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::path::PathBuf;
 use std::sync::Arc;
-use tendril_core::config::load_config;
+use tendril_core::config::{load_config, save_config};
+use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
+use tendril_core::plans::helpers::resolve_plan_folder;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RepoInput {
+    String(String),
+    Object(RepoRef),
+}
+
+impl From<RepoInput> for RepoRef {
+    fn from(input: RepoInput) -> Self {
+        match input {
+            RepoInput::String(path) => RepoRef {
+                path,
+                base_branch: None,
+            },
+            RepoInput::Object(r) => r,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum VerificationInput {
+    String(String),
+    Object(ProjectVerificationRef),
+}
+
+impl From<VerificationInput> for ProjectVerificationRef {
+    fn from(input: VerificationInput) -> Self {
+        match input {
+            VerificationInput::String(name) => ProjectVerificationRef {
+                name,
+                required: true,
+            },
+            VerificationInput::Object(v) => v,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateProjectRequest {
+    pub name: String,
+    #[serde(default = "default_project_color")]
+    pub color: String,
+    #[serde(default)]
+    pub repos: Vec<RepoInput>,
+    #[serde(default)]
+    pub verifications: Vec<VerificationInput>,
+    #[serde(default)]
+    pub context: String,
+    #[serde(rename = "stackHash", alias = "stack_hash")]
+    pub stack_hash: Option<String>,
+    #[serde(rename = "reviewActions", alias = "review_actions", default)]
+    pub review_actions: Vec<ReviewActionConfig>,
+    #[serde(rename = "buildDependencies", alias = "build_dependencies", default)]
+    pub build_dependencies: Vec<String>,
+}
+
+fn default_project_color() -> String {
+    "Blue".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateProjectRequest {
+    pub name: Option<String>,
+    #[serde(rename = "newName", alias = "new_name")]
+    pub new_name: Option<String>,
+    pub color: Option<String>,
+    pub repos: Option<Vec<RepoInput>>,
+    pub verifications: Option<Vec<VerificationInput>>,
+    pub context: Option<String>,
+    #[serde(default, rename = "stackHash", alias = "stack_hash")]
+    pub stack_hash: Option<Option<String>>,
+    #[serde(rename = "reviewActions", alias = "review_actions")]
+    pub review_actions: Option<Vec<ReviewActionConfig>>,
+    #[serde(rename = "buildDependencies", alias = "build_dependencies")]
+    pub build_dependencies: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum StringOrInt {
+    String(String),
+    Int(i64),
+}
+
+impl StringOrInt {
+    pub fn to_string_val(&self) -> String {
+        match self {
+            StringOrInt::String(s) => s.clone(),
+            StringOrInt::Int(i) => i.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct ExecuteReviewActionParams {
+    #[serde(alias = "planId", alias = "plan")]
+    pub plan_id: Option<StringOrInt>,
+    #[serde(alias = "worktreeDir", alias = "worktree_dir")]
+    pub worktree: Option<String>,
+}
 
 pub async fn list_projects(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let settings = load_config(&state.config_path).unwrap_or_default();
@@ -22,11 +128,467 @@ pub async fn get_project(
         .iter()
         .find(|p| p.name.eq_ignore_ascii_case(&name))
     {
-        (StatusCode::OK, Json(json!(proj)))
+        (StatusCode::OK, Json(json!(proj))).into_response()
     } else {
         (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": format!("Project '{}' not found", name) })),
         )
+            .into_response()
     }
+}
+
+pub async fn create_project(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CreateProjectRequest>,
+) -> impl IntoResponse {
+    let name = req.name.trim().to_string();
+    if name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Project name cannot be empty" })),
+        )
+            .into_response();
+    }
+
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    if settings
+        .projects
+        .iter()
+        .any(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": format!("Project '{}' already exists", name) })),
+        )
+            .into_response();
+    }
+
+    let color = if req.color.trim().is_empty() {
+        "Blue".to_string()
+    } else {
+        req.color.trim().to_string()
+    };
+
+    let repos: Vec<RepoRef> = req.repos.into_iter().map(Into::into).collect();
+    let verifications: Vec<ProjectVerificationRef> =
+        req.verifications.into_iter().map(Into::into).collect();
+
+    let project = ProjectConfig {
+        name,
+        color,
+        repos,
+        verifications,
+        context: req.context,
+        stack_hash: req.stack_hash,
+        review_actions: req.review_actions,
+        build_dependencies: req.build_dependencies,
+    };
+
+    settings.projects.push(project.clone());
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (StatusCode::CREATED, Json(json!(project))).into_response()
+}
+
+pub async fn update_project(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(req): Json<UpdateProjectRequest>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let rename_target = req.new_name.or(req.name);
+    if let Some(target) = rename_target {
+        let trimmed = target.trim().to_string();
+        if trimmed.is_empty() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Project name cannot be empty" })),
+            )
+                .into_response();
+        }
+        if !trimmed.eq_ignore_ascii_case(&name)
+            && settings
+                .projects
+                .iter()
+                .any(|p| p.name.eq_ignore_ascii_case(&trimmed))
+        {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({ "error": format!("Project '{}' already exists", trimmed) })),
+            )
+                .into_response();
+        }
+        settings.projects[proj_idx].name = trimmed;
+    }
+
+    if let Some(color) = req.color {
+        let trimmed = color.trim().to_string();
+        if !trimmed.is_empty() {
+            settings.projects[proj_idx].color = trimmed;
+        }
+    }
+
+    if let Some(repos) = req.repos {
+        settings.projects[proj_idx].repos = repos.into_iter().map(Into::into).collect();
+    }
+
+    if let Some(verifications) = req.verifications {
+        settings.projects[proj_idx].verifications =
+            verifications.into_iter().map(Into::into).collect();
+    }
+
+    if let Some(context) = req.context {
+        settings.projects[proj_idx].context = context;
+    }
+
+    if let Some(stack_hash_opt) = req.stack_hash {
+        settings.projects[proj_idx].stack_hash = stack_hash_opt;
+    }
+
+    if let Some(review_actions) = req.review_actions {
+        settings.projects[proj_idx].review_actions = review_actions;
+    }
+
+    if let Some(build_dependencies) = req.build_dependencies {
+        settings.projects[proj_idx].build_dependencies = build_dependencies;
+    }
+
+    let updated_project = settings.projects[proj_idx].clone();
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (StatusCode::OK, Json(json!(updated_project))).into_response()
+}
+
+pub async fn delete_project(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let removed = settings.projects.remove(proj_idx);
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({ "message": format!("Project '{}' removed", removed.name) })),
+    )
+        .into_response()
+}
+
+pub async fn execute_review_action(
+    State(state): State<Arc<AppState>>,
+    Path((project_name, action_name)): Path<(String, String)>,
+    Query(query): Query<ExecuteReviewActionParams>,
+    body_bytes: axum::body::Bytes,
+) -> impl IntoResponse {
+    let body_params: Option<ExecuteReviewActionParams> = if !body_bytes.is_empty() {
+        serde_json::from_slice(&body_bytes).ok()
+    } else {
+        None
+    };
+
+    let plan_id = body_params
+        .as_ref()
+        .and_then(|b| b.plan_id.as_ref())
+        .or(query.plan_id.as_ref())
+        .map(|p| p.to_string_val())
+        .filter(|s| !s.trim().is_empty());
+
+    let worktree = body_params
+        .as_ref()
+        .and_then(|b| b.worktree.clone())
+        .or(query.worktree)
+        .filter(|s| !s.trim().is_empty());
+
+    let settings = load_config(&state.config_path).unwrap_or_default();
+    let project = match settings
+        .projects
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(&project_name))
+    {
+        Some(p) => p,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", project_name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let action = match project
+        .review_actions
+        .iter()
+        .find(|a| a.name.eq_ignore_ascii_case(&action_name))
+    {
+        Some(a) => a,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": format!(
+                        "Review action '{}' not found for project '{}'",
+                        action_name, project_name
+                    )
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    if action.command.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!("Review action '{}' has no command configured", action.name)
+            })),
+        )
+            .into_response();
+    }
+
+    let working_dir: PathBuf = if let Some(ref pid) = plan_id {
+        let plan_folder = match resolve_plan_folder(pid, &state.plans_dir) {
+            Ok(f) => f,
+            Err(_) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({ "error": format!("Plan '{}' not found", pid) })),
+                )
+                    .into_response();
+            }
+        };
+
+        if action.command.contains("Worktrees/") || action.command.contains("cd Worktrees") {
+            plan_folder
+        } else if let Some(ref wt) = worktree {
+            let candidate1 = plan_folder.join("Worktrees").join(wt);
+            if candidate1.exists() {
+                candidate1
+            } else {
+                let candidate2 = plan_folder.join(wt);
+                if candidate2.exists() {
+                    candidate2
+                } else {
+                    candidate1
+                }
+            }
+        } else {
+            let worktrees_dir = plan_folder.join("Worktrees");
+            let mut resolved = plan_folder.clone();
+            if worktrees_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&worktrees_dir) {
+                    let mut subdirs: Vec<_> = entries
+                        .filter_map(|e| e.ok())
+                        .map(|e| e.path())
+                        .filter(|p| p.is_dir())
+                        .collect();
+                    subdirs.sort();
+                    if subdirs.len() == 1 {
+                        let single = &subdirs[0];
+                        if let Ok(sub_entries) = std::fs::read_dir(single) {
+                            let mut nested: Vec<_> = sub_entries
+                                .filter_map(|e| e.ok())
+                                .map(|e| e.path())
+                                .filter(|p| {
+                                    p.is_dir() && !p.file_name().is_some_and(|n| n == ".git")
+                                })
+                                .collect();
+                            nested.sort();
+                            if nested.len() == 1 {
+                                resolved = nested[0].clone();
+                            } else {
+                                resolved = single.clone();
+                            }
+                        } else {
+                            resolved = single.clone();
+                        }
+                    } else if !subdirs.is_empty() {
+                        resolved = subdirs[0].clone();
+                    }
+                }
+            }
+            resolved
+        }
+    } else if let Some(first_repo) = project.repos.first() {
+        let expanded = tendril_core::config::expand_variables(
+            &first_repo.path,
+            &state.tendril_home.to_string_lossy(),
+        );
+        PathBuf::from(expanded)
+    } else {
+        state.tendril_home.clone()
+    };
+
+    let mut cmd = if cfg!(windows) {
+        let mut c = tokio::process::Command::new("cmd");
+        c.args(["/C", &action.command]);
+        c
+    } else {
+        let mut c = tokio::process::Command::new("sh");
+        c.args(["-c", &action.command]);
+        c
+    };
+
+    if working_dir.exists() {
+        cmd.current_dir(&working_dir);
+    }
+    cmd.env("TENDRIL_HOME", &state.tendril_home);
+
+    cmd.stdout(std::process::Stdio::piped());
+    cmd.stderr(std::process::Stdio::piped());
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to spawn command: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<
+        Result<axum::response::sse::Event, std::convert::Infallible>,
+    >(128);
+
+    let stdout_handle = stdout.map(|out| {
+        let tx_out = tx.clone();
+        tokio::spawn(async move {
+            use tokio::io::AsyncBufReadExt;
+            let mut lines = tokio::io::BufReader::new(out).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let evt = axum::response::sse::Event::default()
+                    .event("log")
+                    .data(line);
+                if tx_out.send(Ok(evt)).await.is_err() {
+                    break;
+                }
+            }
+        })
+    });
+
+    let stderr_handle = stderr.map(|err| {
+        let tx_err = tx.clone();
+        tokio::spawn(async move {
+            use tokio::io::AsyncBufReadExt;
+            let mut lines = tokio::io::BufReader::new(err).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let evt = axum::response::sse::Event::default()
+                    .event("log")
+                    .data(line);
+                if tx_err.send(Ok(evt)).await.is_err() {
+                    break;
+                }
+            }
+        })
+    });
+
+    tokio::spawn(async move {
+        if let Some(h) = stdout_handle {
+            let _ = h.await;
+        }
+        if let Some(h) = stderr_handle {
+            let _ = h.await;
+        }
+        let status = child.wait().await;
+        let exit_msg = match status {
+            Ok(s) => {
+                if let Some(code) = s.code() {
+                    format!("Process exited with code {}", code)
+                } else {
+                    "Process terminated by signal".to_string()
+                }
+            }
+            Err(e) => format!("Process wait failed: {}", e),
+        };
+        let end_event = axum::response::sse::Event::default()
+            .event("end")
+            .data(exit_msg);
+        let _ = tx.send(Ok(end_event)).await;
+    });
+
+    let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
+    axum::response::sse::Sse::new(stream).into_response()
 }
