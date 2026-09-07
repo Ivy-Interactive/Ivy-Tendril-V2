@@ -15,15 +15,124 @@ type IvyEventHandler = (eventName: string, widgetId: string, args: any[]) => voi
 import { getWidth, getHeight } from "@/lib/styles";
 import { getMarkdownPlugins } from "@/lib/math";
 import { MessageSquare } from "lucide-react";
-import { refractor } from "refractor/all";
+import { refractor, type Syntax } from "refractor/core";
 import { prismTheme } from "@/lib/prismTheme";
 import { getInitials } from "../PlanMarkdown/annotationUtils";
+
+type LanguageModule = { default: Syntax };
+
+const languageLoaders: Record<string, () => Promise<LanguageModule>> = {
+  typescript: () => import("refractor/typescript"),
+  ts: () => import("refractor/typescript"),
+  tsx: () => import("refractor/tsx"),
+  javascript: () => import("refractor/javascript"),
+  js: () => import("refractor/javascript"),
+  cjs: () => import("refractor/javascript"),
+  mjs: () => import("refractor/javascript"),
+  jsx: () => import("refractor/jsx"),
+  csharp: () => import("refractor/csharp"),
+  cs: () => import("refractor/csharp"),
+  python: () => import("refractor/python"),
+  py: () => import("refractor/python"),
+  rust: () => import("refractor/rust"),
+  rs: () => import("refractor/rust"),
+  go: () => import("refractor/go"),
+  bash: () => import("refractor/bash"),
+  sh: () => import("refractor/bash"),
+  zsh: () => import("refractor/bash"),
+  shell: () => import("refractor/bash"),
+  yaml: () => import("refractor/yaml"),
+  yml: () => import("refractor/yaml"),
+  json: () => import("refractor/json"),
+  markdown: () => import("refractor/markdown"),
+  md: () => import("refractor/markdown"),
+  css: () => import("refractor/css"),
+  markup: () => import("refractor/markup"),
+  html: () => import("refractor/markup"),
+  htm: () => import("refractor/markup"),
+  xml: () => import("refractor/markup"),
+  svg: () => import("refractor/markup"),
+  csproj: () => import("refractor/markup"),
+  props: () => import("refractor/markup"),
+  targets: () => import("refractor/markup"),
+  sql: () => import("refractor/sql"),
+  diff: () => import("refractor/diff"),
+  cpp: () => import("refractor/cpp"),
+  "c++": () => import("refractor/cpp"),
+  hpp: () => import("refractor/cpp"),
+  cc: () => import("refractor/cpp"),
+  cxx: () => import("refractor/cpp"),
+  c: () => import("refractor/c"),
+  h: () => import("refractor/c"),
+  clike: () => import("refractor/clike"),
+  java: () => import("refractor/java"),
+};
+
+const languageDependencies: Record<string, string[]> = {
+  tsx: ["jsx", "typescript"],
+  jsx: ["javascript"],
+  typescript: ["javascript"],
+  javascript: ["clike"],
+  cpp: ["c"],
+  c: ["clike"],
+  csharp: ["clike"],
+  java: ["clike"],
+  markdown: ["markup"],
+};
+
+const loadingLanguages = new Map<string, Promise<boolean>>();
+
+export async function loadLanguage(lang: string): Promise<boolean> {
+  if (!lang) return false;
+  const normalized = lang.toLowerCase();
+  if (refractor.registered(normalized)) {
+    return true;
+  }
+  const loader = languageLoaders[normalized];
+  if (!loader) {
+    return false;
+  }
+
+  const existing = loadingLanguages.get(normalized);
+  if (existing) {
+    return existing;
+  }
+
+  const loadPromise = (async () => {
+    try {
+      const deps = languageDependencies[normalized];
+      if (deps && deps.length > 0) {
+        await Promise.all(deps.map((dep) => loadLanguage(dep)));
+      }
+      const mod = await loader();
+      if (mod?.default) {
+        refractor.register(mod.default);
+      }
+      return refractor.registered(normalized);
+    } catch (err) {
+      console.error(`Failed to load refractor language pack for "${lang}":`, err);
+      return false;
+    } finally {
+      loadingLanguages.delete(normalized);
+    }
+  })();
+
+  loadingLanguages.set(normalized, loadPromise);
+  return loadPromise;
+}
 
 const refractorAdapter = {
   ...refractor,
   highlight: (code: string, language: string) => {
-    const res = refractor.highlight(code, language);
-    return Array.isArray(res) ? res : res && (res as any).children ? (res as any).children : [];
+    try {
+      if (!language || !refractor.registered(language)) {
+        return [];
+      }
+      const res = refractor.highlight(code, language);
+      return Array.isArray(res) ? res : res && (res as any).children ? (res as any).children : [];
+    } catch {
+      return [];
+    }
   },
 };
 
@@ -552,6 +661,36 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
     document.getElementById(elementId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
+  const [languageLoadedVersion, setLanguageLoadedVersion] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    const requiredLangs = new Set<string>();
+
+    for (let i = 0; i < files.length; i++) {
+      const meta = fileMeta[i];
+      const effectiveFilePath = filePath || meta?.newName || meta?.oldName || "";
+      const fileLang = language || getLanguageFromFilePath(effectiveFilePath);
+      if (fileLang && !refractor.registered(fileLang)) {
+        requiredLangs.add(fileLang);
+      }
+    }
+
+    if (requiredLangs.size === 0) return;
+
+    void Promise.all(Array.from(requiredLangs).map((lang) => loadLanguage(lang))).then(
+      (results) => {
+        if (mounted && results.some(Boolean)) {
+          setLanguageLoadedVersion((v) => v + 1);
+        }
+      },
+    );
+
+    return () => {
+      mounted = false;
+    };
+  }, [files, fileMeta, filePath, language]);
+
   // Pre-tokenize all files and hunks once when files/language change, instead of synchronously tokenizing on every render
   const tokensByFile = useMemo(() => {
     return files.map((file, fileIndex) => {
@@ -573,7 +712,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
       }
       return undefined;
     });
-  }, [files, fileMeta, filePath, language]);
+  }, [files, fileMeta, filePath, language, languageLoadedVersion]);
 
   const style: React.CSSProperties = {
     ...getWidth(width),
