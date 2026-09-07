@@ -73,3 +73,16 @@ export type ChatEvent =
   | ChatGeneratingStateEvent
   | ChatQuestionAnsweredEvent
   | ChatJobSpawnedEvent;
+
+export type InProgressQuestionAnswers = Record<string, string[]>; // questionId -> answer values
+
+export interface ChatState {
+  sessions: ChatSession[];
+  activeSessionId: string | null;
+  activeSession: ChatSession | null;
+  queuedItems: ChatQueuedItem[];
+  isGenerating: boolean;
+  isLoading: boolean;
+  error: string | null;
+  inProgressAnswers: Record<string, InProgressQuestionAnswers>; // messageId -> { questionId: answer[] }
+}
