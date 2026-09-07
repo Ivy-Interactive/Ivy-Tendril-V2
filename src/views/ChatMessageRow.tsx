@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   ChatBubble,
   ChatBubbleMessage,
@@ -9,6 +9,7 @@ import { PlanMarkdown } from "@spacecorps/components-storybook/tendril";
 import { Copy, FilePlus, Paperclip } from "lucide-react";
 import { chatStore } from "../state/chatStore";
 import type { ChatMessage } from "../types/chat";
+import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
 
 export interface ChatMessageRowProps {
   message: ChatMessage;
@@ -29,11 +30,18 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(
           | { questionId: string; answer: string[] | null };
         const items = Array.isArray(payload) ? payload : [payload];
         for (const item of items) {
+          chatStore.setInProgressAnswer(message.id, item.questionId, item.answer);
           chatStore.submitAnswer(message.id, item.questionId, item.answer);
         }
       },
       [message.id]
     );
+
+    const inProgressAnswers = isUser ? undefined : chatStore.getInProgressAnswers(message.id);
+    const content = useMemo(() => {
+      if (isUser || !inProgressAnswers) return message.content;
+      return patchQuestionsMarkdown(message.content, inProgressAnswers);
+    }, [isUser, message.content, inProgressAnswers]);
 
     return (
       <ChatBubble variant={isUser ? "sent" : "received"} layout={isUser ? "default" : "ai"}>
@@ -52,7 +60,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(
               <div className="text-sm">
                 <PlanMarkdown
                   id={`chat-msg-${message.id}`}
-                  content={message.content}
+                  content={content}
                   events={["OnAnswersChange"]}
                   eventHandler={handleAnswersChange}
                 />
