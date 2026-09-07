@@ -201,6 +201,12 @@ pub struct PlanYaml {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recommendations: Option<Vec<Recommendation>>,
+
+    #[serde(rename = "chatSessionId", skip_serializing_if = "Option::is_none")]
+    pub chat_session_id: Option<String>,
+
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_yaml::Value>,
 }
 
 impl Default for PlanYaml {
@@ -225,6 +231,8 @@ impl Default for PlanYaml {
             initial_prompt: None,
             source_url: None,
             recommendations: None,
+            chat_session_id: None,
+            extra: std::collections::BTreeMap::new(),
         }
     }
 }
@@ -247,6 +255,7 @@ pub struct PlanMetadata {
     pub initial_prompt: Option<String>,
     pub source_url: Option<String>,
     pub partial_delivery: bool,
+    pub chat_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -285,5 +294,9 @@ impl PlanFile {
             .source_url
             .as_ref()
             .is_some_and(|u| u.contains("/pull/"))
+    }
+
+    pub fn chat_session_id(&self) -> Option<&str> {
+        self.metadata.chat_session_id.as_deref()
     }
 }

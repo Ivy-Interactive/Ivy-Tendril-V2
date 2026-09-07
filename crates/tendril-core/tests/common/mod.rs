@@ -99,6 +99,8 @@ pub fn plan_with(state: PlanStatus, verifications: &[(&str, VerificationStatus)]
         initial_prompt: None,
         source_url: None,
         recommendations: None,
+        chat_session_id: None,
+        extra: std::collections::BTreeMap::new(),
     }
 }
 

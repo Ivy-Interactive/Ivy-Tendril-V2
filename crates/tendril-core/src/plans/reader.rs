@@ -65,6 +65,7 @@ pub fn read_plan_file(plan_folder: &Path) -> Result<PlanFile> {
         initial_prompt: plan_yaml.initial_prompt,
         source_url: plan_yaml.source_url,
         partial_delivery: plan_yaml.partial_delivery,
+        chat_session_id: plan_yaml.chat_session_id,
     };
 
     Ok(PlanFile {

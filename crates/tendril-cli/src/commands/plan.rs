@@ -121,6 +121,8 @@ pub struct PlanCreateArgs {
     #[arg(long)]
     pub related_plan: Vec<String>,
     #[arg(long)]
+    pub chat_session: Option<String>,
+    #[arg(long)]
     pub plans_dir: Option<PathBuf>,
     #[arg(long)]
     pub no_duplicate_check: bool,
@@ -411,6 +413,7 @@ pub fn handle_plan_command(
                 verifications,
                 depends_on: args.depends_on,
                 related_plans: args.related_plan,
+                chat_session_id: args.chat_session,
             };
 
             let plan_file = create_plan(&p_dir, opts)?;
