@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+import { execSync } from "child_process";
 import { resolveStorybookRoot } from "../scripts/storybook-path.mjs";
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -94,5 +95,15 @@ describe("Dependency portability", () => {
       refMatch?.[1],
       "pin components-storybook to a full commit SHA"
     ).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("compiles cleanly with tsc --noEmit without type errors", () => {
+    expect(() => {
+      execSync("pnpm exec tsc --noEmit", {
+        cwd: repoRoot,
+        stdio: "pipe",
+        encoding: "utf-8",
+      });
+    }).not.toThrow();
   });
 });
