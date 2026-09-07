@@ -538,86 +538,97 @@ pub async fn get_project_issues_metadata(
         name: String,
     }
 
-    for (owner, repo) in repos {
-        let repo_slug = format!("{}/{}", owner, repo);
-        let cache_key = repo_slug.to_lowercase();
+    let mut cache_misses: Vec<(String, String)> = Vec::new();
 
-        let cached = {
-            let cache = ISSUE_METADATA_CACHE
-                .read()
-                .unwrap_or_else(|p| p.into_inner());
+    {
+        let cache = ISSUE_METADATA_CACHE
+            .read()
+            .unwrap_or_else(|p| p.into_inner());
+
+        for (owner, repo) in repos {
+            let repo_slug = format!("{}/{}", owner, repo);
+            let cache_key = repo_slug.to_lowercase();
+
             if let Some(entry) = cache.get(&cache_key) {
                 if entry.fetched_at.elapsed() < METADATA_CACHE_TTL {
-                    Some((entry.labels.clone(), entry.assignees.clone()))
-                } else {
-                    None
+                    labels_set.extend(entry.labels.clone());
+                    assignees_set.extend(entry.assignees.clone());
+                    continue;
                 }
-            } else {
-                None
             }
-        };
 
-        if let Some((labels, assignees)) = cached {
-            labels_set.extend(labels);
-            assignees_set.extend(assignees);
-            continue;
+            cache_misses.push((owner.clone(), repo.clone()));
         }
+    }
 
-        let mut repo_labels_set = BTreeSet::new();
-        let mut repo_assignees_set = BTreeSet::new();
+    if !cache_misses.is_empty() {
+        let fetch_futures = cache_misses.into_iter().map(|(owner, repo)| async move {
+            let repo_slug = format!("{}/{}", owner, repo);
+            let mut repo_labels_set = BTreeSet::new();
+            let mut repo_assignees_set = BTreeSet::new();
 
-        // Fetch labels: gh label list --repo {owner}/{repo} --json name
-        let label_args = vec![
-            "label".to_string(),
-            "list".to_string(),
-            "--repo".to_string(),
-            repo_slug.clone(),
-            "--json".to_string(),
-            "name".to_string(),
-        ];
-        if let Ok(stdout) = run_gh_command(&label_args, None).await {
-            if let Ok(labels) = serde_json::from_str::<Vec<GhLabelName>>(&stdout) {
-                for l in labels {
-                    let trimmed = l.name.trim();
-                    if !trimmed.is_empty() {
-                        let label_str = trimmed.to_string();
-                        labels_set.insert(label_str.clone());
-                        repo_labels_set.insert(label_str);
+            // Fetch labels: gh label list --repo {owner}/{repo} --json name
+            let label_args = vec![
+                "label".to_string(),
+                "list".to_string(),
+                "--repo".to_string(),
+                repo_slug.clone(),
+                "--json".to_string(),
+                "name".to_string(),
+            ];
+            if let Ok(stdout) = run_gh_command(&label_args, None).await {
+                if let Ok(labels) = serde_json::from_str::<Vec<GhLabelName>>(&stdout) {
+                    for l in labels {
+                        let trimmed = l.name.trim();
+                        if !trimmed.is_empty() {
+                            repo_labels_set.insert(trimmed.to_string());
+                        }
                     }
                 }
             }
-        }
 
-        // Fetch assignees: gh api repos/{owner}/{repo}/assignees --jq '.[].login'
-        let assignee_args = vec![
-            "api".to_string(),
-            format!("repos/{}/assignees", repo_slug),
-            "--jq".to_string(),
-            ".[].login".to_string(),
-        ];
-        if let Ok(stdout) = run_gh_command(&assignee_args, None).await {
-            for line in stdout.lines() {
-                let trimmed = line.trim();
-                if !trimmed.is_empty() {
-                    let assignee_str = trimmed.to_string();
-                    assignees_set.insert(assignee_str.clone());
-                    repo_assignees_set.insert(assignee_str);
+            // Fetch assignees: gh api repos/{owner}/{repo}/assignees --jq '.[].login'
+            let assignee_args = vec![
+                "api".to_string(),
+                format!("repos/{}/assignees", repo_slug),
+                "--jq".to_string(),
+                ".[].login".to_string(),
+            ];
+            if let Ok(stdout) = run_gh_command(&assignee_args, None).await {
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        repo_assignees_set.insert(trimmed.to_string());
+                    }
                 }
             }
-        }
+
+            let repo_labels: Vec<String> = repo_labels_set.into_iter().collect();
+            let repo_assignees: Vec<String> = repo_assignees_set.into_iter().collect();
+
+            (repo_slug, repo_labels, repo_assignees)
+        });
+
+        let results = futures_util::future::join_all(fetch_futures).await;
 
         {
             let mut cache = ISSUE_METADATA_CACHE
                 .write()
                 .unwrap_or_else(|p| p.into_inner());
-            cache.insert(
-                cache_key,
-                CachedRepoMetadata {
-                    labels: repo_labels_set.into_iter().collect(),
-                    assignees: repo_assignees_set.into_iter().collect(),
-                    fetched_at: Instant::now(),
-                },
-            );
+
+            for (repo_slug, repo_labels, repo_assignees) in results {
+                let cache_key = repo_slug.to_lowercase();
+                cache.insert(
+                    cache_key,
+                    CachedRepoMetadata {
+                        labels: repo_labels.clone(),
+                        assignees: repo_assignees.clone(),
+                        fetched_at: Instant::now(),
+                    },
+                );
+                labels_set.extend(repo_labels);
+                assignees_set.extend(repo_assignees);
+            }
         }
     }
 
@@ -944,5 +955,67 @@ mod tests {
             let cache = ISSUE_METADATA_CACHE.read().unwrap();
             assert!(cache.is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_project_issues_metadata_concurrent_cache_hits_and_misses() {
+        clear_issue_metadata_cache();
+
+        let repo1_key = "spacecorps/repo-cached-1";
+        let repo2_key = "spacecorps/repo-cached-2";
+
+        {
+            let mut cache = ISSUE_METADATA_CACHE.write().unwrap();
+            cache.insert(
+                repo1_key.to_string(),
+                CachedRepoMetadata {
+                    labels: vec!["bug".to_string(), "frontend".to_string()],
+                    assignees: vec!["alice".to_string()],
+                    fetched_at: Instant::now(),
+                },
+            );
+            cache.insert(
+                repo2_key.to_string(),
+                CachedRepoMetadata {
+                    labels: vec!["documentation".to_string()],
+                    assignees: vec!["bob".to_string()],
+                    fetched_at: Instant::now(),
+                },
+            );
+        }
+
+        let repos = vec![
+            ("SpaceCorps".to_string(), "repo-cached-1".to_string()),
+            ("SpaceCorps".to_string(), "repo-cached-2".to_string()),
+            ("SpaceCorps".to_string(), "repo-uncached".to_string()),
+        ];
+
+        let meta = get_project_issues_metadata(&repos).await.unwrap();
+
+        // Cached entries should be present in the aggregated results
+        assert!(meta.labels.contains(&"bug".to_string()));
+        assert!(meta.labels.contains(&"frontend".to_string()));
+        assert!(meta.labels.contains(&"documentation".to_string()));
+        assert!(meta.assignees.contains(&"alice".to_string()));
+        assert!(meta.assignees.contains(&"bob".to_string()));
+
+        // The uncached repo should have been queried and recorded in the cache
+        {
+            let cache = ISSUE_METADATA_CACHE.read().unwrap();
+            assert!(cache.contains_key("spacecorps/repo-uncached"));
+            let uncached_entry = cache.get("spacecorps/repo-uncached").unwrap();
+            assert!(uncached_entry.fetched_at.elapsed() < METADATA_CACHE_TTL);
+        }
+
+        clear_issue_metadata_cache();
+    }
+
+    #[tokio::test]
+    async fn test_get_project_issues_metadata_empty_repos() {
+        clear_issue_metadata_cache();
+
+        let meta = get_project_issues_metadata(&[]).await.unwrap();
+        assert!(meta.labels.is_empty());
+        assert!(meta.assignees.is_empty());
     }
 }
