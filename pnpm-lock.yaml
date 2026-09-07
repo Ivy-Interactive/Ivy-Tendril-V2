@@ -11,9 +11,6 @@ importers:
       '@spacecorps/components-storybook':
         specifier: link:/Users/rorychatt/git/components-storybook
         version: link:../../../../../../git/components-storybook
-      '@tanstack/react-query':
-        specifier: ^5.67.2
-        version: 5.102.8(react@19.2.3)
       '@tauri-apps/api':
         specifier: ^2.2.0
         version: 2.11.1
@@ -612,14 +609,6 @@ packages:
     resolution: {integrity: sha512-bbguNBcDxsRmi9nnlWJxhfDWamY3lmcyACHcdO1crxfzuLpOhHLLtEIN/nCbbAtj5rchUgQD17QVAKi1f7IsKg==}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7
-
-  '@tanstack/query-core@5.102.8':
-    resolution: {integrity: sha512-ZNjkJ33CqvPNec/6lZBnHqLc3EVGPZ9ySLhYahU9TcuRFdmwXewuj0c4hwSWcGHqEUwcSrKeZ+oGcvPBqXcQcg==}
-
-  '@tanstack/react-query@5.102.8':
-    resolution: {integrity: sha512-TYBea4OuXWD7MhaSHq069TWbFe7rcwWN6kzT7JF0OKi1K6c1gTv2IzD6A6ExJsCMozdkqBWeuIUZmu4KQg0O5A==}
-    peerDependencies:
-      react: ^18 || ^19
 
   '@tauri-apps/api@2.11.1':
     resolution: {integrity: sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA==}
@@ -1708,13 +1697,6 @@ snapshots:
       '@tailwindcss/oxide': 4.1.16
       tailwindcss: 4.1.16
       vite: 6.4.3(@types/node@26.4.1)(jiti@2.7.0)(lightningcss@1.30.2)
-
-  '@tanstack/query-core@5.102.8': {}
-
-  '@tanstack/react-query@5.102.8(react@19.2.3)':
-    dependencies:
-      '@tanstack/query-core': 5.102.8
-      react: 19.2.3
 
   '@tauri-apps/api@2.11.1': {}
 

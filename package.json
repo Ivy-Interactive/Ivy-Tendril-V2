@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@spacecorps/components-storybook": "link:/Users/rorychatt/git/components-storybook",
-    "@tanstack/react-query": "^5.67.2",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-opener": "^2.2.5",
     "clsx": "^2.1.1",
