@@ -26,12 +26,38 @@ export interface CustomLanguageDefinition {
   loader: CustomLanguageLoader;
   dependencies?: string[];
   aliases?: string[];
+  extensions?: string[];
 }
 
 export type CustomLanguageLoaders = Record<string, CustomLanguageLoader | CustomLanguageDefinition>;
 
+export type CustomExtensionMappings = Record<string, string>;
+
 export const customLanguageRegistry = new Map<string, CustomLanguageDefinition>();
+export const customExtensionRegistry = new Map<string, string>();
 const customRegisteredLanguages = new Set<string>();
+
+function normalizeExtension(extension: string): string {
+  return extension.trim().toLowerCase().replace(/^\.+/, "");
+}
+
+export function registerExtensionMapping(extension: string, language: string): void {
+  const normExt = normalizeExtension(extension);
+  const normLang = language.trim().toLowerCase();
+  if (normExt && normLang) {
+    customExtensionRegistry.set(normExt, normLang);
+  }
+}
+
+export function registerExtensionMappings(mappings: CustomExtensionMappings): void {
+  for (const [ext, lang] of Object.entries(mappings)) {
+    registerExtensionMapping(ext, lang);
+  }
+}
+
+export function clearCustomExtensionMappings(): void {
+  customExtensionRegistry.clear();
+}
 
 export function registerLanguageLoader(
   name: string,
@@ -45,6 +71,11 @@ export function registerLanguageLoader(
   if (def.aliases) {
     for (const alias of def.aliases) {
       customLanguageRegistry.set(alias.toLowerCase(), def);
+    }
+  }
+  if (def.extensions) {
+    for (const ext of def.extensions) {
+      registerExtensionMapping(ext, normalized);
     }
   }
 }
@@ -61,6 +92,30 @@ export function clearCustomLanguageLoaders(): void {
     delete (refractor.languages as Record<string, unknown>)[lang];
   }
   customRegisteredLanguages.clear();
+  clearCustomExtensionMappings();
+}
+
+export function useCustomExtensionMappings(mappings?: CustomExtensionMappings): void {
+  if (mappings) {
+    registerExtensionMappings(mappings);
+  }
+
+  useEffect(() => {
+    if (!mappings) return;
+    const registeredExts: string[] = [];
+    for (const ext of Object.keys(mappings)) {
+      const norm = normalizeExtension(ext);
+      if (norm) {
+        registeredExts.push(norm);
+      }
+    }
+
+    return () => {
+      for (const ext of registeredExts) {
+        customExtensionRegistry.delete(ext);
+      }
+    };
+  }, [mappings]);
 }
 
 export function useCustomLanguageLoaders(loaders?: CustomLanguageLoaders): void {
@@ -73,6 +128,7 @@ export function useCustomLanguageLoaders(loaders?: CustomLanguageLoaders): void 
   useEffect(() => {
     if (!loaders) return;
     const registeredKeys: string[] = [];
+    const registeredExts: string[] = [];
     for (const [name, loaderOrDef] of Object.entries(loaders)) {
       const normalized = name.toLowerCase();
       registeredKeys.push(normalized);
@@ -83,11 +139,22 @@ export function useCustomLanguageLoaders(loaders?: CustomLanguageLoaders): void 
           registeredKeys.push(alias.toLowerCase());
         }
       }
+      if (def.extensions) {
+        for (const ext of def.extensions) {
+          const norm = normalizeExtension(ext);
+          if (norm) {
+            registeredExts.push(norm);
+          }
+        }
+      }
     }
 
     return () => {
       for (const key of registeredKeys) {
         customLanguageRegistry.delete(key);
+      }
+      for (const ext of registeredExts) {
+        customExtensionRegistry.delete(ext);
       }
     };
   }, [loaders]);
@@ -318,9 +385,28 @@ const customRenderToken = (token: any, renderDefault: any, index: number): React
   return renderDefault(token, index);
 };
 
-export function getLanguageFromFilePath(filePath: string): string {
+export function getLanguageFromFilePath(
+  filePath: string,
+  customMappings?: CustomExtensionMappings,
+): string {
   if (!filePath) return "text";
-  const ext = filePath.split(".").pop()?.toLowerCase() || "";
+  const rawExt = filePath.split(".").pop()?.toLowerCase() || "";
+  const ext = normalizeExtension(rawExt);
+
+  if (customMappings) {
+    if (customMappings[ext]) return customMappings[ext];
+    if (customMappings[`.${ext}`]) return customMappings[`.${ext}`];
+    for (const [key, val] of Object.entries(customMappings)) {
+      if (normalizeExtension(key) === ext && val) {
+        return val;
+      }
+    }
+  }
+
+  if (ext && customExtensionRegistry.has(ext)) {
+    return customExtensionRegistry.get(ext)!;
+  }
+
   switch (ext) {
     case "cs":
       return "csharp";
@@ -413,6 +499,7 @@ export interface PlanDiffViewProps {
   filePath?: string;
   currentAuthor?: string;
   customLanguageLoaders?: CustomLanguageLoaders;
+  customExtensionMappings?: CustomExtensionMappings;
 }
 
 function getLineNumber(change: ChangeData | null): number {
@@ -657,7 +744,9 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
   filePath = "",
   currentAuthor,
   customLanguageLoaders,
+  customExtensionMappings,
 }) => {
+  useCustomExtensionMappings(customExtensionMappings);
   const dispatchEvent = eventHandler || onIvyEvent;
   const files = useMemo(() => {
     if (!diff) return [];
@@ -815,7 +904,8 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
     for (let i = 0; i < files.length; i++) {
       const meta = fileMeta[i];
       const effectiveFilePath = filePath || meta?.newName || meta?.oldName || "";
-      const fileLang = language || getLanguageFromFilePath(effectiveFilePath);
+      const fileLang =
+        language || getLanguageFromFilePath(effectiveFilePath, customExtensionMappings);
       if (fileLang && !refractor.registered(fileLang)) {
         requiredLangs.add(fileLang);
       }
@@ -834,14 +924,15 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
     return () => {
       mounted = false;
     };
-  }, [files, fileMeta, filePath, language, customLanguageLoaders]);
+  }, [files, fileMeta, filePath, language, customLanguageLoaders, customExtensionMappings]);
 
   // Pre-tokenize all files and hunks once when files/language change, instead of synchronously tokenizing on every render
   const tokensByFile = useMemo(() => {
     return files.map((file, fileIndex) => {
       const meta = fileMeta[fileIndex];
       const effectiveFilePath = filePath || meta?.newName || meta?.oldName || "";
-      const fileLang = language || getLanguageFromFilePath(effectiveFilePath);
+      const fileLang =
+        language || getLanguageFromFilePath(effectiveFilePath, customExtensionMappings);
       if (file.hunks && file.hunks.length > 0) {
         try {
           if (fileLang && refractor.registered(fileLang)) {
@@ -857,7 +948,15 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
       }
       return undefined;
     });
-  }, [files, fileMeta, filePath, language, languageLoadedVersion, customLanguageLoaders]);
+  }, [
+    files,
+    fileMeta,
+    filePath,
+    language,
+    languageLoadedVersion,
+    customLanguageLoaders,
+    customExtensionMappings,
+  ]);
 
   const style: React.CSSProperties = {
     ...getWidth(width),

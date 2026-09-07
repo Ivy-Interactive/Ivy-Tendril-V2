@@ -158,6 +158,11 @@ describe("Package Exports", () => {
 
     it("should export plan diff components", () => {
       expect(tendril.PlanDiffView).toBeDefined();
+      expect(tendril.getLanguageFromFilePath).toBeDefined();
+      expect(tendril.registerExtensionMapping).toBeDefined();
+      expect(tendril.registerExtensionMappings).toBeDefined();
+      expect(tendril.clearCustomExtensionMappings).toBeDefined();
+      expect(tendril.customExtensionRegistry).toBeDefined();
     });
 
     it("should export dashboard components", () => {

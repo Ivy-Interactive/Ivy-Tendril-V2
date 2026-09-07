@@ -9,6 +9,11 @@ export {
   clearCustomLanguageLoaders,
   useCustomLanguageLoaders,
   customLanguageRegistry,
+  customExtensionRegistry,
+  registerExtensionMapping,
+  registerExtensionMappings,
+  clearCustomExtensionMappings,
+  useCustomExtensionMappings,
 } from "./PlanDiffView";
 export type {
   PlanDiffViewProps,
@@ -17,4 +22,5 @@ export type {
   CustomLanguageLoader,
   CustomLanguageDefinition,
   CustomLanguageLoaders,
+  CustomExtensionMappings,
 } from "./PlanDiffView";
