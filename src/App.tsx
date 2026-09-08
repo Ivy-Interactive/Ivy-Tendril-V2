@@ -246,8 +246,12 @@ export const App: React.FC = () => {
           <DashboardView
             plans={plansState.plans}
             jobs={jobsState.jobs}
-            onSelectPlan={handleSelectPlan}
             onSelectJob={handleSelectJob}
+            onNavigate={(nav) => uiStore.setActiveNav(nav)}
+            onNewPlan={() => {
+              setNewPlanPrefill({});
+              setIsNewPlanOpen(true);
+            }}
           />
         );
 
@@ -349,8 +353,12 @@ export const App: React.FC = () => {
           <DashboardView
             plans={plansState.plans}
             jobs={jobsState.jobs}
-            onSelectPlan={handleSelectPlan}
             onSelectJob={handleSelectJob}
+            onNavigate={(nav) => uiStore.setActiveNav(nav)}
+            onNewPlan={() => {
+              setNewPlanPrefill({});
+              setIsNewPlanOpen(true);
+            }}
           />
         );
     }

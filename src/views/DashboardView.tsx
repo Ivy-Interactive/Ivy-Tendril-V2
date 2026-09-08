@@ -11,15 +11,24 @@ import { firstStringArg } from "../utils/eventArgs";
 interface DashboardViewProps {
   plans: PlanSummary[];
   jobs: Job[];
-  onSelectPlan?: (planId: string) => void;
   onSelectJob?: (jobId: string) => void;
+  /** Nav id from ShellLayout's nav items: "plans" | "review" | "jobs". */
+  onNavigate?: (navId: string) => void;
+  onNewPlan?: () => void;
 }
+
+const NAV_BY_EVENT: Record<string, string> = {
+  OnDrafts: "plans",
+  OnReview: "review",
+  OnJobs: "jobs",
+};
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   plans,
   jobs,
-  onSelectPlan,
   onSelectJob,
+  onNavigate,
+  onNewPlan,
 }) => {
   // Compute counts for process viewer
   const draftCount = plans.filter((p) => p.state === "Draft").length;
@@ -83,10 +92,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         reviewCount={reviewCount}
         completedCount={completedCount}
         failedCount={0}
-        events={["OnJob"]}
+        events={["OnJob", "OnDrafts", "OnReview", "OnJobs"]}
         eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-          const jobId = firstStringArg(args);
-          if (evt === "OnJob" && jobId && onSelectJob) onSelectJob(jobId);
+          if (evt === "OnJob") {
+            const jobId = firstStringArg(args);
+            if (jobId) onSelectJob?.(jobId);
+            return;
+          }
+          const nav = NAV_BY_EVENT[evt];
+          if (nav) onNavigate?.(nav);
         }}
         kpis={kpis}
         jobs={dashboardJobs}
@@ -100,9 +114,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 executingPlansCount={executingCount}
                 creatingPlansCount={creatingCount}
                 updatingPlansCount={updatingCount}
-                eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-                  const planId = firstStringArg(args);
-                  if (planId && onSelectPlan) onSelectPlan(planId);
+                events={["OnCreate", "OnDrafts", "OnReview", "OnJobs"]}
+                eventHandler={(evt: string) => {
+                  if (evt === "OnCreate") {
+                    onNewPlan?.();
+                    return;
+                  }
+                  const nav = NAV_BY_EVENT[evt];
+                  if (nav) onNavigate?.(nav);
                 }}
               />
             </div>
