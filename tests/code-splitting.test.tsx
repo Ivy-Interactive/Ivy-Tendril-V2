@@ -44,12 +44,7 @@ describe("Code-Splitting & Suspense Boundaries", () => {
   it("renders DashboardView correctly within a Suspense boundary", () => {
     render(
       <Suspense fallback={<div data-testid="test-fallback-spinner">Loading dashboard...</div>}>
-        <DashboardView
-          plans={mockPlans}
-          jobs={mockJobs}
-          onSelectPlan={() => {}}
-          onSelectJob={() => {}}
-        />
+        <DashboardView plans={mockPlans} jobs={mockJobs} onSelectJob={() => {}} />
       </Suspense>,
     );
 
@@ -70,12 +65,7 @@ describe("Code-Splitting & Suspense Boundaries", () => {
 
     render(
       <Suspense fallback={<div data-testid="lazy-fallback-spinner">Loading dynamic view...</div>}>
-        <LazyDashboard
-          plans={mockPlans}
-          jobs={mockJobs}
-          onSelectPlan={() => {}}
-          onSelectJob={() => {}}
-        />
+        <LazyDashboard plans={mockPlans} jobs={mockJobs} onSelectJob={() => {}} />
       </Suspense>,
     );
 

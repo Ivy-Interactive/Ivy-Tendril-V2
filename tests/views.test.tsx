@@ -72,18 +72,103 @@ describe("Operator Views Component & Accessibility Tests", () => {
 
   describe("DashboardView", () => {
     it("renders KPIs, process counts, and recent jobs", () => {
-      render(
-        <DashboardView
-          plans={mockPlans}
-          jobs={mockJobs}
-          onSelectPlan={() => {}}
-          onSelectJob={() => {}}
-        />,
-      );
+      render(<DashboardView plans={mockPlans} jobs={mockJobs} onSelectJob={() => {}} />);
 
       expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
       expect(screen.getByText("Tendril Dashboard")).toBeInTheDocument();
       expect(screen.getByText("First Accessible Plan")).toBeInTheDocument();
+    });
+  });
+
+  describe("DashboardView process viewer navigation", () => {
+    it("clicking the New Plan box calls onNewPlan and never onNavigate", () => {
+      const onNewPlan = vi.fn();
+      const onNavigate = vi.fn();
+      const { container } = render(
+        <DashboardView
+          plans={mockPlans}
+          jobs={mockJobs}
+          onNavigate={onNavigate}
+          onNewPlan={onNewPlan}
+        />,
+      );
+
+      const createBox = container.querySelector(".tpv-box-create");
+      expect(createBox).not.toBeNull();
+      fireEvent.click(createBox!);
+
+      expect(onNewPlan).toHaveBeenCalledTimes(1);
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it("clicking the process viewer Drafts box calls onNavigate('plans')", () => {
+      const onNavigate = vi.fn();
+      const { container } = render(
+        <DashboardView plans={mockPlans} jobs={mockJobs} onNavigate={onNavigate} />,
+      );
+
+      const stageBoxes = container.querySelectorAll(".tpv-box-stage");
+      fireEvent.click(stageBoxes[0]);
+
+      expect(onNavigate).toHaveBeenCalledWith("plans");
+    });
+
+    it("clicking the process viewer Review box calls onNavigate('review')", () => {
+      const onNavigate = vi.fn();
+      const { container } = render(
+        <DashboardView plans={mockPlans} jobs={mockJobs} onNavigate={onNavigate} />,
+      );
+
+      const stageBoxes = container.querySelectorAll(".tpv-box-stage");
+      fireEvent.click(stageBoxes[1]);
+
+      expect(onNavigate).toHaveBeenCalledWith("review");
+    });
+
+    it("clicking an arrow count label calls onNavigate('jobs')", () => {
+      const onNavigate = vi.fn();
+      const plansWithExecuting: PlanSummary[] = [
+        ...mockPlans,
+        planSummary({
+          id: "00030",
+          title: "Executing Plan",
+          state: "Executing",
+          project: "Project-A",
+          level: "Feature",
+          verifications: [],
+        }),
+      ];
+      const { container } = render(
+        <DashboardView plans={plansWithExecuting} jobs={mockJobs} onNavigate={onNavigate} />,
+      );
+
+      const arrowLabel = container.querySelector(".tpv-arrow-label");
+      expect(arrowLabel).not.toBeNull();
+      fireEvent.click(arrowLabel!);
+
+      expect(onNavigate).toHaveBeenCalledWith("jobs");
+    });
+
+    it("clicking the Ready For Review status pill navigates, and OnJob still selects the job", () => {
+      const onNavigate = vi.fn();
+      const onSelectJob = vi.fn();
+      const { container } = render(
+        <DashboardView
+          plans={mockPlans}
+          jobs={mockJobs}
+          onNavigate={onNavigate}
+          onSelectJob={onSelectJob}
+        />,
+      );
+
+      const statusItems = container.querySelectorAll(".tdb-status-item");
+      fireEvent.click(statusItems[2]);
+      expect(onNavigate).toHaveBeenCalledWith("review");
+
+      const jobRow = container.querySelector(".tdb-job-row");
+      expect(jobRow).not.toBeNull();
+      fireEvent.click(jobRow!);
+      expect(onSelectJob).toHaveBeenCalledWith("00100");
     });
   });
 
