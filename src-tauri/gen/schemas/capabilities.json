@@ -1,9 +1,0 @@
-{
-  "default": {
-    "identifier": "default",
-    "description": "Default permissions for Tendril Desktop main window",
-    "local": true,
-    "windows": ["main"],
-    "permissions": ["core:default", "dialog:default"]
-  }
-}
