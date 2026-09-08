@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ContentInput } from "@spacecorps/components-storybook/tendril";
 import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
-import { firstStringArg } from "../utils/eventArgs";
+import { firstStringArg, submitValueArg } from "../utils/eventArgs";
 
 interface NewPlanModalProps {
   isOpen: boolean;
@@ -62,8 +62,10 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
 
   const projectNames = projects.map((p) => p.name);
 
-  const handleSubmit = async () => {
-    if (!description.trim()) {
+  const handleSubmit = async (submittedText?: string) => {
+    if (isSubmitting) return;
+    const text = (submittedText ?? description).trim();
+    if (!text) {
       setError("Please enter a description for the new plan.");
       return;
     }
@@ -76,7 +78,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
       const res = await jobsStore.startJob({
         type: "CreatePlan",
         project: selectedProject,
-        description: description.trim(),
+        description: text,
         priority,
         sourceUrl: sourceUrl.trim() || undefined,
       });
@@ -184,11 +186,18 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
               placeholder="Describe the task, bug to fix, feature to build, or files to inspect..."
               projects={projectNames}
               selectedProject={selectedProject}
-              submitLabel="Start CreatePlan Job"
               eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-                if (evt !== "OnChange") return;
-                const text = firstStringArg(args);
-                if (text !== undefined) setDescription(text);
+                if (evt === "OnChange") {
+                  const text = firstStringArg(args);
+                  if (text !== undefined) setDescription(text);
+                  return;
+                }
+                if (evt === "OnSubmit") {
+                  const text = submitValueArg(args);
+                  if (text === undefined) return;
+                  setDescription(text);
+                  void handleSubmit(text);
+                }
               }}
             />
             {/* Fallback textarea for direct editing */}
@@ -214,7 +223,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           <button
             type="button"
             disabled={isSubmitting || !description.trim()}
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
             className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition ${
               isSubmitting || !description.trim()
                 ? "cursor-not-allowed bg-slate-800 text-slate-500"
