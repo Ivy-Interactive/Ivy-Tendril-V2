@@ -30,7 +30,10 @@ vi.mock("@spacecorps/components-storybook/tendril", async (importOriginal) => {
             }
           }}
         />
-        <button title="Send" onClick={() => eventHandler?.("OnSubmit", id, [{ value, Value: value }])}>
+        <button
+          title="Send"
+          onClick={() => eventHandler?.("OnSubmit", id, [{ value, Value: value }])}
+        >
           Send
         </button>
         <button
