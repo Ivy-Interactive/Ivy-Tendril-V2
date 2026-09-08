@@ -692,3 +692,31 @@ fn test_doctor_warns_on_non_git_repository_path() {
 
     let _ = std::fs::remove_dir_all(&tendril_home);
 }
+
+#[test]
+fn test_doctor_warns_on_bad_build_dependency_path() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-doc-build-dep-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    let mut settings = load_config(&cfg_path).unwrap();
+    settings.projects.push(ProjectConfig {
+        name: "DoctorBuildDepProj".to_string(),
+        color: "Blue".to_string(),
+        repos: vec![],
+        verifications: vec![],
+        context: "".to_string(),
+        stack_hash: None,
+        review_actions: vec![],
+        build_dependencies: vec!["/non/existent/build-dependency".to_string()],
+    });
+    save_config(&cfg_path, &settings).unwrap();
+
+    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home);
+    assert!(res.is_ok());
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
