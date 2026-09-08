@@ -13,6 +13,7 @@ import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
 export type { ChatState, InProgressQuestionAnswers } from "../types/chat";
 
 const IN_PROGRESS_ANSWERS_STORAGE_KEY = "tendril:chat:in_progress_answers";
+const DRAFT_OWNERS_STORAGE_KEY = "tendril:chat:draft_session_owners";
 
 function loadStoredInProgressAnswers(): Record<string, InProgressQuestionAnswers> {
   try {
@@ -73,6 +74,46 @@ function saveStoredInProgressAnswers(data: Record<string, InProgressQuestionAnsw
   }
 }
 
+function loadStoredDraftOwners(): Record<string, string> {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      const raw = storage.getItem(DRAFT_OWNERS_STORAGE_KEY);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    }
+  } catch {
+    // Fallback to in-memory if storage is restricted or throws
+  }
+  return {};
+}
+
+function saveStoredDraftOwners(data: Record<string, string>): void {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      if (Object.keys(data).length === 0) {
+        storage.removeItem(DRAFT_OWNERS_STORAGE_KEY);
+      } else {
+        storage.setItem(DRAFT_OWNERS_STORAGE_KEY, JSON.stringify(data));
+      }
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
+}
+
 class ChatStore {
   private state: ChatState = {
     sessions: [],
@@ -88,6 +129,7 @@ class ChatStore {
   private listeners: Set<() => void> = new Set();
   private eventUnsubscribe: EventUnsubscribe | null = null;
   private storageListenerAttached = false;
+  private draftOwners: Record<string, string> = loadStoredDraftOwners();
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -101,6 +143,12 @@ class ChatStore {
         const next = event.newValue ? JSON.parse(event.newValue) : {};
         this.state.inProgressAnswers = next;
         this.notify();
+      } catch {
+        // Ignore malformed external writes
+      }
+    } else if (event.key === DRAFT_OWNERS_STORAGE_KEY) {
+      try {
+        this.draftOwners = event.newValue ? JSON.parse(event.newValue) : {};
       } catch {
         // Ignore malformed external writes
       }
@@ -136,6 +184,7 @@ class ChatStore {
 
   public async init(): Promise<void> {
     this.state.inProgressAnswers = loadStoredInProgressAnswers();
+    this.draftOwners = loadStoredDraftOwners();
     this.attachStorageListener();
     if (!this.eventUnsubscribe) {
       try {
@@ -169,6 +218,8 @@ class ChatStore {
       inProgressAnswers: {},
     };
     saveStoredInProgressAnswers({});
+    this.draftOwners = {};
+    saveStoredDraftOwners({});
     try {
       const legacyStorage =
         typeof sessionStorage !== "undefined"
@@ -263,6 +314,38 @@ class ChatStore {
     }
   }
 
+  private persistDrafts(drafts: Record<string, InProgressQuestionAnswers>): void {
+    // Drop owner entries whose draft is gone, keeping the index bounded by the draft map.
+    const owners: Record<string, string> = {};
+    for (const [messageId, sessionId] of Object.entries(this.draftOwners)) {
+      if (drafts[messageId]) owners[messageId] = sessionId;
+    }
+    this.state.inProgressAnswers = drafts;
+    this.draftOwners = owners;
+    saveStoredInProgressAnswers(drafts);
+    saveStoredDraftOwners(owners);
+  }
+
+  private sweepDraftsForMissingSessions(sessions: ChatSession[]): void {
+    const liveIds = new Set(sessions.map((s) => s.id));
+    const drafts = { ...this.state.inProgressAnswers };
+    let changed = false;
+
+    for (const [messageId, sessionId] of Object.entries(this.draftOwners)) {
+      // Unowned drafts (pre-migration, or written with no active session) are never swept.
+      if (liveIds.has(sessionId)) continue;
+      // Never sweep the session the user is looking at, so a session created locally and not yet
+      // present in a concurrently-fetched list keeps its drafts.
+      if (sessionId === this.state.activeSessionId) continue;
+      if (drafts[messageId]) {
+        delete drafts[messageId];
+        changed = true;
+      }
+    }
+
+    if (changed) this.persistDrafts(drafts);
+  }
+
   public async fetchSessions(): Promise<ChatSession[]> {
     this.state.isLoading = true;
     this.state.error = null;
@@ -272,6 +355,7 @@ class ChatStore {
       const sessions = await chatApi.listSessions();
       this.state.sessions = sessions;
       this.state.isLoading = false;
+      this.sweepDraftsForMissingSessions(sessions);
 
       // Select first session if none active
       if (!this.state.activeSessionId && sessions.length > 0) {
@@ -421,19 +505,16 @@ class ChatStore {
       }
 
       const messageIds = new Set(deletedSession?.messages?.map((m) => m.id) ?? []);
-      if (messageIds.size > 0) {
-        const nextInProgress = { ...this.state.inProgressAnswers };
-        let changed = false;
-        for (const messageId of Object.keys(nextInProgress)) {
-          if (messageIds.has(messageId)) {
-            delete nextInProgress[messageId];
-            changed = true;
-          }
+      const nextInProgress = { ...this.state.inProgressAnswers };
+      let changed = false;
+      for (const messageId of Object.keys(nextInProgress)) {
+        if (messageIds.has(messageId) || this.draftOwners[messageId] === id) {
+          delete nextInProgress[messageId];
+          changed = true;
         }
-        if (changed) {
-          this.state.inProgressAnswers = nextInProgress;
-          saveStoredInProgressAnswers(nextInProgress);
-        }
+      }
+      if (changed) {
+        this.persistDrafts(nextInProgress);
       }
 
       this.notify();
@@ -541,12 +622,14 @@ class ChatStore {
     const nextInProgress = { ...this.state.inProgressAnswers };
     if (updatedMsgAnswers) {
       nextInProgress[messageId] = updatedMsgAnswers;
+      if (this.state.activeSessionId) {
+        this.draftOwners = { ...this.draftOwners, [messageId]: this.state.activeSessionId };
+      }
     } else {
       delete nextInProgress[messageId];
     }
-    this.state.inProgressAnswers = nextInProgress;
 
-    saveStoredInProgressAnswers(this.state.inProgressAnswers);
+    this.persistDrafts(nextInProgress);
     this.notify();
   }
 
@@ -570,9 +653,7 @@ class ChatStore {
       delete nextInProgress[messageId];
     }
 
-    this.state.inProgressAnswers = nextInProgress;
-
-    saveStoredInProgressAnswers(this.state.inProgressAnswers);
+    this.persistDrafts(nextInProgress);
     this.notify();
   }
 
