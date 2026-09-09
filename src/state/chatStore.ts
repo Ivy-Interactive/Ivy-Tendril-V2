@@ -326,6 +326,34 @@ class ChatStore {
     saveStoredDraftOwners(owners);
   }
 
+  private backfillDraftOwners(sessions: ChatSession[]): void {
+    const unownedIds = Object.keys(this.state.inProgressAnswers).filter(
+      (messageId) => !this.draftOwners[messageId],
+    );
+    if (unownedIds.length === 0) return;
+
+    const messageToSession = new Map<string, string>();
+    for (const session of sessions) {
+      for (const message of session.messages) {
+        messageToSession.set(message.id, session.id);
+      }
+    }
+
+    let backfilled = false;
+    const nextOwners = { ...this.draftOwners };
+    for (const messageId of unownedIds) {
+      const sessionId = messageToSession.get(messageId);
+      if (sessionId) {
+        nextOwners[messageId] = sessionId;
+        backfilled = true;
+      }
+    }
+    if (!backfilled) return;
+
+    this.draftOwners = nextOwners;
+    this.persistDrafts(this.state.inProgressAnswers);
+  }
+
   private sweepDraftsForMissingSessions(sessions: ChatSession[]): void {
     const liveIds = new Set(sessions.map((s) => s.id));
     const drafts = { ...this.state.inProgressAnswers };
@@ -355,6 +383,7 @@ class ChatStore {
       const sessions = await chatApi.listSessions();
       this.state.sessions = sessions;
       this.state.isLoading = false;
+      this.backfillDraftOwners(sessions);
       this.sweepDraftsForMissingSessions(sessions);
 
       // Select first session if none active
@@ -394,6 +423,7 @@ class ChatStore {
       ]);
       this.state.activeSession = session;
       this.state.queuedItems = queue;
+      this.backfillDraftOwners([session]);
       this.notify();
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);
@@ -410,6 +440,7 @@ class ChatStore {
       ]);
       this.state.activeSession = session;
       this.state.queuedItems = queue;
+      this.backfillDraftOwners([session]);
 
       // Also update in sessions list
       const idx = this.state.sessions.findIndex((s) => s.id === session.id);

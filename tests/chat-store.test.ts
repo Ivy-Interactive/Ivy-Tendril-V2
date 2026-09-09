@@ -621,5 +621,165 @@ describe("ChatStore State Management & Event Handling", () => {
       expect(chatStore.getInProgressAnswers("msg-orphan")).toBeUndefined();
       expect(localStorage.getItem("tendril:chat:in_progress_answers")).toBeNull();
     });
+
+    it("backfills an owner for a pre-existing unowned draft", async () => {
+      localStorage.setItem(
+        "tendril:chat:in_progress_answers",
+        JSON.stringify({ "msg-a1": { "q-a": ["val-a"] } }),
+      );
+      localStorage.removeItem("tendril:chat:draft_session_owners");
+
+      const sessionA: ChatSession = {
+        ...mockSession,
+        id: "session-a",
+        messages: [
+          { id: "msg-a1", role: "user", content: "Hello A", timestamp: "2026-09-07T12:00:00Z" },
+        ],
+      };
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionA]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(sessionA);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+      await chatStore.init();
+
+      const storedOwners = JSON.parse(
+        localStorage.getItem("tendril:chat:draft_session_owners") ?? "{}",
+      );
+      expect(storedOwners["msg-a1"]).toBe("session-a");
+    });
+
+    it("sweeps a backfilled draft once its session disappears from a later fetchSessions", async () => {
+      localStorage.setItem(
+        "tendril:chat:in_progress_answers",
+        JSON.stringify({ "msg-a1": { "q-a": ["val-a"] } }),
+      );
+      localStorage.removeItem("tendril:chat:draft_session_owners");
+
+      const sessionA: ChatSession = {
+        ...mockSession,
+        id: "session-a",
+        messages: [
+          { id: "msg-a1", role: "user", content: "Hello A", timestamp: "2026-09-07T12:00:00Z" },
+        ],
+      };
+      const sessionB: ChatSession = {
+        ...mockSession,
+        id: "session-b",
+        messages: [
+          { id: "msg-b1", role: "user", content: "Hello B", timestamp: "2026-09-07T12:00:00Z" },
+        ],
+      };
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionA, sessionB]);
+      vi.spyOn(chatApi, "getSession").mockImplementation((id: string) =>
+        Promise.resolve(id === "session-a" ? sessionA : sessionB),
+      );
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+      await chatStore.init();
+      const storedOwners = JSON.parse(
+        localStorage.getItem("tendril:chat:draft_session_owners") ?? "{}",
+      );
+      expect(storedOwners["msg-a1"]).toBe("session-a");
+
+      await chatStore.selectSession("session-b");
+
+      // session-a vanishes from a subsequent fetch
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionB]);
+      await chatStore.fetchSessions();
+
+      expect(chatStore.getInProgressAnswers("msg-a1")).toBeUndefined();
+    });
+
+    it("preserves an unowned draft when fetchSessions returns summary-only sessions with no messages", async () => {
+      localStorage.setItem(
+        "tendril:chat:in_progress_answers",
+        JSON.stringify({ "msg-a1": { "q-a": ["val-a"] } }),
+      );
+      localStorage.removeItem("tendril:chat:draft_session_owners");
+
+      const sessionASummary: ChatSession = {
+        ...mockSession,
+        id: "session-a",
+        messages: [],
+      };
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionASummary]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(sessionASummary);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+      await chatStore.init();
+
+      expect(chatStore.getInProgressAnswers("msg-a1")).toEqual({ "q-a": ["val-a"] });
+      expect(localStorage.getItem("tendril:chat:draft_session_owners")).toBeNull();
+    });
+
+    it("attributes a pre-existing draft when its owning session is opened via selectSession with full messages", async () => {
+      localStorage.setItem(
+        "tendril:chat:in_progress_answers",
+        JSON.stringify({ "msg-a1": { "q-a": ["val-a"] } }),
+      );
+      localStorage.removeItem("tendril:chat:draft_session_owners");
+
+      const sessionASummary: ChatSession = {
+        ...mockSession,
+        id: "session-a",
+        messages: [],
+      };
+      const sessionAFull: ChatSession = {
+        ...mockSession,
+        id: "session-a",
+        messages: [
+          { id: "msg-a1", role: "user", content: "Hello A", timestamp: "2026-09-07T12:00:00Z" },
+        ],
+      };
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionASummary]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(sessionAFull);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+      await chatStore.init();
+
+      const storedOwners = JSON.parse(
+        localStorage.getItem("tendril:chat:draft_session_owners") ?? "{}",
+      );
+      expect(storedOwners["msg-a1"]).toBe("session-a");
+    });
+
+    it("does not re-point an already-owned draft even if its message id also appears in another session's messages", async () => {
+      const sessionA: ChatSession = {
+        ...mockSession,
+        id: "session-a",
+        messages: [
+          { id: "msg-shared", role: "user", content: "Hello A", timestamp: "2026-09-07T12:00:00Z" },
+        ],
+      };
+      const sessionB: ChatSession = {
+        ...mockSession,
+        id: "session-b",
+        messages: [
+          { id: "msg-shared", role: "user", content: "Hello B", timestamp: "2026-09-07T12:00:00Z" },
+        ],
+      };
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionB]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(sessionB);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+      await chatStore.fetchSessions();
+      chatStore.setInProgressAnswer("msg-shared", "q-b", "val-b");
+      expect(
+        JSON.parse(localStorage.getItem("tendril:chat:draft_session_owners") ?? "{}")["msg-shared"],
+      ).toBe("session-b");
+
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([sessionA, sessionB]);
+      await chatStore.fetchSessions();
+
+      const storedOwners = JSON.parse(
+        localStorage.getItem("tendril:chat:draft_session_owners") ?? "{}",
+      );
+      expect(storedOwners["msg-shared"]).toBe("session-b");
+    });
   });
 });
