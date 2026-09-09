@@ -54,7 +54,8 @@ if (typeof window !== "undefined") {
 // on globalThis (nor on window, which is globalThis under Vitest) in either
 // case. Re-attach it whenever the current global isn't already jsdom's own
 // instance. No-op on Node 24, where Vitest copies jsdom's Storage itself.
-const jsdomWindow = (globalThis as { jsdom?: { window: Window & typeof globalThis } }).jsdom?.window;
+const jsdomWindow = (globalThis as { jsdom?: { window: Window & typeof globalThis } }).jsdom
+  ?.window;
 for (const name of ["localStorage", "sessionStorage"] as const) {
   if (jsdomWindow?.[name] && globalThis[name] !== jsdomWindow[name]) {
     Object.defineProperty(globalThis, name, {
