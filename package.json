@@ -48,11 +48,5 @@
     "vite": "npm:@voidzero-dev/vite-plus-core@latest",
     "vitest": "4.1.11"
   },
-  "packageManager": "pnpm@11.25.0",
-  "pnpm": {
-    "overrides": {
-      "vite": "npm:@voidzero-dev/vite-plus-core@latest",
-      "vitest": "4.1.11"
-    }
-  }
+  "packageManager": "pnpm@11.25.0"
 }
