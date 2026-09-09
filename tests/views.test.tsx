@@ -172,6 +172,125 @@ describe("Operator Views Component & Accessibility Tests", () => {
     });
   });
 
+  describe("DashboardView process viewer job counts", () => {
+    it("renders the retry loop arrow for an active RetryPlan job", () => {
+      const jobs: Job[] = [
+        ...mockJobs,
+        {
+          id: "00101",
+          type: "RetryPlan",
+          planId: "00020",
+          project: "Project-B",
+          status: "Running",
+        },
+      ];
+      const { container } = render(<DashboardView plans={mockPlans} jobs={jobs} />);
+
+      const loopArrow = container.querySelector(".tpv-loop-arrow");
+      expect(loopArrow).not.toBeNull();
+      expect(loopArrow!.querySelector(".tpv-arrow-count")?.textContent).toBe("1");
+    });
+
+    it("renders the PR n sub-label for an active CreatePr job", () => {
+      const jobs: Job[] = [
+        ...mockJobs,
+        {
+          id: "00102",
+          type: "CreatePr",
+          planId: "00020",
+          project: "Project-B",
+          status: "Queued",
+        },
+      ];
+      render(<DashboardView plans={mockPlans} jobs={jobs} />);
+
+      expect(screen.getByText("PR 1")).toBeInTheDocument();
+    });
+
+    it("does not count finished RetryPlan/CreatePr jobs", () => {
+      const jobs: Job[] = [
+        ...mockJobs,
+        {
+          id: "00101",
+          type: "RetryPlan",
+          planId: "00020",
+          project: "Project-B",
+          status: "Completed",
+        },
+        {
+          id: "00102",
+          type: "CreatePr",
+          planId: "00020",
+          project: "Project-B",
+          status: "Failed",
+        },
+      ];
+      const { container } = render(<DashboardView plans={mockPlans} jobs={jobs} />);
+
+      expect(container.querySelector(".tpv-loop-arrow")).toBeNull();
+      expect(screen.queryByText(/^PR \d+$/)).toBeNull();
+    });
+
+    it("counts two RetryPlan jobs on the same plan once", () => {
+      const jobs: Job[] = [
+        ...mockJobs,
+        {
+          id: "00101",
+          type: "RetryPlan",
+          planId: "00020",
+          project: "Project-B",
+          status: "Running",
+        },
+        {
+          id: "00103",
+          type: "RetryPlan",
+          planId: "00020",
+          project: "Project-B",
+          status: "Running",
+        },
+      ];
+      const { container } = render(<DashboardView plans={mockPlans} jobs={jobs} />);
+
+      const loopArrow = container.querySelector(".tpv-loop-arrow");
+      expect(loopArrow).not.toBeNull();
+      expect(loopArrow!.querySelector(".tpv-arrow-count")?.textContent).toBe("1");
+    });
+
+    it("clicking the retry loop arrow and the PR label calls onNavigate('jobs')", () => {
+      const onNavigate = vi.fn();
+      const jobs: Job[] = [
+        ...mockJobs,
+        {
+          id: "00101",
+          type: "RetryPlan",
+          planId: "00020",
+          project: "Project-B",
+          status: "Running",
+        },
+        {
+          id: "00102",
+          type: "CreatePr",
+          planId: "00020",
+          project: "Project-B",
+          status: "Queued",
+        },
+      ];
+      const { container } = render(
+        <DashboardView plans={mockPlans} jobs={jobs} onNavigate={onNavigate} />,
+      );
+
+      const loopArrowLabel = container.querySelector(".tpv-loop-arrow .tpv-arrow-label");
+      expect(loopArrowLabel).not.toBeNull();
+      fireEvent.click(loopArrowLabel!);
+      expect(onNavigate).toHaveBeenCalledWith("jobs");
+
+      const subLabel = container.querySelector(".tpv-sub-label");
+      expect(subLabel).not.toBeNull();
+      fireEvent.click(subLabel!);
+      expect(onNavigate).toHaveBeenCalledWith("jobs");
+    });
+  });
+
   describe("PlansView", () => {
     it("renders searchable plan list and provides accessible search input", () => {
       const handleSelect = vi.fn();
