@@ -44,3 +44,24 @@ if (typeof window !== "undefined") {
     window.scroll = vi.fn();
   }
 }
+
+// Node >= 26 defines its own localStorage / sessionStorage globals. localStorage
+// evaluates to undefined without --localstorage-file, but sessionStorage is a
+// real, working, process-wide Storage object shared across every test file (a
+// latent cross-file leak) - it is truthy, so a `!globalThis[name]` guard misses
+// it. Vitest's populateGlobal skips any window key that is already a global and
+// not in its curated KEYS list, so jsdom's real per-window Storage never lands
+// on globalThis (nor on window, which is globalThis under Vitest) in either
+// case. Re-attach it whenever the current global isn't already jsdom's own
+// instance. No-op on Node 24, where Vitest copies jsdom's Storage itself.
+const jsdomWindow = (globalThis as { jsdom?: { window: Window & typeof globalThis } }).jsdom
+  ?.window;
+for (const name of ["localStorage", "sessionStorage"] as const) {
+  if (jsdomWindow?.[name] && globalThis[name] !== jsdomWindow[name]) {
+    Object.defineProperty(globalThis, name, {
+      value: jsdomWindow[name],
+      configurable: true,
+      writable: true,
+    });
+  }
+}

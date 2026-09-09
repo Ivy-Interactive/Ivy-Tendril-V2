@@ -1,14 +1,65 @@
 import React, { Suspense, act } from "react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { render, screen } from "@testing-library/react";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 import { DashboardView } from "../src/views/DashboardView";
 import { planSummary } from "./fixtures/plan.fixture";
 import type { PlanSummary, Job } from "../src/types/api";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(__dirname, "..");
+const distAssetsDir = path.join(repoRoot, "dist", "assets");
+const distIndexHtml = path.join(repoRoot, "dist", "index.html");
+
+// The third test below reads dist/, which vitest never builds itself. If dist/
+// is missing, or older than the sources it was built from, rebuild it here so
+// the test is self-sufficient on a fresh worktree instead of depending on a
+// prior `pnpm build` invocation. Rebuild failures are recorded (not thrown)
+// so the two render-only tests in this file, which never touch dist/, still
+// run when the build step fails or is skipped.
+let buildError: string | null = null;
+
+function newestMtimeUnder(dir: string): number {
+  let newest = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    const mtimeMs = entry.isDirectory() ? newestMtimeUnder(full) : fs.statSync(full).mtimeMs;
+    if (mtimeMs > newest) newest = mtimeMs;
+  }
+  return newest;
+}
+
+function distIsMissingOrStale(): boolean {
+  if (!fs.existsSync(distIndexHtml) || !fs.existsSync(distAssetsDir)) return true;
+
+  const distMtime = fs.statSync(distIndexHtml).mtimeMs;
+  const inputMtimes = [
+    newestMtimeUnder(path.join(repoRoot, "src")),
+    fs.statSync(path.join(repoRoot, "index.html")).mtimeMs,
+    fs.statSync(path.join(repoRoot, "vite.config.ts")).mtimeMs,
+    fs.statSync(path.join(repoRoot, "package.json")).mtimeMs,
+  ];
+  if (Math.max(...inputMtimes) > distMtime) return true;
+
+  // Belt-and-suspenders: a dist built from a config predating the manual
+  // chunk split has no vendor-*.js files even though nothing looks stale
+  // by mtime alone (this is exactly what produced the confusing
+  // "vendor-refractor" failure this test used to raise).
+  const assetFiles = fs.readdirSync(distAssetsDir);
+  return !assetFiles.some((file) => file.startsWith("vendor-") && file.endsWith(".js"));
+}
+
+beforeAll(() => {
+  if (!distIsMissingOrStale()) return;
+  try {
+    execFileSync("pnpm", ["build"], { cwd: repoRoot, stdio: "inherit", timeout: 300_000 });
+  } catch (error) {
+    buildError = error instanceof Error ? error.message : String(error);
+  }
+}, 300_000);
 
 describe("Code-Splitting & Suspense Boundaries", () => {
   const mockPlans: PlanSummary[] = [
@@ -78,11 +129,12 @@ describe("Code-Splitting & Suspense Boundaries", () => {
   });
 
   it("produces isolated vendor chunks and code-split view chunks in the build output", () => {
-    const distAssetsDir = path.resolve(__dirname, "../dist/assets");
-    expect(
-      fs.existsSync(distAssetsDir),
-      "dist/assets must exist (run pnpm build before testing)",
-    ).toBe(true);
+    if (buildError !== null || distIsMissingOrStale()) {
+      throw new Error(
+        "dist/ is missing or stale relative to vite.config.ts - run pnpm build" +
+          (buildError ? ` (automatic rebuild in beforeAll also failed: ${buildError})` : ""),
+      );
+    }
 
     const assetFiles = fs.readdirSync(distAssetsDir);
 
@@ -120,9 +172,8 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     }
 
     // Find the main index.html entry chunk referenced by dist/index.html
-    const indexPath = path.resolve(__dirname, "../dist/index.html");
-    expect(fs.existsSync(indexPath)).toBe(true);
-    const indexHtml = fs.readFileSync(indexPath, "utf8");
+    expect(fs.existsSync(distIndexHtml)).toBe(true);
+    const indexHtml = fs.readFileSync(distIndexHtml, "utf8");
     const scriptMatch = indexHtml.match(/src="\/assets\/(index-[^"]+\.js)"/);
     expect(scriptMatch).not.toBeNull();
 
