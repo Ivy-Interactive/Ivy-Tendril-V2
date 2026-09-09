@@ -10,10 +10,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["**/*.{test,spec}.?(c|m)[jt]s?(x)", "**/*_tests.ts"],
-    poolOptions: {
-      forks: { execArgv: ["--no-experimental-webstorage"] },
-      threads: { execArgv: ["--no-experimental-webstorage"] },
-    },
+    execArgv: ["--no-experimental-webstorage"],
     server: {
       deps: {
         inline: [/components-storybook/, /@dnd-kit/],
