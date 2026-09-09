@@ -5,9 +5,25 @@ import "@testing-library/jest-dom/vitest";
 vi.mock("pdfjs-dist", () => ({ GlobalWorkerOptions: {}, getDocument: vi.fn() }));
 vi.mock("pdfjs-dist/build/pdf.worker.mjs?url", () => ({ default: "" }));
 
-import { ContentInput, PdfThumbnail, resetPdfJsCacheForTest } from "./ContentInput";
+import {
+  ContentInput,
+  type ContentInputProps,
+  PdfThumbnail,
+  resetPdfJsCacheForTest,
+} from "./ContentInput";
 
 describe("ContentInput", () => {
+  it("does not declare the superseded models/projects/selectedProject props", () => {
+    const props: ContentInputProps = { id: "civ-1" };
+    // @ts-expect-error models was never read; the component renders no model picker
+    props.models = ["Build"];
+    // @ts-expect-error projects was superseded by slots.ProjectPicker
+    props.projects = ["Tendril-App"];
+    // @ts-expect-error selectedProject was superseded by slots.ProjectPicker
+    props.selectedProject = "Tendril-App";
+    expect(props.selectedModel).toBeUndefined();
+  });
+
   it("enables the submit button when only a file is attached (no text)", () => {
     render(<ContentInput id="civ-1" value=" [file: /tmp/foo.png]" />);
     const submitButton = screen.getByTitle("Send");
