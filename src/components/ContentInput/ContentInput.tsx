@@ -132,10 +132,12 @@ export interface ContentInputProps {
   value?: string;
   transcriptionUrl?: string;
   uploadUrl?: string;
-  models?: string[];
+  /**
+   * Model name echoed back in the `OnSubmit` payload as `selectedModel` / `SelectedModel`.
+   * The component renders no model picker — listing and picking models is the consumer's job
+   * (render your own control into `slots.LeftActions`).
+   */
   selectedModel?: string;
-  projects?: string[];
-  selectedProject?: string;
   attachedFiles?: AttachedFile[];
   submitLabel?: string;
   menuOptions?: string[];
@@ -144,6 +146,7 @@ export interface ContentInputProps {
   eventHandler?: (eventName: string, id: string, argumentsArray: unknown[]) => void;
   events?: string[];
   slots?: {
+    /** Project picker rendered in the left action row. Supersedes the removed `projects` / `selectedProject` props. */
     ProjectPicker?: React.ReactNode;
     LeftActions?: React.ReactNode;
   };
