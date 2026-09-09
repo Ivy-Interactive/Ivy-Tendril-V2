@@ -184,8 +184,6 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
               id="content-input"
               value={description}
               placeholder="Describe the task, bug to fix, feature to build, or files to inspect..."
-              projects={projectNames}
-              selectedProject={selectedProject}
               eventHandler={(evt: string, _id: string, args?: unknown[]) => {
                 if (evt === "OnChange") {
                   const text = firstStringArg(args);
