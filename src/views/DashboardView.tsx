@@ -5,7 +5,7 @@ import {
   type DashboardKpiDto,
   type DashboardJobDto,
 } from "@spacecorps/components-storybook/tendril";
-import type { PlanSummary, Job } from "../types/api";
+import type { PlanSummary, Job, JobStatus } from "../types/api";
 import { firstStringArg } from "../utils/eventArgs";
 
 interface DashboardViewProps {
@@ -23,6 +23,18 @@ const NAV_BY_EVENT: Record<string, string> = {
   OnJobs: "jobs",
 };
 
+/** A job in one of these statuses has not finished, so its plan is still mid-flight. */
+const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["Pending", "Queued", "Running"];
+
+/** Distinct plans with an unfinished job of the given promptware type.
+ *  Jobs without a planId are counted individually by job id. */
+const activePlanCountForJobType = (jobs: Job[], type: string): number =>
+  new Set(
+    jobs
+      .filter((j) => j.type === type && ACTIVE_JOB_STATUSES.includes(j.status))
+      .map((j) => j.planId || j.id),
+  ).size;
+
 export const DashboardView: React.FC<DashboardViewProps> = ({
   plans,
   jobs,
@@ -37,6 +49,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const creatingCount = plans.filter((p) => p.state === "Creating").length;
   const updatingCount = plans.filter((p) => p.state === "Updating").length;
   const completedCount = plans.filter((p) => p.state === "Completed").length;
+  const retryingPlansCount = activePlanCountForJobType(jobs, "RetryPlan");
+  const creatingPrCount = activePlanCountForJobType(jobs, "CreatePr");
 
   // Compute KPIs
   const totalCost = jobs.reduce((acc, j) => acc + (j.cost || 0), 0);
@@ -114,6 +128,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 executingPlansCount={executingCount}
                 creatingPlansCount={creatingCount}
                 updatingPlansCount={updatingCount}
+                retryingPlansCount={retryingPlansCount}
+                creatingPrCount={creatingPrCount}
                 events={["OnCreate", "OnDrafts", "OnReview", "OnJobs"]}
                 eventHandler={(evt: string) => {
                   if (evt === "OnCreate") {

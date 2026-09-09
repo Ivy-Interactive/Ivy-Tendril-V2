@@ -106,6 +106,9 @@ export const App: React.FC = () => {
 
     onPlanEvent((_payload) => {
       plansStore.fetchPlans().catch(() => {});
+      // Job-driven Dashboard counts (retry loop, PR label) go stale otherwise:
+      // onJobEvent only appends stream events, it never refreshes the list.
+      jobsStore.fetchJobs().catch(() => {});
     })
       .then((unsub) => (unsubPlan = unsub))
       .catch(() => {});
@@ -182,7 +185,7 @@ export const App: React.FC = () => {
    * refused Execute/Retry/CreatePR look like a no-op.
    */
   const startJobAndOpenSession = async (args: Parameters<typeof bridge.startJob>[0]) => {
-    const res = await bridge.startJob(args);
+    const res = await jobsStore.startJob(args);
     handleSelectJob(res.jobId);
   };
 
