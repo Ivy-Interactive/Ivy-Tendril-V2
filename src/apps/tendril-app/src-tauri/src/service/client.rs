@@ -2,8 +2,8 @@ use crate::error::BridgeError;
 use crate::models::{
     AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateProjectDto, CreateSessionDto,
     DoctorCheckDto, DraftCommentDto, EnqueueItemDto, ExecuteTurnDto, JobDetailDto, JobDto,
-    ModelCatalogStatusDto, OnboardingStatusDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto,
-    PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
+    ModelCatalogStatusDto, OnboardingStatusDto, PlanDetailDto, PlanGitDto, PlanQueryDto,
+    PlanSummaryDto, PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
     ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
@@ -256,6 +256,25 @@ impl TendrilClient {
 
         let body: RepoStatusResponse = resp.json().await?;
         Ok(body.repos)
+    }
+
+    /// A plan's worktrees, its commits grouped under them, and the reachability verdict for the
+    /// commits no worktree accounts for (`GET /api/plans/:id/git`) — the Git tab's data source.
+    pub async fn get_plan_git(&self, plan_id: &str) -> Result<PlanGitDto, BridgeError> {
+        let url = format!("{}/api/plans/{}/git", self.base_url, path_segment(plan_id));
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "PLAN_GIT_FAILED",
+                format!("Failed to read git state for plan '{plan_id}' ({status})"),
+                text,
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     /// Turn a non-2xx response into a `BridgeError`, mapping `409 CONFLICT` onto

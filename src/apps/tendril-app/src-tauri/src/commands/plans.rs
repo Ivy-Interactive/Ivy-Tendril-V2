@@ -1,8 +1,8 @@
 use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
-    DraftCommentDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto, RepoStatusDto,
-    RevisionResultDto, VerificationReportDto,
+    DraftCommentDto, PlanDetailDto, PlanGitDto, PlanQueryDto, PlanSummaryDto, RecommendationDto,
+    RepoStatusDto, RevisionResultDto, VerificationReportDto,
 };
 
 #[tauri::command]
@@ -65,6 +65,13 @@ pub async fn cmd_reset_plan(id: String) -> Result<(), BridgeError> {
 #[tauri::command]
 pub async fn cmd_get_repo_status(id: String) -> Result<Vec<RepoStatusDto>, BridgeError> {
     get_client_from_master()?.get_repo_status(&id).await
+}
+
+/// The plan's worktrees, the commits grouped under them, and the reachability
+/// verdict for the commits no worktree accounts for — the Git tab's data.
+#[tauri::command]
+pub async fn cmd_get_plan_git(id: String) -> Result<PlanGitDto, BridgeError> {
+    get_client_from_master()?.get_plan_git(&id).await
 }
 
 /// Read one verification report for a plan.

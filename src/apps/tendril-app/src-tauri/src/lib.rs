@@ -85,6 +85,7 @@ pub fn run() {
             cmd_delete_plan,
             cmd_reset_plan,
             cmd_get_repo_status,
+            cmd_get_plan_git,
             cmd_get_revision,
             cmd_write_revision,
             cmd_get_verification_report,

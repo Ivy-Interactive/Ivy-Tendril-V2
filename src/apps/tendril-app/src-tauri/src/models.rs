@@ -201,6 +201,57 @@ pub struct RepoStatusDto {
     pub error: Option<String>,
 }
 
+/// One of a plan's recorded commits, resolved against a repo that still holds it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitRowDto {
+    pub hash: String,
+    pub short_hash: String,
+    /// Empty when no repo could resolve the hash.
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub file_count: Option<usize>,
+}
+
+/// A worktree the plan still has on disk, with the commits reachable from its HEAD.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeSectionDto {
+    pub name: String,
+    pub path: String,
+    #[serde(default)]
+    pub branch: String,
+    #[serde(default)]
+    pub short_hash: String,
+    #[serde(default)]
+    pub has_uncommitted_changes: bool,
+    #[serde(default)]
+    pub commits: Vec<CommitRowDto>,
+    #[serde(default)]
+    pub parent_repo_path: Option<String>,
+    #[serde(default)]
+    pub base_branch: Option<String>,
+    #[serde(default)]
+    pub base_short_hash: Option<String>,
+}
+
+/// The git state behind a plan's Git tab, from `GET /api/plans/:id/git`.
+///
+/// `unassociated_commit_ref_status` carries the point of the tab: a commit no surviving worktree
+/// accounts for may be held by no ref at all, in which case the next `git gc` in its repo destroys
+/// it. Values are `Reachable`, `Unreachable` or `Missing`, keyed by full hash.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanGitDto {
+    #[serde(default)]
+    pub worktrees: Vec<WorktreeSectionDto>,
+    #[serde(default)]
+    pub unassociated_commits: Vec<CommitRowDto>,
+    #[serde(default)]
+    pub unassociated_commit_ref_status: std::collections::HashMap<String, String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDto {
