@@ -80,3 +80,14 @@ export interface DataTableToolbarSlots {
 
 /** `Record<string, boolean>` keyed by column `name`; an absent key means "use `column.hidden`". */
 export type DataTableColumnVisibility = Record<string, boolean>;
+
+/**
+ * Row-windowing mode.
+ *
+ * - `"auto"` (the default) windows only once the rendered row count exceeds
+ *   `virtualizationThreshold`. Because `paginated` defaults to true with a 10-row page, a default
+ *   call site never windows and renders exactly as it did before virtualization existed.
+ * - `true` forces windowing.
+ * - `false` disables it.
+ */
+export type DataTableVirtualized = boolean | "auto";
