@@ -2,6 +2,8 @@ import type {
   PlanDetail,
   PlanSummary,
   PlanVerification,
+  PrStatus,
+  PrSyncReport,
   VerificationReport,
 } from "../../src/types/api";
 
@@ -63,6 +65,41 @@ export function verificationReport(
     date: "2026-09-07T10:41:11Z",
     content:
       "---\nresult: Fail\ndate: 2026-09-07T10:41:11Z\n---\n# RustTest\n\n## Output\n\n2 tests failed: dto_mapping, revision_diff\n",
+    ...overrides,
+  };
+}
+
+export function prStatus(overrides: Partial<PrStatus> = {}): PrStatus {
+  return {
+    prUrl: "https://github.com/SpaceCorps/Tendril-App/pull/2",
+    owner: "SpaceCorps",
+    repo: "Tendril-App",
+    number: 2,
+    status: "Open",
+    branch: "tendril/00021-BuildDesktopOperator",
+    lastChecked: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    planId: "00021",
+    planFolder: "00021-BuildDesktopOperator",
+    planTitle: "Build Desktop Operator Experience",
+    project: "Tendril-App",
+    cost: 1.23,
+    tokens: 160_000,
+    ...overrides,
+  };
+}
+
+export function prSyncReport(overrides: Partial<PrSyncReport> = {}): PrSyncReport {
+  return {
+    tracked: 1,
+    checked: 1,
+    skippedMerged: 0,
+    skippedFresh: 0,
+    transitions: [],
+    completedPlans: [],
+    refusedCompletions: [],
+    unblockedPlans: [],
+    errors: [],
+    changed: false,
     ...overrides,
   };
 }

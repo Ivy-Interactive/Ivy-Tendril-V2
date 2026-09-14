@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::models::ProjectSkillInfo;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::Path;
@@ -55,10 +56,18 @@ tendril promptware delete-memory {PROMPTWARE_NAME} <filename>.md
 
 ## Program
 
-{PROGRAM}
+{PROGRAM}{PROJECT_SKILLS}
 "#;
 
 pub fn compile_firmware(program_folder: &Path, values: &HashMap<String, String>) -> Result<String> {
+    compile_firmware_with_skills(program_folder, values, &[])
+}
+
+pub fn compile_firmware_with_skills(
+    program_folder: &Path,
+    values: &HashMap<String, String>,
+    skills: &[ProjectSkillInfo],
+) -> Result<String> {
     let mut header_values = values.clone();
     if !header_values.contains_key("CurrentTime") {
         header_values.insert("CurrentTime".to_string(), Utc::now().to_rfc3339());
@@ -89,15 +98,45 @@ pub fn compile_firmware(program_folder: &Path, values: &HashMap<String, String>)
         "(no Program.md found)".to_string()
     };
 
+    let project_skills = render_project_skills(skills);
+
     let prompt = FIRMWARE_TEMPLATE
         .replace("{HEADER}", &header)
         .replace("{PROGRAMFOLDER}", &program_folder.to_string_lossy())
         .replace("{TOOLS}", &tools_listing)
         .replace("{MEMORY}", &memory_listing)
         .replace("{PROMPTWARE_NAME}", promptware_name)
-        .replace("{PROGRAM}", &program_content);
+        .replace("{PROGRAM}", &program_content)
+        .replace("{PROJECT_SKILLS}", &project_skills);
 
     Ok(prompt)
+}
+
+/// Renders the `## Project Skills` firmware section. Empty when there are no skills, so the
+/// template collapses to exactly today's output.
+fn render_project_skills(skills: &[ProjectSkillInfo]) -> String {
+    if skills.is_empty() {
+        return String::new();
+    }
+
+    let mut sb = String::from("\n## Project Skills\n");
+    for skill in skills {
+        sb.push_str("\n#### Skill: ");
+        sb.push_str(&skill.name);
+        sb.push('\n');
+        if !skill.description.is_empty() {
+            sb.push('*');
+            sb.push_str(&skill.description);
+            sb.push_str("*\n");
+        }
+        if !skill.instructions.is_empty() {
+            sb.push('\n');
+            sb.push_str(&skill.instructions);
+            sb.push('\n');
+        }
+    }
+
+    sb
 }
 
 fn list_directory_files(dir: &Path, empty_placeholder: &str) -> String {

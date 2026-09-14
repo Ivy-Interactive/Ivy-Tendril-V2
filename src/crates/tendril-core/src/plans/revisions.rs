@@ -1,4 +1,5 @@
 use crate::error::{Result, TendrilError};
+use crate::plans::markdown_links::polish_links;
 use crate::questions::{parse_question_blocks, validate_question_blocks, IssueSeverity};
 use std::path::Path;
 
@@ -84,7 +85,17 @@ pub fn write_revision(plan_folder: &Path, content: &str, validate_questions: boo
 
     let next = highest + 1;
     let new_rev_file = rev_dir.join(format!("{:03}.md", next));
-    std::fs::write(&new_rev_file, content)?;
+
+    // Polishing is unconditional — it runs regardless of `validate_questions`, since that flag is
+    // about question *validation* (--no-question-check), while the questions-fence protection
+    // inside `polish_links` does not depend on it. When `plan_folder` has no parent, or the
+    // parent holds no `NNNNN-*` folders, the bare-number pass no-ops.
+    let plans_dir = plan_folder.parent().unwrap_or(plan_folder);
+    let polished = polish_links(content, plans_dir);
+
+    // Atomic but unlocked: each revision file has exactly one writer (the agent that allocated the
+    // number), so there is nothing to exclude — only a truncated read to prevent.
+    crate::fs_lock::write_atomic(&new_rev_file, polished.as_bytes())?;
 
     Ok(next)
 }

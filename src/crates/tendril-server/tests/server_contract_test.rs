@@ -4,6 +4,7 @@ use tendril_core::config::{
     get_config_path, get_database_path, load_config, read_master, MasterGuard,
 };
 use tendril_core::db::open_database;
+use tendril_core::inbox::ProposalState;
 use tendril_core::plans::reader::read_plan_yaml;
 use tendril_server::{create_router, AppState};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -130,6 +131,7 @@ async fn test_protected_routes_require_auth() {
         "/api/config",
         "/api/projects",
         "/api/verifications",
+        "/api/pull-requests",
     ];
     for endpoint in endpoints {
         let resp = client
@@ -145,7 +147,10 @@ async fn test_protected_routes_require_auth() {
         );
         let body: serde_json::Value = resp.json().await.unwrap();
         assert_eq!(body["error"], "Unauthorized");
-        assert_eq!(body["message"], "Missing or invalid bearer token");
+        assert_eq!(
+            body["message"],
+            "Missing or invalid credentials. Send Authorization: Bearer <secret> or X-Api-Key: <secret>"
+        );
 
         let bad_auth_resp = client
             .get(format!("http://127.0.0.1:{}{}", server.port, endpoint))
@@ -168,6 +173,7 @@ async fn test_protected_routes_accept_valid_bearer_token() {
         "/api/config",
         "/api/projects",
         "/api/verifications",
+        "/api/pull-requests",
     ];
     for endpoint in endpoints {
         let resp = client
@@ -1908,6 +1914,559 @@ async fn test_models_api_route() {
     assert!(first.get("input_per_million").is_some());
 }
 
+// ---------------------------------------------------------------------------
+// Recommendation editing, accept/decline verbs and the cross-plan projection
+// ---------------------------------------------------------------------------
+
+/// Creates a plan and returns its zero-padded id.
+async fn create_rec_plan(server: &TestServer, title: &str, project: &str) -> String {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": title,
+            "project": project,
+            "level": "Feature",
+            "verifications": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    format!("{:05}", body["metadata"]["id"].as_i64().unwrap())
+}
+
+async fn add_rec(server: &TestServer, plan_id: &str, title: &str, impact: Option<&str>) {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": title,
+            "description": "As proposed by the executing agent",
+            "impact": impact
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
+}
+
+async fn put_rec(
+    server: &TestServer,
+    plan_id: &str,
+    title: &str,
+    suffix: &str,
+    body: serde_json::Value,
+) -> reqwest::Response {
+    reqwest::Client::new()
+        .put(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations/{}{}",
+            server.port,
+            plan_id,
+            urlencoding_encode(title),
+            suffix
+        ))
+        .bearer_auth(&server.secret)
+        .json(&body)
+        .send()
+        .await
+        .unwrap()
+}
+
+/// Minimal percent-encoding for the one path segment these tests vary. Titles here
+/// are plain words and spaces, so escaping the space is enough.
+fn urlencoding_encode(value: &str) -> String {
+    value.replace(' ', "%20")
+}
+
+async fn plan_recs(server: &TestServer, plan_id: &str) -> Vec<serde_json::Value> {
+    reqwest::Client::new()
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn recommendation_content_can_be_edited_over_http() {
+    let server = start_test_server(None).await;
+    let plan_id = create_rec_plan(&server, "Rec Field Plan", "RecFieldProject").await;
+    add_rec(&server, &plan_id, "Add Database Index", Some("Small")).await;
+
+    for (field, value, key) in [
+        (
+            "description",
+            "Index Jobs(Status) for the queue scan",
+            "description",
+        ),
+        ("impact", "High", "impact"),
+    ] {
+        let resp = put_rec(
+            &server,
+            &plan_id,
+            "Add Database Index",
+            "",
+            serde_json::json!({ "field": field, "value": value }),
+        )
+        .await;
+        assert_eq!(resp.status(), reqwest::StatusCode::OK, "editing {field}");
+
+        let recs = plan_recs(&server, &plan_id).await;
+        assert_eq!(recs[0][key], value, "the edit is visible on the list route");
+    }
+
+    // A rename changes the key the entry is addressed by, so it has to be visible
+    // under the new title and gone from the old one.
+    let resp = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "",
+        serde_json::json!({ "field": "title", "value": "Add Jobs Index" }),
+    )
+    .await;
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let recs = plan_recs(&server, &plan_id).await;
+    assert_eq!(recs.len(), 1);
+    assert_eq!(recs[0]["title"], "Add Jobs Index");
+}
+
+#[tokio::test]
+async fn a_bad_recommendation_edit_is_distinguishable_from_a_missing_one() {
+    let server = start_test_server(None).await;
+    let plan_id = create_rec_plan(&server, "Rec Error Plan", "RecErrorProject").await;
+    add_rec(&server, &plan_id, "Add Database Index", None).await;
+    add_rec(&server, &plan_id, "Cache Query Results", None).await;
+
+    // A caller needs to tell "you asked for the wrong thing" from "that does not
+    // exist" from "that name is taken", so the three map to different statuses.
+    let unknown_field = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "",
+        serde_json::json!({ "field": "nope", "value": "x" }),
+    )
+    .await;
+    assert_eq!(unknown_field.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let no_value = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "",
+        serde_json::json!({ "field": "description" }),
+    )
+    .await;
+    assert_eq!(no_value.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let empty_body = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "",
+        serde_json::json!({}),
+    )
+    .await;
+    assert_eq!(empty_body.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let unknown_title = put_rec(
+        &server,
+        &plan_id,
+        "No Such Recommendation",
+        "",
+        serde_json::json!({ "field": "description", "value": "x" }),
+    )
+    .await;
+    assert_eq!(unknown_title.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let collision = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "",
+        serde_json::json!({ "field": "title", "value": "Cache Query Results" }),
+    )
+    .await;
+    assert_eq!(collision.status(), reqwest::StatusCode::CONFLICT);
+
+    let bad_state = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "",
+        serde_json::json!({ "state": "Approved" }),
+    )
+    .await;
+    assert_eq!(bad_state.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let bad_impact = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "",
+        serde_json::json!({ "field": "impact", "value": "Enormous" }),
+    )
+    .await;
+    assert_eq!(bad_impact.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // `add` validates the same vocabulary as `set`, so the projection and the
+    // impact badge in the app only ever see Small, Medium or High.
+    let bad_add = reqwest::Client::new()
+        .post(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": "Rewrite Everything",
+            "description": "With an impact nobody renders",
+            "impact": "Enormous"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_add.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn the_accept_and_decline_verbs_separate_notes_from_reasons() {
+    let server = start_test_server(None).await;
+    let plan_id = create_rec_plan(&server, "Rec Verb Plan", "RecVerbProject").await;
+    add_rec(&server, &plan_id, "Add Database Index", Some("High")).await;
+
+    // A bare accept: no body at all, which is what a UI with no note to send does.
+    let resp = reqwest::Client::new()
+        .put(format!(
+            "http://127.0.0.1:{}/api/plans/{}/recommendations/Add%20Database%20Index/accept",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "Accepted");
+    let recs = plan_recs(&server, &plan_id).await;
+    assert_eq!(recs[0]["state"], "Accepted");
+    assert!(recs[0]["notes"].is_null());
+
+    let resp = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "/accept",
+        serde_json::json!({ "notes": "After the 0.2 migration" }),
+    )
+    .await;
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "AcceptedWithNotes");
+    let recs = plan_recs(&server, &plan_id).await;
+    assert_eq!(recs[0]["state"], "AcceptedWithNotes");
+    assert_eq!(recs[0]["notes"], "After the 0.2 migration");
+    assert!(recs[0]["declineReason"].is_null());
+
+    let resp = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "/decline",
+        serde_json::json!({ "reason": "Superseded by partitioning" }),
+    )
+    .await;
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let recs = plan_recs(&server, &plan_id).await;
+    assert_eq!(recs[0]["state"], "Declined");
+    assert_eq!(recs[0]["declineReason"], "Superseded by partitioning");
+    assert!(
+        recs[0]["notes"].is_null(),
+        "the accept note must not survive the decline"
+    );
+
+    // An unknown title is a 404 on the verbs too, not a silent no-op.
+    let missing = put_rec(
+        &server,
+        &plan_id,
+        "No Such Recommendation",
+        "/accept",
+        serde_json::json!({ "notes": "x" }),
+    )
+    .await;
+    assert_eq!(missing.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_legacy_state_and_decline_reason_body_still_works() {
+    let server = start_test_server(None).await;
+    let plan_id = create_rec_plan(&server, "Rec Legacy Plan", "RecLegacyProject").await;
+    add_rec(&server, &plan_id, "Add Database Index", None).await;
+
+    // The shipped desktop app sends this shape. Breaking it would break accept and
+    // decline for every installed copy, so it is a contract, not an implementation
+    // detail: `declineReason` on an accepted state is still read as the note.
+    let resp = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "",
+        serde_json::json!({ "state": "AcceptedWithNotes", "declineReason": "Ship in 0.2" }),
+    )
+    .await;
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let recs = plan_recs(&server, &plan_id).await;
+    assert_eq!(recs[0]["state"], "AcceptedWithNotes");
+    assert_eq!(recs[0]["notes"], "Ship in 0.2");
+
+    let resp = put_rec(
+        &server,
+        &plan_id,
+        "Add Database Index",
+        "",
+        serde_json::json!({ "state": "Declined", "declineReason": "Not now" }),
+    )
+    .await;
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let recs = plan_recs(&server, &plan_id).await;
+    assert_eq!(recs[0]["state"], "Declined");
+    assert_eq!(recs[0]["declineReason"], "Not now");
+}
+
+#[tokio::test]
+async fn the_cross_plan_route_reads_the_projection_and_filters_it() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let first = create_rec_plan(&server, "Rec Cross Plan A", "CrossProjA").await;
+    let second = create_rec_plan(&server, "Rec Cross Plan B", "CrossProjB").await;
+    add_rec(&server, &first, "Add Database Index", Some("High")).await;
+    add_rec(&server, &first, "Cache Query Results", None).await;
+    add_rec(&server, &second, "Batch Inbox Writes", Some("Small")).await;
+    let resp = put_rec(
+        &server,
+        &second,
+        "Batch Inbox Writes",
+        "/accept",
+        serde_json::json!({ "notes": "With the queue rewrite" }),
+    )
+    .await;
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    let all: Vec<serde_json::Value> = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/recommendations",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 3, "every write path must have synced its plan");
+    assert!(
+        all.iter().any(|r| r["planId"] == second),
+        "planId is zero-padded so a caller can link straight to the plan"
+    );
+
+    let project: Vec<serde_json::Value> = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/recommendations?project=CrossProjA",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(project.len(), 2);
+    assert!(project.iter().all(|r| r["project"] == "CrossProjA"));
+
+    let accepted: Vec<serde_json::Value> = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/recommendations?state=AcceptedWithNotes",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(accepted.len(), 1);
+    assert_eq!(accepted[0]["title"], "Batch Inbox Writes");
+    assert_eq!(accepted[0]["notes"], "With the queue rewrite");
+
+    let unauth = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/recommendations",
+            server.port
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauth.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn rebuilding_the_projection_repairs_a_corrupted_table() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let plan_id = create_rec_plan(&server, "Rec Rebuild Plan", "RecRebuildProject").await;
+    add_rec(&server, &plan_id, "Add Database Index", Some("High")).await;
+
+    // Corrupt the projection behind the server's back, the way a database written
+    // before the projection existed is already corrupt.
+    {
+        let conn = open_database(&get_database_path(&server.tendril_home)).unwrap();
+        conn.execute("DELETE FROM Recommendations", []).unwrap();
+    }
+
+    let emptied: Vec<serde_json::Value> = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/recommendations",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(emptied.is_empty(), "the fixture must actually be corrupt");
+
+    let resp = client
+        .post(format!(
+            "http://127.0.0.1:{}/api/recommendations/rebuild",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["recommendations"], 1);
+    assert_eq!(body["plans"], 1);
+
+    let restored: Vec<serde_json::Value> = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/recommendations",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(restored.len(), 1);
+    assert_eq!(restored[0]["title"], "Add Database Index");
+    assert_eq!(restored[0]["planId"], plan_id);
+}
+
+/// `GET /api/pull-requests` joins the PRs a plan records to the cached status, and reports a PR the
+/// daemon has never resolved as `Unknown` with no `lastChecked` rather than omitting it.
+///
+/// The sync endpoint is exercised against a plan set with no PRs, so the pass has nothing to resolve
+/// and this test never invokes `gh` or touches the network.
+#[tokio::test]
+async fn test_pull_request_routes() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    // An empty plan set lists nothing.
+    let empty: serde_json::Value = client
+        .get(format!("{}/api/pull-requests", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(empty.as_array().expect("an array").len(), 0);
+
+    // A sync with nothing tracked costs no gh calls and reports an empty pass.
+    let sync_resp = client
+        .post(format!("{}/api/pull-requests/sync", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sync_resp.status(), reqwest::StatusCode::OK);
+    let report: serde_json::Value = sync_resp.json().await.unwrap();
+    assert_eq!(report["tracked"], 0);
+    assert_eq!(report["checked"], 0);
+    assert_eq!(report["changed"], false);
+
+    // A plan that records a PR the daemon has not resolved yet.
+    let plan_dir = server
+        .tendril_home
+        .join("Plans")
+        .join("00042-TracksAPullRequest");
+    std::fs::create_dir_all(&plan_dir).unwrap();
+    std::fs::write(
+        plan_dir.join("plan.yaml"),
+        "title: Tracks A Pull Request\nproject: PrProject\nlevel: Feature\nstate: Review\nprs:\n  - https://github.com/acme/widgets/pull/7/files\n",
+    )
+    .unwrap();
+
+    let rows: serde_json::Value = client
+        .get(format!("{}/api/pull-requests", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    let rows = rows.as_array().expect("an array");
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(row["prUrl"], "https://github.com/acme/widgets/pull/7");
+    assert_eq!(row["owner"], "acme");
+    assert_eq!(row["repo"], "widgets");
+    assert_eq!(row["number"], 7);
+    assert_eq!(row["status"], "Unknown");
+    assert!(row["lastChecked"].is_null());
+    assert_eq!(row["planId"], "00042");
+    assert_eq!(row["planFolder"], "00042-TracksAPullRequest");
+    assert_eq!(row["planTitle"], "Tracks A Pull Request");
+    assert_eq!(row["project"], "PrProject");
+
+    // The sync route is protected like the rest.
+    let unauth = client
+        .post(format!("{}/api/pull-requests/sync", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauth.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+
 #[tokio::test]
 async fn test_models_status_api_route() {
     let server = start_test_server(None).await;
@@ -1946,4 +2505,708 @@ async fn test_models_status_api_route() {
     assert_eq!(models_resp.status(), reqwest::StatusCode::OK);
     let models: Vec<serde_json::Value> = models_resp.json().await.unwrap();
     assert!(!models.is_empty());
+}
+
+/// Writes a proposal straight into the test server's database and returns its id.
+///
+/// The sweep itself is not what these tests exercise — it needs `gh` and a real assignee — so the
+/// rows the routes read are planted directly.
+fn plant_proposal(
+    tendril_home: &std::path::Path,
+    number: u64,
+    state: tendril_core::inbox::ProposalState,
+) -> i64 {
+    let conn = open_database(&get_database_path(tendril_home)).expect("open test database");
+    tendril_core::db::insert_proposal(
+        &conn,
+        &tendril_core::inbox::InboxProposal {
+            id: 0,
+            number,
+            repository: "Ivy-Interactive/Ivy-Tendril-V2".to_string(),
+            title: format!("Planted issue {}", number),
+            body: "Body.".to_string(),
+            issue_url: format!(
+                "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues/{}",
+                number
+            ),
+            project: "Ivy-Tendril-V2".to_string(),
+            state,
+            job_id: None,
+            discovered: "2026-01-01T00:00:00Z".to_string(),
+            updated: "2026-01-01T00:00:00Z".to_string(),
+        },
+    )
+    .expect("plant a proposal")
+}
+
+#[tokio::test]
+async fn test_inbox_routes_require_auth() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    let resp = client
+        .get(format!("{}/api/inbox/proposals", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    for path in [
+        "/api/inbox/check",
+        "/api/inbox/proposals/1/accept",
+        "/api/inbox/proposals/1/dismiss",
+    ] {
+        let resp = client
+            .post(format!("{}{}", base_url, path))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            reqwest::StatusCode::UNAUTHORIZED,
+            "{} must require a bearer token",
+            path
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_list_inbox_proposals_defaults_to_pending() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    let pending = plant_proposal(&server.tendril_home, 1, ProposalState::Pending);
+    let dismissed = plant_proposal(&server.tendril_home, 2, ProposalState::Dismissed);
+
+    let resp = client
+        .get(format!("{}/api/inbox/proposals", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: Vec<serde_json::Value> = resp.json().await.unwrap();
+    assert_eq!(
+        body.iter()
+            .map(|p| p["id"].as_i64().unwrap())
+            .collect::<Vec<_>>(),
+        vec![pending],
+        "no state filter means the panel's view: what still needs a decision"
+    );
+    // camelCase on the wire, matching the frontend's `InboxProposal`.
+    assert_eq!(
+        body[0]["issueUrl"].as_str().unwrap(),
+        format!(
+            "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues/{}",
+            1
+        )
+    );
+    assert_eq!(body[0]["state"], "Pending");
+
+    let all_resp = client
+        .get(format!("{}/api/inbox/proposals?state=all", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(all_resp.status(), reqwest::StatusCode::OK);
+    let all: Vec<serde_json::Value> = all_resp.json().await.unwrap();
+    assert_eq!(
+        all.iter()
+            .map(|p| p["id"].as_i64().unwrap())
+            .collect::<Vec<_>>(),
+        vec![dismissed, pending],
+        "?state=all audits everything the importer has seen, newest first"
+    );
+
+    let filtered_resp = client
+        .get(format!("{}/api/inbox/proposals?state=dismissed", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    let filtered: Vec<serde_json::Value> = filtered_resp.json().await.unwrap();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0]["id"].as_i64().unwrap(), dismissed);
+}
+
+#[tokio::test]
+async fn test_list_inbox_proposals_rejects_an_unknown_state() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/inbox/proposals?state=snoozed",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "a typo'd filter must not silently return everything"
+    );
+}
+
+#[tokio::test]
+async fn test_inbox_check_runs_a_sweep_on_the_master() {
+    // The temp home has no projects configured, so the sweep finds nothing to fetch and `gh` is
+    // never invoked. What is under test is the route contract, not the fetch.
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(format!("http://127.0.0.1:{}/api/inbox/check", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "this process holds the MasterGuard, so it may sweep"
+    );
+
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let outcome = body["outcome"].as_str().expect("outcome is reported");
+    // `AlreadyRunning` is legitimate here: the overlap guard is process-wide and another test in this
+    // binary may hold the permit. Either way the sweep is not `NotMaster`.
+    assert!(
+        outcome == "Ran" || outcome == "AlreadyRunning",
+        "unexpected outcome {outcome}"
+    );
+    assert!(body["imported"].is_array());
+    assert!(body["accepted"].is_u64());
+    assert!(body["skipped"].is_u64());
+    assert!(body["errors"].is_array());
+}
+
+#[tokio::test]
+async fn test_accept_and_dismiss_report_a_missing_proposal() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    for path in [
+        "/api/inbox/proposals/4242/accept",
+        "/api/inbox/proposals/4242/dismiss",
+    ] {
+        let resp = client
+            .post(format!("{}{}", base_url, path))
+            .bearer_auth(&server.secret)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "{} must 404 rather than pretend to succeed",
+            path
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_dismiss_inbox_proposal_keeps_the_row() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+    let id = plant_proposal(&server.tendril_home, 5, ProposalState::Pending);
+
+    let resp = client
+        .post(format!("{}/api/inbox/proposals/{}/dismiss", base_url, id))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "Dismissed");
+
+    // The row must survive the dismissal: its existence is what stops the next sweep re-importing.
+    let listed = client
+        .get(format!("{}/api/inbox/proposals?state=all", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json::<Vec<serde_json::Value>>()
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0]["state"], "Dismissed");
+}
+
+#[tokio::test]
+async fn test_accept_and_dismiss_conflict_on_a_decided_proposal() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+    let accepted = plant_proposal(&server.tendril_home, 6, ProposalState::Accepted);
+    let dismissed = plant_proposal(&server.tendril_home, 7, ProposalState::Dismissed);
+
+    // Accepting twice would start a second plan for one issue.
+    for id in [accepted, dismissed] {
+        let resp = client
+            .post(format!("{}/api/inbox/proposals/{}/accept", base_url, id))
+            .bearer_auth(&server.secret)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            reqwest::StatusCode::CONFLICT,
+            "accepting an already-decided proposal must conflict"
+        );
+    }
+
+    // Dismissing an accepted proposal would orphan the job it started.
+    let resp = client
+        .post(format!(
+            "{}/api/inbox/proposals/{}/dismiss",
+            base_url, accepted
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::CONFLICT);
+
+    // Dismissing an already-dismissed one is harmless and stays a 200.
+    let resp = client
+        .post(format!(
+            "{}/api/inbox/proposals/{}/dismiss",
+            base_url, dismissed
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_inbox_static_segments_are_not_read_as_proposal_ids() {
+    // `check` and `proposals` are registered before `:id`, so neither can be parsed as one.
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(format!("http://127.0.0.1:{}/api/inbox/check", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+    assert_ne!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // A non-numeric id is a 400 from the path extractor, not a 500.
+    let resp = client
+        .post(format!(
+            "http://127.0.0.1:{}/api/inbox/proposals/not-a-number/accept",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_get_job_events_repeated_kind_param() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let job_id = "00883";
+    let logs_dir = server.tendril_home.join("Logs").join("Jobs");
+    std::fs::create_dir_all(&logs_dir).unwrap();
+
+    let eventwire_content = [
+        "{\"type\":\"tool_call\",\"tool_name\":\"bash\"}",
+        "{\"kind\":\"tool_result\",\"output\":\"success\"}",
+        "{\"kind\":\"assistant\",\"text\":\"hello\"}",
+        "{\"kind\":\"status\",\"text\":\"running\"}",
+        "{\"type\":\"log\",\"text\":\"internal detail\"}",
+    ]
+    .join("\n");
+    std::fs::write(
+        logs_dir.join(format!("{}.eventwire.jsonl", job_id)),
+        format!("{}\n", eventwire_content),
+    )
+    .unwrap();
+
+    // Repeated kind= params, same expectation as the existing ?kinds=tool_use,assistant test.
+    let stream_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/{}/events?kind=tool_use&kind=assistant",
+            server.port, job_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stream_resp.status(), reqwest::StatusCode::OK);
+    let stream_text = stream_resp.text().await.unwrap();
+    assert!(stream_text.contains("tool_call"));
+    assert!(stream_text.contains("tool_result"));
+    assert!(stream_text.contains("assistant"));
+    assert!(!stream_text.contains("\"running\""));
+    assert!(!stream_text.contains("internal detail"));
+    assert!(stream_text.contains("event: end"));
+
+    // A single repeated-form value with a comma behaves the same as the plain form.
+    let comma_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/{}/events?kind=tool_use,assistant",
+            server.port, job_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(comma_resp.status(), reqwest::StatusCode::OK);
+    let comma_text = comma_resp.text().await.unwrap();
+    assert!(comma_text.contains("tool_call"));
+    assert!(comma_text.contains("tool_result"));
+    assert!(comma_text.contains("assistant"));
+    assert!(!comma_text.contains("\"running\""));
+    assert!(!comma_text.contains("internal detail"));
+    assert!(comma_text.contains("event: end"));
+}
+
+#[tokio::test]
+async fn test_get_job_events_explicit_filter_does_not_fail_open() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let job_id = "00884";
+    let logs_dir = server.tendril_home.join("Logs").join("Jobs");
+    std::fs::create_dir_all(&logs_dir).unwrap();
+
+    let eventwire_content = [
+        "{\"type\":\"tool_call\",\"tool_name\":\"bash\"}",
+        "{\"kind\":\"tool_result\",\"output\":\"success\"}",
+        "{\"kind\":\"assistant\",\"text\":\"hello\"}",
+        "{\"kind\":\"status\",\"text\":\"running\"}",
+        "{\"type\":\"log\",\"text\":\"internal detail\"}",
+    ]
+    .join("\n");
+    std::fs::write(
+        logs_dir.join(format!("{}.eventwire.jsonl", job_id)),
+        format!("{}\n", eventwire_content),
+    )
+    .unwrap();
+
+    for query in ["kind=no_such_kind", "kinds=no_such_kind"] {
+        let resp = client
+            .get(format!(
+                "http://127.0.0.1:{}/api/jobs/{}/events?{}",
+                server.port, job_id, query
+            ))
+            .bearer_auth(&server.secret)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
+        let text = resp.text().await.unwrap();
+        assert!(
+            !text.contains("event: event"),
+            "query '{}' should not emit any event lines, got: {}",
+            query,
+            text
+        );
+        assert!(text.contains("event: end"));
+    }
+}
+
+#[tokio::test]
+async fn test_list_plans_state_alias_and_limit() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let mut created_ids = Vec::new();
+    for i in 0..3 {
+        let create_resp = client
+            .post(format!("http://127.0.0.1:{}/api/plans", server.port))
+            .bearer_auth(&server.secret)
+            .json(&serde_json::json!({
+                "title": format!("State Alias Test Plan {}", i),
+                "project": "StateAliasTestProject",
+                "level": "Feature",
+                "verifications": []
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+        let plan_data: serde_json::Value = create_resp.json().await.unwrap();
+        created_ids.push(plan_data["metadata"]["id"].as_i64().unwrap());
+    }
+    let highest_id = *created_ids.iter().max().unwrap();
+
+    let state_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?state=Draft&project=StateAliasTestProject",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(state_resp.status(), reqwest::StatusCode::OK);
+    let state_body = state_resp.bytes().await.unwrap();
+
+    let status_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?status=Draft&project=StateAliasTestProject",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status_resp.status(), reqwest::StatusCode::OK);
+    let status_body = status_resp.bytes().await.unwrap();
+    assert_eq!(state_body, status_body);
+
+    let limited_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?state=Draft&project=StateAliasTestProject&limit=1",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(limited_resp.status(), reqwest::StatusCode::OK);
+    let limited: Vec<serde_json::Value> = limited_resp.json().await.unwrap();
+    assert_eq!(limited.len(), 1);
+    assert_eq!(limited[0]["metadata"]["id"].as_i64().unwrap(), highest_id);
+
+    let zero_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?project=StateAliasTestProject&limit=0",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(zero_resp.status(), reqwest::StatusCode::OK);
+    let zero: Vec<serde_json::Value> = zero_resp.json().await.unwrap();
+    assert!(zero.is_empty());
+
+    let bogus_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?state=Bogus",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bogus_resp.status(), reqwest::StatusCode::BAD_REQUEST);
+    let bogus_body: serde_json::Value = bogus_resp.json().await.unwrap();
+    assert!(bogus_body["supportedStates"].is_array());
+}
+
+#[tokio::test]
+async fn test_get_plan_field_surface() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let create_resp = client
+        .post(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": "Field Surface Test Plan",
+            "project": "FieldSurfaceTestProject",
+            "level": "Feature",
+            "verifications": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+    let plan_data: serde_json::Value = create_resp.json().await.unwrap();
+    let plan_id = format!("{:05}", plan_data["metadata"]["id"].as_i64().unwrap());
+
+    // Give priority and executionProfile non-default values so a "field present but empty"
+    // false negative can't hide behind their zero-values.
+    for (field, value) in [("priority", "7"), ("executionProfile", "deep")] {
+        let put_resp = client
+            .put(format!(
+                "http://127.0.0.1:{}/api/plans/{}",
+                server.port, plan_id
+            ))
+            .bearer_auth(&server.secret)
+            .json(&serde_json::json!({ "field": field, "value": value }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(put_resp.status(), reqwest::StatusCode::OK);
+    }
+
+    for field in [
+        "created",
+        "updated",
+        "priority",
+        "partialDelivery",
+        "executionProfile",
+        "level",
+        "state",
+        "project",
+        "title",
+        "id",
+    ] {
+        let resp = client
+            .get(format!(
+                "http://127.0.0.1:{}/api/plans/{}?field={}",
+                server.port, plan_id, field
+            ))
+            .bearer_auth(&server.secret)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK, "field '{}'", field);
+        let text = resp.text().await.unwrap();
+        assert!(!text.is_empty(), "field '{}' returned an empty body", field);
+    }
+
+    let lower_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}?field=partialdelivery",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    let upper_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}?field=partialDelivery",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        lower_resp.text().await.unwrap(),
+        upper_resp.text().await.unwrap()
+    );
+
+    let unknown_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}?field=nonsense",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown_resp.status(), reqwest::StatusCode::BAD_REQUEST);
+    let unknown_body: serde_json::Value = unknown_resp.json().await.unwrap();
+    assert!(unknown_body["supportedFields"].is_array());
+}
+
+#[tokio::test]
+async fn test_api_key_header_authenticates() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let api_key_ok = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .header("X-Api-Key", &server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(api_key_ok.status(), reqwest::StatusCode::OK);
+
+    let bearer_ok = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bearer_ok.status(), reqwest::StatusCode::OK);
+
+    let api_key_wrong = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .header("X-Api-Key", "wrong-key")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(api_key_wrong.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let bearer_wrong = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .bearer_auth("wrong-token")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bearer_wrong.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let no_creds = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(no_creds.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let health_resp = client
+        .get(format!("http://127.0.0.1:{}/api/health", server.port))
+        .send()
+        .await
+        .unwrap();
+    let health_body: serde_json::Value = health_resp.json().await.unwrap();
+    let capabilities = health_body["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    assert!(capabilities.iter().any(|c| c == "auth_api_key"));
+}
+
+#[tokio::test]
+async fn test_jobs_health_alias() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let alias_resp = client
+        .get(format!("http://127.0.0.1:{}/api/jobs/health", server.port))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(alias_resp.status(), reqwest::StatusCode::OK);
+    let alias_body: serde_json::Value = alias_resp.json().await.unwrap();
+    assert_eq!(alias_body["status"], "ok");
+    assert!(alias_body["pid"].as_u64().unwrap_or(0) > 0);
+
+    let health_resp = client
+        .get(format!("http://127.0.0.1:{}/api/health", server.port))
+        .send()
+        .await
+        .unwrap();
+    let health_body: serde_json::Value = health_resp.json().await.unwrap();
+    for key in ["version", "apiVersion", "capabilities"] {
+        assert_eq!(alias_body[key], health_body[key], "key '{}'", key);
+    }
+
+    // Static /api/jobs/health must not shadow the parameterised /api/jobs/:id route: a
+    // non-existent job id must still 404 via get_job, not 200 via health_handler.
+    let missing_job_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/no-such-job-id",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing_job_resp.status(), reqwest::StatusCode::NOT_FOUND);
 }

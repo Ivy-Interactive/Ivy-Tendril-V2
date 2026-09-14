@@ -2,13 +2,15 @@ mod common;
 
 use common::{plan_state, plan_with, HomeFixture};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tendril_core::agents::providers::AgentProcessSpec;
 use tendril_core::config::TendrilSettings;
+use tendril_core::jobs::hooks::{HookCommandResult, HookCommandSpec, HookExecutor, HookFuture};
 use tendril_core::jobs::manager::{JobManager, SpecBuilder};
 use tendril_core::models::{
-    ExecutePlanArgs, JobArgs, JobStatus, PlanStatus, RetryPlanArgs, VerificationStatus,
+    ExecutePlanArgs, JobArgs, JobStatus, PlanStatus, ProjectConfig, PromptwareHookConfig,
+    RetryPlanArgs, VerificationStatus,
 };
 
 /// Settings that keep a test job on a short leash and out of the operator's config.
@@ -785,4 +787,130 @@ async fn a_finished_job_is_readable_from_the_database() {
         reloaded.list_non_terminal_jobs().await.unwrap().is_empty(),
         "a completed job is not pending work"
     );
+}
+
+/// A project hook whose `action` is `command`, firing in `when` for every promptware.
+#[cfg(unix)]
+fn hook(name: &str, when: &str, command: &str) -> PromptwareHookConfig {
+    PromptwareHookConfig {
+        name: name.to_string(),
+        when: when.to_string(),
+        promptwares: vec![],
+        condition: String::new(),
+        action: command.to_string(),
+    }
+}
+
+/// The job path fires a project's `before` hook before the agent runs and its `after` hook once the
+/// terminal status is written — the whole point of the port, asserted end to end.
+///
+/// Nothing is spawned for the hooks themselves: the injected executor records each spec and reports
+/// success, and whether the agent had already left its marker is how "before" and "after" are told
+/// apart independently of the order they were recorded in.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_projects_hooks_fire_before_and_after_the_agent_run() {
+    let home = HomeFixture::new("life-hooks");
+    home.write_promptware("ExecutePlan");
+    // A recorded commit keeps the run `Completed`: the after hook's whole job here is to report the
+    // status `finish_job` settled on.
+    let mut plan = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
+    plan.commits = vec!["abc1234".to_string()];
+    let folder = home.write_plan("00001-Hooked", &plan);
+
+    let marker = home.path.join("agent.ran");
+    let script = write_script(
+        &home,
+        "agent.sh",
+        &format!("echo working\ntouch {}\nexit 0\n", marker.display()),
+    );
+
+    let mut settings = settings();
+    settings.projects = vec![ProjectConfig {
+        name: "FixtureProject".to_string(),
+        hooks: vec![
+            hook("notify-start", "before", "echo starting"),
+            hook("notify-done", "after", "echo done"),
+        ],
+        ..Default::default()
+    }];
+
+    let recorded: Arc<Mutex<Vec<(HookCommandSpec, bool)>>> = Arc::new(Mutex::new(Vec::new()));
+    let executor: HookExecutor = {
+        let recorded = recorded.clone();
+        let marker = marker.clone();
+        Arc::new(move |spec: HookCommandSpec| {
+            recorded.lock().unwrap().push((spec, marker.exists()));
+            Box::pin(async move {
+                HookCommandResult {
+                    exit_code: Some(0),
+                    ..Default::default()
+                }
+            }) as HookFuture
+        })
+    };
+
+    let manager = JobManager::new(home.path.clone(), settings)
+        .with_spec_builder(script_spec_builder(script, home.path.clone()))
+        .with_hook_executor(executor);
+
+    let job_id = manager
+        .start_job(JobArgs::ExecutePlan(ExecutePlanArgs {
+            folder_path: folder.to_string_lossy().to_string(),
+            note: None,
+        }))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        wait_for_status(&manager, &job_id, Duration::from_secs(15)).await,
+        JobStatus::Completed
+    );
+    // The after hook is awaited after the terminal status is persisted, so the status the test waited
+    // for does not yet imply the hook has run.
+    assert!(
+        wait_until(Duration::from_secs(5), || recorded.lock().unwrap().len()
+            >= 2)
+        .await,
+        "both hooks should have run, saw {:?}",
+        recorded.lock().unwrap()
+    );
+
+    let recorded = recorded.lock().unwrap();
+    assert_eq!(recorded.len(), 2, "{:?}", recorded);
+
+    let (before, agent_had_run_before) = &recorded[0];
+    assert_eq!(before.hook_name, "notify-start");
+    assert_eq!(before.command, "echo starting");
+    assert!(
+        !agent_had_run_before,
+        "the before hook ran after the agent did"
+    );
+
+    let (after, agent_had_run_after) = &recorded[1];
+    assert_eq!(after.hook_name, "notify-done");
+    assert_eq!(after.command, "echo done");
+    assert!(
+        agent_had_run_after,
+        "the after hook ran before the agent did"
+    );
+
+    let env_of = |spec: &HookCommandSpec, key: &str| {
+        spec.env
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| panic!("{} should be in the hook environment", key))
+    };
+    for spec in [before, after] {
+        assert_eq!(env_of(spec, "TENDRIL_JOB_ID"), job_id);
+        assert_eq!(env_of(spec, "TENDRIL_JOB_TYPE"), "ExecutePlan");
+        assert_eq!(
+            Path::new(&env_of(spec, "TENDRIL_PLAN_FOLDER")),
+            folder.as_path()
+        );
+    }
+    // The status is the live one, and the after hook sees what the job actually ended as.
+    assert_eq!(env_of(before, "TENDRIL_JOB_STATUS"), "Running");
+    assert_eq!(env_of(after, "TENDRIL_JOB_STATUS"), "Completed");
 }

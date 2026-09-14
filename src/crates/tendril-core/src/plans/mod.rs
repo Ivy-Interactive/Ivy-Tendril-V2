@@ -1,10 +1,13 @@
 pub mod costs_csv;
 pub mod dependencies;
+pub mod diff_comments;
 pub mod doctor;
 pub mod duplicates;
 pub mod env;
+pub mod fields;
 pub mod guards;
 pub mod helpers;
+pub mod markdown_links;
 pub mod migrations;
 pub mod ports;
 pub mod reader;
@@ -15,11 +18,14 @@ pub mod verifications;
 pub mod writer;
 
 pub use dependencies::*;
+pub use diff_comments::*;
 pub use doctor::*;
 pub use duplicates::*;
 pub use env::*;
+pub use fields::*;
 pub use guards::*;
 pub use helpers::*;
+pub use markdown_links::*;
 pub use migrations::*;
 pub use ports::*;
 pub use reader::*;

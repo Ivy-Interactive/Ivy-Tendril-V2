@@ -1,16 +1,25 @@
 use crate::error::{Result, TendrilError};
+use crate::fs_lock::{write_atomic, FileLock};
 use crate::models::{PlanFile, PlanStatus, PlanVerificationEntry, PlanYaml};
 use crate::plans::helpers::{allocate_plan_id, to_safe_title};
 use crate::plans::reader::read_plan_file;
 use chrono::Utc;
 use std::path::Path;
 
+/// Serialises `plan` and replaces `plan.yaml` atomically while holding that file's lock.
+///
+/// The lock keeps two writers from dropping each other's change; the atomic write keeps a reader
+/// woken by the filesystem watcher from parsing a half-written file. Neither is optional now that
+/// [`crate::watcher`] wakes readers on every write.
+///
+/// The caller must not already hold the lock for this `plan.yaml` — see
+/// [`FileLock::acquire`][crate::fs_lock::FileLock::acquire] on nesting.
 pub fn write_plan_yaml(plan_folder: &Path, plan: &PlanYaml) -> Result<()> {
     let yaml_path = plan_folder.join("plan.yaml");
     let raw = serde_yaml::to_string(plan)
         .map_err(|e| TendrilError::Plan(format!("Failed to serialize plan.yaml: {}", e)))?;
-    std::fs::write(&yaml_path, raw)?;
-    Ok(())
+    let _lock = FileLock::acquire(&yaml_path)?;
+    write_atomic(&yaml_path, raw.as_bytes())
 }
 
 pub struct CreatePlanOptions {

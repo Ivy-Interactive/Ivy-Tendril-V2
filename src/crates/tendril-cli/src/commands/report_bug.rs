@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tendril_core::config::{get_config_path, get_plans_dir, load_config};
 use tendril_core::git::enumerate_worktree_directories;
+use tendril_core::health;
 use tendril_core::jobs::logger::find_log_file;
 use tendril_core::plans::helpers::resolve_plan_folder;
 
@@ -374,7 +375,11 @@ fn git_field(working_dir: &Path, args: &[&str]) -> String {
 }
 
 fn doctor_text(tendril_home: &Path) -> String {
-    let mut text = super::doctor::collect_doctor_report(tendril_home).join("\n");
+    let mut text = health::run_checks(tendril_home)
+        .into_iter()
+        .map(|check| format!("[{}] {}", check.status.tag(), check.message))
+        .collect::<Vec<_>>()
+        .join("\n");
     text.push('\n');
     text
 }

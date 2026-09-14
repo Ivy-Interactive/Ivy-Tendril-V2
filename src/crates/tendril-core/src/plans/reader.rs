@@ -20,6 +20,26 @@ pub fn read_plan_yaml(plan_folder: &Path) -> Result<(PlanYaml, String)> {
     Ok((plan, raw))
 }
 
+/// [`read_plan_yaml`], but waiting for any in-flight writer to finish first.
+///
+/// Used by the watcher-driven re-sync: a re-sync provoked by a foreign writer must wait for that
+/// writer rather than parse whatever happens to be on disk mid-write. Ordinary callers, which are
+/// reacting to their own writes or to a user request, keep using [`read_plan_yaml`] and pay no lock
+/// cost.
+pub fn read_plan_yaml_locked(plan_folder: &Path) -> Result<(PlanYaml, String)> {
+    let yaml_path = plan_folder.join("plan.yaml");
+    let _lock = crate::fs_lock::FileLock::acquire(&yaml_path)?;
+    read_plan_yaml(plan_folder)
+}
+
+/// [`read_plan_file`], but waiting for any in-flight writer to finish first. See
+/// [`read_plan_yaml_locked`].
+pub fn read_plan_file_locked(plan_folder: &Path) -> Result<PlanFile> {
+    let yaml_path = plan_folder.join("plan.yaml");
+    let _lock = crate::fs_lock::FileLock::acquire(&yaml_path)?;
+    read_plan_file(plan_folder)
+}
+
 pub fn read_plan_file(plan_folder: &Path) -> Result<PlanFile> {
     let (plan_yaml, yaml_raw) = read_plan_yaml(plan_folder)?;
     let folder_name = plan_folder
@@ -66,6 +86,7 @@ pub fn read_plan_file(plan_folder: &Path) -> Result<PlanFile> {
         source_url: plan_yaml.source_url,
         partial_delivery: plan_yaml.partial_delivery,
         chat_session_id: plan_yaml.chat_session_id,
+        recommendations: plan_yaml.recommendations,
     };
 
     Ok(PlanFile {
