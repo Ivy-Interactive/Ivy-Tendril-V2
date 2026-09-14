@@ -1,11 +1,11 @@
 mod common;
 
-use common::HomeFixture;
+use common::{plan_with, HomeFixture};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tendril_core::jobs::logger::{append_to_eventwire, append_to_raw_log};
 use tendril_core::jobs::manager::{find_abandoned_background_tasks, finish_job};
-use tendril_core::models::{JobItem, JobStatus};
+use tendril_core::models::{JobItem, JobStatus, PlanStatus, VerificationStatus};
 use tokio::sync::RwLock;
 
 #[test]
@@ -71,6 +71,7 @@ async fn test_exit_zero_job_with_dangling_tasks_transitions_to_failed() {
     // Call finish_job claiming Completed
     finish_job(
         &home.path,
+        &home.plans_dir(),
         &jobs_map,
         &handles,
         &completion_claimed,
@@ -109,10 +110,19 @@ async fn test_exit_zero_job_with_completed_tasks_succeeds() {
     .unwrap();
     append_to_raw_log(&home.path, job_id, "Task task-clean finished").unwrap();
 
+    // A real deliverable, so this test still tests only the background-task guard: an ExecutePlan job
+    // that produced nothing is failed by the deliverable check regardless of its background tasks.
+    let mut plan = plan_with(
+        PlanStatus::Executing,
+        &[("RustTest", VerificationStatus::Pass)],
+    );
+    plan.commits = vec!["abc1234".to_string()];
+    let plan_folder = home.write_plan("00701-CleanTasks", &plan);
+
     let job = JobItem::new(
         job_id.to_string(),
         "ExecutePlan".to_string(),
-        String::new(),
+        plan_folder.to_string_lossy().to_string(),
         "TestProject".to_string(),
     );
 
@@ -122,6 +132,7 @@ async fn test_exit_zero_job_with_completed_tasks_succeeds() {
 
     finish_job(
         &home.path,
+        &home.plans_dir(),
         &jobs_map,
         &handles,
         &completion_claimed,
