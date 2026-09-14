@@ -2,8 +2,9 @@ use clap::Parser;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use tendril_cli::commands::plan::{
-    handle_plan_command, PlanAddDependsOnArgs, PlanCommands, PlanEditReasonArgs, PlanRecCommands,
-    PlanRemoveRepoArgs, PlanSetArgs, PlanSetVerificationArgs, PlanWriteRevisionArgs,
+    handle_plan_command, PlanAddDependsOnArgs, PlanAddPrArgs, PlanCommands, PlanEditReasonArgs,
+    PlanRecCommands, PlanRemovePrArgs, PlanRemoveRepoArgs, PlanSetArgs, PlanSetVerificationArgs,
+    PlanWriteRevisionArgs,
 };
 use tendril_core::config::{
     generate_bearer_secret, get_config_path, get_database_path, load_config, save_config,
@@ -368,6 +369,213 @@ async fn test_plan_write_revision_reports_event() {
     assert!(msg
         .content
         .contains("Reason: Added database migration step."));
+}
+
+// --- Remove-pr -----------------------------------------------------------------------------------
+
+async fn create_test_plan(
+    server: &TestServer,
+    title: &str,
+    chat_session_id: Option<String>,
+) -> tendril_core::models::PlanFile {
+    create_plan(
+        &server.state.plans_dir,
+        CreatePlanOptions {
+            title: title.to_string(),
+            project: "test-proj".to_string(),
+            level: Some("Feature".to_string()),
+            initial_prompt: None,
+            source_url: None,
+            execution_profile: None,
+            priority: Some(0),
+            repos: vec![],
+            verifications: vec![],
+            depends_on: vec![],
+            related_plans: vec![],
+            chat_session_id,
+        },
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn test_plan_remove_pr_removes_by_canonical_url() {
+    let server = start_test_server().await;
+    let pf = create_test_plan(&server, "Remove Pr Plan", None).await;
+
+    let add_args = PlanAddPrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/42".to_string(),
+        reason: None,
+        chat_session: None,
+    };
+    handle_plan_command(PlanCommands::AddPr(add_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command AddPr");
+
+    let remove_args = PlanRemovePrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/42/files".to_string(),
+        reason: Some("cleaning up a stray PR".to_string()),
+        chat_session: None,
+    };
+    handle_plan_command(PlanCommands::RemovePr(remove_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command RemovePr");
+
+    let (plan, _) = read_plan_yaml(std::path::Path::new(&pf.folder_path)).unwrap();
+    assert!(plan.prs.is_empty());
+}
+
+#[tokio::test]
+async fn test_plan_remove_pr_is_idempotent_when_absent() {
+    let server = start_test_server().await;
+    let pf = create_test_plan(&server, "Remove Pr Absent Plan", None).await;
+    let before = read_plan_yaml(std::path::Path::new(&pf.folder_path))
+        .unwrap()
+        .0
+        .updated;
+
+    let remove_args = PlanRemovePrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/99".to_string(),
+        reason: None,
+        chat_session: None,
+    };
+    handle_plan_command(PlanCommands::RemovePr(remove_args), &server.tendril_home)
+        .await
+        .expect("removing an absent PR must succeed rather than error");
+
+    let (plan, _) = read_plan_yaml(std::path::Path::new(&pf.folder_path)).unwrap();
+    assert!(plan.prs.is_empty());
+    assert_eq!(
+        plan.updated, before,
+        "a no-op removal must not bump updated"
+    );
+}
+
+#[tokio::test]
+async fn test_plan_remove_pr_reports_reason_to_chat_session() {
+    let server = start_test_server().await;
+
+    let session = server
+        .state
+        .chat_manager
+        .create_session(
+            Some("PR Removal Chat".to_string()),
+            Some("claude".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let pf = create_test_plan(&server, "Remove Pr Reason Plan", Some(session.id.clone())).await;
+
+    let add_args = PlanAddPrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/7".to_string(),
+        reason: None,
+        chat_session: Some("adder-session".to_string()),
+    };
+    handle_plan_command(PlanCommands::AddPr(add_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command AddPr");
+
+    let remove_args = PlanRemovePrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/7".to_string(),
+        reason: Some("PR was closed without merging".to_string()),
+        chat_session: Some("remover-session".to_string()),
+    };
+    handle_plan_command(PlanCommands::RemovePr(remove_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command RemovePr");
+
+    let sess_after = server
+        .state
+        .chat_manager
+        .get_session(&session.id)
+        .await
+        .unwrap();
+    let msg = sess_after
+        .messages
+        .iter()
+        .find(|m| m.content.contains("was edited directly"))
+        .expect("expected an edit notification message");
+    assert!(msg.content.contains("was edited directly"));
+    assert!(msg
+        .content
+        .contains("Reason: PR was closed without merging."));
+}
+
+#[tokio::test]
+async fn test_plan_remove_pr_falls_back_to_env_chat_session() {
+    let server = start_test_server().await;
+
+    let session = server
+        .state
+        .chat_manager
+        .create_session(
+            Some("PR Removal Env Chat".to_string()),
+            Some("claude".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let pf = create_test_plan(
+        &server,
+        "Remove Pr Env Session Plan",
+        Some(session.id.clone()),
+    )
+    .await;
+
+    let add_args = PlanAddPrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/9".to_string(),
+        reason: None,
+        chat_session: Some(session.id.clone()),
+    };
+    handle_plan_command(PlanCommands::AddPr(add_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command AddPr");
+
+    // Guarded by ENV_LOCK, held for the lifetime of `server` above.
+    let orig = std::env::var("TENDRIL_CHAT_SESSION_ID").ok();
+    std::env::set_var("TENDRIL_CHAT_SESSION_ID", "env-fallback-session");
+
+    let remove_args = PlanRemovePrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/9".to_string(),
+        reason: Some("stray PR removed via env fallback".to_string()),
+        chat_session: None,
+    };
+    let result =
+        handle_plan_command(PlanCommands::RemovePr(remove_args), &server.tendril_home).await;
+
+    match orig {
+        Some(v) => std::env::set_var("TENDRIL_CHAT_SESSION_ID", v),
+        None => std::env::remove_var("TENDRIL_CHAT_SESSION_ID"),
+    }
+    result.expect("handle_plan_command RemovePr with env fallback session");
+
+    let sess_after = server
+        .state
+        .chat_manager
+        .get_session(&session.id)
+        .await
+        .unwrap();
+    assert!(
+        sess_after
+            .messages
+            .iter()
+            .any(|m| m.content.contains("was edited directly")),
+        "expected the plan's own chat session to receive the notification since the env session differs from it"
+    );
 }
 
 // --- Worktree creation and verification listing ------------------------------------------------
