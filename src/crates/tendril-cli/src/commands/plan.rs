@@ -2,17 +2,25 @@ use chrono::Utc;
 use clap::{Args, Subcommand};
 use std::io::Read;
 use std::path::PathBuf;
-use tendril_core::config::{get_database_path, get_plans_dir, read_master};
+use tendril_core::config::{
+    get_config_path, get_database_path, get_plans_dir, load_config, read_master,
+};
 use tendril_core::db::{get_plans, open_database, sync_plan};
-use tendril_core::git::worktree::cleanup_worktrees;
-use tendril_core::models::{PlanStatus, PlanVerificationEntry, VerificationStatus};
+use tendril_core::git::worktree::{
+    add_worktree, cleanup_worktrees, register_worktree, remove_worktree, RemoveOutcome,
+    WorktreeMode,
+};
+use tendril_core::models::{
+    PlanStatus, PlanVerificationEntry, PlanWorktreeEntry, VerificationStatus,
+};
 use tendril_core::plans::{
     add_recommendation, check_all_plans_health, check_plan_health, create_plan, get_revision,
-    list_recommendations, materialize_plan_env, read_plan_file, read_plan_yaml,
-    remove_recommendation, render_env_file, resolve_plan_folder, resolve_plan_folder_name,
-    resolve_plan_project, resolve_worktrees, set_plan_verification_status,
-    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
-    DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard, RenderedEnvFile,
+    list_recommendations, materialize_plan_env, order_by_project_config, read_plan_file,
+    read_plan_yaml, remove_recommendation, render_env_file, resolve_plan_folder,
+    resolve_plan_folder_name, resolve_plan_project, resolve_worktrees,
+    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
+    CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard,
+    RenderedEnvFile,
 };
 
 #[derive(Subcommand)]
@@ -43,6 +51,12 @@ pub enum PlanCommands {
 
     #[command(about = "Remove plan worktrees")]
     Cleanup(PlanCleanupArgs),
+
+    #[command(about = "Create a worktree for a repository in a plan")]
+    AddWorktree(PlanAddWorktreeArgs),
+
+    #[command(about = "Remove a worktree from a plan")]
+    RemoveWorktree(PlanRemoveWorktreeArgs),
 
     #[command(about = "Write a revision")]
     WriteRevision(PlanWriteRevisionArgs),
@@ -76,6 +90,9 @@ pub enum PlanCommands {
 
     #[command(about = "Set verification status")]
     SetVerification(PlanSetVerificationArgs),
+
+    #[command(subcommand, about = "Inspect plan verifications")]
+    Verification(PlanVerificationCommands),
 
     #[command(subcommand, about = "Manage plan recommendations")]
     Rec(PlanRecCommands),
@@ -233,6 +250,27 @@ pub struct PlanRemoveRepoArgs {
 }
 
 #[derive(Args)]
+pub struct PlanAddWorktreeArgs {
+    pub plan_id: String,
+    #[arg(help = "Path to the repository to create the worktree from")]
+    pub repo: String,
+    #[arg(
+        long,
+        help = "Branch to base the worktree on, defaults to origin's HEAD"
+    )]
+    pub base: Option<String>,
+}
+
+#[derive(Args)]
+pub struct PlanRemoveWorktreeArgs {
+    pub plan_id: String,
+    #[arg(help = "Worktree folder name inside the plan's Worktrees directory")]
+    pub repo_name: String,
+    #[arg(long, help = "Branch to delete, defaults to the plan's branch")]
+    pub branch: Option<String>,
+}
+
+#[derive(Args)]
 pub struct PlanAddPrArgs {
     pub plan_id: String,
     pub url: String,
@@ -322,6 +360,21 @@ pub struct PlanSetVerificationArgs {
         help = "Chat session making the edit, excluded from self-notification"
     )]
     pub chat_session: Option<String>,
+}
+
+#[derive(Subcommand)]
+pub enum PlanVerificationCommands {
+    #[command(about = "List a plan's verifications in run order")]
+    List(PlanVerificationListArgs),
+}
+
+#[derive(Args)]
+pub struct PlanVerificationListArgs {
+    pub plan_id: String,
+    #[arg(long, help = "Only show verifications with this status")]
+    pub status: Option<String>,
+    #[arg(long, help = "Print compact JSON instead of a table")]
+    pub json: bool,
 }
 
 #[derive(Subcommand)]
@@ -806,6 +859,65 @@ pub async fn handle_plan_command(
             cleanup_worktrees(&folder)?;
             println!("Worktrees cleaned up for plan {}", args.plan_id);
         }
+        // Worktree creation and removal are filesystem-only: unlike the project commands there is
+        // no `_daemon` variant, because the daemon has no worktree endpoints to route to. Whoever
+        // adds them should keep both paths in step.
+        PlanCommands::AddWorktree(args) => {
+            let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            let repo_path = PathBuf::from(&args.repo);
+            let creation = add_worktree(
+                &repo_path,
+                &folder,
+                args.base.as_deref(),
+                WorktreeMode::ReuseIfValid,
+                None,
+            )?;
+
+            // add_worktree can return before git has finished laying the worktree down, and a
+            // worktree without a `.git` file is unusable for everything downstream.
+            if !creation.path.join(".git").exists() {
+                anyhow::bail!(
+                    "Worktree at {} has no .git file, so git did not create it",
+                    creation.path.display()
+                );
+            }
+
+            // The checkout is what matters; a registry write failure is not worth failing the
+            // command for, because the reaper also finds worktrees by directory scan.
+            if let Err(e) = register_worktree(
+                &folder,
+                PlanWorktreeEntry {
+                    repo: creation.repo.to_string_lossy().to_string(),
+                    path: creation.path.to_string_lossy().to_string(),
+                    branch: creation.branch.clone(),
+                    created: Utc::now(),
+                },
+            ) {
+                eprintln!("Warning: failed to register worktree on plan: {}", e);
+            }
+
+            let (mut plan, _) = read_plan_yaml(&folder)?;
+            if !plan.repos.contains(&args.repo) {
+                plan.repos.push(args.repo.clone());
+                plan.updated = Utc::now();
+                write_plan_yaml(&folder, &plan)?;
+            }
+
+            println!("Worktree created: {}", creation.path.display());
+            println!("Branch: {}", creation.branch);
+        }
+        PlanCommands::RemoveWorktree(args) => {
+            let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            match remove_worktree(&folder, &args.repo_name, args.branch.as_deref())? {
+                // Already gone is the outcome the caller asked for, so this is not a failure.
+                RemoveOutcome::NotFound(path) => {
+                    println!("Worktree directory not found: {}", path.display());
+                }
+                RemoveOutcome::Removed(path) | RemoveOutcome::ForceDeleted(path) => {
+                    println!("Worktree removed: {}", path.display());
+                }
+            }
+        }
         PlanCommands::WriteRevision(args) => {
             let p_dir = args.plans_dir.unwrap_or(plans_dir);
             let folder = resolve_plan_folder(&args.plan_id, &p_dir)?;
@@ -1111,6 +1223,52 @@ pub async fn handle_plan_command(
             )
             .await;
         }
+        PlanCommands::Verification(verification_cmd) => match verification_cmd {
+            PlanVerificationCommands::List(args) => {
+                let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+                let (plan, _) = read_plan_yaml(&folder)?;
+
+                // The project config's order is the run order, which is what someone listing
+                // verifications wants to see. A missing config just leaves the plan's own order.
+                let settings = load_config(&get_config_path(tendril_home)).ok();
+                let project_verifications = settings.as_ref().and_then(|s| {
+                    s.projects
+                        .iter()
+                        .find(|p| p.name.eq_ignore_ascii_case(&plan.project))
+                        .map(|p| p.verifications.as_slice())
+                });
+                let mut entries =
+                    order_by_project_config(&plan.verifications, project_verifications);
+
+                if let Some(filter) = args.status.as_deref() {
+                    let wanted = VerificationStatus::from_str_loose(filter).ok_or_else(|| {
+                        anyhow::anyhow!("Invalid verification status: {}", filter)
+                    })?;
+                    entries.retain(|e| e.status == wanted);
+                }
+
+                if args.json {
+                    let payload: Vec<serde_json::Value> = entries
+                        .iter()
+                        .map(|e| serde_json::json!({ "name": e.name, "status": e.status.as_str() }))
+                        .collect();
+                    println!("{}", serde_json::to_string(&payload)?);
+                } else if entries.is_empty() {
+                    println!("No verifications found.");
+                } else {
+                    let width = entries
+                        .iter()
+                        .map(|e| e.name.len())
+                        .max()
+                        .unwrap_or(4)
+                        .max(4);
+                    println!("{:<width$}  Status", "Name", width = width);
+                    for e in &entries {
+                        println!("{:<width$}  {}", e.name, e.status.as_str(), width = width);
+                    }
+                }
+            }
+        },
         PlanCommands::Rec(rec_cmd) => match rec_cmd {
             PlanRecCommands::List { plan_id } => {
                 let folder = resolve_plan_folder(&plan_id, &plans_dir)?;

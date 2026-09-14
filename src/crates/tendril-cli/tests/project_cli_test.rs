@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tendril_cli::commands::project::{
     handle_project_command, ProjectCommands, ProjectEnvFileCommands, ProjectPortCommands,
@@ -124,6 +124,9 @@ async fn test_project_cli_filesystem_fallback() {
         ProjectCommands::AddVerification {
             name: "TestProj".to_string(),
             verification: "RustBuild".to_string(),
+            required: false,
+            optional: false,
+            after: None,
         },
         &tendril_home,
     )
@@ -233,6 +236,9 @@ async fn test_project_cli_routed_through_daemon() {
         ProjectCommands::AddVerification {
             name: "DaemonProj".to_string(),
             verification: "Clippy".to_string(),
+            required: false,
+            optional: false,
+            after: None,
         },
         &server.tendril_home,
     )
@@ -344,6 +350,9 @@ async fn test_project_cli_error_handling() {
         ProjectCommands::AddVerification {
             name: "NonExistent".to_string(),
             verification: "RustBuild".to_string(),
+            required: false,
+            optional: false,
+            after: None,
         },
         &server.tendril_home,
     )
@@ -728,6 +737,378 @@ async fn test_project_cli_set_field_daemon() {
     assert_eq!(cfg.projects[0].context, "Daemon test context");
     assert_eq!(cfg.projects[0].stack_hash, Some("fe.ts:react".to_string()));
 }
+
+// --- Verification ordering -------------------------------------------------------------------
+//
+// Verification order is run order: `CheckResult` has to be last, so `move-verification` and
+// `add-verification --after` are how a caller says where an entry belongs. The daemon and
+// filesystem paths share one `move_project_verification` helper precisely so they cannot drift,
+// which is why every ordering assertion below runs through both.
+
+/// A `TendrilHome` with no daemon behind it, so commands take the filesystem path.
+struct FsHome {
+    path: PathBuf,
+}
+
+impl Drop for FsHome {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+impl FsHome {
+    fn new(label: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "tendril-cli-{}-{}",
+            label,
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+}
+
+/// Runs `body` twice: once against a live daemon, once against a home with none.
+async fn through_both_paths<F, Fut>(label: &str, body: F)
+where
+    F: Fn(PathBuf) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    let server = start_test_server().await;
+    body(server.tendril_home.clone()).await;
+    drop(server);
+
+    let fs_home = FsHome::new(label);
+    body(fs_home.path.clone()).await;
+}
+
+/// Creates a project whose verifications are in exactly the given order.
+async fn seed_project(tendril_home: &Path, project: &str, verifications: &[&str]) {
+    handle_project_command(
+        ProjectCommands::Add {
+            name: project.to_string(),
+        },
+        tendril_home,
+    )
+    .await
+    .expect("add project");
+
+    for verification in verifications {
+        handle_project_command(
+            ProjectCommands::AddVerification {
+                name: project.to_string(),
+                verification: verification.to_string(),
+                required: false,
+                optional: false,
+                after: None,
+            },
+            tendril_home,
+        )
+        .await
+        .expect("seed verification");
+    }
+}
+
+/// A project's verification names in configured order.
+fn verification_names(tendril_home: &Path, project: &str) -> Vec<String> {
+    let cfg = load_config(&get_config_path(tendril_home)).expect("load config");
+    cfg.projects
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(project))
+        .expect("project exists")
+        .verifications
+        .iter()
+        .map(|v| v.name.clone())
+        .collect()
+}
+
+async fn move_verification(
+    tendril_home: &Path,
+    project: &str,
+    verification: &str,
+    before: Option<&str>,
+    after: Option<&str>,
+    position: Option<usize>,
+) -> anyhow::Result<()> {
+    handle_project_command(
+        ProjectCommands::MoveVerification {
+            name: project.to_string(),
+            verification: verification.to_string(),
+            before: before.map(str::to_string),
+            after: after.map(str::to_string),
+            position,
+        },
+        tendril_home,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn move_verification_by_position() {
+    through_both_paths("move-position", |home| async move {
+        seed_project(
+            &home,
+            "Proj",
+            &["NpmLint", "RustBuild", "RustTest", "CheckResult"],
+        )
+        .await;
+
+        move_verification(&home, "Proj", "RustTest", None, None, Some(0))
+            .await
+            .expect("move to position 0");
+        assert_eq!(
+            verification_names(&home, "Proj"),
+            ["RustTest", "NpmLint", "RustBuild", "CheckResult"]
+        );
+
+        // A position past the end clamps rather than failing.
+        move_verification(&home, "Proj", "RustTest", None, None, Some(99))
+            .await
+            .expect("move past the end");
+        assert_eq!(
+            verification_names(&home, "Proj"),
+            ["NpmLint", "RustBuild", "CheckResult", "RustTest"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn move_verification_before() {
+    through_both_paths("move-before", |home| async move {
+        seed_project(
+            &home,
+            "Proj",
+            &["NpmLint", "RustBuild", "RustTest", "CheckResult"],
+        )
+        .await;
+
+        move_verification(&home, "Proj", "CheckResult", Some("RustBuild"), None, None)
+            .await
+            .expect("move before RustBuild");
+        assert_eq!(
+            verification_names(&home, "Proj"),
+            ["NpmLint", "CheckResult", "RustBuild", "RustTest"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn move_verification_after() {
+    through_both_paths("move-after", |home| async move {
+        seed_project(
+            &home,
+            "Proj",
+            &["NpmLint", "RustBuild", "RustTest", "CheckResult"],
+        )
+        .await;
+
+        // Moving an entry forward is the case that needs the index resolved against the list with
+        // the entry already removed: without NpmLint, RustTest sits at 1, so NpmLint lands at 2.
+        move_verification(&home, "Proj", "NpmLint", None, Some("RustTest"), None)
+            .await
+            .expect("move after RustTest");
+        assert_eq!(
+            verification_names(&home, "Proj"),
+            ["RustBuild", "RustTest", "NpmLint", "CheckResult"]
+        );
+
+        // And backwards.
+        move_verification(&home, "Proj", "CheckResult", None, Some("RustBuild"), None)
+            .await
+            .expect("move after RustBuild");
+        assert_eq!(
+            verification_names(&home, "Proj"),
+            ["RustBuild", "CheckResult", "RustTest", "NpmLint"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn move_verification_check_result_must_be_last() {
+    through_both_paths("move-check-result", |home| async move {
+        seed_project(
+            &home,
+            "ByPosition",
+            &["NpmLint", "CheckResult", "RustBuild", "RustTest"],
+        )
+        .await;
+
+        let len = verification_names(&home, "ByPosition").len();
+        move_verification(
+            &home,
+            "ByPosition",
+            "CheckResult",
+            None,
+            None,
+            Some(len - 1),
+        )
+        .await
+        .expect("move to the last position");
+        assert_eq!(
+            verification_names(&home, "ByPosition"),
+            ["NpmLint", "RustBuild", "RustTest", "CheckResult"]
+        );
+
+        // The same destination expressed the other way round.
+        seed_project(
+            &home,
+            "ByAfter",
+            &["NpmLint", "CheckResult", "RustBuild", "RustTest"],
+        )
+        .await;
+
+        move_verification(
+            &home,
+            "ByAfter",
+            "CheckResult",
+            None,
+            Some("RustTest"),
+            None,
+        )
+        .await
+        .expect("move after the last entry");
+        assert_eq!(
+            verification_names(&home, "ByAfter"),
+            ["NpmLint", "RustBuild", "RustTest", "CheckResult"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn move_verification_requires_exactly_one_option() {
+    through_both_paths("move-exclusive", |home| async move {
+        seed_project(&home, "Proj", &["NpmLint", "CheckResult"]).await;
+
+        let none_given = move_verification(&home, "Proj", "CheckResult", None, None, None).await;
+        let two_given =
+            move_verification(&home, "Proj", "CheckResult", Some("NpmLint"), None, Some(0)).await;
+
+        for outcome in [none_given, two_given] {
+            let message = outcome.expect_err("must be rejected").to_string();
+            assert!(
+                message.contains("Specify exactly one of --before, --after, or --position"),
+                "unexpected error: {}",
+                message
+            );
+        }
+
+        assert_eq!(
+            verification_names(&home, "Proj"),
+            ["NpmLint", "CheckResult"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn move_verification_unknown_target_leaves_order_unchanged() {
+    through_both_paths("move-unknown", |home| async move {
+        seed_project(&home, "Proj", &["NpmLint", "RustBuild", "CheckResult"]).await;
+        let original = verification_names(&home, "Proj");
+
+        let err = move_verification(
+            &home,
+            "Proj",
+            "CheckResult",
+            None,
+            Some("NoSuchThing"),
+            None,
+        )
+        .await
+        .expect_err("an unknown --after target must fail");
+        assert!(err.to_string().contains("--after"), "error: {}", err);
+
+        let err = move_verification(&home, "Proj", "NoSuchThing", None, None, Some(0))
+            .await
+            .expect_err("moving a verification the project lacks must fail");
+        assert!(
+            err.to_string().contains("Verification not found"),
+            "error: {}",
+            err
+        );
+
+        assert_eq!(verification_names(&home, "Proj"), original);
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn add_verification_after_inserts_at_position() {
+    through_both_paths("add-after", |home| async move {
+        seed_project(&home, "Proj", &["NpmLint", "RustBuild", "CheckResult"]).await;
+
+        handle_project_command(
+            ProjectCommands::AddVerification {
+                name: "Proj".to_string(),
+                verification: "RustTest".to_string(),
+                required: true,
+                optional: false,
+                after: Some("RustBuild".to_string()),
+            },
+            &home,
+        )
+        .await
+        .expect("add after RustBuild");
+
+        // Inserting rather than appending is what keeps CheckResult last.
+        assert_eq!(
+            verification_names(&home, "Proj"),
+            ["NpmLint", "RustBuild", "RustTest", "CheckResult"]
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn add_verification_optional_sets_required_false() {
+    through_both_paths("add-optional", |home| async move {
+        seed_project(&home, "Proj", &[]).await;
+
+        handle_project_command(
+            ProjectCommands::AddVerification {
+                name: "Proj".to_string(),
+                verification: "NpmLint".to_string(),
+                required: false,
+                optional: true,
+                after: None,
+            },
+            &home,
+        )
+        .await
+        .expect("add optional verification");
+
+        // No flag at all still means required — only --optional changes that.
+        handle_project_command(
+            ProjectCommands::AddVerification {
+                name: "Proj".to_string(),
+                verification: "RustBuild".to_string(),
+                required: false,
+                optional: false,
+                after: None,
+            },
+            &home,
+        )
+        .await
+        .expect("add default verification");
+
+        let cfg = load_config(&get_config_path(&home)).expect("load config");
+        let proj = cfg
+            .projects
+            .iter()
+            .find(|p| p.name == "Proj")
+            .expect("project exists");
+        assert_eq!(proj.verifications[0].name, "NpmLint");
+        assert!(!proj.verifications[0].required);
+        assert_eq!(proj.verifications[1].name, "RustBuild");
+        assert!(proj.verifications[1].required);
+    })
+    .await;
+}
+
 
 #[tokio::test]
 async fn project_port_add_list_remove() {
