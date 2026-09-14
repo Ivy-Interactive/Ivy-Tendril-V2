@@ -828,6 +828,54 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
     }
 }
 
+fn check_job_truncation(tendril_home: &Path, job: &JobItem) -> bool {
+    // 1. Check event log files for truncation reasons
+    for suffix in [".eventwire.jsonl", ".raw.jsonl"] {
+        if let Some(log_path) = find_log_file(tendril_home, &job.id, suffix) {
+            if let Ok(file) = std::fs::File::open(&log_path) {
+                use std::io::{BufRead, BufReader};
+                let reader = BufReader::new(file);
+                for line in reader.lines().map_while(|l| l.ok()) {
+                    if crate::agents::truncation::is_event_line_truncated(&line) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Check output artifacts in the plan folder if available
+    if !job.plan_file.is_empty() {
+        let plan_folder = Path::new(&job.plan_file);
+        if plan_folder.is_dir() {
+            for sub in ["Revisions", "revisions"] {
+                let rev_dir = plan_folder.join(sub);
+                if rev_dir.is_dir() {
+                    if let Ok(entries) = std::fs::read_dir(&rev_dir) {
+                        let mut md_files: Vec<PathBuf> = entries
+                            .filter_map(|e| e.ok())
+                            .map(|e| e.path())
+                            .filter(|p| p.extension().and_then(|ext| ext.to_str()) == Some("md"))
+                            .collect();
+                        md_files.sort();
+                        if let Some(latest) = md_files.last() {
+                            if let Ok(content) = std::fs::read_to_string(latest) {
+                                if crate::agents::truncation::check_markdown_truncation(&content)
+                                    .is_some()
+                                {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    false
+}
+
 /// Writes a job's terminal state and moves its plan, claiming completion first so a simultaneous
 /// cancellation cannot be overwritten.
 #[allow(clippy::too_many_arguments)]
@@ -846,15 +894,31 @@ pub async fn finish_job(
         return;
     }
 
-    job.status = final_status;
+    let (effective_status, effective_msg) = if final_status == JobStatus::Completed {
+        if let Some(reason) = &job.reported_failure_reason {
+            (JobStatus::Failed, reason.clone())
+        } else if check_job_truncation(tendril_home, &job) {
+            (
+                JobStatus::Failed,
+                "Agent output truncated at maximum token limit or ended prematurely".to_string(),
+            )
+        } else {
+            (final_status, msg)
+        }
+    } else {
+        let failure_msg = match &job.reported_failure_reason {
+            Some(reason) if final_status == JobStatus::Failed => reason.clone(),
+            _ => msg,
+        };
+        (final_status, failure_msg)
+    };
+
+    job.status = effective_status;
     job.completed_at = Some(Utc::now());
     job.duration_seconds = duration_seconds;
-    job.status_message = Some(match &job.reported_failure_reason {
-        Some(reason) if final_status == JobStatus::Failed => reason.clone(),
-        _ => msg,
-    });
+    job.status_message = Some(effective_msg);
 
-    if final_status == JobStatus::Completed {
+    if effective_status == JobStatus::Completed {
         let plan_folder = PathBuf::from(&job.plan_file);
         if plan_folder.is_dir() {
             if let Ok((plan, _)) = read_plan_yaml(&plan_folder) {
