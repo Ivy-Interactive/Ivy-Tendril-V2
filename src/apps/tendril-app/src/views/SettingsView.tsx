@@ -3,6 +3,7 @@ import { setThemeGlobal, type Theme } from "@ivy-interactive/components/theme";
 import { bridge } from "../api/bridge";
 import type { ServiceInfo, TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
+import { NewsletterSignup } from "../components/NewsletterSignup";
 import { ServiceSettingsView } from "../components/service";
 import { VaultSettingsView } from "./VaultSettingsView";
 
@@ -262,6 +263,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
         </div>
 
         <ModelCatalogCard />
+
+        <div className="rounded-xl border border-border bg-card/60 p-6">
+          <div className="border-b border-border pb-4">
+            <h2 className="text-base font-semibold text-foreground">Newsletter</h2>
+            <p className="text-xs text-muted-foreground">
+              Subscribe to the Ivy & Tendril newsletter to receive updates, feature highlights, and
+              release notes.
+            </p>
+          </div>
+          <div className="mt-4">
+            <NewsletterSignup />
+          </div>
+        </div>
       </div>
 
       <div className="rounded-xl border border-border bg-card/60 p-6">
