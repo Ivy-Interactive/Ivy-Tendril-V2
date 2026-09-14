@@ -47,13 +47,23 @@ pub struct StartJobRequest {
     pub priority: Option<i32>,
 }
 
+/// `?force=true` is the operator's override of the duplicate gates, for the job types that carry no
+/// force flag of their own. Only `CreatePlan` has one in its args.
+#[derive(Debug, Deserialize)]
+pub struct StartJobQuery {
+    #[serde(default)]
+    pub force: bool,
+}
+
 pub async fn start_job(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<StartJobQuery>,
     Json(req): Json<StartJobRequest>,
 ) -> impl IntoResponse {
     let opts = StartOptions {
         wait_for_jobs: req.wait_for_jobs,
         priority: req.priority,
+        force: query.force || req.args.force_flag(),
     };
 
     match state.job_manager.start_job_with(req.args, opts).await {
@@ -64,6 +74,12 @@ pub async fn start_job(
             .into_response(),
         // A rejected conflict is not a malformed request: it names the job that holds the plan.
         Err(TendrilError::Conflict(msg)) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": msg, "status": "Conflict" })),
+        )
+            .into_response(),
+        // The same work already in flight, named by job id so the caller can watch it instead.
+        Err(TendrilError::DuplicateJob(msg)) => (
             StatusCode::CONFLICT,
             Json(json!({ "error": msg, "status": "Conflict" })),
         )
