@@ -562,3 +562,33 @@
   padding-left: 8px;
   border-left: 2px solid var(--aov-border-strong);
 }
+
+/* ─── Status events ──────────────────────────────────────────────────────── */
+.aov-status-event {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--aov-bg-elev);
+  border: 1px solid var(--aov-border);
+  font-family: var(--aov-mono);
+  font-size: 12px;
+  color: var(--aov-fg-muted);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.aov-status-event-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--aov-info);
+  flex-shrink: 0;
+}
+
+.aov-status-event-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
