@@ -1,3 +1,4 @@
+pub mod annotations;
 pub mod costs_csv;
 pub mod dependencies;
 pub mod diff_comments;
@@ -17,6 +18,7 @@ pub mod verification_gate;
 pub mod verifications;
 pub mod writer;
 
+pub use annotations::*;
 pub use dependencies::*;
 pub use diff_comments::*;
 pub use doctor::*;
