@@ -17,6 +17,7 @@ pub mod promptware;
 pub mod questions;
 pub mod skills;
 pub mod stack;
+pub mod telemetry;
 pub mod vault;
 pub mod version_check;
 pub mod watcher;
