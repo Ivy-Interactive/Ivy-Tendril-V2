@@ -77,7 +77,13 @@ pub async fn list_plans(
         }
     };
 
-    match get_plans_limited(&conn, status_filter, project_filter, text_filter, query.limit) {
+    match get_plans_limited(
+        &conn,
+        status_filter,
+        project_filter,
+        text_filter,
+        query.limit,
+    ) {
         Ok(plans) => Json(json!(plans)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,

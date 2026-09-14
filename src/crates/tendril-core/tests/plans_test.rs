@@ -467,7 +467,10 @@ fn test_get_plans_limited_honours_limit() {
 
     let limited_one = get_plans_limited(&conn, None, Some("LimitProj"), None, Some(1)).unwrap();
     assert_eq!(limited_one.len(), 1);
-    assert_eq!(limited_one[0].metadata.id, 3, "ORDER BY Id DESC then LIMIT 1 keeps the newest");
+    assert_eq!(
+        limited_one[0].metadata.id, 3,
+        "ORDER BY Id DESC then LIMIT 1 keeps the newest"
+    );
 
     let limited_zero = get_plans_limited(&conn, None, Some("LimitProj"), None, Some(0)).unwrap();
     assert!(limited_zero.is_empty());
