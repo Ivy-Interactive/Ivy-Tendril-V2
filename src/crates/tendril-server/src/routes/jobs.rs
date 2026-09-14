@@ -60,16 +60,45 @@ pub struct StartJobQuery {
     pub force: bool,
 }
 
+/// Longest idempotency key accepted, so an unbounded client string never reaches the column.
+const MAX_IDEMPOTENCY_KEY_LEN: usize = 200;
+
 pub async fn start_job(
     State(state): State<Arc<AppState>>,
     Query(query): Query<StartJobQuery>,
+    headers: HeaderMap,
     Json(req): Json<StartJobRequest>,
 ) -> impl IntoResponse {
+    // `Idempotency-Key` is the conventional spelling, so accept it as an alternative to the body
+    // field. The body wins if both are present: it is the more explicit of the two.
+    let idempotency_key = req.idempotency_key.or_else(|| {
+        headers
+            .get("Idempotency-Key")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    });
+    let idempotency_key = match idempotency_key {
+        Some(key) if key.trim().is_empty() => None,
+        Some(key) if key.len() > MAX_IDEMPOTENCY_KEY_LEN => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!(
+                        "idempotencyKey must be at most {} characters",
+                        MAX_IDEMPOTENCY_KEY_LEN
+                    )
+                })),
+            )
+                .into_response()
+        }
+        other => other,
+    };
+
     let opts = StartOptions {
         wait_for_jobs: req.wait_for_jobs,
         priority: req.priority,
         force: query.force || req.args.force_flag(),
-        idempotency_key: req.idempotency_key,
+        idempotency_key,
     };
 
     match state.job_manager.start_job_with(req.args, opts).await {

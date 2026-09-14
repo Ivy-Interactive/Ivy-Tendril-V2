@@ -90,6 +90,15 @@ pub struct JobStartArgs {
     )]
     pub force: bool,
 
+    /// Explicit only, never derived: a fresh key per invocation would be inert, since a key only
+    /// helps when a *retry* reuses it. A script that retries passes the same key; an interactive
+    /// `tendril job start` behaves exactly as it did before.
+    #[arg(
+        long,
+        help = "Idempotency key: resubmitting the same key returns the original job"
+    )]
+    pub idempotency_key: Option<String>,
+
     #[arg(long, help = "Source path (for CreatePlan)")]
     pub source_path: Option<String>,
 
@@ -289,6 +298,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                 no_delete_branch: args.no_delete_branch,
                 no_artifacts: args.no_artifacts,
                 draft: args.draft,
+                idempotency_key: args.idempotency_key,
             };
             let job_args = build_job_args(&request, &plans_dir).map_err(anyhow::Error::msg)?;
 
@@ -303,6 +313,9 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             }
             if let Some(priority) = args.priority {
                 map.insert("priority".to_string(), serde_json::json!(priority));
+            }
+            if let Some(key) = &request.idempotency_key {
+                map.insert("idempotencyKey".to_string(), serde_json::json!(key));
             }
 
             let client = reqwest::Client::new();
