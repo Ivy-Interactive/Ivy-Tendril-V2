@@ -33,4 +33,18 @@ describe("Tabs component", () => {
     const tab = screen.getByRole("tab", { name: "A" });
     expect(tab.getAttribute("aria-selected")).toBe("true");
   });
+
+  it("applies hover:bg-muted/50 and hover:text-foreground to tab triggers", () => {
+    render(
+      <Tabs defaultValue="a">
+        <TabsList>
+          <TabsTrigger value="a">A</TabsTrigger>
+        </TabsList>
+        <TabsContent value="a">Panel A</TabsContent>
+      </Tabs>,
+    );
+    const tab = screen.getByRole("tab", { name: "A" });
+    expect(tab.className).toContain("hover:bg-muted/50");
+    expect(tab.className).toContain("hover:text-foreground");
+  });
 });
