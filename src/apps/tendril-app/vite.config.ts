@@ -4,10 +4,11 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
 /** `vendor-mermaid` (3.1 MB) and `vendor-graphviz` (798 kB) are single lazy chunks, fetched only when
- * a `mermaid` / `dot` fence is actually rendered, so they legitimately exceed any sane threshold.
- * 1200 kB — the same limit `packages/components/.storybook/main.ts` uses — silences the chunks that
- * are merely large while still flagging a newly oversized *eager* chunk. The real guard on the
- * initial load is the byte budget in `tests/code-splitting.test.tsx`, not this warning. */
+ * a `mermaid` / `dot` fence is actually rendered, so their size is not an initial-load cost. 1200 kB
+ * — the same limit `packages/components/.storybook/main.ts` uses — silences the chunks that are
+ * merely large while still flagging a newly oversized *eager* chunk. `vendor-mermaid` still exceeds
+ * even 1200 kB and still warns, which is accepted: it is one lazy chunk behind a dynamic import. The
+ * real guard on the initial load is the byte budget in `tests/code-splitting.test.tsx`. */
 const CHUNK_SIZE_WARNING_LIMIT = 1200;
 
 /** Builds a matcher for a package's own modules. Both node_modules layouts have to match: the flat
@@ -18,38 +19,29 @@ const CHUNK_SIZE_WARNING_LIMIT = 1200;
 const inPackage = (packages: string) => new RegExp(`node_modules/(?:\\.pnpm/)?(?:${packages})[@/]`);
 
 /** Vite's `__vitePreload` virtual module (`\0vite/preload-helper.js`), imported by every chunk that
- * lazy-loads anything. It is not under `node_modules`, so the catch-all group below cannot claim it,
- * and an unclaimed shared module gets emitted inside one of its importers' chunks — it landed in
+ * lazy-loads anything. It is not under `node_modules`, so no package rule can claim it, and an
+ * unclaimed shared module gets emitted inside one of its importers' chunks — it landed in
  * `vendor-mermaid`, which gave the entry chunk a static `import{M}from"./vendor-mermaid-*.js"` and
  * made all 3 MB of Mermaid eager. Giving it a chunk of its own — a few hundred bytes that every
  * importer may safely pull in — is what actually keeps the diagram renderers off the initial load. */
 const PRELOAD_HELPER = /vite\/preload-helper/;
 
 /** `refractor/core` is the synchronous language registry `PlanDiffView` imports eagerly; the ~600
- * language packs under `lang/` are dynamically imported one at a time. A manual chunk is a single
- * loading unit, so these must not share one, or the eager registry import drags all 617 kB of
- * language data onto the initial load. */
+ * language packs under `lang/` are dynamically imported one at a time. A chunk is a single loading
+ * unit, so these must not share one, or the eager registry import drags all 617 kB of language data
+ * onto the initial load. Claimed above `SYNTAX` for the priority reason documented on `groups`. */
 const REFRACTOR_CORE = /node_modules\/refractor\/lib\/(?:core|prism-core)\./;
 const SYNTAX = inPackage("refractor|react-syntax-highlighter|lowlight|prismjs|highlight\\.js");
 const PDFJS = inPackage("pdfjs-dist");
 const DIFF = inPackage("react-diff-view|diff");
-/** Mermaid plus its diagram-only dependency tree, mirroring the `vendor-diagrams` group in
- * `packages/components/.storybook/main.ts`. Claiming them explicitly keeps them out of the `vendor`
- * catch-all, which is eager. */
-const MERMAID = inPackage(
-  "mermaid|cytoscape[^/]*|d3|d3-[^/]+|dagre[^/]*|khroma|dompurify|@braintree/sanitize-url" +
-    "|langium|chevrotain|vscode-languageserver-protocol|vscode-languageserver-types" +
-    "|vscode-jsonrpc|marked|fastdom",
-);
+/** Only `mermaid` itself. Its transitive tree (`@mermaid-js/parser`, `cytoscape`, `d3`, `langium`,
+ * `layout-base`, …) is deliberately not enumerated: the group absorbs a dependency no
+ * higher-priority group claims, so those packages end up in `vendor-mermaid` anyway, and naming them
+ * would be guesswork about which of them some eager module also uses. Same for `@hpcc-js` below. */
+const MERMAID = inPackage("mermaid");
 const GRAPHVIZ = inPackage("@hpcc-js");
 const KATEX = inPackage("katex");
 const REACT = inPackage("react|react-dom");
-/** Catch-all, mirroring the `{ name: "vendor", priority: 10, test: /node_modules[/\\]/ }` group in
- * `packages/components/.storybook/main.ts`. Defence in depth against the *next* unclaimed shared
- * dependency landing inside a heavyweight chunk the way the preload helper did — note it could not
- * have claimed the helper itself, which is virtual. Everything reachable only through a dynamic
- * `import()` must be claimed by a rule above this one, or it gets welded into this eager chunk. */
-const NODE_MODULES = /node_modules\//;
 
 export default defineConfig({
   fmt: {
@@ -82,21 +74,39 @@ export default defineConfig({
     chunkSizeWarningLimit: CHUNK_SIZE_WARNING_LIMIT,
     rollupOptions: {
       output: {
-        // First match wins. The order below is deliberate: the refractor registry is separated from
-        // the language packs before the shared syntax rule sees it, and every heavyweight that is
-        // only reachable through a dynamic import is claimed before the `vendor` catch-all.
-        manualChunks(id) {
-          const normalized = id.replace(/\\/g, "/");
-          if (PRELOAD_HELPER.test(normalized)) return "vendor-runtime";
-          if (REFRACTOR_CORE.test(normalized)) return "vendor-refractor-core";
-          if (SYNTAX.test(normalized)) return "vendor-syntax";
-          if (PDFJS.test(normalized)) return "vendor-pdfjs";
-          if (DIFF.test(normalized)) return "vendor-diff";
-          if (MERMAID.test(normalized)) return "vendor-mermaid";
-          if (GRAPHVIZ.test(normalized)) return "vendor-graphviz";
-          if (KATEX.test(normalized)) return "vendor-katex";
-          if (REACT.test(normalized)) return "vendor-react";
-          if (NODE_MODULES.test(normalized)) return "vendor";
+        /** Rolldown's `codeSplitting.groups`, the same form `packages/components/.storybook/main.ts`
+         * uses. The older `output.manualChunks` function does *not* work here: vite-plus folds it
+         * into one unprioritised group, so the `vendor-runtime` rule below never produces a chunk
+         * and the entry keeps its static edge into `vendor-mermaid` (measured: 4,290,781 B eager,
+         * versus 1,199,952 B with the groups form).
+         *
+         * `minSize: 0` keeps small deliberate chunks — `vendor-runtime` is ~1.2 kB — from being
+         * merged back into a larger neighbour, which is the whole point of splitting it out.
+         *
+         * **`priority` is load-bearing, and not only for overlapping tests.** A group also absorbs
+         * every dependency that no higher-priority group claims, and groups are resolved in
+         * descending priority order. So a package shared between eager code and a lazy heavyweight
+         * must be claimed *above* that heavyweight's group, or the heavyweight absorbs it first and
+         * the eager importer drags the whole chunk onto the initial load. `vendor-react` sat at
+         * priority 20 during development and `react` itself (17 kB) was absorbed into
+         * `vendor-syntax`, making all 610 kB of it eager — measured 1,802,771 B of eager JS. Moving
+         * `vendor-react` above `vendor-syntax` is what brings that to 1,199,952 B. Same reason
+         * `vendor-refractor-core` sits above `vendor-syntax`.
+         *
+         * The byte budget in `tests/code-splitting.test.tsx` is the regression guard on all of this. */
+        codeSplitting: {
+          minSize: 0,
+          groups: [
+            { name: "vendor-react", priority: 110, test: REACT },
+            { name: "vendor-runtime", priority: 100, test: PRELOAD_HELPER },
+            { name: "vendor-refractor-core", priority: 90, test: REFRACTOR_CORE },
+            { name: "vendor-syntax", priority: 80, test: SYNTAX },
+            { name: "vendor-pdfjs", priority: 70, test: PDFJS },
+            { name: "vendor-diff", priority: 60, test: DIFF },
+            { name: "vendor-mermaid", priority: 50, test: MERMAID },
+            { name: "vendor-graphviz", priority: 40, test: GRAPHVIZ },
+            { name: "vendor-katex", priority: 30, test: KATEX },
+          ],
         },
       },
     },
