@@ -123,9 +123,14 @@ impl AppState {
             ws_tx.clone(),
         );
 
-        let version_info = Arc::new(RwLock::new(tendril_core::version_check::load_cache(
-            &tendril_home,
-        )));
+        // `current_version` is always known, cache or not — only `latest_version`/`has_update`
+        // depend on a check ever having succeeded.
+        let mut seeded_version_info = tendril_core::version_check::load_cache(&tendril_home);
+        if seeded_version_info.current_version.is_empty() {
+            seeded_version_info.current_version =
+                tendril_core::version_check::current_version().to_string();
+        }
+        let version_info = Arc::new(RwLock::new(seeded_version_info));
 
         Self {
             tendril_home,

@@ -29,8 +29,8 @@ pub struct VersionInfo {
     pub latest_version: Option<String>,
     pub has_update: bool,
     pub last_checked: Option<DateTime<Utc>>,
-    /// Consecutive failed attempts. Drives the backoff ladder; never surfaced in the UI.
-    #[serde(default)]
+    /// Consecutive failed attempts. Drives the backoff ladder; never surfaced on the wire.
+    #[serde(default, skip_serializing)]
     pub consecutive_failures: u32,
 }
 
@@ -48,10 +48,7 @@ pub fn parse_semver(input: &str) -> Option<(u64, u64, u64)> {
         .strip_prefix(CLI_TAG_PREFIX)
         .or_else(|| input.strip_prefix('v'))
         .unwrap_or(input);
-    let core = stripped
-        .split(['-', '+'])
-        .next()
-        .unwrap_or(stripped);
+    let core = stripped.split(['-', '+']).next().unwrap_or(stripped);
 
     let mut parts = core.split('.');
     let major = parts.next()?.parse().ok()?;
@@ -135,8 +132,12 @@ pub fn save_cache(tendril_home: &Path, info: &VersionInfo) -> Result<()> {
 
     let json = serde_json::to_string_pretty(info).context("failed to serialize version cache")?;
     let tmp_path = path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, json)
-        .with_context(|| format!("failed to write temp version cache at {}", tmp_path.display()))?;
+    std::fs::write(&tmp_path, json).with_context(|| {
+        format!(
+            "failed to write temp version cache at {}",
+            tmp_path.display()
+        )
+    })?;
     std::fs::rename(&tmp_path, &path)
         .with_context(|| format!("failed to finalize version cache at {}", path.display()))?;
     Ok(())

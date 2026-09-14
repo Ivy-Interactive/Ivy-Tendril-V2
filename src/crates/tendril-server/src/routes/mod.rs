@@ -215,6 +215,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
         )
+        // Version check
+        .route("/api/version", get(health::get_version_handler))
+        .route(
+            "/api/version/check",
+            post(health::check_version_now_handler),
+        )
         // Pull requests
         .route("/api/pull-requests", get(pull_requests::list_pull_requests))
         .route(
