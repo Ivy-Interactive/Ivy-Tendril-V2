@@ -602,6 +602,23 @@ export class ChatStore {
         }
         break;
       }
+
+      case "chat.session_renamed": {
+        const sessionInList = this.state.sessions.find((s) => s.id === event.sessionId);
+        if (sessionInList) {
+          sessionInList.title = event.title;
+        }
+        if (this.state.activeSession && this.state.activeSession.id === event.sessionId) {
+          this.state.activeSession.title = event.title;
+        }
+        if (
+          sessionInList ||
+          (this.state.activeSession && this.state.activeSession.id === event.sessionId)
+        ) {
+          this.notify();
+        }
+        break;
+      }
     }
   }
 
