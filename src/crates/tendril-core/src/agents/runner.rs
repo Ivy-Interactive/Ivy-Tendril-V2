@@ -171,6 +171,7 @@ where
             let code = status
                 .map_err(|e| TendrilError::Agent(format!("Error waiting for agent child: {}", e)))?
                 .code();
+            let _ = tokio::task::spawn_blocking(move || kill_tree(pid, DEFAULT_KILL_GRACE)).await;
             AgentRunOutcome { exit_code: code, terminated: TerminationReason::Exited }
         }
         // `wait_for` rather than `changed`, so a cancel that arrived before this select is observed.

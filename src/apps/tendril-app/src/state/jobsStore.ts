@@ -1,4 +1,6 @@
 import { bridge } from "../api/bridge";
+import { subscribeJobEvents, type EventUnsubscribe } from "../api/events";
+import { serviceStore } from "./serviceStore";
 import type { Job, JobDetail, StartJobArgs, StartJobResponse } from "../types/api";
 
 export interface StreamEventItem {
@@ -130,6 +132,30 @@ class JobsStore {
     delete this.state.activeSessions[jobOrPlanId];
     this.processedEventIds.clear();
     this.notify();
+  }
+
+  /**
+   * Subscribe to structured job events via SSE and add them to stream sessions
+   */
+  public subscribeToJob(
+    jobId: string,
+    kinds?: string[],
+    baseUrl?: string,
+    token?: string,
+  ): EventUnsubscribe {
+    const info = serviceStore.getState().info;
+    const resolvedBaseUrl =
+      baseUrl ||
+      (info?.port
+        ? `${info.scheme || "http"}://${info.host || "127.0.0.1"}:${info.port}`
+        : "http://127.0.0.1:3000");
+
+    return subscribeJobEvents(resolvedBaseUrl, jobId, token, {
+      kinds,
+      onEvent: (event) => {
+        this.addStreamEvent(jobId, event);
+      },
+    });
   }
 }
 

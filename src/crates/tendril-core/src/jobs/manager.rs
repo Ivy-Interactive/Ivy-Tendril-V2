@@ -10,7 +10,8 @@ use crate::jobs::firmware_values::{
     build_firmware_values, execution_profile_override, resolve_project, resolve_working_directory,
 };
 use crate::jobs::logger::{
-    append_agent_log, append_to_eventwire, append_to_raw_log, find_log_file, write_prompt,
+    append_agent_log, append_to_eventwire, append_to_raw_log, find_log_file, read_eventwire_log,
+    read_raw_log, write_prompt,
 };
 use crate::jobs::process_tree::{kill_tree, DEFAULT_KILL_GRACE};
 use crate::models::{JobArgs, JobItem, JobStatus, PlanStatus, PlanYaml};
@@ -828,6 +829,57 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
     }
 }
 
+pub fn find_abandoned_background_tasks(lines: &[String]) -> Vec<String> {
+    let start_re = regex::Regex::new(
+        r"(?i)(?:was moved to the background|running in background with ID:?)\s*(?:\(?ID:?\s*)?(?<id>[a-z0-9_-]+)\)?"
+    ).unwrap();
+
+    let complete_re = regex::Regex::new(
+        r"(?i)(?:task|background task)\s*(?:with\s+ID:?\s*|ID:?\s*)?(?<id>[a-z0-9_-]+)\s*(?:has\s+)?(?:completed|finished|terminated|exited|killed|stopped)"
+    ).unwrap();
+
+    let complete_re2 = regex::Regex::new(
+        r"(?i)(?:completed|finished|terminated|exited|killed|stopped)\s*(?:background\s+)?task\s*(?:with\s+ID:?\s*|ID:?\s*)?(?<id>[a-z0-9_-]+)"
+    ).unwrap();
+
+    let complete_re3 = regex::Regex::new(
+        r#"(?i)(?:"task_id"|"taskId")\s*:\s*"(?<id>[a-z0-9_-]+)".*?"(?:completed|finished|stopped|terminated)""#
+    ).unwrap();
+
+    let mut started = std::collections::HashSet::new();
+    let mut completed = std::collections::HashSet::new();
+
+    for line in lines {
+        if let Some(caps) = start_re.captures(line) {
+            if let Some(id) = caps.name("id") {
+                started.insert(id.as_str().to_string());
+            }
+        }
+        if let Some(caps) = complete_re.captures(line) {
+            if let Some(id) = caps.name("id") {
+                completed.insert(id.as_str().to_string());
+            }
+        }
+        if let Some(caps) = complete_re2.captures(line) {
+            if let Some(id) = caps.name("id") {
+                completed.insert(id.as_str().to_string());
+            }
+        }
+        if let Some(caps) = complete_re3.captures(line) {
+            if let Some(id) = caps.name("id") {
+                completed.insert(id.as_str().to_string());
+            }
+        }
+    }
+
+    let mut abandoned: Vec<String> = started
+        .into_iter()
+        .filter(|id| !completed.contains(id))
+        .collect();
+    abandoned.sort();
+    abandoned
+}
+
 fn check_job_truncation(tendril_home: &Path, job: &JobItem) -> bool {
     // 1. Check event log files for truncation reasons
     for suffix in [".eventwire.jsonl", ".raw.jsonl"] {
@@ -895,6 +947,15 @@ pub async fn finish_job(
     }
 
     let (effective_status, effective_msg) = if final_status == JobStatus::Completed {
+        let mut all_lines = Vec::new();
+        if let Ok(Some(raw_lines)) = read_raw_log(tendril_home, &job.id, None) {
+            all_lines.extend(raw_lines);
+        }
+        if let Ok(Some(ev_lines)) = read_eventwire_log(tendril_home, &job.id, None) {
+            all_lines.extend(ev_lines);
+        }
+        let abandoned = find_abandoned_background_tasks(&all_lines);
+
         if let Some(reason) = &job.reported_failure_reason {
             (JobStatus::Failed, reason.clone())
         } else if check_job_truncation(tendril_home, &job) {
@@ -902,6 +963,13 @@ pub async fn finish_job(
                 JobStatus::Failed,
                 "Agent output truncated at maximum token limit or ended prematurely".to_string(),
             )
+        } else if !abandoned.is_empty() {
+            let reason = format!(
+                "Background task(s) still running when the turn ended ({}).",
+                abandoned.join(", ")
+            );
+            job.reported_failure_reason = Some(reason.clone());
+            (JobStatus::Failed, reason)
         } else {
             (final_status, msg)
         }
