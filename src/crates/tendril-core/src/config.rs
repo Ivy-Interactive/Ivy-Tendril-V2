@@ -121,8 +121,58 @@ pub struct TendrilSettings {
     )]
     pub model_cache_max_age_days: i64,
 
+    /// Assigned-issue auto-import. Tolerant of shape: see [`deserialize_inbox`].
+    #[serde(default, deserialize_with = "deserialize_inbox")]
+    pub inbox: InboxConfig,
+
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// Assigned-issue auto-import. `autoAcceptAssignedIssues` selects what a swept issue becomes: a
+/// `CreatePlan` job when true, a proposal awaiting a human when false. Either way the sweep still
+/// runs — the flag picks the landing mode, it does not disable the import.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InboxConfig {
+    #[serde(rename = "autoAcceptAssignedIssues", default)]
+    pub auto_accept_assigned_issues: bool,
+
+    /// Minutes between sweeps. `0` or negative disables the importer entirely, the way
+    /// `worktreeReaperInterval` disables the reaper.
+    #[serde(
+        rename = "checkIntervalMinutes",
+        default = "default_check_interval_minutes"
+    )]
+    pub check_interval_minutes: i32,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl Default for InboxConfig {
+    fn default() -> Self {
+        Self {
+            auto_accept_assigned_issues: false,
+            check_interval_minutes: default_check_interval_minutes(),
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+/// Reads `inbox`, degrading a non-mapping or unparseable body to defaults rather than failing the
+/// whole load, for the same reason as [`deserialize_coding_agents`]: a bad hand-edit to one section
+/// must not take Tendril down.
+fn deserialize_inbox<'de, D>(deserializer: D) -> std::result::Result<InboxConfig, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(deserializer)?;
+    Ok(match raw {
+        serde_json::Value::Object(_) => {
+            serde_json::from_value::<InboxConfig>(raw).unwrap_or_default()
+        }
+        _ => InboxConfig::default(),
+    })
 }
 
 /// What a single promptware asks for: the profile it runs under and the tool rules it contributes.
@@ -262,6 +312,9 @@ fn default_true() -> bool {
 fn default_theme() -> String {
     "default".to_string()
 }
+fn default_check_interval_minutes() -> i32 {
+    15
+}
 fn default_model_enrichment_interval_hours() -> i32 {
     crate::agents::model_cache::DEFAULT_ENRICHMENT_INTERVAL_HOURS
 }
@@ -336,6 +389,7 @@ impl Default for TendrilSettings {
             model_enrichment_interval_hours: default_model_enrichment_interval_hours(),
             model_cache_warn_age_days: default_model_cache_warn_age_days(),
             model_cache_max_age_days: default_model_cache_max_age_days(),
+            inbox: InboxConfig::default(),
             extra: BTreeMap::new(),
         }
     }
@@ -824,6 +878,12 @@ pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
 
     let content = std::fs::read_to_string(&master_file).ok()?;
     serde_json::from_str(&content).ok()
+}
+
+/// True when this process is the master, i.e. `.master` names our pid. The counterpart to
+/// [`MasterGuard::acquire`] for code that needs the answer without taking the guard.
+pub fn is_master(tendril_home: &Path) -> bool {
+    read_master(tendril_home).is_some_and(|m| m.pid == std::process::id())
 }
 
 pub fn write_master_info(tendril_home: &Path, info: &MasterInfo) -> Result<()> {

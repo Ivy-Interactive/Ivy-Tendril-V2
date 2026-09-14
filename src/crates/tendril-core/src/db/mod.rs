@@ -1,9 +1,11 @@
 pub mod costs;
+pub mod inbox;
 pub mod jobs;
 pub mod migrations;
 pub mod plans;
 
 pub use costs::*;
+pub use inbox::*;
 pub use jobs::*;
 pub use migrations::*;
 pub use plans::*;
