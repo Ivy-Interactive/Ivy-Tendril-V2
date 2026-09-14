@@ -120,6 +120,18 @@ The repository includes pre-configured launch and build tasks:
 3. Select **Run Extension** and press **F5**. This compiles the extension in watch mode and launches a new Extension Development Host window.
 4. To run tests interactively, select **Extension Tests** and press **F5**.
 
+### Automated Releases
+
+The extension is published via automated GitHub Actions workflows:
+
+- **Dedicated Extension Release (`.github/workflows/release-extension.yml`)**:
+  - Triggered automatically on pushing a version tag matching `extension-v*` (recommended) or `vscode-v*` (legacy).
+  - Can be manually triggered via `workflow_dispatch` with an optional `version` override and a `test-mode` boolean (defaults to `true` for dry-run verification).
+  - Validates the extension, executes `pnpm package:extension`, generates SHA256 checksums, attaches the VSIX to GitHub Releases, and publishes to the Visual Studio Marketplace and Open VSX Registry when secrets are configured.
+
+- **Unified Full Release (`.github/workflows/release-full.yml`)**:
+  - Packaging the extension is also integrated into the full monorepo release workflow triggered by `v*` tags.
+
 ---
 
 ## License
