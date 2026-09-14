@@ -14,12 +14,37 @@ pub use commands::state::*;
 pub use commands::*;
 
 pub fn run() {
+    use tauri::Manager;
+
     let ui_store = commands::state::init_ui_state_store();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(ui_store)
+        .setup(|app| {
+            // The daemon origin comes from `.master`, which may not exist yet: the app can easily
+            // start before the daemon. The bridge spawns either way and re-reads `.master` on each
+            // attempt, so an absent daemon costs nothing but a retry.
+            //
+            // The bearer secret is read here, natively, and stays inside the bridge — the same rule
+            // `get_client_from_master` follows, and the reason the stream is bridged at all instead
+            // of being consumed by the webview.
+            let (base_url, secret) = match service::MasterDiscovery::new().read_master() {
+                Ok(master) => (
+                    format!("{}://{}:{}", master.scheme, master.host, master.port),
+                    Some(master.secret),
+                ),
+                Err(e) => {
+                    tracing::info!("No daemon metadata yet ({e}); the change stream will retry");
+                    (String::new(), None)
+                }
+            };
+
+            let bridge = service::ChangeBridge::new(app.handle().clone(), base_url, secret);
+            app.manage(bridge);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_daemon_status,
             get_tendril_home,
