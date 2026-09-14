@@ -25,12 +25,50 @@ import {
   X,
   ArrowDown,
   HelpCircle,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 
 interface ChatViewProps {
   onCreatePlan?: (initialDescription: string) => void;
 }
+
+const CHAT_SIDEBAR_WIDTH_STORAGE_KEY = "tendril:chat:sidebar_width";
+const DEFAULT_CHAT_SIDEBAR_WIDTH = 256;
+const MIN_CHAT_SIDEBAR_WIDTH = 180;
+const MAX_CHAT_SIDEBAR_WIDTH = 480;
+
+function readStoredChatSidebarWidth(): number {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      const raw = storage.getItem(CHAT_SIDEBAR_WIDTH_STORAGE_KEY);
+      if (raw != null) {
+        const parsed = Number.parseInt(raw, 10);
+        if (!Number.isNaN(parsed)) {
+          return Math.min(Math.max(parsed, MIN_CHAT_SIDEBAR_WIDTH), MAX_CHAT_SIDEBAR_WIDTH);
+        }
+      }
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
+  return DEFAULT_CHAT_SIDEBAR_WIDTH;
+}
+
+const SAMPLE_PROMPTS = [
+  { label: "Add a new project", prompt: "Add a new project to my tendril" },
+  { label: "Edit verifications", prompt: "Edit verifications for my projects" },
+  { label: "Create a team vault", prompt: "Create a shared team vault" },
+  { label: "What should I work on next?", prompt: "What should I work on next?" },
+  { label: "What shipped this week?", prompt: "What shipped this week?" },
+];
 
 function formatRelativeTime(dateString: string): string {
   if (!dateString) return "";
@@ -58,12 +96,58 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [sidebarWidth, setSidebarWidth] = useState<number>(readStoredChatSidebarWidth);
+  const isResizingSidebarRef = useRef(false);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+
+  const handleResizerPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    isResizingSidebarRef.current = true;
+    setIsResizingSidebar(true);
+  }, []);
+
+  const handleResizerPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isResizingSidebarRef.current) return;
+    const newWidth = Math.min(Math.max(e.clientX, MIN_CHAT_SIDEBAR_WIDTH), MAX_CHAT_SIDEBAR_WIDTH);
+    setSidebarWidth(newWidth);
+    try {
+      localStorage.setItem(CHAT_SIDEBAR_WIDTH_STORAGE_KEY, String(newWidth));
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const handleResizerPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isResizingSidebarRef.current) return;
+    isResizingSidebarRef.current = false;
+    setIsResizingSidebar(false);
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const handleResizerDoubleClick = useCallback(() => {
+    setSidebarWidth(DEFAULT_CHAT_SIDEBAR_WIDTH);
+    try {
+      localStorage.setItem(CHAT_SIDEBAR_WIDTH_STORAGE_KEY, String(DEFAULT_CHAT_SIDEBAR_WIDTH));
+    } catch {
+      // Ignore
+    }
+  }, []);
+
   useEffect(() => {
     const unsub = chatStore.subscribe(() => {
       setStoreState({ ...chatStore.getState() });
     });
     chatStore.init().catch(() => {});
-    return () => unsub();
+    return () => {
+      unsub();
+      void chatStore.pruneEmptySessions();
+    };
   }, []);
 
   const { sessions, activeSessionId, activeSession, queuedItems, isGenerating, error } = storeState;
@@ -220,7 +304,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    const isModEnter = (e.ctrlKey || e.metaKey) && e.key === "Enter";
+    const isPlainEnter = e.key === "Enter" && !e.shiftKey;
+    if (isModEnter || isPlainEnter) {
       e.preventDefault();
       void handleSendMessage();
     }
@@ -283,10 +369,107 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     [scrollToIndex],
   );
 
+  const pinnedSessionsList = sessions.filter((s) => s.isPinned);
+  const unpinnedSessionsList = sessions.filter((s) => !s.isPinned);
+
+  const renderSessionItem = (session: ChatSession) => {
+    const isActive = session.id === activeSessionId;
+    const isEditing = session.id === editingSessionId;
+
+    return (
+      <div
+        key={session.id}
+        onClick={() => chatStore.selectSession(session.id)}
+        className={`group flex items-center justify-between rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors ${
+          isActive
+            ? "bg-slate-800 text-white font-medium shadow-sm"
+            : "text-slate-300 hover:bg-slate-800/50 hover:text-slate-100"
+        }`}
+      >
+        <div className="flex-1 min-w-0 pr-2">
+          {isEditing ? (
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="text"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void handleSaveRename(session.id);
+                  if (e.key === "Escape") setEditingSessionId(null);
+                }}
+                autoFocus
+                className="w-full rounded bg-slate-950 px-1.5 py-0.5 text-xs text-white border border-slate-700 focus:outline-none focus:border-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={(e) => handleSaveRename(session.id, e)}
+                className="text-slate-400 hover:text-emerald-400 p-0.5"
+                title="Save"
+              >
+                <Check className="size-3.5" />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-1.5 min-w-0">
+                {session.isPinned && (
+                  <Pin className="size-3 text-amber-400 shrink-0" data-testid="pin-indicator" />
+                )}
+                <span className="truncate text-xs font-medium">{session.title}</span>
+              </div>
+              <div className="text-[10px] text-slate-500">
+                {formatRelativeTime(session.updatedAt || session.createdAt)}
+              </div>
+            </>
+          )}
+        </div>
+
+        {!isEditing && (
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                chatStore.togglePinSession(session.id);
+              }}
+              className={`rounded p-1 ${
+                session.isPinned
+                  ? "text-amber-400 hover:bg-slate-700 hover:text-amber-300"
+                  : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+              }`}
+              title={session.isPinned ? "Unpin chat" : "Pin chat"}
+            >
+              {session.isPinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
+            </button>
+            <button
+              type="button"
+              onClick={(e) => handleStartRename(session, e)}
+              className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+              title="Rename"
+            >
+              <Edit2 className="size-3" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => handleDeleteSession(session.id, e)}
+              className="rounded p-1 text-slate-400 hover:bg-rose-900/50 hover:text-rose-300"
+              title="Delete"
+            >
+              <Trash2 className="size-3" />
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full w-full overflow-hidden bg-slate-950 text-slate-100">
       {/* Session Sidebar */}
-      <aside className="flex w-64 flex-col border-r border-slate-800 bg-slate-900/60">
+      <aside
+        style={{ width: `${sidebarWidth}px` }}
+        className="relative flex flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900/60"
+      >
         <div className="p-3 border-b border-slate-800">
           <button
             type="button"
@@ -303,79 +486,41 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
             <div className="p-4 text-center text-xs text-slate-400">
               No chat sessions yet. Click "New Chat" to start.
             </div>
-          ) : (
-            sessions.map((session) => {
-              const isActive = session.id === activeSessionId;
-              const isEditing = session.id === editingSessionId;
-
-              return (
-                <div
-                  key={session.id}
-                  onClick={() => chatStore.selectSession(session.id)}
-                  className={`group flex items-center justify-between rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors ${
-                    isActive
-                      ? "bg-slate-800 text-white font-medium shadow-sm"
-                      : "text-slate-300 hover:bg-slate-800/50 hover:text-slate-100"
-                  }`}
-                >
-                  <div className="flex-1 min-w-0 pr-2">
-                    {isEditing ? (
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") void handleSaveRename(session.id);
-                            if (e.key === "Escape") setEditingSessionId(null);
-                          }}
-                          autoFocus
-                          className="w-full rounded bg-slate-950 px-1.5 py-0.5 text-xs text-white border border-slate-700 focus:outline-none focus:border-emerald-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => handleSaveRename(session.id, e)}
-                          className="text-slate-400 hover:text-emerald-400 p-0.5"
-                          title="Save"
-                        >
-                          <Check className="size-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="truncate text-xs font-medium">{session.title}</div>
-                        <div className="text-[10px] text-slate-500">
-                          {formatRelativeTime(session.updatedAt || session.createdAt)}
-                        </div>
-                      </>
-                    )}
+          ) : pinnedSessionsList.length > 0 ? (
+            <>
+              <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                Pinned
+              </div>
+              {pinnedSessionsList.map((session) => renderSessionItem(session))}
+              {unpinnedSessionsList.length > 0 && (
+                <>
+                  <div className="pt-2 px-2.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Recent
                   </div>
-
-                  {!isEditing && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        type="button"
-                        onClick={(e) => handleStartRename(session, e)}
-                        className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
-                        title="Rename"
-                      >
-                        <Edit2 className="size-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => handleDeleteSession(session.id, e)}
-                        className="rounded p-1 text-slate-400 hover:bg-rose-900/50 hover:text-rose-300"
-                        title="Delete"
-                      >
-                        <Trash2 className="size-3" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })
+                  {unpinnedSessionsList.map((session) => renderSessionItem(session))}
+                </>
+              )}
+            </>
+          ) : (
+            sessions.map((session) => renderSessionItem(session))
           )}
         </div>
+
+        {/* Resizer Handle */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          tabIndex={0}
+          onPointerDown={handleResizerPointerDown}
+          onPointerMove={handleResizerPointerMove}
+          onPointerUp={handleResizerPointerUp}
+          onPointerCancel={handleResizerPointerUp}
+          onDoubleClick={handleResizerDoubleClick}
+          className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-emerald-500/50 transition-colors z-10 ${
+            isResizingSidebar ? "bg-emerald-500 w-2" : "bg-transparent"
+          }`}
+          title="Drag to resize chat sidebar, double-click to reset"
+        />
       </aside>
 
       {/* Main Chat Thread Area */}
@@ -431,14 +576,37 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
         <div className="flex-1 overflow-hidden relative">
           {!activeSession || activeSession.messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center p-6 text-slate-400">
-              <div className="max-w-md space-y-2">
-                <h3 className="text-lg font-semibold text-slate-200">
-                  Tendril Conversational Agent
-                </h3>
-                <p className="text-sm text-slate-400">
-                  Ask questions, research codebase architecture, or plan new features. Interactive
-                  question blocks and live streaming will appear here.
-                </p>
+              <div className="max-w-md space-y-4">
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold text-slate-200">
+                    Tendril Conversational Agent
+                  </h3>
+                  <p className="text-sm text-slate-400">
+                    Ask questions, research codebase architecture, or plan new features. Interactive
+                    question blocks and live streaming will appear here.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <div className="text-xs font-medium text-slate-500 mb-2.5 uppercase tracking-wider">
+                    Suggested Prompts
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-2" data-testid="sample-prompts">
+                    {SAMPLE_PROMPTS.map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => {
+                          setInputPrompt(item.prompt);
+                          textareaRef.current?.focus();
+                        }}
+                        className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-300 hover:border-emerald-600 hover:bg-slate-800 hover:text-white transition-colors shadow-xs"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           ) : (
@@ -671,7 +839,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                     setInputPrompt(e.target.value)
                   }
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask Tendril or discuss plans (Enter to send, Shift+Enter for newline)..."
+                  placeholder="Ask Tendril or discuss plans (Enter or ⌘/Ctrl+Enter to send, Shift+Enter for newline)..."
                   disabled={isGenerating}
                   className="w-full min-h-[48px] max-h-32 bg-slate-950 text-slate-100 border-slate-800 focus-visible:ring-emerald-500"
                 />

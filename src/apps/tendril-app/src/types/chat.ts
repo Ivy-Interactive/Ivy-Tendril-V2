@@ -33,6 +33,8 @@ export interface ChatSession {
   messages: ChatMessage[];
   effort?: string;
   spawnedJobIds: string[];
+  isPinned?: boolean;
+  pinnedAt?: string;
 }
 
 export interface ChatMessageAddedEvent {
