@@ -120,6 +120,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             delete(projects::remove_project_verification),
         )
         .route(
+            "/api/projects/:name/review-actions",
+            post(projects::add_project_review_action),
+        )
+        .route(
+            "/api/projects/:name/review-actions/:action",
+            delete(projects::remove_project_review_action),
+        )
+        .route(
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
         )
