@@ -42,3 +42,25 @@ flate2 = "1.0"
 tar = "0.4"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
+# Password hashing for `tendril hash-password` and the server's Basic-auth verification path. The
+# parameters are pinned in those two places rather than here, because they must match the hashes the
+# original Tendril already wrote into users' config.yaml.
+argon2 = "0.5"
+# Self-signed localhost certificates for `tendril generate-certs`.
+rcgen = "0.13"
+# TLS listener for `tendril serve --tls-cert/--tls-key`. Plain `axum::serve` has no TLS.
+#
+# `tls-rustls-no-provider` rather than `tls-rustls`: the latter turns on `rustls/aws-lc-rs`, which
+# both drags in the `aws-lc-sys` C build and leaves rustls with two enabled providers and therefore
+# no unambiguous default — `RustlsConfig::from_pem_file` then panics at runtime. `ring` is already
+# enabled workspace-wide (reqwest's `rustls-tls` in tendril-app), so the server installs the ring
+# provider explicitly instead.
+axum-server = { version = "0.7", default-features = false, features = [
+    "tls-rustls-no-provider",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+    "logging",
+] }
