@@ -2,6 +2,7 @@ pub mod auth;
 pub mod master;
 pub mod routes;
 pub mod state;
+mod webviewer;
 
 pub use auth::*;
 pub use master::*;

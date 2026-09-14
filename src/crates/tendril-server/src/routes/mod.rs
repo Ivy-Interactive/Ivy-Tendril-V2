@@ -263,6 +263,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
+        // WebViewer proxy. Outside /api and outside auth_middleware on purpose: an <iframe src>
+        // navigation carries no Authorization header, and neither do the subresource requests the
+        // service worker reissues from inside the proxied page. A loopback-only target allow-list is
+        // what keeps these from being an open relay — see crate::webviewer.
+        .merge(crate::webviewer::routes())
         .merge(protected)
         .layer(cors)
         .with_state(state)
