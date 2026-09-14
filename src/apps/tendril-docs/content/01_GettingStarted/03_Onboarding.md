@@ -92,7 +92,7 @@ claude mcp list   # verify they are reachable
 > Use the global or user scope, not project scope, so servers survive the ephemeral worktree the agent
 > runs in. Store any tokens they need as environment variables on the machine.
 
-Make sure you are actually *authenticated* to each MCP server, not merely that it is registered. The
+Make sure you are actually _authenticated_ to each MCP server, not merely that it is registered. The
 reliable check is end to end: execute a small plan from Tendril and confirm every server comes up
 authenticated rather than prompting for a login or returning auth errors. Some servers only complete
 their OAuth flow on first use, so verifying through Tendril catches an unauthenticated server before it

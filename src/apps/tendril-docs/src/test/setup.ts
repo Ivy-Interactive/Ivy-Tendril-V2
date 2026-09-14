@@ -14,20 +14,15 @@ if (!("ResizeObserver" in globalThis)) {
 }
 
 // jsdom implements neither scrollTo nor scrollIntoView. Anchor navigation and the "On this page" rail
-// both call them.
+// both call them. These are assigned unconditionally: jsdom *defines* window.scrollTo, it just throws
+// "Not implemented" when called, so a presence check leaves the noise in place.
 if (typeof Element !== "undefined") {
-  if (!Element.prototype.scrollTo) {
-    Element.prototype.scrollTo = vi.fn();
-  }
-  if (!Element.prototype.scrollIntoView) {
-    Element.prototype.scrollIntoView = vi.fn();
-  }
+  Element.prototype.scrollTo = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
 }
 
 if (typeof window !== "undefined") {
-  if (!window.scrollTo) {
-    window.scrollTo = vi.fn();
-  }
+  window.scrollTo = vi.fn();
 
   // Radix's dialog (behind CommandDialog) reads matchMedia; ThemeProvider reads it to resolve the
   // "system" theme. jsdom provides neither.

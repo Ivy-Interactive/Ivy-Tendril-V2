@@ -20,18 +20,18 @@ searchHints:
 
 A plan is always in exactly one of ten states:
 
-| State | Description |
-| --- | --- |
-| **Draft** | Initial state. The plan exists but execution has not started. |
-| **Creating** | `CreatePlan` or `ExpandPlan` is drafting the technical detail. |
-| **Updating** | `UpdatePlan` is refining an existing, already-drafted plan. |
-| **Executing** | `ExecutePlan` is implementing the plan in a worktree. |
-| **Review** | Execution finished and the required verifications passed. Ready for a human. |
-| **Completed** | Reviewed, approved, and shipped — normally as a pull request. |
-| **Failed** | Verifications kept failing, or an interrupted execution could not be recovered. |
-| **Blocked** | The plan cannot proceed without missing context, credentials or a decision from you. |
-| **Skipped** | Abandoned, discarded or judged unnecessary. |
-| **Icebox** | Shelved for later. |
+| State         | Description                                                                          |
+| ------------- | ------------------------------------------------------------------------------------ |
+| **Draft**     | Initial state. The plan exists but execution has not started.                        |
+| **Creating**  | `CreatePlan` or `ExpandPlan` is drafting the technical detail.                       |
+| **Updating**  | `UpdatePlan` is refining an existing, already-drafted plan.                          |
+| **Executing** | `ExecutePlan` is implementing the plan in a worktree.                                |
+| **Review**    | Execution finished and the required verifications passed. Ready for a human.         |
+| **Completed** | Reviewed, approved, and shipped — normally as a pull request.                        |
+| **Failed**    | Verifications kept failing, or an interrupted execution could not be recovered.      |
+| **Blocked**   | The plan cannot proceed without missing context, credentials or a decision from you. |
+| **Skipped**   | Abandoned, discarded or judged unnecessary.                                          |
+| **Icebox**    | Shelved for later.                                                                   |
 
 The normal path is short:
 
@@ -60,7 +60,7 @@ digraph plan_lifecycle {
 ```
 
 > [!NOTE]
-> **Stopping or deleting a running job** returns the plan to the state it was in *before* the job
+> **Stopping or deleting a running job** returns the plan to the state it was in _before_ the job
 > started — a stopped `ExecutePlan` goes back to `Draft`, a stopped `RetryPlan` back to `Review`. A
 > stopped or failed run keeps its work product, so you can inspect or resume the worktree. Deleting an
 > `ExecutePlan` job is the exception: it discards the worktrees and artifacts and resets the plan to a

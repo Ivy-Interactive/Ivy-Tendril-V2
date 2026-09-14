@@ -14,7 +14,7 @@ searchHints:
 # Getting Started
 
 Six pages, in reading order. The first two get Tendril running; the next two get it running
-*unattended* against your own repository, which is where the value is.
+_unattended_ against your own repository, which is where the value is.
 
 - [Introduction](01_Introduction.md) — what Tendril is, how it is put together, and why it works the
   way it does.

@@ -29,13 +29,13 @@ emits a static shell for its URL.
 
 ### Rules
 
-| Rule | Detail |
-| --- | --- |
-| Numbering | Every section folder and page file carries a two-digit `NN_` prefix. It drives navigation order only and is stripped from the URL. |
-| Section index | Every section folder has an `_Index.md` with a real `# Heading` and a body listing its pages. A section folder without one is a build error, not a warning. |
-| Nesting | Section folders may nest. A nested folder is a sub-section and needs its own `_Index.md`. |
-| Slugs | Folder or file name minus `NN_`, lowercased, every run of non-alphanumerics collapsed to `-`. `01_GettingStarted/02_Installation.md` → `/docs/gettingstarted/installation`; `02_Concepts/_Index.md` → `/docs/concepts`. |
-| No markdown directly in `content/` | Every page belongs to a section. A stray `content/foo.md` is a build error. |
+| Rule                               | Detail                                                                                                                                                                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Numbering                          | Every section folder and page file carries a two-digit `NN_` prefix. It drives navigation order only and is stripped from the URL.                                                                                      |
+| Section index                      | Every section folder has an `_Index.md` with a real `# Heading` and a body listing its pages. A section folder without one is a build error, not a warning.                                                             |
+| Nesting                            | Section folders may nest. A nested folder is a sub-section and needs its own `_Index.md`.                                                                                                                               |
+| Slugs                              | Folder or file name minus `NN_`, lowercased, every run of non-alphanumerics collapsed to `-`. `01_GettingStarted/02_Installation.md` → `/docs/gettingstarted/installation`; `02_Concepts/_Index.md` → `/docs/concepts`. |
+| No markdown directly in `content/` | Every page belongs to a section. A stray `content/foo.md` is a build error.                                                                                                                                             |
 
 ### Frontmatter
 

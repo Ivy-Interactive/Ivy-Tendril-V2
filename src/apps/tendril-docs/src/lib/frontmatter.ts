@@ -81,7 +81,9 @@ export function parseFrontmatter(content: string, contextPath?: string): ParsedF
     searchHints: asStringArray(raw.searchHints),
     groupExpanded: typeof raw.groupExpanded === "boolean" ? raw.groupExpanded : undefined,
     extra: Object.fromEntries(
-      Object.entries(raw).filter(([key]) => !KNOWN_KEYS.includes(key as (typeof KNOWN_KEYS)[number])),
+      Object.entries(raw).filter(
+        ([key]) => !KNOWN_KEYS.includes(key as (typeof KNOWN_KEYS)[number]),
+      ),
     ),
   };
 

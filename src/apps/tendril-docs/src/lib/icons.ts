@@ -82,8 +82,14 @@ export const DOC_ICONS: Record<string, LucideIcon> = {
 /** Shown when a page names no icon, or names one outside {@link DOC_ICONS}. */
 export const FALLBACK_ICON: LucideIcon = FileText;
 
-/** True when `name` is a whitelisted icon. */
-export function isKnownIcon(name: string | undefined): name is string {
+/**
+ * True when `name` is a whitelisted icon.
+ *
+ * A plain boolean rather than a type predicate: `name is string` would narrow the *false* branch of a
+ * `string` argument to `never`, which is how a legitimate `${name}` in the warning below ends up
+ * reported as an invalid template expression.
+ */
+export function isKnownIcon(name: string | undefined): boolean {
   return typeof name === "string" && name in DOC_ICONS;
 }
 

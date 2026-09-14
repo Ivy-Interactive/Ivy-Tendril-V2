@@ -22,16 +22,16 @@ against one plan. Jobs are how a plan moves, and they are the thing you watch wh
 
 ## Job statuses
 
-| Status | Meaning |
-| --- | --- |
-| **Pending** | Created, not yet admitted to the queue. |
-| **Queued** | Waiting for a concurrency slot. |
-| **Running** | The agent is working. |
-| **Completed** | Finished successfully. |
-| **Failed** | The agent errored, or the work did not pass. |
-| **Timeout** | Exceeded its time limit and was terminated. |
-| **Stopped** | Stopped by you. |
-| **Blocked** | Cannot proceed — a dependency, a missing credential or a decision is needed. |
+| Status        | Meaning                                                                      |
+| ------------- | ---------------------------------------------------------------------------- |
+| **Pending**   | Created, not yet admitted to the queue.                                      |
+| **Queued**    | Waiting for a concurrency slot.                                              |
+| **Running**   | The agent is working.                                                        |
+| **Completed** | Finished successfully.                                                       |
+| **Failed**    | The agent errored, or the work did not pass.                                 |
+| **Timeout**   | Exceeded its time limit and was terminated.                                  |
+| **Stopped**   | Stopped by you.                                                              |
+| **Blocked**   | Cannot proceed — a dependency, a missing credential or a decision is needed. |
 
 ## The execution loop
 
@@ -51,16 +51,16 @@ A verification is a named check recorded in the plan's `plan.yaml`. Each one get
 `Fail` or `Skipped` — plus a written report in the plan's `Verification/` folder. Which checks a plan
 carries depends on what it touches; in this repository the names are:
 
-| Verification | Checks |
-| --- | --- |
-| **NpmBuild** | The pnpm workspace builds. |
-| **NpmLint** | Lint and formatting pass on the TypeScript packages. |
-| **NpmTest** | The Vitest suites pass. |
-| **RustBuild** | The Cargo workspace compiles. |
-| **RustClippy** | Clippy is clean. |
-| **RustFormat** | `cargo fmt` reports no changes. |
-| **RustTest** | The Rust tests pass. |
-| **Screenshots** | UI evidence was captured for a visible change. |
+| Verification    | Checks                                                              |
+| --------------- | ------------------------------------------------------------------- |
+| **NpmBuild**    | The pnpm workspace builds.                                          |
+| **NpmLint**     | Lint and formatting pass on the TypeScript packages.                |
+| **NpmTest**     | The Vitest suites pass.                                             |
+| **RustBuild**   | The Cargo workspace compiles.                                       |
+| **RustClippy**  | Clippy is clean.                                                    |
+| **RustFormat**  | `cargo fmt` reports no changes.                                     |
+| **RustTest**    | The Rust tests pass.                                                |
+| **Screenshots** | UI evidence was captured for a visible change.                      |
 | **CheckResult** | The agent's own end-to-end confirmation that the plan's tests hold. |
 
 A verification that does not apply to a plan is marked `Skipped` rather than quietly dropped, so a

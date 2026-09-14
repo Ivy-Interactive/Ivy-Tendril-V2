@@ -33,19 +33,19 @@ tendril promptware deploy
 
 ## Core jobs
 
-| Promptware | Role |
-| --- | --- |
-| **CreatePlan** | Draft a plan from a short brief, an inbox item or a GitHub issue. |
-| **ExpandPlan** | Flesh out a thin plan into something implementable. |
-| **UpdatePlan** | Revise an existing plan from review feedback and annotations. |
-| **SplitPlan** | Break a large plan into smaller sub-plans. |
-| **ExecutePlan** | Create the worktree, implement the plan, run the verifications. |
-| **RetryPlan** | Take another pass at a plan that failed, with the failure as context. |
-| **CreatePr** | Open the pull request from the worktree diff, using `gh`. |
-| **CreateIssue** | Push a plan failure or state to GitHub for triage. |
-| **AddProject** | Register a new project and its repositories. |
-| **SetupProject** | Work out and record how a project builds, runs and verifies. |
-| **SyncRepo** | Bring a project's repositories up to date. |
+| Promptware       | Role                                                                  |
+| ---------------- | --------------------------------------------------------------------- |
+| **CreatePlan**   | Draft a plan from a short brief, an inbox item or a GitHub issue.     |
+| **ExpandPlan**   | Flesh out a thin plan into something implementable.                   |
+| **UpdatePlan**   | Revise an existing plan from review feedback and annotations.         |
+| **SplitPlan**    | Break a large plan into smaller sub-plans.                            |
+| **ExecutePlan**  | Create the worktree, implement the plan, run the verifications.       |
+| **RetryPlan**    | Take another pass at a plan that failed, with the failure as context. |
+| **CreatePr**     | Open the pull request from the worktree diff, using `gh`.             |
+| **CreateIssue**  | Push a plan failure or state to GitHub for triage.                    |
+| **AddProject**   | Register a new project and its repositories.                          |
+| **SetupProject** | Work out and record how a project builds, runs and verifies.          |
+| **SyncRepo**     | Bring a project's repositories up to date.                            |
 
 ## Configuration
 
@@ -70,12 +70,12 @@ promptwares:
       Always include acceptance criteria in the plan.
 ```
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `profile` | Yes | Which agent profile to use — `quick`, `balanced` or `deep`. Profiles map to a model and an effort level per agent. |
-| `allowedTools` | No | Tools granted on top of the built-in defaults. Supports the `%PROMPTWARE_DIR%`, `%PLAN_DIR%` and `%PLANS_DIR%` variables, so a grant can be scoped to a path. |
-| `deniedTools` | No | Tools withheld, even if something else would have granted them. |
-| `customInstructions` | No | Free text injected into the agent prompt. |
+| Field                | Required | Description                                                                                                                                                   |
+| -------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `profile`            | Yes      | Which agent profile to use — `quick`, `balanced` or `deep`. Profiles map to a model and an effort level per agent.                                            |
+| `allowedTools`       | No       | Tools granted on top of the built-in defaults. Supports the `%PROMPTWARE_DIR%`, `%PLAN_DIR%` and `%PLANS_DIR%` variables, so a grant can be scoped to a path. |
+| `deniedTools`        | No       | Tools withheld, even if something else would have granted them.                                                                                               |
+| `customInstructions` | No       | Free text injected into the agent prompt.                                                                                                                     |
 
 The `_default` entry is a baseline applied to every promptware; a named entry overrides it.
 

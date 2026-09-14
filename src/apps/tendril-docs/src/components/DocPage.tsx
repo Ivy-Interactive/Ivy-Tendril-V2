@@ -1,5 +1,9 @@
 import { useMemo } from "react";
-import { MarkdownRenderer, TypographyContext, useTypography } from "@ivy-interactive/components/renderers";
+import {
+  MarkdownRenderer,
+  TypographyContext,
+  useTypography,
+} from "@ivy-interactive/components/renderers";
 import { cn } from "../lib/cn";
 import { rewriteDocLinks } from "../lib/links";
 import { splitLeadHeading, type DocPage as DocPageModel } from "../lib/page";

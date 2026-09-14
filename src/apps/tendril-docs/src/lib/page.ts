@@ -2,13 +2,7 @@
  * Turns one authored markdown file into the page model the UI and the search index consume.
  */
 import { parseFrontmatter, type Frontmatter } from "./frontmatter";
-import {
-  isSectionIndex,
-  routeForPath,
-  segmentsOf,
-  slugifyHeading,
-  titleFromName,
-} from "./slug";
+import { isSectionIndex, routeForPath, segmentsOf, slugifyHeading, titleFromName } from "./slug";
 
 export interface Heading {
   /** Heading depth, 1-6. */

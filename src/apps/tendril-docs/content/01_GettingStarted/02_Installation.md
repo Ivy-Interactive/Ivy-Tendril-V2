@@ -24,14 +24,14 @@ searchHints:
 
 Install these first and make sure each one is on `PATH`:
 
-| Tool | Version | Why |
-| --- | --- | --- |
-| [Rust](https://rustup.rs/) | edition 2021 toolchain | the CLI, the server and the desktop app's native side |
-| [Node.js](https://nodejs.org/) | 22 or newer | the front end build |
-| [pnpm](https://pnpm.io/) | 11 or newer | the workspace package manager |
-| [Vite+](https://viteplus.dev/) (`vp`) | current | build, check, test and format for every package |
-| `git` | any recent | worktrees, commits, branches |
-| [GitHub CLI](https://cli.github.com/) (`gh`) | authenticated | `CreatePr` opens pull requests through it |
+| Tool                                         | Version                | Why                                                   |
+| -------------------------------------------- | ---------------------- | ----------------------------------------------------- |
+| [Rust](https://rustup.rs/)                   | edition 2021 toolchain | the CLI, the server and the desktop app's native side |
+| [Node.js](https://nodejs.org/)               | 22 or newer            | the front end build                                   |
+| [pnpm](https://pnpm.io/)                     | 11 or newer            | the workspace package manager                         |
+| [Vite+](https://viteplus.dev/) (`vp`)        | current                | build, check, test and format for every package       |
+| `git`                                        | any recent             | worktrees, commits, branches                          |
+| [GitHub CLI](https://cli.github.com/) (`gh`) | authenticated          | `CreatePr` opens pull requests through it             |
 
 You also need the CLI of the coding agent you intend to use, installed and logged in.
 [Onboarding a Codebase](03_Onboarding.md) walks through that.

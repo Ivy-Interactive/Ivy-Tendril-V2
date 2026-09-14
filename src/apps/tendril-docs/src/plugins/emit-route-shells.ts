@@ -10,7 +10,7 @@
  * In dev the same route list drives a middleware that rewrites deep links to the shell, because
  * Vite's HTML fallback only fires for URLs ending in `/` or `.html`.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Plugin } from "vite";
 import { buildNavTree, flattenNavRoutes } from "../lib/nav";
@@ -84,19 +84,31 @@ export function emitRouteShells(options: EmitRouteShellsOptions): Plugin {
       });
     },
 
-    generateBundle(_outputOptions, bundle) {
-      const shell = Object.values(bundle).find(
-        (chunk) => chunk.type === "asset" && chunk.fileName === "index.html",
-      );
-      if (!shell || shell.type !== "asset") {
-        this.warn("No index.html in the bundle — route shells were not emitted.");
+    // `writeBundle`, not `generateBundle`: the HTML asset is produced by Vite's own HTML plugin
+    // during `generateBundle`, and a plugin cannot rely on running after it. By `writeBundle` the
+    // shell is on disk, so copying it is order-independent.
+    writeBundle(outputOptions) {
+      const outDir = outputOptions.dir;
+      if (!outDir) {
+        this.warn("No output directory — route shells were not emitted.");
+        return;
+      }
+
+      const shellPath = path.join(outDir, "index.html");
+      let shell: string;
+      try {
+        shell = readFileSync(shellPath, "utf8");
+      } catch {
+        this.warn(`No ${shellPath} — route shells were not emitted.`);
         return;
       }
 
       for (const route of routes) {
         const fileName = shellPathForRoute(route, base);
         if (!fileName) continue;
-        this.emitFile({ type: "asset", fileName, source: shell.source });
+        const target = path.join(outDir, fileName);
+        mkdirSync(path.dirname(target), { recursive: true });
+        writeFileSync(target, shell);
       }
     },
   };

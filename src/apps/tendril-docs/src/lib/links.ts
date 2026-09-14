@@ -70,7 +70,10 @@ export function rewriteDocLink(
   const hash = hashIndex >= 0 ? trimmed.slice(hashIndex) : "";
 
   if (/\.md$/i.test(path)) {
-    return { href: `${routeForPath(resolveContentPath(fromContentPath, path))}${hash}`, kind: "route" };
+    return {
+      href: `${routeForPath(resolveContentPath(fromContentPath, path))}${hash}`,
+      kind: "route",
+    };
   }
 
   const resolved = resolveAsset?.(resolveContentPath(fromContentPath, path));

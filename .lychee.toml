@@ -18,6 +18,9 @@ exclude = [
   # GitHub gates the stargazers list behind sign-in, so it 404s for any
   # unauthenticated checker on every public repo. Not a broken link.
   "^https://github\\.com/[^/]+/[^/]+/stargazers$",
+  # This repository is private, so GitHub answers 404 to an unauthenticated
+  # checker for it and every path under it. Drop this once it is public.
+  "^https://github\\.com/Ivy-Interactive/Ivy-Tendril-V2",
 ]
 
 # Excluded file paths

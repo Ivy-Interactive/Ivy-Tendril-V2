@@ -28,7 +28,11 @@ interface DocsLayoutProps {
 }
 
 /** Previous/next links, in reading order across the whole site. */
-function useNeighbours(sections: NavSection[], route: string, lookup: (route: string) => DocPageModel | undefined) {
+function useNeighbours(
+  sections: NavSection[],
+  route: string,
+  lookup: (route: string) => DocPageModel | undefined,
+) {
   return useMemo(() => {
     const routes = flattenNavRoutes(sections);
     const at = routes.indexOf(route);
@@ -64,9 +68,7 @@ function PageLink({ page, direction }: { page: DocPageModel; direction: "previou
 
 /** The "On this page" rail: level 2 and 3 headings of the current page. */
 function OnThisPage({ page }: { page: DocPageModel }) {
-  const headings = page.headings.filter(
-    (heading) => heading.depth === 2 || heading.depth === 3,
-  );
+  const headings = page.headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
   if (headings.length < 2) return null;
 
   return (
