@@ -171,6 +171,9 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             ExecutionProfile TEXT,
             Effort TEXT,
             PreviousPlanState TEXT,
+            Priority INTEGER NOT NULL DEFAULT 0,
+            LastOutputAt TEXT,
+            WaitForJobIds TEXT,
             PermissionDenials TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
@@ -198,7 +201,13 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
     ensure_columns(
         conn,
         "Jobs",
-        &[("PreviousPlanState", "TEXT"), ("PermissionDenials", "TEXT")],
+        &[
+            ("PreviousPlanState", "TEXT"),
+            ("Priority", "INTEGER NOT NULL DEFAULT 0"),
+            ("LastOutputAt", "TEXT"),
+            ("WaitForJobIds", "TEXT"),
+            ("PermissionDenials", "TEXT"),
+        ],
     )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
     ensure_columns(

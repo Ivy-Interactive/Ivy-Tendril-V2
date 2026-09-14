@@ -8,6 +8,7 @@ pub mod logger;
 pub mod manager;
 pub mod outcome;
 pub mod process_tree;
+pub mod queue;
 pub mod recovery;
 
 pub use attachments::*;
@@ -20,4 +21,5 @@ pub use logger::*;
 pub use manager::*;
 pub use outcome::*;
 pub use process_tree::*;
+pub use queue::*;
 pub use recovery::*;
