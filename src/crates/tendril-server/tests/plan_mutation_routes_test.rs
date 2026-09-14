@@ -181,6 +181,9 @@ async fn messages(server: &TestServer, session_id: &str) -> Vec<String> {
         .collect()
 }
 
+/// One endpoint under test: its path suffix, a request body, and the plan list it writes to.
+type ListCase = (&'static str, Value, fn(&PlanYaml) -> Vec<String>);
+
 /// 1. A repeated add answers 200, says "already", and leaves the list and `updated` alone.
 #[tokio::test]
 async fn adding_the_same_entry_twice_is_idempotent() {
@@ -189,7 +192,7 @@ async fn adding_the_same_entry_twice_is_idempotent() {
     let pf = server.plan("Idempotency");
     let id = pf.id().to_string();
 
-    let cases: [(&str, Value, fn(&PlanYaml) -> Vec<String>); 5] = [
+    let cases: [ListCase; 5] = [
         ("/repos", json!({ "repoPath": "/tmp/some-repo" }), |p| {
             p.repos.clone()
         }),
