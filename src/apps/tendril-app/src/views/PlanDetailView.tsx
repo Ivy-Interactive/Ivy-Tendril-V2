@@ -135,27 +135,27 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   return (
     <div className="space-y-6" data-testid="plan-detail-view">
       {/* Header bar */}
-      <div className="flex flex-col gap-4 border-b border-slate-800 pb-6 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-start sm:justify-between">
         <div>
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="mb-2 text-xs text-slate-400 hover:text-slate-200"
+              className="mb-2 text-xs text-muted-foreground hover:text-foreground"
             >
               ← Back to plans
             </button>
           )}
           <div className="flex items-center space-x-3">
-            <span className="font-mono text-sm font-bold text-slate-400">{plan.id}</span>
-            <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-xs font-semibold text-slate-200">
+            <span className="font-mono text-sm font-bold text-muted-foreground">{plan.id}</span>
+            <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-foreground">
               {plan.state}
             </span>
-            <span className="rounded bg-slate-800/80 px-2 py-0.5 text-xs text-slate-400">
+            <span className="rounded bg-muted/80 px-2 py-0.5 text-xs text-muted-foreground">
               {plan.project}
             </span>
           </div>
-          <h1 className="mt-2 text-2xl font-bold text-slate-100">{plan.title}</h1>
+          <h1 className="mt-2 text-2xl font-bold text-foreground">{plan.title}</h1>
         </div>
 
         {/* Action Toolbar */}
@@ -169,8 +169,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                 onClick={handleCreatePr}
                 className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
                   canPr.allowed
-                    ? "bg-emerald-600 text-white hover:bg-emerald-500"
-                    : "cursor-not-allowed bg-slate-800 text-slate-500"
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "cursor-not-allowed bg-muted text-muted-foreground/70"
                 }`}
               >
                 {pendingAction === "Create PR" ? "Starting..." : "Create PR"}
@@ -182,8 +182,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                 onClick={handleRetry}
                 className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
                   canRetryPlan.allowed
-                    ? "bg-amber-600 text-white hover:bg-amber-500"
-                    : "cursor-not-allowed bg-slate-800 text-slate-500"
+                    ? "bg-warning text-warning-foreground hover:bg-warning/90"
+                    : "cursor-not-allowed bg-muted text-muted-foreground/70"
                 }`}
               >
                 {pendingAction === "Retry Plan" ? "Starting..." : "Retry Plan"}
@@ -199,8 +199,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               onClick={handleExecute}
               className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
                 canExec.allowed
-                  ? "bg-blue-600 text-white hover:bg-blue-500"
-                  : "cursor-not-allowed bg-slate-800 text-slate-500"
+                  ? "bg-info text-info-foreground hover:bg-info/90"
+                  : "cursor-not-allowed bg-muted text-muted-foreground/70"
               }`}
             >
               {pendingAction === "Execute Plan" ? "Starting..." : "Execute Plan"}
@@ -213,21 +213,21 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         <div
           role="alert"
           data-testid="plan-action-error"
-          className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {actionError}
         </div>
       )}
 
       {/* Detail Tabs Header */}
-      <div className="flex border-b border-slate-800">
+      <div className="flex border-b border-border">
         <button
           type="button"
           onClick={() => setActiveSubTab("spec")}
           className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
             activeSubTab === "spec"
-              ? "border-emerald-500 text-slate-100"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "border-ring text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
           Plan Specification
@@ -237,8 +237,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           onClick={() => setActiveSubTab("diff")}
           className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
             activeSubTab === "diff"
-              ? "border-emerald-500 text-slate-100"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "border-ring text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
           Diff View
@@ -248,8 +248,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           onClick={() => setActiveSubTab("verifications")}
           className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
             activeSubTab === "verifications"
-              ? "border-emerald-500 text-slate-100"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "border-ring text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
           Verifications ({plan.verifications?.length || 0})
@@ -259,8 +259,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           onClick={() => setActiveSubTab("recommendations")}
           className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
             activeSubTab === "recommendations"
-              ? "border-emerald-500 text-slate-100"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "border-ring text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
           Recommendations ({recommendations.length})
@@ -270,8 +270,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           onClick={() => setActiveSubTab("metadata")}
           className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
             activeSubTab === "metadata"
-              ? "border-emerald-500 text-slate-100"
-              : "border-transparent text-slate-400 hover:text-slate-200"
+              ? "border-ring text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
           Metadata & History
@@ -281,7 +281,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       {/* Tab Content */}
       <div className="mt-4">
         {activeSubTab === "spec" && (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6">
+          <div className="rounded-xl border border-border bg-card/40 p-6">
             <PlanMarkdown
               id="plan-markdown"
               content={plan.latestRevisionContent || "# No revision content available"}
@@ -291,29 +291,29 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         )}
 
         {activeSubTab === "diff" && (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6">
+          <div className="rounded-xl border border-border bg-card/40 p-6">
             <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
           </div>
         )}
 
         {activeSubTab === "verifications" && (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6">
-            <h3 className="text-sm font-semibold text-slate-200 mb-3">Plan Verifications</h3>
+          <div className="rounded-xl border border-border bg-card/40 p-6">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Plan Verifications</h3>
             <PlanVerifications planId={plan.id} verifications={plan.verifications || []} />
           </div>
         )}
 
         {activeSubTab === "recommendations" && (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-6 space-y-4">
+          <div className="rounded-xl border border-border bg-card/40 p-6 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-slate-200">Plan Recommendations</h3>
-              <p className="text-xs text-slate-400">
+              <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
+              <p className="text-xs text-muted-foreground">
                 Out-of-scope follow-ups and improvements discovered during execution.
               </p>
             </div>
 
             {recommendations.length === 0 ? (
-              <p data-testid="no-recommendations" className="text-xs text-slate-500">
+              <p data-testid="no-recommendations" className="text-xs text-muted-foreground/70">
                 ExecutePlan registered no recommendations for this plan.
               </p>
             ) : (
@@ -333,50 +333,50 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 
         {activeSubTab === "metadata" && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <div className="rounded-xl border border-border bg-card/40 p-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Repositories
               </h4>
-              <ul className="mt-2 space-y-1 text-sm font-mono text-slate-300">
+              <ul className="mt-2 space-y-1 text-sm font-mono text-muted-foreground">
                 {plan.repos && plan.repos.length > 0 ? (
                   plan.repos.map((r, i) => <li key={i}>{r}</li>)
                 ) : (
-                  <li className="text-slate-500 font-sans">No repositories specified</li>
+                  <li className="text-muted-foreground/70 font-sans">No repositories specified</li>
                 )}
               </ul>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <div className="rounded-xl border border-border bg-card/40 p-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Dependencies
               </h4>
-              <ul className="mt-2 space-y-1 text-sm font-mono text-slate-300">
+              <ul className="mt-2 space-y-1 text-sm font-mono text-muted-foreground">
                 {plan.dependsOn && plan.dependsOn.length > 0 ? (
                   plan.dependsOn.map((d, i) => <li key={i}>{d}</li>)
                 ) : (
-                  <li className="text-slate-500 font-sans">No dependencies</li>
+                  <li className="text-muted-foreground/70 font-sans">No dependencies</li>
                 )}
               </ul>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <div className="rounded-xl border border-border bg-card/40 p-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Commits
               </h4>
-              <ul className="mt-2 space-y-1 text-sm font-mono text-slate-300">
+              <ul className="mt-2 space-y-1 text-sm font-mono text-muted-foreground">
                 {plan.commits && plan.commits.length > 0 ? (
                   plan.commits.map((c, i) => <li key={i}>{c}</li>)
                 ) : (
-                  <li className="text-slate-500 font-sans">No commits yet</li>
+                  <li className="text-muted-foreground/70 font-sans">No commits yet</li>
                 )}
               </ul>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            <div className="rounded-xl border border-border bg-card/40 p-4">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Pull Requests
               </h4>
-              <ul className="mt-2 space-y-1 text-sm text-slate-300">
+              <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
                 {plan.prs && plan.prs.length > 0 ? (
                   plan.prs.map((p, i) => (
                     <li key={i}>
@@ -384,14 +384,14 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                         href={p}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-emerald-400 hover:underline font-mono text-xs"
+                        className="text-success hover:underline font-mono text-xs"
                       >
                         {p}
                       </a>
                     </li>
                   ))
                 ) : (
-                  <li className="text-slate-500">No PRs created</li>
+                  <li className="text-muted-foreground/70">No PRs created</li>
                 )}
               </ul>
             </div>
