@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  merge-guard:
+    name: Merge Resolution Guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch --no-tags origin +refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
+
+      - name: Check merge resolutions
+        run: node scripts/verify-merge-resolution.mjs --range origin/${{ github.base_ref }}
+
+  lint:
+    name: Lint & Types
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: "24"
+          cache: true
+          # A stripped leading lockfile document must fail the PR, not be repaired in the runner.
+          run-install: |
+            args: ["--frozen-lockfile"]
+
+      - name: Check lockfile drift
+        run: |
+          if ! git diff --exit-code -- pnpm-lock.yaml; then
+            echo "ERROR: pnpm-lock.yaml was modified during install"
+            echo "See AGENTS.md 'Multi-Document Lockfile' section for details"
+            exit 1
+          fi
+
+      - name: Lint & Type Check
+        run: vp check
+
+  build:
+    name: Package Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: "24"
+          cache: true
+          # A stripped leading lockfile document must fail the PR, not be repaired in the runner.
+          run-install: |
+            args: ["--frozen-lockfile"]
+
+      - name: Check lockfile drift
+        run: |
+          if ! git diff --exit-code -- pnpm-lock.yaml; then
+            echo "ERROR: pnpm-lock.yaml was modified during install"
+            echo "See AGENTS.md 'Multi-Document Lockfile' section for details"
+            exit 1
+          fi
+
+      - name: Build package
+        run: vp pack
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  test:
+    name: Unit Tests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: "24"
+          cache: true
+          # A stripped leading lockfile document must fail the PR, not be repaired in the runner.
+          run-install: |
+            args: ["--frozen-lockfile"]
+
+      - name: Check lockfile drift
+        run: |
+          if ! git diff --exit-code -- pnpm-lock.yaml; then
+            echo "ERROR: pnpm-lock.yaml was modified during install"
+            echo "See AGENTS.md 'Multi-Document Lockfile' section for details"
+            exit 1
+          fi
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Run tests
+        run: vp test

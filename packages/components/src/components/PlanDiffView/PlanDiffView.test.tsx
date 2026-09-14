@@ -1,0 +1,886 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import "@testing-library/jest-dom";
+import { parseDiff, getChangeKey } from "react-diff-view";
+
+import {
+  PlanDiffView,
+  getLanguageFromFilePath,
+  loadLanguage,
+  registerLanguageLoader,
+  registerLanguageLoaders,
+  clearCustomLanguageLoaders,
+  useCustomLanguageLoaders,
+  customLanguageRegistry,
+  customExtensionRegistry,
+  registerExtensionMapping,
+  registerExtensionMappings,
+  clearCustomExtensionMappings,
+  useCustomExtensionMappings,
+} from "./PlanDiffView";
+import { refractor } from "refractor/core";
+
+describe("PlanDiffView", () => {
+  const diff = [
+    "diff --git a/a.txt b/a.txt",
+    "--- a/a.txt",
+    "+++ b/a.txt",
+    "@@ -1 +1 @@",
+    "-old",
+    "+new",
+    "",
+  ].join("\n");
+
+  const files = parseDiff(diff);
+  const change = files[0]?.hunks?.[0]?.changes?.[1];
+  const changeKey = change ? getChangeKey(change) : "new-1";
+
+  it("renders saved comment as markdown", () => {
+    render(
+      <PlanDiffView
+        id="pdv-1"
+        onIvyEvent={vi.fn()}
+        diff={diff}
+        comments={[
+          {
+            filePath: "a.txt",
+            changeKey: changeKey,
+            content: "**change**",
+            lineNumber: 1,
+          },
+        ]}
+      />,
+    );
+
+    const strong = document.querySelector(".diff-comment-markdown strong");
+    expect(strong).toBeTruthy();
+    expect(strong?.textContent).toBe("change");
+    expect(screen.queryByText("**change**")).toBeNull();
+  });
+
+  it("allows editing and updating a comment", () => {
+    const onIvyEvent = vi.fn();
+    render(
+      <PlanDiffView
+        id="pdv-1"
+        onIvyEvent={onIvyEvent}
+        diff={diff}
+        filePath="a.txt"
+        comments={[
+          {
+            filePath: "a.txt",
+            changeKey: changeKey,
+            content: "initial",
+            lineNumber: 1,
+          },
+        ]}
+      />,
+    );
+
+    const editButton = screen.getByRole("button", { name: /edit/i });
+    fireEvent.click(editButton);
+
+    const textarea = screen.getByPlaceholderText(
+      /Enter instruction for the agent/i,
+    ) as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "updated text" } });
+
+    const updateButton = screen.getByRole("button", { name: /update comment/i });
+    fireEvent.click(updateButton);
+
+    expect(onIvyEvent).toHaveBeenCalledWith("OnUpdateComment", "pdv-1", [
+      {
+        filePath: "a.txt",
+        changeKey: changeKey,
+        content: "updated text",
+        lineNumber: 1,
+      },
+    ]);
+  });
+
+  it("renders markdown lists with list items in saved comments", () => {
+    render(
+      <PlanDiffView
+        id="pdv-1"
+        onIvyEvent={vi.fn()}
+        diff={diff}
+        comments={[
+          {
+            filePath: "a.txt",
+            changeKey: changeKey,
+            content: "- one\n- two",
+            lineNumber: 1,
+          },
+        ]}
+      />,
+    );
+
+    const listItems = document.querySelectorAll(".diff-comment-markdown ul li");
+    expect(listItems.length).toBe(2);
+  });
+
+  it("does not render any off-scale text size classes", () => {
+    render(
+      <PlanDiffView
+        id="pdv-1"
+        onIvyEvent={vi.fn()}
+        diff={diff}
+        comments={[
+          {
+            filePath: "a.txt",
+            changeKey: changeKey,
+            content: "a comment",
+            lineNumber: 1,
+          },
+        ]}
+      />,
+    );
+
+    expect(document.querySelectorAll('[class*="text-[10px]"], [class*="text-[11px]"]').length).toBe(
+      0,
+    );
+  });
+
+  it("renders comment author name and initials avatar", () => {
+    render(
+      <PlanDiffView
+        id="pdv-author"
+        diff={diff}
+        comments={[
+          {
+            filePath: "a.txt",
+            changeKey: changeKey,
+            content: "Check this logic",
+            lineNumber: 1,
+            author: "Calm Niels",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Calm Niels")).toBeInTheDocument();
+    const avatar = document.querySelector(".pmv-comment-avatar");
+    expect(avatar).not.toBeNull();
+    expect(avatar?.textContent).toBe("CN");
+    expect(avatar?.getAttribute("title")).toBe("Calm Niels");
+  });
+
+  it("passes currentAuthor when adding a new comment", () => {
+    const onIvyEvent = vi.fn();
+    render(
+      <PlanDiffView
+        id="pdv-add-author"
+        onIvyEvent={onIvyEvent}
+        diff={diff}
+        filePath="a.txt"
+        currentAuthor="Calm Niels"
+      />,
+    );
+
+    // Click on gutter line to open comment form
+    const gutter = document.querySelector("td.diff-gutter-insert")!;
+    expect(gutter).toBeTruthy();
+    fireEvent.click(gutter);
+
+    const textarea = screen.getByPlaceholderText(/Enter instruction for the agent/i);
+    fireEvent.change(textarea, { target: { value: "New comment by reviewer" } });
+
+    const addButton = screen.getByRole("button", { name: /add comment/i });
+    fireEvent.click(addButton);
+
+    expect(onIvyEvent).toHaveBeenCalledWith("OnAddComment", "pdv-add-author", [
+      {
+        filePath: "a.txt",
+        changeKey: changeKey,
+        content: "New comment by reviewer",
+        lineNumber: 1,
+        author: "Calm Niels",
+        isResolved: false,
+      },
+    ]);
+  });
+});
+
+describe("PlanDiffView unified column collapse", () => {
+  const insertOnlyDiff = `diff --git a/file.txt b/file.txt
+index abc1234..def5678 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,0 +1,2 @@
++line 1
++line 2`;
+
+  const deleteOnlyDiff = `diff --git a/file.txt b/file.txt
+index abc1234..def5678 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,2 +1,0 @@
+-line 1
+-line 2`;
+
+  const mixedDiff = `diff --git a/file.txt b/file.txt
+index abc1234..def5678 100644
+--- a/file.txt
++++ b/file.txt
+@@ -1,3 +1,3 @@
+ context
+-old line
++new line`;
+
+  const emptyDiff = `diff --git a/file.txt b/file.txt
+old mode 100644
+new mode 100755`;
+
+  it("renders insert-only diff with diff-no-deletions class", () => {
+    const { container } = render(
+      <PlanDiffView id="test-1" diff={insertOnlyDiff} viewType="Unified" />,
+    );
+    const table = container.querySelector(".diff");
+    expect(table).toHaveClass("diff-unified-view");
+    expect(table).toHaveClass("diff-no-deletions");
+    expect(table).not.toHaveClass("diff-no-additions");
+  });
+
+  it("renders delete-only diff with diff-no-additions class", () => {
+    const { container } = render(
+      <PlanDiffView id="test-2" diff={deleteOnlyDiff} viewType="Unified" />,
+    );
+    const table = container.querySelector(".diff");
+    expect(table).toHaveClass("diff-unified-view");
+    expect(table).toHaveClass("diff-no-additions");
+    expect(table).not.toHaveClass("diff-no-deletions");
+  });
+
+  it("renders mixed diff with neither marker class", () => {
+    const { container } = render(<PlanDiffView id="test-3" diff={mixedDiff} viewType="Unified" />);
+    const table = container.querySelector(".diff");
+    expect(table).toHaveClass("diff-unified-view");
+    expect(table).not.toHaveClass("diff-no-deletions");
+    expect(table).not.toHaveClass("diff-no-additions");
+  });
+
+  it("renders zero-change diff with neither marker class", () => {
+    const { container } = render(<PlanDiffView id="test-4" diff={emptyDiff} viewType="Unified" />);
+    const table = container.querySelector(".diff");
+    expect(table).toHaveClass("diff-unified-view");
+    expect(table).not.toHaveClass("diff-no-deletions");
+    expect(table).not.toHaveClass("diff-no-additions");
+  });
+
+  it("emits a three-col colgroup and diff-line rows with three td children", () => {
+    const { container } = render(
+      <PlanDiffView id="test-5" diff={insertOnlyDiff} viewType="Unified" />,
+    );
+    const colgroup = container.querySelector(".diff colgroup");
+    expect(colgroup).toBeTruthy();
+    const cols = colgroup?.querySelectorAll("col");
+    expect(cols?.length).toBe(3);
+
+    const diffLine = container.querySelector(".diff-line");
+    expect(diffLine).toBeTruthy();
+    const cells = diffLine?.querySelectorAll("td");
+    expect(cells?.length).toBe(3);
+  });
+});
+
+describe("PlanDiffView collapse scoping", () => {
+  const twoFileDiff = [
+    "diff --git a/a.txt b/a.txt",
+    "--- a/a.txt",
+    "+++ b/a.txt",
+    "@@ -1 +1 @@",
+    "-old a",
+    "+new a",
+    "diff --git a/b.txt b/b.txt",
+    "--- a/b.txt",
+    "+++ b/b.txt",
+    "@@ -1 +1 @@",
+    "-old b",
+    "+new b",
+    "",
+  ].join("\n");
+
+  it("keys collapsed state by file path and resets when diff/filePath changes", () => {
+    const { rerender } = render(<PlanDiffView id="pdv-1" diff={twoFileDiff} collapsible />);
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes.length).toBe(2);
+    expect(checkboxes[0]).toHaveAttribute("aria-checked", "false");
+    expect(checkboxes[1]).toHaveAttribute("aria-checked", "false");
+
+    // Click Viewed on first file (a.txt)
+    fireEvent.click(checkboxes[0]);
+    expect(checkboxes[0]).toHaveAttribute("aria-checked", "true");
+    expect(checkboxes[1]).toHaveAttribute("aria-checked", "false");
+
+    // Re-render with a new diff/file at position 0 (e.g. c.txt)
+    const newDiff = [
+      "diff --git a/c.txt b/c.txt",
+      "--- a/c.txt",
+      "+++ b/c.txt",
+      "@@ -1 +1 @@",
+      "-old c",
+      "+new c",
+      "",
+    ].join("\n");
+
+    rerender(<PlanDiffView id="pdv-1" diff={newDiff} collapsible />);
+
+    const newCheckboxes = screen.getAllByRole("checkbox");
+    expect(newCheckboxes.length).toBe(1);
+    // New file at position 0 must NOT be checked/collapsed
+    expect(newCheckboxes[0]).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("directly couples collapsed state to viewed state", () => {
+    render(<PlanDiffView id="pdv-2" diff={twoFileDiff} collapsible />);
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes.length).toBe(2);
+    expect(checkboxes[0]).toHaveAttribute("aria-checked", "false");
+
+    // Initially expanded - diff content is in document
+    expect(screen.getByText("old a")).toBeInTheDocument();
+
+    // Clicking Viewed marks it as viewed and collapses the file
+    fireEvent.click(checkboxes[0]);
+    expect(checkboxes[0]).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByText("old a")).not.toBeInTheDocument();
+
+    // Clicking Viewed again expands it
+    fireEvent.click(checkboxes[0]);
+    expect(checkboxes[0]).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("old a")).toBeInTheDocument();
+  });
+
+  it("renders header and viewed checkbox when filePath or collapsible is provided", () => {
+    const singleFileDiff = [
+      "diff --git a/src/test.txt b/src/test.txt",
+      "--- a/src/test.txt",
+      "+++ b/src/test.txt",
+      "@@ -1 +1 @@",
+      "-old raw",
+      "+new raw",
+      "",
+    ].join("\n");
+
+    render(<PlanDiffView id="pdv-3" diff={singleFileDiff} filePath="src/test.txt" collapsible />);
+
+    expect(screen.getByText("src/")).toBeInTheDocument();
+    expect(screen.getByText("test.txt")).toBeInTheDocument();
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox).toBeInTheDocument();
+    expect(checkbox).toHaveAttribute("aria-checked", "false");
+  });
+});
+
+describe("PlanDiffView language pack dynamic loading and highlighting", () => {
+  const pythonDiff = [
+    "diff --git a/app.py b/app.py",
+    "--- a/app.py",
+    "+++ b/app.py",
+    "@@ -1,1 +1,1 @@",
+    "-def old_fn(): pass",
+    "+def new_fn(): return True",
+    "",
+  ].join("\n");
+
+  const unknownLangDiff = [
+    "diff --git a/file.customxyz b/file.customxyz",
+    "--- a/file.customxyz",
+    "+++ b/file.customxyz",
+    "@@ -1,1 +1,1 @@",
+    "-alpha",
+    "+beta",
+    "",
+  ].join("\n");
+
+  it("dynamically loads language pack and highlights diff tokens", async () => {
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(<PlanDiffView id="pdv-py" diff={pythonDiff} filePath="app.py" />);
+      container = rendered.container;
+    });
+
+    // Wait for the dynamic language pack to load and tokenized elements to render
+    await vi.waitFor(() => {
+      // Prism/refractor tokenizes `def` as a keyword and `True` as a boolean
+      const tokenSpans = container.querySelectorAll(".diff-line span[class*='token']");
+      expect(tokenSpans.length).toBeGreaterThan(0);
+    });
+
+    const keywordToken = container!.querySelector(".token.keyword");
+    expect(keywordToken).toBeInTheDocument();
+    expect(keywordToken?.textContent).toBe("def");
+  });
+
+  it("gracefully falls back to unhighlighted diff for unrecognized or loading languages without errors", async () => {
+    const { container } = render(
+      <PlanDiffView id="pdv-unk" diff={unknownLangDiff} filePath="file.customxyz" />,
+    );
+
+    // Renders the diff table without throwing
+    expect(container.querySelector(".diff")).toBeInTheDocument();
+    expect(screen.getByText("beta")).toBeInTheDocument();
+
+    // No syntax highlight token spans inside the diff line
+    const tokenSpans = container.querySelectorAll(".diff-line span[class*='token']");
+    expect(tokenSpans.length).toBe(0);
+  });
+
+  it("loadLanguage returns false for unrecognized language", async () => {
+    const loaded = await loadLanguage("unsupported_xyz_lang");
+    expect(loaded).toBe(false);
+  });
+
+  it("registerLanguageLoader registers a custom syntax loader and highlights code with that language", async () => {
+    clearCustomLanguageLoaders();
+    function mockLang1(prism: any) {
+      prism.languages.mocklang1 = {
+        keyword: /\bcustomkw\b/,
+      };
+    }
+    mockLang1.displayName = "mocklang1";
+
+    registerLanguageLoader("mocklang1", async () => mockLang1);
+
+    const diff = [
+      "diff --git a/code.mocklang1 b/code.mocklang1",
+      "--- a/code.mocklang1",
+      "+++ b/code.mocklang1",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+customkw value",
+      "",
+    ].join("\n");
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView id="pdv-cust-1" diff={diff} filePath="code.mocklang1" />,
+      );
+      container = rendered.container;
+    });
+
+    await vi.waitFor(() => {
+      const kw = container.querySelector(".token.keyword");
+      expect(kw).toBeInTheDocument();
+      expect(kw?.textContent).toBe("customkw");
+    });
+  });
+
+  it("registerLanguageLoaders batch registers multiple custom syntax loaders", async () => {
+    clearCustomLanguageLoaders();
+    function mockBatchLangA(prism: any) {
+      prism.languages.batcha = {
+        keyword: /\bbatchakw\b/,
+      };
+    }
+    mockBatchLangA.displayName = "batcha";
+
+    function mockBatchLangB(prism: any) {
+      prism.languages.batchb = {
+        keyword: /\bbatchbkw\b/,
+      };
+    }
+    mockBatchLangB.displayName = "batchb";
+
+    registerLanguageLoaders({
+      batcha: async () => mockBatchLangA,
+      batchb: { loader: async () => mockBatchLangB, aliases: ["bb"] },
+    });
+
+    expect(customLanguageRegistry.has("batcha")).toBe(true);
+    expect(customLanguageRegistry.has("batchb")).toBe(true);
+    expect(customLanguageRegistry.has("bb")).toBe(true);
+
+    const loadedA = await loadLanguage("batcha");
+    const loadedB = await loadLanguage("bb");
+    expect(loadedA).toBe(true);
+    expect(loadedB).toBe(true);
+  });
+
+  it("customLanguageLoaders prop on <PlanDiffView /> provides syntax highlighting without modifying global state", async () => {
+    clearCustomLanguageLoaders();
+    function mockPropLang(prism: any) {
+      prism.languages.proplang = {
+        keyword: /\bpropkw\b/,
+      };
+    }
+    mockPropLang.displayName = "proplang";
+
+    const diff = [
+      "diff --git a/code.proplang b/code.proplang",
+      "--- a/code.proplang",
+      "+++ b/code.proplang",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+propkw here",
+      "",
+    ].join("\n");
+
+    expect(customLanguageRegistry.has("proplang")).toBe(false);
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView
+          id="pdv-prop-lang"
+          diff={diff}
+          filePath="code.proplang"
+          customLanguageLoaders={{
+            proplang: async () => mockPropLang,
+          }}
+        />,
+      );
+      container = rendered.container;
+    });
+
+    await vi.waitFor(() => {
+      const kw = container.querySelector(".token.keyword");
+      expect(kw).toBeInTheDocument();
+      expect(kw?.textContent).toBe("propkw");
+    });
+
+    // Global registry must not be modified by prop-level custom loaders
+    expect(customLanguageRegistry.has("proplang")).toBe(false);
+  });
+
+  it("loads prerequisite dependencies before custom language registers", async () => {
+    clearCustomLanguageLoaders();
+    const loadOrder: string[] = [];
+
+    function mockBaseSyntax(prism: any) {
+      prism.languages.mockbase = {
+        keyword: /\bbasekw\b/,
+      };
+    }
+    mockBaseSyntax.displayName = "mockbase";
+
+    function mockChildSyntax(prism: any) {
+      prism.languages.mockchild = {
+        ...prism.languages.mockbase,
+        string: /"[^"]*"/,
+      };
+    }
+    mockChildSyntax.displayName = "mockchild";
+
+    registerLanguageLoader("mockbase", async () => {
+      loadOrder.push("mockbase");
+      return mockBaseSyntax;
+    });
+
+    registerLanguageLoader("mockchild", {
+      loader: async () => {
+        loadOrder.push("mockchild");
+        return mockChildSyntax;
+      },
+      dependencies: ["mockbase"],
+    });
+
+    const diff = [
+      "diff --git a/test.mockchild b/test.mockchild",
+      "--- a/test.mockchild",
+      "+++ b/test.mockchild",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      '+basekw "hello"',
+      "",
+    ].join("\n");
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView id="pdv-dep-lang" diff={diff} filePath="test.mockchild" />,
+      );
+      container = rendered.container;
+    });
+
+    await vi.waitFor(() => {
+      expect(container.querySelector(".token.keyword")?.textContent).toBe("basekw");
+      expect(container.querySelector(".token.string")?.textContent).toBe('"hello"');
+    });
+
+    expect(loadOrder).toEqual(["mockbase", "mockchild"]);
+  });
+
+  it("resolves custom language with aliases for matching file extensions", async () => {
+    clearCustomLanguageLoaders();
+    function mockAliasSyntax(prism: any) {
+      prism.languages.mockalias = {
+        keyword: /\baliaskw\b/,
+      };
+    }
+    mockAliasSyntax.displayName = "mockalias";
+
+    registerLanguageLoader("mockalias", {
+      loader: async () => mockAliasSyntax,
+      aliases: ["ma_ext", "ma_alt"],
+    });
+
+    const diff = [
+      "diff --git a/test.ma_ext b/test.ma_ext",
+      "--- a/test.ma_ext",
+      "+++ b/test.ma_ext",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+aliaskw test",
+      "",
+    ].join("\n");
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView id="pdv-alias-lang" diff={diff} filePath="test.ma_ext" />,
+      );
+      container = rendered.container;
+    });
+
+    await vi.waitFor(() => {
+      const kw = container.querySelector(".token.keyword");
+      expect(kw).toBeInTheDocument();
+      expect(kw?.textContent).toBe("aliaskw");
+    });
+  });
+
+  it("useCustomLanguageLoaders hook registers on mount and cleans up on unmount", async () => {
+    clearCustomLanguageLoaders();
+    function mockHookSyntax(prism: any) {
+      prism.languages.hooklang = {
+        keyword: /\bhookkw\b/,
+      };
+    }
+    mockHookSyntax.displayName = "hooklang";
+
+    const diff = [
+      "diff --git a/test.hooklang b/test.hooklang",
+      "--- a/test.hooklang",
+      "+++ b/test.hooklang",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+hookkw action",
+      "",
+    ].join("\n");
+
+    function ConsumerWrapper({ show }: { show: boolean }) {
+      useCustomLanguageLoaders(
+        show
+          ? {
+              hooklang: async () => mockHookSyntax,
+            }
+          : undefined,
+      );
+      return show ? (
+        <PlanDiffView id="pdv-hook" diff={diff} filePath="test.hooklang" />
+      ) : (
+        <div>Hidden</div>
+      );
+    }
+
+    let unmount: () => void;
+    await act(async () => {
+      const res = render(<ConsumerWrapper show={true} />);
+      unmount = res.unmount;
+    });
+
+    expect(customLanguageRegistry.has("hooklang")).toBe(true);
+
+    await vi.waitFor(() => {
+      expect(document.querySelector(".token.keyword")?.textContent).toBe("hookkw");
+    });
+
+    act(() => {
+      unmount();
+    });
+    expect(customLanguageRegistry.has("hooklang")).toBe(false);
+  });
+
+  it("clearCustomLanguageLoaders resets custom language registrations", async () => {
+    clearCustomLanguageLoaders();
+    function mockResetSyntax(prism: any) {
+      prism.languages.resetsyntax = { keyword: /\bresetkw\b/ };
+    }
+    mockResetSyntax.displayName = "resetsyntax";
+
+    registerLanguageLoader("resetsyntax", {
+      loader: async () => mockResetSyntax,
+      aliases: ["rsx"],
+    });
+
+    expect(customLanguageRegistry.has("resetsyntax")).toBe(true);
+    expect(customLanguageRegistry.has("rsx")).toBe(true);
+
+    await loadLanguage("resetsyntax");
+    expect(refractor.registered("resetsyntax")).toBe(true);
+    expect(refractor.registered("rsx")).toBe(true);
+
+    clearCustomLanguageLoaders();
+
+    expect(customLanguageRegistry.size).toBe(0);
+    expect(customLanguageRegistry.has("resetsyntax")).toBe(false);
+    expect(customLanguageRegistry.has("rsx")).toBe(false);
+    expect(refractor.registered("resetsyntax")).toBe(false);
+    expect(refractor.registered("rsx")).toBe(false);
+  });
+
+  it("gracefully falls back when custom loader rejects without throwing", async () => {
+    clearCustomLanguageLoaders();
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const diff = [
+      "diff --git a/test.failing b/test.failing",
+      "--- a/test.failing",
+      "+++ b/test.failing",
+      "@@ -1,1 +1,1 @@",
+      "-old",
+      "+failing content",
+      "",
+    ].join("\n");
+
+    let container: HTMLElement;
+    await act(async () => {
+      const rendered = render(
+        <PlanDiffView
+          id="pdv-fail"
+          diff={diff}
+          filePath="test.failing"
+          customLanguageLoaders={{
+            failing: async () => {
+              throw new Error("Network load failure");
+            },
+          }}
+        />,
+      );
+      container = rendered.container;
+    });
+
+    // The diff table renders without throwing
+    expect(container!.querySelector(".diff")).toBeInTheDocument();
+    expect(screen.getByText("failing content")).toBeInTheDocument();
+
+    // No syntax tokens
+    const tokens = container!.querySelectorAll(".diff-line span[class*='token']");
+    expect(tokens.length).toBe(0);
+
+    const loaded = await loadLanguage("failing", {
+      failing: async () => {
+        throw new Error("Network load failure");
+      },
+    });
+    expect(loaded).toBe(false);
+
+    consoleSpy.mockRestore();
+  });
+
+  describe("Custom extension mappings in PlanDiffView", () => {
+    it("resolves standard extensions using built-in switch", () => {
+      expect(getLanguageFromFilePath("file.ts")).toBe("typescript");
+      expect(getLanguageFromFilePath("script.py")).toBe("python");
+      expect(getLanguageFromFilePath("Program.cs")).toBe("csharp");
+      expect(getLanguageFromFilePath("")).toBe("text");
+    });
+
+    it("resolves custom extension from customMappings parameter with or without leading dot and case insensitivity", () => {
+      expect(getLanguageFromFilePath("index.module", { ".module": "javascript" })).toBe(
+        "javascript",
+      );
+      expect(getLanguageFromFilePath("bundle.es", { es: "javascript" })).toBe("javascript");
+      expect(getLanguageFromFilePath("component.MODULE", { module: "javascript" })).toBe(
+        "javascript",
+      );
+      expect(getLanguageFromFilePath("test.ES", { ".es": "javascript" })).toBe("javascript");
+    });
+
+    it("resolves custom extension registered via registerExtensionMapping or registerExtensionMappings", () => {
+      clearCustomExtensionMappings();
+      expect(customExtensionRegistry.size).toBe(0);
+
+      registerExtensionMapping(".customjs", "javascript");
+      expect(getLanguageFromFilePath("file.customjs")).toBe("javascript");
+      expect(getLanguageFromFilePath("file.CUSTOMJS")).toBe("javascript");
+
+      registerExtensionMappings({
+        ".custompy": "python",
+        customrb: "ruby",
+      });
+      expect(getLanguageFromFilePath("script.custompy")).toBe("python");
+      expect(getLanguageFromFilePath("script.customrb")).toBe("ruby");
+
+      clearCustomExtensionMappings();
+      expect(customExtensionRegistry.size).toBe(0);
+      expect(getLanguageFromFilePath("file.customjs")).toBe("customjs");
+    });
+
+    it("registers custom extensions via CustomLanguageDefinition and clearCustomLanguageLoaders resets them", () => {
+      clearCustomLanguageLoaders();
+
+      function mockKotlinSyntax(prism: any) {
+        prism.languages.kotlin = { keyword: /\bval\b/ };
+      }
+      mockKotlinSyntax.displayName = "kotlin";
+
+      registerLanguageLoader("kotlin", {
+        loader: async () => mockKotlinSyntax,
+        extensions: [".kts", "kt"],
+      });
+
+      expect(getLanguageFromFilePath("build.kts")).toBe("kotlin");
+      expect(getLanguageFromFilePath("App.kt")).toBe("kotlin");
+
+      clearCustomLanguageLoaders();
+      expect(customExtensionRegistry.has("kts")).toBe(false);
+      expect(customExtensionRegistry.has("kt")).toBe(false);
+      expect(getLanguageFromFilePath("build.kts")).toBe("kts");
+    });
+
+    it("useCustomExtensionMappings hook registers on mount and cleans up on unmount", () => {
+      clearCustomExtensionMappings();
+
+      function HookTestComponent({ show }: { show: boolean }) {
+        useCustomExtensionMappings(show ? { customext: "python" } : undefined);
+        return <div>{show ? "Mounted" : "Hidden"}</div>;
+      }
+
+      const { unmount } = render(<HookTestComponent show={true} />);
+      expect(customExtensionRegistry.has("customext")).toBe(true);
+      expect(getLanguageFromFilePath("file.customext")).toBe("python");
+
+      unmount();
+      expect(customExtensionRegistry.has("customext")).toBe(false);
+      expect(getLanguageFromFilePath("file.customext")).toBe("customext");
+    });
+
+    it("renders PlanDiffView with customExtensionMappings and highlights syntax tokens", async () => {
+      clearCustomExtensionMappings();
+
+      const jsDiff = [
+        "diff --git a/app.module b/app.module",
+        "--- a/app.module",
+        "+++ b/app.module",
+        "@@ -1,1 +1,1 @@",
+        "-const a = 1;",
+        "+const greeting = 'hello';",
+        "",
+      ].join("\n");
+
+      let container: HTMLElement;
+      await act(async () => {
+        const rendered = render(
+          <PlanDiffView
+            id="pdv-custom-ext"
+            diff={jsDiff}
+            filePath="app.module"
+            customExtensionMappings={{ module: "javascript" }}
+          />,
+        );
+        container = rendered.container;
+      });
+
+      await vi.waitFor(() => {
+        const keywordToken = container!.querySelector(".token.keyword");
+        expect(keywordToken).not.toBeNull();
+        expect(keywordToken?.textContent).toBe("const");
+      });
+    });
+  });
+});

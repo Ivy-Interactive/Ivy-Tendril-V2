@@ -1,0 +1,37 @@
+import { cva } from "class-variance-authority";
+
+import { controlHeight, controlSize, densityText } from "../density-scale";
+
+export const buttonVariant = cva(
+  "inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-field font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background cursor-pointer disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground shadow-sm hover:brightness-90",
+        destructive: "bg-destructive text-destructive-foreground shadow-sm hover:brightness-90",
+        outline:
+          "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
+        secondary: "bg-secondary text-secondary-foreground shadow-sm hover:brightness-90",
+        success: "bg-success text-success-foreground shadow-sm hover:brightness-90",
+        warning: "bg-warning text-warning-foreground shadow-sm hover:brightness-90",
+        info: "bg-info text-info-foreground shadow-sm hover:brightness-90",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline brightness-90 hover:brightness-100",
+        inline: "text-primary underline hover:no-underline !p-0 !h-auto",
+        ai: "bg-background  hover:bg-accent hover:text-accent-foreground",
+      },
+      size: {
+        default: `${controlHeight.Medium} px-4 ${densityText.Medium}`,
+        sm: `${controlHeight.Small} rounded-field px-3 ${densityText.Small}`,
+        lg: `${controlHeight.Large} rounded-field px-8 ${densityText.Large}`,
+        icon: `${controlSize.Medium} shrink-0`,
+        "icon-sm": `${controlSize.Small} shrink-0`,
+        "icon-lg": `${controlSize.Large} shrink-0`,
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);

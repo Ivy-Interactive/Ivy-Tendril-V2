@@ -1,0 +1,18 @@
+allowBuilds:
+  "@swc/core": set this to true or false
+  esbuild: set this to true or false
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.0
+  vite-plus: 0.3.0
+minimumReleaseAgeExclude:
+  - playwright-core@1.63.0
+  - playwright@1.63.0
+overrides:
+  playwright@*: 1.63.0
+  playwright-core@*: 1.63.0
+  vite@*: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"

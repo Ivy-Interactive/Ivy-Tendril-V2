@@ -1,0 +1,106 @@
+name: Visual Baseline Refresh
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: visual-baseline-refresh
+  cancel-in-progress: false
+
+env:
+  REFRESH_BRANCH: chore/visual-baseline-refresh
+
+jobs:
+  refresh:
+    name: Regenerate Baselines
+    if: github.repository == 'SpaceCorps/components-storybook'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Same image as the `visual` job in storybook-tests.yml, and for the same reason: font
+    # rasterization has to match the tree the baselines were rendered from. See README.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble-amd64
+    outputs:
+      drifted: ${{ steps.drift.outputs.drifted }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image ships no pnpm, and package.json has no `packageManager` field, so the version is
+      # explicit. This is the recipe the README manual refresh already proves works.
+      - name: Enable pnpm
+        run: |
+          corepack enable pnpm
+          corepack prepare pnpm@11.25.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build Storybook
+        run: pnpm run build-storybook
+
+      # continue-on-error, because a story that fails to render must not hide the drift already
+      # recorded; the outcome is turned into a failure after the diagnostics are published.
+      - name: Regenerate baselines
+        id: regenerate
+        continue-on-error: true
+        run: pnpm run test-storybook:visual:update:ci
+
+      - name: Detect drift
+        id: drift
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          changed=$(git status --porcelain -- .storybook/__image_snapshots__)
+          if [ -z "$changed" ]; then
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+            echo "All committed baselines match main; nothing to refresh." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+            echo "### Baselines refreshed" >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' "$changed" | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Push the refresh branch
+        if: steps.drift.outputs.drifted == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$REFRESH_BRANCH"
+          git add -- .storybook/__image_snapshots__
+          git commit -m "chore: refresh visual regression baselines rendered from $GITHUB_SHA"
+          git push --force origin "$REFRESH_BRANCH"
+
+      - name: Fail on an unrenderable story
+        if: steps.regenerate.outcome == 'failure'
+        run: |
+          echo "::error::test-storybook:visual:update:ci exited non-zero: a story failed to render, so the refreshed set may be incomplete. Review the log above."
+          exit 1
+
+  open-pr:
+    name: Open Refresh PR
+    needs: refresh
+    if: needs.refresh.outputs.drifted == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open or update the pull request
+        env:
+          GH_TOKEN: ${{ secrets.BASELINE_REFRESH_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          existing=$(gh pr list --head "$REFRESH_BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            echo "PR #$existing is already open for $REFRESH_BRANCH; the force-push updated it."
+            exit 0
+          fi
+          if gh pr create --base main --head "$REFRESH_BRANCH" \
+               --title "chore: refresh visual regression baselines" \
+               --body "Baselines regenerated on main in mcr.microsoft.com/playwright:v1.63.0-noble-amd64. Only PNGs that failed the 1% threshold, or that did not exist, are in this diff. Review the images: an unexpected change here is a rendering regression on main, not a bad baseline."; then
+            exit 0
+          fi
+          echo "::error::Could not open the PR. The refreshed baselines are pushed to $REFRESH_BRANCH, so nothing is lost. Either open the PR by hand, enable Settings / Actions / General / Workflow permissions / 'Allow GitHub Actions to create and approve pull requests', or add a BASELINE_REFRESH_TOKEN secret."
+          exit 1

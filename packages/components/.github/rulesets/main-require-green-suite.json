@@ -1,0 +1,41 @@
+{
+  "name": "Require green CI suite on main",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          {
+            "context": "Lint & Types",
+            "integration_id": null
+          },
+          {
+            "context": "Package Build",
+            "integration_id": null
+          },
+          {
+            "context": "Unit Tests",
+            "integration_id": null
+          },
+          {
+            "context": "Merge Resolution Guard",
+            "integration_id": null
+          }
+        ]
+      }
+    },
+    {
+      "type": "non_fast_forward"
+    }
+  ],
+  "bypass_actors": []
+}

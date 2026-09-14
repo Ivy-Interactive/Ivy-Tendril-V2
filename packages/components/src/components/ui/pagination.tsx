@@ -1,0 +1,124 @@
+import * as React from "react";
+import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+
+import { type VariantProps } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+import type { ButtonProps } from "@/components/ui/button/button";
+import { buttonVariant } from "@/components/ui/button";
+import { paginationContentVariant } from "@/components/ui/pagination-variant";
+import { useDensity } from "@/contexts/density-context";
+import { densityToButtonSize, densityToIconButtonSize } from "@/components/ui/density-scale";
+import { useDensityScale } from "@/contexts/density-context";
+
+const Pagination = ({ className, ...props }: React.ComponentProps<"nav">) => (
+  <nav aria-label="pagination" className={cn("flex w-fit justify-center", className)} {...props} />
+);
+Pagination.displayName = "Pagination";
+
+const PaginationContent = React.forwardRef<
+  HTMLUListElement,
+  React.ComponentProps<"ul"> & VariantProps<typeof paginationContentVariant>
+>(({ className, density, ...props }, ref) => {
+  const contextDensity = useDensity();
+  return (
+    <ul
+      ref={ref}
+      className={cn(paginationContentVariant({ density: density ?? contextDensity }), className)}
+      {...props}
+    />
+  );
+});
+PaginationContent.displayName = "PaginationContent";
+
+const PaginationItem = React.forwardRef<HTMLLIElement, React.ComponentProps<"li">>(
+  ({ className, ...props }, ref) => <li ref={ref} className={cn("", className)} {...props} />,
+);
+PaginationItem.displayName = "PaginationItem";
+
+type PaginationLinkProps = {
+  isActive?: boolean;
+} & Pick<ButtonProps, "size"> &
+  React.ComponentProps<"a">;
+
+const PaginationLink = ({ className, isActive, size, ...props }: PaginationLinkProps) => {
+  const density = useDensity();
+  return (
+    <a
+      aria-current={isActive ? "page" : undefined}
+      className={cn(
+        buttonVariant({
+          variant: isActive ? "outline" : "ghost",
+          size: size ?? densityToIconButtonSize(density),
+        }),
+        className,
+      )}
+      {...props}
+    />
+  );
+};
+PaginationLink.displayName = "PaginationLink";
+
+const PaginationPrevious = ({
+  className,
+  size,
+  ...props
+}: React.ComponentProps<typeof PaginationLink>) => {
+  const density = useDensity();
+  return (
+    <PaginationLink
+      aria-label="Go to previous page"
+      size={size ?? densityToButtonSize(density)}
+      className={cn("gap-1 pl-2.5", className)}
+      {...props}
+    >
+      <ChevronLeft className="size-4" />
+      <span>Previous</span>
+    </PaginationLink>
+  );
+};
+PaginationPrevious.displayName = "PaginationPrevious";
+
+const PaginationNext = ({
+  className,
+  size,
+  ...props
+}: React.ComponentProps<typeof PaginationLink>) => {
+  const density = useDensity();
+  return (
+    <PaginationLink
+      aria-label="Go to next page"
+      size={size ?? densityToButtonSize(density)}
+      className={cn("gap-1 pr-2.5", className)}
+      {...props}
+    >
+      <span>Next</span>
+      <ChevronRight className="size-4" />
+    </PaginationLink>
+  );
+};
+PaginationNext.displayName = "PaginationNext";
+
+const PaginationEllipsis = ({ className, ...props }: React.ComponentProps<"span">) => {
+  const { controlSize } = useDensityScale();
+  return (
+    <span
+      aria-hidden
+      className={cn("flex items-center justify-center", controlSize, className)}
+      {...props}
+    >
+      <MoreHorizontal className="size-4" />
+      <span className="sr-only">More pages</span>
+    </span>
+  );
+};
+PaginationEllipsis.displayName = "PaginationEllipsis";
+
+export {
+  Pagination,
+  PaginationContent,
+  PaginationLink,
+  PaginationItem,
+  PaginationPrevious,
+  PaginationNext,
+  PaginationEllipsis,
+};

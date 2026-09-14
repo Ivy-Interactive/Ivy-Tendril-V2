@@ -1,0 +1,70 @@
+name: Storybook Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Storybook
+        run: pnpm run build-storybook
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright Chromium
+        run: pnpm run test-storybook:install:ci
+
+      - name: Run Storybook tests
+        run: pnpm run test-storybook:ci
+
+  visual:
+    name: Visual Regression
+    needs: test
+    runs-on: ubuntu-latest
+    # Baselines are rendered in this exact image so that font rasterization matches; see README.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build Storybook
+        run: pnpm run build-storybook
+
+      - name: Visual regression
+        run: pnpm run test-storybook:visual:ci
+
+      - name: Upload diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diffs
+          path: .storybook/__image_snapshots__/__diff_output__/
+          if-no-files-found: ignore
