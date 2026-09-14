@@ -278,6 +278,20 @@ pub struct JobItem {
     pub reported_failure_reason: Option<String>,
     #[serde(default)]
     pub cleared: bool,
+    /// Higher runs first. Taken from `CreatePlanArgs.priority`, else the plan's `plan.yaml` priority.
+    #[serde(default)]
+    pub priority: i32,
+    /// Last time the agent emitted a line. `None` until first output; the watchdog then anchors on
+    /// `started_at`.
+    #[serde(rename = "lastOutputAt", skip_serializing_if = "Option::is_none")]
+    pub last_output_at: Option<DateTime<Utc>>,
+    /// Job ids this job waits on before it may be queued.
+    #[serde(
+        rename = "waitForJobIds",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub wait_for_job_ids: Vec<String>,
 }
 
 fn default_provider() -> String {
@@ -318,6 +332,9 @@ impl JobItem {
             reported_plan_title: None,
             reported_failure_reason: None,
             cleared: false,
+            priority: 0,
+            last_output_at: None,
+            wait_for_job_ids: Vec::new(),
         }
     }
 
