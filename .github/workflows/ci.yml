@@ -61,6 +61,9 @@ jobs:
       - name: Extension tests
         run: pnpm test:extension
 
+      - name: Extension package validation
+        run: pnpm package:extension
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

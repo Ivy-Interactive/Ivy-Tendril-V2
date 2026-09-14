@@ -184,6 +184,7 @@
   "scripts": {
     "vscode:prepublish": "node esbuild.js --production",
     "build": "node esbuild.js --production",
+    "package": "vsce package --no-dependencies",
     "watch": "node esbuild.js --watch",
     "typecheck": "tsc --noEmit",
     "compile": "tsc -p ./",
@@ -197,6 +198,7 @@
     "@types/node": "22.20.2",
     "@types/vscode": "1.90.0",
     "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "3.2.1",
     "esbuild": "0.28.2",
     "glob": "13.0.6",
     "mocha": "12.0.0",
