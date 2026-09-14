@@ -15,12 +15,19 @@ export {
   useShell,
   BrandIcon,
   brandIcons,
+  ShellRailFlyout,
+  ShellSectionItems,
+  ShellTooltip,
+  sectionItemIcons,
+  formatShortcut,
   type ShellContextValue,
   type ShellBadgeDto,
+  type ShellItemState,
   type ShellNavItemDto,
   type ShellSectionItemDto,
   type ShellTabDto,
   type ShellWidgetProps,
+  type RailFlyoutTrigger,
 } from "./components/Shell/index.ts";
 
 export {
@@ -169,6 +176,8 @@ export {
   registerExtensionMappings,
   clearCustomExtensionMappings,
   useCustomExtensionMappings,
+  PlanChangesView,
+  buildFileTree,
 } from "./components/PlanDiffView";
 
 export type {
@@ -179,6 +188,9 @@ export type {
   CustomLanguageDefinition,
   CustomLanguageLoaders,
   CustomExtensionMappings,
+  ChangedFile,
+  TreeFolder,
+  PlanChangesViewProps,
 } from "./components/PlanDiffView";
 
 // Tendril Dashboard Components
@@ -207,3 +219,12 @@ export type {
 // Web Viewer Component
 export { WebViewer, Toolbar } from "./components/WebViewer/index.ts";
 export type { WebViewerProps, ToolbarProps, ToolbarAction } from "./components/WebViewer/index.ts";
+
+// Plan Workspace Split-Pane Layout
+export { PlanWorkspace } from "./components/PlanWorkspace/index.ts";
+export type {
+  PlanActionDto,
+  PlanTabDto,
+  PlanWorkspaceProps,
+  PlanWorkspaceSlots,
+} from "./components/PlanWorkspace/index.ts";
