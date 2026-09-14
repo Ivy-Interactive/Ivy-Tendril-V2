@@ -15,10 +15,12 @@ use tendril_core::models::{
 };
 use tendril_core::plans::{
     add_recommendation, check_all_plans_health, check_plan_health, create_plan, get_revision,
-    list_recommendations, order_by_project_config, read_plan_file, read_plan_yaml,
-    remove_recommendation, resolve_plan_folder, set_plan_verification_status,
-    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
-    DuplicateCandidateFinder, PlanCompletionGuard,
+    list_recommendations, materialize_plan_env, order_by_project_config, read_plan_file,
+    read_plan_yaml, remove_recommendation, render_env_file, resolve_plan_folder,
+    resolve_plan_folder_name, resolve_plan_project, resolve_worktrees,
+    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
+    CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard,
+    RenderedEnvFile,
 };
 
 #[derive(Subcommand)]
@@ -94,6 +96,9 @@ pub enum PlanCommands {
 
     #[command(subcommand, about = "Manage plan recommendations")]
     Rec(PlanRecCommands),
+
+    #[command(subcommand, about = "Materialize or inspect the plan's environment")]
+    Env(PlanEnvCommands),
 }
 
 #[derive(Args)]
@@ -222,12 +227,26 @@ pub struct PlanGetRevisionArgs {
 pub struct PlanAddRepoArgs {
     pub plan_id: String,
     pub path: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanRemoveRepoArgs {
     pub plan_id: String,
     pub path: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
@@ -255,36 +274,78 @@ pub struct PlanRemoveWorktreeArgs {
 pub struct PlanAddPrArgs {
     pub plan_id: String,
     pub url: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanAddCommitArgs {
     pub plan_id: String,
     pub sha: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanAddDependsOnArgs {
     pub plan_id: String,
     pub folder: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanRemoveDependsOnArgs {
     pub plan_id: String,
     pub folder: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanAddRelatedArgs {
     pub plan_id: String,
     pub folder: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanRemoveRelatedArgs {
     pub plan_id: String,
     pub folder: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
@@ -342,6 +403,33 @@ pub enum PlanRecCommands {
     Remove { plan_id: String, title: String },
 }
 
+#[derive(Subcommand)]
+pub enum PlanEnvCommands {
+    #[command(
+        about = "Allocate ports and write the project's env files into the plan's worktrees"
+    )]
+    Materialize {
+        plan_id: String,
+        #[arg(long, help = "Only this repo's worktree (path or repo name)")]
+        repo: Option<String>,
+        #[arg(long, help = "Overwrite env files that were edited by hand")]
+        force: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    #[command(about = "Print the plan's allocated ports and resolved environment")]
+    Get {
+        plan_id: String,
+        #[arg(
+            long,
+            help = "Resolve against this repo's worktree (path or repo name)"
+        )]
+        repo: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+}
+
 pub fn resolve_source_chat_session(chat_session: Option<&str>) -> Option<String> {
     if let Some(cs) = chat_session {
         let trimmed = cs.trim();
@@ -355,14 +443,41 @@ pub fn resolve_source_chat_session(chat_session: Option<&str>) -> Option<String>
         .filter(|s| !s.is_empty())
 }
 
+/// Resolves a `depends-on` / `related-plan` reference to its canonical folder name, failing the same
+/// way the REST endpoints 404 so the CLI and HTTP agree on what an unknown reference means.
+fn resolve_referenced_plan_folder(
+    plan_ref: &str,
+    plans_dir: &std::path::Path,
+) -> anyhow::Result<String> {
+    resolve_plan_folder_name(plan_ref.trim(), plans_dir)
+        .map_err(|_| anyhow::anyhow!("Referenced plan '{}' not found", plan_ref.trim()))
+}
+
+/// The plan edit to report to the plan's other chat sessions. `event_kind` defaults to `edit`;
+/// `pr-created` routes the notification to the server's PR announcer instead, and requires `pr_url`.
+#[derive(Default)]
+struct PlanEditEvent<'a> {
+    summary: &'a str,
+    reason: Option<&'a str>,
+    source_chat_session_id: Option<&'a str>,
+    revision_file: Option<&'a str>,
+    event_kind: Option<&'a str>,
+    pr_url: Option<&'a str>,
+}
+
 async fn report_plan_edit_event(
     tendril_home: &std::path::Path,
     plan_id: &str,
-    summary: &str,
-    reason: Option<&str>,
-    source_chat_session_id: Option<&str>,
-    revision_file: Option<&str>,
+    event: PlanEditEvent<'_>,
 ) {
+    let PlanEditEvent {
+        summary,
+        reason,
+        source_chat_session_id,
+        revision_file,
+        event_kind,
+        pr_url,
+    } = event;
     let master = match read_master(tendril_home) {
         Some(m) => m,
         None => {
@@ -385,6 +500,8 @@ async fn report_plan_edit_event(
         "reason": reason,
         "sourceChatSessionId": source_chat_session_id,
         "revisionFile": revision_file,
+        "eventKind": event_kind,
+        "prUrl": pr_url,
     });
 
     match client
@@ -612,6 +729,20 @@ pub async fn handle_plan_command(
         }
         PlanCommands::Get(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+
+            // Read straight from plan.yaml: allocatedPorts is deliberately not on PlanMetadata.
+            if args
+                .field
+                .as_deref()
+                .is_some_and(|f| f.eq_ignore_ascii_case("allocatedports"))
+            {
+                let (plan, _) = read_plan_yaml(&folder)?;
+                for (name, port) in plan.allocated_ports.unwrap_or_default() {
+                    println!("{}={}", name, port);
+                }
+                return Ok(());
+            }
+
             let plan_file = read_plan_file(&folder)?;
 
             if let Some(f) = args.field {
@@ -679,10 +810,12 @@ pub async fn handle_plan_command(
             report_plan_edit_event(
                 tendril_home,
                 &args.plan_id,
-                &format!("{} set to {}", args.field, args.value),
-                args.reason.as_deref(),
-                source_chat.as_deref(),
-                None,
+                PlanEditEvent {
+                    summary: &format!("{} set to {}", args.field, args.value),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
             )
             .await;
         }
@@ -815,10 +948,13 @@ pub async fn handle_plan_command(
             report_plan_edit_event(
                 tendril_home,
                 &args.plan_id,
-                &format!("revision {:03}.md written", rev_num),
-                args.reason.as_deref(),
-                source_chat.as_deref(),
-                Some(&format!("{:03}.md", rev_num)),
+                PlanEditEvent {
+                    summary: &format!("revision {:03}.md written", rev_num),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    revision_file: Some(&format!("{:03}.md", rev_num)),
+                    ..Default::default()
+                },
             )
             .await;
 
@@ -846,87 +982,225 @@ pub async fn handle_plan_command(
         PlanCommands::AddRepo(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.repos.contains(&args.path) {
-                plan.repos.push(args.path);
+            let changed = !plan
+                .repos
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(&args.path));
+            if changed {
+                plan.repos.push(args.path.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("Repo added.");
+
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("repo added: {}", args.path),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::RemoveRepo(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            plan.repos.retain(|r| r != &args.path);
+            let before = plan.repos.len();
+            plan.repos.retain(|r| !r.eq_ignore_ascii_case(&args.path));
+            if plan.repos.len() == before {
+                anyhow::bail!("Repository not found in plan: {}", args.path);
+            }
             plan.updated = Utc::now();
             write_plan_yaml(&folder, &plan)?;
             println!("Repo removed.");
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                PlanEditEvent {
+                    summary: &format!("repo removed: {}", args.path),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
         PlanCommands::AddPr(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.prs.contains(&args.url) {
+            let changed = !plan.prs.contains(&args.url);
+            if changed {
                 plan.prs.push(args.url.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("PR added.");
 
-            let source_chat = resolve_source_chat_session(None);
-            report_plan_edit_event(
-                tendril_home,
-                &args.plan_id,
-                &format!("PR added: {}", args.url),
-                None,
-                source_chat.as_deref(),
-                None,
-            )
-            .await;
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("PR added: {}", args.url),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        event_kind: Some("pr-created"),
+                        pr_url: Some(&args.url),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::AddCommit(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.commits.contains(&args.sha) {
-                plan.commits.push(args.sha);
+            let changed = !plan.commits.contains(&args.sha);
+            if changed {
+                plan.commits.push(args.sha.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("Commit added.");
+
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("commit added: {}", args.sha),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::AddDependsOn(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            // Store the canonical folder name: a bare `123` written verbatim would block the plan
+            // forever with "Dependency plan folder '123' does not exist".
+            let target = resolve_referenced_plan_folder(&args.folder, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.depends_on.contains(&args.folder) {
-                plan.depends_on.push(args.folder);
+            let changed = !plan
+                .depends_on
+                .iter()
+                .any(|d| d.eq_ignore_ascii_case(&target));
+            if changed {
+                plan.depends_on.push(target.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("Dependency added.");
+
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("dependency added: {}", target),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::RemoveDependsOn(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            let target = resolve_referenced_plan_folder(&args.folder, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            plan.depends_on.retain(|d| d != &args.folder);
+            let before = plan.depends_on.len();
+            plan.depends_on.retain(|d| !d.eq_ignore_ascii_case(&target));
+            if plan.depends_on.len() == before {
+                anyhow::bail!("Dependency not found: {}", target);
+            }
             plan.updated = Utc::now();
             write_plan_yaml(&folder, &plan)?;
             println!("Dependency removed.");
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                PlanEditEvent {
+                    summary: &format!("dependency removed: {}", target),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
         PlanCommands::AddRelatedPlan(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            let target = resolve_referenced_plan_folder(&args.folder, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.related_plans.contains(&args.folder) {
-                plan.related_plans.push(args.folder);
+            let changed = !plan
+                .related_plans
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(&target));
+            if changed {
+                plan.related_plans.push(target.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("Related plan added.");
+
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("related plan added: {}", target),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::RemoveRelatedPlan(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            let target = resolve_referenced_plan_folder(&args.folder, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            plan.related_plans.retain(|r| r != &args.folder);
+            let before = plan.related_plans.len();
+            plan.related_plans
+                .retain(|r| !r.eq_ignore_ascii_case(&target));
+            if plan.related_plans.len() == before {
+                anyhow::bail!("Related plan not found: {}", target);
+            }
             plan.updated = Utc::now();
             write_plan_yaml(&folder, &plan)?;
             println!("Related plan removed.");
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                PlanEditEvent {
+                    summary: &format!("related plan removed: {}", target),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
         PlanCommands::SetVerification(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
@@ -940,10 +1214,12 @@ pub async fn handle_plan_command(
             report_plan_edit_event(
                 tendril_home,
                 &args.plan_id,
-                &format!("verification {} set to {}", args.name, args.status),
-                args.reason.as_deref(),
-                source_chat.as_deref(),
-                None,
+                PlanEditEvent {
+                    summary: &format!("verification {} set to {}", args.name, args.status),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
             )
             .await;
         }
@@ -1031,7 +1307,219 @@ pub async fn handle_plan_command(
                 println!("Recommendation removed.");
             }
         },
+        PlanCommands::Env(env_cmd) => match env_cmd {
+            PlanEnvCommands::Materialize {
+                plan_id,
+                repo,
+                force,
+                json,
+            } => {
+                let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
+                let (plan, _) = read_plan_yaml(&folder)?;
+                let project = resolve_plan_project(&plan.project, tendril_home)?;
+                let report = materialize_plan_env(&folder, tendril_home, repo.as_deref(), force)?;
+
+                if json {
+                    let first = report.worktrees.first();
+                    let files: Vec<(&RenderedEnvFile, Option<MaterializeOutcome>)> = first
+                        .map(|w| w.files.iter().map(|(r, o)| (r, Some(*o))).collect())
+                        .unwrap_or_default();
+                    println!(
+                        "{}",
+                        env_json_document(
+                            &folder,
+                            &report.project,
+                            first.map(|w| w.worktree.as_path()),
+                            &report.allocated_ports,
+                            &files,
+                        )
+                    );
+                    return Ok(());
+                }
+
+                for (name, port) in &report.allocated_ports {
+                    println!("Port {}: {}", name, port);
+                }
+
+                if report.worktrees.is_empty() {
+                    match repo.as_deref() {
+                        Some(r) => anyhow::bail!("No worktree found for repo {}.", r),
+                        None => anyhow::bail!(
+                            "No worktrees found for this plan - run 'tendril plan add-worktree' first."
+                        ),
+                    }
+                }
+
+                if project.env_files.is_empty() {
+                    println!("No environment files configured for this project.");
+                    return Ok(());
+                }
+
+                for wt in &report.worktrees {
+                    let unchanged = wt
+                        .files
+                        .iter()
+                        .filter(|(_, o)| *o == MaterializeOutcome::Unchanged)
+                        .count();
+                    let skipped = wt
+                        .files
+                        .iter()
+                        .filter(|(_, o)| *o == MaterializeOutcome::SkippedHandEdited)
+                        .count();
+                    println!(
+                        "Materialized {} environment file(s) into {} ({} unchanged, {} skipped).",
+                        wt.files.len(),
+                        wt.worktree.display(),
+                        unchanged,
+                        skipped
+                    );
+
+                    for (rendered, outcome) in &wt.files {
+                        if *outcome == MaterializeOutcome::SkippedHandEdited {
+                            eprintln!(
+                                "warning: {} was edited by hand - not overwritten (use --force)",
+                                rendered.path
+                            );
+                        }
+                        for missing in &rendered.missing {
+                            eprintln!(
+                                "warning: {}: {} is unset ({})",
+                                rendered.path, missing.key, missing.reference
+                            );
+                        }
+                    }
+                }
+            }
+            PlanEnvCommands::Get {
+                plan_id,
+                repo,
+                json,
+            } => {
+                let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
+                let (plan, _) = read_plan_yaml(&folder)?;
+                let project = resolve_plan_project(&plan.project, tendril_home)?;
+                // Read-only: ports come from plan.yaml, never allocated here, so this is safe to run
+                // against a plan under review.
+                let allocated = plan.allocated_ports.clone().unwrap_or_default();
+
+                // A template is read relative to a worktree. Without one the templates are simply
+                // absent and only the overrides show.
+                let worktrees = resolve_worktrees(&plan, &folder, repo.as_deref());
+                let worktree = worktrees.first().cloned().unwrap_or_else(|| folder.clone());
+
+                let rendered: Vec<RenderedEnvFile> = project
+                    .env_files
+                    .iter()
+                    .filter(|f| !f.path.trim().is_empty())
+                    .map(|f| render_env_file(f, &project, &allocated, &worktree, tendril_home))
+                    .collect();
+
+                if json {
+                    let files: Vec<(&RenderedEnvFile, Option<MaterializeOutcome>)> =
+                        rendered.iter().map(|r| (r, None)).collect();
+                    println!(
+                        "{}",
+                        env_json_document(
+                            &folder,
+                            &project.name,
+                            Some(worktree.as_path()),
+                            &allocated,
+                            &files,
+                        )
+                    );
+                    return Ok(());
+                }
+
+                if allocated.is_empty() {
+                    println!("No ports allocated for this plan.");
+                } else {
+                    println!("Port\tValue");
+                    for (name, port) in &allocated {
+                        println!("{}\t{}", name, port);
+                    }
+                }
+
+                if project.env_files.is_empty() {
+                    println!("No environment files configured for this project.");
+                    return Ok(());
+                }
+
+                for file in &rendered {
+                    println!("{}", file.path);
+                    if file.values.is_empty() {
+                        println!("  (empty)");
+                        continue;
+                    }
+                    for (key, value) in &file.values {
+                        println!("  {}={}", key, value);
+                    }
+                }
+
+                for file in &rendered {
+                    for missing in &file.missing {
+                        println!(
+                            "Missing: {} {} ({})",
+                            file.path, missing.key, missing.reference
+                        );
+                    }
+                }
+            }
+        },
     }
 
     Ok(())
+}
+
+/// The plan id as everything else in Tendril addresses it: the folder's 5-digit prefix.
+fn plan_id_from_folder(plan_folder: &std::path::Path) -> String {
+    plan_folder
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.split('-').next().unwrap_or(n).to_string())
+        .unwrap_or_default()
+}
+
+/// The `--json` document for both `plan env` commands. `outcome` is present only for `materialize`.
+fn env_json_document(
+    plan_folder: &std::path::Path,
+    project: &str,
+    worktree: Option<&std::path::Path>,
+    allocated: &std::collections::BTreeMap<String, u16>,
+    files: &[(&RenderedEnvFile, Option<MaterializeOutcome>)],
+) -> String {
+    let env_files: Vec<serde_json::Value> = files
+        .iter()
+        .map(|(rendered, outcome)| {
+            let values: serde_json::Map<String, serde_json::Value> = rendered
+                .values
+                .iter()
+                .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+                .collect();
+            let missing: Vec<serde_json::Value> = rendered
+                .missing
+                .iter()
+                .map(|m| serde_json::json!({ "key": m.key, "reference": m.reference }))
+                .collect();
+
+            let mut doc = serde_json::json!({
+                "path": rendered.path,
+                "values": values,
+                "missing": missing,
+            });
+            if let Some(outcome) = outcome {
+                doc["outcome"] = serde_json::Value::String(outcome.as_str().to_string());
+            }
+            doc
+        })
+        .collect();
+
+    let doc = serde_json::json!({
+        "planId": plan_id_from_folder(plan_folder),
+        "project": project,
+        "worktree": worktree.map(|w| w.to_string_lossy().to_string()),
+        "allocatedPorts": allocated,
+        "envFiles": env_files,
+    });
+
+    serde_json::to_string_pretty(&doc).unwrap_or_else(|_| "{}".to_string())
 }

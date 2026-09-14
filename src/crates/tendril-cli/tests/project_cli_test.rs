@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tendril_cli::commands::project::{handle_project_command, ProjectCommands};
+use tendril_cli::commands::project::{
+    handle_project_command, ProjectCommands, ProjectEnvFileCommands, ProjectPortCommands,
+};
 use tendril_core::config::{get_config_path, load_config};
 use tendril_server::{create_router, AppState, MasterGuard};
 
@@ -1105,4 +1107,217 @@ async fn add_verification_optional_sets_required_false() {
         assert!(proj.verifications[1].required);
     })
     .await;
+}
+
+
+#[tokio::test]
+async fn project_port_add_list_remove() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-fs-port-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "PortProj".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add project");
+
+    handle_project_command(
+        ProjectCommands::Port(ProjectPortCommands::Add {
+            name: "PortProj".to_string(),
+            port_name: "backend".to_string(),
+            default_port: 3000,
+            description: "API server".to_string(),
+        }),
+        &tendril_home,
+    )
+    .await
+    .expect("Add port");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].ports.len(), 1);
+    assert_eq!(cfg.projects[0].ports["backend"].default_port, 3000);
+    assert_eq!(cfg.projects[0].ports["backend"].description, "API server");
+
+    // Re-adding the same name upserts rather than duplicating.
+    handle_project_command(
+        ProjectCommands::Port(ProjectPortCommands::Add {
+            name: "PortProj".to_string(),
+            port_name: "backend".to_string(),
+            default_port: 3100,
+            description: "API server (moved)".to_string(),
+        }),
+        &tendril_home,
+    )
+    .await
+    .expect("Update port");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].ports.len(), 1);
+    assert_eq!(cfg.projects[0].ports["backend"].default_port, 3100);
+
+    handle_project_command(
+        ProjectCommands::Port(ProjectPortCommands::List {
+            name: "PortProj".to_string(),
+        }),
+        &tendril_home,
+    )
+    .await
+    .expect("List ports");
+
+    let err = handle_project_command(
+        ProjectCommands::Port(ProjectPortCommands::Remove {
+            name: "PortProj".to_string(),
+            port_name: "ghost".to_string(),
+        }),
+        &tendril_home,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("Port not found: ghost"),
+        "Unexpected error: {}",
+        err
+    );
+
+    handle_project_command(
+        ProjectCommands::Port(ProjectPortCommands::Remove {
+            name: "PortProj".to_string(),
+            port_name: "backend".to_string(),
+        }),
+        &tendril_home,
+    )
+    .await
+    .expect("Remove port");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert!(cfg.projects[0].ports.is_empty());
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+#[tokio::test]
+async fn project_env_file_add_list_remove() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-fs-env-file-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "EnvFileProj".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add project");
+
+    handle_project_command(
+        ProjectCommands::EnvFile(ProjectEnvFileCommands::Add {
+            name: "EnvFileProj".to_string(),
+            path: ".env".to_string(),
+            template: Some(".env.example".to_string()),
+            // A value may itself contain '=' — only the first one separates key from value.
+            overrides: vec![
+                "PORT=${ports.backend}".to_string(),
+                "CONNECTION=Host=db;Port=5432".to_string(),
+            ],
+        }),
+        &tendril_home,
+    )
+    .await
+    .expect("Add env file");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].env_files.len(), 1);
+    let file = &cfg.projects[0].env_files[0];
+    assert_eq!(file.path, ".env");
+    assert_eq!(file.template.as_deref(), Some(".env.example"));
+    assert_eq!(file.overrides["PORT"], "${ports.backend}");
+    assert_eq!(file.overrides["CONNECTION"], "Host=db;Port=5432");
+
+    // Re-adding the same path replaces the entry instead of appending a second config for one file.
+    handle_project_command(
+        ProjectCommands::EnvFile(ProjectEnvFileCommands::Add {
+            name: "EnvFileProj".to_string(),
+            path: ".env".to_string(),
+            template: None,
+            overrides: vec!["MODE=test".to_string()],
+        }),
+        &tendril_home,
+    )
+    .await
+    .expect("Update env file");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].env_files.len(), 1);
+    let file = &cfg.projects[0].env_files[0];
+    assert!(file.template.is_none());
+    assert_eq!(file.overrides.len(), 1);
+    assert_eq!(file.overrides["MODE"], "test");
+
+    handle_project_command(
+        ProjectCommands::EnvFile(ProjectEnvFileCommands::List {
+            name: "EnvFileProj".to_string(),
+        }),
+        &tendril_home,
+    )
+    .await
+    .expect("List env files");
+
+    let err = handle_project_command(
+        ProjectCommands::EnvFile(ProjectEnvFileCommands::Add {
+            name: "EnvFileProj".to_string(),
+            path: ".env.local".to_string(),
+            template: None,
+            overrides: vec!["NOT_AN_ASSIGNMENT".to_string()],
+        }),
+        &tendril_home,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("Invalid override"),
+        "Unexpected error: {}",
+        err
+    );
+
+    let err = handle_project_command(
+        ProjectCommands::EnvFile(ProjectEnvFileCommands::Remove {
+            name: "EnvFileProj".to_string(),
+            path: ".env.ghost".to_string(),
+        }),
+        &tendril_home,
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Environment file not found: .env.ghost"),
+        "Unexpected error: {}",
+        err
+    );
+
+    handle_project_command(
+        ProjectCommands::EnvFile(ProjectEnvFileCommands::Remove {
+            name: "EnvFileProj".to_string(),
+            path: ".env".to_string(),
+        }),
+        &tendril_home,
+    )
+    .await
+    .expect("Remove env file");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert!(cfg.projects[0].env_files.is_empty());
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
 }

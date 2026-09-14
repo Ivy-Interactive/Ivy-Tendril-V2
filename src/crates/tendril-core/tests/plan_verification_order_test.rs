@@ -38,13 +38,8 @@ fn project_with(names: &[&str]) -> ProjectConfig {
     ProjectConfig {
         name: "TestProj".to_string(),
         color: "Blue".to_string(),
-        repos: Vec::new(),
         verifications: project_refs(names),
-        context: String::new(),
-        stack_hash: None,
-        review_actions: Vec::new(),
-        build_dependencies: Vec::new(),
-        mcp_servers: Vec::new(),
+        ..Default::default()
     }
 }
 

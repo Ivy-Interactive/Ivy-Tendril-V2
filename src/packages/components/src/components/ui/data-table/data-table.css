@@ -1,0 +1,23 @@
+/* Rules Tailwind utilities cannot express for the data table. Everything else lives in the TSX. */
+@layer base {
+  /* Sticky header: survives the scroll container `Table` wraps every table in. */
+  .ivy-data-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--background);
+  }
+
+  /* wrapText: false (the default) — single line, ellipsis on overflow. */
+  .ivy-data-table td.ivy-data-table-nowrap {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* wrapText: true — wrap, breaking inside long unbroken tokens if needed. */
+  .ivy-data-table td.ivy-data-table-wrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

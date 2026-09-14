@@ -1,8 +1,8 @@
 use chrono::{Duration, Utc};
 use std::path::PathBuf;
 use tendril_core::db::{
-    get_costs_series, get_costs_summary, insert_cost, list_costs_by_plan, open_database,
-    CostsFilter,
+    get_costs_series, get_costs_summary, insert_cost, insert_cost_entry, list_costs_by_plan,
+    open_database, CostEntry, CostsFilter,
 };
 
 struct TempDir(PathBuf);
@@ -72,7 +72,7 @@ fn test_costs_insertion_and_index() {
 
     // Insert a cost record
     let now_str = Utc::now().to_rfc3339();
-    let row_id = insert_cost(&conn, 1, "CreatePlan", 1250, 0.045, Some(&now_str))
+    let row_id = insert_cost(&conn, 1, "CreatePlan", 1250, Some(0.045), Some(&now_str))
         .expect("insert_cost should succeed");
     assert!(row_id > 0);
 
@@ -83,7 +83,7 @@ fn test_costs_insertion_and_index() {
     assert_eq!(records[0].plan_id, 1);
     assert_eq!(records[0].promptware, "CreatePlan");
     assert_eq!(records[0].tokens, 1250);
-    assert!((records[0].cost - 0.045).abs() < 1e-6);
+    assert!((records[0].cost.unwrap() - 0.045).abs() < 1e-6);
     assert_eq!(records[0].log_timestamp, Some(now_str));
 
     // Verify foreign key cascade
@@ -104,15 +104,31 @@ fn test_costs_summary_metrics() {
     let forty_five_days_ago = (now - Duration::days(45)).to_rfc3339();
 
     // Insert records at different intervals
-    insert_cost(&conn, 1, "ExecutePlan", 1000, 10.0, Some(&today)).unwrap();
-    insert_cost(&conn, 1, "ExecutePlan", 2000, 20.0, Some(&three_days_ago)).unwrap();
-    insert_cost(&conn, 1, "ExecutePlan", 3000, 30.0, Some(&fifteen_days_ago)).unwrap();
+    insert_cost(&conn, 1, "ExecutePlan", 1000, Some(10.0), Some(&today)).unwrap();
+    insert_cost(
+        &conn,
+        1,
+        "ExecutePlan",
+        2000,
+        Some(20.0),
+        Some(&three_days_ago),
+    )
+    .unwrap();
+    insert_cost(
+        &conn,
+        1,
+        "ExecutePlan",
+        3000,
+        Some(30.0),
+        Some(&fifteen_days_ago),
+    )
+    .unwrap();
     insert_cost(
         &conn,
         1,
         "ExecutePlan",
         4000,
-        40.0,
+        Some(40.0),
         Some(&forty_five_days_ago),
     )
     .unwrap();
@@ -166,10 +182,42 @@ fn test_costs_series_aggregation() {
     let (_dir, conn) = setup_test_db();
 
     // Insert entries with specific ISO dates
-    insert_cost(&conn, 1, "Job1", 100, 1.5, Some("2026-08-10T10:00:00Z")).unwrap();
-    insert_cost(&conn, 1, "Job2", 200, 2.5, Some("2026-08-10T14:00:00Z")).unwrap();
-    insert_cost(&conn, 1, "Job3", 300, 4.0, Some("2026-08-11T12:00:00Z")).unwrap();
-    insert_cost(&conn, 1, "Job4", 400, 5.0, Some("2026-08-18T12:00:00Z")).unwrap();
+    insert_cost(
+        &conn,
+        1,
+        "Job1",
+        100,
+        Some(1.5),
+        Some("2026-08-10T10:00:00Z"),
+    )
+    .unwrap();
+    insert_cost(
+        &conn,
+        1,
+        "Job2",
+        200,
+        Some(2.5),
+        Some("2026-08-10T14:00:00Z"),
+    )
+    .unwrap();
+    insert_cost(
+        &conn,
+        1,
+        "Job3",
+        300,
+        Some(4.0),
+        Some("2026-08-11T12:00:00Z"),
+    )
+    .unwrap();
+    insert_cost(
+        &conn,
+        1,
+        "Job4",
+        400,
+        Some(5.0),
+        Some("2026-08-18T12:00:00Z"),
+    )
+    .unwrap();
 
     // Daily series
     let daily =
@@ -222,14 +270,38 @@ fn test_costs_summary_filtering() {
     // Plan 1 (TestProject):
     // - CreatePlan: 10.0 (today)
     // - ExecutePlan: 20.0 (two days ago)
-    insert_cost(&conn, 1, "CreatePlan", 1000, 10.0, Some(&today)).unwrap();
-    insert_cost(&conn, 1, "ExecutePlan", 2000, 20.0, Some(&two_days_ago)).unwrap();
+    insert_cost(&conn, 1, "CreatePlan", 1000, Some(10.0), Some(&today)).unwrap();
+    insert_cost(
+        &conn,
+        1,
+        "ExecutePlan",
+        2000,
+        Some(20.0),
+        Some(&two_days_ago),
+    )
+    .unwrap();
 
     // Plan 2 (ProjectBeta):
     // - ExecutePlan: 30.0 (four days ago)
     // - UpdatePlan: 40.0 (ten days ago)
-    insert_cost(&conn, 2, "ExecutePlan", 3000, 30.0, Some(&four_days_ago)).unwrap();
-    insert_cost(&conn, 2, "UpdatePlan", 4000, 40.0, Some(&ten_days_ago)).unwrap();
+    insert_cost(
+        &conn,
+        2,
+        "ExecutePlan",
+        3000,
+        Some(30.0),
+        Some(&four_days_ago),
+    )
+    .unwrap();
+    insert_cost(
+        &conn,
+        2,
+        "UpdatePlan",
+        4000,
+        Some(40.0),
+        Some(&ten_days_ago),
+    )
+    .unwrap();
 
     // 1. Filter by project (TestProject)
     let filter_project = CostsFilter {
@@ -335,7 +407,7 @@ fn test_costs_series_filtering() {
         1,
         "CreatePlan",
         100,
-        1.0,
+        Some(1.0),
         Some("2026-08-10T10:00:00Z"),
     )
     .unwrap();
@@ -344,7 +416,7 @@ fn test_costs_series_filtering() {
         1,
         "ExecutePlan",
         200,
-        2.0,
+        Some(2.0),
         Some("2026-08-10T14:00:00Z"),
     )
     .unwrap();
@@ -353,7 +425,7 @@ fn test_costs_series_filtering() {
         1,
         "ExecutePlan",
         300,
-        3.0,
+        Some(3.0),
         Some("2026-08-17T10:00:00Z"),
     )
     .unwrap();
@@ -364,7 +436,7 @@ fn test_costs_series_filtering() {
         2,
         "CreatePlan",
         400,
-        4.0,
+        Some(4.0),
         Some("2026-08-10T11:00:00Z"),
     )
     .unwrap();
@@ -373,7 +445,7 @@ fn test_costs_series_filtering() {
         2,
         "ExecutePlan",
         500,
-        5.0,
+        Some(5.0),
         Some("2026-08-17T14:00:00Z"),
     )
     .unwrap();
@@ -472,4 +544,113 @@ fn test_costs_series_filtering() {
     )
     .unwrap();
     assert!(empty.is_empty());
+}
+
+#[test]
+fn none_cost_round_trips_as_null() {
+    let (_dir, conn) = setup_test_db();
+
+    insert_cost(&conn, 1, "ExecutePlan", 1500, None, None).expect("insert unpriced cost");
+
+    let records = list_costs_by_plan(&conn, 1).expect("list costs");
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        records[0].cost, None,
+        "an unpriceable run must read back as unknown, not as free"
+    );
+
+    // Proves the column holds NULL rather than 0.0, which is what makes SUM and COUNT(Cost) skip it.
+    let is_null: i64 = conn
+        .query_row("SELECT Cost IS NULL FROM Costs WHERE PlanId = 1", [], |r| {
+            r.get(0)
+        })
+        .expect("query Cost IS NULL");
+    assert_eq!(is_null, 1);
+}
+
+#[test]
+fn aggregates_skip_null_costs() {
+    let (_dir, conn) = setup_test_db();
+
+    let now = Utc::now().to_rfc3339();
+    insert_cost(&conn, 1, "ExecutePlan", 1000, Some(10.0), Some(&now)).unwrap();
+    insert_cost(&conn, 1, "ExecutePlan", 2000, None, Some(&now)).unwrap();
+    insert_cost(&conn, 1, "ExecutePlan", 3000, Some(20.0), Some(&now)).unwrap();
+
+    let summary = get_costs_summary(&conn, &CostsFilter::default()).expect("summary");
+    assert!(
+        (summary.total_spend - 30.0).abs() < 1e-6,
+        "SUM skips the NULL rather than treating it as zero"
+    );
+
+    let (priced, total): (i64, i64) = conn
+        .query_row(
+            "SELECT COUNT(Cost), COUNT(*) FROM Costs WHERE PlanId = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .expect("count costs");
+    assert_eq!(priced, 2, "COUNT(Cost) counts only the rows we could price");
+    assert_eq!(total, 3);
+
+    let average: f64 = conn
+        .query_row("SELECT AVG(Cost) FROM Costs WHERE PlanId = 1", [], |r| {
+            r.get(0)
+        })
+        .expect("average cost");
+    assert!(
+        (average - 15.0).abs() < 1e-6,
+        "the average is over the runs we could price, not 10.0 with a zero dragging it down"
+    );
+}
+
+#[test]
+fn cost_source_agent_model_persist() {
+    let (_dir, conn) = setup_test_db();
+
+    insert_cost_entry(
+        &conn,
+        1,
+        &CostEntry {
+            promptware: "ExecutePlan".to_string(),
+            tokens: 4000,
+            cost: Some(1.25),
+            model: Some("claude-opus-5".to_string()),
+            cost_source: Some("agent".to_string()),
+            agent: Some("claude".to_string()),
+            log_timestamp: Some("2026-01-01T00:00:00Z".to_string()),
+        },
+    )
+    .expect("insert fully populated entry");
+
+    insert_cost_entry(
+        &conn,
+        1,
+        &CostEntry {
+            promptware: "CreatePlan".to_string(),
+            tokens: 500,
+            cost: None,
+            model: None,
+            cost_source: None,
+            agent: None,
+            log_timestamp: None,
+        },
+    )
+    .expect("insert bare entry");
+
+    let records = list_costs_by_plan(&conn, 1).expect("list costs");
+    assert_eq!(records.len(), 2);
+
+    assert_eq!(records[0].model.as_deref(), Some("claude-opus-5"));
+    assert_eq!(records[0].cost_source.as_deref(), Some("agent"));
+    assert_eq!(records[0].agent.as_deref(), Some("claude"));
+    assert_eq!(
+        records[0].log_timestamp.as_deref(),
+        Some("2026-01-01T00:00:00Z")
+    );
+
+    assert_eq!(records[1].model, None);
+    assert_eq!(records[1].cost_source, None);
+    assert_eq!(records[1].agent, None);
+    assert_eq!(records[1].log_timestamp, None);
 }
