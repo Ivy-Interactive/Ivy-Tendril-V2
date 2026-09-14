@@ -52,6 +52,25 @@ pub struct ProjectConfig {
     pub review_actions: Vec<ReviewActionConfig>,
     #[serde(rename = "buildDependencies", default)]
     pub build_dependencies: Vec<String>,
+    #[serde(rename = "mcpServers", default)]
+    pub mcp_servers: Vec<ProjectMcpServerRef>,
+}
+
+/// An MCP server every job of a project gets, declared under the project in `config.yaml`.
+///
+/// `command`, each `arguments` entry and each `environment` value are expanded against
+/// `TENDRIL_HOME` when a job is launched.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProjectMcpServerRef {
+    pub name: String,
+    #[serde(default)]
+    pub command: String,
+    #[serde(default)]
+    pub arguments: Vec<String>,
+    #[serde(default)]
+    pub environment: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 impl ProjectConfig {
