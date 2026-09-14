@@ -6,6 +6,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use common::HomeFixture;
 use rusqlite::{params, Connection};
 use tendril_core::config::get_database_path;
+use tendril_core::db::migrations::apply_migrations;
 use tendril_core::db::open_database;
 use tendril_core::db::pr_status::{
     delete_pr_status, get_all_pr_statuses, get_pr_status, get_unmerged_pr_urls, upsert_pr_status,
@@ -144,6 +145,60 @@ fn an_unparseable_timestamp_reads_back_as_the_epoch() {
 
     let read = get_pr_status(&conn, PR_7).unwrap().unwrap();
     assert_eq!(read.last_checked, DateTime::<Utc>::from_timestamp_nanos(0));
+}
+
+/// A database carried over from V1 has `PrStatuses` without `Branch` (the column arrived in
+/// `Migration_018`). Opening it must add the column and leave the existing rows alone.
+#[test]
+fn the_branch_column_is_added_to_a_v1_shaped_table() {
+    let home = HomeFixture::new("pr-db-v1-shape");
+    let db_path = get_database_path(&home.path);
+    std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+
+    {
+        let conn = Connection::open(&db_path).expect("open raw database");
+        conn.execute_batch(
+            "CREATE TABLE PrStatuses (
+                 PrUrl TEXT PRIMARY KEY,
+                 Owner TEXT NOT NULL,
+                 Repo TEXT NOT NULL,
+                 Status TEXT NOT NULL,
+                 LastChecked TEXT NOT NULL
+             );",
+        )
+        .expect("create the pre-Branch table");
+        conn.execute(
+            "INSERT INTO PrStatuses (PrUrl, Owner, Repo, Status, LastChecked) \
+             VALUES (?1, 'acme', 'widgets', 'Open', '2026-09-14T12:00:00+00:00')",
+            params![PR_7],
+        )
+        .expect("insert a V1 row");
+        assert!(
+            conn.query_row("SELECT Branch FROM PrStatuses", [], |r| r
+                .get::<_, Option<String>>(0))
+                .is_err(),
+            "the fixture must start without the Branch column"
+        );
+        apply_migrations(&conn).expect("migrate the V1 database");
+    }
+
+    let conn = open_database(&db_path).expect("reopen the migrated database");
+    let read = get_pr_status(&conn, PR_7)
+        .expect("read")
+        .expect("the V1 row survives");
+    assert_eq!(read.status, PrState::Open);
+    assert_eq!(read.branch, None, "the added column is null for old rows");
+
+    // And the column is writable, so the next sync pass can fill it in.
+    upsert_pr_status(&conn, &record(PR_7, PrState::Merged, Some("tendril/00001"))).unwrap();
+    assert_eq!(
+        get_pr_status(&conn, PR_7)
+            .unwrap()
+            .unwrap()
+            .branch
+            .as_deref(),
+        Some("tendril/00001")
+    );
 }
 
 /// A status string the enum does not know is `Unknown` — never a guessed `Open`.

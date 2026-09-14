@@ -147,6 +147,65 @@ fn a_merged_pr_completes_the_plan() {
 }
 
 #[test]
+fn an_open_pr_stays_open_and_does_not_complete_the_plan() {
+    let home = HomeFixture::new("pr-sync-open");
+    let conn = open_fixture_db(&home);
+    let mut plan = plan_with(PlanStatus::Review, &[("Build", VerificationStatus::Pass)]);
+    plan.prs = vec![PR_7.to_string()];
+    let folder = home.write_plan("00008-Waiting", &plan);
+    let fake = FakeGitHub::new().with_pr(PR_7, PrState::Open, Some("tendril/00008-Waiting"));
+
+    let report = sync_pr_statuses_with(
+        &conn,
+        &home.plans_dir(),
+        &|o, r| fake.fetch(o, r),
+        Utc::now(),
+        ten_minutes(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        plan_state(&folder),
+        "Review",
+        "an open PR is not a delivery"
+    );
+    assert!(report.completed_plans.is_empty());
+    assert!(report.refused_completions.is_empty());
+
+    let cached = get_pr_status(&conn, PR_7).unwrap().expect("cached row");
+    assert_eq!(cached.status, PrState::Open);
+    assert_eq!(cached.branch.as_deref(), Some("tendril/00008-Waiting"));
+}
+
+/// A PR closed without merging is not a delivery either, so the plan stays where it is.
+#[test]
+fn a_closed_unmerged_pr_does_not_complete_the_plan() {
+    let home = HomeFixture::new("pr-sync-closed-unmerged");
+    let conn = open_fixture_db(&home);
+    let mut plan = plan_with(PlanStatus::Review, &[("Build", VerificationStatus::Pass)]);
+    plan.prs = vec![PR_7.to_string()];
+    let folder = home.write_plan("00009-Abandoned", &plan);
+    let fake = FakeGitHub::new().with_pr(PR_7, PrState::Closed, Some("tendril/00009-Abandoned"));
+
+    let report = sync_pr_statuses_with(
+        &conn,
+        &home.plans_dir(),
+        &|o, r| fake.fetch(o, r),
+        Utc::now(),
+        ten_minutes(),
+    )
+    .unwrap();
+
+    assert_eq!(plan_state(&folder), "Review");
+    assert!(report.completed_plans.is_empty());
+    assert!(report.refused_completions.is_empty());
+    assert_eq!(
+        get_pr_status(&conn, PR_7).unwrap().unwrap().status,
+        PrState::Closed
+    );
+}
+
+#[test]
 fn a_closed_pr_cannot_move_a_completed_plan_off_completed() {
     let home = HomeFixture::new("pr-sync-closed-completed");
     let conn = open_fixture_db(&home);
