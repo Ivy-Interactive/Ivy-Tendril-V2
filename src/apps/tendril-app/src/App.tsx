@@ -4,7 +4,8 @@ import { plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
 import { serviceStore } from "./state/serviceStore";
 import { bridge } from "./api/bridge";
-import { onJobEvent, onPlanEvent, onServiceStatus } from "./api/events";
+import { onChangeEvent, onChangeStreamStatus, onJobEvent, onPlanEvent, onServiceStatus } from "./api/events";
+import { applyChangeEvent } from "./api/changes";
 import { describeBridgeError, type ProjectSummary } from "./types/api";
 
 import { Loader2 } from "lucide-react";
@@ -87,6 +88,8 @@ export const App: React.FC = () => {
     let unsubStatus: (() => void) | undefined;
     let unsubJob: (() => void) | undefined;
     let unsubPlan: (() => void) | undefined;
+    let unsubChange: (() => void) | undefined;
+    let unsubChangeStatus: (() => void) | undefined;
 
     onServiceStatus((st) => {
       serviceStore.setStatus(
@@ -113,10 +116,40 @@ export const App: React.FC = () => {
       .then((unsub) => (unsubPlan = unsub))
       .catch(() => {});
 
+    // Filesystem changes: a plan edited by the CLI, a promptware run or an editor reaches the UI
+    // through here, which is the only route for changes no in-app action caused.
+    onChangeEvent((event) => {
+      // Read the selection at delivery time rather than closing over it: this effect runs once, so a
+      // captured value would be whatever was selected at mount.
+      const selected = plansStore.getState().selectedPlan;
+      applyChangeEvent(event, {
+        refreshPlans: () => void plansStore.fetchPlans().catch(() => {}),
+        refreshPlanDetail: (folder) =>
+          void plansStore.fetchPlanDetail(selected?.id ?? folder).catch(() => {}),
+        refreshJobs: () => void jobsStore.fetchJobs().catch(() => {}),
+        refreshProjects: () =>
+          void bridge
+            .listProjects()
+            .then(setProjects)
+            .catch(() => {}),
+        selectedPlanFolder: selected?.folderPath ?? selected?.id ?? null,
+      });
+    })
+      .then((unsub) => (unsubChange = unsub))
+      .catch(() => {});
+
+    onChangeStreamStatus((status) => {
+      serviceStore.setChangeStreamConnected(status === "connected");
+    })
+      .then((unsub) => (unsubChangeStatus = unsub))
+      .catch(() => {});
+
     return () => {
       if (unsubStatus) unsubStatus();
       if (unsubJob) unsubJob();
       if (unsubPlan) unsubPlan();
+      if (unsubChange) unsubChange();
+      if (unsubChangeStatus) unsubChangeStatus();
     };
   }, []);
 
