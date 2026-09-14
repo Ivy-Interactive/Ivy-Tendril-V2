@@ -2,9 +2,9 @@ use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcess
 use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
-    delete_job as delete_job_row, find_inflight_job_by_dedupe_key, get_job, insert_job,
-    insert_new_job, list_job_ids_by_status, list_jobs, list_non_terminal_jobs, max_numeric_job_id,
-    touch_job_last_output,
+    delete_job as delete_job_row, find_inflight_job_by_dedupe_key, find_job_by_idempotency_key,
+    get_job, insert_job, insert_new_job, list_job_ids_by_status, list_jobs, list_non_terminal_jobs,
+    list_non_terminal_jobs_for_plan, max_numeric_job_id, touch_job_last_output,
 };
 use crate::db::open_database;
 use crate::error::{Result, TendrilError};
@@ -110,6 +110,14 @@ pub struct StartOptions {
     /// The operator's deliberate "yes, again": skips both duplicate gates. It never bypasses the
     /// dependency gate — only the "is this already in flight" question.
     pub force: bool,
+    /// Client-supplied identity of *this submission*. A second start carrying a key already recorded
+    /// returns the job that key created instead of making another one, which is what makes a retry
+    /// after a lost or timed-out response safe.
+    ///
+    /// Distinct from [`Self::force`] and from the server-derived dedupe key: those answer "is this
+    /// work already running", which stops helping the moment the first job finishes. A key answers
+    /// "have I already sent this request", which stays true forever.
+    pub idempotency_key: Option<String>,
 }
 
 /// Why a job may not be queued yet.
@@ -154,9 +162,15 @@ pub struct JobManager {
     dispatch_notify: Arc<Notify>,
     /// Guards the one-time spawn of `dispatch_loop`.
     dispatcher_started: Arc<AtomicBool>,
-    /// Serialises ID allocation with the first insert, so two concurrent `start_job` calls cannot
+    /// Serialises the whole decision to start a job: the idempotency-key lookup, the authoritative
+    /// conflict check, the duplicate-work check, ID allocation and the first insert. Holding all of
+    /// them under one lock is what makes check-then-insert indivisible — two concurrent
+    /// `start_job` calls can no longer both pass a check that neither has yet invalidated, nor
     /// allocate the same ID.
-    alloc_lock: Arc<Mutex<()>>,
+    ///
+    /// Nothing slow belongs in here. `read_plan_state`, the plan dependency gate (which can invoke
+    /// `gh` over the network) and the wait-for-jobs gate all run outside it.
+    start_lock: Arc<Mutex<()>>,
     spec_builder: SpecBuilder,
     /// Runs a project's hooks. Injectable for the same reason as `spec_builder`: a lifecycle test
     /// must be able to see a hook fire without a shell running.
@@ -187,7 +201,7 @@ impl JobManager {
             queue: Arc::new(Mutex::new(JobQueue::new())),
             dispatch_notify: Arc::new(Notify::new()),
             dispatcher_started: Arc::new(AtomicBool::new(false)),
-            alloc_lock: Arc::new(Mutex::new(())),
+            start_lock: Arc::new(Mutex::new(())),
             spec_builder: Arc::new(build_agent_spec),
             hook_executor: shell_hook_executor(),
             job_timeout_override: None,
@@ -320,13 +334,40 @@ impl JobManager {
 
     /// Starts a job, honouring the per-start options that do not belong to any job type's own args.
     ///
-    /// Gates run in this order: conflict rejection, the duplicate-work rejection, the plan dependency
-    /// gate, the wait-for-jobs gate, the plan state transition, then the enqueue. The two rejections
-    /// are the only ones that return `Err`: they write no job row and touch no plan state.
+    /// Gates run in this order:
+    ///
+    /// 1. **Missing plan folder** — a plan-scoped job with no folder is refused outright.
+    /// 2. **Conflict fast path** — memory-only and I/O-free, so an obvious duplicate is rejected
+    ///    before the dependency gate can spend a network round trip on it. Not authoritative.
+    /// 3. **The plan dependency gate**, then **the wait-for-jobs gate**. Both may await for a long
+    ///    time, so both run outside `start_lock`.
+    /// 4. Under `start_lock`, indivisibly: **the idempotency-key replay**, **the authoritative
+    ///    conflict check**, **the duplicate-work rejection**, ID allocation, the row insert and the
+    ///    map insert.
+    /// 5. **The plan state transition**, only now that a row exists.
+    /// 6. **The enqueue.**
+    ///
+    /// Every path that does not create a job writes nothing at all — no job row, no plan state
+    /// change, no queue entry. That covers the missing-folder `Validation` rejection, both conflict
+    /// rejections, the duplicate-work rejection, and an idempotency replay, which returns the id of
+    /// the job the key already created.
     pub async fn start_job_with(&self, args: JobArgs, opts: StartOptions) -> Result<String> {
         let job_type = args.job_type().to_string();
         let plan_folder_str = args.plan_folder().unwrap_or("").to_string();
         let plan_folder = PathBuf::from(&plan_folder_str);
+
+        // A plan-scoped job with no plan folder is malformed, and it is also unguardable: with no
+        // folder there is nothing to key a conflict on, so accepting it would grant unlimited
+        // concurrency on the one path that most needs the guard. Only `POST /api/jobs` can express it
+        // — it deserializes raw `JobArgs`, where the CLI and MCP both resolve a folder first — and
+        // `Validation` is what that route turns into a 400.
+        if conflict_group(&job_type).is_some() && normalize_plan_folder(&plan_folder_str).is_empty()
+        {
+            return Err(TendrilError::Validation(format!(
+                "{} requires a plan folder",
+                job_type
+            )));
+        }
 
         // `CreatePlan` carries a priority of its own, so an explicit override is written back into the
         // stored args rather than only onto the job row.
@@ -341,10 +382,19 @@ impl JobManager {
         // gates, and stores no dedupe key so it cannot block the next submission either.
         let force = opts.force || args.force_flag();
 
-        // Before anything is allocated or written: another job of the same group must not already be
-        // working on this plan.
+        // Fast path only, not the guard. It is an optimization: rejecting here avoids running the
+        // plan dependency gate — which can invoke `gh` over the network — for a submission that is
+        // obviously a duplicate. The authoritative check is the one inside `start_lock` below, and it
+        // is the one that makes concurrent starts safe.
+        //
+        // A DB error is swallowed rather than returned: the authoritative check hits the same error a
+        // moment later and reports it properly, so failing the fast path would only turn a
+        // recoverable read error into a lost submission.
         if !force {
-            if let Some(existing_id) = self.find_conflicting_job(&job_type, &plan_folder_str).await
+            if let Some(existing_id) = self
+                .find_conflicting_job(&job_type, &plan_folder_str)
+                .await
+                .unwrap_or(None)
             {
                 return Err(TendrilError::Conflict(format!(
                     "{} already in progress for this plan (job {}). Use force to submit it again.",
@@ -399,6 +449,7 @@ impl JobManager {
         job.project = resolve_project(&job, &settings);
         job.wait_for_job_ids = opts.wait_for_jobs.clone();
         job.priority = resolve_job_priority(&args, &plan_folder, opts.priority);
+        job.idempotency_key = opts.idempotency_key.clone();
 
         // The wait-for gate only runs when the plan dependency gate let the job through: a blocked
         // plan is the more specific reason and should be the one the user sees.
@@ -436,16 +487,48 @@ impl JobManager {
             None
         };
 
-        // Allocate the ID and insert the row under one lock, so a concurrent start cannot reuse it.
+        // Every check that decides *whether* to create a job, then the creation itself, under one
+        // lock. Widened from guarding only ID allocation: the conflict check used to sit ~90 lines and
+        // several `.await` points earlier, so two concurrent submissions could both pass it while
+        // neither had inserted yet, and both got a job.
         let job_id = {
-            let _guard = self.alloc_lock.lock().await;
+            let _guard = self.start_lock.lock().await;
 
             let db_path = crate::config::get_database_path(&self.tendril_home);
             let conn = open_database(&db_path)?;
 
+            // A replayed key is the same request, not a new one: hand back the job it already made,
+            // and take no further action — no row, no plan-state flip, no enqueue.
+            if let Some(key) = opts.idempotency_key.as_deref() {
+                if let Some(existing) = find_job_by_idempotency_key(&conn, key)? {
+                    tracing::info!(
+                        "Idempotency key {} replays job {} ({})",
+                        key,
+                        existing.id,
+                        existing.status
+                    );
+                    return Ok(existing.id);
+                }
+            }
+
+            // The authoritative conflict check, unlike the fast path above: inside the lock, so two
+            // concurrent starts cannot both pass it, and DB-backed, so a restart that leaves the
+            // in-memory map empty cannot admit a second job either.
+            if !force {
+                if let Some(existing_id) = self
+                    .find_conflicting_job(&job_type, &plan_folder_str)
+                    .await?
+                {
+                    return Err(TendrilError::Conflict(format!(
+                        "{} already in progress for this plan (job {}). Use force to submit it \
+                         again.",
+                        job_type, existing_id
+                    )));
+                }
+            }
+
             // Idempotency at the door: the same work already in flight is a conflict, not a second
-            // job, worktree and agent. Checked under `alloc_lock` and before the insert, so two
-            // concurrent submissions cannot both pass.
+            // job, worktree and agent.
             if let Some(key) = &dedupe_key {
                 if let Some(existing) = find_inflight_job_by_dedupe_key(&conn, key)? {
                     return Err(TendrilError::DuplicateJob(format!(
@@ -459,7 +542,8 @@ impl JobManager {
             job.id = job_id.clone();
             job.dedupe_key = dedupe_key.clone();
 
-            insert_new_job(&conn, &job).map_err(|e| duplicate_or_other(e, &job_id, &dedupe_key))?;
+            insert_new_job(&conn, &job)
+                .map_err(|e| duplicate_or_other(e, &job_id, &dedupe_key, &opts.idempotency_key))?;
 
             self.jobs.write().await.insert(job_id.clone(), job.clone());
             job_id
@@ -638,31 +722,66 @@ impl JobManager {
 
     /// The id of an unfinished job that would fight this one over the same plan, if any.
     ///
+    /// Authoritative: the in-memory map *and* every persisted non-terminal row. Startup recovery does
+    /// not rehydrate the map ([`crate::jobs::recovery::reconcile_jobs_with`]) — it reports surviving
+    /// `Running` jobs as live and deliberately leaves `Queued`/`Pending` rows alone for want of a
+    /// durable queue — so immediately after a restart the map is empty while the database still holds
+    /// live and queued work. The database is the only place such a job can be seen.
+    ///
+    /// Rehydrating the map instead would be worse: it is also what `get_job`, the dispatcher and the
+    /// cancellation paths read, so inserting `Queued` rows would advertise jobs that will never be
+    /// dispatched, and inserting detached `Running` rows would arm the watchdog and timeout logic
+    /// against a process no handle exists for. Querying here keeps the blast radius to the guard.
+    ///
     /// Folder paths are compared case-insensitively, as legacy did, so two starts that spell the same
-    /// folder differently still collide.
-    pub async fn find_conflicting_job(&self, job_type: &str, plan_folder: &str) -> Option<String> {
-        let group = conflict_group(job_type)?;
-        if plan_folder.is_empty() {
-            return None;
+    /// folder differently still collide. This deliberately does *not* take `start_lock`: it is `pub`
+    /// and called directly by tests, so the caller owns the serialization.
+    pub async fn find_conflicting_job(
+        &self,
+        job_type: &str,
+        plan_folder: &str,
+    ) -> Result<Option<String>> {
+        let Some(group) = conflict_group(job_type) else {
+            return Ok(None);
+        };
+        let folder = normalize_plan_folder(plan_folder);
+        if folder.is_empty() {
+            // Genuinely unmatchable rather than a free pass: `start_job_with` refuses a plan-scoped
+            // job with no folder before it ever gets here.
+            return Ok(None);
         }
 
-        let jobs = self.jobs.read().await;
-        let mut conflicting: Vec<&JobItem> = jobs
-            .values()
-            .filter(|j| {
-                matches!(
-                    j.status,
-                    JobStatus::Running
-                        | JobStatus::Queued
-                        | JobStatus::Pending
-                        | JobStatus::Blocked
-                ) && j.plan_file.eq_ignore_ascii_case(plan_folder)
-                    && conflict_group(&j.job_type) == Some(group)
-            })
-            .collect();
-        // Oldest first, so the message names the job that actually holds the plan.
-        conflicting.sort_by(|a, b| a.id.cmp(&b.id));
-        conflicting.first().map(|j| j.id.clone())
+        let mut ids: Vec<String> = {
+            let jobs = self.jobs.read().await;
+            jobs.values()
+                .filter(|j| {
+                    matches!(
+                        j.status,
+                        JobStatus::Running
+                            | JobStatus::Queued
+                            | JobStatus::Pending
+                            | JobStatus::Blocked
+                    ) && normalize_plan_folder(&j.plan_file).eq_ignore_ascii_case(&folder)
+                        && conflict_group(&j.job_type) == Some(group)
+                })
+                .map(|j| j.id.clone())
+                .collect()
+        };
+
+        let conn = open_database(&crate::config::get_database_path(&self.tendril_home))?;
+        ids.extend(
+            list_non_terminal_jobs_for_plan(&conn, &folder)?
+                .into_iter()
+                .filter(|j| conflict_group(&j.job_type) == Some(group))
+                .map(|j| j.id),
+        );
+
+        // Oldest first, so the message names the job that actually holds the plan. Ids are
+        // zero-padded to five digits, so lexicographic order is numeric order — and sorting is what
+        // keeps that guarantee across the two sources, which may report the same job twice.
+        ids.sort();
+        ids.dedup();
+        Ok(ids.into_iter().next())
     }
 
     /// Re-runs the wait-for gate for every `Blocked` job listing `finished_id`, enqueueing the ones
@@ -1072,26 +1191,50 @@ pub fn conflict_group(job_type: &str) -> Option<&'static str> {
     }
 }
 
+/// Trailing separators and surrounding whitespace do not change which plan a folder names, so two
+/// callers that spell the same folder differently must still collide. Case is left alone: the
+/// comparison against it is case-insensitive, but a Linux path is case-sensitive on disk, so lowering
+/// the string would corrupt the value rather than merely relax the match.
+fn normalize_plan_folder(folder: &str) -> String {
+    folder.trim().trim_end_matches(['/', '\\']).to_string()
+}
+
 /// Translates a failed `insert_new_job` into the right error.
 ///
 /// A unique-index violation on `DedupeKey` is the cross-process arm of the duplicate check: another
 /// writer inserted the same work between our query and our insert. It deserves the same
 /// [`TendrilError::DuplicateJob`] as the in-process rejection, so the operator sees a 409 either way.
-/// The winning row's id is not in hand here, so the message reports the key instead. Every other
-/// failure — including a primary-key collision on `Id`, which is also a constraint violation — stays
-/// a generic persist failure.
+/// The winning row's id is not in hand here, so the message reports the key instead.
+///
+/// A violation on `IdempotencyKey` is the same race for the other key: two retries of one submission
+/// reaching two writers. The in-process path already returns the original job's id, so this arm only
+/// fires across processes, where the id is likewise not in hand — a [`TendrilError::Conflict`] naming
+/// the key is the honest answer, and is still better than the generic persist failure it used to be.
+///
+/// Every other failure — including a primary-key collision on `Id`, which is also a constraint
+/// violation — stays a generic persist failure.
 fn duplicate_or_other(
     e: rusqlite::Error,
     job_id: &str,
     dedupe_key: &Option<String>,
+    idempotency_key: &Option<String>,
 ) -> TendrilError {
     if let rusqlite::Error::SqliteFailure(err, Some(msg)) = &e {
-        if err.code == rusqlite::ErrorCode::ConstraintViolation && msg.contains("DedupeKey") {
-            return TendrilError::DuplicateJob(format!(
-                "This work is already in flight in another writer (dedupe key {}). Use force to \
-                 submit it again.",
-                dedupe_key.as_deref().unwrap_or("unknown")
-            ));
+        if err.code == rusqlite::ErrorCode::ConstraintViolation {
+            if msg.contains("DedupeKey") {
+                return TendrilError::DuplicateJob(format!(
+                    "This work is already in flight in another writer (dedupe key {}). Use force to \
+                     submit it again.",
+                    dedupe_key.as_deref().unwrap_or("unknown")
+                ));
+            }
+            if msg.contains("IdempotencyKey") {
+                return TendrilError::Conflict(format!(
+                    "Idempotency key {} was claimed by another writer; retry to be handed the job \
+                     it created.",
+                    idempotency_key.as_deref().unwrap_or("unknown")
+                ));
+            }
         }
     }
     TendrilError::Other(format!("Failed to persist job {}: {}", job_id, e))

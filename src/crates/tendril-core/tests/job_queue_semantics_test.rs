@@ -508,8 +508,13 @@ async fn an_idle_plan_and_a_planless_job_never_conflict() {
     assert!(manager
         .find_conflicting_job("ExecutePlan", &folder.to_string_lossy())
         .await
+        .unwrap()
         .is_none());
-    assert!(manager.find_conflicting_job("SyncRepo", "").await.is_none());
+    assert!(manager
+        .find_conflicting_job("SyncRepo", "")
+        .await
+        .unwrap()
+        .is_none());
 }
 
 // ---------------------------------------------------------------------------

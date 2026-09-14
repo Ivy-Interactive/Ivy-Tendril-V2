@@ -45,6 +45,11 @@ pub struct StartJobRequest {
     pub wait_for_jobs: Vec<String>,
     #[serde(default)]
     pub priority: Option<i32>,
+    /// Client-supplied identity of this submission. Resubmitting the same key returns the job it
+    /// already created instead of starting a second one, which is what makes a retry after a lost or
+    /// timed-out response safe. `#[serde(default)]` keeps every existing body valid.
+    #[serde(rename = "idempotencyKey", default)]
+    pub idempotency_key: Option<String>,
 }
 
 /// `?force=true` is the operator's override of the duplicate gates, for the job types that carry no
@@ -64,6 +69,7 @@ pub async fn start_job(
         wait_for_jobs: req.wait_for_jobs,
         priority: req.priority,
         force: query.force || req.args.force_flag(),
+        idempotency_key: req.idempotency_key,
     };
 
     match state.job_manager.start_job_with(req.args, opts).await {
@@ -624,16 +630,12 @@ pub async fn stream_job_events(
             .into_response();
     }
 
-    let kind_values = query
-        .kinds
-        .as_deref()
-        .into_iter()
-        .chain(
-            pairs
-                .iter()
-                .filter(|(k, _)| k == "kind")
-                .map(|(_, v)| v.as_str()),
-        );
+    let kind_values = query.kinds.as_deref().into_iter().chain(
+        pairs
+            .iter()
+            .filter(|(k, _)| k == "kind")
+            .map(|(_, v)| v.as_str()),
+    );
     let allowed_kinds = parse_allowed_kinds(kind_values);
     let tendril_home = state.tendril_home.clone();
     let job_manager = state.job_manager.clone();
