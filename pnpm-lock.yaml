@@ -22,7 +22,7 @@ importers:
 
   .: {}
 
-  apps/tendril-app:
+  src/apps/tendril-app:
     dependencies:
       '@ivy-interactive/components':
         specifier: workspace:*
@@ -98,7 +98,7 @@ importers:
         specifier: 4.1.11
         version: 4.1.11(@types/node@26.5.1)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(jiti@2.7.0)(typescript@5.9.3)(yaml@2.9.1))(jsdom@26.1.0(supports-color@8.1.1))
 
-  packages/components:
+  src/packages/components:
     dependencies:
       '@dnd-kit/core':
         specifier: ^6.3.1
