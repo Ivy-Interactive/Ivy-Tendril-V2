@@ -862,6 +862,24 @@ pub fn get_database_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("tendril.db")
 }
 
+/// Where `config.yaml` hook actions keep their scripts, e.g.
+/// `pwsh -NoProfile -File %TENDRIL_HOME%/Hooks/NotifySlack.ps1`.
+pub fn get_hooks_dir(tendril_home: &Path) -> PathBuf {
+    tendril_home.join("Hooks")
+}
+
+/// Creates the home directories that nothing else owns. Idempotent: `create_dir_all` on an existing
+/// directory is a no-op, so it is safe on every daemon start, not just the first.
+///
+/// Deliberately only `Hooks` (plus the home itself): `Plans`, `Logs/Jobs`, `Attachments` and
+/// `Promptwares` are each created on demand by their owner, and duplicating that here would give two
+/// owners for one directory.
+pub fn ensure_home_directories(tendril_home: &Path) -> Result<()> {
+    std::fs::create_dir_all(tendril_home)?;
+    std::fs::create_dir_all(get_hooks_dir(tendril_home))?;
+    Ok(())
+}
+
 /// Strip everything outside `[A-Za-z0-9._-]`, matching the C# `InputSanitizer.SanitizeProjectName`
 /// so the directory layout stays byte-identical between the two implementations.
 pub fn sanitize_project_name(name: &str) -> String {
