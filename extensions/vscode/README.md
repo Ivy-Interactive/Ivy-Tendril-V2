@@ -104,6 +104,12 @@ npm run typecheck
 
 # Execute extension unit and integration tests
 npm test
+
+# Package extension into a VSIX archive
+pnpm run package
+
+# Or from repository root
+pnpm package:extension
 ```
 
 ### Debugging with VS Code
