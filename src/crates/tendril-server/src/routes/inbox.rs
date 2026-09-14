@@ -34,6 +34,7 @@ pub async fn post_inbox(
         priority: 0,
         force: false,
         source_path: req.source_path,
+        upload_session_id: None,
     });
 
     match state.job_manager.start_job(args).await {
