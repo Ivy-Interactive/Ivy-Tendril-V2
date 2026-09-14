@@ -1,3 +1,6 @@
+/** Team Vault DTOs live in `./vault`, next to the components that own their shape. */
+export type * from "./vault";
+
 export type PlanLifecycleState =
   | "Draft"
   | "Creating"
