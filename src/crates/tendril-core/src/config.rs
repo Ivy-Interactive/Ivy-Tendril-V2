@@ -74,6 +74,10 @@ pub struct TendrilSettings {
     #[serde(default)]
     pub beta: bool,
 
+    /// Whether the first-run wizard has been completed or dismissed. See [`OnboardingConfig`].
+    #[serde(default, skip_serializing_if = "OnboardingConfig::is_default")]
+    pub onboarding: OnboardingConfig,
+
     /// Per-coding-agent arguments, environment and named profiles. Tolerant of shape: see
     /// [`deserialize_coding_agents`].
     #[serde(
@@ -123,6 +127,32 @@ pub struct TendrilSettings {
 
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// The persisted outcome of the first-run wizard. `crate::onboarding` owns the rules that read it;
+/// an all-default value is omitted from `config.yaml` entirely, so a config written before this key
+/// existed is untouched by a round-trip and deserializes as "neither completed nor dismissed".
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct OnboardingConfig {
+    #[serde(default)]
+    pub completed: bool,
+
+    #[serde(default)]
+    pub dismissed: bool,
+
+    #[serde(
+        rename = "completedAt",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub completed_at: Option<String>,
+}
+
+impl OnboardingConfig {
+    /// Untouched onboarding state, i.e. nothing worth writing to `config.yaml`.
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
 }
 
 /// What a single promptware asks for: the profile it runs under and the tool rules it contributes.
@@ -330,6 +360,7 @@ impl Default for TendrilSettings {
             worktree_reaper_grace: default_worktree_reaper_grace(),
             worktree_branch_delete_mode: default_worktree_branch_delete_mode(),
             beta: false,
+            onboarding: OnboardingConfig::default(),
             coding_agents: Vec::new(),
             promptwares: BTreeMap::new(),
             enrich_models: true,
@@ -529,6 +560,8 @@ pub fn expand_variables_with_env(input: &str, tendril_home: &str, env: &impl Env
         .replace("${TENDRIL_HOME}", tendril_home)
         .replace("$TENDRIL_HOME", tendril_home);
 
+    res = expand_env_percent_vars(&res, env);
+
     if res.starts_with('~') {
         if let Some(home) = dirs_home_with_env(env) {
             let home_str = home.to_string_lossy();
@@ -545,6 +578,69 @@ pub fn expand_variables_with_env(input: &str, tendril_home: &str, env: &impl Env
 
 pub fn expand_variables(input: &str, tendril_home: &str) -> String {
     expand_variables_with_env(input, tendril_home, &SystemEnv)
+}
+
+/// Replaces every `%NAME%` that names a set environment variable with its value.
+///
+/// `config.yaml` is documented to accept arbitrary `%ENV_VAR%` (the example config's repo paths use
+/// `%REPOS_HOME%`, and hook actions are written the same way), so this closes the gap between the
+/// documented syntax and the one variable the expander used to know.
+///
+/// An unset name is left exactly as written, which is what keeps this backwards compatible: a string
+/// that reached the shell literally before still does. Only `[A-Za-z_][A-Za-z0-9_]*` between two `%`
+/// is considered a name, so a bare `%` or a `50% faster` is never touched.
+fn expand_env_percent_vars(input: &str, env: &impl EnvSource) -> String {
+    if !input.contains('%') {
+        return input.to_string();
+    }
+
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] != b'%' {
+            // Push whole UTF-8 characters: indexing is byte-wise, so a multi-byte character must be
+            // copied in one piece.
+            let ch = input[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+            continue;
+        }
+
+        match bytes[i + 1..].iter().position(|b| *b == b'%') {
+            Some(offset) => {
+                let name = &input[i + 1..i + 1 + offset];
+                match (is_env_var_name(name), env.get_var(name)) {
+                    (true, Some(value)) => {
+                        out.push_str(&value);
+                        i += offset + 2;
+                    }
+                    // Not a name, or a name nothing is set for: emit the opening `%` and carry on
+                    // from the next character, so `%a% %HOME%` still resolves `HOME`.
+                    _ => {
+                        out.push('%');
+                        i += 1;
+                    }
+                }
+            }
+            None => {
+                out.push_str(&input[i..]);
+                break;
+            }
+        }
+    }
+
+    out
+}
+
+fn is_env_var_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 pub fn dirs_home_with_env(env: &impl EnvSource) -> Option<PathBuf> {

@@ -463,6 +463,7 @@ async fn an_unknown_recommendation_state_is_rejected_before_any_request() {
         "Tauri WebDriver E2E Automation".to_string(),
         "Approved".to_string(),
         None,
+        None,
     )
     .await
     .expect_err("'Approved' is not a recommendation state");
@@ -489,6 +490,7 @@ async fn a_recommendation_decision_is_addressed_by_title() {
         "Deep Link Protocol Handler".to_string(),
         "Declined".to_string(),
         Some("Out of scope for now".to_string()),
+        None,
     )
     .await
     .expect("the daemon accepted the write");
@@ -503,6 +505,38 @@ async fn a_recommendation_decision_is_addressed_by_title() {
     assert_eq!(title, "Deep Link Protocol Handler");
     assert_eq!(body["state"], "Declined");
     assert_eq!(body["declineReason"], "Out of scope for now");
+    assert!(
+        body["notes"].is_null(),
+        "a decline reason must not be sent as an accept note"
+    );
+}
+
+/// The counterpart to the decline above: an accept note goes in `notes`, not in
+/// `declineReason`. The app used to send both through the one field, which is
+/// what made an accepted recommendation read back as though it had been refused.
+#[tokio::test]
+async fn an_accept_note_is_sent_as_notes_not_as_a_decline_reason() {
+    let _guard = env_lock().await;
+    let (_temp, _folder, daemon) = isolated_env(true).await;
+
+    cmd_set_recommendation_state(
+        "00021".to_string(),
+        "Tauri WebDriver E2E Automation".to_string(),
+        "AcceptedWithNotes".to_string(),
+        None,
+        Some("Do it after the driver upgrade".to_string()),
+    )
+    .await
+    .expect("the daemon accepted the write");
+
+    let observed = daemon.observed();
+    let (_plan_id, _title, body) = observed
+        .recommendation_calls
+        .first()
+        .expect("the command issued one write");
+    assert_eq!(body["state"], "AcceptedWithNotes");
+    assert_eq!(body["notes"], "Do it after the driver upgrade");
+    assert!(body["declineReason"].is_null());
 }
 
 #[tokio::test]
@@ -514,6 +548,7 @@ async fn a_service_that_refuses_the_write_produces_a_real_failure() {
         "00021".to_string(),
         "Tauri WebDriver E2E Automation".to_string(),
         "Accepted".to_string(),
+        None,
         None,
     )
     .await
