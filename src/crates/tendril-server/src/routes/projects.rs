@@ -3,6 +3,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
@@ -1322,100 +1323,171 @@ pub async fn execute_review_action(
         state.tendril_home.clone()
     };
 
-    let mut cmd = if cfg!(windows) {
-        let mut c = tokio::process::Command::new("cmd");
-        c.args(["/C", &action.command]);
-        c
-    } else {
-        let mut c = tokio::process::Command::new("sh");
-        c.args(["-c", &action.command]);
-        c
+    // Everything from here on is the plan's ports and environment, then the pty. The resolution
+    // above — project, action, working directory — is all this route still does itself.
+    let plan_folder = plan_id
+        .as_deref()
+        .and_then(|pid| resolve_plan_folder(pid, &state.plans_dir).ok());
+    let plan_yaml = plan_folder
+        .as_deref()
+        .and_then(|folder| tendril_core::plans::reader::read_plan_yaml(folder).ok())
+        .map(|(plan, _)| plan);
+
+    let ports = crate::pty::resolve_ports(
+        Some(project),
+        plan_yaml.as_ref().and_then(|p| p.allocated_ports.as_ref()),
+    );
+    // `sh` will not expand `%PORT%`, so the command has to carry the resolved values before it is
+    // handed over; the injected environment covers only what the command reads itself.
+    let command = crate::pty::interpolate_command(&action.command, &ports);
+
+    // `PLAN_ID` is the padded form a plan is known by everywhere else, so a review action can build
+    // a path out of it.
+    let padded_plan_id = plan_id.as_deref().map(|pid| {
+        let trimmed = pid.trim();
+        trimmed
+            .parse::<u32>()
+            .map(|n| format!("{n:05}"))
+            .unwrap_or_else(|_| trimmed.to_string())
+    });
+    let plan_context = match (
+        padded_plan_id.as_deref(),
+        plan_folder.as_deref(),
+        plan_yaml.as_ref(),
+    ) {
+        (Some(id), Some(folder), Some(plan)) => Some(crate::pty::PlanEnvContext {
+            plan_id: id,
+            plan_folder: folder,
+            project: &project.name,
+            repos: &plan.repos,
+        }),
+        _ => None,
     };
 
-    if working_dir.exists() {
-        cmd.current_dir(&working_dir);
-    }
-    cmd.env("TENDRIL_HOME", &state.tendril_home);
+    let mut env = vec![(
+        "TENDRIL_HOME".to_string(),
+        state.tendril_home.to_string_lossy().to_string(),
+    )];
+    env.extend(crate::pty::build_environment(
+        &ports,
+        plan_context.as_ref(),
+        Some(&project.name),
+    ));
 
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
+    let stream = match crate::pty::spawn_review_action(
+        &command,
+        working_dir.exists().then_some(working_dir.as_path()),
+        &env,
+    ) {
+        Ok(stream) => stream,
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("Failed to spawn command: {}", e) })),
+                Json(json!({ "error": e })),
             )
                 .into_response();
         }
     };
 
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
+    let mut frames = stream.frames;
+    let body = futures_util::stream::poll_fn(move |cx| frames.poll_recv(cx));
+    axum::response::sse::Sse::new(body).into_response()
+}
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<
-        Result<axum::response::sse::Event, std::convert::Infallible>,
-    >(128);
+/// Keystrokes for a running review action, addressed by the session id from its `meta` frame.
+///
+/// `data` is base64 for the same reason the `log` frames are: an arrow key or a Ctrl-C is a control
+/// byte, and round-tripping those through JSON as text loses them.
+#[derive(Debug, Deserialize)]
+pub struct ReviewActionInputRequest {
+    #[serde(alias = "sessionId")]
+    pub session_id: String,
+    #[serde(default)]
+    pub data: String,
+}
 
-    let stdout_handle = stdout.map(|out| {
-        let tx_out = tx.clone();
-        tokio::spawn(async move {
-            use tokio::io::AsyncBufReadExt;
-            let mut lines = tokio::io::BufReader::new(out).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let evt = axum::response::sse::Event::default()
-                    .event("log")
-                    .data(line);
-                if tx_out.send(Ok(evt)).await.is_err() {
-                    break;
-                }
-            }
-        })
-    });
+#[derive(Debug, Deserialize)]
+pub struct ReviewActionResizeRequest {
+    #[serde(alias = "sessionId")]
+    pub session_id: String,
+    pub rows: u16,
+    pub cols: u16,
+}
 
-    let stderr_handle = stderr.map(|err| {
-        let tx_err = tx.clone();
-        tokio::spawn(async move {
-            use tokio::io::AsyncBufReadExt;
-            let mut lines = tokio::io::BufReader::new(err).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let evt = axum::response::sse::Event::default()
-                    .event("log")
-                    .data(line);
-                if tx_err.send(Ok(evt)).await.is_err() {
-                    break;
-                }
-            }
-        })
-    });
+/// Writes the client's keystrokes into the action's pty.
+///
+/// The project and action in the path are not what identifies the target — the session id is, so two
+/// runs of the same action never write into each other. They stay in the path so this sits beside
+/// `execute` rather than in a namespace of its own.
+pub async fn review_action_input(
+    Path((_project_name, _action_name)): Path<(String, String)>,
+    Json(request): Json<ReviewActionInputRequest>,
+) -> impl IntoResponse {
+    let Some(session) = crate::pty::session(&request.session_id) else {
+        return session_not_found(&request.session_id);
+    };
 
-    tokio::spawn(async move {
-        if let Some(h) = stdout_handle {
-            let _ = h.await;
+    let bytes = match base64::engine::general_purpose::STANDARD.decode(request.data.as_bytes()) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": format!("Input data is not valid base64: {}", e) })),
+            )
+                .into_response();
         }
-        if let Some(h) = stderr_handle {
-            let _ = h.await;
-        }
-        let status = child.wait().await;
-        let exit_msg = match status {
-            Ok(s) => {
-                if let Some(code) = s.code() {
-                    format!("Process exited with code {}", code)
-                } else {
-                    "Process terminated by signal".to_string()
-                }
-            }
-            Err(e) => format!("Process wait failed: {}", e),
-        };
-        let end_event = axum::response::sse::Event::default()
-            .event("end")
-            .data(exit_msg);
-        let _ = tx.send(Ok(end_event)).await;
-    });
+    };
 
-    let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
-    axum::response::sse::Sse::new(stream).into_response()
+    match session.write_input(&bytes) {
+        Ok(()) => (StatusCode::OK, Json(json!({ "status": "ok" }))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to write to the terminal: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+/// Tells the action's pty how big the client's terminal is, which is what makes a process that
+/// wraps its own output redraw to fit.
+pub async fn review_action_resize(
+    Path((_project_name, _action_name)): Path<(String, String)>,
+    Json(request): Json<ReviewActionResizeRequest>,
+) -> impl IntoResponse {
+    let Some(session) = crate::pty::session(&request.session_id) else {
+        return session_not_found(&request.session_id);
+    };
+
+    // A zero dimension is what a client sends before its terminal has been laid out; applying it
+    // would tell the process it has no window at all.
+    if request.rows == 0 || request.cols == 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Terminal size must be at least 1x1" })),
+        )
+            .into_response();
+    }
+
+    match session.resize(request.rows, request.cols) {
+        Ok(()) => (StatusCode::OK, Json(json!({ "status": "ok" }))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to resize the terminal: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+/// A session that has exited is indistinguishable from one that never existed, and both are a `404`
+/// rather than an error: a client racing the `end` frame has done nothing wrong.
+fn session_not_found(session_id: &str) -> axum::response::Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({
+            "error": format!("Review action session '{}' is not running", session_id)
+        })),
+    )
+        .into_response()
 }
 
 #[cfg(test)]

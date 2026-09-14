@@ -44,3 +44,7 @@ flate2 = "1.0"
 tar = "0.4"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
+# A review action is hosted in a real pseudo-terminal rather than on two pipes: dev servers disable
+# colour and buffer differently when stdout is not a TTY, and one that prompts on first run cannot be
+# answered through a pipe at all.
+portable-pty = "0.9"

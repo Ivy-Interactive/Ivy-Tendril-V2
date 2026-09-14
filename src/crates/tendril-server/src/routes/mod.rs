@@ -201,6 +201,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
         )
+        // The action runs in a pty, so it is interactive: these carry the client's keystrokes and
+        // window size back to it, keyed by the session id its `meta` frame announced.
+        .route(
+            "/api/projects/:name/review-actions/:action/input",
+            post(projects::review_action_input),
+        )
+        .route(
+            "/api/projects/:name/review-actions/:action/resize",
+            post(projects::review_action_resize),
+        )
         .route(
             "/api/projects/:name/hooks",
             post(projects::add_project_hook),
