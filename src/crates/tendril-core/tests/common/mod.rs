@@ -100,6 +100,7 @@ pub fn plan_with(state: PlanStatus, verifications: &[(&str, VerificationStatus)]
         source_url: None,
         recommendations: None,
         chat_session_id: None,
+        allocated_ports: None,
         extra: std::collections::BTreeMap::new(),
     }
 }

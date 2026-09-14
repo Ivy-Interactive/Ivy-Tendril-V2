@@ -205,6 +205,15 @@ pub struct PlanYaml {
     #[serde(rename = "chatSessionId", skip_serializing_if = "Option::is_none")]
     pub chat_session_id: Option<String>,
 
+    /// The TCP port assigned to each of the project's named service ports for this plan. Absent for
+    /// plans whose project configures no ports, so `plan.yaml` is unchanged for them.
+    #[serde(
+        rename = "allocatedPorts",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub allocated_ports: Option<std::collections::BTreeMap<String, u16>>,
+
     #[serde(flatten)]
     pub extra: std::collections::BTreeMap<String, serde_yaml::Value>,
 }
@@ -232,6 +241,7 @@ impl Default for PlanYaml {
             source_url: None,
             recommendations: None,
             chat_session_id: None,
+            allocated_ports: None,
             extra: std::collections::BTreeMap::new(),
         }
     }

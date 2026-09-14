@@ -35,7 +35,33 @@ pub struct LevelConfig {
     pub badge: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A named service port. Each plan gets its own concrete port for it, so two plans under review at
+/// the same time never collide on the static default.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectPortConfig {
+    #[serde(rename = "defaultPort", alias = "default_port", default)]
+    pub default_port: u16,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// An environment file to materialize into a plan's worktree. Git worktrees start without the
+/// untracked `.env` files that exist in the original checkout, so services and migrations cannot
+/// boot until the file is recreated from `template` plus `overrides`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectEnvFileConfig {
+    /// Target path, relative to the worktree root (e.g. `apps/web/.env`).
+    #[serde(default)]
+    pub path: String,
+    /// Optional source file, relative to the worktree root (e.g. `.env.example`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template: Option<String>,
+    /// Keys written on top of the template. Values support placeholder expansion.
+    #[serde(default)]
+    pub overrides: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProjectConfig {
     pub name: String,
     #[serde(default)]
@@ -52,6 +78,12 @@ pub struct ProjectConfig {
     pub review_actions: Vec<ReviewActionConfig>,
     #[serde(rename = "buildDependencies", default)]
     pub build_dependencies: Vec<String>,
+    /// Named service ports, keyed by service name. A `BTreeMap` so iteration and printing are
+    /// deterministic.
+    #[serde(default)]
+    pub ports: std::collections::BTreeMap<String, ProjectPortConfig>,
+    #[serde(rename = "envFiles", default)]
+    pub env_files: Vec<ProjectEnvFileConfig>,
 }
 
 impl ProjectConfig {

@@ -611,6 +611,7 @@ fn the_working_directory_is_the_projects_first_existing_repo() {
             stack_hash: None,
             review_actions: vec![],
             build_dependencies: vec![],
+            ..Default::default()
         }],
         ..Default::default()
     };
@@ -696,6 +697,7 @@ fn repo_configs_list_plan_repos_then_read_only_build_dependencies() {
         review_actions: vec![],
         // The first is already a plan repo and must not be listed twice.
         build_dependencies: vec!["/repos/widgets".to_string(), "/repos/shared".to_string()],
+        ..Default::default()
     };
 
     let yaml = build_repo_configs_yaml(&plan, Some(&config)).expect("expected repo configs");
