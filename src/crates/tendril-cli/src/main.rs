@@ -86,6 +86,17 @@ enum Commands {
         host: String,
     },
 
+    #[command(
+        about = "Start the Tendril daemon, migrating the database and checking the port first"
+    )]
+    Run {
+        #[arg(short, long, help = "Port to listen on (default: 5010)")]
+        port: Option<u16>,
+
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+    },
+
     #[command(about = "Run Model Context Protocol (MCP) server over stdio")]
     Mcp,
 
@@ -134,6 +145,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Serve { port, host } => {
             commands::serve::handle_serve(&tendril_home, port, Some(host)).await?
+        }
+        Commands::Run { port, host } => {
+            commands::run::handle_run(&tendril_home, port.unwrap_or(5010), host).await?
         }
         Commands::Mcp => commands::mcp::handle_mcp(&tendril_home).await?,
         Commands::Db(cmd) => commands::db::handle_db_command(cmd, &tendril_home)?,

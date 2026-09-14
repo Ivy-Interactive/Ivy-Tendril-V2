@@ -8,6 +8,7 @@ use tendril_core::config::{
 use tendril_core::db::{
     get_plans, get_recommendations, open_database, rebuild_recommendations_projection, sync_plan,
 };
+use tendril_core::git::same_pr;
 use tendril_core::git::worktree::{
     add_worktree, cleanup_worktrees, register_worktree, remove_worktree, RemoveOutcome,
     WorktreeMode,
@@ -80,6 +81,9 @@ pub enum PlanCommands {
 
     #[command(about = "Add pull request to plan")]
     AddPr(PlanAddPrArgs),
+
+    #[command(about = "Remove pull request from plan")]
+    RemovePr(PlanRemovePrArgs),
 
     #[command(about = "Add commit to plan")]
     AddCommit(PlanAddCommitArgs),
@@ -280,6 +284,19 @@ pub struct PlanRemoveWorktreeArgs {
 
 #[derive(Args)]
 pub struct PlanAddPrArgs {
+    pub plan_id: String,
+    pub url: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
+}
+
+#[derive(Args)]
+pub struct PlanRemovePrArgs {
     pub plan_id: String,
     pub url: String,
     #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
@@ -1156,13 +1173,17 @@ pub async fn handle_plan_command(
         PlanCommands::AddPr(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            let changed = !plan.prs.contains(&args.url);
+            let changed = !plan.prs.iter().any(|p| same_pr(p, &args.url));
             if changed {
                 plan.prs.push(args.url.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("PR added.");
+
+            if args.reason.as_deref().is_none_or(|r| r.trim().is_empty()) {
+                eprintln!("warning: no --reason given for this plan edit. Pass --reason \"<why you changed it>\" so the plan's other chat sessions are told why, not just what.");
+            }
 
             if changed {
                 let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
@@ -1180,6 +1201,36 @@ pub async fn handle_plan_command(
                 )
                 .await;
             }
+        }
+        PlanCommands::RemovePr(args) => {
+            let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            let (mut plan, _) = read_plan_yaml(&folder)?;
+            let before = plan.prs.len();
+            plan.prs.retain(|p| !same_pr(p, &args.url));
+            if plan.prs.len() == before {
+                println!("PR not recorded on plan {}: {}", args.plan_id, args.url);
+                return Ok(());
+            }
+            plan.updated = Utc::now();
+            write_plan_yaml(&folder, &plan)?;
+            println!("PR removed.");
+
+            if args.reason.as_deref().is_none_or(|r| r.trim().is_empty()) {
+                eprintln!("warning: no --reason given for this plan edit. Pass --reason \"<why you changed it>\" so the plan's other chat sessions are told why, not just what.");
+            }
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                PlanEditEvent {
+                    summary: &format!("PR removed: {}", args.url),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
         PlanCommands::AddCommit(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;

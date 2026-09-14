@@ -12,6 +12,7 @@ pub mod project;
 pub mod project_analyzer;
 pub mod promptware;
 pub mod reset;
+pub mod run;
 pub mod serve;
 pub mod update;
 pub mod update_promptwares;
