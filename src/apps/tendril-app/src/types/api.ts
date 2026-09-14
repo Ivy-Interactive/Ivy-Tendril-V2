@@ -190,6 +190,44 @@ export interface PlanQuery {
   q?: string;
 }
 
+/** `Unknown` means the daemon could not resolve the PR, never that it is open. */
+export type PrState = "Open" | "Closed" | "Merged" | "Unknown";
+
+/** One tracked pull request, as of the daemon's last reconciliation pass. */
+export interface PrStatus {
+  prUrl: string;
+  owner: string;
+  repo: string;
+  number: number;
+  status: PrState;
+  branch?: string | null;
+  /** `null` until the PR has been through one pass. */
+  lastChecked?: string | null;
+  planId: string;
+  planFolder: string;
+  planTitle: string;
+  project: string;
+}
+
+export interface PrTransition {
+  prUrl: string;
+  from?: PrState | null;
+  to: PrState;
+}
+
+export interface PrSyncReport {
+  tracked: number;
+  checked: number;
+  skippedMerged: number;
+  skippedFresh: number;
+  transitions: PrTransition[];
+  completedPlans: string[];
+  refusedCompletions: string[];
+  unblockedPlans: string[];
+  errors: string[];
+  changed: boolean;
+}
+
 /**
  * Rejection value of every `bridge.*` call. Mirrors `BridgeError` in
  * `src-tauri/src/error.rs`; Tauri serializes a command's `Err` payload

@@ -9,6 +9,7 @@ import {
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
+import { PlanPullRequests } from "./PlanPullRequests";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
 import { RecommendationCard } from "../components/RecommendationCard";
@@ -372,29 +373,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               </ul>
             </div>
 
-            <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Pull Requests
-              </h4>
-              <ul className="mt-2 space-y-1 text-sm text-slate-300">
-                {plan.prs && plan.prs.length > 0 ? (
-                  plan.prs.map((p, i) => (
-                    <li key={i}>
-                      <a
-                        href={p}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-emerald-400 hover:underline font-mono text-xs"
-                      >
-                        {p}
-                      </a>
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-slate-500">No PRs created</li>
-                )}
-              </ul>
-            </div>
+            <PlanPullRequests planId={plan.id} prs={plan.prs ?? []} />
           </div>
         )}
       </div>

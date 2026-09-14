@@ -10,6 +10,7 @@ pub use commands::config::*;
 pub use commands::github::*;
 pub use commands::jobs::*;
 pub use commands::plans::*;
+pub use commands::pull_requests::*;
 pub use commands::state::*;
 pub use commands::*;
 
@@ -62,6 +63,8 @@ pub fn run() {
             cmd_clear_chat_queue,
             cmd_delete_queued_chat_item,
             cmd_list_github_issues,
+            cmd_list_pull_requests,
+            cmd_sync_pull_requests,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

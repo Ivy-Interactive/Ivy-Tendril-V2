@@ -8,6 +8,7 @@ pub mod models;
 pub mod ping;
 pub mod plans;
 pub mod projects;
+pub mod pull_requests;
 pub mod verifications;
 pub mod ws;
 
@@ -151,6 +152,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
+        )
+        // Pull requests
+        .route("/api/pull-requests", get(pull_requests::list_pull_requests))
+        .route(
+            "/api/pull-requests/sync",
+            post(pull_requests::sync_pull_requests),
         )
         // Costs
         .route("/api/costs/summary", get(costs::get_costs_summary))

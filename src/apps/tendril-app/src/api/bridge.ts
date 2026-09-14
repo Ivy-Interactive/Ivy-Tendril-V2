@@ -6,6 +6,8 @@ import type {
   PlanDetail,
   PlanQuery,
   PlanSummary,
+  PrStatus,
+  PrSyncReport,
   ProjectSummary,
   RecommendationItem,
   RecommendationState,
@@ -145,6 +147,15 @@ export const bridge = {
 
   async listProjects(this: void): Promise<ProjectSummary[]> {
     return invoke<ProjectSummary[]>("cmd_list_projects");
+  },
+
+  async listPullRequests(this: void): Promise<PrStatus[]> {
+    return invoke<PrStatus[]>("cmd_list_pull_requests");
+  },
+
+  /** Rejects with code `PR_SYNC_IN_PROGRESS` when the daemon is already reconciling. */
+  async syncPullRequests(this: void): Promise<PrSyncReport> {
+    return invoke<PrSyncReport>("cmd_sync_pull_requests");
   },
 
   async getProjectReviewActions(this: void, projectName: string): Promise<ReviewActionConfig[]> {
