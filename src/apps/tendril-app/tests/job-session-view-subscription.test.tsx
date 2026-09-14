@@ -159,4 +159,10 @@ describe("JobSessionView Real-Time Subscription", () => {
     });
     expect(screen.queryByText("Running")).not.toBeInTheDocument();
   });
+
+  it("displays fallback placeholder text when rendered with empty events before stream arrives", () => {
+    render(<JobSessionView job={mockRunningJob} events={[]} />);
+
+    expect(screen.getByText("Waiting for agent output...")).toBeInTheDocument();
+  });
 });

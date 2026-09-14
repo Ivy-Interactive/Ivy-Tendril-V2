@@ -185,7 +185,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
         <AgentViewer
           id={`agent-viewer-${currentJob.id}`}
           jsonStream={
-            jsonStream || JSON.stringify({ type: "status", message: "Waiting for agent output..." })
+            jsonStream || JSON.stringify({ kind: "text", text: "Waiting for agent output..." })
           }
           autoScroll={autoScroll}
           showThinking={true}
