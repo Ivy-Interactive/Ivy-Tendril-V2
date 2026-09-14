@@ -68,7 +68,7 @@ fn test_config_load_and_save() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
-        mcp_servers: Vec::new(),
+        ..Default::default()
     });
 
     save_config(&config_file, &settings).expect("Failed to save config");
@@ -364,7 +364,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
-        mcp_servers: Vec::new(),
+        ..Default::default()
     });
     settings.projects.push(ProjectConfig {
         name: "ProjectB".to_string(),
@@ -378,7 +378,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
-        mcp_servers: Vec::new(),
+        ..Default::default()
     });
     settings.projects.push(ProjectConfig {
         name: "ProjectC".to_string(),
@@ -392,7 +392,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
-        mcp_servers: Vec::new(),
+        ..Default::default()
     });
 
     let referencing = find_projects_referencing_verification(&settings, "RustClippy");
