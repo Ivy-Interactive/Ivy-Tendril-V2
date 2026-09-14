@@ -25,6 +25,8 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 describe("Consumer Smoke Verification", () => {
   const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf-8"));
 
+  // Shelling out to pnpm can take well over the 5s default when the machine is busy, so this case
+  // carries its own generous timeout rather than flaking under load.
   it("verifies package packing succeeds with pnpm pack", () => {
     const packOutput = execSync("pnpm pack --dry-run", {
       cwd: repoRoot,
@@ -34,7 +36,7 @@ describe("Consumer Smoke Verification", () => {
     expect(packOutput).toContain("dist/style.css");
     expect(packOutput).toContain("dist/tendril.mjs");
     expect(packOutput).toContain("dist/tendril.d.mts");
-  });
+  }, 60_000);
 
   it("verifies all declared export map targets exist on disk", () => {
     const exportsMap = packageJson.exports as Record<
