@@ -23,6 +23,12 @@ describe("Dependency portability", () => {
     expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+$/);
   });
 
+  it("defines a typecheck script and includes tsc in check script", () => {
+    const pkg = JSON.parse(readFile("package.json"));
+    expect(pkg.scripts?.typecheck).toBe("tsc --noEmit");
+    expect(pkg.scripts?.check).toContain("tsc --noEmit");
+  });
+
   it.each(["package.json", "vite.config.ts", "vitest.config.ts", "tsconfig.json"])(
     "contains no local absolute path in %s",
     (relativePath) => {
