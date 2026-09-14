@@ -25,7 +25,6 @@ use crate::git::issues::{
 };
 use crate::jobs::JobManager;
 use crate::models::{CreatePlanArgs, JobArgs, JobItem, PlanFile};
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
@@ -351,8 +350,11 @@ pub fn plan_sweep_actions(
 /// Turns a `Pending` proposal into a `CreatePlan` job and records the job id against it. The single
 /// place a proposal becomes a job: the sweep's auto-accept branch and the accept route both go
 /// through here, so the two paths cannot drift.
+///
+/// Takes the database path rather than a connection because `rusqlite::Connection` is not `Send` and
+/// this function awaits. The connection is opened after the job starts and dropped immediately.
 pub async fn accept_proposal(
-    conn: &Connection,
+    db_path: &Path,
     job_manager: &Arc<JobManager>,
     proposal: &InboxProposal,
 ) -> Result<String> {
@@ -366,13 +368,21 @@ pub async fn accept_proposal(
     });
 
     let job_id = job_manager.start_job(args).await?;
+    let conn = open_database(db_path)?;
     set_proposal_state(
-        conn,
+        &conn,
         proposal.id,
         ProposalState::Accepted,
         Some(job_id.as_str()),
     )?;
     Ok(job_id)
+}
+
+/// Inserts a proposal on a short-lived connection, for the `Send` reason given on
+/// [`accept_proposal`].
+fn record_proposal(db_path: &Path, proposal: &InboxProposal) -> Result<i64> {
+    let conn = open_database(db_path)?;
+    insert_proposal(&conn, proposal)
 }
 
 /// Fetches the issues assigned to the user across every configured project, pairing each with the
@@ -441,22 +451,15 @@ pub async fn run_assigned_issues_sweep(
     let mut report = SweepReport::with_outcome(SweepOutcome::Ran);
 
     let db_path = crate::config::get_database_path(tendril_home);
-    let conn = match open_database(&db_path) {
-        Ok(conn) => conn,
-        Err(e) => {
-            report
-                .errors
-                .push(format!("Failed to open database: {}", e));
-            return report;
-        }
-    };
 
     let issues = fetch_assigned_issues(tendril_home, settings, &mut report.errors).await;
     if issues.is_empty() {
         return report;
     }
 
-    let existing = match list_proposals(&conn, None) {
+    // Every database read below takes its own short-lived connection: `rusqlite::Connection` is not
+    // `Send`, so one cannot live across the awaits in this function.
+    let existing = match open_database(&db_path).and_then(|conn| list_proposals(&conn, None)) {
         Ok(rows) => rows,
         Err(e) => {
             report
@@ -475,13 +478,15 @@ pub async fn run_assigned_issues_sweep(
             ));
             Vec::new()
         });
-    let plans = get_plans(&conn, None, None, None).unwrap_or_else(|e| {
-        report.errors.push(format!(
-            "Failed to list plans; plan-based dedup skipped this pass: {}",
-            e
-        ));
-        Vec::new()
-    });
+    let plans = open_database(&db_path)
+        .and_then(|conn| get_plans(&conn, None, None, None).map_err(Into::into))
+        .unwrap_or_else(|e| {
+            report.errors.push(format!(
+                "Failed to list plans; plan-based dedup skipped this pass: {}",
+                e
+            ));
+            Vec::new()
+        });
 
     let now = chrono::Utc::now().to_rfc3339();
     let auto_accept = settings.inbox.auto_accept_assigned_issues;
@@ -501,7 +506,7 @@ pub async fn run_assigned_issues_sweep(
                 );
                 report.skipped += 1;
             }
-            SweepAction::Propose(mut proposal) => match insert_proposal(&conn, &proposal) {
+            SweepAction::Propose(mut proposal) => match record_proposal(&db_path, &proposal) {
                 Ok(id) => {
                     proposal.id = id;
                     tracing::info!(
@@ -518,7 +523,7 @@ pub async fn run_assigned_issues_sweep(
                 )),
             },
             SweepAction::StartJob(mut proposal) => {
-                let id = match insert_proposal(&conn, &proposal) {
+                let id = match record_proposal(&db_path, &proposal) {
                     Ok(id) => id,
                     Err(e) => {
                         report.errors.push(format!(
@@ -532,7 +537,7 @@ pub async fn run_assigned_issues_sweep(
 
                 // A `start_job` failure leaves the row `Pending`: the next pass will not retry it
                 // (the row exists), but the user can still accept it by hand.
-                match accept_proposal(&conn, job_manager, &proposal).await {
+                match accept_proposal(&db_path, job_manager, &proposal).await {
                     Ok(job_id) => {
                         tracing::info!(
                             "Auto-accepted assigned issue {}#{} into job {} for project {}.",
