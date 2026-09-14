@@ -159,6 +159,40 @@ export interface StartJobResponse {
   status: string;
 }
 
+/**
+ * Uncommitted-change status of one repo a plan targets, from
+ * `cmd_get_repo_status`. A repo that could not be inspected carries `error` and
+ * `isDirty: false`, so the dirty-repo guard treats "unknown" as "not blocking".
+ */
+export interface RepoStatus {
+  path: string;
+  isDirty: boolean;
+  /** `git status --porcelain` lines, capped by the service. */
+  changes: string[];
+  /** Total changed entries, which may exceed `changes.length`. */
+  changeCount?: number;
+  error?: string;
+}
+
+/** Options the Create PR dialog passes through to the `CreatePr` job. */
+export interface CreatePrOptions {
+  solveMergeConflicts?: boolean;
+  merge?: boolean;
+  deleteBranch?: boolean;
+  includeArtifacts?: boolean;
+  draft?: boolean;
+  reviewers?: string[];
+  comment?: string;
+}
+
+/** Fields the Create Issue dialog collects for the `CreateIssue` job. */
+export interface CreateIssueFields {
+  repo: string;
+  assignee?: string;
+  comment?: string;
+  labels?: string[];
+}
+
 export interface RevisionResult {
   revision: number;
   message: string;
