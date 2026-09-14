@@ -27,7 +27,8 @@ export async function run(): Promise<void> {
   vscodeMock.workspace.__setConfig({
     'tendril.homeDirectory': home.path,
     'tendril.executablePath': stubExecutable,
-    'tendril.server.stopOnExit': true
+    'tendril.server.stopOnExit': true,
+    'tendril.server.pollTimeout': 10000
   });
 
   const mocha = new Mocha({

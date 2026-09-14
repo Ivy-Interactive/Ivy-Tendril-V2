@@ -72,12 +72,19 @@ export interface ChatJobSpawnedEvent {
   jobId: string;
 }
 
+export interface ChatSessionRenamedEvent {
+  type: "chat.session_renamed";
+  sessionId: string;
+  title: string;
+}
+
 export type ChatEvent =
   | ChatMessageAddedEvent
   | ChatStreamDeltaEvent
   | ChatGeneratingStateEvent
   | ChatQuestionAnsweredEvent
-  | ChatJobSpawnedEvent;
+  | ChatJobSpawnedEvent
+  | ChatSessionRenamedEvent;
 
 export type InProgressQuestionAnswers = Record<string, string[]>; // questionId -> answer values
 

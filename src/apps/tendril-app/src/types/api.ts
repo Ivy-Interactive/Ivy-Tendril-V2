@@ -1,3 +1,6 @@
+/** Team Vault DTOs live in `./vault`, next to the components that own their shape. */
+export type * from "./vault";
+
 export type PlanLifecycleState =
   | "Draft"
   | "Creating"
@@ -233,6 +236,13 @@ export interface ModelCatalogStatus {
   enrichModels: boolean;
   cachedAt: string | null;
   cachePath: string;
+}
+
+export interface VersionInfo {
+  currentVersion: string;
+  latestVersion: string | null;
+  hasUpdate: boolean;
+  lastChecked: string | null;
 }
 
 export interface StartJobArgs {

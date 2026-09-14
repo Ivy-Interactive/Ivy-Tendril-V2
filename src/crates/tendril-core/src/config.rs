@@ -21,6 +21,14 @@ pub struct TendrilSettings {
     #[serde(rename = "gitTimeout", default = "default_git_timeout")]
     pub git_timeout: i32,
 
+    /// Seconds to wait for a reply from the local daemon. Note the unit: unlike `jobTimeout`,
+    /// which is minutes, this is seconds. `0` or negative disables the timeout entirely.
+    #[serde(
+        rename = "daemonRequestTimeout",
+        default = "default_daemon_request_timeout"
+    )]
+    pub daemon_request_timeout: i32,
+
     #[serde(rename = "maxConcurrentJobs", default = "default_max_concurrent_jobs")]
     pub max_concurrent_jobs: i32,
 
@@ -53,8 +61,24 @@ pub struct TendrilSettings {
     #[serde(default = "default_levels")]
     pub levels: Vec<LevelConfig>,
 
-    #[serde(default = "default_true")]
-    pub telemetry: bool,
+    /// Opt-in. `None` (key absent) and `Some(false)` both mean no client is constructed and no
+    /// network call is ever attempted. Skipped on serialize when absent, so V2 never *introduces* the
+    /// key into a config.yaml shared with the original app, whose policy is opt-out and which reads an
+    /// absent key as "on". An explicit value round-trips unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telemetry: Option<bool>,
+
+    /// Endpoint / key / model for the auxiliary LLM the original app uses for summarisation. Modeled
+    /// rather than left in `extra` because `telemetry_enabled`'s `app_started` event reports whether
+    /// it is configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm: Option<LlmConfig>,
+
+    /// The original defaults this to true, and unlike telemetry that default is not a privacy
+    /// decision, so it is mirrored as-is. No reader in V2 yet — modeling it stops it being silently
+    /// unreadable.
+    #[serde(rename = "desktopNotifications", default = "default_true")]
+    pub desktop_notifications: bool,
 
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -143,6 +167,33 @@ pub struct TendrilSettings {
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
+impl TendrilSettings {
+    /// The single reader of the `telemetry` key. Strictly opt-in: only an explicit `telemetry: true`
+    /// enables it, so an absent key and `telemetry: false` behave identically. No call site tests the
+    /// field directly.
+    pub fn telemetry_enabled(&self) -> bool {
+        self.telemetry == Some(true)
+    }
+}
+
+/// Mirrors the original's `LlmConfig` (endpoint / apiKey / model). `extra` is required, not
+/// defensive: a real config.yaml carries `llm: { provider: openrouter }` and the original's
+/// tolerant JSON binding keeps it. A struct without `extra` would drop `provider` on the next save.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LlmConfig {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub endpoint: String,
+
+    #[serde(rename = "apiKey", default, skip_serializing_if = "String::is_empty")]
+    pub api_key: String,
+
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
 /// Assigned-issue auto-import. `autoAcceptAssignedIssues` selects what a swept issue becomes: a
 /// `CreatePlan` job when true, a proposal awaiting a human when false. Either way the sweep still
 /// runs — the flag picks the landing mode, it does not disable the import.
@@ -214,7 +265,6 @@ impl OnboardingConfig {
         self == &Self::default()
     }
 }
-
 /// What a single promptware asks for: the profile it runs under and the tool rules it contributes.
 ///
 /// `allowed_tools` is purely additive on top of the base set; `denied_tools` is subtracted from the
@@ -343,6 +393,9 @@ fn default_stale_output_timeout() -> i32 {
 fn default_git_timeout() -> i32 {
     10
 }
+fn default_daemon_request_timeout() -> i32 {
+    crate::http::DEFAULT_DAEMON_REQUEST_TIMEOUT_SECS as i32
+}
 fn default_max_concurrent_jobs() -> i32 {
     20
 }
@@ -411,6 +464,7 @@ impl Default for TendrilSettings {
             job_timeout: default_job_timeout(),
             stale_output_timeout: default_stale_output_timeout(),
             git_timeout: default_git_timeout(),
+            daemon_request_timeout: default_daemon_request_timeout(),
             max_concurrent_jobs: default_max_concurrent_jobs(),
             projects: Vec::new(),
             verifications: Vec::new(),
@@ -418,7 +472,9 @@ impl Default for TendrilSettings {
             plan_folder: None,
             promptware_overlay: None,
             levels: default_levels(),
-            telemetry: true,
+            telemetry: None,
+            llm: None,
+            desktop_notifications: true,
             theme: default_theme(),
             worktree_reaper_interval: default_worktree_reaper_interval(),
             worktree_reaper_grace: default_worktree_reaper_grace(),
@@ -1022,6 +1078,12 @@ fn default_api_version() -> u32 {
     1
 }
 
+/// `.master` files written before `serve --tls-cert/--tls-key` existed carry no `scheme`, and every
+/// one of them describes a plaintext server.
+fn default_scheme() -> String {
+    "http".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MasterInfo {
     pub port: u16,
@@ -1042,6 +1104,42 @@ pub struct MasterInfo {
     pub api_version: u32,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// `"http"` or `"https"` — which one `serve` was started with. Clients must not guess: a request
+    /// to the wrong scheme is a connection error, not a redirect.
+    #[serde(default = "default_scheme")]
+    pub scheme: String,
+}
+
+impl MasterInfo {
+    /// The base URL of the daemon's API, e.g. `https://127.0.0.1:5010`.
+    pub fn base_url(&self) -> String {
+        format!("{}://{}:{}", self.scheme, self.host, self.port)
+    }
+}
+
+#[cfg(test)]
+mod master_info_tests {
+    use super::MasterInfo;
+
+    #[test]
+    fn base_url_follows_the_recorded_scheme() {
+        let mut info: MasterInfo =
+            serde_json::from_str(r#"{"port":5010,"pid":1,"host":"127.0.0.1","scheme":"http"}"#)
+                .unwrap();
+        assert_eq!(info.base_url(), "http://127.0.0.1:5010");
+
+        info.scheme = "https".to_string();
+        assert_eq!(info.base_url(), "https://127.0.0.1:5010");
+    }
+
+    #[test]
+    fn a_master_file_without_a_scheme_reads_as_http() {
+        let json = r#"{"port":5010,"pid":42,"host":"127.0.0.1"}"#;
+        let parsed: MasterInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(parsed.scheme, "http");
+        assert_eq!(parsed.base_url(), "http://127.0.0.1:5010");
+    }
 }
 
 pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
@@ -1054,8 +1152,13 @@ pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
     serde_json::from_str(&content).ok()
 }
 
-/// True when this process is the master, i.e. `.master` names our pid. The counterpart to
-/// [`MasterGuard::acquire`] for code that needs the answer without taking the guard.
+/// True when this process owns the `.master` file. [`MasterGuard::acquire`] wrote our pid there;
+/// anything else — a foreign pid, or no file at all — means we lost the race or were superseded, so
+/// we must not write to anything the master owns.
+///
+/// Checked per pass rather than once at spawn: a daemon can be superseded while running. Being a
+/// function of the file rather than of process-wide environment state, it is testable without the
+/// cross-thread interference an env-var seam would cause.
 pub fn is_master(tendril_home: &Path) -> bool {
     read_master(tendril_home).is_some_and(|m| m.pid == std::process::id())
 }
@@ -1089,7 +1192,13 @@ pub fn write_master_info(tendril_home: &Path, info: &MasterInfo) -> Result<()> {
     Ok(())
 }
 
-pub fn write_master(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<()> {
+pub fn write_master(
+    tendril_home: &Path,
+    port: u16,
+    secret: &str,
+    host: &str,
+    scheme: &str,
+) -> Result<()> {
     let info = MasterInfo {
         port,
         pid: std::process::id(),
@@ -1099,6 +1208,7 @@ pub fn write_master(tendril_home: &Path, port: u16, secret: &str, host: &str) ->
         version: env!("CARGO_PKG_VERSION").to_string(),
         api_version: 1,
         capabilities: default_capabilities(),
+        scheme: scheme.to_string(),
     };
     write_master_info(tendril_home, &info)
 }
@@ -1137,12 +1247,26 @@ fn master_takeover_allowed() -> bool {
 }
 
 impl MasterGuard {
-    pub fn acquire(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<Self> {
+    pub fn acquire(
+        tendril_home: &Path,
+        port: u16,
+        secret: &str,
+        host: &str,
+        scheme: &str,
+    ) -> Result<Self> {
         ensure_not_real_home(tendril_home)?;
 
         if let Some(existing) = read_master(tendril_home) {
             if is_process_running(existing.pid) {
-                if probe_health_with_retries(&existing.host, existing.port, HEALTH_PROBE_ATTEMPTS) {
+                // `probe_health` speaks plaintext HTTP, so it cannot tell a live TLS server from a
+                // dead one; for those, the pid check above is the whole answer.
+                let responding = existing.scheme.eq_ignore_ascii_case("https")
+                    || probe_health_with_retries(
+                        &existing.host,
+                        existing.port,
+                        HEALTH_PROBE_ATTEMPTS,
+                    );
+                if responding {
                     return Err(TendrilError::Other(format!(
                         "Another Tendril instance is running with PID {} on port {}",
                         existing.pid, existing.port
@@ -1178,7 +1302,7 @@ impl MasterGuard {
             }
         }
 
-        write_master(tendril_home, port, secret, host)?;
+        write_master(tendril_home, port, secret, host, scheme)?;
         Ok(Self {
             tendril_home: tendril_home.to_path_buf(),
             pid: std::process::id(),
