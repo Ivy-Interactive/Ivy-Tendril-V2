@@ -75,6 +75,7 @@ fn test_find_duplicate_candidates() {
             updated: chrono::Utc::now(),
             prs: vec![],
             commits: vec![],
+            worktrees: None,
             verifications: vec![],
             related_plans: vec![],
             depends_on: vec![],

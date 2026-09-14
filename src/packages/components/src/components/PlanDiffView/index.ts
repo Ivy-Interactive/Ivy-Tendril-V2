@@ -24,3 +24,5 @@ export type {
   CustomLanguageLoaders,
   CustomExtensionMappings,
 } from "./PlanDiffView";
+export { PlanChangesView, buildFileTree } from "./PlanChangesView";
+export type { ChangedFile, TreeFolder, PlanChangesViewProps } from "./PlanChangesView";

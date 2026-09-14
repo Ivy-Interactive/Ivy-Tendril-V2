@@ -125,6 +125,20 @@ fn default_recommendation_state() -> String {
     RecommendationStatus::PENDING.to_string()
 }
 
+/// A worktree created for a plan, as recorded in `plan.yaml`. Written when the worktree is created
+/// and dropped when it is reclaimed, so the reaper knows which repo and branch a directory belongs
+/// to without having to parse its `.git` file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanWorktreeEntry {
+    /// Repo root the worktree was cut from.
+    pub repo: String,
+    /// Absolute worktree path.
+    pub path: String,
+    /// `tendril/<planFolderName>`.
+    pub branch: String,
+    pub created: DateTime<Utc>,
+}
+
 pub const CURRENT_SCHEMA_VERSION: i32 = 3;
 
 fn default_schema_version() -> i32 {
@@ -174,6 +188,11 @@ pub struct PlanYaml {
 
     #[serde(default)]
     pub commits: Vec<String>,
+
+    /// Worktrees created for this plan. Absent on every plan written before the registry existed,
+    /// which is why the reaper also finds worktrees by directory scan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktrees: Option<Vec<PlanWorktreeEntry>>,
 
     #[serde(default)]
     pub verifications: Vec<PlanVerificationEntry>,
@@ -231,6 +250,7 @@ impl Default for PlanYaml {
             updated: Utc::now(),
             prs: Vec::new(),
             commits: Vec::new(),
+            worktrees: None,
             verifications: Vec::new(),
             related_plans: Vec::new(),
             depends_on: Vec::new(),

@@ -59,6 +59,7 @@ pub fn create_plan(plans_dir: &Path, opts: CreatePlanOptions) -> Result<PlanFile
         updated: Utc::now(),
         prs: Vec::new(),
         commits: Vec::new(),
+        worktrees: None,
         verifications: opts.verifications,
         related_plans: opts.related_plans,
         depends_on: opts.depends_on,
