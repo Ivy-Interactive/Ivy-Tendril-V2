@@ -735,3 +735,289 @@ async fn test_project_cli_set_field_daemon() {
     assert_eq!(cfg.projects[0].context, "Daemon test context");
     assert_eq!(cfg.projects[0].stack_hash, Some("fe.ts:react".to_string()));
 }
+
+#[tokio::test]
+async fn test_project_cli_add_review_action_persists_paths() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-fs-review-paths-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "PathsProj".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add project");
+
+    handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "PathsProj".to_string(),
+            action: "Storybook".to_string(),
+            command: "pnpm storybook".to_string(),
+            condition: "".to_string(),
+            paths: vec![
+                "src/packages/components".to_string(),
+                "src/packages/ui".to_string(),
+            ],
+            before: None,
+            after: None,
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add review action with paths");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(
+        cfg.projects[0].review_actions[0].paths,
+        vec![
+            "src/packages/components".to_string(),
+            "src/packages/ui".to_string()
+        ]
+    );
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+#[tokio::test]
+async fn test_project_cli_add_review_action_before_and_after_positioning() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-fs-review-order-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "OrderProj".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add project");
+
+    for action in ["App", "Server"] {
+        handle_project_command(
+            ProjectCommands::AddReviewAction {
+                name: "OrderProj".to_string(),
+                action: action.to_string(),
+                command: "echo hi".to_string(),
+                condition: "".to_string(),
+                paths: vec![],
+                before: None,
+                after: None,
+            },
+            &tendril_home,
+        )
+        .await
+        .expect("Add review action");
+    }
+
+    // Insert "Storybook" before "Server" -> App, Storybook, Server
+    handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "OrderProj".to_string(),
+            action: "Storybook".to_string(),
+            command: "pnpm storybook".to_string(),
+            condition: "".to_string(),
+            paths: vec![],
+            before: Some("Server".to_string()),
+            after: None,
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add review action before Server");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    let names: Vec<&str> = cfg.projects[0]
+        .review_actions
+        .iter()
+        .map(|a| a.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["App", "Storybook", "Server"]);
+
+    // Insert "Docs" after "App" -> App, Docs, Storybook, Server
+    handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "OrderProj".to_string(),
+            action: "Docs".to_string(),
+            command: "pnpm docs".to_string(),
+            condition: "".to_string(),
+            paths: vec![],
+            before: None,
+            after: Some("App".to_string()),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add review action after App");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    let names: Vec<&str> = cfg.projects[0]
+        .review_actions
+        .iter()
+        .map(|a| a.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["App", "Docs", "Storybook", "Server"]);
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+#[tokio::test]
+async fn test_project_cli_add_review_action_unknown_before_target_errors() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-fs-review-unknown-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "UnknownTargetProj".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add project");
+
+    handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "UnknownTargetProj".to_string(),
+            action: "App".to_string(),
+            command: "echo hi".to_string(),
+            condition: "".to_string(),
+            paths: vec![],
+            before: None,
+            after: None,
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add review action App");
+
+    let err = handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "UnknownTargetProj".to_string(),
+            action: "Storybook".to_string(),
+            command: "pnpm storybook".to_string(),
+            condition: "".to_string(),
+            paths: vec![],
+            before: Some("DoesNotExist".to_string()),
+            after: None,
+        },
+        &tendril_home,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        err.to_string().contains("DoesNotExist"),
+        "Unexpected error: {}",
+        err
+    );
+    assert!(
+        err.to_string().contains("Available: App"),
+        "Unexpected error: {}",
+        err
+    );
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+#[tokio::test]
+async fn test_project_cli_review_actions_ranks_by_changed_file() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-fs-review-rank-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "RankProj".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add project");
+
+    handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "RankProj".to_string(),
+            action: "App".to_string(),
+            command: "pnpm dev:app".to_string(),
+            condition: "".to_string(),
+            paths: vec![],
+            before: None,
+            after: None,
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add review action App");
+
+    handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "RankProj".to_string(),
+            action: "Storybook".to_string(),
+            command: "pnpm storybook".to_string(),
+            condition: "".to_string(),
+            paths: vec!["src/packages/components".to_string()],
+            before: None,
+            after: None,
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add review action Storybook");
+
+    // With a changed file under Storybook's scope, it should rank first.
+    handle_project_command(
+        ProjectCommands::ReviewActions {
+            name: "RankProj".to_string(),
+            changed_files: vec![
+                "src/packages/components/src/stories/dialog.stories.tsx".to_string()
+            ],
+            plan: None,
+            format: "table".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Rank review actions with changed file");
+
+    // With no changed files (and no plan), falls back to configured order without erroring.
+    handle_project_command(
+        ProjectCommands::ReviewActions {
+            name: "RankProj".to_string(),
+            changed_files: vec![],
+            plan: None,
+            format: "json".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Rank review actions with no changed files falls back to configured order");
+
+    // A --plan referencing a nonexistent plan should warn and fall back rather than fail.
+    handle_project_command(
+        ProjectCommands::ReviewActions {
+            name: "RankProj".to_string(),
+            changed_files: vec![],
+            plan: Some("99999-DoesNotExist".to_string()),
+            format: "table".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Rank review actions falls back to configured order when plan is missing");
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}

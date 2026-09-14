@@ -8,7 +8,7 @@ use tendril_core::config::{
     remove_verification_from_projects, save_config, write_master, EnvSource, SystemEnv,
     TendrilSettings,
 };
-use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef};
+use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
 
 #[test]
 fn test_normalize_slashes() {
@@ -84,6 +84,88 @@ fn test_config_load_and_save() {
         loaded.projects[0].repos[0].base_branch.as_deref(),
         Some("main")
     );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_review_action_paths_round_trip_and_omitted_when_empty() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-config-paths-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+    let config_file = test_dir.join("config.yaml");
+
+    let mut settings = TendrilSettings::default();
+    settings.projects.push(ProjectConfig {
+        name: "TestProject".to_string(),
+        color: "Blue".to_string(),
+        repos: vec![],
+        verifications: vec![],
+        context: String::new(),
+        stack_hash: None,
+        review_actions: vec![
+            ReviewActionConfig {
+                name: "Storybook".to_string(),
+                condition: String::new(),
+                command: String::new(),
+                paths: vec!["src/packages/components".to_string()],
+            },
+            ReviewActionConfig {
+                name: "App".to_string(),
+                condition: String::new(),
+                command: String::new(),
+                paths: vec![],
+            },
+        ],
+        build_dependencies: vec![],
+        mcp_servers: vec![],
+    });
+
+    save_config(&config_file, &settings).expect("Failed to save config");
+
+    let raw = std::fs::read_to_string(&config_file).expect("read config");
+    assert!(raw.contains("paths"));
+    // The unscoped action's empty `paths` must not be emitted at all.
+    let app_section = raw.split("App").nth(1).unwrap_or("");
+    assert!(!app_section.trim_start().starts_with("paths"));
+
+    let loaded = load_config(&config_file).expect("Failed to load config");
+    assert_eq!(
+        loaded.projects[0].review_actions[0].paths,
+        vec!["src/packages/components".to_string()]
+    );
+    assert!(loaded.projects[0].review_actions[1].paths.is_empty());
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_review_action_config_written_before_paths_field_still_loads() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-config-legacy-review-action-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+    let config_file = test_dir.join("config.yaml");
+
+    std::fs::write(
+        &config_file,
+        r#"
+projects:
+  - name: LegacyProject
+    reviewActions:
+      - name: App
+        command: pnpm dev:app
+        condition: "$true"
+"#,
+    )
+    .expect("write legacy config");
+
+    let loaded = load_config(&config_file).expect("Failed to load legacy config");
+    assert_eq!(loaded.projects[0].review_actions[0].name, "App");
+    assert!(loaded.projects[0].review_actions[0].paths.is_empty());
 
     let _ = std::fs::remove_dir_all(test_dir);
 }
