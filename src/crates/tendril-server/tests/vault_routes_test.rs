@@ -365,6 +365,51 @@ async fn pulling_with_no_vault_configured_is_a_failure() {
 }
 
 #[tokio::test]
+async fn project_assets_lists_what_a_local_project_could_publish() {
+    let server = start_test_server().await;
+    server.write_config(
+        "  - name: Alpha\n    mcpServers:\n      - name: github\n    reviewActions:\n      - name: lint\n    verifications:\n      - name: NpmTest\n",
+    );
+
+    let skills = server
+        .tendril_home
+        .join("Projects")
+        .join("Alpha")
+        .join("Skills");
+    std::fs::create_dir_all(&skills).unwrap();
+    std::fs::write(skills.join("rust.md"), "# rust\n").unwrap();
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(server.url("/api/vaults/project-assets/Alpha"))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .expect("GET project assets");
+
+    assert_eq!(response.status(), 200);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["projectName"], "Alpha");
+    assert_eq!(body["skills"][0], "rust");
+    assert_eq!(body["mcpServers"][0], "github");
+    assert_eq!(body["reviewActions"][0], "lint");
+    assert_eq!(body["verifications"][0], "NpmTest");
+
+    // A project the user has not created yet answers empty rather than 404: the export dialog asks
+    // about whatever name is currently selected.
+    let response = client
+        .get(server.url("/api/vaults/project-assets/Nope"))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(body["projectName"], "Nope");
+    assert_eq!(body["skills"], serde_json::json!([]));
+}
+
+#[tokio::test]
 async fn the_vault_routes_require_authentication() {
     let server = start_test_server().await;
     let client = reqwest::Client::new();

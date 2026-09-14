@@ -77,7 +77,15 @@ fn test_config_unknown_keys_survive_load_and_save() {
 
     // Verify unmodeled keys are in extra
     assert!(settings.extra.contains_key("editor"));
-    assert!(settings.extra.contains_key("llm"));
+    // `llm` is a modeled field now, so `#[serde(flatten)] extra` can no longer claim it. What matters
+    // is that its *unmodeled subkeys* survived into `LlmConfig::extra` rather than being dropped.
+    assert!(!settings.extra.contains_key("llm"));
+    let llm = settings.llm.as_ref().expect("llm should be modeled");
+    assert_eq!(
+        llm.extra.get("provider"),
+        Some(&serde_json::json!("anthropic"))
+    );
+    assert_eq!(llm.model, "claude-3-7-sonnet");
     assert!(settings.extra.contains_key("auth"));
     assert!(settings.extra.contains_key("api"));
     assert!(settings.extra.contains_key("tunnel"));
@@ -88,7 +96,9 @@ fn test_config_unknown_keys_survive_load_and_save() {
     assert!(!settings.extra.contains_key("codingAgents"));
     assert_eq!(settings.coding_agents.len(), 1);
     assert_eq!(settings.coding_agents[0].name, "custom-agent");
-    assert!(settings.extra.contains_key("desktopNotifications"));
+    // Modeled now, for the same reason as `codingAgents` and `llm` above.
+    assert!(!settings.extra.contains_key("desktopNotifications"));
+    assert!(settings.desktop_notifications);
     assert!(settings.extra.contains_key("sidebarOpen"));
     assert!(settings.extra.contains_key("themeMode"));
     assert!(settings.extra.contains_key("dismissedUpdateVersion"));
@@ -152,9 +162,16 @@ fn test_update_config_raw_preserves_untouched_keys() {
     // Verify untouched modeled and unmodeled keys
     assert_eq!(updated.coding_agent, "claude");
     assert!(updated.extra.contains_key("editor"));
-    assert!(updated.extra.contains_key("llm"));
     assert!(updated.extra.contains_key("vault"));
-    assert!(updated.extra.contains_key("desktopNotifications"));
+    // `llm` and `desktopNotifications` are modeled now, so they read back off their own fields rather
+    // than out of `extra`. `update_config_raw` merges raw YAML maps and is otherwise unaffected.
+    assert!(!updated.extra.contains_key("llm"));
+    assert_eq!(
+        updated.llm.as_ref().map(|l| l.model.as_str()),
+        Some("claude-3-7-sonnet")
+    );
+    assert!(!updated.extra.contains_key("desktopNotifications"));
+    assert!(updated.desktop_notifications);
     assert_eq!(
         updated.extra.get("customSetting1"),
         Some(&serde_json::Value::String("foo".to_string()))

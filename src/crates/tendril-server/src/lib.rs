@@ -3,6 +3,7 @@ pub mod master;
 pub mod pr_sync;
 pub mod routes;
 pub mod state;
+pub mod tasks;
 pub mod watch;
 mod webviewer;
 
@@ -29,6 +30,10 @@ pub struct TlsOptions {
     pub cert: PathBuf,
     pub key: PathBuf,
 }
+
+/// How often queued telemetry events are posted. Long enough that a busy daemon batches, short enough
+/// that a daemon killed without a clean shutdown loses little.
+const TELEMETRY_FLUSH_INTERVAL: Duration = Duration::from_secs(30);
 
 pub async fn run_server(
     port: u16,
@@ -70,6 +75,11 @@ pub async fn run_server(
 
     let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host, scheme)?;
 
+    // Master-only, like everything below: two daemons would double-count every event. Strictly
+    // opt-in — `init` returns `None` unless `config.yaml` says `telemetry: true`, and nothing is
+    // installed, queued or sent in that case.
+    let telemetry = init_telemetry(&tendril_home);
+
     // Master-only, for the same reason as the reconcile below: two daemons mirroring the same Plans
     // folder into the same database would fight. Held for the process lifetime — dropping the handle
     // stops watching. A daemon up without realtime push is more useful than one refusing to boot, so
@@ -108,6 +118,8 @@ pub async fn run_server(
     });
 
     spawn_worktree_reaper(tendril_home.clone());
+    spawn_cost_backfill(tendril_home.clone());
+    tasks::spawn_version_check(state.clone());
     spawn_assigned_issues_importer(tendril_home.clone(), state.clone());
 
     match tls_config {
@@ -133,6 +145,12 @@ pub async fn run_server(
         }
     }
 
+    // Whatever is still queued, posted once on the way out. A best-effort call on a client that may
+    // not exist: no client means nothing was ever queued.
+    if let Some(telemetry) = &telemetry {
+        telemetry.flush().await;
+    }
+
     Ok(())
 }
 
@@ -156,6 +174,80 @@ async fn load_tls_config(
                 e
             )
         })
+}
+
+/// Builds and publishes the process-wide telemetry client, and emits `app_started`.
+///
+/// Returns the handle so `run_server` can flush on shutdown. `None` whenever telemetry is off, which
+/// is the default: see `docs/TELEMETRY.md`.
+fn init_telemetry(
+    tendril_home: &std::path::Path,
+) -> Option<Arc<tendril_core::telemetry::Telemetry>> {
+    use tendril_core::telemetry::{self, AppStartContext};
+
+    let config_path = tendril_core::config::get_config_path(tendril_home);
+    let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
+
+    let telemetry = telemetry::init(tendril_home, &settings)?;
+    telemetry::install(telemetry.clone());
+    telemetry::spawn_flusher(telemetry.clone(), TELEMETRY_FLUSH_INTERVAL);
+
+    telemetry.track_app_started(&AppStartContext {
+        version: tendril_core::version().to_string(),
+        project_count: settings.projects.len() as i64,
+        llm_configured: settings.llm.is_some(),
+    });
+
+    Some(telemetry)
+}
+
+/// Periodic cost backfill. Started only by the master — the `MasterGuard` has already been acquired by
+/// the time this is called — and re-checked per pass, because a daemon can be superseded while
+/// running and a demoted one must not write cost rows to the shared database.
+///
+/// Shaped like [`spawn_worktree_reaper`] on purpose: this is the same recurring-task pattern, not a
+/// second scheduling mechanism.
+fn spawn_cost_backfill(tendril_home: PathBuf) {
+    // Comfortably after the models.dev enrichment that `AppState` kicks off at startup, so the first
+    // pass prices against live data rather than the static fallback table.
+    const INITIAL_DELAY: Duration = Duration::from_secs(60);
+    // The pass is self-limiting: it goes quiet once every row is either filled or unfillable, which is
+    // why it needs no config key of its own.
+    const INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+
+    tokio::spawn(async move {
+        let mut delay = INITIAL_DELAY;
+        loop {
+            // Every pass sleeps before it runs, so backfill never competes with startup for disk.
+            tokio::time::sleep(delay).await;
+            delay = INTERVAL;
+
+            if !tendril_core::config::is_master(&tendril_home) {
+                continue;
+            }
+
+            let home = tendril_home.clone();
+            // A panic inside a pass must not take the loop down with it.
+            let pass = tokio::task::spawn_blocking(move || {
+                tendril_core::jobs::cost_backfill::run_pass(&home)
+            })
+            .await;
+
+            match pass {
+                Ok(report) => {
+                    if !report.is_empty() {
+                        tracing::info!(
+                            "Cost backfill: {} estimated, {} unpriced, {} failed",
+                            report.filled,
+                            report.unpriced,
+                            report.failed,
+                        );
+                    }
+                }
+                Err(e) => tracing::warn!("Cost backfill pass failed: {}", e),
+            }
+        }
+    });
 }
 
 /// Periodic import of the GitHub issues assigned to the user, following `spawn_worktree_reaper`'s
@@ -221,61 +313,66 @@ fn spawn_worktree_reaper(tendril_home: PathBuf) {
     use tendril_core::git::worktree_reaper::{reap_worktrees, BranchDeleteMode, ReaperConfig};
     use tendril_core::git::WorktreeLifecycleLog;
 
-    // The reaper never competes with startup for disk: every pass sleeps before it runs.
-    const DISABLED_RECHECK: Duration = Duration::from_secs(30 * 60);
+    let interval_home = tendril_home.clone();
+    let body_home = tendril_home;
 
-    tokio::spawn(async move {
-        loop {
-            let config_path = tendril_core::config::get_config_path(&tendril_home);
+    tasks::spawn_recurring(
+        "worktree reaper",
+        move || {
+            let config_path = tendril_core::config::get_config_path(&interval_home);
             let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
-
             if settings.worktree_reaper_interval <= 0 {
-                tokio::time::sleep(DISABLED_RECHECK).await;
-                continue;
+                None
+            } else {
+                Some(Duration::from_secs(
+                    settings.worktree_reaper_interval as u64 * 60,
+                ))
             }
+        },
+        move || {
+            let tendril_home = body_home.clone();
+            async move {
+                let config_path = tendril_core::config::get_config_path(&tendril_home);
+                let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
 
-            tokio::time::sleep(Duration::from_secs(
-                settings.worktree_reaper_interval as u64 * 60,
-            ))
-            .await;
-
-            let mode = BranchDeleteMode::from_str_loose(&settings.worktree_branch_delete_mode)
-                .unwrap_or_else(|| {
-                    tracing::warn!(
-                        "Unrecognised worktreeBranchDeleteMode '{}'; using PreserveUnpushed",
-                        settings.worktree_branch_delete_mode
-                    );
-                    BranchDeleteMode::PreserveUnpushed
-                });
-            let grace = Duration::from_secs(settings.worktree_reaper_grace.max(0) as u64 * 60);
-            let plans_dir = tendril_core::config::get_plans_dir(&tendril_home);
-            let log = WorktreeLifecycleLog::new(&tendril_home);
-
-            // A panic inside a pass must not take the reaper down with it.
-            let pass = tokio::task::spawn_blocking(move || {
-                let cfg = ReaperConfig {
-                    grace,
-                    mode,
-                    log: Some(log),
-                };
-                reap_worktrees(&plans_dir, &cfg)
-            })
-            .await;
-
-            match pass {
-                Ok(report) => {
-                    if !report.reclaimed.is_empty() || !report.skipped.is_empty() {
-                        tracing::info!(
-                            "Worktree reaper: {} reclaimed, {} skipped",
-                            report.reclaimed.len(),
-                            report.skipped.len()
+                let mode = BranchDeleteMode::from_str_loose(&settings.worktree_branch_delete_mode)
+                    .unwrap_or_else(|| {
+                        tracing::warn!(
+                            "Unrecognised worktreeBranchDeleteMode '{}'; using PreserveUnpushed",
+                            settings.worktree_branch_delete_mode
                         );
+                        BranchDeleteMode::PreserveUnpushed
+                    });
+                let grace = Duration::from_secs(settings.worktree_reaper_grace.max(0) as u64 * 60);
+                let plans_dir = tendril_core::config::get_plans_dir(&tendril_home);
+                let log = WorktreeLifecycleLog::new(&tendril_home);
+
+                // A panic inside a pass must not take the reaper down with it.
+                let pass = tokio::task::spawn_blocking(move || {
+                    let cfg = ReaperConfig {
+                        grace,
+                        mode,
+                        log: Some(log),
+                    };
+                    reap_worktrees(&plans_dir, &cfg)
+                })
+                .await;
+
+                match pass {
+                    Ok(report) => {
+                        if !report.reclaimed.is_empty() || !report.skipped.is_empty() {
+                            tracing::info!(
+                                "Worktree reaper: {} reclaimed, {} skipped",
+                                report.reclaimed.len(),
+                                report.skipped.len()
+                            );
+                        }
                     }
+                    Err(e) => tracing::warn!("Worktree reaper pass failed: {}", e),
                 }
-                Err(e) => tracing::warn!("Worktree reaper pass failed: {}", e),
             }
-        }
-    });
+        },
+    );
 }
 
 /// Realigns persisted job and plan state with reality. A failure here is logged rather than fatal:

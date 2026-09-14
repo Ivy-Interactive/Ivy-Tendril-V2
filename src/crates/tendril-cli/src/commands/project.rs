@@ -1,5 +1,6 @@
 use clap::Subcommand;
 use std::path::Path;
+use std::time::Duration;
 use tendril_core::config::{
     get_config_path, get_plans_dir_with_settings, insert_project_verification, load_config,
     move_project_verification, read_master, save_config, MasterInfo, TendrilSettings,
@@ -7,6 +8,10 @@ use tendril_core::config::{
 };
 use tendril_core::git::service::run_git;
 use tendril_core::git::worktree::derive_worktree_relative_path;
+use tendril_core::http::{
+    classify_transport_error, daemon_client_with_timeout_and_master, daemon_request_timeout_for,
+    describe_transport_error, DaemonTransportFailure,
+};
 use tendril_core::models::{
     ProjectConfig, ProjectEnvFileConfig, ProjectPortConfig, ProjectVerificationRef,
     PromptwareHookConfig, RepoRef, ReviewActionConfig,
@@ -217,6 +222,23 @@ enum DaemonOutcome {
     Fallback,
 }
 
+/// A daemon call that failed at the transport level.
+///
+/// Only an unreachable daemon may fall back to `config.yaml`: a timed-out mutation may already have
+/// been applied by the daemon, and applying it locally too would apply it twice.
+fn fallback_or_fail(
+    err: reqwest::Error,
+    master: &MasterInfo,
+    timeout: Option<Duration>,
+) -> anyhow::Result<DaemonOutcome> {
+    match classify_transport_error(&err) {
+        DaemonTransportFailure::Unreachable => Ok(DaemonOutcome::Fallback),
+        _ => Err(anyhow::anyhow!(describe_transport_error(
+            &err, master, timeout
+        ))),
+    }
+}
+
 /// Both the daemon and filesystem paths need the same "exactly one placement" rule, so they share
 /// this resolution rather than each deciding for itself.
 fn resolve_placement(
@@ -237,7 +259,7 @@ pub async fn handle_project_command(
     tendril_home: &Path,
 ) -> anyhow::Result<()> {
     if let Some(master) = read_master(tendril_home) {
-        match handle_project_command_daemon(&cmd, &master).await {
+        match handle_project_command_daemon(tendril_home, &cmd, &master).await {
             Ok(DaemonOutcome::Handled) => return Ok(()),
             Ok(DaemonOutcome::Fallback) => {
                 tracing::debug!("Failed to reach master daemon, falling back to filesystem");
@@ -250,10 +272,12 @@ pub async fn handle_project_command(
 }
 
 async fn handle_project_command_daemon(
+    tendril_home: &Path,
     cmd: &ProjectCommands,
     master: &MasterInfo,
 ) -> anyhow::Result<DaemonOutcome> {
-    let client = super::daemon_client(master)?;
+    let timeout = daemon_request_timeout_for(tendril_home);
+    let client = daemon_client_with_timeout_and_master(timeout, master);
     let base_url = master.base_url();
 
     match cmd {
@@ -265,7 +289,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if !resp.status().is_success() {
@@ -285,7 +309,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -332,7 +356,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::CONFLICT {
@@ -353,7 +377,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -377,7 +401,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -404,7 +428,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -426,7 +450,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -463,7 +487,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -510,7 +534,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -542,7 +566,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -586,7 +610,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -610,7 +634,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -721,7 +745,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
