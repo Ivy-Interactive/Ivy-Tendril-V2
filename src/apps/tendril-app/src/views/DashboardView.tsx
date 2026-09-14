@@ -94,8 +94,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-6" data-testid="dashboard-view">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100">Tendril Dashboard</h1>
-          <p className="text-xs text-slate-400">Autonomous Pipeline Health and Execution Metrics</p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Tendril Dashboard</h1>
+          <p className="text-xs text-muted-foreground">
+            Autonomous Pipeline Health and Execution Metrics
+          </p>
         </div>
       </div>
 
@@ -120,7 +122,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         jobs={dashboardJobs}
         slots={{
           ProcessViewer: (
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+            <div className="rounded-xl border border-border bg-card/50 p-4">
               <TendrilProcessViewer
                 id="process-viewer"
                 draftCount={draftCount}
