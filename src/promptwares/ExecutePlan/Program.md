@@ -217,6 +217,12 @@ these git steps yourself** — this is the exact failure class (e.g. a Windows l
 `origin/<resolved-base-branch>`, never local HEAD — the command enforces this — so the resulting PR
 only contains the plan's commits, not any unpushed local work.
 
+**Always take the worktree path from the command's own output, never assume a depth.** The layout
+varies by provisioning tool: nested (`Worktrees/<owner>/<repo>`) under some CLIs, flat
+(`Worktrees/<repo-folder-name>`) under others. Later steps that operate on the worktree (build
+dependency setup, implementation, commits) must use the path this command reported, not a
+hardcoded guess.
+
 If the command exits non-zero, its output already explains which step failed (missing repo path,
 stale-worktree removal failure, fetch failure, or worktree-add failure). Print that output and call:
 
@@ -283,21 +289,78 @@ Worktrees start with a clean checkout and may be missing build artifacts (e.g. `
 
 #### Default Path (No Changes to Build-Dependent Code)
 
-If the plan does **NOT** modify code in directories with build artifacts:
+If the plan does **NOT** modify code in directories with build artifacts, follow the rules below in
+order. This repo's `node_modules` is ~1.2 GB across ~1373 `.pnpm` entries and `target/` is ~15 GB. A
+recursive copy of either is the most common cause of an ExecutePlan job exceeding its tool timeout.
+Obey every rule below.
 
-1. **Copy pre-built artifacts** from the original repo into the worktree to avoid unnecessary rebuilds:
+1. **Scope the copy and the build.** A plan that changes no build-dependent code needs neither
+   sibling worktrees nor a whole-workspace build. Scope both the copy and the build to what the plan
+   actually touches. This rule outranks the others below: if scoping says no copy is needed, skip
+   rules 2-4 entirely.
+   - prompt / markdown / docs only → nothing to copy and nothing to pre-build
+   - one pnpm workspace package → `pnpm --filter <pkg> build`, never `pnpm -r`
+   - one crate → `cargo build -p <crate>`, never `--workspace`
+
+2. **Clone artifacts copy-on-write.** Drive the copy off the worktree path reported by
+   `add-worktree` in step 2 — never assume the layout depth, since it varies (nested
+   `Worktrees/<owner>/<repo>` under some provisioning CLIs, flat `Worktrees/<repo-folder-name>`
+   under others):
 
 ```bash
-# Example: copy dist/ directories from original repo to worktree
-for artifact_dir in $(find "<original-repo-path>" -name "dist" -type d -not -path "*/node_modules/*"); do
-  relative_path="${artifact_dir#<original-repo-path>/}"
-  parent_dir=$(dirname "$relative_path")
-  mkdir -p "<worktree-path>/$parent_dir"
-  cp -r "$artifact_dir" "<worktree-path>/$parent_dir/"
-done
+# $WORKTREE is the path reported by `tendril plan add-worktree` (step 2).
+clone_dir() {  # clone_dir <src> <dest-parent>
+  mkdir -p "$2"
+  if [[ "$OSTYPE" == "darwin"* ]] && cp -c -R "$1" "$2/" 2>/dev/null; then
+    :                                          # APFS clonefile
+  elif cp -r --reflink=auto "$1" "$2/" 2>/dev/null; then
+    :                                          # btrfs / XFS reflink
+  else
+    cp -r "$1" "$2/"                           # last resort: a real deep copy
+  fi
+}
 ```
 
-2. **Skip dependency installation** — the copied artifacts are sufficient for build and tests.
+   Copy-on-write only works **within one filesystem**. `TendrilHome` and the repos are normally on
+   the same volume, but a cross-volume clone falls back to a full byte copy silently — so the size
+   rules below still apply even on a copy-on-write-capable filesystem.
+
+3. **Never deep-copy `node_modules`.** pnpm stores every package once in a global
+   content-addressable store (`~/Library/pnpm/store/v<N>` on macOS, printed by `pnpm store path`).
+   Each `node_modules/<pkg>` is a symlink into `node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>`,
+   whose files are hardlinks into that store. A recursive copy breaks every hardlink, turning shared
+   bytes into real bytes plus a fresh inode per file — orders of magnitude slower than re-linking.
+   - **Preferred: re-link from the store in the worktree.** Run the project's install command (e.g.
+     `pnpm install --frozen-lockfile`, or whatever the build verifications already call for). This
+     relinks from the already-populated global store, moving metadata rather than package bytes.
+     The store is global and shared by default, so the correct action is to install, not to copy.
+   - Never redirect the package manager's store to a worktree-local path — that defeats the sharing
+     and forces a real download.
+   - If you must reuse the existing tree instead of installing, **symlink** each `node_modules`
+     directory into the worktree rather than copying it. This does not conflict with the alias
+     prohibition in the **Rules** section at the end of this document: that forbids aliases
+     *pointing at* a worktree, whereas this is a link inside a worktree pointing at a main-repo
+     directory.
+   - If a copy is genuinely unavoidable, split it **per directory** so each command finishes inside
+     the tool timeout — never copy all `node_modules` directories in one command.
+   - Keep worktree paths short: package-manager virtual-store path-length limits (e.g.
+     `pnpm-workspace.yaml`'s `virtualStoreDirMaxLength`) apply on top of an already-deep
+     `Worktrees/` root.
+
+4. **Never deep-copy `target/` either.** Same failure, larger — a Rust `target/` directory can run
+   into the tens of gigabytes.
+   - Clone it with the `clone_dir` helper from rule 2 when copy-on-write is available. Registry
+     dependencies fingerprint against stable paths (e.g. `~/.cargo`), so their artifacts survive the
+     move; workspace crates rebuild. That is still most of the build saved.
+   - If copy-on-write is unavailable, **do not copy it** — build cold in the worktree.
+   - Do **not** point the build tool's shared-output-directory setting (e.g. `CARGO_TARGET_DIR`) at
+     the main repo's build output. A build tool that takes an exclusive lock on that directory makes
+     concurrent ExecutePlan jobs serialize behind one another, and a blocked build is
+     indistinguishable from a hung one.
+
+5. **Skip dependency installation only when the scoped, cloned artifacts are sufficient.** This does
+   not override a verification's own install step (e.g. `NpmBuild` running `pnpm install` itself) —
+   it means don't redundantly reinstall on top of artifacts you already have.
 
 #### Exception Path (Build-Dependent Code Changes)
 
