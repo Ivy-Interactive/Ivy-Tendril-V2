@@ -10,6 +10,7 @@ use serde::Serialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tendril_core::db::costs::get_plan_cost_totals;
 use tendril_core::db::open_database;
 use tendril_core::db::pr_status::get_all_pr_statuses;
 use tendril_core::error::Result;
@@ -33,6 +34,10 @@ pub struct PrStatusDto {
     pub plan_folder: String,
     pub plan_title: String,
     pub project: String,
+    /// `SUM(Cost)` over the plan's `Costs` rows; `0.0` when the plan has none or none is priceable.
+    pub cost: f64,
+    /// `SUM(Tokens)` over the plan's `Costs` rows; `0` when the plan has none.
+    pub tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,12 +102,15 @@ pub async fn list_pull_requests(State(state): State<Arc<AppState>>) -> impl Into
 /// The plans are the source of truth for *which* PRs exist; the cache only supplies status. A PR that
 /// has never been synced is therefore still listed, as `Unknown` with no `lastChecked`.
 fn collect_pull_requests(state: &AppState) -> Result<Vec<PrStatusDto>> {
-    let cached: HashMap<String, PrStatusRecord> = {
+    // Both reads share one connection: the view needs a cost total for every plan it lists, so the
+    // whole `Costs` table is aggregated once here rather than queried per row.
+    let (cached, cost_totals): (HashMap<String, PrStatusRecord>, HashMap<i32, (f64, i64)>) = {
         let conn = open_database(&state.db_path)?;
-        get_all_pr_statuses(&conn)?
+        let statuses = get_all_pr_statuses(&conn)?
             .into_iter()
             .map(|rec| (rec.pr_url.clone(), rec))
-            .collect()
+            .collect();
+        (statuses, get_plan_cost_totals(&conn)?)
     };
 
     let mut rows: Vec<PrStatusDto> = Vec::new();
@@ -123,6 +131,12 @@ fn collect_pull_requests(state: &AppState) -> Result<Vec<PrStatusDto>> {
                 .unwrap_or_default()
                 .to_string();
             let plan_id = extract_plan_id_from_folder(&folder).unwrap_or_default();
+            // `Costs.PlanId` is the numeric id, so "00610" has to lose its padding to match.
+            let (cost, tokens) = plan_id
+                .parse::<i32>()
+                .ok()
+                .and_then(|id| cost_totals.get(&id).copied())
+                .unwrap_or_default();
 
             for raw in &plan.prs {
                 let Some((owner, repo, number)) = parse_pr_url(raw) else {
@@ -153,6 +167,8 @@ fn collect_pull_requests(state: &AppState) -> Result<Vec<PrStatusDto>> {
                     plan_folder: plan_folder.clone(),
                     plan_title: plan.title.clone(),
                     project: plan.project.clone(),
+                    cost,
+                    tokens,
                 });
             }
         }
