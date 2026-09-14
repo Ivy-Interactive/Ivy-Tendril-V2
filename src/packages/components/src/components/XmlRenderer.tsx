@@ -57,7 +57,7 @@ const XmlNodeComponent = ({
     return (
       <div>
         <div
-          className="flex items-center cursor-pointer hover:bg-accent rounded transition-colors px-1"
+          className="flex items-center cursor-pointer hover:bg-accent rounded transition-colors px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
           onClick={() => toggleNode(path)}
           role="button"
           tabIndex={0}

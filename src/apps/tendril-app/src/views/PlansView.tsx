@@ -161,7 +161,7 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
                 role="listitem"
                 tabIndex={0}
                 onClick={() => onSelectPlan(p.id)}
-                className={`cursor-pointer rounded-xl border p-4 transition ${
+                className={`cursor-pointer rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
                   isHighlighted
                     ? "border-ring bg-card shadow-md ring-1 ring-ring"
                     : "border-border bg-card/60 hover:border-ring hover:bg-card"
