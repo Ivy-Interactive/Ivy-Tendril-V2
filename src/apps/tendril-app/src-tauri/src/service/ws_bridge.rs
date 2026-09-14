@@ -139,9 +139,15 @@ pub fn route_ws_message(text_str: &str) -> (&'static str, serde_json::Value) {
         let msg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if msg_type.starts_with("chat.") {
             ("chat-event", val)
-        } else if msg_type == "state" || msg_type == "status" || msg_type == "pr_status_changed" {
-            // A PR transition can complete or unblock a plan, so it arrives on the channel the plan
-            // views already listen to rather than needing one of its own.
+        } else if msg_type == "state"
+            || msg_type == "status"
+            || msg_type == "pr_status_changed"
+            || msg_type.starts_with("plan.")
+        {
+            // The `plan.` prefix is the whole namespace, not just one event: a plan-scoped type must
+            // never fall through to `job-event`. A PR transition can complete or unblock a plan, so
+            // it also arrives on this channel rather than needing one of its own.
+
             ("plan-event", val)
         } else {
             ("job-event", val)
@@ -188,6 +194,37 @@ mod tests {
         let job_json = r#"{"type":"job_started","jobId":"00100"}"#;
         let (channel, _) = route_ws_message(job_json);
         assert_eq!(channel, "job-event");
+    }
+
+    #[test]
+    fn test_route_plan_namespace_events() {
+        // The whole `plan.` namespace belongs on `plan-event`, not just the two legacy bare types.
+        let comments_json = r#"{"type":"plan.diff_comments_changed","planId":"00609","folderName":"00609-PortPlanDraftDiffComment","count":2}"#;
+        let (channel, payload) = route_ws_message(comments_json);
+        assert_eq!(channel, "plan-event");
+        assert_eq!(payload["planId"], "00609");
+        assert_eq!(payload["count"], 2);
+
+        // Any future `plan.*` type routes the same way without another code change.
+        let (channel, _) = route_ws_message(r#"{"type":"plan.something_new","planId":"00610"}"#);
+        assert_eq!(channel, "plan-event");
+    }
+
+    #[test]
+    fn test_non_plan_prefixes_are_not_swept_up() {
+        // `plan_` and `planning` are not the `plan.` namespace.
+        let (channel, _) = route_ws_message(r#"{"type":"plan_started","jobId":"00100"}"#);
+        assert_eq!(channel, "job-event");
+
+        let (channel, _) = route_ws_message(r#"{"type":"planning","jobId":"00100"}"#);
+        assert_eq!(channel, "job-event");
+    }
+
+    #[test]
+    fn test_unparseable_text_still_falls_back_to_job_event() {
+        let (channel, payload) = route_ws_message("not json at all");
+        assert_eq!(channel, "job-event");
+        assert_eq!(payload, serde_json::Value::String("not json at all".into()));
     }
 
     #[test]

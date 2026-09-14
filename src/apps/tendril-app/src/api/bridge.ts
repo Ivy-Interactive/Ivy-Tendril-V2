@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  DraftComment,
   GitHubIssuesPage,
   Job,
   JobDetail,
@@ -99,6 +100,37 @@ export const bridge = {
 
   async writeRevision(this: void, id: string, content: string): Promise<RevisionResult> {
     return invoke<RevisionResult>("cmd_write_revision", { id, content });
+  },
+
+  /**
+   * Every inline diff comment drafted against a plan, across all revision pairs.
+   *
+   * The mutations below all return the plan's new full list, so a caller replaces its state from
+   * the response instead of guessing at the outcome.
+   */
+  async listDiffComments(this: void, planId: string): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_list_diff_comments", { planId });
+  },
+
+  async upsertDiffComment(
+    this: void,
+    planId: string,
+    comment: DraftComment,
+  ): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_upsert_diff_comment", { planId, comment });
+  },
+
+  async deleteDiffComment(
+    this: void,
+    planId: string,
+    filePath: string,
+    changeKey: string,
+  ): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_delete_diff_comment", { planId, filePath, changeKey });
+  },
+
+  async clearDiffComments(this: void, planId: string): Promise<void> {
+    return invoke<void>("cmd_clear_diff_comments", { planId });
   },
 
   /** Markdown of one `<planFolder>/Verification/<name>.md` report. */

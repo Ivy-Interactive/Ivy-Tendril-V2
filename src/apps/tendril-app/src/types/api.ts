@@ -211,6 +211,22 @@ export interface RevisionResult {
   message: string;
 }
 
+/**
+ * One inline diff comment, mirroring `DraftCommentDto` in `src-tauri/src/models.rs` and
+ * `PlanDiffView`'s own `DraftComment`, so a comment passes between them without translation.
+ *
+ * `filePath` is the anchor: `plan.md@<old>-<new>` scopes a comment to one revision pair, while a
+ * bare `plan.md` is what the original Tendril wrote and stays readable.
+ */
+export interface DraftComment {
+  filePath: string;
+  changeKey: string;
+  content: string;
+  lineNumber: number;
+  author?: string;
+  isResolved?: boolean;
+}
+
 export type RecommendationState = "Pending" | "Accepted" | "AcceptedWithNotes" | "Declined";
 
 export interface RecommendationItem {

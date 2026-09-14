@@ -156,6 +156,25 @@ pub struct RevisionResultDto {
     pub message: String,
 }
 
+/// One inline diff comment, as stored in `<planFolder>/Artifacts/draft_diff_comments.yaml`.
+///
+/// The field names are the legacy on-disk spelling, which is also the JSON the service speaks and
+/// the shape `PlanDiffView`'s own `DraftComment` expects, so the DTO passes straight through.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftCommentDto {
+    pub file_path: String,
+    pub change_key: String,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub line_number: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub is_resolved: bool,
+}
+
 /// One repo of a plan, as reported by `GET /api/plans/:id/repo-status`.
 ///
 /// A repo that could not be inspected carries `error` and `is_dirty: false`:
