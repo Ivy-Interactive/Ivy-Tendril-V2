@@ -14,15 +14,19 @@ use std::sync::Arc;
 use std::time::Duration;
 use tendril_core::agents::providers::AgentProcessSpec;
 use tendril_core::config::{get_database_path, TendrilSettings};
-use tendril_core::db::jobs::{get_job as get_job_row, insert_job, list_job_ids_by_status};
+use tendril_core::db::jobs::{
+    delete_job, get_job as get_job_row, insert_job, list_job_ids_by_status,
+};
 use tendril_core::db::open_database;
 use tendril_core::error::{Result, TendrilError};
 use tendril_core::jobs::manager::{
     conflict_group, describe_wait_dependency, stale_eviction_candidates, JobManager, SpecBuilder,
     StartOptions,
 };
+use tendril_core::jobs::recovery::reconcile_jobs_with;
 use tendril_core::models::{
-    CreatePrArgs, ExecutePlanArgs, JobArgs, JobItem, JobStatus, PlanStatus, VerificationStatus,
+    CreatePlanArgs, CreatePrArgs, ExecutePlanArgs, JobArgs, JobItem, JobStatus, PlanStatus,
+    SyncRepoArgs, VerificationStatus,
 };
 
 /// Settings with the concurrency budget a test needs and nothing else changed.
@@ -179,6 +183,39 @@ fn write_terminal_job(
     status: JobStatus,
 ) {
     write_job_row(home, &job_in(id, plan_folder, "ExecutePlan", status));
+}
+
+/// A non-terminal `ExecutePlan` row as an interrupted daemon would have left it: both `args` and
+/// `typed_args` populated, since the launch and recovery paths read the typed copy and a row with
+/// only one of the two is silently ignored.
+fn seed_live_job(
+    home: &HomeFixture,
+    id: &str,
+    plan_folder: &std::path::Path,
+    status: JobStatus,
+    process_id: Option<u32>,
+) -> JobItem {
+    let args = execute(plan_folder);
+    let mut job = job_in(id, plan_folder, "ExecutePlan", status);
+    job.process_id = process_id;
+    job.typed_args = Some(args.clone());
+    job.args = serde_json::to_string(&args).ok();
+    write_job_row(home, &job);
+    job
+}
+
+/// This process's own PID. Alive by definition, which is what makes a seeded `Running` row read as a
+/// job that survived the daemon rather than as an interrupted one to be reaped.
+fn alive_pid() -> u32 {
+    std::process::id()
+}
+
+/// `StartOptions` carrying nothing but a client-supplied idempotency key.
+fn keyed(key: &str) -> StartOptions {
+    StartOptions {
+        idempotency_key: Some(key.to_string()),
+        ..Default::default()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +552,388 @@ async fn an_idle_plan_and_a_planless_job_never_conflict() {
         .await
         .unwrap()
         .is_none());
+    // Normalization must not invent a conflict either: an idle plan spelled with a trailing
+    // separator is still idle.
+    assert!(manager
+        .find_conflicting_job("ExecutePlan", &format!("{}/", folder.to_string_lossy()))
+        .await
+        .unwrap()
+        .is_none());
+}
+
+/// Two spellings of one folder are one folder. Legacy compared the strings raw, so `--folder plan/`
+/// and `--folder plan` were two different plans as far as the guard was concerned.
+#[tokio::test]
+async fn a_trailing_separator_spelling_of_the_same_folder_still_collides() {
+    let home = HomeFixture::new("queue-conflict-spelling");
+    let folder = home.write_plan("00001-Busy", &plan_with(PlanStatus::Executing, &[]));
+    seed_live_job(
+        &home,
+        "00001",
+        &folder,
+        JobStatus::Running,
+        Some(alive_pid()),
+    );
+
+    let manager = manager_for(&home, 2, None);
+    let exact = folder.to_string_lossy().to_string();
+    for spelling in [
+        exact.clone(),
+        format!("{}/", exact),
+        format!("{}//", exact),
+        format!(" {} ", exact),
+        exact.to_uppercase(),
+    ] {
+        assert_eq!(
+            manager
+                .find_conflicting_job("ExecutePlan", &spelling)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("00001"),
+            "{:?} names the plan job 00001 already holds",
+            spelling
+        );
+    }
+}
+
+/// Simultaneous starts on one plan, fired from several tasks released together. Before the critical
+/// section was widened the conflict check sat ~90 lines and several `.await` points before the insert,
+/// so submissions that overlapped in that window all passed it and the plan got several jobs, several
+/// worktrees and several agents.
+///
+/// A [`tokio::sync::Barrier`] is what makes the overlap real: without it the first task runs its whole
+/// start — including the insert — before the second is polled, and the pre-lock fast path alone is
+/// enough to refuse the rest. That version of this test passed against a deliberately broken guard.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn two_concurrent_starts_on_one_plan_produce_one_job_and_one_conflict() {
+    assert_one_concurrent_start_wins("queue-race-same-type", execute, "Executing").await;
+    // The guard is per conflict group, not per job type: `CreatePr` is in the plan-mutating group
+    // too, so it has to lose the same race. It leaves the plan state alone when it wins — that
+    // promptware sets its own — so the plan is still `Draft` in that half. This half is also the one
+    // the dedupe key cannot cover: keys are derived per job type, so two types never share one.
+    assert_one_concurrent_start_wins("queue-race-cross-type", create_pr, "Draft").await;
+}
+
+/// Races `ExecutePlan` submissions against `second` submissions on one plan, all released at once, and
+/// asserts exactly one job came out of it. `second_plan_state` is where the plan lands when `second`
+/// wins.
+#[cfg(unix)]
+async fn assert_one_concurrent_start_wins(
+    label: &str,
+    second: fn(&std::path::Path) -> JobArgs,
+    second_plan_state: &str,
+) {
+    /// More than two, because whether any given pair truly overlaps is up to the scheduler. Every
+    /// extra racer is another chance for two of them to be inside the window at once.
+    const RACERS: usize = 6;
+
+    let home = HomeFixture::new(label);
+    home.write_promptware("ExecutePlan");
+    home.write_promptware("CreatePr");
+    let folder = home.write_plan("00001-Contested", &plan_with(PlanStatus::Draft, &[]));
+    let script = write_script(&home, "agent.sh", "echo working\nsleep 30\n");
+
+    let manager = manager_for(&home, 2, Some(script)).share();
+    let barrier = Arc::new(tokio::sync::Barrier::new(RACERS));
+    let mut tasks = Vec::new();
+    for index in 0..RACERS {
+        let manager = manager.clone();
+        let barrier = barrier.clone();
+        // Alternating, so the two job types are interleaved rather than one type going first.
+        let args = if index % 2 == 0 {
+            execute(&folder)
+        } else {
+            second(&folder)
+        };
+        tasks.push(tokio::spawn(async move {
+            barrier.wait().await;
+            (index, manager.start_job(args).await)
+        }));
+    }
+
+    let mut winners: Vec<(usize, String)> = Vec::new();
+    let mut refusals: Vec<TendrilError> = Vec::new();
+    for task in tasks {
+        match task.await.expect("a start task should not panic") {
+            (index, Ok(id)) => winners.push((index, id)),
+            (_, Err(e)) => refusals.push(e),
+        }
+    }
+
+    assert_eq!(
+        winners.len(),
+        1,
+        "exactly one of {} simultaneous starts may create a job, got {:?}",
+        RACERS,
+        winners
+    );
+    let (winner_index, winner) = winners.remove(0);
+    for refusal in &refusals {
+        // Always `Conflict`, never `DuplicateJob`: the conflict check runs first inside the lock, so
+        // it — not the per-type dedupe key — is what refuses every loser.
+        assert!(
+            matches!(refusal, TendrilError::Conflict(_)),
+            "{:?}",
+            refusal
+        );
+        assert!(
+            refusal.to_string().contains(&winner),
+            "every refusal must name the job that won ({}): {}",
+            winner,
+            refusal
+        );
+    }
+    assert_eq!(
+        manager.list_jobs(None, 100).await.unwrap().len(),
+        1,
+        "the losing starts must not have written job rows"
+    );
+    assert_eq!(
+        plan_state(&folder),
+        if winner_index % 2 == 0 {
+            "Executing"
+        } else {
+            second_plan_state
+        },
+        "only the winner may move the plan"
+    );
+
+    manager.stop_all_jobs().await.unwrap();
+}
+
+/// Startup recovery deliberately does not rehydrate the in-memory map, so straight after a restart
+/// the map is empty while the database still holds the job that owns the plan. A memory-only guard
+/// went blind exactly there and admitted a second job onto a plan an agent was still working on.
+#[tokio::test]
+async fn a_persisted_conflicting_job_is_detected_after_a_restart() {
+    // A live PID: recovery reads the row as a job that survived the daemon and leaves it running.
+    assert_persisted_job_blocks_a_start(
+        "queue-restart-running",
+        JobStatus::Running,
+        Some(alive_pid()),
+    )
+    .await;
+    // And a queued row with no process at all — recovery has no durable queue, so it leaves those
+    // alone too, which makes them just as invisible to the map and just as real to the plan.
+    assert_persisted_job_blocks_a_start("queue-restart-queued", JobStatus::Queued, None).await;
+}
+
+async fn assert_persisted_job_blocks_a_start(
+    label: &str,
+    status: JobStatus,
+    process_id: Option<u32>,
+) {
+    let home = HomeFixture::new(label);
+    let folder = home.write_plan("00001-Survivor", &plan_with(PlanStatus::Executing, &[]));
+    seed_live_job(&home, "00001", &folder, status, process_id);
+
+    // A manager built fresh over the same home *is* the restart: nothing ever populated its map.
+    let manager = manager_for(&home, 2, None);
+    reconcile_jobs_with(
+        &home.path,
+        &home.plans_dir(),
+        &settings(2),
+        &never_called_resolver,
+    )
+    .await
+    .expect("reconciliation should not error");
+
+    assert_eq!(
+        manager
+            .find_conflicting_job("ExecutePlan", &folder.to_string_lossy())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("00001"),
+        "the guard must see the row recovery left behind"
+    );
+
+    let err = manager
+        .start_job(execute(&folder))
+        .await
+        .expect_err("a start must be refused while the persisted job holds the plan");
+    assert!(matches!(err, TendrilError::Conflict(_)), "{:?}", err);
+    assert!(err.to_string().contains("00001"), "{}", err);
+    assert_eq!(
+        manager.list_jobs(None, 100).await.unwrap().len(),
+        1,
+        "the refused start must not have written a job row"
+    );
+    assert_eq!(
+        plan_state(&folder),
+        "Executing",
+        "neither recovery nor a refused start may move the plan"
+    );
+
+    // Proof the answer came from the database and not from a rehydrated map: with the row gone,
+    // there is nothing left to find.
+    let conn = open_database(&get_database_path(&home.path)).expect("open db");
+    assert!(delete_job(&conn, "00001").expect("delete row"));
+    assert!(
+        manager
+            .find_conflicting_job("ExecutePlan", &folder.to_string_lossy())
+            .await
+            .unwrap()
+            .is_none(),
+        "the in-memory map was never rehydrated, so the database was the only source"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Idempotency keys
+// ---------------------------------------------------------------------------
+
+/// A client that retries a start it never got an answer for gets the original job back, not a second
+/// one. The replay is checked before the conflict gate, so the retry reads as success rather than as
+/// the conflict its own first attempt caused.
+#[cfg(unix)]
+#[tokio::test]
+async fn resubmitting_an_idempotency_key_returns_the_original_job() {
+    let home = HomeFixture::new("queue-idempotency-replay");
+    home.write_promptware("ExecutePlan");
+    let folder = home.write_plan("00001-Keyed", &plan_with(PlanStatus::Draft, &[]));
+    let other = home.write_plan("00002-Other", &plan_with(PlanStatus::Draft, &[]));
+    let script = write_script(&home, "agent.sh", "echo working\nsleep 30\n");
+    let manager = manager_for(&home, 2, Some(script));
+
+    let first = manager
+        .start_job_with(execute(&folder), keyed("k1"))
+        .await
+        .unwrap();
+    wait_for_status(
+        &manager,
+        &first,
+        JobStatus::Running,
+        Duration::from_secs(15),
+    )
+    .await;
+    assert_eq!(plan_state(&folder), "Executing");
+
+    // A distinctive state the replay must not overwrite. Only the winner of a start moves the plan,
+    // and a replay creates nothing, so it is not a winner.
+    home.write_plan("00001-Keyed", &plan_with(PlanStatus::Review, &[]));
+
+    let replay = manager
+        .start_job_with(execute(&folder), keyed("k1"))
+        .await
+        .expect("a replayed key is the same request, not a conflict");
+    assert_eq!(replay, first, "a replayed key must return the original job");
+    assert_eq!(
+        manager.list_jobs(None, 100).await.unwrap().len(),
+        1,
+        "a replay must not write a second job row"
+    );
+    assert_eq!(
+        plan_state(&folder),
+        "Review",
+        "a replay must not flip the plan state a second time"
+    );
+
+    // The key is on the row, not just in the request: after a restart the replay check reads it back
+    // from SQLite.
+    let conn = open_database(&get_database_path(&home.path)).expect("open db");
+    assert_eq!(
+        get_job_row(&conn, &first)
+            .unwrap()
+            .expect("job row")
+            .idempotency_key,
+        Some("k1".to_string()),
+        "the key must survive the round trip through the database"
+    );
+
+    // A different key is a different request. On a different plan, so the conflict gate is not what
+    // is being measured here.
+    let second = manager
+        .start_job_with(execute(&other), keyed("k2"))
+        .await
+        .unwrap();
+    assert_ne!(second, first, "a fresh key must create a fresh job");
+    assert_eq!(manager.list_jobs(None, 100).await.unwrap().len(), 2);
+
+    // Keys are retained for every status, not only in-flight ones: a retry that arrives after the
+    // job already finished must still be told about that job rather than starting the work again.
+    manager.stop_all_jobs().await.unwrap();
+    let final_status = wait_for_terminal(&manager, &first, Duration::from_secs(15)).await;
+    assert!(is_terminal(final_status), "{}", final_status);
+    assert_eq!(
+        manager
+            .start_job_with(execute(&folder), keyed("k1"))
+            .await
+            .expect("a terminal job still answers its key"),
+        first
+    );
+    assert_eq!(
+        manager.list_jobs(None, 100).await.unwrap().len(),
+        2,
+        "replaying a terminal job must not write a third row"
+    );
+}
+
+/// A plan-scoped job with no plan folder has nothing to key a conflict on, so accepting it would hand
+/// out unlimited concurrency on the one path that most needs the guard. Only `POST /api/jobs` can
+/// express it — the CLI and MCP both resolve a folder first — and `Validation` is its 400.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_plan_scoped_job_without_a_plan_folder_is_refused() {
+    let home = HomeFixture::new("queue-conflict-no-folder");
+    for job_type in ["CreatePlan", "SyncRepo"] {
+        home.write_promptware(job_type);
+    }
+    let script = write_script(&home, "agent.sh", "echo done\n");
+    let manager = manager_for(&home, 2, Some(script));
+
+    let blank = std::path::Path::new("");
+    for args in [
+        execute(blank),
+        create_pr(blank),
+        // Whitespace and a bare separator are empty folders too, not folder named " ".
+        execute(std::path::Path::new("   ")),
+        execute(std::path::Path::new("/")),
+    ] {
+        let job_type = args.job_type().to_string();
+        let err = manager.start_job(args).await.unwrap_err();
+        assert!(
+            matches!(err, TendrilError::Validation(_)),
+            "{} with no folder should be a validation error, got {:?}",
+            job_type,
+            err
+        );
+        assert!(err.to_string().contains("plan folder"), "{}", err);
+    }
+    assert!(
+        manager.list_jobs(None, 100).await.unwrap().is_empty(),
+        "a refused start must not write a job row"
+    );
+
+    // The rule is about plan-scoped types only. A job type in no conflict group has no plan to fight
+    // over, so no folder is the normal case for it and it still starts.
+    for args in [
+        JobArgs::CreatePlan(CreatePlanArgs {
+            description: "Do a thing".to_string(),
+            project: "FixtureProject".to_string(),
+            priority: 0,
+            force: true,
+            source_path: None,
+            upload_session_id: None,
+        }),
+        JobArgs::SyncRepo(SyncRepoArgs {
+            repo_path: home.path.to_string_lossy().to_string(),
+            base_branch: "main".to_string(),
+            plan_folder_path: None,
+            untracked_changes_policy: "Stash".to_string(),
+        }),
+    ] {
+        let job_type = args.job_type().to_string();
+        assert!(
+            manager.start_job(args).await.is_ok(),
+            "{} is in no conflict group and needs no plan folder",
+            job_type
+        );
+    }
+
+    manager.stop_all_jobs().await.unwrap();
 }
 
 // ---------------------------------------------------------------------------

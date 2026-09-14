@@ -337,8 +337,10 @@ impl JobManager {
     /// Gates run in this order:
     ///
     /// 1. **Missing plan folder** — a plan-scoped job with no folder is refused outright.
-    /// 2. **Conflict fast path** — memory-only and I/O-free, so an obvious duplicate is rejected
-    ///    before the dependency gate can spend a network round trip on it. Not authoritative.
+    /// 2. **Conflict fast path** — outside the lock, so an obvious duplicate is rejected before the
+    ///    dependency gate can spend a network round trip on it. Not authoritative: without the lock
+    ///    two concurrent starts can both pass it. Skipped for a keyed submission, which step 4 may
+    ///    recognize as a replay rather than a duplicate.
     /// 3. **The plan dependency gate**, then **the wait-for-jobs gate**. Both may await for a long
     ///    time, so both run outside `start_lock`.
     /// 4. Under `start_lock`, indivisibly: **the idempotency-key replay**, **the authoritative
@@ -390,7 +392,12 @@ impl JobManager {
         // A DB error is swallowed rather than returned: the authoritative check hits the same error a
         // moment later and reports it properly, so failing the fast path would only turn a
         // recoverable read error into a lost submission.
-        if !force {
+        //
+        // Skipped entirely when the submission carries an idempotency key. A keyed retry is most
+        // likely a replay of the *same* job the fast path would report as the conflict, and answering
+        // it with a conflict is the exact failure a key exists to prevent. The replay lookup needs the
+        // database, so it belongs under the lock with the authoritative check rather than up here.
+        if !force && opts.idempotency_key.is_none() {
             if let Some(existing_id) = self
                 .find_conflicting_job(&job_type, &plan_folder_str)
                 .await
@@ -403,7 +410,7 @@ impl JobManager {
             }
         }
 
-        // The key for the *work*, checked under `alloc_lock` further down so two concurrent
+        // The key for the *work*, checked under `start_lock` further down so two concurrent
         // submissions cannot both pass. `None` for a forced submission and for a job type that is
         // not deduplicated.
         let dedupe_key = if force { None } else { args.dedupe_key() };
