@@ -2,64 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { VaultSettingsView } from "../src/views/VaultSettingsView";
 import { bridge } from "../src/api/bridge";
-import type {
-  ProjectSummary,
-  VaultCatalog,
-  VaultCatalogItem,
-  VaultImportRequest,
-  VaultStatus,
-} from "../src/types/api";
-
-/**
- * The five vault dialogs are replaced by shims that submit a fixed request, the way
- * `plan-diff.test.tsx` replaces `PlanDiffView`: what this file owns is the view's routing — which
- * dialog a row action opens and which `bridge.vault*` wrapper its submission reaches — while the
- * dialogs' own inputs and validation are covered where they live, in the components package's
- * `tests/vault-dialogs.test.tsx`.
- *
- * They also cannot be mounted here: they are the only vault components built on Radix's `Dialog`,
- * whose `react-remove-scroll` dependency resolves to the React installed beside it under
- * `packages/components/node_modules` — a second React, which throws on its first hook. Everything
- * that is not dialog-based (the status card's `Switch`, the table, the gated buttons) renders for
- * real below.
- */
-vi.mock("@ivy-interactive/components/tendril", async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  const importRequest = (projectName: string, localName: string): VaultImportRequest => ({
-    projectName,
-    targetLocalProjectName: localName,
-    localRepoMappings: {},
-    selectedSkills: [],
-    selectedMcps: [],
-    selectedMemories: [],
-    selectedReviewActions: [],
-    selectedVerifications: [],
-    importPermissions: true,
-  });
-
-  return {
-    ...actual,
-    ImportFromVaultDialog: ({
-      item,
-      mergeMode = false,
-      onSubmit,
-    }: {
-      item: VaultCatalogItem;
-      mergeMode?: boolean;
-      onSubmit: (request: VaultImportRequest) => void;
-    }) => (
-      <div data-testid={mergeMode ? "merge-vault-dialog" : "import-vault-dialog"}>
-        <button type="button" onClick={() => onSubmit(importRequest(item.name, item.name))}>
-          {mergeMode ? "Link & Merge" : "Import Project"}
-        </button>
-      </div>
-    ),
-    CreateVaultDialog: () => <div data-testid="create-vault-dialog" />,
-    ConnectVaultDialog: () => <div data-testid="connect-vault-dialog" />,
-    PushToVaultDialog: () => <div data-testid="push-vault-dialog" />,
-    ConfirmVaultDeleteDialog: () => <div data-testid="confirm-vault-delete-dialog" />,
-  };
-});
+import type { ProjectSummary, VaultCatalog, VaultCatalogItem, VaultStatus } from "../src/types/api";
 
 function vaultStatus(overrides: Partial<VaultStatus> = {}): VaultStatus {
   return {

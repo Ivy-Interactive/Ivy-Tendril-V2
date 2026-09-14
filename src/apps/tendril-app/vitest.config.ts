@@ -12,14 +12,7 @@ export default defineConfig({
     execArgv: ["--no-experimental-webstorage"],
     server: {
       deps: {
-        /* `@radix-ui` is inlined for the same reason as the components package itself. Externalized,
-           it is loaded by Node's own resolution and picks up the `react` installed beside it under
-           `packages/components/node_modules` — a second React, so every Radix hook throws "Cannot
-           read properties of null (reading 'useRef')". Inlined, it resolves `react` through the
-           alias below like the rest of the graph. This does not reach the CJS-only `dist/es5` build
-           of `react-remove-scroll` behind Radix's `Dialog`, which Vite externalizes either way; a
-           test that would mount a dialog shims it instead (see `tests/vault-settings-view.test.tsx`). */
-        inline: [/@ivy-interactive\/components/, /@dnd-kit/, /@radix-ui/],
+        inline: [/@ivy-interactive\/components/, /@dnd-kit/],
       },
     },
   },
