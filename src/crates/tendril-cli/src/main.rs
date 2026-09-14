@@ -56,6 +56,9 @@ enum Commands {
     #[command(subcommand, about = "Tendril configuration")]
     Config(commands::config::ConfigCommands),
 
+    #[command(subcommand, about = "Password authentication helpers")]
+    Auth(commands::auth::AuthCommands),
+
     #[command(about = "Check system health")]
     Doctor {
         #[arg(
@@ -125,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
             commands::promptware::handle_promptware_command(cmd, &tendril_home).await?
         }
         Commands::Config(cmd) => commands::config::handle_config_command(cmd, &tendril_home)?,
+        Commands::Auth(cmd) => commands::auth::handle_auth_command(cmd)?,
         Commands::Doctor {
             rebuild_search_index,
         } => commands::doctor::handle_doctor(&tendril_home, rebuild_search_index)?,
