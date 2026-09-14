@@ -180,6 +180,28 @@
   }
 }
 
+@keyframes bladeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes bladeSlideOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+}
+
 @layer base {
   * {
     border-color: var(--border);
@@ -218,6 +240,18 @@
   }
   .toast-animate-enter {
     animation: toastSlideIn 300ms ease-out;
+  }
+  .blade-animate-enter {
+    animation: bladeSlideIn 200ms ease-out;
+  }
+  .blade-animate-exit {
+    animation: bladeSlideOut 200ms ease-out forwards;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blade-animate-enter,
+    .blade-animate-exit {
+      animation: none;
+    }
   }
   :where(
       .bg-primary,
