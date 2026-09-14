@@ -587,6 +587,10 @@ pub fn load_config(config_path: &Path) -> Result<TendrilSettings> {
     Ok(settings)
 }
 
+/// Replaces `config.yaml` atomically while holding its lock.
+///
+/// The caller must not already hold that lock — see
+/// [`FileLock::acquire`][crate::fs_lock::FileLock::acquire] on nesting.
 pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()> {
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -595,11 +599,16 @@ pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()>
     let yaml = serde_yaml::to_string(settings)
         .map_err(|e| TendrilError::Config(format!("Failed to serialize settings: {}", e)))?;
 
-    std::fs::write(config_path, yaml)?;
-    Ok(())
+    let _lock = crate::fs_lock::FileLock::acquire(config_path)?;
+    crate::fs_lock::write_atomic(config_path, yaml.as_bytes())
 }
 
+/// Merges `incoming` into `config.yaml` and writes the result.
+///
+/// This is a read-modify-write, so the lock is held across **both** halves: releasing it between the
+/// read and the write is exactly how two concurrent settings edits drop one another.
 pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Result<()> {
+    let _lock = crate::fs_lock::FileLock::acquire(config_path)?;
     let existing_raw = if config_path.exists() {
         std::fs::read_to_string(config_path).map_err(|e| {
             TendrilError::Config(format!("Failed to read {}: {}", config_path.display(), e))
@@ -642,8 +651,9 @@ pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Re
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::write(config_path, yaml_str)?;
-    Ok(())
+    // `write_atomic` rather than `save_config`: the lock is already held here, and re-acquiring it
+    // would deadlock.
+    crate::fs_lock::write_atomic(config_path, yaml_str.as_bytes())
 }
 
 pub fn generate_bearer_secret() -> String {

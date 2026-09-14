@@ -25,6 +25,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 regex = "1.11"
 walkdir = "2.5"
+# 8.2 is the newest stable release; 9.0 exists only as a release candidate.
+notify = "8.2"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 futures-util = "0.3"
 axum = { version = "0.7", features = ["ws"] }
