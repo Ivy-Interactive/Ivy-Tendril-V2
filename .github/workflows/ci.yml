@@ -24,7 +24,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 11
+          version: 11.25.0
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -48,6 +48,15 @@ jobs:
 
       - name: Frontend tests
         run: pnpm test
+
+      - name: Extension typecheck
+        run: pnpm typecheck:extension
+
+      - name: Extension build
+        run: pnpm build:extension
+
+      - name: Extension tests
+        run: pnpm test:extension
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
