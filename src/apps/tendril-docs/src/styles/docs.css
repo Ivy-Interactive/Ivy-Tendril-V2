@@ -1,0 +1,58 @@
+/* The docs site's only stylesheet.
+ *
+ * The design tokens come from the real components-library token file, not a copy and not a bridge:
+ * `globals.css` owns the `:root` / `.dark` variable blocks, the `@theme inline` mapping and the
+ * `@layer base` resets, so light/dark theming here *is* the app's theming. The components package
+ * exports `./styles/*`, which is what makes the import below resolve to source rather than to the
+ * prebuilt `dist/style.css`.
+ *
+ * `markdown-spacing.css` is imported separately because `globals.css` does not pull it in (only the
+ * library's own `index.css` does). It supplies the contextual margins for `.markdown-widget`
+ * children, which is the class `DocPage` wraps `MarkdownRenderer` in.
+ */
+@import "@ivy-interactive/components/styles/globals.css";
+@import "@ivy-interactive/components/styles/markdown-spacing.css";
+
+/* Tailwind v4 detects sources from the importing project, which would miss both the docs app's own
+ * class usage and the class names baked into the components it renders. Both are declared. */
+@source "../../src";
+@source "../../../../packages/components/src";
+
+@layer components {
+  /* Article prose. `MarkdownRenderer` applies the library's `typography` classes to every element it
+   * renders; these rules only add what a long-form document needs and a widget does not. */
+  .docs-article {
+    max-width: 48rem;
+  }
+
+  .docs-article :where(h2) {
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Anchor offset so an in-page jump does not tuck the heading under the sticky header. */
+  .docs-article :where(h1, h2, h3, h4, h5, h6) {
+    scroll-margin-top: 5rem;
+  }
+
+  /* Tables stay real tables. `display: block` would make them scroll horizontally, but it also stops
+   * the rows from filling the block's width — the last column ends short of the border and the header
+   * band with it. Wrapping long cells keeps a wide table inside the article instead. */
+  .docs-article :where(table) {
+    width: 100%;
+    max-width: 100%;
+    table-layout: auto;
+  }
+
+  .docs-article :where(th, td) {
+    overflow-wrap: break-word;
+  }
+
+  /* The "On this page" rail and the sidebar both scroll independently of the article. */
+  .docs-rail {
+    position: sticky;
+    top: 4rem;
+    max-height: calc(100vh - 5rem);
+    overflow-y: auto;
+  }
+}

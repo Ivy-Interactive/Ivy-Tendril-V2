@@ -1,9 +1,9 @@
 use crate::error::BridgeError;
 use crate::models::{
-    ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, DraftCommentDto, EnqueueItemDto,
-    ExecuteTurnDto, JobDetailDto, JobDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto,
-    PostMessageDto, ProjectSummaryDto, ReviewActionDto, RevisionResultDto, StartJobResponseDto,
-    TendrilConfigDto,
+    AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, DraftCommentDto,
+    EnqueueItemDto, ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto, PlanDetailDto,
+    PlanQueryDto, PlanSummaryDto, PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto,
+    RepoStatusDto, ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -178,6 +178,119 @@ impl TendrilClient {
         }
 
         Ok(())
+    }
+
+    /// Reset a plan to Draft and remove its worktrees
+    /// (`POST /api/plans/:id/reset`).
+    ///
+    /// A `409 CONFLICT` — a Completed/Skipped plan, or one a job is still
+    /// holding — comes back as a `CONFLICT` rejection carrying the service's own
+    /// message, so the dialog can show the operator why nothing happened rather
+    /// than pretending the reset landed.
+    pub async fn reset_plan(&self, plan_id: &str) -> Result<(), BridgeError> {
+        let url = format!(
+            "{}/api/plans/{}/reset",
+            self.base_url,
+            path_segment(plan_id)
+        );
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+        Self::expect_success(
+            resp,
+            "RESET_PLAN_FAILED",
+            &format!("reset plan '{plan_id}'"),
+        )
+        .await
+    }
+
+    /// Permanently delete a plan folder (`DELETE /api/plans/:id`).
+    ///
+    /// Irreversible, and refused with `409 CONFLICT` while a job is in flight.
+    pub async fn delete_plan(&self, plan_id: &str) -> Result<(), BridgeError> {
+        let url = format!("{}/api/plans/{}", self.base_url, path_segment(plan_id));
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+        Self::expect_success(
+            resp,
+            "DELETE_PLAN_FAILED",
+            &format!("delete plan '{plan_id}'"),
+        )
+        .await
+    }
+
+    /// Uncommitted-change status of a plan's repos
+    /// (`GET /api/plans/:id/repo-status`), the data source of the dirty-repo
+    /// pre-execution guard.
+    pub async fn get_repo_status(&self, plan_id: &str) -> Result<Vec<RepoStatusDto>, BridgeError> {
+        let url = format!(
+            "{}/api/plans/{}/repo-status",
+            self.base_url,
+            path_segment(plan_id)
+        );
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "REPO_STATUS_FAILED",
+                format!("Failed to read repo status for plan '{plan_id}' ({status})"),
+                text,
+            ));
+        }
+
+        #[derive(serde::Deserialize)]
+        struct RepoStatusResponse {
+            #[serde(default)]
+            repos: Vec<RepoStatusDto>,
+        }
+
+        let body: RepoStatusResponse = resp.json().await?;
+        Ok(body.repos)
+    }
+
+    /// Turn a non-2xx response into a `BridgeError`, mapping `409 CONFLICT` onto
+    /// a `CONFLICT` code and the service's `error` message verbatim. The
+    /// lifecycle dialogs render that message, so it must survive the trip.
+    async fn expect_success(
+        resp: reqwest::Response,
+        failure_code: &str,
+        action: &str,
+    ) -> Result<(), BridgeError> {
+        if resp.status().is_success() {
+            return Ok(());
+        }
+
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        let service_message = serde_json::from_str::<serde_json::Value>(&text)
+            .ok()
+            .and_then(|v| {
+                v.get("error")
+                    .and_then(|e| e.as_str())
+                    .map(|s| s.to_string())
+            });
+
+        if status == reqwest::StatusCode::CONFLICT {
+            return Err(BridgeError::new(
+                "CONFLICT",
+                service_message.unwrap_or_else(|| format!("Could not {action} ({status})")),
+            ));
+        }
+
+        Err(BridgeError::with_details(
+            failure_code,
+            service_message.unwrap_or_else(|| format!("Could not {action} ({status})")),
+            text,
+        ))
     }
 
     /// Accept or decline one of a plan's recommendations.
@@ -675,6 +788,52 @@ impl TendrilClient {
         Ok(msg)
     }
 
+    pub async fn list_pull_requests(&self) -> Result<Vec<PrStatusDto>, BridgeError> {
+        let url = format!("{}/api/pull-requests", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_PULL_REQUESTS_FAILED",
+                format!("Failed to list pull requests ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn sync_pull_requests(&self) -> Result<PrSyncReportDto, BridgeError> {
+        let url = format!("{}/api/pull-requests/sync", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        // A pass already in flight is not a failure — the caller just re-reads the list when the
+        // running pass broadcasts its result.
+        if resp.status() == reqwest::StatusCode::CONFLICT {
+            return Err(BridgeError::new(
+                "PR_SYNC_IN_PROGRESS",
+                "A pull request sync is already running",
+            ));
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "SYNC_PULL_REQUESTS_FAILED",
+                format!("Failed to sync pull requests ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
     pub async fn list_projects(&self) -> Result<Vec<ProjectSummaryDto>, BridgeError> {
         let url = format!("{}/api/projects", self.base_url);
         let resp = self.client.get(&url).headers(self.headers()).send().await?;
@@ -855,6 +1014,43 @@ impl TendrilClient {
         }
 
         Ok(())
+    }
+
+    pub async fn get_models_status(&self) -> Result<ModelCatalogStatusDto, BridgeError> {
+        let url = format!("{}/api/models/status", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_MODELS_STATUS_FAILED",
+                format!("Failed to get models status ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn refresh_models(&self) -> Result<ModelCatalogStatusDto, BridgeError> {
+        let url = format!("{}/api/models/refresh", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "REFRESH_MODELS_FAILED",
+                format!("Failed to refresh models ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     pub async fn post_inbox(
@@ -1327,6 +1523,50 @@ impl TendrilClient {
         }
 
         Ok(())
+    }
+
+    pub async fn update_queued_chat_item(
+        &self,
+        session_id: &str,
+        item_id: &str,
+        prompt: &str,
+    ) -> Result<ChatQueuedItemDto, BridgeError> {
+        let url = format!(
+            "{}/api/chat/sessions/{}/queue/{}",
+            self.base_url,
+            path_segment(session_id),
+            path_segment(item_id)
+        );
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&serde_json::json!({ "prompt": prompt }))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "UPDATE_QUEUED_CHAT_ITEM_FAILED",
+                format!("Failed to update queued chat item ({status}): {text}"),
+            ));
+        }
+        Ok(resp.json().await?)
+    }
+
+    pub async fn list_agents(&self) -> Result<Vec<AgentOptionDto>, BridgeError> {
+        let url = format!("{}/api/agents", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_AGENTS_FAILED",
+                format!("Failed to list agents ({status}): {text}"),
+            ));
+        }
+        Ok(resp.json().await?)
     }
 }
 

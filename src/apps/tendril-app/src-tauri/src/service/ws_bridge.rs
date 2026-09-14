@@ -139,9 +139,15 @@ pub fn route_ws_message(text_str: &str) -> (&'static str, serde_json::Value) {
         let msg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if msg_type.starts_with("chat.") {
             ("chat-event", val)
-        } else if msg_type == "state" || msg_type == "status" || msg_type.starts_with("plan.") {
+        } else if msg_type == "state"
+            || msg_type == "status"
+            || msg_type == "pr_status_changed"
+            || msg_type.starts_with("plan.")
+        {
             // The `plan.` prefix is the whole namespace, not just one event: a plan-scoped type must
-            // never fall through to `job-event`.
+            // never fall through to `job-event`. A PR transition can complete or unblock a plan, so
+            // it also arrives on this channel rather than needing one of its own.
+
             ("plan-event", val)
         } else {
             ("job-event", val)
@@ -219,5 +225,13 @@ mod tests {
         let (channel, payload) = route_ws_message("not json at all");
         assert_eq!(channel, "job-event");
         assert_eq!(payload, serde_json::Value::String("not json at all".into()));
+    }
+
+    #[test]
+    fn test_route_pr_status_changed() {
+        let pr_json = r#"{"type":"pr_status_changed"}"#;
+        let (channel, payload) = route_ws_message(pr_json);
+        assert_eq!(channel, "plan-event");
+        assert_eq!(payload["type"], "pr_status_changed");
     }
 }

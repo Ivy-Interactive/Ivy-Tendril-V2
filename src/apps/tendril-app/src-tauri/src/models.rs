@@ -31,6 +31,18 @@ pub struct ServiceInfoDto {
     pub crash_count: Option<u32>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelCatalogStatusDto {
+    pub source: String,
+    pub total_model_count: usize,
+    pub dynamic_model_count: usize,
+    pub static_model_count: usize,
+    pub enrich_models: bool,
+    pub cached_at: Option<String>,
+    pub cache_path: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanVerificationDto {
@@ -161,6 +173,27 @@ pub struct DraftCommentDto {
     pub author: Option<String>,
     #[serde(default)]
     pub is_resolved: bool,
+}
+
+/// One repo of a plan, as reported by `GET /api/plans/:id/repo-status`.
+///
+/// A repo that could not be inspected carries `error` and `is_dirty: false`:
+/// the dirty-repo guard degrades to "nothing known to be dirty" rather than
+/// blocking execution on an unreadable repo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoStatusDto {
+    pub path: String,
+    #[serde(default)]
+    pub is_dirty: bool,
+    /// `git status --porcelain` lines, capped service-side.
+    #[serde(default)]
+    pub changes: Vec<String>,
+    /// Total number of changed entries, which may exceed `changes.len()`.
+    #[serde(default)]
+    pub change_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -460,4 +493,102 @@ pub struct EnqueueItemDto {
         alias = "Attachments"
     )]
     pub attachments: Option<Vec<ChatAttachmentDto>>,
+}
+
+/// One tracked pull request as the daemon last saw it. `status` is `Open` / `Closed` / `Merged` /
+/// `Unknown`; `lastChecked` is absent until the first reconciliation pass has seen the PR.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrStatusDto {
+    #[serde(default)]
+    pub pr_url: String,
+    #[serde(default)]
+    pub owner: String,
+    #[serde(default)]
+    pub repo: String,
+    #[serde(default)]
+    pub number: u64,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_checked: Option<String>,
+    #[serde(default)]
+    pub plan_id: String,
+    #[serde(default)]
+    pub plan_folder: String,
+    #[serde(default)]
+    pub plan_title: String,
+    #[serde(default)]
+    pub project: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrTransitionDto {
+    #[serde(default)]
+    pub pr_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default)]
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrSyncReportDto {
+    #[serde(default)]
+    pub tracked: usize,
+    #[serde(default)]
+    pub checked: usize,
+    #[serde(default)]
+    pub skipped_merged: usize,
+    #[serde(default)]
+    pub skipped_fresh: usize,
+    #[serde(default)]
+    pub transitions: Vec<PrTransitionDto>,
+    #[serde(default)]
+    pub completed_plans: Vec<String>,
+    #[serde(default)]
+    pub refused_completions: Vec<String>,
+    #[serde(default)]
+    pub unblocked_plans: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    #[serde(default)]
+    pub changed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelOptionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "DisplayName")]
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EffortOptionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "DisplayName")]
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentOptionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "Label")]
+    pub label: String,
+    #[serde(default, alias = "Models")]
+    pub models: Vec<ModelOptionDto>,
+    #[serde(default, alias = "SupportsEffort")]
+    pub supports_effort: bool,
+    #[serde(default, alias = "Efforts")]
+    pub efforts: Vec<EffortOptionDto>,
 }

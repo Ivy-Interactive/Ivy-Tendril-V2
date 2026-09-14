@@ -2,7 +2,7 @@ use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
     DraftCommentDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto,
-    RevisionResultDto, VerificationReportDto,
+    RepoStatusDto, RevisionResultDto, VerificationReportDto,
 };
 
 #[tauri::command]
@@ -42,6 +42,29 @@ pub async fn cmd_write_revision(
     get_client_from_master()?
         .write_revision(&id, &content)
         .await
+}
+
+/// Permanently delete a plan: its folder on disk and its database row.
+///
+/// Irreversible, and the service refuses it while a job still holds the plan, so
+/// the caller is expected to have confirmed with the operator first.
+#[tauri::command]
+pub async fn cmd_delete_plan(id: String) -> Result<(), BridgeError> {
+    get_client_from_master()?.delete_plan(&id).await
+}
+
+/// Send a plan back to Draft, removing its worktrees. Refused for Completed or
+/// Skipped plans and for plans a job is still running.
+#[tauri::command]
+pub async fn cmd_reset_plan(id: String) -> Result<(), BridgeError> {
+    get_client_from_master()?.reset_plan(&id).await
+}
+
+/// Uncommitted-change status of each repo a plan targets, for the dirty-repo
+/// pre-execution guard.
+#[tauri::command]
+pub async fn cmd_get_repo_status(id: String) -> Result<Vec<RepoStatusDto>, BridgeError> {
+    get_client_from_master()?.get_repo_status(&id).await
 }
 
 /// Read one verification report for a plan.

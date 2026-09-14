@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { setThemeGlobal, type Theme } from "@ivy-interactive/components/theme";
 import { bridge } from "../api/bridge";
 import type { ServiceInfo, TendrilConfig } from "../types/api";
+import { ModelCatalogCard } from "../components/ModelCatalogCard";
 import { ServiceSettingsView } from "../components/service";
 
 interface SettingsViewProps {
@@ -258,6 +259,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
             </div>
           </form>
         </div>
+
+        <ModelCatalogCard />
       </div>
 
       <ServiceSettingsView serviceInfo={serviceInfo} onRefreshHealth={onRefreshHealth} />
