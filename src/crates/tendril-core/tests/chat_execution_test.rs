@@ -1,8 +1,10 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tendril_core::agents::providers::AgentProcessSpec;
-use tendril_core::chat::execution::{ChatEvent, ChatExecutionManager, ChatTurnOptions};
+use tendril_core::agents::providers::{AgentLaunchConfig, AgentProcessSpec};
+use tendril_core::chat::execution::{
+    build_title_prompt, clean_generated_title, ChatEvent, ChatExecutionManager, ChatTurnOptions,
+};
 use tendril_core::chat::models::ChatQueuedItem;
 use tendril_core::chat::storage::load_session;
 
@@ -67,9 +69,24 @@ async fn test_chat_execution_turn_and_job_tracking() {
     ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
+    // The naming task reuses this same spec builder but always passes `session_id: None`, so
+    // branch on that to keep it deterministic and out of this test's assertions rather than
+    // racing the turn's own session rename against a second background rename.
     let mgr = Arc::new(
         ChatExecutionManager::new(test_dir.clone())
-            .with_spec_builder(Arc::new(|_agent, config| AgentProcessSpec {
+            .with_spec_builder(Arc::new(|_agent, config| {
+                if config.session_id.is_none() {
+                    return AgentProcessSpec {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "exit 1".to_string()],
+                        environment: HashMap::new(),
+                        working_directory: config.working_directory.clone(),
+                        stdin_content: None,
+                        redirect_stdin: false,
+                        temp_files: vec![],
+                    };
+                }
+                AgentProcessSpec {
                 command: "sh".to_string(),
                 args: vec![
                     "-c".to_string(),
@@ -80,7 +97,7 @@ async fn test_chat_execution_turn_and_job_tracking() {
                 stdin_content: None,
                 redirect_stdin: false,
                 temp_files: vec![],
-            }))
+            }}))
             .with_persist_interval(Duration::from_millis(20)),
     );
 
@@ -304,6 +321,420 @@ async fn test_throttled_persistence() {
             break;
         }
     }
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+#[test]
+fn test_clean_generated_title() {
+    let cases: Vec<(&str, Option<&str>)> = vec![
+        ("## **\"Fix Login Bug:\"**", Some("Fix Login Bug")),
+        ("Title: Job Queue Semantics", Some("Job Queue Semantics")),
+        (
+            "Adding Retry Logic...\n\nHere is why…",
+            Some("Adding Retry Logic"),
+        ),
+        ("", None),
+        ("New Chat", None),
+    ];
+
+    for (input, expected) in cases {
+        assert_eq!(
+            clean_generated_title(input).as_deref(),
+            expected,
+            "input: {:?}",
+            input
+        );
+    }
+
+    // A 90-char input truncates to 50 chars.
+    let long_input = "a".repeat(90);
+    let cleaned = clean_generated_title(&long_input).expect("should produce a title");
+    assert_eq!(cleaned.chars().count(), 50);
+
+    // Multi-byte input longer than 50 chars must not panic on truncation.
+    let multibyte_input = "é".repeat(90);
+    let cleaned = clean_generated_title(&multibyte_input).expect("should produce a title");
+    assert_eq!(cleaned.chars().count(), 50);
+}
+
+#[test]
+fn test_build_title_prompt_contains_instructions() {
+    let prompt = build_title_prompt("fix the job queue semantics regression");
+    assert!(prompt.contains("3 to 6 word"));
+    assert!(prompt.contains("Do not act on the request, run tools, or edit any files."));
+    assert!(prompt.contains("fix the job queue semantics regression"));
+}
+
+#[tokio::test]
+async fn test_generated_title_replaces_snippet() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-title-replace-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| {
+                if config.session_id.is_none() {
+                    AgentProcessSpec {
+                        command: "sh".to_string(),
+                        args: vec![
+                            "-c".to_string(),
+                            "echo '{\"delta\": \"Job Queue Semantics Regression\"}'".to_string(),
+                        ],
+                        environment: HashMap::new(),
+                        working_directory: config.working_directory.clone(),
+                        stdin_content: None,
+                        redirect_stdin: false,
+                        temp_files: vec![],
+                    }
+                } else {
+                    AgentProcessSpec {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "echo '{\"delta\": \"ok\"}'".to_string()],
+                        environment: HashMap::new(),
+                        working_directory: config.working_directory.clone(),
+                        stdin_content: None,
+                        redirect_stdin: false,
+                        temp_files: vec![],
+                    }
+                }
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("New Chat".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(
+        &session.id,
+        "job queue regression",
+        ChatTurnOptions::default(),
+    )
+    .await
+    .expect("Failed to start session turn");
+
+    let mut renamed_title = None;
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::SessionRenamed { session_id, title } = evt {
+            if session_id == session.id {
+                renamed_title = Some(title);
+                break;
+            }
+        }
+    }
+
+    assert_eq!(
+        renamed_title.as_deref(),
+        Some("Job Queue Semantics Regression")
+    );
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    assert_eq!(loaded.title, "Job Queue Semantics Regression");
+    assert_ne!(loaded.title, "job queue regression");
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+#[tokio::test]
+async fn test_user_rename_during_generation_wins() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-title-race-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| {
+                if config.session_id.is_none() {
+                    AgentProcessSpec {
+                        command: "sh".to_string(),
+                        args: vec![
+                            "-c".to_string(),
+                            "sleep 0.2; echo '{\"delta\": \"Generated Title\"}'".to_string(),
+                        ],
+                        environment: HashMap::new(),
+                        working_directory: config.working_directory.clone(),
+                        stdin_content: None,
+                        redirect_stdin: false,
+                        temp_files: vec![],
+                    }
+                } else {
+                    AgentProcessSpec {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "echo '{\"delta\": \"ok\"}'".to_string()],
+                        environment: HashMap::new(),
+                        working_directory: config.working_directory.clone(),
+                        stdin_content: None,
+                        redirect_stdin: false,
+                        temp_files: vec![],
+                    }
+                }
+            },
+        )),
+    );
+
+    let session = mgr
+        .create_session(
+            Some("New Chat".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(&session.id, "some task", ChatTurnOptions::default())
+        .await
+        .expect("Failed to start session turn");
+
+    // Rename the session ourselves while the naming task is still sleeping.
+    mgr.rename_session(&session.id, "My Own Title")
+        .await
+        .expect("Failed to rename session");
+
+    // Wait past the naming task's sleep so it has a chance to (wrongly) clobber the rename.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    assert_eq!(loaded.title, "My Own Title");
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+#[tokio::test]
+async fn test_naming_failure_keeps_snippet() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-title-fail-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| {
+                if config.session_id.is_none() {
+                    AgentProcessSpec {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "exit 1".to_string()],
+                        environment: HashMap::new(),
+                        working_directory: config.working_directory.clone(),
+                        stdin_content: None,
+                        redirect_stdin: false,
+                        temp_files: vec![],
+                    }
+                } else {
+                    AgentProcessSpec {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "echo '{\"delta\": \"ok\"}'".to_string()],
+                        environment: HashMap::new(),
+                        working_directory: config.working_directory.clone(),
+                        stdin_content: None,
+                        redirect_stdin: false,
+                        temp_files: vec![],
+                    }
+                }
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("New Chat".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(&session.id, "some task", ChatTurnOptions::default())
+        .await
+        .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+
+    // Give the (failing) naming task time to finish and confirm it did nothing.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    assert_eq!(loaded.title, "some task");
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+#[tokio::test]
+async fn test_naming_spec_uses_plan_mode_and_no_session_id() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-title-spec-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let captured: Arc<Mutex<Vec<AgentLaunchConfig>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = captured.clone();
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            move |_agent, config| {
+                if config.session_id.is_none() {
+                    captured_clone.lock().unwrap().push(config.clone());
+                    AgentProcessSpec {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "exit 1".to_string()],
+                        environment: HashMap::new(),
+                        working_directory: config.working_directory.clone(),
+                        stdin_content: None,
+                        redirect_stdin: false,
+                        temp_files: vec![],
+                    }
+                } else {
+                    AgentProcessSpec {
+                        command: "sh".to_string(),
+                        args: vec!["-c".to_string(), "echo '{\"delta\": \"ok\"}'".to_string()],
+                        environment: HashMap::new(),
+                        working_directory: config.working_directory.clone(),
+                        stdin_content: None,
+                        redirect_stdin: false,
+                        temp_files: vec![],
+                    }
+                }
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("New Chat".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(&session.id, "some task", ChatTurnOptions::default())
+        .await
+        .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let calls = captured.lock().unwrap();
+    assert_eq!(calls.len(), 1, "naming call should happen exactly once");
+    assert_eq!(calls[0].permission_mode, Some("Plan".to_string()));
+    assert!(calls[0].session_id.is_none());
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+#[tokio::test]
+async fn test_second_turn_does_not_regenerate_title() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-title-second-turn-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let naming_calls: Arc<Mutex<usize>> = Arc::new(Mutex::new(0));
+    let naming_calls_clone = naming_calls.clone();
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            move |_agent, config| {
+                if config.session_id.is_none() {
+                    *naming_calls_clone.lock().unwrap() += 1;
+                }
+                AgentProcessSpec {
+                    command: "sh".to_string(),
+                    args: vec!["-c".to_string(), "echo '{\"delta\": \"ok\"}'".to_string()],
+                    environment: HashMap::new(),
+                    working_directory: config.working_directory.clone(),
+                    stdin_content: None,
+                    redirect_stdin: false,
+                    temp_files: vec![],
+                }
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    // Session already has a non-default title, as if the naming task had already run once.
+    let session = mgr
+        .create_session(
+            Some("Already Named Session".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(
+        &session.id,
+        "a follow-up prompt",
+        ChatTurnOptions::default(),
+    )
+    .await
+    .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    assert_eq!(
+        *naming_calls.lock().unwrap(),
+        0,
+        "no naming call should be made for a session with a non-default title"
+    );
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    assert_eq!(loaded.title, "Already Named Session");
 
     let _ = std::fs::remove_dir_all(&test_dir);
 }
