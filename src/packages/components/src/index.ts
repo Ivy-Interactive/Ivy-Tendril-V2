@@ -14,6 +14,16 @@ export { getWidth, getHeight } from "./lib/styles";
 export { prismTheme } from "./lib/prismTheme";
 export { copyToClipboard } from "./lib/clipboard";
 export { getPlatformShortcut, formatShortcut } from "./lib/shortcut";
+export { debugLog, isDebugLoggingEnabled } from "./lib/debug-log";
+export {
+  isImageFile,
+  isCompressibleImage,
+  processImageFile,
+  MAX_IMAGE_DIMENSION,
+  COMPRESSION_QUALITY,
+  MAX_UNCOMPRESSED_SIZE,
+  type ImageProcessOptions,
+} from "./lib/imageUtils";
 
 // Types
 export * from "./types/density";
@@ -87,6 +97,7 @@ export { AgentViewer } from "./components/AgentViewer/index.ts";
 export { PlanMarkdown } from "./components/PlanMarkdown";
 export { TendrilDashboard } from "./components/TendrilDashboard/index.ts";
 export { TendrilQuestions, type TendrilQuestionsProps } from "./components/TendrilQuestions";
+export { PlanWorkspace } from "./components/PlanWorkspace/index.ts";
 
 export function fn() {
   return "Hello, tsdown!";
