@@ -33,7 +33,7 @@ pub async fn handle_run(tendril_home: &Path, port: u16, host: String) -> anyhow:
     println!("Database ready.");
 
     println!("Starting Tendril server on {host}:{port}...");
-    crate::commands::serve::handle_serve(tendril_home, port, Some(host)).await
+    crate::commands::serve::handle_serve(tendril_home, port, Some(host), None, None).await
 }
 
 #[cfg(test)]
