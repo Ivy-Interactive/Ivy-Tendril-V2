@@ -26,8 +26,11 @@ export class ServerManager implements vscode.Disposable {
   private readonly outputChannel: vscode.OutputChannel;
   private spawnedChild: cp.ChildProcess | null = null;
   private isSpawning = false;
+  private shutdownPromise: Promise<void> | null = null;
   private readonly onDidChangeStateEmitter = new vscode.EventEmitter<ServerHealthInfo>();
   public readonly onDidChangeState = this.onDidChangeStateEmitter.event;
+  /** Reason the last `startServer()` failed, for callers (tests) that swallow the thrown error. */
+  public lastStartupError: Error | undefined;
 
   constructor() {
     this.outputChannel = vscode.window.createOutputChannel('Tendril Server');
@@ -163,6 +166,41 @@ export class ServerManager implements vscode.Disposable {
     return this.startServer();
   }
 
+  /**
+   * Polls `discoverMaster` + `pingServer` until a discoverable, reachable server appears or
+   * `timeoutMs` elapses. When `requireSpawnedChild` is set, bails out immediately if
+   * `this.spawnedChild` has already gone null (the process died during startup) rather than
+   * waiting out the full deadline.
+   */
+  private async waitUntilDiscoverable(
+    timeoutMs: number,
+    requireSpawnedChild: boolean
+  ): Promise<DiscoveryResult> {
+    const startTime = Date.now();
+    let lastStatus = 'not_found';
+
+    while (Date.now() - startTime < timeoutMs) {
+      if (requireSpawnedChild && !this.spawnedChild) {
+        throw new Error('Tendril server process exited unexpectedly during startup.');
+      }
+
+      const current = discoverMaster(this.tendrilHome, true);
+      lastStatus = current.status;
+      if (current.status === 'found') {
+        const isUp = await pingServer(current.result.baseUrl, 1500);
+        if (isUp) {
+          return current.result;
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    throw new Error(
+      `Tendril server did not become discoverable at ${this.tendrilHome} within ${timeoutMs}ms (last status: ${lastStatus}).`
+    );
+  }
+
   public async startServer(): Promise<DiscoveryResult> {
     assertIsolatedTendrilHome(this.tendrilHome, 'start a Tendril server');
 
@@ -227,30 +265,18 @@ export class ServerManager implements vscode.Disposable {
         this.notifyStateChanged();
       });
 
-      const startTime = Date.now();
-      while (Date.now() - startTime < pollTimeoutMs) {
-        if (!this.spawnedChild) {
-          throw new Error('Tendril server process exited unexpectedly during startup.');
-        }
-
-        const current = discoverMaster(this.tendrilHome, true);
-        if (current.status === 'found') {
-          const isUp = await pingServer(current.result.baseUrl, 1500);
-          if (isUp) {
-            this.outputChannel.appendLine(
-              `Tendril server successfully connected at ${current.result.baseUrl} (PID ${current.result.pid}).`
-            );
-            this.notifyStateChanged();
-            return current.result;
-          }
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 500));
+      try {
+        const result = await this.waitUntilDiscoverable(pollTimeoutMs, true);
+        this.lastStartupError = undefined;
+        this.outputChannel.appendLine(
+          `Tendril server successfully connected at ${result.baseUrl} (PID ${result.pid}).`
+        );
+        this.notifyStateChanged();
+        return result;
+      } catch (err: unknown) {
+        this.lastStartupError = err instanceof Error ? err : new Error(String(err));
+        throw this.lastStartupError;
       }
-
-      throw new Error(
-        `Tendril server did not start and become responsive within ${pollTimeoutMs}ms.`
-      );
     } finally {
       this.isSpawning = false;
     }
@@ -315,19 +341,31 @@ export class ServerManager implements vscode.Disposable {
     });
   }
 
-  public dispose(): void {
-    const config = vscode.workspace.getConfiguration();
-    const stopOnExit = config.get<boolean>(CONFIG_KEYS.serverStopOnExit, false);
+  /**
+   * Awaitable teardown: stops a spawned server (when `tendril.server.stopOnExit` is set) and waits
+   * for its `exit` event — via `stopServer()` — before disposing, so the `.master` claim it releases
+   * on shutdown is guaranteed gone by the time this resolves. Idempotent: repeated calls return the
+   * same in-flight/completed promise.
+   */
+  public async shutdown(): Promise<void> {
+    if (!this.shutdownPromise) {
+      this.shutdownPromise = (async () => {
+        const config = vscode.workspace.getConfiguration();
+        const stopOnExit = config.get<boolean>(CONFIG_KEYS.serverStopOnExit, false);
 
-    if (stopOnExit && this.spawnedChild && !this.spawnedChild.killed) {
-      try {
-        this.spawnedChild.kill('SIGTERM');
-      } catch {
-        // Suppress errors on disposal
-      }
+        if (stopOnExit && this.spawnedChild && !this.spawnedChild.killed) {
+          await this.stopServer();
+        }
+
+        this.onDidChangeStateEmitter.dispose();
+        this.outputChannel.dispose();
+      })();
     }
 
-    this.onDidChangeStateEmitter.dispose();
-    this.outputChannel.dispose();
+    return this.shutdownPromise;
+  }
+
+  public dispose(): void {
+    void this.shutdown();
   }
 }
