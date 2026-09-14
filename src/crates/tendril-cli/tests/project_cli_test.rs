@@ -1109,7 +1109,6 @@ async fn add_verification_optional_sets_required_false() {
     .await;
 }
 
-
 #[tokio::test]
 async fn project_port_add_list_remove() {
     let tendril_home = std::env::temp_dir().join(format!(
