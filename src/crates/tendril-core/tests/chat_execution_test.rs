@@ -325,6 +325,104 @@ async fn test_throttled_persistence() {
     let _ = std::fs::remove_dir_all(&test_dir);
 }
 
+#[tokio::test]
+async fn test_chat_turn_closes_unclosed_tool_calls() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-reconcile-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| AgentProcessSpec {
+                command: "sh".to_string(),
+                args: vec![
+                    "-c".to_string(),
+                    r#"echo '{"kind":"tool_call","tool_use_id":"t1","tool_name":"Bash"}'"#
+                        .to_string(),
+                ],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Reconcile Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(
+        &session.id,
+        "Run a tool that never closes",
+        ChatTurnOptions::default(),
+    )
+    .await
+    .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    let assistant_msg = loaded
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .expect("Must have an assistant message");
+    let raw_stream = assistant_msg
+        .raw_stream
+        .as_deref()
+        .expect("Assistant message must carry a raw stream");
+
+    let mut called_ids: Vec<String> = Vec::new();
+    let mut closed_ids: Vec<String> = Vec::new();
+    for line in raw_stream.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
+            continue;
+        };
+        match v.get("kind").and_then(|k| k.as_str()) {
+            Some("tool_call") => {
+                if let Some(id) = v.get("tool_use_id").and_then(|i| i.as_str()) {
+                    called_ids.push(id.to_string());
+                }
+            }
+            Some("tool_result") => {
+                if let Some(id) = v.get("tool_use_id").and_then(|i| i.as_str()) {
+                    closed_ids.push(id.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    assert_eq!(called_ids, vec!["t1"]);
+    assert_eq!(
+        closed_ids, called_ids,
+        "every tool_call id must have a terminal tool_result"
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
 #[test]
 fn test_clean_generated_title() {
     let cases: Vec<(&str, Option<&str>)> = vec![

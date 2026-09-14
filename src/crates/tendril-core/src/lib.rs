@@ -6,6 +6,8 @@ pub mod error;
 pub mod fs_lock;
 pub mod git;
 pub mod health;
+pub mod http;
+pub mod inbox;
 pub mod jobs;
 pub mod mcp;
 pub mod models;
@@ -15,7 +17,9 @@ pub mod promptware;
 pub mod questions;
 pub mod skills;
 pub mod stack;
+pub mod telemetry;
 pub mod vault;
+pub mod version_check;
 pub mod watcher;
 
 pub use agents::model_specs;

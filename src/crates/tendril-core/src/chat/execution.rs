@@ -1,4 +1,5 @@
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
+use crate::agents::reconcile::build_missing_result_lines;
 use crate::agents::runner::{run_agent_process, AgentOutputEvent, TerminationReason};
 use crate::chat::models::{ChatMessage, ChatQueuedItem, ChatSession};
 use crate::chat::storage::{
@@ -586,7 +587,27 @@ impl ChatExecutionManager {
                     }
                 }
 
-                let _ = run_handle.await;
+                // The join result also tells us why the stream ended, so any tool_call that never
+                // got a matching tool_result can be closed out with a reason-appropriate output
+                // before the message is persisted. This runs only here, after the loop: the
+                // periodic `persist_in_flight_message` tick above must never reconcile, since a
+                // tool that is genuinely still running would get a fake result written over it.
+                let run_result = run_handle.await;
+                let synthetic_output = match &run_result {
+                    Ok(Ok(outcome)) => match outcome.terminated {
+                        TerminationReason::Cancelled => "[Cancelled]",
+                        TerminationReason::TimedOut => "[Timed out]",
+                        TerminationReason::Exited | TerminationReason::PostResultGraceExceeded => {
+                            "[No output received]"
+                        }
+                    },
+                    _ => "[No output received]",
+                };
+                raw_stream_lines.extend(build_missing_result_lines(
+                    &raw_stream_lines,
+                    synthetic_output,
+                    true,
+                ));
 
                 // Final message update & persistence
                 mgr.finalize_message(

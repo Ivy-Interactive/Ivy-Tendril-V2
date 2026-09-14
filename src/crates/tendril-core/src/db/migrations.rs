@@ -193,6 +193,31 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_owner_repo ON PrStatuses(Owner, Repo);
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_status ON PrStatuses(Status);
+
+        -- V2-only: the landing place for an assigned GitHub issue the auto-importer swept but
+        -- nobody has accepted yet. A row is kept in every state, `Dismissed` included, because
+        -- that record is what stops the next sweep from re-importing an issue the user said no
+        -- to. The original wrote a markdown file per issue instead, so deleting the file brought
+        -- the issue straight back.
+        --
+        -- Deliberately not accompanied by a `user_version` bump: the original hard-fails on a
+        -- database whose version exceeds its own latest migration (025), and an extra table it
+        -- never queries is invisible to it. See `SCHEMA_VERSION` above.
+        CREATE TABLE IF NOT EXISTS InboxProposals (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Number INTEGER NOT NULL,
+            Repository TEXT NOT NULL,
+            Title TEXT NOT NULL,
+            Body TEXT NOT NULL DEFAULT '',
+            IssueUrl TEXT NOT NULL,
+            Project TEXT NOT NULL,
+            State TEXT NOT NULL DEFAULT 'Pending',
+            JobId TEXT,
+            Discovered TEXT NOT NULL,
+            Updated TEXT NOT NULL,
+            UNIQUE (Repository, Number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_inbox_proposals_state ON InboxProposals(State);
         "#,
     )?;
 

@@ -12,6 +12,7 @@ use tendril_core::git::worktree::{
     add_worktree, cleanup_worktrees, register_worktree, remove_worktree, RemoveOutcome,
     WorktreeMode,
 };
+use tendril_core::http::daemon_client;
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanWorktreeEntry, RecommendationStatus, VerificationStatus,
 };
@@ -572,11 +573,8 @@ async fn report_plan_edit_event(
         }
     };
 
-    let client = reqwest::Client::new();
-    let url = format!(
-        "http://{}:{}/api/plans/{}/events",
-        master.host, master.port, plan_id
-    );
+    let client = daemon_client(tendril_home);
+    let url = format!("{}/api/plans/{}/events", master.base_url(), plan_id);
 
     let payload = serde_json::json!({
         "summary": summary,

@@ -14,6 +14,7 @@ use crate::config::{
     get_config_path, get_database_path, get_plans_dir, load_config, read_master, MasterInfo,
 };
 use crate::db::{open_database, sync_plan};
+use crate::http::describe_transport_error;
 use crate::mcp::redact::{redact_named, redact_value};
 use crate::mcp::tools::find_mcp_tool;
 use crate::mcp::validate::validate_arguments;
@@ -37,9 +38,9 @@ use std::path::{Path, PathBuf};
 pub const PUBLIC_CONFIG_KEYS: &[&str] = &[
     "codingAgent",
     "jobTimeout",
-    "chatTimeout",
     "staleOutputTimeout",
     "gitTimeout",
+    "daemonRequestTimeout",
     "maxConcurrentJobs",
     "planTemplate",
     "planFolder",
@@ -50,6 +51,9 @@ pub const PUBLIC_CONFIG_KEYS: &[&str] = &[
     "levels",
 ];
 
+/// Correct only when the connection never established. A daemon that accepted the connection and
+/// then failed to answer in time is running, so a transport error is classified before it is
+/// described — see [`describe_transport_error`].
 pub const DAEMON_OFFLINE_MESSAGE: &str =
     "Tendril server is not running. Start it with 'tendril serve' first.";
 
@@ -104,6 +108,8 @@ pub struct McpDispatcher {
     tendril_home: PathBuf,
     plans_dir: PathBuf,
     http: reqwest::Client,
+    /// The budget `http` was built with, kept so a timeout message can name it.
+    http_timeout: Option<std::time::Duration>,
 }
 
 impl McpDispatcher {
@@ -115,10 +121,12 @@ impl McpDispatcher {
     /// Builds a dispatcher against an explicit plans directory, so a test never depends on an
     /// ambient `TENDRIL_PLANS`.
     pub fn with_plans_dir(tendril_home: &Path, plans_dir: &Path) -> Self {
+        let http_timeout = crate::http::daemon_request_timeout_for(tendril_home);
         Self {
             tendril_home: tendril_home.to_path_buf(),
             plans_dir: plans_dir.to_path_buf(),
-            http: reqwest::Client::new(),
+            http: crate::http::daemon_client_with_timeout(http_timeout),
+            http_timeout,
         }
     }
 
@@ -784,20 +792,20 @@ impl McpDispatcher {
 
     async fn get(&self, path: &str) -> std::result::Result<Value, String> {
         let master = self.master()?;
-        let url = format!("http://{}:{}{}", master.host, master.port, path);
+        let url = format!("{}{}", master.base_url(), path);
         let response = self
             .http
             .get(&url)
             .bearer_auth(&master.secret)
             .send()
             .await
-            .map_err(|e| format!("{}: {}", DAEMON_OFFLINE_MESSAGE, e))?;
+            .map_err(|e| describe_transport_error(&e, &master, self.http_timeout))?;
         read_daemon_response(response, &master).await
     }
 
     async fn post(&self, path: &str, body: &Value) -> std::result::Result<Value, String> {
         let master = self.master()?;
-        let url = format!("http://{}:{}{}", master.host, master.port, path);
+        let url = format!("{}{}", master.base_url(), path);
         let response = self
             .http
             .post(&url)
@@ -805,7 +813,7 @@ impl McpDispatcher {
             .json(body)
             .send()
             .await
-            .map_err(|e| format!("{}: {}", DAEMON_OFFLINE_MESSAGE, e))?;
+            .map_err(|e| describe_transport_error(&e, &master, self.http_timeout))?;
         read_daemon_response(response, &master).await
     }
 }
@@ -816,8 +824,8 @@ async fn read_daemon_response(
 ) -> std::result::Result<Value, String> {
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err(format!(
-            "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
-            master.host, master.port
+            "Authentication failed: unauthorized request to Tendril daemon at {}",
+            master.base_url()
         ));
     }
     let status = response.status();

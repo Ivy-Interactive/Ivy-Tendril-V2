@@ -44,7 +44,7 @@ async fn start_test_server() -> TestServer {
     let port = tokio_listener.local_addr().unwrap().port();
 
     let secret = generate_bearer_secret();
-    let guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str).unwrap();
+    let guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str, "http").unwrap();
 
     let mut state = AppState::new(tendril_home.clone(), secret.clone());
     // Custom mock spec builder for fast tests
