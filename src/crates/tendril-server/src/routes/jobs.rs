@@ -545,10 +545,12 @@ pub struct JobEventsQuery {
     pub since_line: Option<usize>,
 }
 
-fn parse_allowed_kinds(kinds_str: Option<&str>) -> std::collections::HashSet<String> {
+fn parse_allowed_kinds<'a, I: IntoIterator<Item = &'a str>>(
+    kinds_values: I,
+) -> std::collections::HashSet<String> {
     let mut set = std::collections::HashSet::new();
-    if let Some(s) = kinds_str {
-        for part in s.split(',') {
+    for value in kinds_values {
+        for part in value.split(',') {
             let trimmed = part.trim().to_ascii_lowercase();
             if !trimmed.is_empty() {
                 if trimmed == "tool_use" {
@@ -587,6 +589,7 @@ pub async fn stream_job_events(
     State(state): State<Arc<AppState>>,
     Path(job_id): Path<String>,
     Query(query): Query<JobEventsQuery>,
+    Query(pairs): Query<Vec<(String, String)>>,
 ) -> impl IntoResponse {
     let job_exists = match state.job_manager.get_job(&job_id).await {
         Ok(Some(_)) => true,
@@ -605,7 +608,17 @@ pub async fn stream_job_events(
             .into_response();
     }
 
-    let allowed_kinds = parse_allowed_kinds(query.kinds.as_deref());
+    let kind_values = query
+        .kinds
+        .as_deref()
+        .into_iter()
+        .chain(
+            pairs
+                .iter()
+                .filter(|(k, _)| k == "kind")
+                .map(|(_, v)| v.as_str()),
+        );
+    let allowed_kinds = parse_allowed_kinds(kind_values);
     let tendril_home = state.tendril_home.clone();
     let job_manager = state.job_manager.clone();
     let since_line = query.since_line.unwrap_or(0);
