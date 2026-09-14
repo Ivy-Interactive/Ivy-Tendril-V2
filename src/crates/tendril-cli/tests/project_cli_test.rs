@@ -520,6 +520,9 @@ async fn test_project_cli_review_actions_filesystem() {
             action: "App".to_string(),
             command: "pnpm dev:app".to_string(),
             condition: "Test-Path src/apps/tendril-app".to_string(),
+            paths: vec![],
+            before: None,
+            after: None,
         },
         &tendril_home,
     )
@@ -541,6 +544,9 @@ async fn test_project_cli_review_actions_filesystem() {
             action: "Server".to_string(),
             command: "cargo run".to_string(),
             condition: "".to_string(),
+            paths: vec![],
+            before: None,
+            after: None,
         },
         &tendril_home,
     )
@@ -649,6 +655,9 @@ async fn test_project_cli_review_actions_daemon() {
             action: "App".to_string(),
             command: "pnpm dev:app".to_string(),
             condition: "Test-Path src/apps/tendril-app".to_string(),
+            paths: vec![],
+            before: None,
+            after: None,
         },
         &server.tendril_home,
     )
