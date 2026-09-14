@@ -494,14 +494,29 @@ mod tests {
 
     #[test]
     fn claude_api_marker_is_framed_as_a_usage_problem() {
+        // A marker scraped out of a log line, which is what this tier exists for. A well-formed
+        // terminal `error` event outranks it and is covered by the tier-0 test above.
         let out = lines(&[
-            r#"{"type":"error","error":{"type":"rate_limit_error","message":"Rate limited"}}"#,
+            r#"[stderr] anthropic request failed: {"type":"rate_limit_error","message":"Rate limited"}"#,
         ]);
         let reason = extract_failure_reason(&out, "ExecutePlan", Some(1));
         assert!(
             reason.starts_with("Claude API: Rate limited"),
             "unexpected reason: {}",
             reason
+        );
+    }
+
+    #[test]
+    fn a_terminal_error_event_outranks_the_claude_api_marker_tier() {
+        // The same rate-limit payload as a structured terminal event: tier 0 reports the message as
+        // the agent framed it, without the scraped-line prefix.
+        let out = lines(&[
+            r#"{"type":"error","error":{"type":"rate_limit_error","message":"Rate limited"}}"#,
+        ]);
+        assert_eq!(
+            extract_failure_reason(&out, "ExecutePlan", Some(1)),
+            "Rate limited"
         );
     }
 
