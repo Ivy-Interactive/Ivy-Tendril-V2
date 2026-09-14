@@ -660,6 +660,7 @@ pub fn default_capabilities() -> Vec<String> {
         "projects".to_string(),
         "ws".to_string(),
         "auth_bearer".to_string(),
+        "auth_api_key".to_string(),
     ]
 }
 
