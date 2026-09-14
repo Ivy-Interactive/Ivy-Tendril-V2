@@ -61,6 +61,7 @@ fn plan(id: i32, title: &str) -> PlanFile {
             source_url: None,
             partial_delivery: false,
             chat_session_id: None,
+            recommendations: None,
         },
         latest_revision_content: String::new(),
         folder_path: format!("/plans/{:05}-Plan", id),

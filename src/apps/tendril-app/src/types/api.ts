@@ -234,7 +234,10 @@ export interface RecommendationItem {
   description: string;
   impact?: "Small" | "Medium" | "High";
   state?: RecommendationState;
+  /** Why the recommendation was declined. Only set for `Declined`. */
   declineReason?: string;
+  /** Why the recommendation was accepted. Only set for `AcceptedWithNotes`. */
+  notes?: string;
 }
 
 export interface VerificationReport {
