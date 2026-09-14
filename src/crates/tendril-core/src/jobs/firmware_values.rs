@@ -1,4 +1,8 @@
-use crate::config::{expand_variables, get_plans_dir_with_settings, TendrilSettings};
+use crate::agents::McpServerConfig;
+use crate::config::{
+    expand_variables, get_plans_dir_with_env, get_plans_dir_with_settings, EnvSource, SystemEnv,
+    TendrilSettings,
+};
 use crate::models::{JobArgs, JobItem, PlanYaml, ProjectConfig};
 use crate::plans::reader::read_plan_yaml;
 use std::collections::{HashMap, HashSet};
@@ -302,6 +306,229 @@ pub fn build_repo_configs_yaml(
     Some(lines.join("\n"))
 }
 
+/// The `%TOKEN%` values a promptware's configured tool rules may reference.
+///
+/// Keyed the way the config spells them, so `Write(%PLAN_DIR%/Artifacts/**)` resolves to the plan
+/// folder this job is actually working on.
+pub fn build_job_context(
+    firmware_values: &HashMap<String, String>,
+    tendril_home: &Path,
+    promptware_folder: &Path,
+) -> HashMap<String, String> {
+    let mut ctx = HashMap::new();
+    ctx.insert(
+        "PROMPTWARE_DIR".to_string(),
+        promptware_folder.to_string_lossy().to_string(),
+    );
+    if let Some(plans_dir) = firmware_values.get("TendrilPlansFolder") {
+        ctx.insert("PLANS_DIR".to_string(), plans_dir.clone());
+    }
+    if let Some(plan_folder) = firmware_values.get("TendrilPlanFolder") {
+        ctx.insert("PLAN_DIR".to_string(), plan_folder.clone());
+    }
+    ctx.insert(
+        "TENDRIL_HOME".to_string(),
+        tendril_home.to_string_lossy().to_string(),
+    );
+    ctx
+}
+
+/// The directories an agent is allowed to write outside its working directory.
+///
+/// These flags (`--add-dir` and friends) *widen* an agent's reach; they do not confine it. The point
+/// here is that a promptware can reach the Tendril home it has to write into — its plan's
+/// `Verification/` and `Artifacts/`, its promptware `Memory/` — not that anything else is locked
+/// down.
+///
+/// Entries already covered by an ancestor in the set are dropped, so the common layout (plans dir
+/// under `TENDRIL_HOME`) yields just the home rather than a pile of redundant flags.
+pub fn resolve_writable_directories(
+    promptware_type: &str,
+    promptware_folder: &Path,
+    plan_folder: &Path,
+    tendril_home: &Path,
+    settings: &TendrilSettings,
+) -> Vec<String> {
+    resolve_writable_directories_with_env(
+        promptware_type,
+        promptware_folder,
+        plan_folder,
+        tendril_home,
+        settings,
+        &SystemEnv,
+    )
+}
+
+/// [`resolve_writable_directories`] with the environment injected, so a test can resolve against a
+/// fixture home without the operator's own `TENDRIL_PLANS` leaking in.
+pub fn resolve_writable_directories_with_env(
+    promptware_type: &str,
+    promptware_folder: &Path,
+    plan_folder: &Path,
+    tendril_home: &Path,
+    settings: &TendrilSettings,
+    env: &impl EnvSource,
+) -> Vec<String> {
+    let mut dirs: Vec<String> = vec![tendril_home.to_string_lossy().to_string()];
+
+    dirs.push(
+        get_plans_dir_with_env(tendril_home, Some(settings), env)
+            .to_string_lossy()
+            .to_string(),
+    );
+    dirs.push(
+        promptware_folder
+            .join("Memory")
+            .to_string_lossy()
+            .to_string(),
+    );
+    dirs.push(
+        promptware_folder
+            .join("Tools")
+            .to_string_lossy()
+            .to_string(),
+    );
+
+    // The plan folder itself transitively covers Worktrees/, Verification/ and Artifacts/. It only
+    // adds anything when the plan folder lives outside TENDRIL_HOME, but that case is real and the
+    // intent is worth stating in code.
+    if matches!(promptware_type, "ExecutePlan" | "RetryPlan") {
+        let plan_str = plan_folder.to_string_lossy();
+        if !plan_str.is_empty() {
+            dirs.push(plan_str.to_string());
+        }
+    }
+
+    dedupe_nested_dirs(dirs)
+}
+
+/// Drops duplicates (case-insensitively) and any directory that already has an ancestor in the list,
+/// preserving the order the entries were added in.
+fn dedupe_nested_dirs(dirs: Vec<String>) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for dir in dirs {
+        let normalized = dir.trim_end_matches(['/', '\\']).to_string();
+        if normalized.is_empty() {
+            continue;
+        }
+        let covered = kept.iter().any(|k| is_same_or_ancestor(k, &normalized));
+        if !covered {
+            kept.push(normalized);
+        }
+    }
+    kept
+}
+
+fn is_same_or_ancestor(ancestor: &str, candidate: &str) -> bool {
+    let a = ancestor.replace('\\', "/").to_ascii_lowercase();
+    let c = candidate.replace('\\', "/").to_ascii_lowercase();
+    if a == c {
+        return true;
+    }
+    c.starts_with(&format!("{}/", a))
+}
+
+/// The MCP servers a job's agent gets: the project's configured servers, then any additional ones
+/// declared in the project's `MCP/mcp.json`.
+///
+/// Config wins over the file on a name collision, and a malformed `mcp.json` is logged and ignored —
+/// a broken side file must never stop a job from launching.
+pub fn resolve_mcp_servers(
+    settings: &TendrilSettings,
+    project_name: &str,
+    tendril_home: &Path,
+) -> Vec<McpServerConfig> {
+    let mut servers: Vec<McpServerConfig> = Vec::new();
+    let home = tendril_home.to_string_lossy().to_string();
+
+    if let Some(project) = find_project(settings, project_name) {
+        for server in project.mcp_servers.iter().filter(|s| !s.disabled) {
+            servers.push(McpServerConfig {
+                name: server.name.clone(),
+                command: expand_variables(&server.command, &home),
+                arguments: server
+                    .arguments
+                    .iter()
+                    .map(|a| expand_variables(a, &home))
+                    .collect(),
+                environment: server
+                    .environment
+                    .iter()
+                    .map(|(k, v)| (k.clone(), expand_variables(v, &home)))
+                    .collect(),
+            });
+        }
+    }
+
+    if project_name.is_empty() {
+        return servers;
+    }
+
+    let mcp_file = tendril_home
+        .join("Projects")
+        .join(project_name)
+        .join("MCP")
+        .join("mcp.json");
+    if !mcp_file.is_file() {
+        return servers;
+    }
+
+    let text = match std::fs::read_to_string(&mcp_file) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!("Failed to read {}: {}", mcp_file.display(), e);
+            return servers;
+        }
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("Failed to parse {}: {}", mcp_file.display(), e);
+            return servers;
+        }
+    };
+    let Some(entries) = parsed.get("mcpServers").and_then(|v| v.as_object()) else {
+        return servers;
+    };
+
+    for (name, body) in entries {
+        if servers.iter().any(|s| s.name.eq_ignore_ascii_case(name)) {
+            continue;
+        }
+        let command = body
+            .get("command")
+            .and_then(|c| c.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let arguments = body
+            .get("args")
+            .and_then(|a| a.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|a| a.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let environment = body
+            .get("env")
+            .and_then(|e| e.as_object())
+            .map(|obj| {
+                obj.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default();
+        servers.push(McpServerConfig {
+            name: name.clone(),
+            command,
+            arguments,
+            environment,
+        });
+    }
+
+    servers
+}
+
 /// The plan's recommended execution profile, for the job types that honour one.
 pub fn execution_profile_override(job: &JobItem, plan: &PlanYaml) -> Option<String> {
     match job_args(job) {
@@ -339,7 +566,7 @@ pub fn find_project<'a>(settings: &'a TendrilSettings, name: &str) -> Option<&'a
         .find(|p| p.name.eq_ignore_ascii_case(name))
 }
 
-fn find_repo_ref<'a>(
+pub(crate) fn find_repo_ref<'a>(
     config: &'a ProjectConfig,
     repo_path: &str,
 ) -> Option<&'a crate::models::RepoRef> {
@@ -350,7 +577,7 @@ fn find_repo_ref<'a>(
         .find(|r| repo_name(&r.path).to_ascii_lowercase() == target)
 }
 
-fn repo_name(path: &str) -> &str {
+pub(crate) fn repo_name(path: &str) -> &str {
     path.trim_end_matches(['/', '\\'])
         .rsplit(['/', '\\'])
         .next()

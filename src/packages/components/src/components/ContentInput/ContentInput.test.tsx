@@ -213,6 +213,10 @@ describe("ContentInput", () => {
       },
     );
 
+    // jsdom doesn't implement AudioWorkletNode; stub it so the environment
+    // check doesn't short-circuit before the mocked getUserMedia rejection.
+    vi.stubGlobal("AudioWorkletNode", class {});
+
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
     const micButton = screen.getByTitle("Voice input transcription");
