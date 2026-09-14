@@ -172,29 +172,29 @@ function TypographyShowcase() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-6 rounded-box border bg-white text-zinc-900 space-y-4">
-            <div className="text-xs font-mono text-zinc-500 uppercase tracking-wider">
+          <div className="p-6 rounded-box border border-border bg-background text-foreground space-y-4">
+            <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
               Light Theme Specimen
             </div>
-            <h3 className="text-lg font-bold font-sans text-zinc-950">Geist Sans in Light Mode</h3>
-            <p className="text-sm text-zinc-600 font-sans leading-relaxed">
+            <h3 className="text-lg font-bold font-sans">Geist Sans in Light Mode</h3>
+            <p className="text-sm text-muted-foreground font-sans leading-relaxed">
               Crisp readability and uniform optical weight across varying screen densities and
               browser platforms.
             </p>
-            <div className="p-3 bg-zinc-100 rounded-field font-mono text-xs text-zinc-800">
+            <div className="p-3 bg-muted rounded-field font-mono text-xs text-foreground">
               const fontSans = "Geist";
             </div>
           </div>
 
-          <div className="p-6 rounded-box border border-zinc-800 bg-zinc-950 text-zinc-100 dark space-y-4">
-            <div className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
+          <div className="dark p-6 rounded-box border border-border bg-background text-foreground space-y-4">
+            <div className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
               Dark Theme Specimen
             </div>
-            <h3 className="text-lg font-bold font-sans text-zinc-50">Geist Sans in Dark Mode</h3>
-            <p className="text-sm text-zinc-300 font-sans leading-relaxed">
+            <h3 className="text-lg font-bold font-sans">Geist Sans in Dark Mode</h3>
+            <p className="text-sm text-muted-foreground font-sans leading-relaxed">
               Anti-aliasing consistency preventing text bloat or wash-out on dark backgrounds.
             </p>
-            <div className="p-3 bg-zinc-900 border border-zinc-800 rounded-field font-mono text-xs text-zinc-200">
+            <div className="p-3 bg-muted border border-border rounded-field font-mono text-xs text-foreground">
               const fontSans = "Geist";
             </div>
           </div>

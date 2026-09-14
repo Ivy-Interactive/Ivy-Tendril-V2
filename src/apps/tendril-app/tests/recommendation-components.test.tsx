@@ -42,7 +42,7 @@ describe("RecommendationNoteDialog", () => {
     expect(textarea).toHaveAttribute("id", "rec-dialog-note");
 
     const submitBtn = screen.getByRole("button", { name: "Submit" });
-    expect(submitBtn.className).toContain("bg-emerald-600");
+    expect(submitBtn.className).toContain("bg-primary");
   });
 
   it("renders with Decline labels and red submit styling", () => {
@@ -64,7 +64,7 @@ describe("RecommendationNoteDialog", () => {
     expect(textarea).toHaveAttribute("id", "rec-dialog-note");
 
     const submitBtn = screen.getByRole("button", { name: "Submit" });
-    expect(submitBtn.className).toContain("bg-red-600");
+    expect(submitBtn.className).toContain("bg-destructive");
   });
 
   it("triggers onClose when Cancel is clicked", () => {

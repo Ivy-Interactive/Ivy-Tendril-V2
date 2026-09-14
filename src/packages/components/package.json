@@ -40,6 +40,10 @@
       "types": "./dist/diagrams.d.mts",
       "import": "./dist/diagrams.mjs"
     },
+    "./theme": {
+      "types": "./dist/theme.d.mts",
+      "import": "./dist/theme.mjs"
+    },
     "./styles/*": "./src/styles/*",
     "./package.json": "./package.json",
     "./style.css": "./dist/style.css"

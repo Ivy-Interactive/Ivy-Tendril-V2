@@ -8,6 +8,7 @@ pub mod models;
 pub mod ping;
 pub mod plans;
 pub mod projects;
+pub mod vault;
 pub mod verifications;
 pub mod ws;
 
@@ -80,11 +81,36 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/plans/:id/events",
             post(plans::post_plan_event_handler),
         )
+        .route(
+            "/api/plans/:id/repos",
+            post(plans::add_plan_repo).delete(plans::remove_plan_repo),
+        )
+        .route("/api/plans/:id/prs", post(plans::add_plan_pr))
+        .route("/api/plans/:id/commits", post(plans::add_plan_commit))
+        .route(
+            "/api/plans/:id/depends-on",
+            post(plans::add_plan_depends_on).delete(plans::remove_plan_depends_on),
+        )
+        .route(
+            "/api/plans/:id/related-plans",
+            post(plans::add_plan_related).delete(plans::remove_plan_related),
+        )
+        .route(
+            "/api/plans/:id/validate",
+            post(plans::validate_plan_handler),
+        )
         // Inbox
         .route("/api/inbox", post(inbox::post_inbox))
         // Jobs
         .route("/api/jobs", get(jobs::list_jobs).post(jobs::start_job))
-        .route("/api/jobs/:id", get(jobs::get_job))
+        // Static segments before `:id`, so a literal path can never be read as a job id. Axum
+        // matches static segments first; keeping them adjacent makes the intent obvious.
+        .route("/api/jobs/queue", get(jobs::job_queue))
+        .route("/api/jobs/stop-all", post(jobs::stop_all_jobs))
+        .route("/api/jobs/clear", post(jobs::clear_jobs))
+        .route("/api/jobs/maintenance", post(jobs::run_maintenance))
+        .route("/api/jobs/:id", get(jobs::get_job).delete(jobs::delete_job))
+        .route("/api/jobs/:id/force-start", post(jobs::force_start_job))
         .route("/api/jobs/:id/status", put(jobs::update_job_status))
         .route("/api/jobs/:id/fail", put(jobs::report_job_failure))
         .route("/api/jobs/:id/cancel", post(jobs::cancel_job))
@@ -119,7 +145,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/api/projects/:name/verifications",
-            post(projects::add_project_verification),
+            post(projects::add_project_verification).put(projects::move_project_verification_route),
         )
         .route(
             "/api/projects/:name/verifications/:verification",
@@ -136,6 +162,29 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
+        )
+        // Vaults. `:id` accepts the literal `default` for the primary vault, so the static
+        // `discover` and `accounts` segments are declared alongside it rather than under it.
+        .route(
+            "/api/vaults",
+            get(vault::list_vaults).post(vault::connect_vault),
+        )
+        .route("/api/vaults/create", post(vault::create_vault_repo))
+        .route("/api/vaults/discover", get(vault::discover_vaults))
+        .route("/api/vaults/accounts", get(vault::github_accounts))
+        .route(
+            "/api/vaults/:id",
+            get(vault::get_vault_status)
+                .put(vault::set_always_up_to_date)
+                .delete(vault::disconnect_vault),
+        )
+        .route("/api/vaults/:id/catalog", get(vault::get_catalog))
+        .route("/api/vaults/:id/pull", post(vault::pull_latest))
+        .route("/api/vaults/:id/push", post(vault::push_and_create_pr))
+        .route("/api/vaults/:id/projects", post(vault::import_project))
+        .route(
+            "/api/vaults/:id/projects/:project",
+            delete(vault::delete_project_from_vault),
         )
         .route(
             "/api/verifications",

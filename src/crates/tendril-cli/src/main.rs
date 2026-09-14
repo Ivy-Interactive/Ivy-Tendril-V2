@@ -33,6 +33,20 @@ enum Commands {
     #[command(subcommand, about = "Manage projects")]
     Project(commands::project::ProjectCommands),
 
+    #[command(subcommand, about = "Manage team configuration vaults")]
+    Vault(commands::vault::VaultCommands),
+
+    // Top-level rather than `project analyzer`, because the promptwares call
+    // `tendril project-analyzer <path>`.
+    #[command(
+        name = "project-analyzer",
+        about = "Print a trimmed YAML stack report for a folder"
+    )]
+    ProjectAnalyzer {
+        #[arg(value_name = "FOLDERPATH")]
+        folder: String,
+    },
+
     #[command(subcommand, about = "Manage verification definitions")]
     Verification(commands::verification::VerificationCommands),
 
@@ -82,6 +96,10 @@ async fn main() -> anyhow::Result<()> {
         Commands::Project(cmd) => {
             commands::project::handle_project_command(cmd, &tendril_home).await?
         }
+        Commands::Vault(cmd) => commands::vault::handle_vault_command(cmd, &tendril_home).await?,
+        Commands::ProjectAnalyzer { folder } => {
+            commands::project_analyzer::handle_project_analyzer(&folder)?
+        }
         Commands::Verification(cmd) => {
             commands::verification::handle_verification_command(cmd, &tendril_home).await?
         }
@@ -97,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Serve { port, host } => {
             commands::serve::handle_serve(&tendril_home, port, Some(host)).await?
         }
-        Commands::Mcp => commands::mcp::handle_mcp()?,
+        Commands::Mcp => commands::mcp::handle_mcp(&tendril_home).await?,
     }
 
     Ok(())

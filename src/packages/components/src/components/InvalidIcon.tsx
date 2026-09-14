@@ -27,7 +27,7 @@ export const InvalidIcon: React.FC<InvalidIconProps> = ({ message, className, ic
           >
             <InfoIcon
               className={cn(
-                "block shrink-0 text-red-900 transition-colors duration-200 hover:text-red-400",
+                "block shrink-0 text-destructive transition-colors duration-200 hover:text-destructive/80",
                 iconClassName ?? "size-4",
               )}
             />
