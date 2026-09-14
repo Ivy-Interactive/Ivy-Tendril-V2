@@ -1,9 +1,9 @@
 <p align="right">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <strong>Deutsch</strong> | <a href="README.fr.md">Français</a>
+  <a href="../../README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <strong>Deutsch</strong> | <a href="README.fr.md">Français</a>
 </p>
 
 <h1>
-  <a href="https://tendril.ivy.app"><img src="src/logo.png" alt="Tendril Logo" width="64" valign="middle" /></a> Ivy Tendril
+  <a href="https://tendril.ivy.app"><img src="../../src/logo.png" alt="Tendril Logo" width="64" valign="middle" /></a> Ivy Tendril
 </h1>
 
 <p>
@@ -22,7 +22,7 @@ KI-Agenten können mittlerweile 99 % des Codes schreiben. Dies verändert grundl
 
 <p>
 <a href="https://youtu.be/_KVG1NnAj-8">
-  <img src="docs/yt-thumbnail-in-two-minutes-2.png" alt="Ivy Tendril in zwei Minuten: auf YouTube ansehen" width="720">
+  <img src="../yt-thumbnail-in-two-minutes-2.png" alt="Ivy Tendril in zwei Minuten: auf YouTube ansehen" width="720">
 </a>
 </p>
 
@@ -42,7 +42,7 @@ Führen Sie Agenten in isolierten Git-Worktrees aus. Halten Sie Ihren Hauptzweig
 
 </td>
 <td width="50%">
-  <img src="src/worktrees.gif" alt="Parallele Worktrees" width="100%" />
+  <img src="../../src/worktrees.gif" alt="Parallele Worktrees" width="100%" />
 </td>
 </tr>
 <tr>
@@ -56,7 +56,7 @@ Geben Sie Ihren Server sicher über Cloudflare Quick Tunnels frei, um Agentenlä
 
 </td>
 <td width="50%">
-  <img src="src/tunneling.gif" alt="Tunneling" width="100%" />
+  <img src="../../src/tunneling.gif" alt="Tunneling" width="100%" />
 </td>
 </tr>
 <tr>
@@ -70,7 +70,7 @@ Diktieren Sie Prompts mit der integrierten Whisper-Spracheingabe und fügen Sie 
 
 </td>
 <td width="50%">
-  <img src="src/voice.gif" alt="Sprach- und Rich-Input" width="100%" />
+  <img src="../../src/voice.gif" alt="Sprach- und Rich-Input" width="100%" />
 </td>
 </tr>
 <tr>
@@ -84,7 +84,7 @@ Kommentieren Sie Entwürfe direkt inline, um Pläne automatisch mit überarbeite
 
 </td>
 <td width="50%">
-  <img src="src/annotation.gif" alt="Plan-Annotationen" width="100%" />
+  <img src="../../src/annotation.gif" alt="Plan-Annotationen" width="100%" />
 </td>
 </tr>
 <tr>
@@ -98,7 +98,7 @@ Kommentieren Sie Entwürfe direkt inline, um Pläne automatisch mit überarbeite
 
 </td>
 <td width="50%">
-  <img src="src/review.gif" alt="Leistungsstarke Code-Reviews" width="100%" />
+  <img src="../../src/review.gif" alt="Leistungsstarke Code-Reviews" width="100%" />
 </td>
 </tr>
 <tr>
@@ -112,7 +112,7 @@ Erfassen Sie GitHub Issues oder jam.dev-Fehlerberichte per Webhook, um Markdown-
 
 </td>
 <td width="50%">
-  <img src="src/github.gif" alt="GitHub-Integration und automatische Inbox" width="100%" />
+  <img src="../../src/github.gif" alt="GitHub-Integration und automatische Inbox" width="100%" />
 </td>
 </tr>
 </table>
@@ -178,7 +178,7 @@ Drittanbieter-Erweiterungen für VS Code:
 
 Für eine vollständige Editor-Integration installieren Sie die offizielle [Ivy Tendril VS Code Erweiterung](https://marketplace.visualstudio.com/items?itemName=ivy-interactive.ivy-tendril) für integrierte Plan-Dashboards, Worktree-Navigation und Live-Überwachung von Ausführungen.
 
-Weitere Konfigurationsoptionen finden Sie im [VS Code Setup-Guide](docs/vscode-setup.md).
+Weitere Konfigurationsoptionen finden Sie im [VS Code Setup-Guide](../vscode-setup.md).
 </details>
 
 <details>
@@ -197,7 +197,7 @@ Lokale Entwicklung:
 claude --plugin-dir /path/to/ivy-tendril
 ```
 
-Weitere Konfigurationsoptionen finden Sie im [Claude Code Setup-Guide](docs/claude-setup.md).
+Weitere Konfigurationsoptionen finden Sie im [Claude Code Setup-Guide](../claude-setup.md).
 </details>
 
 <details>
@@ -215,7 +215,7 @@ Lokale Installation:
 agy plugin install ./
 ```
 
-Weitere Konfigurationsoptionen finden Sie im [Antigravity Setup-Guide](docs/antigravity-setup.md).
+Weitere Konfigurationsoptionen finden Sie im [Antigravity Setup-Guide](../antigravity-setup.md).
 </details>
 
 <details>
@@ -229,7 +229,7 @@ npx skills add ivy-interactive/ivy-tendril --agent cursor
 
 Oder kopieren Sie die Skills nach `.cursor/skills/` (projekteigen) oder `~/.cursor/skills/` (global).
 
-Weitere Konfigurationsoptionen finden Sie im [Cursor Setup-Guide](docs/cursor-setup.md).
+Weitere Konfigurationsoptionen finden Sie im [Cursor Setup-Guide](../cursor-setup.md).
 </details>
 
 <details>
@@ -362,4 +362,4 @@ Ivy-Tendril-V2/
 
 ## Lizenz
 
-Tendril ist quelloffen verfügbar und lizenziert unter der [Functional Source License (FSL-1.1-ALv2)](LICENSE). Agent-Skills und Plugins (`skills/`, `.claude-plugin/`, `.codex-plugin/`, `.agents/`) sind ebenfalls unter den Bedingungen des Root-Repositorys ([Functional Source License (FSL-1.1-ALv2)](LICENSE)) lizenziert.
+Tendril ist quelloffen verfügbar und lizenziert unter der [Functional Source License (FSL-1.1-ALv2)](../../LICENSE). Agent-Skills und Plugins (`skills/`, `.claude-plugin/`, `.codex-plugin/`, `.agents/`) sind ebenfalls unter den Bedingungen des Root-Repositorys ([Functional Source License (FSL-1.1-ALv2)](../../LICENSE)) lizenziert.

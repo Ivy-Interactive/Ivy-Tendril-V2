@@ -1,5 +1,5 @@
 <p align="right">
-  <strong>English</strong> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <a href="README.fr.md">Français</a>
+  <strong>English</strong> | <a href="docs/translations/README.zh-CN.md">简体中文</a> | <a href="docs/translations/README.ja.md">日本語</a> | <a href="docs/translations/README.es.md">Español</a> | <a href="docs/translations/README.de.md">Deutsch</a> | <a href="docs/translations/README.fr.md">Français</a>
 </p>
 
 <h1>

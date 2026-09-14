@@ -1,9 +1,9 @@
 <p align="right">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <strong>日本語</strong> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <a href="README.fr.md">Français</a>
+  <a href="../../README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <strong>日本語</strong> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <a href="README.fr.md">Français</a>
 </p>
 
 <h1>
-  <a href="https://tendril.ivy.app"><img src="src/logo.png" alt="Tendril Logo" width="64" valign="middle" /></a> Ivy Tendril
+  <a href="https://tendril.ivy.app"><img src="../../src/logo.png" alt="Tendril Logo" width="64" valign="middle" /></a> Ivy Tendril
 </h1>
 
 <p>
@@ -22,7 +22,7 @@
 
 <p>
 <a href="https://youtu.be/_KVG1NnAj-8">
-  <img src="docs/yt-thumbnail-in-two-minutes-2.png" alt="2分でわかる Ivy Tendril: YouTube で視聴" width="720">
+  <img src="../yt-thumbnail-in-two-minutes-2.png" alt="2分でわかる Ivy Tendril: YouTube で視聴" width="720">
 </a>
 </p>
 
@@ -42,7 +42,7 @@
 
 </td>
 <td width="50%">
-  <img src="src/worktrees.gif" alt="並行ワークツリー" width="100%" />
+  <img src="../../src/worktrees.gif" alt="並行ワークツリー" width="100%" />
 </td>
 </tr>
 <tr>
@@ -56,7 +56,7 @@ Cloudflare Quick Tunnelsを使用してサーバーを安全に公開し、ど�
 
 </td>
 <td width="50%">
-  <img src="src/tunneling.gif" alt="トンネリング" width="100%" />
+  <img src="../../src/tunneling.gif" alt="トンネリング" width="100%" />
 </td>
 </tr>
 <tr>
@@ -70,7 +70,7 @@ Cloudflare Quick Tunnelsを使用してサーバーを安全に公開し、ど�
 
 </td>
 <td width="50%">
-  <img src="src/voice.gif" alt="音声およびリッチ入力" width="100%" />
+  <img src="../../src/voice.gif" alt="音声およびリッチ入力" width="100%" />
 </td>
 </tr>
 <tr>
@@ -84,7 +84,7 @@ Cloudflare Quick Tunnelsを使用してサーバーを安全に公開し、ど�
 
 </td>
 <td width="50%">
-  <img src="src/annotation.gif" alt="計画アノテーション" width="100%" />
+  <img src="../../src/annotation.gif" alt="計画アノテーション" width="100%" />
 </td>
 </tr>
 <tr>
@@ -98,7 +98,7 @@ Cloudflare Quick Tunnelsを使用してサーバーを安全に公開し、ど�
 
 </td>
 <td width="50%">
-  <img src="src/review.gif" alt="高度なコードレビュー" width="100%" />
+  <img src="../../src/review.gif" alt="高度なコードレビュー" width="100%" />
 </td>
 </tr>
 <tr>
@@ -112,7 +112,7 @@ Webhookを介してGitHub Issuesやjam.devのバグレポートを取り込み�
 
 </td>
 <td width="50%">
-  <img src="src/github.gif" alt="GitHub 連携と自動受信トレイ" width="100%" />
+  <img src="../../src/github.gif" alt="GitHub 連携と自動受信トレイ" width="100%" />
 </td>
 </tr>
 </table>
@@ -178,7 +178,7 @@ npx skills add ivy-interactive/ivy-tendril --agent github-copilot -g
 
 完全なエディタ統合を行うには、公式の [Ivy Tendril VS Code 拡張機能](https://marketplace.visualstudio.com/items?itemName=ivy-interactive.ivy-tendril) をインストールして、計画ダッシュボード、ワークツリーナビゲーション、実行のリアルタイム監視を利用してください。
 
-詳細な設定オプションについては、[VS Code 設定ガイド](docs/vscode-setup.md) を参照してください。
+詳細な設定オプションについては、[VS Code 設定ガイド](../vscode-setup.md) を参照してください。
 </details>
 
 <details>
@@ -197,7 +197,7 @@ Claude Codeプラグインマーケットプレイスからインストール:
 claude --plugin-dir /path/to/ivy-tendril
 ```
 
-詳細な設定オプションについては、[Claude Code 設定ガイド](docs/claude-setup.md) を参照してください。
+詳細な設定オプションについては、[Claude Code 設定ガイド](../claude-setup.md) を参照してください。
 </details>
 
 <details>
@@ -215,7 +215,7 @@ agy plugin install https://github.com/ivy-interactive/ivy-tendril.git
 agy plugin install ./
 ```
 
-詳細な設定オプションについては、[Antigravity 設定ガイド](docs/antigravity-setup.md) を参照してください。
+詳細な設定オプションについては、[Antigravity 設定ガイド](../antigravity-setup.md) を参照してください。
 </details>
 
 <details>
@@ -229,7 +229,7 @@ npx skills add ivy-interactive/ivy-tendril --agent cursor
 
 または `.cursor/skills/` (プロジェクト単位) や `~/.cursor/skills/` (グローバル) にスキルをコピーします。
 
-詳細な設定オプションについては、[Cursor 設定ガイド](docs/cursor-setup.md) を参照してください。
+詳細な設定オプションについては、[Cursor 設定ガイド](../cursor-setup.md) を参照してください。
 </details>
 
 <details>
@@ -362,4 +362,4 @@ Ivy-Tendril-V2/
 
 ## ライセンス
 
-Tendril は [Functional Source License (FSL-1.1-ALv2)](LICENSE) の下でソースが公開されています。エージェントのスキルおよびプラグイン (`skills/`, `.claude-plugin/`, `.codex-plugin/`, `.agents/`) もルートリポジトリの条項 ([Functional Source License (FSL-1.1-ALv2)](LICENSE)) に基づいてライセンスされています。
+Tendril は [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) の下でソースが公開されています。エージェントのスキルおよびプラグイン (`skills/`, `.claude-plugin/`, `.codex-plugin/`, `.agents/`) もルートリポジトリの条項 ([Functional Source License (FSL-1.1-ALv2)](../../LICENSE)) に基づいてライセンスされています。
