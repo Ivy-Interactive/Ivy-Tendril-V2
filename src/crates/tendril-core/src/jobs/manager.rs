@@ -1810,14 +1810,9 @@ pub fn revert_plan_state(job: &JobItem) {
         .and_then(|n| n.to_str())
         .unwrap_or(&job.plan_file);
 
-    // Terminal plans (Completed or Skipped) are immutable
-    if matches!(current, Some(PlanStatus::Completed | PlanStatus::Skipped)) {
-        tracing::info!(
-            "Job {}: Not reverting plan {} because it is already {:?}",
-            job.id,
-            plan_id,
-            current.unwrap()
-        );
+    // Terminal plans (Completed or Skipped) are immutable, whatever the revert target would be
+    if let Some(reason) = PlanCompletionGuard::terminal_refusal(current, None) {
+        tracing::info!("Job {}: Not reverting plan {}: {}", job.id, plan_id, reason);
         return;
     }
 
@@ -1853,19 +1848,12 @@ pub fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
         .and_then(|n| n.to_str())
         .unwrap_or_default();
 
-    if let Some(current) = PlanStatus::from_str_loose(&plan.state) {
-        // Terminal plans (Completed or Skipped) are immutable
-        if matches!(current, PlanStatus::Completed | PlanStatus::Skipped)
-            && !matches!(state, PlanStatus::Completed | PlanStatus::Skipped)
-        {
-            tracing::info!(
-                "Not setting plan {} to {:?} because it is already {:?}",
-                plan_id,
-                state,
-                current
-            );
-            return;
-        }
+    // Terminal plans (Completed or Skipped) are immutable
+    if let Some(reason) =
+        PlanCompletionGuard::terminal_refusal(PlanStatus::from_str_loose(&plan.state), Some(state))
+    {
+        tracing::info!("Not setting plan {} to {:?}: {}", plan_id, state, reason);
+        return;
     }
 
     match PlanCompletionGuard::apply_state(&mut plan, state, false, plan_id) {
@@ -2125,34 +2113,62 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
         }
     }
 
+    // `job.cost` stays an Option all the way to the row: a subscription-plan run reports tokens and
+    // no charge, and writing 0.0 would make it read as free. Tokens is NOT NULL in both schemas, so
+    // that one does get a default.
     let tokens = job.tokens.unwrap_or(0);
-    let cost = job.cost.unwrap_or(0.0);
 
     if job.tokens.is_some() || job.cost.is_some() {
         if let Some(pid) = resolve_numerical_plan_id(job) {
             let db_path = crate::config::get_database_path(tendril_home);
             if let Ok(conn) = open_database(&db_path) {
-                let plan_exists: bool = conn
+                // One query gives both the plan's existence and its folder.
+                let folder_path: Option<String> = conn
                     .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM Plans WHERE Id = ?1)",
+                        "SELECT FolderPath FROM Plans WHERE Id = ?1",
                         rusqlite::params![pid],
                         |row| row.get(0),
                     )
-                    .unwrap_or(false);
+                    .ok();
 
-                if plan_exists {
+                if let Some(folder_path) = folder_path {
                     let log_timestamp = extracted_timestamp
                         .or_else(|| job.completed_at.map(|dt| dt.to_rfc3339()))
                         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
-                    if let Err(e) = crate::db::costs::insert_cost(
-                        &conn,
-                        pid,
-                        &job.job_type,
+                    let entry = crate::db::costs::CostEntry {
+                        promptware: job.job_type.clone(),
                         tokens,
-                        cost,
-                        Some(&log_timestamp),
-                    ) {
+                        cost: job.cost,
+                        model: job.model.clone(),
+                        cost_source: job.cost_source.clone(),
+                        agent: Some(job.provider.clone()),
+                        log_timestamp: Some(log_timestamp.clone()),
+                    };
+
+                    // costs.csv is the durable record shared with the original app; the table is a
+                    // projection of it. Appending and then reconciling is what keeps both apps
+                    // idempotent with respect to each other. A cost-recording failure must never
+                    // fail the job, hence warn-and-continue throughout.
+                    let folder = std::path::Path::new(&folder_path);
+                    if folder.is_dir() {
+                        if let Err(e) = crate::plans::costs_csv::append_cost(folder, &entry) {
+                            tracing::warn!(
+                                "Failed to append cost row to costs.csv for plan {}: {}",
+                                pid,
+                                e
+                            );
+                        }
+                        if let Err(e) = crate::plans::costs_csv::reconcile_plan_costs(
+                            &conn,
+                            folder,
+                            pid,
+                            Some(&log_timestamp),
+                        ) {
+                            tracing::warn!("Failed to reconcile costs for plan {}: {}", pid, e);
+                        }
+                    } else if let Err(e) = crate::db::costs::insert_cost_entry(&conn, pid, &entry) {
+                        // No plan folder on disk: record the row directly rather than losing it.
                         tracing::warn!("Failed to insert cost record for plan {}: {}", pid, e);
                     }
                 }

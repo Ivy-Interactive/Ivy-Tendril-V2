@@ -3,11 +3,7 @@ use std::io::{IsTerminal, Write};
 use std::path::Path;
 use tendril_core::config::{get_plans_dir, read_master, MasterInfo};
 use tendril_core::jobs::logger::append_agent_log;
-use tendril_core::models::{
-    CreatePlanArgs, ExecutePlanArgs, ExpandPlanArgs, JobArgs, RetryPlanArgs, SplitPlanArgs,
-    UpdatePlanArgs,
-};
-use tendril_core::plans::resolve_plan_folder;
+use tendril_core::mcp::dispatch::{build_job_args, JobStartRequest};
 
 #[derive(Subcommand)]
 #[allow(clippy::large_enum_variant)]
@@ -264,161 +260,33 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             let master = get_master_or_err(tendril_home)?;
             let plans_dir = get_plans_dir(tendril_home);
 
-            let job_args = match args.job_type.to_ascii_lowercase().as_str() {
-                "createplan" => {
-                    let desc = args.description.ok_or_else(|| {
-                        anyhow::anyhow!("--description is required for CreatePlan")
-                    })?;
-                    let proj = args
-                        .project
-                        .ok_or_else(|| anyhow::anyhow!("--project is required for CreatePlan"))?;
-                    JobArgs::CreatePlan(CreatePlanArgs {
-                        description: desc,
-                        project: proj,
-                        priority: args.priority.unwrap_or(0),
-                        force: args.force,
-                        source_path: args.source_path,
-                        upload_session_id: None,
-                    })
-                }
-                "executeplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for ExecutePlan"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    JobArgs::ExecutePlan(ExecutePlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        note: args.note,
-                    })
-                }
-                "retryplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for RetryPlan"))?;
-                    let cr = args.change_request.ok_or_else(|| {
-                        anyhow::anyhow!("--change-request is required for RetryPlan")
-                    })?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    JobArgs::RetryPlan(RetryPlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        change_request: cr,
-                    })
-                }
-                "expandplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for ExpandPlan"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    JobArgs::ExpandPlan(ExpandPlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                    })
-                }
-                "updateplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for UpdatePlan"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    let inst = args.instructions.ok_or_else(|| {
-                        anyhow::anyhow!("--instructions is required for UpdatePlan")
-                    })?;
-                    JobArgs::UpdatePlan(UpdatePlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        instructions: Some(inst),
-                        upload_session_id: None,
-                    })
-                }
-                "splitplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for SplitPlan"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    JobArgs::SplitPlan(SplitPlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                    })
-                }
-                "createpr" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreatePr"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    let mut reviewers = Vec::new();
-                    for r in &args.reviewer {
-                        for sub in r.split(',') {
-                            let trimmed = sub.trim();
-                            if !trimmed.is_empty() {
-                                reviewers.push(trimmed.to_string());
-                            }
-                        }
-                    }
-                    if reviewers.is_empty() {
-                        if let Some(ass) = &args.assignee {
-                            reviewers.push(ass.clone());
-                        }
-                    }
-                    JobArgs::CreatePr(tendril_core::models::CreatePrArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        solve_merge_conflicts: true,
-                        merge: !args.no_merge,
-                        delete_branch: !args.no_delete_branch,
-                        include_artifacts: !args.no_artifacts,
-                        reviewers: if reviewers.is_empty() {
-                            None
-                        } else {
-                            Some(reviewers)
-                        },
-                        comment: args.comment,
-                        draft: args.draft,
-                    })
-                }
-                "createissue" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreateIssue"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    let repo = args
-                        .repo
-                        .ok_or_else(|| anyhow::anyhow!("--repo is required for CreateIssue"))?;
-                    JobArgs::CreateIssue(tendril_core::models::CreateIssueArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        repo,
-                        assignee: args.assignee,
-                        comment: args.comment,
-                        labels: args.labels,
-                    })
-                }
-                "setupproject" => {
-                    let name = args.plan_id.ok_or_else(|| {
-                        anyhow::anyhow!("<project-name> is required for SetupProject")
-                    })?;
-                    JobArgs::SetupProject(tendril_core::models::SetupProjectArgs {
-                        folder_path: name,
-                    })
-                }
-                "addproject" => {
-                    let name = args.plan_id.ok_or_else(|| {
-                        anyhow::anyhow!("<project-name> is required for AddProject")
-                    })?;
-                    JobArgs::AddProject(tendril_core::models::AddProjectArgs {
-                        project_name: name,
-                        repos: Vec::new(),
-                    })
-                }
-                "syncrepo" => {
-                    let rp = args
-                        .repo_path
-                        .ok_or_else(|| anyhow::anyhow!("--repo-path is required for SyncRepo"))?;
-                    let bb = args.base_branch.unwrap_or_else(|| "main".to_string());
-                    JobArgs::SyncRepo(tendril_core::models::SyncRepoArgs {
-                        repo_path: rp,
-                        base_branch: bb,
-                        plan_folder_path: None,
-                        untracked_changes_policy: args
-                            .untracked_policy
-                            .unwrap_or_else(|| "Stash".to_string()),
-                    })
-                }
-                _ => anyhow::bail!("Unsupported job type: {}", args.job_type),
+            // Shared with the MCP `tendril_start_job` tool, so the per-type required-argument
+            // rules cannot diverge between the two front ends.
+            let request = JobStartRequest {
+                job_type: args.job_type.clone(),
+                plan_id: args.plan_id,
+                description: args.description,
+                project: args.project,
+                note: args.note,
+                instructions: args.instructions,
+                change_request: args.change_request,
+                source_path: args.source_path,
+                repo: args.repo,
+                assignee: args.assignee,
+                reviewers: args.reviewer,
+                comment: args.comment,
+                labels: args.labels,
+                repo_path: args.repo_path,
+                base_branch: args.base_branch,
+                untracked_policy: args.untracked_policy,
+                priority: args.priority,
+                force: args.force,
+                no_merge: args.no_merge,
+                no_delete_branch: args.no_delete_branch,
+                no_artifacts: args.no_artifacts,
+                draft: args.draft,
             };
+            let job_args = build_job_args(&request, &plans_dir).map_err(anyhow::Error::msg)?;
 
             // `JobArgs` is internally tagged, so it serializes as a flat object the server reads
             // back through `#[serde(flatten)]`. The start options ride alongside those keys.
