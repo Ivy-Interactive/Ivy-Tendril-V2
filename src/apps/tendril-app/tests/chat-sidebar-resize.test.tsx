@@ -172,4 +172,16 @@ describe("ChatView Sidebar Resize Interaction Tests", () => {
     expect(aside?.style.width).toBe("256px");
     expect(localStorage.getItem("tendril:chat:sidebar_width")).toBe("256");
   });
+
+  it("applies focus-visible ring styling to the resizer handle", async () => {
+    let container: HTMLElement;
+    await act(async () => {
+      const res = render(<ChatView />);
+      container = res.container;
+    });
+    const resizer = container!.querySelector('[role="separator"]') as HTMLElement;
+    expect(resizer).not.toBeNull();
+    expect(resizer.className).toContain("focus-visible:ring-2");
+    expect(resizer.className).toContain("focus-visible:ring-emerald-500");
+  });
 });

@@ -169,6 +169,17 @@
   width: 2px;
 }
 
+.tsh-sidebar-resizer:focus-visible {
+  outline: 2px solid var(--ring, var(--primary, #10b981));
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.tsh-sidebar-resizer:focus-visible::after {
+  background: var(--primary, #10b981);
+  width: 2px;
+}
+
 .tsh-root[data-resizing="true"] {
   cursor: col-resize;
   user-select: none;
