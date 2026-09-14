@@ -60,7 +60,13 @@ enum Commands {
     Version,
 
     #[command(about = "List available models and pricing")]
-    Models,
+    Models {
+        #[arg(
+            long,
+            help = "Fetch live model updates and pricing from models.dev before printing"
+        )]
+        refresh: bool,
+    },
 
     #[command(about = "Start the Tendril HTTP & WebSocket API server")]
     Serve {
@@ -99,7 +105,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Config(cmd) => commands::config::handle_config_command(cmd, &tendril_home)?,
         Commands::Doctor => commands::doctor::handle_doctor(&tendril_home)?,
         Commands::Version => println!("tendril v{}", env!("CARGO_PKG_VERSION")),
-        Commands::Models => commands::models::handle_models()?,
+        Commands::Models { refresh } => {
+            commands::models::handle_models(refresh, &tendril_home).await?
+        }
         Commands::Serve { port, host } => {
             commands::serve::handle_serve(&tendril_home, port, Some(host)).await?
         }

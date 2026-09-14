@@ -465,6 +465,7 @@ fn plan_verification_list_json_is_parseable() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
+        mcp_servers: vec![],
     });
     save_config(&cfg_path, &settings).unwrap();
 

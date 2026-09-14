@@ -7,9 +7,12 @@ use tendril_core::config::{
 };
 use tendril_core::db::{get_plans, open_database, sync_plan};
 use tendril_core::git::worktree::{
-    add_worktree, cleanup_worktrees, remove_worktree, RemoveOutcome,
+    add_worktree, cleanup_worktrees, register_worktree, remove_worktree, RemoveOutcome,
+    WorktreeMode,
 };
-use tendril_core::models::{PlanStatus, PlanVerificationEntry, VerificationStatus};
+use tendril_core::models::{
+    PlanStatus, PlanVerificationEntry, PlanWorktreeEntry, VerificationStatus,
+};
 use tendril_core::plans::{
     add_recommendation, check_all_plans_health, check_plan_health, create_plan, get_revision,
     list_recommendations, order_by_project_config, read_plan_file, read_plan_yaml,
@@ -729,15 +732,35 @@ pub async fn handle_plan_command(
         PlanCommands::AddWorktree(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let repo_path = PathBuf::from(&args.repo);
-            let worktree_path = add_worktree(&repo_path, &folder, args.base.as_deref())?;
+            let creation = add_worktree(
+                &repo_path,
+                &folder,
+                args.base.as_deref(),
+                WorktreeMode::ReuseIfValid,
+                None,
+            )?;
 
             // add_worktree can return before git has finished laying the worktree down, and a
             // worktree without a `.git` file is unusable for everything downstream.
-            if !worktree_path.join(".git").exists() {
+            if !creation.path.join(".git").exists() {
                 anyhow::bail!(
                     "Worktree at {} has no .git file, so git did not create it",
-                    worktree_path.display()
+                    creation.path.display()
                 );
+            }
+
+            // The checkout is what matters; a registry write failure is not worth failing the
+            // command for, because the reaper also finds worktrees by directory scan.
+            if let Err(e) = register_worktree(
+                &folder,
+                PlanWorktreeEntry {
+                    repo: creation.repo.to_string_lossy().to_string(),
+                    path: creation.path.to_string_lossy().to_string(),
+                    branch: creation.branch.clone(),
+                    created: Utc::now(),
+                },
+            ) {
+                eprintln!("Warning: failed to register worktree on plan: {}", e);
             }
 
             let (mut plan, _) = read_plan_yaml(&folder)?;
@@ -747,11 +770,8 @@ pub async fn handle_plan_command(
                 write_plan_yaml(&folder, &plan)?;
             }
 
-            println!("Worktree created: {}", worktree_path.display());
-            println!(
-                "Branch: {}",
-                tendril_core::git::worktree::derive_branch_name(&folder)
-            );
+            println!("Worktree created: {}", creation.path.display());
+            println!("Branch: {}", creation.branch);
         }
         PlanCommands::RemoveWorktree(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;

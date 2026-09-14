@@ -16,14 +16,23 @@ export interface ShellNavItemDto {
 
 export interface ShellBadgeDto {
   label: string;
-  kind: "project" | "success" | "warning" | "neutral";
+  kind: "project" | "success" | "warning" | "neutral" | "color";
+  /** An Ivy color name the host assigned (e.g. "Blue"); tints the badge when `kind` is "color". */
+  color?: string;
 }
+
+/** Whether a section item's task is still running or has finished. */
+export type ShellItemState = "working" | "completed";
 
 export interface ShellSectionItemDto {
   id: string;
   title: string;
   tag?: string;
   badges?: ShellBadgeDto[];
+  /** Name looked up in `sectionItemIcons`; unknown names render nothing. */
+  icon?: string;
+  state?: ShellItemState;
+  pinned?: boolean;
 }
 
 export interface ShellTabDto {

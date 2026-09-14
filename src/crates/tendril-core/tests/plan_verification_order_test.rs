@@ -44,6 +44,7 @@ fn project_with(names: &[&str]) -> ProjectConfig {
         stack_hash: None,
         review_actions: Vec::new(),
         build_dependencies: Vec::new(),
+        mcp_servers: Vec::new(),
     }
 }
 

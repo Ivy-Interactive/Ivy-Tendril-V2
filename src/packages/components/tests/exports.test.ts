@@ -48,6 +48,18 @@ describe("Package Exports", () => {
       expect(root.useResizableSidebar).toBeDefined();
       expect(typeof root.useResizableSidebar).toBe("function");
     });
+
+    it("should export PlanWorkspace", () => {
+      expect(root.PlanWorkspace).toBeDefined();
+    });
+
+    it("should export image and debug-log utilities", () => {
+      expect(root.debugLog).toBeDefined();
+      expect(root.isDebugLoggingEnabled).toBeDefined();
+      expect(root.isImageFile).toBeDefined();
+      expect(root.isCompressibleImage).toBeDefined();
+      expect(root.processImageFile).toBeDefined();
+    });
   });
 
   describe("UI Primitives Export (components-storybook/ui)", () => {
@@ -81,6 +93,15 @@ describe("Package Exports", () => {
       expect(ui.InputVariants).toBeDefined();
       expect(ui.SelectVariants).toBeDefined();
       expect(ui.TableVariants).toBeDefined();
+    });
+
+    it("should export widget utilities and shared primitives", () => {
+      expect(ui.IconButton).toBeDefined();
+      expect(ui.StatusLine).toBeDefined();
+      expect(ui.withTooltipScope).toBeDefined();
+      expect(ui.TuiBadge).toBeDefined();
+      expect(ui.CountBadge).toBeDefined();
+      expect(ui.StatusDot).toBeDefined();
     });
   });
 
@@ -142,6 +163,18 @@ describe("Package Exports", () => {
       expect(tendril.brandIcons).toBeDefined();
     });
 
+    it("should export shell rail flyout, section items, and tooltip", () => {
+      expect(tendril.ShellRailFlyout).toBeDefined();
+      expect(tendril.ShellSectionItems).toBeDefined();
+      expect(tendril.ShellTooltip).toBeDefined();
+      expect(tendril.sectionItemIcons).toBeDefined();
+      expect(tendril.formatShortcut).toBeDefined();
+    });
+
+    it("should export the plan workspace split-pane layout", () => {
+      expect(tendril.PlanWorkspace).toBeDefined();
+    });
+
     it("should export shared hooks", () => {
       expect(tendril.useResizableSidebar).toBeDefined();
       expect(typeof tendril.useResizableSidebar).toBe("function");
@@ -174,6 +207,11 @@ describe("Package Exports", () => {
       expect(tendril.registerExtensionMappings).toBeDefined();
       expect(tendril.clearCustomExtensionMappings).toBeDefined();
       expect(tendril.customExtensionRegistry).toBeDefined();
+    });
+
+    it("should export plan changes view and its file tree helper", () => {
+      expect(tendril.PlanChangesView).toBeDefined();
+      expect(tendril.buildFileTree).toBeDefined();
     });
 
     it("should export dashboard components", () => {

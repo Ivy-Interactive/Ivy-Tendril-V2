@@ -272,6 +272,7 @@ fn test_plan_completion_guard() {
         updated: chrono::Utc::now(),
         prs: vec![],
         commits: vec![],
+        worktrees: None,
         verifications: vec![PlanVerificationEntry {
             name: "UnitTests".to_string(),
             status: VerificationStatus::Fail,
@@ -317,6 +318,7 @@ fn test_plan_completion_guard_refuses_completed_from_review_while_a_row_failed()
         updated: chrono::Utc::now(),
         prs: vec![],
         commits: vec![],
+        worktrees: None,
         verifications: vec![
             PlanVerificationEntry {
                 name: "Build".to_string(),

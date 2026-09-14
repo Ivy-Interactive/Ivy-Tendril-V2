@@ -1,138 +1,257 @@
-//! Coverage for `git/worktree.rs`, which had none before Plan 00559.
+//! Worktree creation, removal, the plan-level worktree registry, and the unattended reaper.
 //!
-//! Every fixture is a throwaway `git init` under the temp dir, so nothing here touches a real
-//! repository. Note that `add_worktree` runs `fetch origin` and these repos have no remote: the
-//! fetch result is deliberately ignored and the local-branch retry path takes over.
+//! These tests drive real `git` against a throwaway repository with a bare `origin` beside it:
+//! `git worktree add` cannot be stubbed, and every reaper decision is an answer git gives about
+//! actual refs. Nothing here reaches the network — PR states come from an injected resolver.
 
+mod common;
+
+use common::{plan_with, worktree_registered, GitRepoFixture, HomeFixture};
 use std::path::{Path, PathBuf};
-use tendril_core::git::worktree::{add_worktree, remove_worktree, RemoveOutcome};
+use std::time::Duration;
+use tendril_core::config::TendrilSettings;
+use tendril_core::error::Result;
+use tendril_core::git::worktree::{
+    add_worktree, register_worktree, remove_worktree, RemoveOutcome, WorktreeCreation,
+    WorktreeMode,
+};
+use tendril_core::git::worktree_log::WorktreeLifecycleLog;
+use tendril_core::git::worktree_reaper::{
+    branch_disposition, reap_worktrees_with, BranchDeleteMode, BranchDisposition, ReaperConfig,
+};
+use tendril_core::models::{
+    ExecutePlanArgs, JobArgs, JobItem, PlanStatus, PlanWorktreeEntry, ProjectConfig, RepoRef,
+};
+use tendril_core::plans::reader::read_plan_yaml;
+use tendril_core::plans::writer::write_plan_yaml;
 
-/// A temp git repo with one commit, removed on drop.
-struct RepoFixture {
-    path: PathBuf,
+/// A PR resolver that reports every PR as merged.
+fn merged(_url: &str) -> Result<String> {
+    Ok("MERGED".to_string())
 }
 
-impl Drop for RepoFixture {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
+/// A PR resolver that reports every PR as still open.
+fn open(_url: &str) -> Result<String> {
+    Ok("OPEN".to_string())
+}
+
+/// A PR resolver that cannot reach GitHub.
+fn unreachable(_url: &str) -> Result<String> {
+    Err(tendril_core::error::TendrilError::Git(
+        "gh: could not resolve host".to_string(),
+    ))
+}
+
+/// Writes a plan folder in the given state, with the given PR URLs.
+fn write_plan(home: &HomeFixture, folder: &str, state: PlanStatus, prs: &[&str]) -> PathBuf {
+    let mut plan = plan_with(state, &[]);
+    plan.state = state.to_string();
+    plan.prs = prs.iter().map(|u| (*u).to_string()).collect();
+    home.write_plan(folder, &plan)
+}
+
+/// Backdates `plan.updated` so the plan reads as idle. Called after every worktree registration,
+/// because registering bumps `updated` to now.
+fn set_idle(plan_folder: &Path, idle: chrono::Duration) {
+    let (mut plan, _) = read_plan_yaml(plan_folder).expect("read plan.yaml");
+    plan.updated = chrono::Utc::now() - idle;
+    write_plan_yaml(plan_folder, &plan).expect("write plan.yaml");
+}
+
+/// Creates the plan's worktree for the fixture repo and records it on the plan.
+fn worktree_for(fx: &GitRepoFixture, plan_folder: &Path) -> WorktreeCreation {
+    let creation = add_worktree(
+        &fx.repo,
+        plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("add worktree");
+
+    register_worktree(
+        plan_folder,
+        PlanWorktreeEntry {
+            repo: creation.repo.to_string_lossy().to_string(),
+            path: creation.path.to_string_lossy().to_string(),
+            branch: creation.branch.clone(),
+            created: chrono::Utc::now(),
+        },
+    )
+    .expect("register worktree");
+
+    creation
+}
+
+/// A config for a pass that reaps anything idle at all.
+fn reap_now(mode: BranchDeleteMode) -> ReaperConfig {
+    ReaperConfig {
+        grace: Duration::from_secs(0),
+        mode,
+        log: None,
     }
 }
 
-fn git(args: &[&str], cwd: &Path) {
-    let status = std::process::Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .unwrap_or_else(|e| panic!("git {:?} failed to spawn: {}", args, e));
-    assert!(
-        status.status.success(),
-        "git {:?} failed: {}",
-        args,
-        String::from_utf8_lossy(&status.stderr)
-    );
+/// Commits a file inside a worktree, leaving the commit only on the worktree's branch.
+fn commit_in_worktree(fx: &GitRepoFixture, worktree: &Path, file: &str, content: &str) {
+    std::fs::write(worktree.join(file), content).expect("write file in worktree");
+    fx.git_in(worktree, &["add", file]);
+    fx.git_in(worktree, &["commit", "-m", &format!("Add {}", file)]);
 }
 
-fn git_output(args: &[&str], cwd: &Path) -> String {
-    let out = std::process::Command::new("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .unwrap_or_else(|e| panic!("git {:?} failed to spawn: {}", args, e));
-    String::from_utf8_lossy(&out.stdout).trim().to_string()
-}
-
-impl RepoFixture {
-    fn new(label: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "tendril-worktree-repo-{}-{}",
-            label,
-            uuid::Uuid::new_v4().simple()
-        ));
-        std::fs::create_dir_all(&path).expect("create repo dir");
-
-        git(&["init", "--initial-branch=main"], &path);
-        // Set identity locally so the commit works on an account with no global git config.
-        git(&["config", "user.name", "Tendril Test"], &path);
-        git(&["config", "user.email", "test@example.com"], &path);
-        std::fs::write(path.join("README.md"), "fixture\n").expect("write README");
-        git(&["add", "."], &path);
-        git(&["commit", "-m", "initial"], &path);
-
-        Self { path }
-    }
-
-    fn branch_exists(&self, branch: &str) -> bool {
-        !git_output(&["branch", "--list", branch], &self.path).is_empty()
-    }
-}
-
-/// A throwaway plan folder, removed on drop.
-struct PlanFixture {
-    path: PathBuf,
-}
-
-impl Drop for PlanFixture {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
-}
-
-impl PlanFixture {
-    fn new(folder_name: &str) -> Self {
-        let path = std::env::temp_dir()
-            .join(format!(
-                "tendril-worktree-plan-{}",
-                uuid::Uuid::new_v4().simple()
-            ))
-            .join(folder_name);
-        std::fs::create_dir_all(&path).expect("create plan folder");
-        Self { path }
-    }
-
-    fn branch(&self) -> String {
-        format!(
-            "tendril/{}",
-            self.path.file_name().unwrap().to_string_lossy()
-        )
-    }
+/// Creates a directory that looks like a leftover worktree but has no `.git` file.
+fn orphan_dir(plan_folder: &Path, name: &str) -> PathBuf {
+    let path = plan_folder.join("Worktrees").join(name);
+    std::fs::create_dir_all(&path).expect("create orphan worktree dir");
+    std::fs::write(path.join("leftover.txt"), "stale\n").expect("write orphan file");
+    path
 }
 
 #[test]
-fn add_worktree_creates_worktree_in_temp_repo() {
-    let repo = RepoFixture::new("add");
-    let plan = PlanFixture::new("00001-AddWorktreeTest");
+fn add_worktree_creates_a_usable_checkout() {
+    let home = HomeFixture::new("wt-create");
+    let fx = GitRepoFixture::new("create");
+    let plan_folder = write_plan(&home, "00101-CreateCheckout", PlanStatus::Executing, &[]);
 
-    let worktree = add_worktree(&repo.path, &plan.path, None).expect("add_worktree");
+    let creation = add_worktree(
+        &fx.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("add worktree");
 
-    // A worktree's `.git` is a file containing `gitdir:`, not a directory. Everything downstream
-    // (branch derivation, repo-root recovery) depends on that.
-    let dot_git = worktree.join(".git");
-    assert!(dot_git.is_file(), "{} should be a file", dot_git.display());
+    assert!(!creation.reused);
+    assert_eq!(creation.branch, "tendril/00101-CreateCheckout");
+    assert_eq!(
+        creation.path,
+        plan_folder
+            .join("Worktrees")
+            .join(fx.repo.file_name().unwrap())
+    );
+    assert!(
+        creation.path.join(".git").is_file(),
+        "a worktree without a .git file is not a checkout"
+    );
+    assert!(creation.path.join("README.md").is_file());
+    assert!(fx.branch_exists("tendril/00101-CreateCheckout"));
+}
 
-    let repo_name = repo.path.file_name().unwrap().to_string_lossy().to_string();
-    assert_eq!(worktree, plan.path.join("Worktrees").join(&repo_name));
+#[test]
+fn add_worktree_is_idempotent_on_rerun() {
+    let home = HomeFixture::new("wt-rerun");
+    let fx = GitRepoFixture::new("rerun");
+    let plan_folder = write_plan(&home, "00102-Rerun", PlanStatus::Executing, &[]);
 
-    let head = git_output(&["rev-parse", "--abbrev-ref", "HEAD"], &worktree);
-    assert_eq!(head, plan.branch());
+    let first = add_worktree(
+        &fx.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("first add");
+    // Work in progress that a re-run must not throw away.
+    commit_in_worktree(&fx, &first.path, "wip.txt", "in progress\n");
+    let tip = fx
+        .git_in(&first.path, &["rev-parse", "HEAD"])
+        .trim()
+        .to_string();
+
+    let second = add_worktree(
+        &fx.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("second add");
+
+    assert!(second.reused, "an existing valid worktree must be reused");
+    assert_eq!(second.path, first.path);
+    assert_eq!(second.branch, first.branch);
+    assert!(second.path.join("wip.txt").is_file());
+    assert_eq!(
+        fx.git_in(&second.path, &["rev-parse", "HEAD"]).trim(),
+        tip,
+        "reuse must not re-cut the branch"
+    );
+}
+
+#[test]
+fn add_worktree_registers_the_worktree_on_the_plan() {
+    let home = HomeFixture::new("wt-register");
+    let fx = GitRepoFixture::new("register");
+    let plan_folder = write_plan(&home, "00103-Register", PlanStatus::Executing, &[]);
+
+    let creation = worktree_for(&fx, &plan_folder);
+
+    assert!(worktree_registered(&plan_folder, &creation.path));
+
+    let (plan, _) = read_plan_yaml(&plan_folder).expect("read plan.yaml");
+    let entries = plan.worktrees.expect("worktrees recorded");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].branch, creation.branch);
+    assert_eq!(entries[0].repo, fx.repo.to_string_lossy().to_string());
+
+    // Registering the same worktree twice must not duplicate the row.
+    worktree_for(&fx, &plan_folder);
+    let (plan, _) = read_plan_yaml(&plan_folder).expect("read plan.yaml");
+    assert_eq!(plan.worktrees.expect("worktrees recorded").len(), 1);
+}
+
+#[test]
+fn a_repo_path_that_does_not_exist_is_an_error() {
+    let home = HomeFixture::new("wt-norepo");
+    let plan_folder = write_plan(&home, "00104-NoRepo", PlanStatus::Executing, &[]);
+    let missing = home.path.join("repos").join("gone");
+
+    let err = add_worktree(
+        &missing,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect_err("a missing repo cannot yield a worktree");
+
+    assert!(err.to_string().contains("does not exist"), "got: {}", err);
 }
 
 #[test]
 fn remove_worktree_removes_exactly_one() {
-    let repo_a = RepoFixture::new("one");
-    let repo_b = RepoFixture::new("two");
-    let plan = PlanFixture::new("00002-RemoveOneWorktree");
+    let home = HomeFixture::new("wt-remove-one");
+    let repo_a = GitRepoFixture::new("removeone-a");
+    let repo_b = GitRepoFixture::new("removeone-b");
+    let plan_folder = write_plan(&home, "00105-RemoveOne", PlanStatus::Executing, &[]);
 
-    let worktree_a = add_worktree(&repo_a.path, &plan.path, None).expect("add worktree a");
-    let worktree_b = add_worktree(&repo_b.path, &plan.path, None).expect("add worktree b");
-    assert!(repo_a.branch_exists(&plan.branch()));
-    assert!(repo_b.branch_exists(&plan.branch()));
+    let worktree_a = add_worktree(
+        &repo_a.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("add worktree a");
+    let worktree_b = add_worktree(
+        &repo_b.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("add worktree b");
+    assert!(repo_a.branch_exists(&worktree_a.branch));
+    assert!(repo_b.branch_exists(&worktree_b.branch));
 
     let name_a = worktree_a
+        .path
         .file_name()
         .unwrap()
         .to_string_lossy()
         .to_string();
-    let outcome = remove_worktree(&plan.path, &name_a, None).expect("remove_worktree");
+    let outcome = remove_worktree(&plan_folder, &name_a, None).expect("remove_worktree");
 
     assert!(
         matches!(
@@ -142,47 +261,61 @@ fn remove_worktree_removes_exactly_one() {
         "unexpected outcome: {:?}",
         outcome
     );
-    assert!(!worktree_a.exists(), "removed worktree should be gone");
-    assert!(worktree_b.exists(), "the other worktree must be untouched");
+    assert!(!worktree_a.path.exists(), "removed worktree should be gone");
+    assert!(worktree_b.path.exists(), "the other worktree must be untouched");
 
     assert!(
-        !repo_a.branch_exists(&plan.branch()),
+        !repo_a.branch_exists(&worktree_a.branch),
         "the removed worktree's branch should be deleted"
     );
     assert!(
-        repo_b.branch_exists(&plan.branch()),
+        repo_b.branch_exists(&worktree_b.branch),
         "the surviving worktree's branch must be left alone"
     );
 }
 
 #[test]
 fn remove_worktree_missing_directory_is_ok() {
-    let plan = PlanFixture::new("00003-MissingWorktree");
-    std::fs::create_dir_all(plan.path.join("Worktrees")).expect("create Worktrees dir");
+    let home = HomeFixture::new("wt-remove-missing");
+    let plan_folder = write_plan(&home, "00106-MissingWorktree", PlanStatus::Executing, &[]);
+    std::fs::create_dir_all(plan_folder.join("Worktrees")).expect("create Worktrees dir");
 
     // CreatePr runs cleanup unconditionally, so "already gone" has to be success rather than an
     // error, or a second run would fail the plan.
-    let outcome = remove_worktree(&plan.path, "NotThere", None).expect("missing worktree is Ok");
+    let outcome = remove_worktree(&plan_folder, "NotThere", None).expect("missing worktree is Ok");
     assert!(matches!(outcome, RemoveOutcome::NotFound(_)));
 }
 
 #[test]
 fn remove_worktree_finds_nested_worktree_by_name() {
-    let repo = RepoFixture::new("nested");
-    let plan = PlanFixture::new("00004-NestedWorktree");
+    let home = HomeFixture::new("wt-remove-nested");
+    let repo = GitRepoFixture::new("removenested");
+    let plan_folder = write_plan(&home, "00107-NestedWorktree", PlanStatus::Executing, &[]);
 
-    let worktree = add_worktree(&repo.path, &plan.path, None).expect("add_worktree");
-    let repo_name = worktree.file_name().unwrap().to_string_lossy().to_string();
+    let creation = add_worktree(
+        &repo.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("add_worktree");
+    let repo_name = creation
+        .path
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
 
     // Move it into an owner folder, which is the `Worktrees/<owner>/<repo>` layout in use, so the
     // case-insensitive fallback scan is what has to find it.
-    let owner_dir = plan.path.join("Worktrees").join("Ivy-Interactive");
+    let owner_dir = plan_folder.join("Worktrees").join("Ivy-Interactive");
     std::fs::create_dir_all(&owner_dir).expect("create owner dir");
     let nested = owner_dir.join(&repo_name);
-    std::fs::rename(&worktree, &nested).expect("move worktree under owner dir");
+    std::fs::rename(&creation.path, &nested).expect("move worktree under owner dir");
 
     let outcome =
-        remove_worktree(&plan.path, &repo_name.to_uppercase(), None).expect("remove nested");
+        remove_worktree(&plan_folder, &repo_name.to_uppercase(), None).expect("remove nested");
     assert!(
         matches!(
             outcome,
@@ -192,4 +325,370 @@ fn remove_worktree_finds_nested_worktree_by_name() {
         outcome
     );
     assert!(!nested.exists());
+}
+
+#[test]
+fn reaper_keeps_a_branch_with_unpushed_commits() {
+    let home = HomeFixture::new("reap-keep");
+    let fx = GitRepoFixture::new("keep");
+    let plan_folder = write_plan(
+        &home,
+        "00110-Keep",
+        PlanStatus::Completed,
+        &["https://github.com/o/r/pull/1"],
+    );
+    let creation = worktree_for(&fx, &plan_folder);
+    commit_in_worktree(&fx, &creation.path, "unpushed.txt", "only here\n");
+    set_idle(&plan_folder, chrono::Duration::hours(1));
+
+    let report = reap_worktrees_with(
+        &home.plans_dir(),
+        &reap_now(BranchDeleteMode::PreserveUnpushed),
+        &merged,
+    );
+
+    assert!(
+        report.reclaimed.is_empty(),
+        "unpushed work must survive: {:?}",
+        report.reclaimed
+    );
+    assert_eq!(report.skipped.len(), 1);
+    assert!(
+        report.skipped[0].1.contains("on no remote"),
+        "got: {}",
+        report.skipped[0].1
+    );
+    assert!(creation.path.is_dir(), "the worktree must be left in place");
+    assert!(fx.branch_exists(&creation.branch));
+    assert!(worktree_registered(&plan_folder, &creation.path));
+}
+
+#[test]
+fn reaper_deletes_a_pushed_branch() {
+    let home = HomeFixture::new("reap-pushed");
+    let fx = GitRepoFixture::new("pushed");
+    let plan_folder = write_plan(
+        &home,
+        "00111-Pushed",
+        PlanStatus::Completed,
+        &["https://github.com/o/r/pull/2"],
+    );
+    let creation = worktree_for(&fx, &plan_folder);
+    commit_in_worktree(&fx, &creation.path, "pushed.txt", "safe elsewhere\n");
+    fx.git_in(&creation.path, &["push", "origin", &creation.branch]);
+    set_idle(&plan_folder, chrono::Duration::hours(1));
+
+    let report = reap_worktrees_with(
+        &home.plans_dir(),
+        &reap_now(BranchDeleteMode::PreserveUnpushed),
+        &merged,
+    );
+
+    assert_eq!(report.skipped, vec![], "nothing should have been skipped");
+    assert_eq!(report.reclaimed.len(), 1);
+    assert!(!creation.path.exists(), "the worktree must be gone");
+    assert!(!fx.branch_exists(&creation.branch));
+    assert!(!worktree_registered(&plan_folder, &creation.path));
+}
+
+#[test]
+fn branch_disposition_keeps_on_git_failure() {
+    // git cannot even be started in a directory that is not there, so nothing is known about the
+    // branch — and an unknown branch is never deleted.
+    let missing =
+        std::env::temp_dir().join(format!("tendril-absent-{}", uuid::Uuid::new_v4().simple()));
+
+    let disposition = branch_disposition(
+        &missing,
+        "tendril/00112-Unknown",
+        BranchDeleteMode::PreserveUnpushed,
+    );
+
+    assert_eq!(
+        disposition,
+        BranchDisposition::Keep("could not resolve branch tip".to_string())
+    );
+}
+
+#[test]
+fn reaper_skips_non_terminal_plans() {
+    for state in [
+        "Draft",
+        "Creating",
+        "Updating",
+        "Executing",
+        "Failed",
+        "Review",
+        "Icebox",
+        "Blocked",
+        "NotAState",
+    ] {
+        let home = HomeFixture::new("reap-nonterminal");
+        let mut plan = plan_with(PlanStatus::Draft, &[]);
+        plan.state = state.to_string();
+        plan.prs = vec!["https://github.com/o/r/pull/3".to_string()];
+        plan.updated = chrono::Utc::now() - chrono::Duration::days(30);
+        let plan_folder = home.write_plan("00113-NonTerminal", &plan);
+        let leftover = orphan_dir(&plan_folder, "leftover");
+
+        let report = reap_worktrees_with(
+            &home.plans_dir(),
+            &reap_now(BranchDeleteMode::PreserveUnpushed),
+            &merged,
+        );
+
+        assert!(
+            report.reclaimed.is_empty(),
+            "state {} must not be reaped: {:?}",
+            state,
+            report.reclaimed
+        );
+        assert_eq!(report.skipped.len(), 1, "state {}", state);
+        assert!(leftover.is_dir(), "state {} lost its worktree", state);
+    }
+}
+
+#[test]
+fn reaper_skips_completed_plan_without_a_merged_pr() {
+    let cases: [(
+        &str,
+        &[&str],
+        tendril_core::plans::dependencies::PrStateResolver,
+    ); 3] = [
+        ("no PR at all", &[], &merged),
+        ("an open PR", &["https://github.com/o/r/pull/4"], &open),
+        (
+            "a PR whose state is unknown",
+            &["https://github.com/o/r/pull/5"],
+            &unreachable,
+        ),
+    ];
+
+    for (label, prs, resolver) in cases {
+        let home = HomeFixture::new("reap-unmerged");
+        let plan_folder = write_plan(&home, "00114-Unmerged", PlanStatus::Completed, prs);
+        set_idle(&plan_folder, chrono::Duration::days(30));
+        let leftover = orphan_dir(&plan_folder, "leftover");
+
+        let report = reap_worktrees_with(
+            &home.plans_dir(),
+            &reap_now(BranchDeleteMode::PreserveUnpushed),
+            resolver,
+        );
+
+        assert!(
+            report.reclaimed.is_empty(),
+            "{} must not be reaped: {:?}",
+            label,
+            report.reclaimed
+        );
+        assert_eq!(report.skipped.len(), 1, "{}", label);
+        assert!(leftover.is_dir(), "{} lost its worktree", label);
+    }
+}
+
+#[test]
+fn reaper_skips_a_plan_inside_its_grace_window() {
+    let home = HomeFixture::new("reap-grace");
+    let fx = GitRepoFixture::new("grace");
+    let plan_folder = write_plan(&home, "00115-Grace", PlanStatus::Skipped, &[]);
+    let creation = worktree_for(&fx, &plan_folder);
+    set_idle(&plan_folder, chrono::Duration::minutes(1));
+
+    let cfg = ReaperConfig {
+        grace: Duration::from_secs(60 * 60),
+        mode: BranchDeleteMode::PreserveUnpushed,
+        log: None,
+    };
+    let report = reap_worktrees_with(&home.plans_dir(), &cfg, &merged);
+
+    assert!(report.reclaimed.is_empty());
+    assert_eq!(report.skipped.len(), 1);
+    assert!(
+        report.skipped[0].1.contains("grace"),
+        "got: {}",
+        report.skipped[0].1
+    );
+    assert!(creation.path.is_dir());
+}
+
+#[test]
+fn reaper_reaps_a_skipped_plan_without_a_pr() {
+    let home = HomeFixture::new("reap-skipped");
+    let fx = GitRepoFixture::new("skipped");
+    let plan_folder = write_plan(&home, "00116-SkippedPlan", PlanStatus::Skipped, &[]);
+    let creation = worktree_for(&fx, &plan_folder);
+    set_idle(&plan_folder, chrono::Duration::hours(1));
+
+    let report = reap_worktrees_with(
+        &home.plans_dir(),
+        &reap_now(BranchDeleteMode::PreserveUnpushed),
+        &merged,
+    );
+
+    assert_eq!(report.skipped, vec![]);
+    assert_eq!(report.reclaimed.len(), 1);
+    assert!(!creation.path.exists());
+    assert!(!fx.branch_exists(&creation.branch));
+}
+
+#[test]
+fn force_mode_deletes_the_branch_and_worktree() {
+    let home = HomeFixture::new("reap-force");
+    let fx = GitRepoFixture::new("force");
+    let plan_folder = write_plan(&home, "00117-Force", PlanStatus::Skipped, &[]);
+    let creation = worktree_for(&fx, &plan_folder);
+    commit_in_worktree(&fx, &creation.path, "unpushed.txt", "gone in force mode\n");
+    set_idle(&plan_folder, chrono::Duration::hours(1));
+
+    let report = reap_worktrees_with(
+        &home.plans_dir(),
+        &reap_now(BranchDeleteMode::Force),
+        &merged,
+    );
+
+    assert_eq!(report.skipped, vec![]);
+    assert_eq!(report.reclaimed.len(), 1);
+    assert!(!creation.path.exists());
+    assert!(
+        !fx.branch_exists(&creation.branch),
+        "Force mode deletes the branch even unpushed"
+    );
+}
+
+#[test]
+fn reaper_removes_an_orphan_worktree_directory() {
+    let home = HomeFixture::new("reap-orphan");
+    let plan_folder = write_plan(&home, "00118-Orphan", PlanStatus::Skipped, &[]);
+    set_idle(&plan_folder, chrono::Duration::hours(1));
+    let orphan = orphan_dir(&plan_folder, "AbandonedRepo");
+
+    let report = reap_worktrees_with(
+        &home.plans_dir(),
+        &reap_now(BranchDeleteMode::PreserveUnpushed),
+        &merged,
+    );
+
+    assert_eq!(report.skipped, vec![]);
+    assert_eq!(report.reclaimed, vec!["00118-Orphan/AbandonedRepo"]);
+    assert!(!orphan.exists());
+}
+
+#[test]
+fn lifecycle_log_records_creation_reuse_and_reaping() {
+    let home = HomeFixture::new("reap-log");
+    let fx = GitRepoFixture::new("log");
+    let plan_folder = write_plan(&home, "00119-Logged", PlanStatus::Skipped, &[]);
+
+    let log_path = home.path.join("Logs").join("worktrees.log");
+    let log = WorktreeLifecycleLog::at(log_path.clone());
+
+    let created = add_worktree(
+        &fx.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        Some(&log),
+    )
+    .expect("first add");
+    add_worktree(
+        &fx.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        Some(&log),
+    )
+    .expect("second add");
+    set_idle(&plan_folder, chrono::Duration::hours(1));
+
+    let cfg = ReaperConfig {
+        grace: Duration::from_secs(0),
+        mode: BranchDeleteMode::PreserveUnpushed,
+        log: Some(WorktreeLifecycleLog::at(log_path.clone())),
+    };
+    let report = reap_worktrees_with(&home.plans_dir(), &cfg, &merged);
+    assert_eq!(report.reclaimed.len(), 1, "skipped: {:?}", report.skipped);
+
+    let contents = std::fs::read_to_string(&log_path).expect("read worktree log");
+    for event in ["[Creation]", "[Reuse]", "[ReapAttempt]", "[Reclaimed]"] {
+        assert!(
+            contents.contains(event),
+            "{} missing from:\n{}",
+            event,
+            contents
+        );
+    }
+    assert!(
+        contents.contains("[00119]"),
+        "the plan id must be on every line:\n{}",
+        contents
+    );
+    assert!(contents.contains(&created.branch.to_string()));
+}
+
+#[tokio::test]
+async fn prepare_plan_worktrees_creates_one_per_repo() {
+    let home = HomeFixture::new("prepare-worktrees");
+    let first = GitRepoFixture::new("first");
+    let second = GitRepoFixture::new("second");
+
+    let mut plan = plan_with(PlanStatus::Executing, &[]);
+    plan.repos = vec![
+        first.repo.to_string_lossy().to_string(),
+        second.repo.to_string_lossy().to_string(),
+    ];
+    let plan_folder = home.write_plan("00120-TwoRepos", &plan);
+
+    let settings = TendrilSettings {
+        projects: vec![ProjectConfig {
+            name: "FixtureProject".to_string(),
+            color: String::new(),
+            repos: plan
+                .repos
+                .iter()
+                .map(|path| RepoRef {
+                    path: path.clone(),
+                    base_branch: Some("main".to_string()),
+                })
+                .collect(),
+            verifications: vec![],
+            context: String::new(),
+            stack_hash: None,
+            review_actions: vec![],
+            build_dependencies: vec![],
+            mcp_servers: vec![],
+        }],
+        ..Default::default()
+    };
+
+    let folder_path = plan_folder.to_string_lossy().to_string();
+    let mut job = JobItem::new(
+        "00042".to_string(),
+        "ExecutePlan".to_string(),
+        folder_path.clone(),
+        "FixtureProject".to_string(),
+    );
+    let args = JobArgs::ExecutePlan(ExecutePlanArgs {
+        folder_path,
+        note: None,
+    });
+    job.typed_args = Some(args.clone());
+    job.args = serde_json::to_string(&args).ok();
+
+    tendril_core::jobs::manager::prepare_plan_worktrees(&home.path, &job, &settings)
+        .await
+        .expect("prepare worktrees");
+
+    for fx in [&first, &second] {
+        let expected = plan_folder
+            .join("Worktrees")
+            .join(fx.repo.file_name().unwrap());
+        assert!(
+            expected.join(".git").is_file(),
+            "no worktree for {}",
+            fx.repo.display()
+        );
+        assert!(fx.branch_exists("tendril/00120-TwoRepos"));
+        assert!(worktree_registered(&plan_folder, &expected));
+    }
 }
