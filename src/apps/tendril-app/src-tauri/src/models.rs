@@ -476,6 +476,71 @@ pub struct EnqueueItemDto {
     pub attachments: Option<Vec<ChatAttachmentDto>>,
 }
 
+/// One tracked pull request as the daemon last saw it. `status` is `Open` / `Closed` / `Merged` /
+/// `Unknown`; `lastChecked` is absent until the first reconciliation pass has seen the PR.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrStatusDto {
+    #[serde(default)]
+    pub pr_url: String,
+    #[serde(default)]
+    pub owner: String,
+    #[serde(default)]
+    pub repo: String,
+    #[serde(default)]
+    pub number: u64,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_checked: Option<String>,
+    #[serde(default)]
+    pub plan_id: String,
+    #[serde(default)]
+    pub plan_folder: String,
+    #[serde(default)]
+    pub plan_title: String,
+    #[serde(default)]
+    pub project: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrTransitionDto {
+    #[serde(default)]
+    pub pr_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default)]
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrSyncReportDto {
+    #[serde(default)]
+    pub tracked: usize,
+    #[serde(default)]
+    pub checked: usize,
+    #[serde(default)]
+    pub skipped_merged: usize,
+    #[serde(default)]
+    pub skipped_fresh: usize,
+    #[serde(default)]
+    pub transitions: Vec<PrTransitionDto>,
+    #[serde(default)]
+    pub completed_plans: Vec<String>,
+    #[serde(default)]
+    pub refused_completions: Vec<String>,
+    #[serde(default)]
+    pub unblocked_plans: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    #[serde(default)]
+    pub changed: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelOptionDto {

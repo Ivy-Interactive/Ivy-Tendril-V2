@@ -12,6 +12,7 @@ import {
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
+import { PlanPullRequests } from "./PlanPullRequests";
 import { draftActions, type DraftAction } from "../controllers/draft_actions";
 import { collectExecuteGuards, type ExecuteGuard } from "../controllers/execute_guards";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
@@ -545,29 +546,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               </ul>
             </div>
 
-            <div className="rounded-xl border border-border bg-card/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Pull Requests
-              </h4>
-              <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                {plan.prs && plan.prs.length > 0 ? (
-                  plan.prs.map((p, i) => (
-                    <li key={i}>
-                      <a
-                        href={p}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-success hover:underline font-mono text-xs"
-                      >
-                        {p}
-                      </a>
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-muted-foreground/70">No PRs created</li>
-                )}
-              </ul>
-            </div>
+            <PlanPullRequests planId={plan.id} prs={plan.prs ?? []} />
           </div>
         )}
       </div>

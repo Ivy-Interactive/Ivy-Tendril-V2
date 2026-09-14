@@ -1567,10 +1567,7 @@ fn is_in_flight(state: &str) -> bool {
 /// States a plan does not come back from. `Reset to Draft` refuses these; the
 /// UI disables the action too, but the 409 is the authority.
 fn is_terminal(state: &str) -> bool {
-    matches!(
-        state.to_ascii_lowercase().as_str(),
-        "completed" | "skipped"
-    )
+    matches!(state.to_ascii_lowercase().as_str(), "completed" | "skipped")
 }
 
 /// The repos a plan's execution would actually touch: its own `repos` when set,
@@ -1769,7 +1766,8 @@ pub async fn delete_plan_handler(
         }
     };
 
-    let plans_root = std::fs::canonicalize(&state.plans_dir).unwrap_or_else(|_| state.plans_dir.clone());
+    let plans_root =
+        std::fs::canonicalize(&state.plans_dir).unwrap_or_else(|_| state.plans_dir.clone());
     let resolved = std::fs::canonicalize(&folder).unwrap_or_else(|_| folder.clone());
     if !resolved.starts_with(&plans_root) || resolved == plans_root {
         return (

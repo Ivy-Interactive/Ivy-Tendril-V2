@@ -139,7 +139,9 @@ pub fn route_ws_message(text_str: &str) -> (&'static str, serde_json::Value) {
         let msg_type = val.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if msg_type.starts_with("chat.") {
             ("chat-event", val)
-        } else if msg_type == "state" || msg_type == "status" {
+        } else if msg_type == "state" || msg_type == "status" || msg_type == "pr_status_changed" {
+            // A PR transition can complete or unblock a plan, so it arrives on the channel the plan
+            // views already listen to rather than needing one of its own.
             ("plan-event", val)
         } else {
             ("job-event", val)
@@ -186,5 +188,13 @@ mod tests {
         let job_json = r#"{"type":"job_started","jobId":"00100"}"#;
         let (channel, _) = route_ws_message(job_json);
         assert_eq!(channel, "job-event");
+    }
+
+    #[test]
+    fn test_route_pr_status_changed() {
+        let pr_json = r#"{"type":"pr_status_changed"}"#;
+        let (channel, payload) = route_ws_message(pr_json);
+        assert_eq!(channel, "plan-event");
+        assert_eq!(payload["type"], "pr_status_changed");
     }
 }

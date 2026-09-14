@@ -11,6 +11,7 @@ pub mod models;
 pub mod plans;
 pub mod promptware;
 pub mod questions;
+pub mod skills;
 pub mod stack;
 pub mod vault;
 pub mod watcher;

@@ -91,6 +91,8 @@ pub struct ProjectConfig {
     pub env_files: Vec<ProjectEnvFileConfig>,
     #[serde(rename = "mcpServers", default)]
     pub mcp_servers: Vec<ProjectMcpServerRef>,
+    #[serde(default)]
+    pub skills: Vec<ProjectSkillRef>,
 }
 
 /// An MCP server every job of a project gets, declared under the project in `config.yaml`.
@@ -108,6 +110,31 @@ pub struct ProjectMcpServerRef {
     pub environment: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub disabled: bool,
+}
+
+/// A skill every job of a project gets, declared under the project in `config.yaml`.
+///
+/// `path` is expanded against `TENDRIL_HOME` and may name a markdown file or a folder holding
+/// `SKILL.md`; when it resolves, its contents replace `instructions`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectSkillRef {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub disabled: bool,
+}
+
+/// A project skill with its instructions already read off disk, ready to render into a firmware.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectSkillInfo {
+    pub name: String,
+    pub description: String,
+    pub instructions: String,
 }
 
 impl ProjectConfig {

@@ -210,6 +210,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         ],
     )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
+    // A database carried over from V1 has PrStatuses without Branch.
+    ensure_columns(conn, "PrStatuses", &[("Branch", "TEXT")])?;
     ensure_columns(
         conn,
         "Costs",
