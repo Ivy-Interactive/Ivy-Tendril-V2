@@ -63,11 +63,8 @@ jobs:
       - name: Frontend tests
         run: pnpm test
 
-      - name: App typecheck
-        run: pnpm typecheck:app
-
-      - name: Extension typecheck
-        run: pnpm typecheck:extension
+      - name: Typecheck (all packages)
+        run: pnpm typecheck
 
       - name: Extension build
         run: pnpm build:extension

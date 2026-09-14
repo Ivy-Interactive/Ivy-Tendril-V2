@@ -53,6 +53,8 @@
     "dev": "vp pack --watch",
     "pretest": "vp pack",
     "test": "vp test",
+    "pretypecheck": "vp pack",
+    "typecheck": "tsc --noEmit",
     "lint": "tsx scripts/patch-tsgolint-win.ts && vp check",
     "check": "tsx scripts/patch-tsgolint-win.ts && vp check",
     "format": "vp fmt",
