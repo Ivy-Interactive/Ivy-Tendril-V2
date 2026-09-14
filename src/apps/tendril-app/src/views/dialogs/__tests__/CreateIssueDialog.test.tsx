@@ -50,7 +50,9 @@ describe("CreateIssueDialog", () => {
   });
 
   it("dispatches CreateIssue with the repo path, assignee, labels and comment", async () => {
-    const startJob = vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "03007" });
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "03007", status: "Queued" });
     const onJobStarted = vi.fn();
 
     render(<CreateIssueDialog isOpen onClose={vi.fn()} plan={plan} onJobStarted={onJobStarted} />);
@@ -73,11 +75,15 @@ describe("CreateIssueDialog", () => {
         labels: ["bug", "ui"],
       }),
     );
-    await waitFor(() => expect(onJobStarted).toHaveBeenCalledWith({ jobId: "03007" }));
+    await waitFor(() =>
+      expect(onJobStarted).toHaveBeenCalledWith({ jobId: "03007", status: "Queued" }),
+    );
   });
 
   it("omits the optional fields left blank", async () => {
-    const startJob = vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "03007" });
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "03007", status: "Queued" });
 
     render(<CreateIssueDialog isOpen onClose={vi.fn()} plan={plan} />);
     fireEvent.click(screen.getByTestId("dialog-confirm"));
@@ -92,7 +98,9 @@ describe("CreateIssueDialog", () => {
   });
 
   it("dispatches nothing until confirmed", () => {
-    const startJob = vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "03007" });
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "03007", status: "Queued" });
 
     render(<CreateIssueDialog isOpen onClose={vi.fn()} plan={plan} />);
     fireEvent.change(screen.getByLabelText("Labels"), { target: { value: "bug" } });

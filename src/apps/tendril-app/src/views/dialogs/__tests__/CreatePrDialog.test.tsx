@@ -13,7 +13,7 @@ const plan = planSummary({
 });
 
 function mockStartJob() {
-  return vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "03007" });
+  return vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "03007", status: "Queued" });
 }
 
 afterEach(() => {
@@ -40,7 +40,9 @@ describe("CreatePrDialog option pass-through", () => {
         solveMergeConflicts: true,
       }),
     );
-    await waitFor(() => expect(onJobStarted).toHaveBeenCalledWith({ jobId: "03007" }));
+    await waitFor(() =>
+      expect(onJobStarted).toHaveBeenCalledWith({ jobId: "03007", status: "Queued" }),
+    );
   });
 
   it("flips exactly the keys the operator toggled and nothing else", async () => {

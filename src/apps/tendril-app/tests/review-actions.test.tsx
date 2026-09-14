@@ -14,20 +14,8 @@ const reviewPlan = planSummary({
   ],
 });
 
-function renderReview(
-  overrides: {
-    onCreatePr?: (planId: string) => void | Promise<void>;
-    onRetry?: (planId: string, feedback: string) => void | Promise<void>;
-  } = {},
-) {
-  return render(
-    <ReviewView
-      plans={[reviewPlan]}
-      onSelectPlan={() => {}}
-      onCreatePr={overrides.onCreatePr ?? (() => {})}
-      onRetry={overrides.onRetry ?? (() => {})}
-    />,
-  );
+function renderReview() {
+  return render(<ReviewView plans={[reviewPlan]} onSelectPlan={() => {}} />);
 }
 
 afterEach(() => {
@@ -243,10 +231,16 @@ describe("ReviewView recommendations", () => {
   });
 });
 
+/**
+ * The triage buttons no longer dispatch: each opens a dialog that owns its own
+ * options and its own failure. So the assertions moved from the toolbar's
+ * `review-action-error` banner to the dialog's `role="alert"`, which is where
+ * the operator is looking when they press confirm.
+ */
 describe("ReviewView lifecycle actions", () => {
   it("surfaces a Create PR failure rather than appearing to succeed", async () => {
     vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
-    const onCreatePr = vi.fn().mockRejectedValue(
+    const startJob = vi.spyOn(bridge, "startJob").mockRejectedValue(
       bridgeError({
         code: "START_JOB_FAILED",
         message: "Plan 00021 has a failing verification",
@@ -254,20 +248,25 @@ describe("ReviewView lifecycle actions", () => {
       }),
     );
 
-    renderReview({ onCreatePr });
+    renderReview();
 
     fireEvent.click(screen.getByRole("button", { name: /approve & create pr/i }));
 
+    const dialog = await screen.findByTestId("create-pr-dialog");
+    // Opening the dialog is not consent to open the PR.
+    expect(startJob).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
+
     await waitFor(() =>
-      expect(screen.getByTestId("review-action-error")).toHaveTextContent(
-        /Create PR failed: Plan 00021 has a failing verification/,
-      ),
+      expect(screen.getByRole("alert")).toHaveTextContent(/Plan 00021 has a failing verification/),
     );
+    expect(dialog).toBeInTheDocument();
   });
 
-  it("keeps the change request in the form when RetryPlan is refused", async () => {
+  it("keeps the change request in the dialog when RetryPlan is refused", async () => {
     vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
-    const onRetry = vi.fn().mockRejectedValue(
+    const startJob = vi.spyOn(bridge, "startJob").mockRejectedValue(
       bridgeError({
         code: "DISCONNECTED",
         message: "Tendril service is not running",
@@ -275,35 +274,41 @@ describe("ReviewView lifecycle actions", () => {
       }),
     );
 
-    renderReview({ onRetry });
+    renderReview();
 
     fireEvent.click(screen.getByRole("button", { name: /request changes \(retry\)/i }));
-    fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "Fix the failing clippy lint." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /submit change request/i }));
+
+    const textarea = await screen.findByLabelText("Change request");
+    fireEvent.change(textarea, { target: { value: "Fix the failing clippy lint." } });
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
 
     await waitFor(() =>
-      expect(screen.getByTestId("review-action-error")).toHaveTextContent(/Retry Plan failed/),
+      expect(screen.getByRole("alert")).toHaveTextContent(/Tendril service is not running/),
     );
-    expect(onRetry).toHaveBeenCalledWith("00021", "Fix the failing clippy lint.");
-    // The form stays open with the text intact so it can be resubmitted.
-    expect(screen.getByRole("textbox")).toHaveValue("Fix the failing clippy lint.");
+    expect(startJob).toHaveBeenCalledWith({
+      type: "RetryPlan",
+      folderPath: "00021",
+      changeRequest: "Fix the failing clippy lint.",
+    });
+    // The dialog stays open with the text intact so it can be resubmitted.
+    expect(screen.getByLabelText("Change request")).toHaveValue("Fix the failing clippy lint.");
   });
 
-  it("clears the form once RetryPlan is accepted", async () => {
+  it("closes the dialog once RetryPlan is accepted", async () => {
     vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
-    const onRetry = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "03007", status: "Queued" });
 
-    renderReview({ onRetry });
+    renderReview();
 
     fireEvent.click(screen.getByRole("button", { name: /request changes \(retry\)/i }));
-    fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "Please rerun the verifications." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /submit change request/i }));
 
-    await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+    const textarea = await screen.findByLabelText("Change request");
+    fireEvent.change(textarea, { target: { value: "Please rerun the verifications." } });
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId("suggest-changes-dialog")).not.toBeInTheDocument(),
+    );
     expect(screen.queryByTestId("review-action-error")).not.toBeInTheDocument();
   });
 });

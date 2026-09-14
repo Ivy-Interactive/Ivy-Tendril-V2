@@ -27,7 +27,9 @@ describe("SuggestChangesDialog", () => {
   });
 
   it("carries the typed text into the job as changeRequest", async () => {
-    const startJob = vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "03007" });
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "03007", status: "Queued" });
     const onJobStarted = vi.fn();
 
     render(
@@ -46,11 +48,15 @@ describe("SuggestChangesDialog", () => {
         changeRequest: "The dirty-repo guard lists the wrong repos.",
       }),
     );
-    await waitFor(() => expect(onJobStarted).toHaveBeenCalledWith({ jobId: "03007" }));
+    await waitFor(() =>
+      expect(onJobStarted).toHaveBeenCalledWith({ jobId: "03007", status: "Queued" }),
+    );
   });
 
   it("never dispatches the canned change request the views used to hard-code", async () => {
-    const startJob = vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "03007" });
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "03007", status: "Queued" });
 
     render(<SuggestChangesDialog isOpen onClose={vi.fn()} plan={plan} />);
 

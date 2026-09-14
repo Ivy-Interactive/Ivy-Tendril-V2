@@ -188,14 +188,7 @@ describe("ReviewView integration with ReviewActionsBarView", () => {
     ]);
     const executeSpy = vi.spyOn(bridge, "executeReviewAction").mockResolvedValue({ status: "ok" });
 
-    render(
-      <ReviewView
-        plans={[samplePlan]}
-        onSelectPlan={() => {}}
-        onCreatePr={() => {}}
-        onRetry={() => {}}
-      />,
-    );
+    render(<ReviewView plans={[samplePlan]} onSelectPlan={() => {}} />);
 
     await waitFor(() => {
       expect(screen.getByTestId("review-actions-bar-container")).toBeInTheDocument();
