@@ -20,6 +20,7 @@ import { AgentPicker } from "../components/chat/AgentPicker";
 import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
 import { useWebviewFileDrop } from "../hooks/useWebviewFileDrop";
 import { firstStringArg, submitValueArg } from "../utils/eventArgs";
+import { resolveJobState } from "../utils/jobStatus";
 import {
   Plus,
   Edit2,
@@ -148,13 +149,32 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     selectedEffort,
   } = storeState;
 
+  /**
+   * The jobs this conversation started. A job that has aged out of the live list keeps its place,
+   * with the outcome recovered from the transcript — a conversation's own jobs disappearing from
+   * the header is worse than showing one with a thinner label.
+   */
   const spawnedJobs = useMemo(() => {
     const ids = activeSession?.spawnedJobIds ?? [];
     if (ids.length === 0) return [];
+    const history = activeSession?.messages ?? [];
+
     return ids
-      .map((id) => jobs.find((job) => job.id === id))
+      .map((id): Job | undefined => {
+        const live = jobs.find((job) => job.id === id);
+        if (live) return live;
+
+        const state = resolveJobState(id, jobs, history);
+        if (state === "unknown") return undefined;
+        return {
+          id,
+          type: "Job",
+          project: "",
+          status: state === "completed" ? "Completed" : "Failed",
+        };
+      })
       .filter((job): job is Job => job !== undefined);
-  }, [activeSession?.spawnedJobIds, jobs]);
+  }, [activeSession?.spawnedJobIds, activeSession?.messages, jobs]);
 
   const latestMessage = activeSession?.messages[activeSession.messages.length - 1];
   const streamContentKey = `${activeSession?.id ?? ""}-${activeSession?.messages.length ?? 0}-${latestMessage?.id ?? ""}-${latestMessage?.content.length ?? 0}-${isGenerating}`;
