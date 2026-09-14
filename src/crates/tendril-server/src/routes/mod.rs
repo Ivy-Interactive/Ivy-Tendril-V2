@@ -60,6 +60,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(plans::get_revision_handler).post(plans::write_revision_handler),
         )
         .route(
+            "/api/plans/:id/diff-comments",
+            get(plans::list_diff_comments_handler)
+                .post(plans::upsert_diff_comment_handler)
+                .put(plans::replace_diff_comments_handler)
+                .delete(plans::delete_diff_comments_handler),
+        )
+        .route(
             "/api/plans/:id/recommendations",
             get(plans::list_recommendations_handler).post(plans::add_recommendation_handler),
         )
