@@ -54,7 +54,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/api/plans/:id",
-            get(plans::get_plan).put(plans::update_plan_field),
+            get(plans::get_plan)
+                .put(plans::update_plan_field)
+                .delete(plans::delete_plan_handler),
+        )
+        .route("/api/plans/:id/reset", post(plans::reset_plan_handler))
+        .route(
+            "/api/plans/:id/repo-status",
+            get(plans::repo_status_handler),
         )
         .route(
             "/api/plans/:id/revisions",

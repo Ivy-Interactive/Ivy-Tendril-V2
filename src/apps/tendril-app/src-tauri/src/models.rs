@@ -156,6 +156,27 @@ pub struct RevisionResultDto {
     pub message: String,
 }
 
+/// One repo of a plan, as reported by `GET /api/plans/:id/repo-status`.
+///
+/// A repo that could not be inspected carries `error` and `is_dirty: false`:
+/// the dirty-repo guard degrades to "nothing known to be dirty" rather than
+/// blocking execution on an unreadable repo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoStatusDto {
+    pub path: String,
+    #[serde(default)]
+    pub is_dirty: bool,
+    /// `git status --porcelain` lines, capped service-side.
+    #[serde(default)]
+    pub changes: Vec<String>,
+    /// Total number of changed entries, which may exceed `changes.len()`.
+    #[serde(default)]
+    pub change_count: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDto {
