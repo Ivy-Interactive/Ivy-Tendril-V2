@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const MODELS_DEV_URL: &str = "https://models.dev/api.json";
 
@@ -180,6 +181,37 @@ fn cache_file_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("cache").join("models_cache.json")
 }
 
+/// Facts about the on-disk models.dev cache, for status reporting. `None` timestamps
+/// mean no fetch time could be determined (static fallback is in use, or a legacy
+/// cache file with no recorded fetch time).
+pub struct CacheStatus {
+    pub path: PathBuf,
+    pub exists: bool,
+    pub cached_at: Option<DateTime<Utc>>,
+    pub cached_model_count: usize,
+}
+
+/// Reports facts about the on-disk models.dev cache without erroring on a missing or
+/// unparseable cache file — those are reported as `exists: false` / count `0` instead.
+pub fn cache_status(tendril_home: &Path) -> CacheStatus {
+    let path = cache_file_path(tendril_home);
+    let exists = path.exists();
+    let catalog = load_disk_cache(tendril_home).unwrap_or_default();
+    let cached_at = catalog.fetched_at.or_else(|| {
+        std::fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .map(DateTime::<Utc>::from)
+    });
+
+    CacheStatus {
+        path,
+        exists,
+        cached_at,
+        cached_model_count: catalog.specs.len(),
+    }
+}
+
 /// Reads and deserializes the cached specs on startup without any network access.
 /// Returns an empty `CachedCatalog` (not an error) when no cache file exists yet.
 ///
@@ -261,4 +293,72 @@ pub async fn fetch_live_models(client: &reqwest::Client, tendril_home: &Path) ->
     let count = specs.len();
     model_specs::register_dynamic_specs(specs);
     Ok(count)
+}
+
+/// Default cadence for background models.dev refreshes, in hours.
+pub const DEFAULT_ENRICHMENT_INTERVAL_HOURS: i32 = 12;
+
+/// Maps a configured cadence in hours to a tick period. A non-positive value means
+/// "refresh once at startup and never again", which is how the daemon behaved before
+/// periodic refresh existed.
+pub fn enrichment_interval(hours: i32) -> Option<Duration> {
+    (hours > 0).then(|| Duration::from_secs(hours as u64 * 3600))
+}
+
+/// Logs the outcome of a single enrichment attempt, used identically by the startup-only
+/// path and every tick of the repeating loop.
+async fn refresh_and_log<Fut>(fut: Fut)
+where
+    Fut: std::future::Future<Output = Result<usize>>,
+{
+    match fut.await {
+        Ok(count) => {
+            tracing::info!("Enriched model specs cache from models.dev ({count} models)")
+        }
+        Err(err) => {
+            tracing::warn!("models.dev live enrichment skipped (offline or network error): {err}")
+        }
+    }
+}
+
+/// Drives `refresh` on a fixed cadence forever, logging each outcome. The first tick of a
+/// `tokio::time::interval` fires immediately, so the caller still gets a refresh at startup.
+/// An error never ends the loop — a transient outage must not disable enrichment for the
+/// lifetime of the process.
+pub async fn run_enrichment_loop<F, Fut>(period: Duration, mut refresh: F)
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<usize>>,
+{
+    let mut ticker = tokio::time::interval(period);
+    // Delay rather than Burst: after a laptop sleeps through several periods we want one
+    // catch-up refresh, not a rapid-fire series of them.
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        ticker.tick().await;
+        refresh_and_log(refresh()).await;
+    }
+}
+
+/// Spawns background models.dev enrichment for `tendril_home`. `period: Some(d)` refreshes
+/// immediately and then every `d`; `None` refreshes exactly once.
+pub fn spawn_enrichment(
+    tendril_home: PathBuf,
+    period: Option<Duration>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default();
+        let refresh = move || {
+            let client = client.clone();
+            let home = tendril_home.clone();
+            async move { fetch_live_models(&client, &home).await }
+        };
+        match period {
+            Some(period) => run_enrichment_loop(period, refresh).await,
+            None => refresh_and_log(refresh()).await,
+        }
+    })
 }

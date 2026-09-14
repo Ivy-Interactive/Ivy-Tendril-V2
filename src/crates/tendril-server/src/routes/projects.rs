@@ -818,6 +818,12 @@ pub struct AddReviewActionRequest {
     pub condition: String,
     #[serde(default)]
     pub command: String,
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub before: Option<String>,
+    #[serde(default)]
+    pub after: Option<String>,
 }
 
 pub async fn add_project_review_action(
@@ -864,13 +870,62 @@ pub async fn add_project_review_action(
         .review_actions
         .retain(|a| !a.name.eq_ignore_ascii_case(&action_name));
 
-    settings.projects[proj_idx]
-        .review_actions
-        .push(ReviewActionConfig {
+    let review_actions = &settings.projects[proj_idx].review_actions;
+    let insert_idx = if let Some(target) = req.before.as_deref() {
+        match review_actions
+            .iter()
+            .position(|a| a.name.eq_ignore_ascii_case(target))
+        {
+            Some(idx) => idx,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!(
+                            "Review action '{}' not found in project '{}'. Available: {}",
+                            target,
+                            name,
+                            review_actions.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ")
+                        )
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    } else if let Some(target) = req.after.as_deref() {
+        match review_actions
+            .iter()
+            .position(|a| a.name.eq_ignore_ascii_case(target))
+        {
+            Some(idx) => idx + 1,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!(
+                            "Review action '{}' not found in project '{}'. Available: {}",
+                            target,
+                            name,
+                            review_actions.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ")
+                        )
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        review_actions.len()
+    };
+
+    settings.projects[proj_idx].review_actions.insert(
+        insert_idx,
+        ReviewActionConfig {
             name: action_name.clone(),
             condition: req.condition,
             command: req.command,
-        });
+            paths: req.paths,
+        },
+    );
 
     if let Err(e) = save_config(&state.config_path, &settings) {
         return (

@@ -151,7 +151,7 @@ describe("ChatStore State Management & Event Handling", () => {
     expect(chatStore.getState().queuedItems).toHaveLength(0);
   });
 
-  it("includes attachments in optimistic user message and passes attachments to chatApi.postMessage", async () => {
+  it("includes attachments in the optimistic user message and starts the turn through executeTurn", async () => {
     const testSession: ChatSession = {
       ...mockSession,
       messages: [
@@ -166,7 +166,7 @@ describe("ChatStore State Management & Event Handling", () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([testSession]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(testSession);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+    const executeSpy = vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
 
     await chatStore.fetchSessions();
 
@@ -181,8 +181,11 @@ describe("ChatStore State Management & Event Handling", () => {
     expect(lastMsg?.content).toBe("Take a look at this");
     expect(lastMsg?.attachments).toEqual(attachments);
 
-    expect(postSpy).toHaveBeenCalledWith("session-1", "Take a look at this", {
-      attachments,
+    expect(executeSpy).toHaveBeenCalledWith("session-1", {
+      prompt: "Take a look at this",
+      agentId: "claude",
+      modelId: undefined,
+      effort: undefined,
     });
   });
 

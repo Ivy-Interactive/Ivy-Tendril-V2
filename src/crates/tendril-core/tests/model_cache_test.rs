@@ -131,6 +131,63 @@ fn test_disk_cache_persistence() {
 }
 
 #[test]
+fn test_cache_status_missing_cache() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-model-cache-status-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).expect("failed to create test dir");
+
+    let status = model_cache::cache_status(&tendril_home);
+    assert!(!status.exists);
+    assert!(status.cached_at.is_none());
+    assert_eq!(status.cached_model_count, 0);
+
+    std::fs::remove_dir_all(&tendril_home).ok();
+}
+
+#[test]
+fn test_cache_status_existing_cache() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-model-cache-status-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).expect("failed to create test dir");
+
+    let specs = vec![
+        ModelSpec {
+            model_id: Cow::Borrowed("status-model-a"),
+            display_name: Cow::Borrowed("Status Model A"),
+            context_window: 128_000,
+            max_output_tokens: 8_000,
+            input_per_million: 0.5,
+            output_per_million: 1.5,
+            cache_read_per_million: 0.05,
+            cache_write_per_million: 0.15,
+        },
+        ModelSpec {
+            model_id: Cow::Borrowed("status-model-b"),
+            display_name: Cow::Borrowed("Status Model B"),
+            context_window: 64_000,
+            max_output_tokens: 4_000,
+            input_per_million: 0.25,
+            output_per_million: 0.75,
+            cache_read_per_million: 0.025,
+            cache_write_per_million: 0.075,
+        },
+    ];
+    model_cache::save_disk_cache(&tendril_home, &specs).expect("save should succeed");
+
+    let status = model_cache::cache_status(&tendril_home);
+    assert!(status.exists);
+    assert!(status.cached_at.is_some());
+    assert_eq!(status.cached_model_count, 2);
+    assert!(status.path.ends_with("cache/models_cache.json"));
+
+    std::fs::remove_dir_all(&tendril_home).ok();
+}
+
+#[test]
 fn test_disk_cache_records_fetched_at() {
     let tendril_home = std::env::temp_dir().join(format!(
         "tendril-model-cache-test-{}",
@@ -332,4 +389,78 @@ fn test_pricing_calculation_with_dynamic_model() {
     assert!((cost - 10.0).abs() < 1e-6);
 
     model_specs::register_dynamic_specs(Vec::new());
+}
+
+#[test]
+fn test_enrichment_interval_mapping() {
+    assert_eq!(
+        model_cache::enrichment_interval(12),
+        Some(std::time::Duration::from_secs(43_200))
+    );
+    assert_eq!(model_cache::enrichment_interval(0), None);
+    assert_eq!(model_cache::enrichment_interval(-1), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_enrichment_loop_fires_immediately_then_on_period() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let count = Arc::new(AtomicUsize::new(0));
+    let count_clone = count.clone();
+    let handle = tokio::spawn(async move {
+        model_cache::run_enrichment_loop(std::time::Duration::from_secs(3600), move || {
+            let count = count_clone.clone();
+            async move {
+                count.fetch_add(1, Ordering::SeqCst);
+                Ok(1)
+            }
+        })
+        .await;
+    });
+
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+
+    tokio::time::advance(std::time::Duration::from_secs(3600)).await;
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+
+    handle.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_enrichment_loop_survives_a_failed_refresh() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let count = Arc::new(AtomicUsize::new(0));
+    let count_clone = count.clone();
+    let handle = tokio::spawn(async move {
+        model_cache::run_enrichment_loop(std::time::Duration::from_secs(3600), move || {
+            let count = count_clone.clone();
+            async move {
+                let call = count.fetch_add(1, Ordering::SeqCst);
+                if call == 0 {
+                    Err(anyhow::anyhow!("offline"))
+                } else {
+                    Ok(7)
+                }
+            }
+        })
+        .await;
+    });
+
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+
+    tokio::time::advance(std::time::Duration::from_secs(3600)).await;
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+
+    handle.abort();
 }

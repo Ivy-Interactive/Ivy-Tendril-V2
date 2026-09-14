@@ -96,6 +96,14 @@ pub struct TendrilSettings {
     #[serde(rename = "enrichModels", default = "default_true")]
     pub enrich_models: bool,
 
+    /// Hours between background models.dev refreshes while `enrichModels` is on. `0` or
+    /// negative means "refresh once at startup and never again".
+    #[serde(
+        rename = "modelEnrichmentIntervalHours",
+        default = "default_model_enrichment_interval_hours"
+    )]
+    pub model_enrichment_interval_hours: i32,
+
     /// Soft age threshold (in days) past which the models.dev disk cache is still used but
     /// logged as a warning. `0` or negative disables this tier (never warn).
     #[serde(
@@ -254,6 +262,9 @@ fn default_true() -> bool {
 fn default_theme() -> String {
     "default".to_string()
 }
+fn default_model_enrichment_interval_hours() -> i32 {
+    crate::agents::model_cache::DEFAULT_ENRICHMENT_INTERVAL_HOURS
+}
 fn default_model_cache_warn_age_days() -> i64 {
     crate::agents::model_cache::DEFAULT_CACHE_WARN_AGE_DAYS
 }
@@ -322,6 +333,7 @@ impl Default for TendrilSettings {
             coding_agents: Vec::new(),
             promptwares: BTreeMap::new(),
             enrich_models: true,
+            model_enrichment_interval_hours: default_model_enrichment_interval_hours(),
             model_cache_warn_age_days: default_model_cache_warn_age_days(),
             model_cache_max_age_days: default_model_cache_max_age_days(),
             extra: BTreeMap::new(),
@@ -567,6 +579,38 @@ pub fn get_database_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("tendril.db")
 }
 
+/// Strip everything outside `[A-Za-z0-9._-]`, matching the C# `InputSanitizer.SanitizeProjectName`
+/// so the directory layout stays byte-identical between the two implementations.
+pub fn sanitize_project_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '_' || *c == '-')
+        .collect()
+}
+
+pub fn get_project_root_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    let projects = tendril_home.join("Projects");
+    if project_name.trim().is_empty() {
+        return projects;
+    }
+    projects.join(sanitize_project_name(project_name))
+}
+
+pub fn get_project_repos_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Repos")
+}
+
+pub fn get_project_skills_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Skills")
+}
+
+pub fn get_project_mcp_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("MCP")
+}
+
+pub fn get_project_memory_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Memory")
+}
+
 pub fn load_config(config_path: &Path) -> Result<TendrilSettings> {
     if !config_path.exists() {
         return Ok(TendrilSettings::default());
@@ -587,6 +631,10 @@ pub fn load_config(config_path: &Path) -> Result<TendrilSettings> {
     Ok(settings)
 }
 
+/// Replaces `config.yaml` atomically while holding its lock.
+///
+/// The caller must not already hold that lock — see
+/// [`FileLock::acquire`][crate::fs_lock::FileLock::acquire] on nesting.
 pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()> {
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -595,11 +643,16 @@ pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()>
     let yaml = serde_yaml::to_string(settings)
         .map_err(|e| TendrilError::Config(format!("Failed to serialize settings: {}", e)))?;
 
-    std::fs::write(config_path, yaml)?;
-    Ok(())
+    let _lock = crate::fs_lock::FileLock::acquire(config_path)?;
+    crate::fs_lock::write_atomic(config_path, yaml.as_bytes())
 }
 
+/// Merges `incoming` into `config.yaml` and writes the result.
+///
+/// This is a read-modify-write, so the lock is held across **both** halves: releasing it between the
+/// read and the write is exactly how two concurrent settings edits drop one another.
 pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Result<()> {
+    let _lock = crate::fs_lock::FileLock::acquire(config_path)?;
     let existing_raw = if config_path.exists() {
         std::fs::read_to_string(config_path).map_err(|e| {
             TendrilError::Config(format!("Failed to read {}: {}", config_path.display(), e))
@@ -642,8 +695,9 @@ pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Re
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::write(config_path, yaml_str)?;
-    Ok(())
+    // `write_atomic` rather than `save_config`: the lock is already held here, and re-acquiring it
+    // would deadlock.
+    crate::fs_lock::write_atomic(config_path, yaml_str.as_bytes())
 }
 
 pub fn generate_bearer_secret() -> String {

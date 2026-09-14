@@ -1,9 +1,12 @@
+use chrono::{DateTime, Utc};
 use std::collections::HashSet;
 use std::path::Path;
 use tendril_core::config::{
     expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
 };
-use tendril_core::db::open_database;
+use tendril_core::db::{
+    check_plan_search, get_last_sync_time, open_database, rebuild_search_index, PlanSearchHealth,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum RepoPathStatus {
@@ -58,7 +61,50 @@ pub(crate) fn repo_path_warning(
     }
 }
 
-pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
+/// Formats the plan-search and sync-bookkeeping health lines. Split out from [`handle_doctor`] so it
+/// can be tested without a live `TendrilHome`, the way [`repo_path_warning`] already is.
+pub(crate) fn plan_search_lines(
+    health: &PlanSearchHealth,
+    last_sync: Option<DateTime<Utc>>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if health.index_present {
+        lines.push("[OK] Plan search index present".to_string());
+    } else {
+        lines.push(
+            "[WARN] Plan search index missing (run: tendril doctor --rebuild-search-index)"
+                .to_string(),
+        );
+    }
+
+    if !health.missing_triggers.is_empty() {
+        lines.push(format!(
+            "[WARN] Plan search triggers missing: {} (run: tendril doctor --rebuild-search-index)",
+            health.missing_triggers.join(", ")
+        ));
+    }
+
+    if health.index_present {
+        if health.integrity_ok {
+            lines.push("[OK] Plan search index integrity verified".to_string());
+        } else {
+            lines.push(
+                "[WARN] Plan search index corrupt (run: tendril doctor --rebuild-search-index)"
+                    .to_string(),
+            );
+        }
+    }
+
+    match last_sync {
+        Some(time) => lines.push(format!("[OK] Last plan sync: {}", time.to_rfc3339())),
+        None => lines.push("[WARN] Plans have never been synced".to_string()),
+    }
+
+    lines
+}
+
+pub fn handle_doctor(tendril_home: &Path, rebuild_search_index_flag: bool) -> anyhow::Result<()> {
     println!("Checking Tendril system health...");
 
     println!("[OK] Tendril Home: {}", tendril_home.display());
@@ -121,10 +167,29 @@ pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
 
     let db_path = get_database_path(tendril_home);
     match open_database(&db_path) {
-        Ok(_) => println!(
-            "[OK] Database accessible and migrated: {}",
-            db_path.display()
-        ),
+        Ok(conn) => {
+            println!(
+                "[OK] Database accessible and migrated: {}",
+                db_path.display()
+            );
+
+            if rebuild_search_index_flag {
+                match rebuild_search_index(&conn) {
+                    Ok(indexed) => println!("Rebuilt plan search index ({} plans).", indexed),
+                    Err(e) => println!("[FAIL] Could not rebuild plan search index: {}", e),
+                }
+            }
+
+            match check_plan_search(&conn) {
+                Ok(health) => {
+                    let last_sync = get_last_sync_time(&conn).unwrap_or(None);
+                    for line in plan_search_lines(&health, last_sync) {
+                        println!("{}", line);
+                    }
+                }
+                Err(e) => println!("[FAIL] Could not inspect plan search index: {}", e),
+            }
+        }
         Err(e) => println!("[FAIL] Database error: {}", e),
     }
 
@@ -270,6 +335,92 @@ mod tests {
         assert!(warning.contains("is not a git repository"));
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_dir_all(&tendril_home);
+    }
+
+    fn healthy() -> PlanSearchHealth {
+        PlanSearchHealth {
+            index_present: true,
+            missing_triggers: vec![],
+            integrity_ok: true,
+        }
+    }
+
+    #[test]
+    fn plan_search_lines_report_a_healthy_index() {
+        let synced = Utc::now();
+        let lines = plan_search_lines(&healthy(), Some(synced));
+
+        assert!(lines.iter().any(|l| l == "[OK] Plan search index present"));
+        assert!(lines
+            .iter()
+            .any(|l| l == "[OK] Plan search index integrity verified"));
+        assert!(lines
+            .iter()
+            .any(|l| l == &format!("[OK] Last plan sync: {}", synced.to_rfc3339())));
+        assert!(
+            !lines.iter().any(|l| l.starts_with("[WARN]")),
+            "a healthy index warns about nothing: {:?}",
+            lines
+        );
+    }
+
+    #[test]
+    fn plan_search_lines_warn_when_index_is_missing() {
+        let health = PlanSearchHealth {
+            index_present: false,
+            missing_triggers: vec!["plans_fts_update".to_string()],
+            integrity_ok: false,
+        };
+        let lines = plan_search_lines(&health, None);
+
+        assert!(lines
+            .iter()
+            .any(|l| l.starts_with("[WARN] Plan search index missing")));
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("Plan search triggers missing: plans_fts_update")));
+        assert!(lines
+            .iter()
+            .any(|l| l == "[WARN] Plans have never been synced"));
+        // An absent index cannot be integrity-checked, so there is nothing to say about it.
+        assert!(!lines.iter().any(|l| l.contains("integrity")));
+    }
+
+    #[test]
+    fn plan_search_checks_run_against_a_real_database() {
+        let dir = scratch_dir("tendril-doctor-search-db");
+        let conn = open_database(&dir.join("tendril.db")).expect("open database");
+
+        // The rebuild is what `--rebuild-search-index` calls; an empty Plans table indexes nothing.
+        assert_eq!(rebuild_search_index(&conn).expect("rebuild index"), 0);
+
+        let health = check_plan_search(&conn).expect("inspect index");
+        assert!(health.index_present);
+        assert!(health.missing_triggers.is_empty());
+        assert!(health.integrity_ok);
+
+        let lines = plan_search_lines(&health, get_last_sync_time(&conn).expect("read sync time"));
+        assert!(lines.iter().any(|l| l == "[OK] Plan search index present"));
+        assert!(lines
+            .iter()
+            .any(|l| l == "[WARN] Plans have never been synced"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn plan_search_lines_warn_when_index_is_corrupt() {
+        let health = PlanSearchHealth {
+            index_present: true,
+            missing_triggers: vec![],
+            integrity_ok: false,
+        };
+        let lines = plan_search_lines(&health, Some(Utc::now()));
+
+        assert!(lines.iter().any(|l| l == "[OK] Plan search index present"));
+        assert!(lines
+            .iter()
+            .any(|l| l.starts_with("[WARN] Plan search index corrupt")));
     }
 
     #[test]
