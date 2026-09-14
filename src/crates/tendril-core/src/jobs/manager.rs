@@ -2,7 +2,8 @@ use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcess
 use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
-    get_job, insert_job, insert_new_job, list_jobs, list_non_terminal_jobs, max_numeric_job_id,
+    delete_job as delete_job_row, get_job, insert_job, insert_new_job, list_job_ids_by_status,
+    list_jobs, list_non_terminal_jobs, max_numeric_job_id, touch_job_last_output,
 };
 use crate::db::open_database;
 use crate::error::{Result, TendrilError};
@@ -14,8 +15,11 @@ use crate::jobs::logger::{
     read_raw_log, write_prompt,
 };
 use crate::jobs::process_tree::{kill_tree, DEFAULT_KILL_GRACE};
+use crate::jobs::queue::JobQueue;
 use crate::models::{JobArgs, JobItem, JobStatus, PlanStatus, PlanYaml};
-use crate::plans::dependencies::check_dependencies;
+use crate::plans::dependencies::{
+    check_dependencies, check_dependencies_with, get_gh_pr_state, unblock_satisfied_plans_with,
+};
 use crate::plans::guards::PlanCompletionGuard;
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::verification_gate::resolve_post_execution_state;
@@ -26,16 +30,34 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{watch, Mutex, RwLock, Semaphore};
+use std::time::{Duration, Instant};
+use tokio::sync::{watch, Mutex, Notify, OwnedSemaphorePermit, RwLock, Semaphore};
+
+/// Grace on top of `staleOutputTimeout` before the maintenance pass reaps a `Running` job whose own
+/// per-job watchdog never armed, because the launch itself hung.
+pub const STUCK_JOB_REAP_GRACE: Duration = Duration::from_secs(120);
+/// Extra margin on top of `jobTimeout` before the maintenance pass hard-caps a `Running` job.
+pub const STUCK_JOB_HARD_CAP_MARGIN: Duration = Duration::from_secs(300);
+/// Terminal jobs whose `completed_at` is older than this are dropped from the in-memory map. Their
+/// database rows stay: this only bounds memory.
+const STALE_JOB_EVICTION_AGE: Duration = Duration::from_secs(60 * 60);
+/// Number of most recent terminal jobs kept in memory regardless of age.
+const STALE_JOB_KEEP_RECENT: usize = 20;
+/// Floor on how often a running job's `LastOutputAt` is written, so a chatty agent does not hammer
+/// SQLite once per output line.
+const LAST_OUTPUT_PERSIST_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Builds the process spec for an agent launch. Injectable so tests can exercise the whole launch
 /// path against a throwaway script instead of a real agent CLI.
 pub type SpecBuilder = Arc<dyn Fn(&str, &AgentLaunchConfig) -> AgentProcessSpec + Send + Sync>;
 
-/// Live control surface for a running job.
+/// Live control surface for a queued or running job.
+///
+/// The handle exists from the moment a job is enqueued, before it has a process, so a job cancelled
+/// while it waits for a slot still claims its own completion. `cancel_tx` is shared because both the
+/// canceller and the stale-output watchdog raise the flag.
 pub struct JobHandle {
-    pub cancel_tx: watch::Sender<bool>,
+    pub cancel_tx: Arc<watch::Sender<bool>>,
     /// 0 until the agent process is spawned.
     pub pid: Arc<AtomicU32>,
     /// Claimed exactly once, by whichever of cancellation and normal completion gets there first.
@@ -46,7 +68,7 @@ impl JobHandle {
     pub fn new() -> Self {
         let (cancel_tx, _) = watch::channel(false);
         Self {
-            cancel_tx,
+            cancel_tx: Arc::new(cancel_tx),
             pid: Arc::new(AtomicU32::new(0)),
             completion_claimed: Arc::new(AtomicBool::new(false)),
         }
@@ -64,12 +86,53 @@ fn claim(flag: &AtomicBool) -> bool {
     !flag.swap(true, Ordering::SeqCst)
 }
 
+/// Per-start options that are not part of any job type's own args.
+#[derive(Debug, Clone, Default)]
+pub struct StartOptions {
+    /// Job ids that must finish before this job may be queued.
+    pub wait_for_jobs: Vec<String>,
+    /// Overrides the priority derived from args/`plan.yaml`.
+    pub priority: Option<i32>,
+}
+
+/// Why a job may not be queued yet.
+#[derive(Debug, Clone)]
+enum WaitOutcome {
+    /// Still waiting; the string is the user-facing status message.
+    Blocked(String),
+    /// A dependency will never complete, so this job cannot either.
+    Failed(String),
+}
+
+/// Everything the dispatcher and the runner tasks need from a [`JobManager`]. Cloneable so a spawned
+/// task can own one, which keeps `JobManager` usable without an enclosing `Arc`.
+#[derive(Clone)]
+struct DispatchContext {
+    tendril_home: PathBuf,
+    settings: Arc<RwLock<TendrilSettings>>,
+    jobs: Arc<RwLock<HashMap<String, JobItem>>>,
+    handles: Arc<RwLock<HashMap<String, JobHandle>>>,
+    semaphore: Arc<Semaphore>,
+    queue: Arc<Mutex<JobQueue>>,
+    dispatch_notify: Arc<Notify>,
+    spec_builder: SpecBuilder,
+    job_timeout_override: Option<Duration>,
+    post_result_grace_override: Option<Duration>,
+    stale_output_timeout_override: Option<Duration>,
+}
+
 pub struct JobManager {
     tendril_home: PathBuf,
     settings: Arc<RwLock<TendrilSettings>>,
     jobs: Arc<RwLock<HashMap<String, JobItem>>>,
     handles: Arc<RwLock<HashMap<String, JobHandle>>>,
     semaphore: Arc<Semaphore>,
+    /// Jobs waiting for a slot, highest priority first.
+    queue: Arc<Mutex<JobQueue>>,
+    /// Notified whenever a slot frees or a job is enqueued, waking `dispatch_loop`.
+    dispatch_notify: Arc<Notify>,
+    /// Guards the one-time spawn of `dispatch_loop`.
+    dispatcher_started: Arc<AtomicBool>,
     /// Serialises ID allocation with the first insert, so two concurrent `start_job` calls cannot
     /// allocate the same ID.
     alloc_lock: Arc<Mutex<()>>,
@@ -78,6 +141,8 @@ pub struct JobManager {
     job_timeout_override: Option<Duration>,
     /// Overrides the post-result grace period. Only used by tests.
     post_result_grace_override: Option<Duration>,
+    /// Overrides the `staleOutputTimeout` setting. Only used by tests.
+    stale_output_timeout_override: Option<Duration>,
 }
 
 impl JobManager {
@@ -89,10 +154,14 @@ impl JobManager {
             jobs: Arc::new(RwLock::new(HashMap::new())),
             handles: Arc::new(RwLock::new(HashMap::new())),
             semaphore: Arc::new(Semaphore::new(max_jobs)),
+            queue: Arc::new(Mutex::new(JobQueue::new())),
+            dispatch_notify: Arc::new(Notify::new()),
+            dispatcher_started: Arc::new(AtomicBool::new(false)),
             alloc_lock: Arc::new(Mutex::new(())),
             spec_builder: Arc::new(build_agent_spec),
             job_timeout_override: None,
             post_result_grace_override: None,
+            stale_output_timeout_override: None,
         }
     }
 
@@ -114,6 +183,41 @@ impl JobManager {
         self
     }
 
+    /// Overrides the configured stale-output timeout, which is expressed in whole minutes. Intended
+    /// for tests, which need sub-second windows.
+    pub fn with_stale_output_timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.stale_output_timeout_override = timeout;
+        self
+    }
+
+    /// Snapshot of the shared state the dispatcher and runner tasks work through. Taken after the
+    /// `with_*` builders have run, so a test's overrides are always the ones the runner sees.
+    fn ctx(&self) -> DispatchContext {
+        DispatchContext {
+            tendril_home: self.tendril_home.clone(),
+            settings: self.settings.clone(),
+            jobs: self.jobs.clone(),
+            handles: self.handles.clone(),
+            semaphore: self.semaphore.clone(),
+            queue: self.queue.clone(),
+            dispatch_notify: self.dispatch_notify.clone(),
+            spec_builder: self.spec_builder.clone(),
+            job_timeout_override: self.job_timeout_override,
+            post_result_grace_override: self.post_result_grace_override,
+            stale_output_timeout_override: self.stale_output_timeout_override,
+        }
+    }
+
+    /// Starts the single dispatcher task, once. Called on the first enqueue, so a manager that never
+    /// starts a job never spawns anything.
+    pub fn spawn_dispatcher(&self) {
+        if self.dispatcher_started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let ctx = self.ctx();
+        tokio::spawn(async move { dispatch_loop(ctx).await });
+    }
+
     pub async fn allocate_job_id(&self) -> Result<String> {
         let db_path = crate::config::get_database_path(&self.tendril_home);
         let conn = open_database(&db_path)?;
@@ -122,11 +226,36 @@ impl JobManager {
     }
 
     pub async fn start_job(&self, args: JobArgs) -> Result<String> {
+        self.start_job_with(args, StartOptions::default()).await
+    }
+
+    /// Starts a job, honouring the per-start options that do not belong to any job type's own args.
+    ///
+    /// Gates run in this order: conflict rejection, the plan dependency gate, the wait-for-jobs gate,
+    /// the plan state transition, then the enqueue. A rejected conflict is the only one that returns
+    /// `Err`: it writes no job row and touches no plan state.
+    pub async fn start_job_with(&self, args: JobArgs, opts: StartOptions) -> Result<String> {
         let job_type = args.job_type().to_string();
         let plan_folder_str = args.plan_folder().unwrap_or("").to_string();
         let plan_folder = PathBuf::from(&plan_folder_str);
 
+        // `CreatePlan` carries a priority of its own, so an explicit override is written back into the
+        // stored args rather than only onto the job row.
+        let mut args = args;
+        if let (JobArgs::CreatePlan(create), Some(priority)) = (&mut args, opts.priority) {
+            create.priority = priority;
+        }
+
         let settings = self.settings.read().await.clone();
+
+        // Before anything is allocated or written: another job of the same group must not already be
+        // working on this plan.
+        if let Some(existing_id) = self.find_conflicting_job(&job_type, &plan_folder_str).await {
+            return Err(TendrilError::Other(format!(
+                "{} already in progress for this plan (job {})",
+                job_type, existing_id
+            )));
+        }
 
         // Snapshot the plan state before anything mutates it, so a failure, timeout or cancel can
         // put the plan back where it was.
@@ -169,20 +298,43 @@ impl JobManager {
         job.args = serde_json::to_string(&args).ok();
         job.previous_plan_state = previous_plan_state.map(|s| s.to_string());
         job.project = resolve_project(&job, &settings);
+        job.wait_for_job_ids = opts.wait_for_jobs.clone();
+        job.priority = resolve_job_priority(&args, &plan_folder, opts.priority);
 
-        if let Some(reason) = &block_reason {
-            job.status = JobStatus::Blocked;
-            job.status_message = Some(reason.clone());
-            job.completed_at = Some(Utc::now());
-        } else {
-            job.status = JobStatus::Queued;
+        // The wait-for gate only runs when the plan dependency gate let the job through: a blocked
+        // plan is the more specific reason and should be the one the user sees.
+        let wait_outcome = match &block_reason {
+            Some(reason) => Some(WaitOutcome::Blocked(reason.clone())),
+            None => wait_for_jobs_block(&self.ctx(), &job).await,
+        };
+
+        match &wait_outcome {
+            Some(WaitOutcome::Blocked(reason)) => {
+                job.status = JobStatus::Blocked;
+                job.status_message = Some(reason.clone());
+            }
+            Some(WaitOutcome::Failed(reason)) => {
+                job.status = JobStatus::Failed;
+                job.status_message = Some(reason.clone());
+                job.completed_at = Some(Utc::now());
+            }
+            None => job.status = JobStatus::Queued,
         }
 
-        // Move the plan to its in-flight (or Blocked) state.
+        if block_reason.is_some() {
+            // Legacy recorded the blocking reason on the job row and on the plan.
+            job.completed_at = Some(Utc::now());
+        }
+
+        // Move the plan to its in-flight (or Blocked) state. A job waiting on another *job* leaves
+        // the plan alone: nothing about the plan itself is blocked, so the gate must not be re-run
+        // against a `Blocked` state it never earned.
         let target_plan_state = if block_reason.is_some() {
             Some(PlanStatus::Blocked)
-        } else {
+        } else if wait_outcome.is_none() {
             in_flight_plan_state(&job_type)
+        } else {
+            None
         };
         if let Some(state) = target_plan_state {
             self.set_plan_state(&plan_folder, state);
@@ -204,179 +356,22 @@ impl JobManager {
             job_id
         };
 
-        if block_reason.is_some() {
+        if job.status != JobStatus::Queued {
+            // Blocked or failed at a gate: no slot is claimed and no runner is armed.
             return Ok(job_id);
         }
 
-        let (cancel_tx, cancel_rx) = watch::channel(false);
-        let pid = Arc::new(AtomicU32::new(0));
-        let completion_claimed = Arc::new(AtomicBool::new(false));
-        self.handles.write().await.insert(
-            job_id.clone(),
-            JobHandle {
-                cancel_tx,
-                pid: pid.clone(),
-                completion_claimed: completion_claimed.clone(),
-            },
-        );
-
-        self.spawn_runner(job, cancel_rx, pid, completion_claimed, settings);
+        self.enqueue(&job_id, job.priority).await;
 
         Ok(job_id)
     }
 
-    #[allow(clippy::too_many_lines)]
-    fn spawn_runner(
-        &self,
-        mut job: JobItem,
-        cancel_rx: watch::Receiver<bool>,
-        pid: Arc<AtomicU32>,
-        completion_claimed: Arc<AtomicBool>,
-        settings: TendrilSettings,
-    ) {
-        let tendril_home = self.tendril_home.clone();
-        let jobs_map = self.jobs.clone();
-        let handles = self.handles.clone();
-        let sem = self.semaphore.clone();
-        let spec_builder = self.spec_builder.clone();
-        let timeout = self
-            .job_timeout_override
-            .or_else(|| job_timeout_duration(&settings));
-        let post_result_grace = self
-            .post_result_grace_override
-            .unwrap_or(crate::agents::runner::DEFAULT_POST_RESULT_GRACE);
-
-        tokio::spawn(async move {
-            let job_id = job.id.clone();
-            let _permit = match sem.acquire().await {
-                Ok(p) => p,
-                Err(_) => return,
-            };
-
-            // A job cancelled while it was still queued never had a process; cancel_job has already
-            // written its terminal state, so there is nothing left to do.
-            if *cancel_rx.borrow() {
-                return;
-            }
-
-            job.status = JobStatus::Running;
-            persist(&tendril_home, &jobs_map, &job).await;
-
-            let promptware_folder = tendril_home.join("Promptwares").join(&job.job_type);
-            if !promptware_folder.is_dir() {
-                let msg = format!(
-                    "Promptware folder not found: {}",
-                    promptware_folder.display()
-                );
-                finish_job(
-                    &tendril_home,
-                    &jobs_map,
-                    &handles,
-                    &completion_claimed,
-                    job,
-                    JobStatus::Failed,
-                    msg,
-                    None,
-                )
-                .await;
-                return;
-            }
-
-            let values = build_firmware_values(&job, &tendril_home, &settings);
-            let compiled_prompt = match compile_firmware(&promptware_folder, &values) {
-                Ok(p) => p,
-                Err(e) => {
-                    let msg = format!(
-                        "Failed to compile firmware from {}: {}",
-                        promptware_folder.display(),
-                        e
-                    );
-                    finish_job(
-                        &tendril_home,
-                        &jobs_map,
-                        &handles,
-                        &completion_claimed,
-                        job,
-                        JobStatus::Failed,
-                        msg,
-                        None,
-                    )
-                    .await;
-                    return;
-                }
-            };
-
-            if let Err(e) = write_prompt(&tendril_home, &job_id, &compiled_prompt) {
-                tracing::warn!("Failed to persist prompt for job {}: {}", job_id, e);
-            }
-
-            let working_dir =
-                resolve_working_directory(&job, &settings, &tendril_home, &promptware_folder);
-
-            if let Ok((plan, _)) = read_plan_yaml(Path::new(&job.plan_file)) {
-                if let Some(profile) = execution_profile_override(&job, &plan) {
-                    job.execution_profile = Some(profile);
-                }
-            }
-
-            let launch_config = AgentLaunchConfig {
-                prompt: compiled_prompt,
-                working_directory: working_dir.clone(),
-                model: job.model.clone(),
-                effort: job.effort.clone(),
-                ..Default::default()
-            };
-
-            let spec = (spec_builder)(&job.provider, &launch_config);
-            job.working_directory = Some(working_dir.to_string_lossy().to_string());
-            job.cli_command = Some(format!("{} {}", spec.command, spec.args.join(" ")));
-
-            let start_time = std::time::Instant::now();
-            let th = tendril_home.clone();
-            let jid = job_id.clone();
-            let pid_slot = pid.clone();
-            let jobs_for_pid = jobs_map.clone();
-            let home_for_pid = tendril_home.clone();
-            let job_for_pid = job.clone();
-
-            let run_res = run_agent_process_with_grace(
-                spec,
-                move |evt| {
-                    let _ = append_to_raw_log(&th, &jid, &evt.raw_line);
-                    let _ = append_to_eventwire(&th, &jid, &evt.raw_line);
-                },
-                move |spawned_pid| {
-                    pid_slot.store(spawned_pid, Ordering::SeqCst);
-                    // Persist the PID immediately: startup reconciliation uses it to tell a
-                    // detached agent from an interrupted one.
-                    let mut with_pid = job_for_pid;
-                    with_pid.process_id = Some(spawned_pid);
-                    tokio::spawn(async move {
-                        persist(&home_for_pid, &jobs_for_pid, &with_pid).await;
-                    });
-                },
-                cancel_rx,
-                timeout,
-                post_result_grace,
-            )
-            .await;
-
-            job.process_id = Some(pid.load(Ordering::SeqCst)).filter(|p| *p != 0);
-            let duration = start_time.elapsed().as_secs() as i64;
-            let (final_status, msg) = classify_outcome(run_res, timeout);
-
-            finish_job(
-                &tendril_home,
-                &jobs_map,
-                &handles,
-                &completion_claimed,
-                job,
-                final_status,
-                msg,
-                Some(duration),
-            )
-            .await;
-        });
+    /// Pushes a `Queued` job onto the priority queue and wakes the dispatcher.
+    async fn enqueue(&self, job_id: &str, priority: i32) {
+        ensure_handle(&self.handles, job_id).await;
+        self.queue.lock().await.push(job_id.to_string(), priority);
+        self.spawn_dispatcher();
+        self.dispatch_notify.notify_one();
     }
 
     fn set_plan_state(&self, plan_folder: &Path, state: PlanStatus) {
@@ -438,10 +433,16 @@ impl JobManager {
     /// instant still sees it and cannot flip the plan to `Review` behind the cancellation. Returns
     /// `false` when the job does not exist or had already finished.
     pub async fn cancel_job(&self, id: &str, message: Option<&str>) -> Result<bool> {
+        // Drop it from the queue first, so a slot freed by this very cancellation is never spent
+        // launching the job being cancelled.
+        self.queue.lock().await.remove(id);
+
         let handle_state = {
             let handles = self.handles.read().await;
             handles.get(id).map(|h| {
-                let _ = h.cancel_tx.send(true);
+                // `send_replace`, not `send`: a job cancelled while still queued has no receiver yet,
+                // and the flag must survive until the runner subscribes.
+                h.cancel_tx.send_replace(true);
                 (h.pid.clone(), h.completion_claimed.clone())
             })
         };
@@ -488,6 +489,10 @@ impl JobManager {
         persist(&self.tendril_home, &self.jobs, &job).await;
         self.handles.write().await.remove(id);
 
+        // A stopped job is terminal, so jobs waiting on it have to be told: they will never be
+        // released by its completion.
+        release_wait_dependents(&self.ctx(), id).await;
+
         Ok(true)
     }
 
@@ -511,6 +516,1006 @@ impl JobManager {
         let conn = open_database(&db_path)?;
         list_non_terminal_jobs(&conn).map_err(Into::into)
     }
+
+    // -----------------------------------------------------------------------
+    // Conflicts and wait-for dependencies
+    // -----------------------------------------------------------------------
+
+    /// The id of an unfinished job that would fight this one over the same plan, if any.
+    ///
+    /// Folder paths are compared case-insensitively, as legacy did, so two starts that spell the same
+    /// folder differently still collide.
+    pub async fn find_conflicting_job(&self, job_type: &str, plan_folder: &str) -> Option<String> {
+        let group = conflict_group(job_type)?;
+        if plan_folder.is_empty() {
+            return None;
+        }
+
+        let jobs = self.jobs.read().await;
+        let mut conflicting: Vec<&JobItem> = jobs
+            .values()
+            .filter(|j| {
+                matches!(
+                    j.status,
+                    JobStatus::Running
+                        | JobStatus::Queued
+                        | JobStatus::Pending
+                        | JobStatus::Blocked
+                ) && j.plan_file.eq_ignore_ascii_case(plan_folder)
+                    && conflict_group(&j.job_type) == Some(group)
+            })
+            .collect();
+        // Oldest first, so the message names the job that actually holds the plan.
+        conflicting.sort_by(|a, b| a.id.cmp(&b.id));
+        conflicting.first().map(|j| j.id.clone())
+    }
+
+    /// Re-runs the wait-for gate for every `Blocked` job listing `finished_id`, enqueueing the ones
+    /// that are now satisfied and failing the ones whose dependency ended badly. Returns the ids
+    /// released.
+    pub async fn release_wait_dependents(&self, finished_id: &str) -> Vec<String> {
+        release_wait_dependents(&self.ctx(), finished_id).await
+    }
+
+    // -----------------------------------------------------------------------
+    // Queue management
+    // -----------------------------------------------------------------------
+
+    /// Queued job ids in dispatch order, for the queue inspection route.
+    pub async fn queue_order(&self) -> Vec<String> {
+        self.queue.lock().await.peek_order()
+    }
+
+    /// Queued jobs with their priorities, in dispatch order.
+    pub async fn queue_snapshot(&self) -> Vec<(String, i32)> {
+        self.queue
+            .lock()
+            .await
+            .snapshot()
+            .into_iter()
+            .map(|e| (e.job_id, e.priority))
+            .collect()
+    }
+
+    /// The concurrency budget, i.e. `maxConcurrentJobs`.
+    pub async fn max_concurrent_jobs(&self) -> usize {
+        self.settings.read().await.max_concurrent_jobs.max(1) as usize
+    }
+
+    /// Stops every `Running`, `Queued`, `Pending` or `Blocked` job.
+    ///
+    /// Repeated up to three passes because stopping one job frees a slot and can promote a queued job
+    /// mid-sweep. Returns the ids actually stopped.
+    pub async fn stop_all_jobs(&self) -> Result<Vec<String>> {
+        let mut stopped = Vec::new();
+        for _ in 0..3 {
+            let mut candidates: Vec<String> = self
+                .jobs
+                .read()
+                .await
+                .values()
+                .filter(|j| !is_terminal(j.status))
+                .map(|j| j.id.clone())
+                .collect();
+            for job in self.list_non_terminal_jobs().await.unwrap_or_default() {
+                if !candidates.contains(&job.id) {
+                    candidates.push(job.id);
+                }
+            }
+            candidates.retain(|id| !stopped.contains(id));
+            if candidates.is_empty() {
+                break;
+            }
+            candidates.sort();
+
+            for id in candidates {
+                if self.cancel_job(&id, Some("Stopped by stop-all")).await? {
+                    stopped.push(id);
+                }
+            }
+        }
+
+        stopped.sort();
+        Ok(stopped)
+    }
+
+    /// Promotes a `Blocked` or `Queued` job past its gates, keeping its id.
+    ///
+    /// The job is pushed onto the queue with a priority above every entry currently waiting, so it is
+    /// the next thing to launch.
+    pub async fn force_start_job(&self, id: &str) -> Result<()> {
+        let Some(mut job) = self.get_job(id).await? else {
+            return Err(TendrilError::JobNotFound(id.to_string()));
+        };
+
+        match job.status {
+            JobStatus::Blocked | JobStatus::Queued => {}
+            other => {
+                return Err(TendrilError::Other(format!(
+                    "Job {} is {}, only Blocked or Queued jobs can be force-started",
+                    id, other
+                )));
+            }
+        }
+
+        if job.status == JobStatus::Blocked {
+            // The gates are deliberately skipped, but the plan still has to move to its in-flight
+            // state so the rest of the engine sees a normal launch.
+            job.status = JobStatus::Queued;
+            job.status_message = Some("Force-started".to_string());
+            job.completed_at = None;
+            job.started_at = Some(Utc::now());
+            if let Some(state) = in_flight_plan_state(&job.job_type) {
+                self.set_plan_state(Path::new(&job.plan_file), state);
+            }
+            persist(&self.tendril_home, &self.jobs, &job).await;
+        }
+
+        ensure_handle(&self.handles, id).await;
+        {
+            let mut queue = self.queue.lock().await;
+            queue.remove(id);
+            queue.push_front(id.to_string());
+        }
+        self.spawn_dispatcher();
+        self.dispatch_notify.notify_one();
+
+        Ok(())
+    }
+
+    /// Removes one job from the in-memory map and the database, reverting its plan through
+    /// [`revert_plan_state`]. A job that is still in flight is cancelled first.
+    ///
+    /// The artifacts under `<TendrilHome>/Jobs/` are deliberately kept: deleting a job removes it
+    /// from the UI and the database, not the forensic record of what it did.
+    pub async fn delete_job(&self, id: &str) -> Result<bool> {
+        let Some(job) = self.get_job(id).await? else {
+            return Ok(false);
+        };
+
+        if !is_terminal(job.status) {
+            // Cancellation reverts the plan through the same guarded path.
+            self.cancel_job(id, Some("Deleted")).await?;
+        } else {
+            revert_plan_state(&job);
+        }
+
+        self.queue.lock().await.remove(id);
+        self.jobs.write().await.remove(id);
+        self.handles.write().await.remove(id);
+
+        let db_path = crate::config::get_database_path(&self.tendril_home);
+        let conn = open_database(&db_path)?;
+        delete_job_row(&conn, id).map_err(Into::into)
+    }
+
+    /// Bulk delete by status. Each job goes through [`Self::delete_job`], so the plan-state guards
+    /// apply to every one of them.
+    pub async fn clear_jobs(&self, statuses: &[JobStatus]) -> Result<usize> {
+        let ids = {
+            let db_path = crate::config::get_database_path(&self.tendril_home);
+            let conn = open_database(&db_path)?;
+            list_job_ids_by_status(&conn, statuses)?
+        };
+
+        let mut cleared = 0;
+        for id in ids {
+            match self.delete_job(&id).await {
+                Ok(true) => cleared += 1,
+                Ok(false) => {}
+                Err(e) => tracing::warn!("Failed to delete job {}: {}", id, e),
+            }
+        }
+        Ok(cleared)
+    }
+
+    pub async fn clear_completed_jobs(&self) -> Result<usize> {
+        self.clear_jobs(&[JobStatus::Completed]).await
+    }
+
+    pub async fn clear_failed_jobs(&self) -> Result<usize> {
+        self.clear_jobs(&[JobStatus::Failed]).await
+    }
+
+    /// Clears every terminal job. `Blocked` jobs survive: one still waiting on a real dependency is
+    /// pending work, not history.
+    pub async fn clear_all_jobs(&self) -> Result<usize> {
+        self.clear_jobs(&[
+            JobStatus::Completed,
+            JobStatus::Failed,
+            JobStatus::Timeout,
+            JobStatus::Stopped,
+        ])
+        .await
+    }
+
+    // -----------------------------------------------------------------------
+    // Periodic maintenance
+    // -----------------------------------------------------------------------
+
+    /// One pass of the periodic maintenance the daemon runs every 60s.
+    pub async fn run_maintenance_pass(&self) -> MaintenanceReport {
+        self.run_maintenance_pass_with(&get_gh_pr_state).await
+    }
+
+    /// [`Self::run_maintenance_pass`] with an injectable PR-state resolver, so tests can drive the
+    /// blocked-plan recheck without invoking `gh`.
+    ///
+    /// Idempotent and best-effort: each step logs and continues rather than aborting the pass.
+    pub async fn run_maintenance_pass_with<F>(&self, resolve_pr_state: &F) -> MaintenanceReport
+    where
+        F: Fn(&str) -> Result<String> + Sync,
+    {
+        let mut report = MaintenanceReport::default();
+        let plans_dir = {
+            let settings = self.settings.read().await.clone();
+            get_plans_dir_with_settings(&self.tendril_home, Some(&settings))
+        };
+
+        // 1. Blocked plans whose dependencies have since been satisfied. This is the pass that used
+        //    to run only at startup.
+        //
+        //    The `&dyn Fn` resolver is not `Send`, so it is confined to this await-free block: the
+        //    60s timer task needs the whole future to stay `Send`.
+        let unblocked = {
+            let resolver: crate::plans::dependencies::PrStateResolver =
+                &|url| resolve_pr_state(url);
+            match unblock_satisfied_plans_with(&plans_dir, resolver) {
+                Ok(folders) => folders,
+                Err(e) => {
+                    tracing::warn!("Maintenance: blocked-plan recheck failed: {}", e);
+                    Vec::new()
+                }
+            }
+        };
+        report.unblocked_plans = unblocked;
+
+        let blocked_jobs: Vec<JobItem> = self
+            .jobs
+            .read()
+            .await
+            .values()
+            .filter(|j| j.status == JobStatus::Blocked)
+            .cloned()
+            .collect();
+
+        for job in &blocked_jobs {
+            if !job.wait_for_job_ids.is_empty() {
+                // Step 2's business.
+                continue;
+            }
+            let plan_folder = PathBuf::from(&job.plan_file);
+            if !plan_folder.is_dir() {
+                continue;
+            }
+            if read_plan_state(&plan_folder) == Some(PlanStatus::Blocked) {
+                continue;
+            }
+
+            let satisfied = {
+                let resolver: crate::plans::dependencies::PrStateResolver =
+                    &|url| resolve_pr_state(url);
+                matches!(
+                    check_dependencies_with(&plan_folder, &plans_dir, resolver),
+                    Ok(res) if res.ok
+                )
+            };
+            if satisfied {
+                release_blocked_job(&self.ctx(), job.clone()).await;
+                report.released_jobs.push(job.id.clone());
+            }
+        }
+
+        // 2. Wait-for dependencies that have since finished. Belt and braces against a release
+        //    notification that was missed because the daemon restarted.
+        for job in &blocked_jobs {
+            if job.wait_for_job_ids.is_empty() {
+                continue;
+            }
+            let ctx = self.ctx();
+            match wait_for_jobs_block(&ctx, job).await {
+                None => {
+                    release_blocked_job(&ctx, job.clone()).await;
+                    report.released_jobs.push(job.id.clone());
+                }
+                Some(WaitOutcome::Failed(reason)) => {
+                    let mut failed = job.clone();
+                    failed.status = JobStatus::Failed;
+                    failed.status_message = Some(reason);
+                    failed.completed_at = Some(Utc::now());
+                    revert_plan_state(&failed);
+                    persist(&self.tendril_home, &self.jobs, &failed).await;
+                }
+                Some(WaitOutcome::Blocked(_)) => {}
+            }
+        }
+
+        // 3. Running jobs whose agent has gone quiet, or which have blown past the hard cap. Read
+        //    from SQLite so a job left Running by a previous daemon is caught too.
+        let (stale_timeout, job_timeout) = {
+            let settings = self.settings.read().await.clone();
+            (
+                self.stale_output_timeout_override
+                    .or_else(|| stale_output_timeout_duration(&settings)),
+                self.job_timeout_override
+                    .or_else(|| job_timeout_duration(&settings)),
+            )
+        };
+        let now = Utc::now();
+        for job in self.list_non_terminal_jobs().await.unwrap_or_default() {
+            if job.status != JobStatus::Running {
+                continue;
+            }
+            let Some(reason) = stuck_job_reason(&job, now, stale_timeout, job_timeout) else {
+                continue;
+            };
+            tracing::warn!("Maintenance: reaping stuck job {}: {}", job.id, reason);
+            match self.cancel_job(&job.id, Some(&reason)).await {
+                Ok(true) => report.reaped_jobs.push(job.id.clone()),
+                Ok(false) => {}
+                Err(e) => tracing::warn!("Maintenance: could not reap job {}: {}", job.id, e),
+            }
+        }
+
+        // 4. Terminal jobs that no longer need to sit in memory. Their rows stay in SQLite and
+        //    `get_job` falls back to them.
+        report.evicted_jobs = self.evict_stale_jobs().await;
+
+        report
+    }
+
+    /// Drops long-finished jobs from the in-memory map, keeping the most recent regardless of age.
+    async fn evict_stale_jobs(&self) -> Vec<String> {
+        let mut jobs = self.jobs.write().await;
+        let mut terminal: Vec<(String, chrono::DateTime<Utc>)> = jobs
+            .values()
+            .filter(|j| is_terminal(j.status))
+            .filter_map(|j| j.completed_at.map(|at| (j.id.clone(), at)))
+            .collect();
+        // Newest first, so the keep-window is the head of the list.
+        terminal.sort_by_key(|(_, completed_at)| std::cmp::Reverse(*completed_at));
+
+        let cutoff = Utc::now() - chrono::Duration::from_std(STALE_JOB_EVICTION_AGE).unwrap();
+        let mut evicted = Vec::new();
+        for (id, completed_at) in terminal.into_iter().skip(STALE_JOB_KEEP_RECENT) {
+            if completed_at < cutoff {
+                jobs.remove(&id);
+                evicted.push(id);
+            }
+        }
+        evicted.sort();
+        evicted
+    }
+}
+
+/// What one [`JobManager::run_maintenance_pass`] changed.
+#[derive(Debug, Default, Clone, serde::Serialize)]
+pub struct MaintenanceReport {
+    /// Plan folders moved `Blocked` -> `Draft`.
+    #[serde(rename = "unblockedPlans")]
+    pub unblocked_plans: Vec<String>,
+    /// Blocked jobs whose gates are now satisfied and which were enqueued.
+    #[serde(rename = "releasedJobs")]
+    pub released_jobs: Vec<String>,
+    /// Jobs reaped by the stuck-job check.
+    #[serde(rename = "reapedJobs")]
+    pub reaped_jobs: Vec<String>,
+    /// Finished jobs evicted from the in-memory map.
+    #[serde(rename = "evictedJobs")]
+    pub evicted_jobs: Vec<String>,
+}
+
+impl MaintenanceReport {
+    pub fn is_empty(&self) -> bool {
+        self.unblocked_plans.is_empty()
+            && self.released_jobs.is_empty()
+            && self.reaped_jobs.is_empty()
+            && self.evicted_jobs.is_empty()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Conflicts, priority and wait-for dependencies
+// ---------------------------------------------------------------------------
+
+/// Job types that mutate a plan's `plan.yaml` or its worktree. Any two of them on the same plan
+/// folder conflict, so `ExecutePlan` and `RetryPlan` are mutually exclusive as well as
+/// self-exclusive. Non-plan job types (`SetupProject`, `AddProject`, `SyncRepo`) are in no group.
+///
+/// `CreatePr` is in the mutating group even though legacy left it out — that omission is what let
+/// duplicate `CreatePr` jobs run on one plan.
+pub fn conflict_group(job_type: &str) -> Option<&'static str> {
+    match job_type {
+        "ExecutePlan" | "RetryPlan" | "CreatePr" => Some("plan-mutating"),
+        "UpdatePlan" | "ExpandPlan" | "SplitPlan" => Some("plan-authoring"),
+        _ => None,
+    }
+}
+
+/// The priority a job launches with: an explicit override, else `CreatePlanArgs.priority`, else the
+/// plan's own `plan.yaml` priority, else `0`.
+fn resolve_job_priority(args: &JobArgs, plan_folder: &Path, override_priority: Option<i32>) -> i32 {
+    if let Some(priority) = override_priority {
+        return priority;
+    }
+    if let JobArgs::CreatePlan(create) = args {
+        if create.priority != 0 {
+            return create.priority;
+        }
+    }
+    if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
+        return 0;
+    }
+    read_plan_yaml(plan_folder)
+        .map(|(plan, _)| plan.priority)
+        .unwrap_or(0)
+}
+
+/// Human-readable dependency description: `"ExecutePlan of plan 00123 (job 00456)"`, or
+/// `"CreatePr (job 00456)"` when no plan id can be resolved.
+pub fn describe_wait_dependency(dep: &JobItem) -> String {
+    let plan_id = dep.resolve_plan_id();
+    if plan_id.is_empty() {
+        format!("{} (job {})", dep.job_type, dep.id)
+    } else {
+        format!("{} of plan {} (job {})", dep.job_type, plan_id, dep.id)
+    }
+}
+
+/// Whether `job` must wait, and why. `None` means it may proceed.
+///
+/// An unknown dependency id is not a reason to wait: it names a job that no longer exists, and
+/// stranding the waiter forever would be worse than letting it run.
+async fn wait_for_jobs_block(ctx: &DispatchContext, job: &JobItem) -> Option<WaitOutcome> {
+    if job.wait_for_job_ids.is_empty() {
+        return None;
+    }
+
+    let mut pending = Vec::new();
+    for dep_id in &job.wait_for_job_ids {
+        if dep_id == &job.id {
+            continue;
+        }
+        let Some(dep) = lookup_job(ctx, dep_id).await else {
+            continue;
+        };
+        match dep.status {
+            JobStatus::Completed => {}
+            JobStatus::Failed | JobStatus::Timeout | JobStatus::Stopped => {
+                return Some(WaitOutcome::Failed(format!(
+                    "Blocked job {} failed",
+                    dep.id
+                )));
+            }
+            _ => pending.push(describe_wait_dependency(&dep)),
+        }
+    }
+
+    if pending.is_empty() {
+        None
+    } else {
+        Some(WaitOutcome::Blocked(format!(
+            "Waiting for {}",
+            pending.join(", ")
+        )))
+    }
+}
+
+/// Re-runs the wait-for gate for every `Blocked` job listing `finished_id`.
+async fn release_wait_dependents(ctx: &DispatchContext, finished_id: &str) -> Vec<String> {
+    let waiting: Vec<JobItem> = ctx
+        .jobs
+        .read()
+        .await
+        .values()
+        .filter(|j| {
+            j.status == JobStatus::Blocked && j.wait_for_job_ids.iter().any(|id| id == finished_id)
+        })
+        .cloned()
+        .collect();
+
+    let mut released = Vec::new();
+    for job in waiting {
+        match wait_for_jobs_block(ctx, &job).await {
+            None => {
+                let id = job.id.clone();
+                release_blocked_job(ctx, job).await;
+                released.push(id);
+            }
+            Some(WaitOutcome::Failed(reason)) => {
+                let mut failed = job;
+                failed.status = JobStatus::Failed;
+                failed.status_message = Some(reason);
+                failed.completed_at = Some(Utc::now());
+                revert_plan_state(&failed);
+                persist(&ctx.tendril_home, &ctx.jobs, &failed).await;
+            }
+            Some(WaitOutcome::Blocked(reason)) => {
+                // Still waiting on something else; keep the message current.
+                if job.status_message.as_deref() != Some(reason.as_str()) {
+                    let mut still_blocked = job;
+                    still_blocked.status_message = Some(reason);
+                    persist(&ctx.tendril_home, &ctx.jobs, &still_blocked).await;
+                }
+            }
+        }
+    }
+
+    released
+}
+
+/// Moves a `Blocked` job to `Queued`, transitions its plan to the in-flight state and enqueues it.
+async fn release_blocked_job(ctx: &DispatchContext, mut job: JobItem) {
+    job.status = JobStatus::Queued;
+    job.status_message = None;
+    job.completed_at = None;
+    job.started_at = Some(Utc::now());
+    if let Some(state) = in_flight_plan_state(&job.job_type) {
+        apply_plan_state(Path::new(&job.plan_file), state);
+    }
+    persist(&ctx.tendril_home, &ctx.jobs, &job).await;
+
+    ensure_handle(&ctx.handles, &job.id).await;
+    ctx.queue.lock().await.push(job.id.clone(), job.priority);
+    ctx.dispatch_notify.notify_one();
+}
+
+/// Why the maintenance pass considers a `Running` job stuck, if it does.
+fn stuck_job_reason(
+    job: &JobItem,
+    now: chrono::DateTime<Utc>,
+    stale_timeout: Option<Duration>,
+    job_timeout: Option<Duration>,
+) -> Option<String> {
+    let elapsed_since = |at: chrono::DateTime<Utc>| (now - at).to_std().ok();
+
+    if let (Some(stale), Some(anchor)) = (stale_timeout, job.last_output_at.or(job.started_at)) {
+        if let Some(quiet) = elapsed_since(anchor) {
+            if quiet > stale + STUCK_JOB_REAP_GRACE {
+                return Some(format!(
+                    "No agent output for {} (stuck job check)",
+                    describe_window(quiet)
+                ));
+            }
+        }
+    }
+
+    if let (Some(limit), Some(started)) = (job_timeout, job.started_at) {
+        if let Some(running_for) = elapsed_since(started) {
+            if running_for > limit + STUCK_JOB_HARD_CAP_MARGIN + STUCK_JOB_REAP_GRACE {
+                return Some(format!(
+                    "Running for {}, past its {} timeout (stuck job check)",
+                    describe_window(running_for),
+                    describe_window(limit)
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+/// Renders a duration the way the job list should read it.
+fn describe_window(d: Duration) -> String {
+    let secs = d.as_secs();
+    if secs == 0 {
+        return format!("{} ms", d.as_millis());
+    }
+    if secs < 60 {
+        return format!("{} seconds", secs);
+    }
+    let minutes = secs / 60;
+    match secs % 60 {
+        0 => format!("{} minutes", minutes),
+        rest => format!("{} minutes {} seconds", minutes, rest),
+    }
+}
+
+/// Reads a job from the in-memory map, falling back to SQLite.
+async fn lookup_job(ctx: &DispatchContext, id: &str) -> Option<JobItem> {
+    if let Some(job) = ctx.jobs.read().await.get(id).cloned() {
+        return Some(job);
+    }
+    let db_path = crate::config::get_database_path(&ctx.tendril_home);
+    open_database(&db_path)
+        .ok()
+        .and_then(|conn| get_job(&conn, id).ok().flatten())
+}
+
+/// Creates the control handle for a job if it does not have one yet.
+async fn ensure_handle(handles: &Arc<RwLock<HashMap<String, JobHandle>>>, job_id: &str) {
+    handles
+        .write()
+        .await
+        .entry(job_id.to_string())
+        .or_insert_with(JobHandle::new);
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch
+// ---------------------------------------------------------------------------
+
+/// The single task that turns free slots into running jobs, highest priority first.
+async fn dispatch_loop(ctx: DispatchContext) {
+    loop {
+        ctx.dispatch_notify.notified().await;
+        drain_queue(&ctx).await;
+    }
+}
+
+/// Launches as many queued jobs as there are free slots.
+async fn drain_queue(ctx: &DispatchContext) {
+    loop {
+        let Ok(permit) = ctx.semaphore.clone().try_acquire_owned() else {
+            return;
+        };
+        let entry = ctx.queue.lock().await.pop();
+        let Some(entry) = entry else {
+            drop(permit);
+            return;
+        };
+
+        // Status is re-checked after the pop: a job cancelled while it waited must not launch.
+        let job = ctx.jobs.read().await.get(&entry.job_id).cloned();
+        match job {
+            Some(job) if job.status == JobStatus::Queued => {
+                launch(ctx.clone(), job, permit).await;
+            }
+            _ => drop(permit),
+        }
+    }
+}
+
+/// Arms the runner for one job, handing it the slot the dispatcher just took.
+async fn launch(ctx: DispatchContext, job: JobItem, permit: OwnedSemaphorePermit) {
+    ensure_handle(&ctx.handles, &job.id).await;
+    let handle_state = {
+        let handles = ctx.handles.read().await;
+        handles.get(&job.id).map(|h| {
+            (
+                h.cancel_tx.clone(),
+                h.pid.clone(),
+                h.completion_claimed.clone(),
+            )
+        })
+    };
+    let Some((cancel_tx, pid, completion_claimed)) = handle_state else {
+        drop(permit);
+        return;
+    };
+
+    let settings = ctx.settings.read().await.clone();
+    spawn_runner(
+        ctx,
+        job,
+        cancel_tx,
+        pid,
+        completion_claimed,
+        settings,
+        permit,
+    );
+}
+
+/// Shared liveness state for one running job, written by the output callback and read by the
+/// watchdog.
+struct OutputActivity {
+    /// Instant of the last agent line.
+    last_output: std::sync::Mutex<Instant>,
+    /// Set once the agent emits its terminal result event. The watchdog stands down from that point:
+    /// `run_agent_process_with_grace` owns the wind-down from there, and killing a job that has
+    /// already reported its result would discard completed work.
+    result_seen: AtomicBool,
+    /// When `LastOutputAt` was last written, so a chatty agent does not hammer SQLite.
+    last_persist: std::sync::Mutex<Option<Instant>>,
+}
+
+impl OutputActivity {
+    fn new() -> Self {
+        Self {
+            last_output: std::sync::Mutex::new(Instant::now()),
+            result_seen: AtomicBool::new(false),
+            last_persist: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// How long the agent has been silent.
+    fn quiet_for(&self) -> Duration {
+        self.last_output
+            .lock()
+            .map(|last| last.elapsed())
+            .unwrap_or_default()
+    }
+}
+
+/// Fails a job whose agent has gone quiet for longer than `staleOutputTimeout`.
+///
+/// The baseline before any output arrives is the moment monitoring began, so a job that never emits
+/// anything is still caught. Stands down permanently once `result_seen` is set, so the post-result
+/// grace window in `run_agent_process_with_grace` is respected; a job that is merely busy — a long
+/// `cargo test` in a verification step still counts as alive, because the agent's tool-result line
+/// resets the anchor — is only killed when nothing at all arrives for the full window.
+///
+/// It never writes a terminal status itself: it raises the cancel flag and lets the runner's single
+/// completion claim stand.
+async fn run_stale_output_watchdog(
+    job_id: String,
+    activity: Arc<OutputActivity>,
+    stale_timeout: Duration,
+    cancel_tx: Arc<watch::Sender<bool>>,
+    finished: Arc<AtomicBool>,
+    stale_fired: Arc<AtomicBool>,
+) {
+    let mut ticker = tokio::time::interval(Duration::from_secs(1));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    loop {
+        ticker.tick().await;
+        if finished.load(Ordering::SeqCst) || activity.result_seen.load(Ordering::SeqCst) {
+            return;
+        }
+        let quiet = activity.quiet_for();
+        if quiet >= stale_timeout {
+            tracing::warn!(
+                "Job {}: no agent output for {}, cancelling (stale output timeout)",
+                job_id,
+                describe_window(quiet)
+            );
+            stale_fired.store(true, Ordering::SeqCst);
+            cancel_tx.send_replace(true);
+            return;
+        }
+    }
+}
+
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+fn spawn_runner(
+    ctx: DispatchContext,
+    mut job: JobItem,
+    cancel_tx: Arc<watch::Sender<bool>>,
+    pid: Arc<AtomicU32>,
+    completion_claimed: Arc<AtomicBool>,
+    settings: TendrilSettings,
+    permit: OwnedSemaphorePermit,
+) {
+    let tendril_home = ctx.tendril_home.clone();
+    let jobs_map = ctx.jobs.clone();
+    let handles = ctx.handles.clone();
+    let spec_builder = ctx.spec_builder.clone();
+    let dispatch_notify = ctx.dispatch_notify.clone();
+    let timeout = ctx
+        .job_timeout_override
+        .or_else(|| job_timeout_duration(&settings));
+    let post_result_grace = ctx
+        .post_result_grace_override
+        .unwrap_or(crate::agents::runner::DEFAULT_POST_RESULT_GRACE);
+    let stale_timeout = ctx
+        .stale_output_timeout_override
+        .or_else(|| stale_output_timeout_duration(&settings));
+
+    tokio::spawn(async move {
+        // The permit is held for the whole life of the job, and released to the dispatcher at the end.
+        let permit = permit;
+        let job_id = job.id.clone();
+        let cancel_rx = cancel_tx.subscribe();
+
+        // A job cancelled while it was still queued never had a process; cancel_job has already
+        // written its terminal state, so there is nothing left to do.
+        if *cancel_rx.borrow() {
+            drop(permit);
+            dispatch_notify.notify_one();
+            return;
+        }
+
+        job.status = JobStatus::Running;
+        persist(&tendril_home, &jobs_map, &job).await;
+
+        let promptware_folder = tendril_home.join("Promptwares").join(&job.job_type);
+        if !promptware_folder.is_dir() {
+            let msg = format!(
+                "Promptware folder not found: {}",
+                promptware_folder.display()
+            );
+            finish_job(
+                &tendril_home,
+                &jobs_map,
+                &handles,
+                &completion_claimed,
+                job,
+                JobStatus::Failed,
+                msg,
+                None,
+            )
+            .await;
+            release_wait_dependents(&ctx, &job_id).await;
+            drop(permit);
+            dispatch_notify.notify_one();
+            return;
+        }
+
+        let values = build_firmware_values(&job, &tendril_home, &settings);
+        let compiled_prompt = match compile_firmware(&promptware_folder, &values) {
+            Ok(p) => p,
+            Err(e) => {
+                let msg = format!(
+                    "Failed to compile firmware from {}: {}",
+                    promptware_folder.display(),
+                    e
+                );
+                finish_job(
+                    &tendril_home,
+                    &jobs_map,
+                    &handles,
+                    &completion_claimed,
+                    job,
+                    JobStatus::Failed,
+                    msg,
+                    None,
+                )
+                .await;
+                release_wait_dependents(&ctx, &job_id).await;
+                drop(permit);
+                dispatch_notify.notify_one();
+                return;
+            }
+        };
+
+        if let Err(e) = write_prompt(&tendril_home, &job_id, &compiled_prompt) {
+            tracing::warn!("Failed to persist prompt for job {}: {}", job_id, e);
+        }
+
+        let working_dir =
+            resolve_working_directory(&job, &settings, &tendril_home, &promptware_folder);
+
+        if let Ok((plan, _)) = read_plan_yaml(Path::new(&job.plan_file)) {
+            if let Some(profile) = execution_profile_override(&job, &plan) {
+                job.execution_profile = Some(profile);
+            }
+        }
+
+        let launch_config = AgentLaunchConfig {
+            prompt: compiled_prompt,
+            working_directory: working_dir.clone(),
+            model: job.model.clone(),
+            effort: job.effort.clone(),
+            ..Default::default()
+        };
+
+        let spec = (spec_builder)(&job.provider, &launch_config);
+        job.working_directory = Some(working_dir.to_string_lossy().to_string());
+        job.cli_command = Some(format!("{} {}", spec.command, spec.args.join(" ")));
+
+        let start_time = Instant::now();
+        let th = tendril_home.clone();
+        let jid = job_id.clone();
+        let pid_slot = pid.clone();
+        let jobs_for_pid = jobs_map.clone();
+        let home_for_pid = tendril_home.clone();
+        let job_for_pid = job.clone();
+
+        // Liveness plumbing: the callback stamps activity, the watchdog reads it.
+        let activity = Arc::new(OutputActivity::new());
+        let finished = Arc::new(AtomicBool::new(false));
+        let stale_fired = Arc::new(AtomicBool::new(false));
+        if let Some(stale) = stale_timeout {
+            tokio::spawn(run_stale_output_watchdog(
+                job_id.clone(),
+                activity.clone(),
+                stale,
+                cancel_tx.clone(),
+                finished.clone(),
+                stale_fired.clone(),
+            ));
+        }
+        let activity_for_output = activity.clone();
+        let home_for_output = tendril_home.clone();
+        let id_for_output = job_id.clone();
+
+        let run_res = run_agent_process_with_grace(
+            spec,
+            move |evt| {
+                let _ = append_to_raw_log(&th, &jid, &evt.raw_line);
+                let _ = append_to_eventwire(&th, &jid, &evt.raw_line);
+                note_agent_output(
+                    &activity_for_output,
+                    &home_for_output,
+                    &id_for_output,
+                    &evt.raw_line,
+                );
+            },
+            move |spawned_pid| {
+                pid_slot.store(spawned_pid, Ordering::SeqCst);
+                // Persist the PID immediately: startup reconciliation uses it to tell a
+                // detached agent from an interrupted one.
+                let mut with_pid = job_for_pid;
+                with_pid.process_id = Some(spawned_pid);
+                tokio::spawn(async move {
+                    persist(&home_for_pid, &jobs_for_pid, &with_pid).await;
+                });
+            },
+            cancel_rx,
+            timeout,
+            post_result_grace,
+        )
+        .await;
+
+        finished.store(true, Ordering::SeqCst);
+        job.process_id = Some(pid.load(Ordering::SeqCst)).filter(|p| *p != 0);
+        let duration = start_time.elapsed().as_secs() as i64;
+        let (final_status, msg) = classify_outcome(
+            run_res,
+            timeout,
+            stale_fired
+                .load(Ordering::SeqCst)
+                .then(|| stale_timeout.unwrap_or_default()),
+        );
+
+        finish_job(
+            &tendril_home,
+            &jobs_map,
+            &handles,
+            &completion_claimed,
+            job,
+            final_status,
+            msg,
+            Some(duration),
+        )
+        .await;
+
+        // `finish_job`'s signature is public and depended on by tests, so the release step lives here
+        // rather than inside it. The maintenance pass rechecks the same thing every 60s, which covers
+        // a job that finished while the daemon was down.
+        release_wait_dependents(&ctx, &job_id).await;
+
+        drop(permit);
+        dispatch_notify.notify_one();
+    });
+}
+
+/// Records one line of agent output: refreshes the liveness anchor, notes a terminal result event,
+/// and refreshes `LastOutputAt` in SQLite at most once per [`LAST_OUTPUT_PERSIST_INTERVAL`].
+fn note_agent_output(
+    activity: &Arc<OutputActivity>,
+    tendril_home: &Path,
+    job_id: &str,
+    raw_line: &str,
+) {
+    let now = Instant::now();
+    if let Ok(mut last) = activity.last_output.lock() {
+        *last = now;
+    }
+    if crate::agents::runner::parse_terminal_result_event(raw_line).is_some() {
+        activity.result_seen.store(true, Ordering::SeqCst);
+    }
+
+    let should_persist = match activity.last_persist.lock() {
+        Ok(mut last_persist) => {
+            let due = last_persist
+                .map(|at| now.duration_since(at) >= LAST_OUTPUT_PERSIST_INTERVAL)
+                .unwrap_or(true);
+            if due {
+                *last_persist = Some(now);
+            }
+            due
+        }
+        Err(_) => false,
+    };
+    if !should_persist {
+        return;
+    }
+
+    let home = tendril_home.to_path_buf();
+    let id = job_id.to_string();
+    tokio::spawn(async move {
+        let db_path = crate::config::get_database_path(&home);
+        match open_database(&db_path) {
+            Ok(conn) => {
+                if let Err(e) = touch_job_last_output(&conn, &id, Utc::now()) {
+                    tracing::debug!("Failed to stamp last output for job {}: {}", id, e);
+                }
+            }
+            Err(e) => tracing::debug!("Failed to open database for job {} heartbeat: {}", id, e),
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -683,10 +1688,37 @@ fn job_timeout_duration(settings: &TendrilSettings) -> Option<Duration> {
     }
 }
 
+/// The silence window after which a job is killed, or `None` when the setting disables the watchdog.
+/// Expressed in whole minutes, like `jobTimeout`.
+fn stale_output_timeout_duration(settings: &TendrilSettings) -> Option<Duration> {
+    if settings.stale_output_timeout > 0 {
+        Some(Duration::from_secs(
+            settings.stale_output_timeout as u64 * 60,
+        ))
+    } else {
+        None
+    }
+}
+
+/// Maps an agent run to the job's terminal status. `stale_output` carries the silence window when the
+/// cancellation came from the stale-output watchdog rather than from a user.
 fn classify_outcome(
     run_res: Result<AgentRunOutcome>,
     timeout: Option<Duration>,
+    stale_output: Option<Duration>,
 ) -> (JobStatus, String) {
+    if let (Some(window), Ok(outcome)) = (stale_output, &run_res) {
+        if outcome.terminated == TerminationReason::Cancelled {
+            return (
+                JobStatus::Timeout,
+                format!(
+                    "No agent output for {} (stale output timeout)",
+                    describe_window(window)
+                ),
+            );
+        }
+    }
+
     match run_res {
         Ok(outcome) => match outcome.terminated {
             TerminationReason::Exited => match outcome.exit_code {
