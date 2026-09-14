@@ -13,8 +13,8 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
-use tendril_core::db::{get_recommendations, open_database, rebuild_recommendations_projection};
 use tendril_core::db::RecommendationRow;
+use tendril_core::db::{get_recommendations, open_database, rebuild_recommendations_projection};
 
 #[derive(Debug, Deserialize)]
 pub struct RecommendationsQuery {

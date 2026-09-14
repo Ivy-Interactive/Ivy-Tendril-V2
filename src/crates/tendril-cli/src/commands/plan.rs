@@ -18,11 +18,11 @@ use tendril_core::models::{
 use tendril_core::plans::{
     accept_recommendation, add_recommendation, check_all_plans_health, check_plan_health,
     create_plan, decline_recommendation, get_revision, list_recommendations, materialize_plan_env,
-    order_by_project_config, read_plan_file, read_plan_yaml, remove_recommendation, render_env_file,
-    resolve_plan_folder, resolve_plan_folder_name, resolve_plan_project, resolve_worktrees,
-    set_plan_verification_status, set_recommendation_field, write_plan_yaml, write_revision,
-    CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard,
-    RenderedEnvFile,
+    order_by_project_config, read_plan_file, read_plan_yaml, remove_recommendation,
+    render_env_file, resolve_plan_folder, resolve_plan_folder_name, resolve_plan_project,
+    resolve_worktrees, set_plan_verification_status, set_recommendation_field, write_plan_yaml,
+    write_revision, CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome,
+    PlanCompletionGuard, RenderedEnvFile,
 };
 
 #[derive(Subcommand)]
@@ -441,7 +441,10 @@ pub enum PlanRecCommands {
     Accept {
         plan_id: String,
         title: String,
-        #[arg(long, help = "Why it was accepted; any text promotes it to AcceptedWithNotes")]
+        #[arg(
+            long,
+            help = "Why it was accepted; any text promotes it to AcceptedWithNotes"
+        )]
         notes: Option<String>,
         #[command(flatten)]
         edit: PlanEditReasonArgs,
@@ -455,12 +458,12 @@ pub enum PlanRecCommands {
     Decline {
         plan_id: String,
         title: String,
-        #[arg(long, help = "Why the recommendation was declined, stored in plan.yaml")]
-        reason: Option<String>,
         #[arg(
             long,
-            help = "Why this edit was made, reported to other chat sessions"
+            help = "Why the recommendation was declined, stored in plan.yaml"
         )]
+        reason: Option<String>,
+        #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
         edit_reason: Option<String>,
         #[arg(
             long,
