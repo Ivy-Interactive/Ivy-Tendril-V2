@@ -223,7 +223,7 @@ fn test_master_file_lifecycle() {
 
     assert!(read_master(&test_dir).is_none());
 
-    write_master(&test_dir, 49200, "secret-token-xyz", "127.0.0.1")
+    write_master(&test_dir, 49200, "secret-token-xyz", "127.0.0.1", "http")
         .expect("Failed to write master");
 
     let master_info = read_master(&test_dir).expect("Master info not found");

@@ -6,7 +6,7 @@
 //! be — and a single place to classify what a transport failure actually means, because "the daemon
 //! never answered" and "the daemon is not running" call for opposite responses from the caller.
 
-use crate::config::{get_config_path, load_config, MasterInfo, TendrilSettings};
+use crate::config::{get_config_path, load_config, read_master, MasterInfo, TendrilSettings};
 use std::path::Path;
 use std::time::Duration;
 
@@ -48,13 +48,34 @@ pub fn daemon_request_timeout_for(tendril_home: &Path) -> Option<Duration> {
 }
 
 /// The client every daemon call must use.
+///
+/// Reads `.master` for the scheme too: when the daemon is serving TLS with the self-signed pair
+/// `tendril generate-certs` writes, no certificate store will vouch for it, so a client built
+/// without knowing that would fail every request against an https daemon.
 pub fn daemon_client(tendril_home: &Path) -> reqwest::Client {
-    daemon_client_with_timeout(daemon_request_timeout_for(tendril_home))
+    let timeout = daemon_request_timeout_for(tendril_home);
+    match read_master(tendril_home) {
+        Some(master) => daemon_client_with_timeout_and_master(timeout, &master),
+        None => daemon_client_with_timeout(timeout),
+    }
 }
 
 /// Explicit-timeout form, for tests and for the shortened reconciliation budget.
 pub fn daemon_client_with_timeout(timeout: Option<Duration>) -> reqwest::Client {
-    let mut builder = reqwest::Client::builder();
+    build_daemon_client(timeout, false)
+}
+
+/// Explicit-timeout form for a known master, so the certificate check can be relaxed for a
+/// loopback https daemon without every caller re-deriving that condition.
+pub fn daemon_client_with_timeout_and_master(
+    timeout: Option<Duration>,
+    master: &MasterInfo,
+) -> reqwest::Client {
+    build_daemon_client(timeout, accepts_self_signed(master))
+}
+
+fn build_daemon_client(timeout: Option<Duration>, accept_invalid_certs: bool) -> reqwest::Client {
+    let mut builder = reqwest::Client::builder().danger_accept_invalid_certs(accept_invalid_certs);
     if let Some(timeout) = timeout {
         builder = builder.timeout(timeout);
     }
@@ -72,6 +93,15 @@ pub fn daemon_client_with_timeout(timeout: Option<Duration>) -> reqwest::Client 
             reqwest::Client::new()
         }
     }
+}
+
+/// Whether the daemon described by `master` is one whose certificate cannot be verified but also
+/// cannot be forged: TLS on a loopback address. A remote or non-loopback daemon is verified
+/// normally — relaxing it there would accept any certificate at all from anyone able to answer on
+/// that address.
+pub fn accepts_self_signed(master: &MasterInfo) -> bool {
+    let is_loopback = matches!(master.host.as_str(), "127.0.0.1" | "::1" | "localhost");
+    master.scheme.eq_ignore_ascii_case("https") && is_loopback
 }
 
 /// Why a daemon call failed at the transport level. The distinction matters because only
@@ -130,5 +160,56 @@ pub fn describe_transport_error(
             "Request to Tendril daemon at {}:{} failed: {}",
             master.host, master.port, err
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn master(scheme: &str, host: &str) -> MasterInfo {
+        MasterInfo {
+            port: 5010,
+            pid: 1,
+            secret: "s".to_string(),
+            started_at: String::new(),
+            host: host.to_string(),
+            version: "0.1.0".to_string(),
+            api_version: 1,
+            capabilities: Vec::new(),
+            scheme: scheme.to_string(),
+        }
+    }
+
+    #[test]
+    fn certificate_verification_is_relaxed_only_for_a_loopback_https_daemon() {
+        for host in ["127.0.0.1", "::1", "localhost"] {
+            assert!(
+                accepts_self_signed(&master("https", host)),
+                "{host} is this machine, and generate-certs writes a self-signed pair"
+            );
+            assert!(
+                !accepts_self_signed(&master("http", host)),
+                "there is no certificate to accept over plaintext"
+            );
+        }
+        for host in ["tendril.example.com", "10.0.0.5", "0.0.0.0"] {
+            assert!(
+                !accepts_self_signed(&master("https", host)),
+                "{host} is reached over a network and must be verified"
+            );
+        }
+    }
+
+    /// Construction only — building a client opens no connection, and nothing here makes a request.
+    #[test]
+    fn a_client_is_built_for_every_scheme_and_host() {
+        for (scheme, host) in [
+            ("http", "127.0.0.1"),
+            ("https", "127.0.0.1"),
+            ("https", "tendril.example.com"),
+        ] {
+            let _ = daemon_client_with_timeout_and_master(None, &master(scheme, host));
+        }
     }
 }

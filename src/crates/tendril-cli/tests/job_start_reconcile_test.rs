@@ -121,7 +121,7 @@ async fn stalled_start_daemon(
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    write_master(&tendril_home, port, "test-secret", "127.0.0.1").unwrap();
+    write_master(&tendril_home, port, "test-secret", "127.0.0.1", "http").unwrap();
 
     let app = Router::new().route(
         "/api/jobs",
@@ -293,7 +293,7 @@ async fn unreachable_daemon_still_reports_plain_failure() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     drop(listener);
-    write_master(&tendril_home, port, "test-secret", "127.0.0.1").unwrap();
+    write_master(&tendril_home, port, "test-secret", "127.0.0.1", "http").unwrap();
 
     let master = read_master(&tendril_home).unwrap();
     let client = daemon_client(&tendril_home);

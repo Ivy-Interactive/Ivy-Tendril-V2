@@ -792,7 +792,7 @@ impl McpDispatcher {
 
     async fn get(&self, path: &str) -> std::result::Result<Value, String> {
         let master = self.master()?;
-        let url = format!("http://{}:{}{}", master.host, master.port, path);
+        let url = format!("{}{}", master.base_url(), path);
         let response = self
             .http
             .get(&url)
@@ -805,7 +805,7 @@ impl McpDispatcher {
 
     async fn post(&self, path: &str, body: &Value) -> std::result::Result<Value, String> {
         let master = self.master()?;
-        let url = format!("http://{}:{}{}", master.host, master.port, path);
+        let url = format!("{}{}", master.base_url(), path);
         let response = self
             .http
             .post(&url)
@@ -824,8 +824,8 @@ async fn read_daemon_response(
 ) -> std::result::Result<Value, String> {
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err(format!(
-            "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
-            master.host, master.port
+            "Authentication failed: unauthorized request to Tendril daemon at {}",
+            master.base_url()
         ));
     }
     let status = response.status();

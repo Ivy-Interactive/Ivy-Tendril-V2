@@ -104,7 +104,7 @@ pub async fn handle_chat_command(cmd: ChatCommands, tendril_home: &Path) -> anyh
 async fn handle_chat_list(args: ChatListArgs, tendril_home: &Path) -> anyhow::Result<()> {
     let sessions = if let Some(master) = read_master(tendril_home) {
         let client = daemon_client(tendril_home);
-        let url = format!("http://{}:{}/api/chat/sessions", master.host, master.port);
+        let url = format!("{}/api/chat/sessions", master.base_url());
         let resp = client.get(&url).bearer_auth(&master.secret).send().await?;
         if resp.status().is_success() {
             resp.json::<Vec<ChatSession>>().await?
@@ -192,7 +192,7 @@ async fn handle_chat_get(args: ChatGetArgs, tendril_home: &Path) -> anyhow::Resu
 async fn handle_chat_create(args: ChatCreateArgs, tendril_home: &Path) -> anyhow::Result<()> {
     let session = if let Some(master) = read_master(tendril_home) {
         let client = daemon_client(tendril_home);
-        let url = format!("http://{}:{}/api/chat/sessions", master.host, master.port);
+        let url = format!("{}/api/chat/sessions", master.base_url());
         let resp = client
             .post(&url)
             .bearer_auth(&master.secret)
@@ -249,10 +249,7 @@ async fn handle_chat_delete(args: ChatDeleteArgs, tendril_home: &Path) -> anyhow
 
     if let Some(master) = read_master(tendril_home) {
         let client = daemon_client(tendril_home);
-        let url = format!(
-            "http://{}:{}/api/chat/sessions/{}",
-            master.host, master.port, session.id
-        );
+        let url = format!("{}/api/chat/sessions/{}", master.base_url(), session.id);
         let _ = client.delete(&url).bearer_auth(&master.secret).send().await;
     } else {
         storage::delete_session(tendril_home, &session.id)?;
@@ -284,6 +281,16 @@ async fn stream_via_server(
     session_id: &str,
     args: &ChatSendArgs,
 ) -> anyhow::Result<()> {
+    // The event stream is a WebSocket, and `connect_async` here is built without TLS support, so a
+    // daemon serving HTTPS cannot be streamed from. Saying so beats attempting `ws://` against a TLS
+    // port and reporting whatever the handshake failure looks like.
+    if master.scheme.eq_ignore_ascii_case("https") {
+        anyhow::bail!(
+            "`tendril chat send` cannot stream from a TLS daemon ({}); restart it without \
+             --tls-cert/--tls-key, or use the app.",
+            master.base_url()
+        );
+    }
     let ws_url = format!("ws://{}:{}/api/ws", master.host, master.port);
     let mut req = ws_url.into_client_request()?;
     req.headers_mut()
@@ -294,8 +301,9 @@ async fn stream_via_server(
 
     let client = daemon_client(tendril_home);
     let exec_url = format!(
-        "http://{}:{}/api/chat/sessions/{}/execute",
-        master.host, master.port, session_id
+        "{}/api/chat/sessions/{}/execute",
+        master.base_url(),
+        session_id
     );
 
     let resp = client

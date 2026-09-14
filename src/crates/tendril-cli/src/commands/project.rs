@@ -10,7 +10,7 @@ use tendril_core::git::service::run_git;
 use tendril_core::git::sync::{diagnostic_prompt, sync_project, ProjectSyncResult};
 use tendril_core::git::worktree::derive_worktree_relative_path;
 use tendril_core::http::{
-    classify_transport_error, daemon_client_with_timeout, daemon_request_timeout_for,
+    classify_transport_error, daemon_client_with_timeout_and_master, daemon_request_timeout_for,
     describe_transport_error, DaemonTransportFailure,
 };
 use tendril_core::mcp::discovery::{scan_repo_mcp_servers, to_project_ref};
@@ -804,8 +804,8 @@ async fn handle_project_command_daemon(
     master: &MasterInfo,
 ) -> anyhow::Result<DaemonOutcome> {
     let timeout = daemon_request_timeout_for(tendril_home);
-    let client = daemon_client_with_timeout(timeout);
-    let base_url = format!("http://{}:{}", master.host, master.port);
+    let client = daemon_client_with_timeout_and_master(timeout, master);
+    let base_url = master.base_url();
 
     match cmd {
         ProjectCommands::List => {

@@ -1,4 +1,7 @@
 pub mod catalog;
+// Deliberately not re-exported below: `instructions::compile` and `instructions::TEMPLATE` are too
+// generically named to live in `agents::*` alongside everything else.
+pub mod instructions;
 pub mod model_cache;
 pub mod model_specs;
 pub mod pricing;

@@ -6,7 +6,7 @@
 //! the first-run wizard renders, which additionally probes each known coding-agent CLI.
 
 use crate::config::{
-    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
+    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config, read_master,
     TendrilSettings,
 };
 use crate::db::{check_plan_search, get_last_sync_time, open_database, PlanSearchHealth};
@@ -122,6 +122,7 @@ pub fn run_checks(tendril_home: &Path) -> Vec<CheckResult> {
     let settings = load_config(&get_config_path(tendril_home)).unwrap_or_default();
     checks.extend(overlay_checks(tendril_home, &settings));
 
+    checks.push(server_check(tendril_home));
     checks.push(git_check());
     checks.push(github_cli_check());
 
@@ -452,6 +453,35 @@ pub fn plan_search_checks(
     });
 
     checks
+}
+
+/// What `.master` says the running server is, including which scheme it serves: a client that
+/// guesses wrong gets a connection error rather than a redirect, so this is worth stating plainly.
+fn server_check(tendril_home: &Path) -> CheckResult {
+    match read_master(tendril_home) {
+        Some(master) => {
+            let note = if master.scheme.eq_ignore_ascii_case("https") {
+                "TLS"
+            } else {
+                "plaintext; --tls-cert/--tls-key serves HTTPS"
+            };
+            CheckResult::environment(
+                "Server",
+                CheckStatus::Ok,
+                format!(
+                    "Server: {} (pid {}, {})",
+                    master.base_url(),
+                    master.pid,
+                    note
+                ),
+            )
+        }
+        None => CheckResult::environment(
+            "Server",
+            CheckStatus::Ok,
+            "Server: not running (no .master file)".to_string(),
+        ),
+    }
 }
 
 /// Reports where the promptware overlay is, whether it resolves, and whether what is deployed still

@@ -1078,6 +1078,12 @@ fn default_api_version() -> u32 {
     1
 }
 
+/// `.master` files written before `serve --tls-cert/--tls-key` existed carry no `scheme`, and every
+/// one of them describes a plaintext server.
+fn default_scheme() -> String {
+    "http".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MasterInfo {
     pub port: u16,
@@ -1098,6 +1104,42 @@ pub struct MasterInfo {
     pub api_version: u32,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// `"http"` or `"https"` — which one `serve` was started with. Clients must not guess: a request
+    /// to the wrong scheme is a connection error, not a redirect.
+    #[serde(default = "default_scheme")]
+    pub scheme: String,
+}
+
+impl MasterInfo {
+    /// The base URL of the daemon's API, e.g. `https://127.0.0.1:5010`.
+    pub fn base_url(&self) -> String {
+        format!("{}://{}:{}", self.scheme, self.host, self.port)
+    }
+}
+
+#[cfg(test)]
+mod master_info_tests {
+    use super::MasterInfo;
+
+    #[test]
+    fn base_url_follows_the_recorded_scheme() {
+        let mut info: MasterInfo =
+            serde_json::from_str(r#"{"port":5010,"pid":1,"host":"127.0.0.1","scheme":"http"}"#)
+                .unwrap();
+        assert_eq!(info.base_url(), "http://127.0.0.1:5010");
+
+        info.scheme = "https".to_string();
+        assert_eq!(info.base_url(), "https://127.0.0.1:5010");
+    }
+
+    #[test]
+    fn a_master_file_without_a_scheme_reads_as_http() {
+        let json = r#"{"port":5010,"pid":42,"host":"127.0.0.1"}"#;
+        let parsed: MasterInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(parsed.scheme, "http");
+        assert_eq!(parsed.base_url(), "http://127.0.0.1:5010");
+    }
 }
 
 pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
@@ -1150,7 +1192,13 @@ pub fn write_master_info(tendril_home: &Path, info: &MasterInfo) -> Result<()> {
     Ok(())
 }
 
-pub fn write_master(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<()> {
+pub fn write_master(
+    tendril_home: &Path,
+    port: u16,
+    secret: &str,
+    host: &str,
+    scheme: &str,
+) -> Result<()> {
     let info = MasterInfo {
         port,
         pid: std::process::id(),
@@ -1160,6 +1208,7 @@ pub fn write_master(tendril_home: &Path, port: u16, secret: &str, host: &str) ->
         version: env!("CARGO_PKG_VERSION").to_string(),
         api_version: 1,
         capabilities: default_capabilities(),
+        scheme: scheme.to_string(),
     };
     write_master_info(tendril_home, &info)
 }
@@ -1198,12 +1247,26 @@ fn master_takeover_allowed() -> bool {
 }
 
 impl MasterGuard {
-    pub fn acquire(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<Self> {
+    pub fn acquire(
+        tendril_home: &Path,
+        port: u16,
+        secret: &str,
+        host: &str,
+        scheme: &str,
+    ) -> Result<Self> {
         ensure_not_real_home(tendril_home)?;
 
         if let Some(existing) = read_master(tendril_home) {
             if is_process_running(existing.pid) {
-                if probe_health_with_retries(&existing.host, existing.port, HEALTH_PROBE_ATTEMPTS) {
+                // `probe_health` speaks plaintext HTTP, so it cannot tell a live TLS server from a
+                // dead one; for those, the pid check above is the whole answer.
+                let responding = existing.scheme.eq_ignore_ascii_case("https")
+                    || probe_health_with_retries(
+                        &existing.host,
+                        existing.port,
+                        HEALTH_PROBE_ATTEMPTS,
+                    );
+                if responding {
                     return Err(TendrilError::Other(format!(
                         "Another Tendril instance is running with PID {} on port {}",
                         existing.pid, existing.port
@@ -1239,7 +1302,7 @@ impl MasterGuard {
             }
         }
 
-        write_master(tendril_home, port, secret, host)?;
+        write_master(tendril_home, port, secret, host, scheme)?;
         Ok(Self {
             tendril_home: tendril_home.to_path_buf(),
             pid: std::process::id(),

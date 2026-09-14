@@ -25,6 +25,10 @@ pub struct AppState {
     /// publish on it directly and a daemon that lost the master race still serves the route.
     pub change_tx: broadcast::Sender<ChangeEvent>,
     pub secret: String,
+    /// Password credentials from `config.yaml`'s `auth` block, or `None` when there is no such block
+    /// — which is the norm, and means the bearer token stays the only accepted credential. Resolved
+    /// once here rather than per request, so authentication never reads the config off disk.
+    pub basic_auth: Option<crate::auth::BasicAuthConfig>,
     /// Held for the duration of a PR reconciliation pass, so the periodic driver and a manual
     /// `POST /api/pull-requests/sync` can never run concurrently.
     pub pr_sync_running: Arc<AtomicBool>,
@@ -47,6 +51,7 @@ impl AppState {
         let db_path = get_database_path(&tendril_home);
 
         let settings = load_config(&config_path).unwrap_or_default();
+        let basic_auth = crate::auth::BasicAuthConfig::from_settings(&settings);
         let enrich_models = settings.enrich_models;
         let enrichment_hours = settings.model_enrichment_interval_hours;
         let warn_age_days = settings.model_cache_warn_age_days;
@@ -142,6 +147,7 @@ impl AppState {
             ws_tx,
             change_tx,
             secret,
+            basic_auth,
             pr_sync_running,
             version_info,
         }
