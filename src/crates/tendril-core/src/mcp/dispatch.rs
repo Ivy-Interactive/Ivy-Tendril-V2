@@ -294,7 +294,7 @@ impl McpDispatcher {
                 }
                 true
             });
-            disk.sort_by(|a, b| b.metadata.updated.cmp(&a.metadata.updated));
+            disk.sort_by_key(|p| std::cmp::Reverse(p.metadata.updated));
             disk
         };
 
