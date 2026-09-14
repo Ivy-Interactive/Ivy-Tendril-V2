@@ -583,14 +583,9 @@ pub fn revert_plan_state(job: &JobItem) {
         .and_then(|n| n.to_str())
         .unwrap_or(&job.plan_file);
 
-    // Terminal plans (Completed or Skipped) are immutable
-    if matches!(current, Some(PlanStatus::Completed | PlanStatus::Skipped)) {
-        tracing::info!(
-            "Job {}: Not reverting plan {} because it is already {:?}",
-            job.id,
-            plan_id,
-            current.unwrap()
-        );
+    // Terminal plans (Completed or Skipped) are immutable, whatever the revert target would be
+    if let Some(reason) = PlanCompletionGuard::terminal_refusal(current, None) {
+        tracing::info!("Job {}: Not reverting plan {}: {}", job.id, plan_id, reason);
         return;
     }
 
@@ -626,19 +621,12 @@ pub fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
         .and_then(|n| n.to_str())
         .unwrap_or_default();
 
-    if let Some(current) = PlanStatus::from_str_loose(&plan.state) {
-        // Terminal plans (Completed or Skipped) are immutable
-        if matches!(current, PlanStatus::Completed | PlanStatus::Skipped)
-            && !matches!(state, PlanStatus::Completed | PlanStatus::Skipped)
-        {
-            tracing::info!(
-                "Not setting plan {} to {:?} because it is already {:?}",
-                plan_id,
-                state,
-                current
-            );
-            return;
-        }
+    // Terminal plans (Completed or Skipped) are immutable
+    if let Some(reason) =
+        PlanCompletionGuard::terminal_refusal(PlanStatus::from_str_loose(&plan.state), Some(state))
+    {
+        tracing::info!("Not setting plan {} to {:?}: {}", plan_id, state, reason);
+        return;
     }
 
     match PlanCompletionGuard::apply_state(&mut plan, state, false, plan_id) {

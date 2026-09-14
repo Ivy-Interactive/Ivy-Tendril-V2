@@ -1,50 +1,40 @@
-use std::io::{BufRead, Write};
-use tendril_core::mcp::get_mcp_tool_definitions;
+//! The stdio transport for the MCP server.
+//!
+//! This file is transport only: read a line, hand it to [`McpSession`], write the answer back. The
+//! protocol and every tool live in `tendril-core`, so they are unit-testable without a process.
+//!
+//! stdout is reserved for JSON-RPC — one object per line, nothing else, ever. Logs go to stderr
+//! through the subscriber installed here.
 
-pub fn handle_mcp() -> anyhow::Result<()> {
-    let stdin = std::io::stdin();
+use std::io::Write;
+use std::path::Path;
+use tendril_core::mcp::auth::McpAuth;
+use tendril_core::mcp::protocol::McpSession;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tracing_subscriber::EnvFilter;
+
+pub async fn handle_mcp(tendril_home: &Path) -> anyhow::Result<()> {
+    // Before anything else, so no log line can escape to stdout and corrupt the stream.
+    let _ = tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")))
+        .try_init();
+
+    let auth = McpAuth::from_env();
+    if let Err(message) = auth.validate_env() {
+        // Exit before reading a single line: an unauthenticated client gets no tool surface at all.
+        eprintln!("{}", message);
+        std::process::exit(1);
+    }
+
+    let mut session = McpSession::new(tendril_home, auth);
+    let mut lines = BufReader::new(tokio::io::stdin()).lines();
     let mut stdout = std::io::stdout();
 
-    for line in stdin.lock().lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        if let Ok(req) = serde_json::from_str::<serde_json::Value>(&line) {
-            let id = req.get("id");
-            let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
-
-            match method {
-                "tools/list" => {
-                    let tools = get_mcp_tool_definitions();
-                    let resp = serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": { "tools": tools }
-                    });
-                    writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
-                    stdout.flush()?;
-                }
-                "ping" => {
-                    let resp = serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": "pong"
-                    });
-                    writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
-                    stdout.flush()?;
-                }
-                _ => {
-                    let resp = serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": {}
-                    });
-                    writeln!(stdout, "{}", serde_json::to_string(&resp)?)?;
-                    stdout.flush()?;
-                }
-            }
+    while let Some(line) = lines.next_line().await? {
+        if let Some(response) = session.handle_message(&line).await {
+            writeln!(stdout, "{}", response)?;
+            stdout.flush()?;
         }
     }
 

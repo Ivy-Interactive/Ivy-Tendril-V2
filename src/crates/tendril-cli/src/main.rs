@@ -89,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Serve { port, host } => {
             commands::serve::handle_serve(&tendril_home, port, Some(host)).await?
         }
-        Commands::Mcp => commands::mcp::handle_mcp()?,
+        Commands::Mcp => commands::mcp::handle_mcp(&tendril_home).await?,
     }
 
     Ok(())
