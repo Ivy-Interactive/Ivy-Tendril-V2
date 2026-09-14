@@ -33,6 +33,7 @@ export interface ChatSession {
   messages: ChatMessage[];
   effort?: string;
   spawnedJobIds: string[];
+  planFolderName?: string;
   isPinned?: boolean;
   pinnedAt?: string;
 }

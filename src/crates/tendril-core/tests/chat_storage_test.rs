@@ -48,6 +48,7 @@ fn test_crud_and_atomic_writes() {
         }],
         effort: Some("high".to_string()),
         spawned_job_ids: vec![],
+        plan_folder_name: None,
     };
 
     // Save session

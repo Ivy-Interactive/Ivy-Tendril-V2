@@ -2,7 +2,7 @@ use chrono::Utc;
 use clap::{Args, Subcommand};
 use std::io::Read;
 use std::path::PathBuf;
-use tendril_core::config::{get_database_path, get_plans_dir};
+use tendril_core::config::{get_database_path, get_plans_dir, read_master};
 use tendril_core::db::{get_plans, open_database, sync_plan};
 use tendril_core::git::worktree::cleanup_worktrees;
 use tendril_core::models::{PlanStatus, PlanVerificationEntry, VerificationStatus};
@@ -155,6 +155,13 @@ pub struct PlanSetArgs {
     pub value: String,
     #[arg(long)]
     pub allow_failed_verifications: bool,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
@@ -178,6 +185,13 @@ pub struct PlanWriteRevisionArgs {
     pub plans_dir: Option<PathBuf>,
     #[arg(long, help = "Bypass question block validation")]
     pub no_question_check: bool,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
@@ -240,6 +254,13 @@ pub struct PlanSetVerificationArgs {
     pub plan_id: String,
     pub name: String,
     pub status: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -268,7 +289,78 @@ pub enum PlanRecCommands {
     Remove { plan_id: String, title: String },
 }
 
-pub fn handle_plan_command(
+pub fn resolve_source_chat_session(chat_session: Option<&str>) -> Option<String> {
+    if let Some(cs) = chat_session {
+        let trimmed = cs.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    std::env::var("TENDRIL_CHAT_SESSION_ID")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+async fn report_plan_edit_event(
+    tendril_home: &std::path::Path,
+    plan_id: &str,
+    summary: &str,
+    reason: Option<&str>,
+    source_chat_session_id: Option<&str>,
+    revision_file: Option<&str>,
+) {
+    let master = match read_master(tendril_home) {
+        Some(m) => m,
+        None => {
+            eprintln!(
+                "Warning: could not report the edit to plan {}: server is offline",
+                plan_id
+            );
+            return;
+        }
+    };
+
+    let client = reqwest::Client::new();
+    let url = format!(
+        "http://{}:{}/api/plans/{}/events",
+        master.host, master.port, plan_id
+    );
+
+    let payload = serde_json::json!({
+        "summary": summary,
+        "reason": reason,
+        "sourceChatSessionId": source_chat_session_id,
+        "revisionFile": revision_file,
+    });
+
+    match client
+        .post(&url)
+        .bearer_auth(&master.secret)
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                eprintln!(
+                    "Warning: could not report the edit to plan {}: status {} - {}",
+                    plan_id, status, text
+                );
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "Warning: could not report the edit to plan {}: {}",
+                plan_id, e
+            );
+        }
+    }
+}
+
+pub async fn handle_plan_command(
     cmd: PlanCommands,
     tendril_home: &std::path::Path,
 ) -> anyhow::Result<()> {
@@ -503,17 +595,17 @@ pub fn handle_plan_command(
                     anyhow::bail!("Invalid state: {}", args.value);
                 }
             } else if args.field.eq_ignore_ascii_case("title") {
-                plan.title = args.value;
+                plan.title = args.value.clone();
             } else if args.field.eq_ignore_ascii_case("level") {
-                plan.level = args.value;
+                plan.level = args.value.clone();
             } else if args.field.eq_ignore_ascii_case("project") {
-                plan.project = args.value;
+                plan.project = args.value.clone();
             } else if args.field.eq_ignore_ascii_case("executionprofile") {
-                plan.execution_profile = Some(args.value);
+                plan.execution_profile = Some(args.value.clone());
             } else if args.field.eq_ignore_ascii_case("initialprompt") {
-                plan.initial_prompt = Some(args.value);
+                plan.initial_prompt = Some(args.value.clone());
             } else if args.field.eq_ignore_ascii_case("sourceurl") {
-                plan.source_url = Some(args.value);
+                plan.source_url = Some(args.value.clone());
             } else if args.field.eq_ignore_ascii_case("priority") {
                 if let Ok(p) = args.value.parse::<i32>() {
                     plan.priority = p;
@@ -529,6 +621,17 @@ pub fn handle_plan_command(
                     let _ = sync_plan(&conn, &pf);
                 }
             }
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                &format!("{} set to {}", args.field, args.value),
+                args.reason.as_deref(),
+                source_chat.as_deref(),
+                None,
+            )
+            .await;
         }
         PlanCommands::Validate(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
@@ -586,11 +689,26 @@ pub fn handle_plan_command(
             let rev_num = write_revision(&folder, &content, !args.no_question_check)?;
             println!("Revision {:03} written.", rev_num);
 
+            if args.reason.as_deref().is_none_or(|r| r.trim().is_empty()) {
+                eprintln!("warning: no --reason given for this plan edit. Pass --reason \"<why you changed it>\" so the plan's other chat sessions are told why, not just what.");
+            }
+
             if let Ok(pf) = read_plan_file(&folder) {
                 if let Ok(conn) = open_database(&db_path) {
                     let _ = sync_plan(&conn, &pf);
                 }
             }
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                &format!("revision {:03}.md written", rev_num),
+                args.reason.as_deref(),
+                source_chat.as_deref(),
+                Some(&format!("{:03}.md", rev_num)),
+            )
+            .await;
 
             if let Ok((plan, _)) = read_plan_yaml(&folder) {
                 if let Some(folder_name) = folder.file_name().and_then(|n| n.to_str()) {
@@ -635,11 +753,22 @@ pub fn handle_plan_command(
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
             if !plan.prs.contains(&args.url) {
-                plan.prs.push(args.url);
+                plan.prs.push(args.url.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("PR added.");
+
+            let source_chat = resolve_source_chat_session(None);
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                &format!("PR added: {}", args.url),
+                None,
+                source_chat.as_deref(),
+                None,
+            )
+            .await;
         }
         PlanCommands::AddCommit(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
@@ -694,6 +823,17 @@ pub fn handle_plan_command(
 
             set_plan_verification_status(&folder, &args.name, status)?;
             println!("Verification updated.");
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                &format!("verification {} set to {}", args.name, args.status),
+                args.reason.as_deref(),
+                source_chat.as_deref(),
+                None,
+            )
+            .await;
         }
         PlanCommands::Rec(rec_cmd) => match rec_cmd {
             PlanRecCommands::List { plan_id } => {

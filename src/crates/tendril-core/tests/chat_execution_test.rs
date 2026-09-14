@@ -92,6 +92,7 @@ async fn test_chat_execution_turn_and_job_tracking() {
             Some("mock".to_string()),
             Some("default".to_string()),
             None,
+            None,
         )
         .await
         .expect("Failed to create session");
@@ -183,6 +184,7 @@ async fn test_chat_execution_cancellation() {
             Some("mock".to_string()),
             Some("default".to_string()),
             None,
+            None,
         )
         .await
         .expect("Failed to create session");
@@ -262,6 +264,7 @@ async fn test_throttled_persistence() {
             Some("Persist Test".to_string()),
             Some("mock".to_string()),
             Some("default".to_string()),
+            None,
             None,
         )
         .await

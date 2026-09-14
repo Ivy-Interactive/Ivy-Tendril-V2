@@ -139,6 +139,7 @@ impl ChatExecutionManager {
         agent_id: Option<String>,
         model_id: Option<String>,
         effort: Option<String>,
+        plan_folder_name: Option<String>,
     ) -> Result<ChatSession> {
         let id = Uuid::new_v4().to_string();
         let now = Utc::now();
@@ -153,6 +154,7 @@ impl ChatExecutionManager {
             messages: Vec::new(),
             effort,
             spawned_job_ids: Vec::new(),
+            plan_folder_name,
         };
 
         save_session(&self.tendril_home, &session)?;
@@ -195,6 +197,45 @@ impl ChatExecutionManager {
             message,
         });
         Ok(())
+    }
+
+    pub async fn broadcast_plan_system_message(
+        &self,
+        folder_name: &str,
+        plan_chat_session_id: Option<&str>,
+        source_chat_session_id: Option<&str>,
+        content: &str,
+    ) -> Result<Vec<String>> {
+        let sessions = self.list_sessions().await?;
+        let mut recipient_ids = Vec::new();
+        for session in sessions {
+            let matches_folder = session.plan_folder_name.as_deref() == Some(folder_name);
+            let matches_plan_chat = plan_chat_session_id == Some(&session.id);
+            if matches_folder || matches_plan_chat {
+                recipient_ids.push(session.id);
+            }
+        }
+        recipient_ids.sort();
+        recipient_ids.dedup();
+        if let Some(src) = source_chat_session_id {
+            recipient_ids.retain(|id| id != src);
+        }
+
+        for id in &recipient_ids {
+            let msg = ChatMessage {
+                id: Uuid::new_v4().to_string(),
+                role: "system".to_string(),
+                content: content.to_string(),
+                timestamp: Utc::now(),
+                agent_id: None,
+                model_id: None,
+                raw_stream: None,
+                effort: None,
+            };
+            self.add_message(id, msg).await?;
+        }
+
+        Ok(recipient_ids)
     }
 
     // Queue management

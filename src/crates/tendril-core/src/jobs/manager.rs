@@ -993,6 +993,31 @@ pub async fn finish_job(
                 if let Some(state) = plan_state_on_success(&job.job_type, &plan, &plan_folder) {
                     apply_plan_state(&plan_folder, state);
                 }
+
+                if job.job_type == "CreatePr" {
+                    let folder_name = plan_folder
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or_default();
+                    let plan_id: i32 = folder_name
+                        .split('-')
+                        .next()
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
+                    let pr_url = plan.prs.last().map(|s| s.as_str()).unwrap_or("");
+                    let msg = format!(
+                        "[System Event] Pull request for plan '{}' (#{id:05}) has been created: {pr_url}. Please review the pull request and next steps.",
+                        plan.title,
+                        id = plan_id
+                    );
+                    let _ = crate::chat::storage::broadcast_system_message_to_plan_sessions(
+                        tendril_home,
+                        folder_name,
+                        plan.chat_session_id.as_deref(),
+                        None,
+                        &msg,
+                    );
+                }
             }
         }
     } else {

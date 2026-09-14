@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
     let tendril_home = cli.home.unwrap_or_else(get_default_tendril_home);
 
     match cli.command {
-        Commands::Plan(cmd) => commands::plan::handle_plan_command(cmd, &tendril_home)?,
+        Commands::Plan(cmd) => commands::plan::handle_plan_command(cmd, &tendril_home).await?,
         Commands::Job(cmd) => commands::job::handle_job_command(cmd, &tendril_home).await?,
         Commands::Chat(cmd) => commands::chat::handle_chat_command(cmd, &tendril_home).await?,
         Commands::Project(cmd) => {
