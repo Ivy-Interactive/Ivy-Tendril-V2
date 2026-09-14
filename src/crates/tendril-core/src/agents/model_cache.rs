@@ -67,10 +67,16 @@ pub fn parse_catalog(json: &str) -> Result<Vec<ModelSpec>> {
             let max_output_tokens = model.limit.as_ref().and_then(|l| l.output).unwrap_or(0);
             let input_per_million = model.cost.as_ref().and_then(|c| c.input).unwrap_or(0.0);
             let output_per_million = model.cost.as_ref().and_then(|c| c.output).unwrap_or(0.0);
-            let cache_read_per_million =
-                model.cost.as_ref().and_then(|c| c.cache_read).unwrap_or(0.0);
-            let cache_write_per_million =
-                model.cost.as_ref().and_then(|c| c.cache_write).unwrap_or(0.0);
+            let cache_read_per_million = model
+                .cost
+                .as_ref()
+                .and_then(|c| c.cache_read)
+                .unwrap_or(0.0);
+            let cache_write_per_million = model
+                .cost
+                .as_ref()
+                .and_then(|c| c.cache_write)
+                .unwrap_or(0.0);
 
             let qualified_id = format!("{}/{}", provider_key, bare_id);
 
