@@ -1886,3 +1886,24 @@ async fn test_get_job_events_not_found() {
         .unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn test_models_api_route() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("http://127.0.0.1:{}/api/models", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    let specs: Vec<serde_json::Value> = resp.json().await.unwrap();
+    // The static ModelSpec table (or a models.dev-enriched catalog) is always non-empty.
+    assert!(!specs.is_empty());
+    let first = &specs[0];
+    assert!(first.get("model_id").is_some());
+    assert!(first.get("input_per_million").is_some());
+}

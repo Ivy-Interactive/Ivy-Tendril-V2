@@ -256,14 +256,25 @@ fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         }
     }
 
-    if !allowed_rules.is_empty() {
-        let settings_obj = serde_json::json!({
-            "permissions": {
-                "allow": allowed_rules
-            }
-        });
+    let denied_rules = translate_claude_rules(&config.denied_tools);
+
+    if !allowed_rules.is_empty() || !denied_rules.is_empty() {
+        let mut permissions = serde_json::Map::new();
+        if !allowed_rules.is_empty() {
+            permissions.insert("allow".to_string(), serde_json::json!(allowed_rules));
+        }
+        // Omitted entirely when empty, so a job with no denials emits the JSON it always did.
+        if !denied_rules.is_empty() {
+            permissions.insert("deny".to_string(), serde_json::json!(denied_rules));
+        }
+        let settings_obj = serde_json::json!({ "permissions": permissions });
         args.push("--settings".to_string());
         args.push(settings_obj.to_string());
+    }
+
+    for dir in &config.writable_directories {
+        args.push("--add-dir".to_string());
+        args.push(dir.clone());
     }
 
     if let Some(m) = &config.model {
@@ -372,9 +383,14 @@ fn build_codex_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         args.push(format!("model_reasoning_effort=\"{}\"", eff_str));
     }
 
-    for dir in &config.writable_directories {
+    // Codex has no tool allowlist, so a `Write(<dir>/**)` rule can only be honoured as a writable
+    // directory. Explicit directories come first, then the extracted ones in allowlist order.
+    for dir in merge_dirs(
+        &config.writable_directories,
+        &extract_write_edit_dirs(&config.allowed_tools),
+    ) {
         args.push("--add-dir".to_string());
-        args.push(dir.clone());
+        args.push(dir);
     }
 
     let mut temp_files = Vec::new();
@@ -431,9 +447,14 @@ fn build_gemini_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         }
     }
 
-    for dir in &config.writable_directories {
+    // Gemini spells a directory rule `dir:<path>` in its allowlist; it has no tool flag to render one
+    // into, so the only way to honour it is as an included directory.
+    for dir in merge_dirs(
+        &config.writable_directories,
+        &extract_dir_prefixed(&config.allowed_tools),
+    ) {
         args.push("--include-directories".to_string());
-        args.push(dir.clone());
+        args.push(dir);
     }
 
     let mut temp_files = Vec::new();
@@ -466,6 +487,10 @@ fn build_gemini_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
 // OpenCode (opencode)
 // ---------------------------------------------------------------------------
 fn build_opencode_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
+    // `allowed_tools`, `denied_tools` and `writable_directories` are deliberately not rendered: the
+    // OpenCode CLI (and the ivy / openaiproxy wrappers around it) has no tool-allowlist or
+    // directory flag to render them into. The resolver still strips denied rules from the allowlist,
+    // so a denial is not simply ignored here.
     let mut args = vec![
         "run".to_string(),
         "--auto".to_string(),
@@ -581,9 +606,14 @@ fn build_copilot_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         }
     }
 
-    for dir in &config.writable_directories {
+    // Copilot's tool names are already translated above, so an `apply_patch` rule can carry a
+    // directory the same way Codex's `Write`/`Edit` rules do.
+    for dir in merge_dirs(
+        &config.writable_directories,
+        &extract_copilot_dirs(&config.allowed_tools),
+    ) {
         args.push("--add-dir".to_string());
-        args.push(dir.clone());
+        args.push(dir);
     }
 
     let mut temp_files = Vec::new();
@@ -787,6 +817,105 @@ pub fn format_opencode_model(model: Option<&str>, base_url: Option<&str>) -> Str
     }
 
     format!("openai/{}", m)
+}
+
+/// Renders tool rules the way Claude's `--settings` permissions want them: a `Bash(...)` rule passes
+/// through verbatim, a bare tool name is translated, and a bare `Bash` becomes `Bash(*)`.
+pub fn translate_claude_rules(tools: &[String]) -> Vec<String> {
+    let mut rules = Vec::new();
+    for tool in tools {
+        let rule = if tool.to_ascii_lowercase().starts_with("bash(") && tool.ends_with(')') {
+            tool.clone()
+        } else {
+            let native = translate_claude_tool(tool);
+            if native.eq_ignore_ascii_case("bash") {
+                "Bash(*)".to_string()
+            } else {
+                native
+            }
+        };
+        if !rules.contains(&rule) {
+            rules.push(rule);
+        }
+    }
+    rules
+}
+
+/// The directory in a `Write(<dir>)` or `Edit(<dir>)` rule, with any trailing `/*` or `/**` removed.
+pub fn extract_write_edit_dirs(allowed_tools: &[String]) -> Vec<String> {
+    allowed_tools
+        .iter()
+        .filter_map(|tool| {
+            let (head, rest) = tool.split_once('(')?;
+            if !head.eq_ignore_ascii_case("write") && !head.eq_ignore_ascii_case("edit") {
+                return None;
+            }
+            let inner = rest.strip_suffix(')')?;
+            trim_glob_suffix(inner)
+        })
+        .collect()
+}
+
+/// Gemini's `dir:<path>` allowlist entries.
+pub fn extract_dir_prefixed(allowed_tools: &[String]) -> Vec<String> {
+    allowed_tools
+        .iter()
+        .filter_map(|tool| {
+            let prefix = tool.get(..4)?;
+            if !prefix.eq_ignore_ascii_case("dir:") {
+                return None;
+            }
+            trim_glob_suffix(&tool[4..])
+        })
+        .collect()
+}
+
+/// The same `Write(<dir>)` / `Edit(<dir>)` rules Codex reads, plus Copilot's own `apply_patch(<dir>)`
+/// spelling — a rule may already have been written in translated form.
+pub fn extract_copilot_dirs(allowed_tools: &[String]) -> Vec<String> {
+    allowed_tools
+        .iter()
+        .filter_map(|tool| {
+            let (head, rest) = tool.split_once('(')?;
+            if !head.eq_ignore_ascii_case("write")
+                && !head.eq_ignore_ascii_case("edit")
+                && !head.eq_ignore_ascii_case("apply_patch")
+            {
+                return None;
+            }
+            trim_glob_suffix(rest.strip_suffix(')')?)
+        })
+        .collect()
+}
+
+fn trim_glob_suffix(path: &str) -> Option<String> {
+    let trimmed = path
+        .trim_end_matches("/**")
+        .trim_end_matches("\\**")
+        .trim_end_matches("/*")
+        .trim_end_matches("\\*");
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+/// Explicit writable directories first, then directories extracted from the allowlist in allowlist
+/// order, de-duplicated case-insensitively. The order is fixed so the emitted argument vector is
+/// deterministic and can be asserted on.
+pub fn merge_dirs(explicit: &[String], extracted: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for dir in explicit.iter().chain(extracted.iter()) {
+        if dir.is_empty() {
+            continue;
+        }
+        if out.iter().any(|d| d.eq_ignore_ascii_case(dir)) {
+            continue;
+        }
+        out.push(dir.clone());
+    }
+    out
 }
 
 pub fn translate_claude_tool(canonical: &str) -> String {

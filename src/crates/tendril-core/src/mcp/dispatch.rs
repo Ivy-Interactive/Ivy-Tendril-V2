@@ -884,6 +884,7 @@ pub fn build_job_args(
             priority: request.priority.unwrap_or(0),
             force: request.force,
             source_path: request.source_path.clone(),
+            upload_session_id: None,
         }),
         "executeplan" => JobArgs::ExecutePlan(ExecutePlanArgs {
             folder_path: folder("ExecutePlan")?,
@@ -910,6 +911,7 @@ pub fn build_job_args(
             JobArgs::UpdatePlan(UpdatePlanArgs {
                 folder_path: folder("UpdatePlan")?,
                 instructions: Some(instructions),
+                upload_session_id: None,
             })
         }
         "splitplan" => JobArgs::SplitPlan(SplitPlanArgs {
