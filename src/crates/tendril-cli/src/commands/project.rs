@@ -1261,6 +1261,7 @@ async fn handle_project_command_daemon(
                 return Ok(DaemonOutcome::Fallback);
             }
             println!("Removed custom skill: {}", skill);
+        }
         ProjectCommands::AddHook {
             name,
             hook,
@@ -1832,6 +1833,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             for found in &discovered {
                 println!("Imported skill: {} - {}", found.name, found.description);
             }
+        }
         ProjectCommands::AddHook {
             name,
             hook,
