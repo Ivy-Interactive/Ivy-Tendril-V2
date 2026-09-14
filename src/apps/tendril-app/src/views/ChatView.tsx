@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useResizableSidebar } from "@ivy-interactive/components";
 import { ChatInput, ChatMessageList } from "@ivy-interactive/components/renderers";
 import { chatStore, type ChatState } from "../state/chatStore";
 import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
@@ -39,29 +40,6 @@ const DEFAULT_CHAT_SIDEBAR_WIDTH = 256;
 const MIN_CHAT_SIDEBAR_WIDTH = 180;
 const MAX_CHAT_SIDEBAR_WIDTH = 480;
 
-function readStoredChatSidebarWidth(): number {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      const raw = storage.getItem(CHAT_SIDEBAR_WIDTH_STORAGE_KEY);
-      if (raw != null) {
-        const parsed = Number.parseInt(raw, 10);
-        if (!Number.isNaN(parsed)) {
-          return Math.min(Math.max(parsed, MIN_CHAT_SIDEBAR_WIDTH), MAX_CHAT_SIDEBAR_WIDTH);
-        }
-      }
-    }
-  } catch {
-    // Ignore storage quota or access errors
-  }
-  return DEFAULT_CHAT_SIDEBAR_WIDTH;
-}
-
 const SAMPLE_PROMPTS = [
   { label: "Add a new project", prompt: "Add a new project to my tendril" },
   { label: "Edit verifications", prompt: "Edit verifications for my projects" },
@@ -96,48 +74,16 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [sidebarWidth, setSidebarWidth] = useState<number>(readStoredChatSidebarWidth);
-  const isResizingSidebarRef = useRef(false);
-  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
-
-  const handleResizerPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    isResizingSidebarRef.current = true;
-    setIsResizingSidebar(true);
-  }, []);
-
-  const handleResizerPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isResizingSidebarRef.current) return;
-    const newWidth = Math.min(Math.max(e.clientX, MIN_CHAT_SIDEBAR_WIDTH), MAX_CHAT_SIDEBAR_WIDTH);
-    setSidebarWidth(newWidth);
-    try {
-      localStorage.setItem(CHAT_SIDEBAR_WIDTH_STORAGE_KEY, String(newWidth));
-    } catch {
-      // Ignore
-    }
-  }, []);
-
-  const handleResizerPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isResizingSidebarRef.current) return;
-    isResizingSidebarRef.current = false;
-    setIsResizingSidebar(false);
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    } catch {
-      // Ignore
-    }
-  }, []);
-
-  const handleResizerDoubleClick = useCallback(() => {
-    setSidebarWidth(DEFAULT_CHAT_SIDEBAR_WIDTH);
-    try {
-      localStorage.setItem(CHAT_SIDEBAR_WIDTH_STORAGE_KEY, String(DEFAULT_CHAT_SIDEBAR_WIDTH));
-    } catch {
-      // Ignore
-    }
-  }, []);
+  const {
+    width: sidebarWidth,
+    isDragging: isResizingSidebar,
+    separatorProps,
+  } = useResizableSidebar({
+    storageKey: CHAT_SIDEBAR_WIDTH_STORAGE_KEY,
+    defaultWidth: DEFAULT_CHAT_SIDEBAR_WIDTH,
+    minWidth: MIN_CHAT_SIDEBAR_WIDTH,
+    maxWidth: MAX_CHAT_SIDEBAR_WIDTH,
+  });
 
   useEffect(() => {
     const unsub = chatStore.subscribe(() => {
@@ -508,14 +454,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
 
         {/* Resizer Handle */}
         <div
-          role="separator"
-          aria-orientation="vertical"
-          tabIndex={0}
-          onPointerDown={handleResizerPointerDown}
-          onPointerMove={handleResizerPointerMove}
-          onPointerUp={handleResizerPointerUp}
-          onPointerCancel={handleResizerPointerUp}
-          onDoubleClick={handleResizerDoubleClick}
+          {...separatorProps}
           className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-emerald-500/50 transition-colors z-10 ${
             isResizingSidebar ? "bg-emerald-500 w-2" : "bg-transparent"
           }`}
