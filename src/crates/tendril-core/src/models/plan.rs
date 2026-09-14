@@ -106,6 +106,39 @@ impl RecommendationStatus {
     pub const ACCEPTED: &'static str = "Accepted";
     pub const ACCEPTED_WITH_NOTES: &'static str = "AcceptedWithNotes";
     pub const DECLINED: &'static str = "Declined";
+
+    /// Every state a recommendation can be in, in lifecycle order. The single list every write path
+    /// validates against, so a typo cannot reach `plan.yaml` from the CLI or from HTTP.
+    pub const ALL: [&'static str; 4] = [
+        Self::PENDING,
+        Self::ACCEPTED,
+        Self::ACCEPTED_WITH_NOTES,
+        Self::DECLINED,
+    ];
+
+    /// Case-sensitive membership test against [`Self::ALL`].
+    pub fn is_valid(state: &str) -> bool {
+        Self::ALL.contains(&state)
+    }
+
+    /// The canonical spelling of `state`, matched case-insensitively, or `None` if it is not a
+    /// recommendation state. Callers accept `acceptedwithnotes` from a shell and store
+    /// `AcceptedWithNotes`.
+    pub fn canonical(state: &str) -> Option<&'static str> {
+        Self::ALL
+            .into_iter()
+            .find(|s| s.eq_ignore_ascii_case(state))
+    }
+}
+
+/// The impact levels a recommendation may carry, used to validate the `impact` field.
+pub const RECOMMENDATION_IMPACTS: [&str; 3] = ["Small", "Medium", "High"];
+
+/// The canonical spelling of an impact level, matched case-insensitively, or `None` if it is not one.
+pub fn canonical_recommendation_impact(impact: &str) -> Option<&'static str> {
+    RECOMMENDATION_IMPACTS
+        .into_iter()
+        .find(|i| i.eq_ignore_ascii_case(impact))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,6 +150,11 @@ pub struct Recommendation {
     pub state: String,
     #[serde(rename = "declineReason", skip_serializing_if = "Option::is_none")]
     pub decline_reason: Option<String>,
+    /// Why the recommendation was *accepted*. Distinct from `decline_reason`: an accept with notes
+    /// lands in `AcceptedWithNotes` and stores the text here, so the two reasons never share a
+    /// field. Setting either one clears the other.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub impact: Option<String>,
 }
@@ -286,6 +324,11 @@ pub struct PlanMetadata {
     pub source_url: Option<String>,
     pub partial_delivery: bool,
     pub chat_session_id: Option<String>,
+    /// The plan's recommendations, carried through so `sync_plan` can project them into the
+    /// `Recommendations` table without re-reading `plan.yaml`. Defaulted on deserialize and omitted
+    /// when absent, so a `PlanFile` serialized by an older build still parses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recommendations: Option<Vec<Recommendation>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -74,6 +74,10 @@ pub struct TendrilSettings {
     #[serde(default)]
     pub beta: bool,
 
+    /// Whether the first-run wizard has been completed or dismissed. See [`OnboardingConfig`].
+    #[serde(default, skip_serializing_if = "OnboardingConfig::is_default")]
+    pub onboarding: OnboardingConfig,
+
     /// Per-coding-agent arguments, environment and named profiles. Tolerant of shape: see
     /// [`deserialize_coding_agents`].
     #[serde(
@@ -233,6 +237,32 @@ pub struct SecuritySettings {
 
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// The persisted outcome of the first-run wizard. `crate::onboarding` owns the rules that read it;
+/// an all-default value is omitted from `config.yaml` entirely, so a config written before this key
+/// existed is untouched by a round-trip and deserializes as "neither completed nor dismissed".
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct OnboardingConfig {
+    #[serde(default)]
+    pub completed: bool,
+
+    #[serde(default)]
+    pub dismissed: bool,
+
+    #[serde(
+        rename = "completedAt",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub completed_at: Option<String>,
+}
+
+impl OnboardingConfig {
+    /// Untouched onboarding state, i.e. nothing worth writing to `config.yaml`.
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
 }
 
 /// What a single promptware asks for: the profile it runs under and the tool rules it contributes.
@@ -449,6 +479,7 @@ impl Default for TendrilSettings {
             worktree_reaper_grace: default_worktree_reaper_grace(),
             worktree_branch_delete_mode: default_worktree_branch_delete_mode(),
             beta: false,
+            onboarding: OnboardingConfig::default(),
             coding_agents: Vec::new(),
             promptwares: BTreeMap::new(),
             enrich_models: true,
