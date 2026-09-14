@@ -11,6 +11,7 @@ pub use commands::github::*;
 pub use commands::jobs::*;
 pub use commands::plans::*;
 pub use commands::state::*;
+pub use commands::vault::*;
 pub use commands::*;
 
 pub fn run() {
@@ -67,6 +68,21 @@ pub fn run() {
             cmd_clear_chat_queue,
             cmd_delete_queued_chat_item,
             cmd_list_github_issues,
+            cmd_vault_list,
+            cmd_vault_status,
+            cmd_vault_catalog,
+            cmd_vault_github_accounts,
+            cmd_vault_discover,
+            cmd_vault_create,
+            cmd_vault_connect,
+            cmd_vault_disconnect,
+            cmd_vault_set_always_up_to_date,
+            cmd_vault_pull,
+            cmd_vault_project_assets,
+            cmd_vault_push,
+            cmd_vault_import,
+            cmd_vault_merge,
+            cmd_vault_delete_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -4,6 +4,7 @@ pub mod github;
 pub mod jobs;
 pub mod plans;
 pub mod state;
+pub mod vault;
 
 use crate::daemon::{discover_daemon_status, resolve_tendril_home, DaemonStatusResponse};
 use crate::error::BridgeError;
