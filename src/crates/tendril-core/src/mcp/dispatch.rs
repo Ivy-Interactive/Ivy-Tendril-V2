@@ -25,9 +25,10 @@ use crate::models::{
 };
 use crate::plans::{
     add_recommendation, check_plan_health, create_plan, get_revision, list_plan_verifications,
-    list_recommendations, read_plan_file, read_plan_yaml, remove_recommendation,
-    resolve_plan_folder, set_plan_verification_status, set_recommendation_state, write_plan_yaml,
-    write_revision, CreatePlanOptions, PlanCompletionGuard,
+    list_recommendations, read_plan_file, read_plan_yaml, remove_plan_verification,
+    remove_recommendation, resolve_plan_folder, set_plan_verification_status,
+    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
+    PlanCompletionGuard,
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Map, Value};
@@ -177,6 +178,7 @@ impl McpDispatcher {
             "tendril_plan_write_revision" => self.plan_write_revision(args),
             "tendril_plan_set" => self.plan_set(args),
             "tendril_plan_set_verification" => self.plan_set_verification(args),
+            "tendril_plan_verification_remove" => self.verification_remove(args),
             "tendril_plan_add_repo"
             | "tendril_plan_remove_repo"
             | "tendril_plan_add_pr"
@@ -515,6 +517,24 @@ impl McpDispatcher {
             "name": entry.name,
             "status": entry.status.to_string()
         })))
+    }
+
+    fn verification_remove(&self, args: &Value) -> Exec {
+        let (folder, plan) = self.open_for_write(args, None)?;
+        let name = required_str(args, "name")?;
+        remove_plan_verification(&folder, name).map_err(|e| {
+            let current = plan
+                .verifications
+                .iter()
+                .map(|v| v.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}. Current verifications: {}", e, current)
+        })?;
+        self.sync(&folder);
+        Ok(ToolOutcome::structured(
+            json!({ "name": name, "state": "Removed" }),
+        ))
     }
 
     /// The list-valued plan edits: repos, PRs, commits, related plans and dependencies.
