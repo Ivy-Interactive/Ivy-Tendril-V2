@@ -80,8 +80,10 @@ const CODEX_MODELS: &[ModelPattern] = &[
 
 const GEMINI_MODELS: &[ModelPattern] = &[ModelPattern::Prefix("gemini-")];
 
-const ANTIGRAVITY_MODELS: &[ModelPattern] =
-    &[ModelPattern::Prefix("gemini-"), ModelPattern::Prefix("claude-")];
+const ANTIGRAVITY_MODELS: &[ModelPattern] = &[
+    ModelPattern::Prefix("gemini-"),
+    ModelPattern::Prefix("claude-"),
+];
 
 /// Declared in the order the picker lists them.
 const AGENTS: &[AgentDef] = &[
