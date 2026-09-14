@@ -101,14 +101,44 @@ pub fn parse_catalog(json: &str) -> Result<Vec<ModelSpec>> {
     Ok(specs)
 }
 
-fn cache_file_path(tendril_home: &Path) -> PathBuf {
+pub fn cache_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("cache").join("models_cache.json")
+}
+
+/// Facts about the on-disk models.dev cache, for status reporting. `None` timestamps
+/// mean the cache file does not exist yet (static fallback is in use).
+pub struct CacheStatus {
+    pub path: PathBuf,
+    pub exists: bool,
+    pub cached_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub cached_model_count: usize,
+}
+
+/// Reports facts about the on-disk models.dev cache without erroring on a missing or
+/// unparseable cache file — those are reported as `exists: false` / count `0` instead.
+pub fn cache_status(tendril_home: &Path) -> CacheStatus {
+    let path = cache_path(tendril_home);
+    let metadata = std::fs::metadata(&path).ok();
+    let exists = metadata.is_some();
+    let cached_at = metadata
+        .and_then(|m| m.modified().ok())
+        .map(chrono::DateTime::<chrono::Utc>::from);
+    let cached_model_count = load_disk_cache(tendril_home)
+        .map(|specs| specs.len())
+        .unwrap_or(0);
+
+    CacheStatus {
+        path,
+        exists,
+        cached_at,
+        cached_model_count,
+    }
 }
 
 /// Reads and deserializes cached specs on startup without any network access.
 /// Returns an empty vec (not an error) when no cache file exists yet.
 pub fn load_disk_cache(tendril_home: &Path) -> Result<Vec<ModelSpec>> {
-    let path = cache_file_path(tendril_home);
+    let path = cache_path(tendril_home);
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -122,7 +152,7 @@ pub fn load_disk_cache(tendril_home: &Path) -> Result<Vec<ModelSpec>> {
 
 /// Atomically saves the given specs to the disk cache (write to a temp file, then rename).
 pub fn save_disk_cache(tendril_home: &Path, specs: &[ModelSpec]) -> Result<()> {
-    let path = cache_file_path(tendril_home);
+    let path = cache_path(tendril_home);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create cache directory {}", parent.display()))?;
