@@ -14,6 +14,7 @@
     "test": "pnpm -r test",
     "test-skills-manifests": "bash scripts/test-skills-manifests.sh",
     "check": "pnpm -r check",
+    "check:links": "lychee --config .lychee.toml README*.md docs/**/*.md",
     "lint": "pnpm -r lint",
     "format": "pnpm -r format"
   },
