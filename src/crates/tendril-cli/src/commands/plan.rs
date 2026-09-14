@@ -636,6 +636,12 @@ async fn report_plan_edit_event(
 /// Configured verification names, or `None` when there is no usable config to check against.
 fn configured_verification_names(tendril_home: &std::path::Path) -> Option<Vec<String>> {
     let settings = load_config(&get_config_path(tendril_home)).ok()?;
+    if settings.verifications.is_empty() {
+        // A missing config.yaml loads as `TendrilSettings::default()`, which has no verification
+        // definitions at all — that is "nothing configured to check against" too, not "nothing is
+        // valid".
+        return None;
+    }
     Some(settings.verifications.into_iter().map(|v| v.name).collect())
 }
 
@@ -1434,9 +1440,10 @@ pub async fn handle_plan_command(
             PlanVerificationCommands::Add(args) => {
                 validate_verification_name(tendril_home, &args.name)?;
                 let status = match args.status.as_deref() {
-                    Some(s) => Some(VerificationStatus::from_str_loose(s).ok_or_else(|| {
-                        anyhow::anyhow!("Invalid verification status: {}", s)
-                    })?),
+                    Some(s) => Some(
+                        VerificationStatus::from_str_loose(s)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid verification status: {}", s))?,
+                    ),
                     None => None,
                 };
 
@@ -1445,14 +1452,23 @@ pub async fn handle_plan_command(
                 sync_plan_folder(&folder, &db_path);
                 println!("Verification added.");
 
-                if args.edit.reason.as_deref().is_none_or(|r| r.trim().is_empty()) {
+                if args
+                    .edit
+                    .reason
+                    .as_deref()
+                    .is_none_or(|r| r.trim().is_empty())
+                {
                     eprintln!("warning: no --reason given for this plan edit. Pass --reason \"<why you changed it>\" so the plan's other chat sessions are told why, not just what.");
                 }
 
                 report_edit_with_reason(
                     tendril_home,
                     &args.plan_id,
-                    &format!("verification {} added as {}", entry.name, entry.status.as_str()),
+                    &format!(
+                        "verification {} added as {}",
+                        entry.name,
+                        entry.status.as_str()
+                    ),
                     &args.edit,
                 )
                 .await;
@@ -1472,7 +1488,12 @@ pub async fn handle_plan_command(
                 sync_plan_folder(&folder, &db_path);
                 println!("Verification removed.");
 
-                if args.edit.reason.as_deref().is_none_or(|r| r.trim().is_empty()) {
+                if args
+                    .edit
+                    .reason
+                    .as_deref()
+                    .is_none_or(|r| r.trim().is_empty())
+                {
                     eprintln!("warning: no --reason given for this plan edit. Pass --reason \"<why you changed it>\" so the plan's other chat sessions are told why, not just what.");
                 }
 
