@@ -1,10 +1,22 @@
 import { bridge } from "../api/bridge";
-import type { PlanDetail, PlanSummary, StartJobResponse } from "../types/api";
+import type {
+  CreateIssueFields,
+  CreatePrOptions,
+  PlanDetail,
+  PlanSummary,
+  StartJobResponse,
+} from "../types/api";
 
 export interface ActionGatingResult {
   allowed: boolean;
   reason?: string;
 }
+
+/** States where a job holds the plan folder, so nothing may move or remove it. */
+const IN_FLIGHT_STATES = ["Executing", "Creating", "Updating"];
+
+/** States a plan is finished in. */
+const TERMINAL_STATES = ["Completed", "Skipped"];
 
 export class PlanActionsController {
   /**
@@ -109,6 +121,87 @@ export class PlanActionsController {
   }
 
   /**
+   * Check if the plan may be deleted permanently.
+   * Refused while a job holds the plan folder. The `DELETE` endpoint enforces
+   * the same rule with a 409; this only keeps the button from lying.
+   */
+  public static canDelete(plan: PlanDetail | PlanSummary): ActionGatingResult {
+    if (IN_FLIGHT_STATES.includes(plan.state)) {
+      return {
+        allowed: false,
+        reason: `Cannot delete a plan while it is ${plan.state} — cancel the job first.`,
+      };
+    }
+    return { allowed: true };
+  }
+
+  /**
+   * Check if the plan may be discarded (moved to Skipped).
+   * Refused for finished plans and for plans a job is still running.
+   */
+  public static canDiscard(plan: PlanDetail | PlanSummary): ActionGatingResult {
+    if (TERMINAL_STATES.includes(plan.state)) {
+      return { allowed: false, reason: `Plan is already ${plan.state}.` };
+    }
+    if (IN_FLIGHT_STATES.includes(plan.state)) {
+      return {
+        allowed: false,
+        reason: `Cannot discard a plan while it is ${plan.state} — cancel the job first.`,
+      };
+    }
+    return { allowed: true };
+  }
+
+  /**
+   * Check if the plan may be sent back to Draft.
+   * Only meaningful for a plan that has been executed and stalled: Review,
+   * Failed or Blocked.
+   */
+  public static canReset(plan: PlanDetail | PlanSummary): ActionGatingResult {
+    if (TERMINAL_STATES.includes(plan.state)) {
+      return {
+        allowed: false,
+        reason: `Plan is ${plan.state} and cannot be reset to Draft.`,
+      };
+    }
+    if (IN_FLIGHT_STATES.includes(plan.state)) {
+      return {
+        allowed: false,
+        reason: `Cannot reset a plan while it is ${plan.state} — cancel the job first.`,
+      };
+    }
+    if (plan.state === "Review" || plan.state === "Failed" || plan.state === "Blocked") {
+      return { allowed: true };
+    }
+    return {
+      allowed: false,
+      reason: `Reset to Draft is only allowed on plans in Review, Failed or Blocked (current: ${plan.state}).`,
+    };
+  }
+
+  /**
+   * Check if a partial delivery may be accepted: completing the plan despite
+   * failing verifications. Only offered when there is a failure to accept —
+   * otherwise plain completion suffices.
+   */
+  public static canCompletePartial(plan: PlanDetail | PlanSummary): ActionGatingResult {
+    if (plan.state !== "Review") {
+      return {
+        allowed: false,
+        reason: `Partial delivery is only allowed when plan is in Review (current: ${plan.state}).`,
+      };
+    }
+    const failing = (plan.verifications || []).filter((v) => v.status === "Fail");
+    if (failing.length === 0) {
+      return {
+        allowed: false,
+        reason: "No verifications failed — complete the plan normally instead.",
+      };
+    }
+    return { allowed: true };
+  }
+
+  /**
    * Dispatches ExecutePlan job with gating checks.
    */
   public static async executePlan(
@@ -149,8 +242,15 @@ export class PlanActionsController {
 
   /**
    * Dispatches CreatePr job with gating checks.
+   *
+   * Every option is spread onto the job args under its own key, matching
+   * `CreatePrArgs`. Omitting `options` keeps the promptware defaults (merge on,
+   * delete branch on), which is what the bare call used to send.
    */
-  public static async createPr(plan: PlanDetail | PlanSummary): Promise<StartJobResponse> {
+  public static async createPr(
+    plan: PlanDetail | PlanSummary,
+    options?: CreatePrOptions,
+  ): Promise<StartJobResponse> {
     const check = this.canCreatePr(plan);
     if (!check.allowed) {
       throw new Error(check.reason || "Create PR blocked");
@@ -159,6 +259,31 @@ export class PlanActionsController {
     return bridge.startJob({
       type: "CreatePr",
       folderPath: plan.id,
+      ...options,
+    });
+  }
+
+  /**
+   * Dispatches a CreateIssue job from the plan.
+   *
+   * `fields.repo` is a **local repository path** — `CreateIssueArgs.repo` is the
+   * working directory the promptware runs `gh` in, not an `owner/name` slug.
+   */
+  public static async createIssue(
+    plan: PlanDetail | PlanSummary,
+    fields: CreateIssueFields,
+  ): Promise<StartJobResponse> {
+    if (!fields.repo) {
+      throw new Error("A repository is required to create an issue.");
+    }
+
+    return bridge.startJob({
+      type: "CreateIssue",
+      folderPath: plan.id,
+      repo: fields.repo,
+      ...(fields.assignee ? { assignee: fields.assignee } : {}),
+      ...(fields.comment ? { comment: fields.comment } : {}),
+      ...(fields.labels && fields.labels.length > 0 ? { labels: fields.labels } : {}),
     });
   }
 

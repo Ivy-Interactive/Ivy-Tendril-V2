@@ -210,6 +210,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         ],
     )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
+    // A database carried over from V1 has PrStatuses without Branch.
+    ensure_columns(conn, "PrStatuses", &[("Branch", "TEXT")])?;
     ensure_columns(
         conn,
         "Costs",
@@ -348,6 +350,12 @@ fn ensure_plan_search(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Reads the schema version recorded in `PRAGMA user_version`. Compare against
+/// [`SCHEMA_VERSION`] to tell whether a database needs migrating.
+pub fn get_schema_version(conn: &Connection) -> Result<i64> {
+    conn.query_row("PRAGMA user_version", [], |row| row.get(0))
+}
+
 /// Adds any of `columns` that `table` does not already have. Idempotent: existing columns are left
 /// untouched, so this is safe to run on every connection open.
 pub fn ensure_columns(conn: &Connection, table: &str, columns: &[(&str, &str)]) -> Result<()> {
@@ -370,4 +378,40 @@ pub fn ensure_columns(conn: &Connection, table: &str, columns: &[(&str, &str)]) 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch_db() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "tendril-migrations-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("tendril.db")
+    }
+
+    #[test]
+    fn fresh_database_is_stamped_with_schema_version() {
+        let path = scratch_db();
+        let conn = crate::db::open_database(&path).unwrap();
+        assert_eq!(get_schema_version(&conn).unwrap(), SCHEMA_VERSION);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_migrations_restores_a_zeroed_version() {
+        let path = scratch_db();
+        let conn = crate::db::open_database(&path).unwrap();
+        conn.pragma_update(None, "user_version", 0i64).unwrap();
+        assert_eq!(get_schema_version(&conn).unwrap(), 0);
+
+        apply_migrations(&conn).unwrap();
+        assert_eq!(get_schema_version(&conn).unwrap(), SCHEMA_VERSION);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
 }

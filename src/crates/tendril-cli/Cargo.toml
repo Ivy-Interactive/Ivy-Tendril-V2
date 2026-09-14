@@ -29,6 +29,13 @@ reqwest = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 uuid = { workspace = true }
+flate2 = { workspace = true }
+tar = { workspace = true }
+sha2 = { workspace = true }
+rusqlite = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+zip = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }

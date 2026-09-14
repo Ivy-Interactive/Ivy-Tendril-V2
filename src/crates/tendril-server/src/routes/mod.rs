@@ -1,3 +1,5 @@
+pub mod agents;
+pub mod changes;
 pub mod chat;
 pub mod config;
 pub mod costs;
@@ -8,6 +10,8 @@ pub mod models;
 pub mod ping;
 pub mod plans;
 pub mod projects;
+pub mod pull_requests;
+pub mod vault;
 pub mod verifications;
 pub mod ws;
 
@@ -53,7 +57,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/api/plans/:id",
-            get(plans::get_plan).put(plans::update_plan_field),
+            get(plans::get_plan)
+                .put(plans::update_plan_field)
+                .delete(plans::delete_plan_handler),
+        )
+        .route("/api/plans/:id/reset", post(plans::reset_plan_handler))
+        .route(
+            "/api/plans/:id/repo-status",
+            get(plans::repo_status_handler),
         )
         .route(
             "/api/plans/:id/revisions",
@@ -119,6 +130,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/jobs/:id/logs/stream", get(jobs::stream_job_logs))
         .route("/api/jobs/:id/events", get(jobs::stream_job_events))
+        // Filesystem changes
+        .route("/api/changes/events", get(changes::stream_changes))
         // Projects & Verifications
         .route(
             "/api/projects",
@@ -162,6 +175,29 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
         )
+        // Vaults. `:id` accepts the literal `default` for the primary vault, so the static
+        // `discover` and `accounts` segments are declared alongside it rather than under it.
+        .route(
+            "/api/vaults",
+            get(vault::list_vaults).post(vault::connect_vault),
+        )
+        .route("/api/vaults/create", post(vault::create_vault_repo))
+        .route("/api/vaults/discover", get(vault::discover_vaults))
+        .route("/api/vaults/accounts", get(vault::github_accounts))
+        .route(
+            "/api/vaults/:id",
+            get(vault::get_vault_status)
+                .put(vault::set_always_up_to_date)
+                .delete(vault::disconnect_vault),
+        )
+        .route("/api/vaults/:id/catalog", get(vault::get_catalog))
+        .route("/api/vaults/:id/pull", post(vault::pull_latest))
+        .route("/api/vaults/:id/push", post(vault::push_and_create_pr))
+        .route("/api/vaults/:id/projects", post(vault::import_project))
+        .route(
+            "/api/vaults/:id/projects/:project",
+            delete(vault::delete_project_from_vault),
+        )
         .route(
             "/api/verifications",
             get(verifications::list_verifications).post(verifications::add_verification),
@@ -172,16 +208,25 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .put(verifications::update_verification)
                 .delete(verifications::delete_verification),
         )
+        // Agents
+        .route("/api/agents", get(agents::get_agents_handler))
         // Config
         .route(
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
+        )
+        // Pull requests
+        .route("/api/pull-requests", get(pull_requests::list_pull_requests))
+        .route(
+            "/api/pull-requests/sync",
+            post(pull_requests::sync_pull_requests),
         )
         // Costs
         .route("/api/costs/summary", get(costs::get_costs_summary))
         .route("/api/costs/series", get(costs::get_costs_series))
         // Models
         .route("/api/models", get(models::list_models))
+        .route("/api/models/status", get(models::models_status))
         .route("/api/models/refresh", post(models::refresh_models))
         // Chat
         .route(
@@ -218,7 +263,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/api/chat/sessions/:id/queue/:item_id",
-            delete(chat::delete_queued_item_handler),
+            put(chat::update_queued_item_handler).delete(chat::delete_queued_item_handler),
         )
         // WebSocket
         .route("/api/ws", get(ws::ws_handler))
@@ -231,6 +276,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
+        // WebViewer proxy. Outside /api and outside auth_middleware on purpose: an <iframe src>
+        // navigation carries no Authorization header, and neither do the subresource requests the
+        // service worker reissues from inside the proxied page. A loopback-only target allow-list is
+        // what keeps these from being an open relay — see crate::webviewer.
+        .merge(crate::webviewer::routes())
         .merge(protected)
         .layer(cors)
         .with_state(state)

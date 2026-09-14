@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tendril_core::agents::model_cache::{self, CacheFreshness};
 use tendril_core::chat::execution::ChatExecutionManager;
@@ -6,6 +7,7 @@ use tendril_core::config::{
     get_config_path, get_database_path, get_plans_dir_with_settings, load_config,
 };
 use tendril_core::jobs::JobManager;
+use tendril_core::watcher::ChangeEvent;
 use tokio::sync::broadcast;
 
 #[derive(Clone)]
@@ -17,7 +19,14 @@ pub struct AppState {
     pub job_manager: Arc<JobManager>,
     pub chat_manager: Arc<ChatExecutionManager>,
     pub ws_tx: broadcast::Sender<String>,
+    /// Filesystem change notifications, fed by the watcher the master daemon starts and consumed by
+    /// `/api/changes/events`. The channel exists whether or not a watcher is running, so a test can
+    /// publish on it directly and a daemon that lost the master race still serves the route.
+    pub change_tx: broadcast::Sender<ChangeEvent>,
     pub secret: String,
+    /// Held for the duration of a PR reconciliation pass, so the periodic driver and a manual
+    /// `POST /api/pull-requests/sync` can never run concurrently.
+    pub pr_sync_running: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -34,11 +43,14 @@ impl AppState {
 
         let settings = load_config(&config_path).unwrap_or_default();
         let enrich_models = settings.enrich_models;
+        let enrichment_hours = settings.model_enrichment_interval_hours;
         let warn_age_days = settings.model_cache_warn_age_days;
         let max_age_days = settings.model_cache_max_age_days;
 
         // Make any cached models.dev enrichment immediately available (unless it has expired),
-        // then optionally refresh it in the background so startup never blocks on network access.
+        // then optionally refresh it in the background — on a repeating cadence, not just once —
+        // so startup never blocks on network access and pricing/limit changes are eventually
+        // picked up without restarting the daemon.
         if let Ok(catalog) = model_cache::load_disk_cache(&tendril_home) {
             if !catalog.is_empty() {
                 match model_cache::classify(&catalog, warn_age_days, max_age_days) {
@@ -69,27 +81,10 @@ impl AppState {
             }
         }
         if enrich_models {
-            let enrich_home = tendril_home.clone();
-            tokio::spawn(async move {
-                let client = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(10))
-                    .build()
-                    .unwrap_or_default();
-                match tendril_core::agents::model_cache::fetch_live_models(&client, &enrich_home)
-                    .await
-                {
-                    Ok(count) => {
-                        tracing::info!(
-                            "Enriched model specs cache from models.dev ({count} models)"
-                        )
-                    }
-                    Err(err) => {
-                        tracing::warn!(
-                            "models.dev live enrichment skipped (offline or network error): {err}"
-                        )
-                    }
-                }
-            });
+            model_cache::spawn_enrichment(
+                tendril_home.clone(),
+                model_cache::enrichment_interval(enrichment_hours),
+            );
         }
 
         // `share` rather than `Arc::new`: a finished job needs a handle back to the manager to start
@@ -97,6 +92,10 @@ impl AppState {
         let job_manager = JobManager::new(tendril_home.clone(), settings).share();
         let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
+        // Coalesced change events, so 256 is generous: a client would have to be a full burst-window
+        // behind to lag, and `stream_changes` degrades a lag to one full rescan anyway. Constructing
+        // state deliberately does not start a watcher — only the master daemon does that.
+        let (change_tx, _) = broadcast::channel(256);
 
         // Forward chat events to WebSocket clients
         let mut chat_rx = chat_manager.subscribe_events();
@@ -109,6 +108,16 @@ impl AppState {
             }
         });
 
+        // Reconcile tracked pull requests on a timer. The task captures clones rather than the
+        // `AppState` it is being constructed inside, so nothing here has to be `Arc`ed early.
+        let pr_sync_running = Arc::new(AtomicBool::new(false));
+        crate::pr_sync::spawn_pr_status_sync(
+            db_path.clone(),
+            plans_dir.clone(),
+            pr_sync_running.clone(),
+            ws_tx.clone(),
+        );
+
         Self {
             tendril_home,
             config_path,
@@ -117,7 +126,9 @@ impl AppState {
             job_manager,
             chat_manager,
             ws_tx,
+            change_tx,
             secret,
+            pr_sync_running,
         }
     }
 }

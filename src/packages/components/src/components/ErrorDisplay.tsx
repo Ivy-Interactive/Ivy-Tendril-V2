@@ -1,10 +1,16 @@
 import type React from "react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Button } from "./ui/button";
 import { ClipboardCopy, Check } from "lucide-react";
 import { copyToClipboard } from "@/lib/clipboard";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { prismTheme } from "@/lib/prismTheme";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
+
+/** `ErrorDisplay` is exported from both `index.ts` and `renderers.ts`, so a static import here is a
+ * second eager path into the 617 kB syntax-highlighter chunk. Same shape as `PlanMarkdown/CodeBlock`. */
+const SyntaxHighlighter = lazyWithRetry(() =>
+  import("react-syntax-highlighter").then((mod) => ({ default: mod.Prism })),
+);
 
 export interface ErrorDisplayProps {
   title?: string | null;
@@ -51,14 +57,16 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
         <div className="flex-1 min-h-0">
           <h4 className="text-sm font-medium mb-2">Stack Trace</h4>
           <div tabIndex={0} className="w-full overflow-auto border border-border rounded-md">
-            <SyntaxHighlighter
-              language="csharp"
-              style={prismTheme}
-              wrapLongLines={true}
-              showLineNumbers={false}
-            >
-              {stackTrace}
-            </SyntaxHighlighter>
+            <Suspense fallback={<pre className="p-4 font-mono text-sm">{stackTrace}</pre>}>
+              <SyntaxHighlighter
+                language="csharp"
+                style={prismTheme}
+                wrapLongLines={true}
+                showLineNumbers={false}
+              >
+                {stackTrace}
+              </SyntaxHighlighter>
+            </Suspense>
           </div>
         </div>
       )}

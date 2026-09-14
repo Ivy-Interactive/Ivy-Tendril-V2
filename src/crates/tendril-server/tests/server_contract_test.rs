@@ -130,6 +130,7 @@ async fn test_protected_routes_require_auth() {
         "/api/config",
         "/api/projects",
         "/api/verifications",
+        "/api/pull-requests",
     ];
     for endpoint in endpoints {
         let resp = client
@@ -168,6 +169,7 @@ async fn test_protected_routes_accept_valid_bearer_token() {
         "/api/config",
         "/api/projects",
         "/api/verifications",
+        "/api/pull-requests",
     ];
     for endpoint in endpoints {
         let resp = client
@@ -1906,4 +1908,125 @@ async fn test_models_api_route() {
     let first = &specs[0];
     assert!(first.get("model_id").is_some());
     assert!(first.get("input_per_million").is_some());
+}
+
+/// `GET /api/pull-requests` joins the PRs a plan records to the cached status, and reports a PR the
+/// daemon has never resolved as `Unknown` with no `lastChecked` rather than omitting it.
+///
+/// The sync endpoint is exercised against a plan set with no PRs, so the pass has nothing to resolve
+/// and this test never invokes `gh` or touches the network.
+#[tokio::test]
+async fn test_pull_request_routes() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    // An empty plan set lists nothing.
+    let empty: serde_json::Value = client
+        .get(format!("{}/api/pull-requests", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(empty.as_array().expect("an array").len(), 0);
+
+    // A sync with nothing tracked costs no gh calls and reports an empty pass.
+    let sync_resp = client
+        .post(format!("{}/api/pull-requests/sync", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sync_resp.status(), reqwest::StatusCode::OK);
+    let report: serde_json::Value = sync_resp.json().await.unwrap();
+    assert_eq!(report["tracked"], 0);
+    assert_eq!(report["checked"], 0);
+    assert_eq!(report["changed"], false);
+
+    // A plan that records a PR the daemon has not resolved yet.
+    let plan_dir = server
+        .tendril_home
+        .join("Plans")
+        .join("00042-TracksAPullRequest");
+    std::fs::create_dir_all(&plan_dir).unwrap();
+    std::fs::write(
+        plan_dir.join("plan.yaml"),
+        "title: Tracks A Pull Request\nproject: PrProject\nlevel: Feature\nstate: Review\nprs:\n  - https://github.com/acme/widgets/pull/7/files\n",
+    )
+    .unwrap();
+
+    let rows: serde_json::Value = client
+        .get(format!("{}/api/pull-requests", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+
+    let rows = rows.as_array().expect("an array");
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+    assert_eq!(row["prUrl"], "https://github.com/acme/widgets/pull/7");
+    assert_eq!(row["owner"], "acme");
+    assert_eq!(row["repo"], "widgets");
+    assert_eq!(row["number"], 7);
+    assert_eq!(row["status"], "Unknown");
+    assert!(row["lastChecked"].is_null());
+    assert_eq!(row["planId"], "00042");
+    assert_eq!(row["planFolder"], "00042-TracksAPullRequest");
+    assert_eq!(row["planTitle"], "Tracks A Pull Request");
+    assert_eq!(row["project"], "PrProject");
+
+    // The sync route is protected like the rest.
+    let unauth = client
+        .post(format!("{}/api/pull-requests/sync", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unauth.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_models_status_api_route() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/models/status",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let source = body.get("source").and_then(|v| v.as_str()).unwrap();
+    assert!(source == "models.dev" || source == "static");
+    assert!(
+        body.get("totalModelCount")
+            .and_then(|v| v.as_u64())
+            .unwrap()
+            > 0
+    );
+    assert!(body.get("enrichModels").is_some());
+    assert!(body.get("cachePath").is_some());
+
+    // Guard against regressing the existing `GET /api/models` array contract.
+    let models_resp = client
+        .get(format!("http://127.0.0.1:{}/api/models", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(models_resp.status(), reqwest::StatusCode::OK);
+    let models: Vec<serde_json::Value> = models_resp.json().await.unwrap();
+    assert!(!models.is_empty());
 }

@@ -120,7 +120,7 @@ questions:
     expect(screen.getByText("Option A")).toBeTruthy();
   });
 
-  it("renders plain code blocks with syntax highlighting and copy button", () => {
+  it("renders plain code blocks with syntax highlighting and copy button", async () => {
     const jsonStream = [
       mockSessionInit,
       JSON.stringify({
@@ -135,10 +135,17 @@ questions:
       <AgentViewer id="test-code-block" jsonStream={jsonStream} eventHandler={() => {}} />,
     );
 
-    const codeElement = container.querySelector("code.language-typescript");
-    expect(codeElement).toBeTruthy();
-    expect(codeElement?.textContent).toContain("const x = 42;");
+    // The copy button and the code text are there from the first paint; the
+    // `language-typescript` class comes from Prism, which is lazily imported.
     expect(screen.getByRole("button", { name: /copy/i })).toBeTruthy();
+    expect(container.querySelector(".pmv-code-block")?.textContent).toContain("const x = 42;");
+
+    await waitFor(() => {
+      expect(container.querySelector("code.language-typescript")).toBeTruthy();
+    });
+    expect(container.querySelector("code.language-typescript")?.textContent).toContain(
+      "const x = 42;",
+    );
   });
 
   it("renders result summary with rich blocks", async () => {

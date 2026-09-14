@@ -5,21 +5,48 @@ pub mod models;
 pub mod service;
 pub mod verification_reports;
 
+pub use commands::agents::*;
 pub use commands::chat::*;
 pub use commands::config::*;
 pub use commands::github::*;
 pub use commands::jobs::*;
 pub use commands::plans::*;
+pub use commands::pull_requests::*;
 pub use commands::state::*;
 pub use commands::*;
 
 pub fn run() {
+    use tauri::Manager;
+
     let ui_store = commands::state::init_ui_state_store();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(ui_store)
+        .setup(|app| {
+            // The daemon origin comes from `.master`, which may not exist yet: the app can easily
+            // start before the daemon. The bridge spawns either way and re-reads `.master` on each
+            // attempt, so an absent daemon costs nothing but a retry.
+            //
+            // The bearer secret is read here, natively, and stays inside the bridge — the same rule
+            // `get_client_from_master` follows, and the reason the stream is bridged at all instead
+            // of being consumed by the webview.
+            let (base_url, secret) = match service::MasterDiscovery::new().read_master() {
+                Ok(master) => (
+                    format!("{}://{}:{}", master.scheme, master.host, master.port),
+                    Some(master.secret),
+                ),
+                Err(e) => {
+                    tracing::info!("No daemon metadata yet ({e}); the change stream will retry");
+                    (String::new(), None)
+                }
+            };
+
+            let bridge = service::ChangeBridge::new(app.handle().clone(), base_url, secret);
+            app.manage(bridge);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_daemon_status,
             get_tendril_home,
@@ -28,6 +55,9 @@ pub fn run() {
             cmd_list_plans,
             cmd_get_plan,
             cmd_update_plan_field,
+            cmd_delete_plan,
+            cmd_reset_plan,
+            cmd_get_repo_status,
             cmd_get_revision,
             cmd_write_revision,
             cmd_get_verification_report,
@@ -41,6 +71,8 @@ pub fn run() {
             cmd_cancel_job,
             cmd_list_projects,
             cmd_get_config,
+            cmd_get_models_status,
+            cmd_refresh_models,
             cmd_execute_review_action,
             cmd_save_ui_state,
             cmd_load_ui_state,
@@ -61,7 +93,11 @@ pub fn run() {
             cmd_enqueue_chat_message,
             cmd_clear_chat_queue,
             cmd_delete_queued_chat_item,
+            cmd_update_queued_chat_item,
+            cmd_list_agents,
             cmd_list_github_issues,
+            cmd_list_pull_requests,
+            cmd_sync_pull_requests,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
