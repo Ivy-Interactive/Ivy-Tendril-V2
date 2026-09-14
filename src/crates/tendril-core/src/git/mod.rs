@@ -1,5 +1,6 @@
 pub mod github;
 pub mod issues;
+pub mod path_budget;
 pub mod pr_sync;
 pub mod service;
 pub mod worktree;
@@ -8,6 +9,7 @@ pub mod worktree_reaper;
 
 pub use github::*;
 pub use issues::*;
+pub use path_budget::*;
 pub use pr_sync::*;
 pub use service::*;
 pub use worktree::*;
