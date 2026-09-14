@@ -71,6 +71,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(plans::get_revision_handler).post(plans::write_revision_handler),
         )
         .route(
+            "/api/plans/:id/diff-comments",
+            get(plans::list_diff_comments_handler)
+                .post(plans::upsert_diff_comment_handler)
+                .put(plans::replace_diff_comments_handler)
+                .delete(plans::delete_diff_comments_handler),
+        )
+        .route(
             "/api/plans/:id/recommendations",
             get(plans::list_recommendations_handler).post(plans::add_recommendation_handler),
         )
@@ -276,6 +283,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
+        // Alias for the original Tendril's GET /api/jobs/health, same handler/payload. Kept
+        // unauthenticated to match /api/health (the original guards it, but a peer that hasn't
+        // read the secret yet still needs to probe it) and registered on this router so the
+        // static segment wins over the protected router's /api/jobs/:id.
+        .route("/api/jobs/health", get(health::health_handler))
         // WebViewer proxy. Outside /api and outside auth_middleware on purpose: an <iframe src>
         // navigation carries no Authorization header, and neither do the subresource requests the
         // service worker reissues from inside the proxied page. A loopback-only target allow-list is

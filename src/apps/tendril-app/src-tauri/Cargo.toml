@@ -32,6 +32,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
+# `test` gives us `tauri::test::mock_app`, needed to build anything that takes an `AppHandle`.
+tauri = { version = "2", features = ["test"] }
 tempfile = "3"
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors"] }

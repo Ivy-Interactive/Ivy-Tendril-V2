@@ -6,6 +6,7 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
+use tendril_core::error::TendrilError;
 use tendril_core::models::{CreatePlanArgs, JobArgs};
 
 #[derive(Debug, Deserialize)]
@@ -14,6 +15,12 @@ pub struct CreatePlanRequest {
     pub project: Option<String>,
     #[serde(rename = "sourcePath")]
     pub source_path: Option<String>,
+    /// "Yes, create another plan for this same description." Without it, resubmitting an identical
+    /// body is a 409 naming the `CreatePlan` job already in flight, not a second plan. It also feeds
+    /// the `Force` firmware header, which is what makes the promptware skip its own plan-level
+    /// duplicate detection.
+    #[serde(default)]
+    pub force: bool,
 }
 
 pub async fn post_inbox(
@@ -32,7 +39,7 @@ pub async fn post_inbox(
         description: req.description,
         project,
         priority: 0,
-        force: false,
+        force: req.force,
         source_path: req.source_path,
         upload_session_id: None,
     });
@@ -45,6 +52,15 @@ pub async fn post_inbox(
                 "status": "Started",
                 "message": "Plan creation job started successfully"
             })),
+        ),
+        // The same description already being planned is a repeat submission, not a server fault.
+        Err(TendrilError::DuplicateJob(msg)) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": msg, "status": "Conflict" })),
+        ),
+        Err(TendrilError::Conflict(msg)) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": msg, "status": "Conflict" })),
         ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,

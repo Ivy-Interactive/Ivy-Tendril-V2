@@ -1,4 +1,5 @@
 use std::path::Path;
+use tendril_core::db::get_plans_limited;
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
 };
@@ -434,6 +435,42 @@ fn test_rename_project_in_plans() {
 
     let plan_file = read_plan_file(plan_folder).unwrap();
     assert_eq!(plan_file.metadata.project, "NewProject");
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_get_plans_limited_honours_limit() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plans-limited-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).unwrap();
+    let db_path = test_dir.join("tendril.db");
+    let conn = tendril_core::db::open_database(&db_path).unwrap();
+
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO Plans (Id, Title, Project, Level, State, FolderPath, FolderName, YamlRaw, Created, Updated) VALUES (?1, ?2, 'LimitProj', 'Feature', 'Draft', ?3, ?4, '', '2026-01-01', '2026-01-01')",
+            rusqlite::params![
+                id,
+                format!("Plan {}", id),
+                format!("/p{}", id),
+                format!("{:05}-Plan", id)
+            ],
+        )
+        .unwrap();
+    }
+
+    let unlimited = get_plans_limited(&conn, None, Some("LimitProj"), None, None).unwrap();
+    assert_eq!(unlimited.len(), 3);
+
+    let limited_one = get_plans_limited(&conn, None, Some("LimitProj"), None, Some(1)).unwrap();
+    assert_eq!(limited_one.len(), 1);
+    assert_eq!(limited_one[0].metadata.id, 3, "ORDER BY Id DESC then LIMIT 1 keeps the newest");
+
+    let limited_zero = get_plans_limited(&conn, None, Some("LimitProj"), None, Some(0)).unwrap();
+    assert!(limited_zero.is_empty());
 
     let _ = std::fs::remove_dir_all(test_dir);
 }

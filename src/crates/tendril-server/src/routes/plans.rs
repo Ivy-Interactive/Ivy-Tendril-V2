@@ -8,32 +8,61 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use tendril_core::config::load_config;
-use tendril_core::db::{delete_plan as delete_plan_row, get_plans, open_database, sync_plan};
+use tendril_core::db::{
+    delete_plan as delete_plan_row, get_plans_limited, open_database, sync_plan,
+};
 use tendril_core::error::TendrilError;
 use tendril_core::git::{cleanup_worktrees, run_git};
 use tendril_core::models::{PlanStatus, PlanVerificationEntry, PlanYaml, VerificationStatus};
 use tendril_core::plans::{
-    add_plan_verification, add_recommendation, check_plan_health, create_plan, get_revision,
-    list_plan_verifications, list_recommendations, read_plan_file, read_plan_yaml,
+    add_plan_verification, add_recommendation, check_plan_health, clear_diff_comments, create_plan,
+    get_plan_field, get_revision, list_plan_verifications, list_recommendations,
+    read_diff_comments, read_plan_file, read_plan_yaml, remove_diff_comment,
     remove_plan_verification, remove_recommendation, resolve_plan_folder, resolve_plan_folder_name,
-    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
-    CreatePlanOptions, PlanCompletionGuard,
+    set_plan_verification_status, set_recommendation_state, upsert_diff_comment,
+    write_diff_comments, write_plan_yaml, write_revision, CreatePlanOptions, DraftComment,
+    PlanCompletionGuard, SUPPORTED_PLAN_FIELDS,
 };
 
 #[derive(Debug, Deserialize)]
 pub struct PlanQuery {
     pub status: Option<String>,
+    /// Alias for `status`, matching the original Tendril's `?state=` query parameter.
+    /// `status` wins when both are present.
+    pub state: Option<String>,
     pub project: Option<String>,
     pub level: Option<String>,
     pub q: Option<String>,
     pub field: Option<String>,
+    /// Unlike the original Tendril (which defaults to 50), V2 defaults to unbounded: the
+    /// desktop app's plan list depends on receiving all plans unless a caller opts in.
+    pub limit: Option<usize>,
 }
 
 pub async fn list_plans(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PlanQuery>,
 ) -> impl IntoResponse {
-    let status_filter = query.status.as_deref().and_then(PlanStatus::from_str_loose);
+    let status_value = query.status.as_deref().or(query.state.as_deref());
+    let status_filter = match status_value {
+        Some(v) => match PlanStatus::from_str_loose(v) {
+            Some(s) => Some(s),
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!("Unknown plan state '{}'", v),
+                        "supportedStates": [
+                            "Draft", "Creating", "Updating", "Executing", "Completed",
+                            "Failed", "Review", "Skipped", "Icebox", "Blocked",
+                        ],
+                    })),
+                )
+                    .into_response()
+            }
+        },
+        None => None,
+    };
     let project_filter = query.project.as_deref();
     let text_filter = query.q.as_deref();
 
@@ -48,7 +77,7 @@ pub async fn list_plans(
         }
     };
 
-    match get_plans(&conn, status_filter, project_filter, text_filter) {
+    match get_plans_limited(&conn, status_filter, project_filter, text_filter, query.limit) {
         Ok(plans) => Json(json!(plans)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -86,17 +115,32 @@ pub async fn get_plan(
     };
 
     if let Some(field) = query.field {
-        let val = match field.to_ascii_lowercase().as_str() {
-            "title" => plan_file.metadata.title,
-            "state" => plan_file.metadata.state.to_string(),
-            "project" => plan_file.metadata.project,
-            "level" => plan_file.metadata.level,
-            "id" => plan_file.metadata.id.to_string(),
-            "initialprompt" => plan_file.metadata.initial_prompt.unwrap_or_default(),
-            "sourceurl" => plan_file.metadata.source_url.unwrap_or_default(),
-            _ => String::new(),
+        if field.eq_ignore_ascii_case("id") {
+            return plan_file.metadata.id.to_string().into_response();
+        }
+
+        let (plan_yaml, _) = match read_plan_yaml(&folder) {
+            Ok(y) => y,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("Failed to read plan: {}", e) })),
+                )
+                    .into_response()
+            }
         };
-        return val.into_response();
+
+        return match get_plan_field(&plan_yaml, &field) {
+            Some(val) => val.into_response(),
+            None => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Unknown field '{}'", field),
+                    "supportedFields": SUPPORTED_PLAN_FIELDS,
+                })),
+            )
+                .into_response(),
+        };
     }
 
     Json(json!(plan_file)).into_response()
@@ -957,6 +1001,181 @@ pub async fn write_revision_handler(
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to write revision: {}", e) })),
+        ),
+    }
+}
+
+// --- Draft Diff Comment Handlers ---
+//
+// A reviewer's inline diff comments live in `<planFolder>/Artifacts/draft_diff_comments.yaml`, not
+// in `plan.yaml`, so unlike the verification handlers these must not call `sync_plan`: there is no
+// DB-projected field to refresh.
+
+#[derive(Debug, Deserialize)]
+pub struct DiffCommentQuery {
+    #[serde(rename = "filePath")]
+    pub file_path: Option<String>,
+    #[serde(rename = "changeKey")]
+    pub change_key: Option<String>,
+}
+
+/// `PUT` accepts `{ "comments": [...] }` and a bare array alike — the wrapper reads better from a
+/// client, the bare form is what a naive caller sends.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ReplaceDiffCommentsBody {
+    Wrapped { comments: Vec<DraftComment> },
+    Bare(Vec<DraftComment>),
+}
+
+impl ReplaceDiffCommentsBody {
+    fn into_comments(self) -> Vec<DraftComment> {
+        match self {
+            Self::Wrapped { comments } => comments,
+            Self::Bare(comments) => comments,
+        }
+    }
+}
+
+/// Tell every connected client that a plan's diff comments moved.
+///
+/// `send` on a `broadcast::Sender` with no subscribers returns `Err`; ignoring it is deliberate — a
+/// failed broadcast must never fail the write that triggered it.
+fn broadcast_diff_comments_changed(state: &AppState, folder_name: &str, count: usize) {
+    let _ = state.ws_tx.send(
+        json!({
+            "type": "plan.diff_comments_changed",
+            "planId": format!("{:05}", plan_id_from_folder_name(folder_name)),
+            "folderName": folder_name,
+            "count": count,
+        })
+        .to_string(),
+    );
+}
+
+fn folder_name_of(folder: &std::path::Path) -> String {
+    folder
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+pub async fn list_diff_comments_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    match read_diff_comments(&folder) {
+        Ok(comments) => (StatusCode::OK, Json(json!(comments))).into_response(),
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read diff comments: {}", e),
+        ),
+    }
+}
+
+pub async fn upsert_diff_comment_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(comment): Json<DraftComment>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    match upsert_diff_comment(&folder, &comment) {
+        Ok(comments) => {
+            broadcast_diff_comments_changed(&state, &folder_name_of(&folder), comments.len());
+            (StatusCode::OK, Json(json!(comments))).into_response()
+        }
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to save diff comment: {}", e),
+        ),
+    }
+}
+
+pub async fn replace_diff_comments_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<ReplaceDiffCommentsBody>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    let comments = body.into_comments();
+    match write_diff_comments(&folder, &comments) {
+        Ok(()) => {
+            broadcast_diff_comments_changed(&state, &folder_name_of(&folder), comments.len());
+            (StatusCode::OK, Json(json!(comments))).into_response()
+        }
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to replace diff comments: {}", e),
+        ),
+    }
+}
+
+/// `?filePath=..&changeKey=..` removes one comment; no query at all clears the plan's whole review.
+pub async fn delete_diff_comments_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Query(query): Query<DiffCommentQuery>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    let outcome = match (query.file_path.as_deref(), query.change_key.as_deref()) {
+        (Some(file_path), Some(change_key)) => remove_diff_comment(&folder, file_path, change_key),
+        (None, None) => clear_diff_comments(&folder).map(|()| Vec::new()),
+        // Half a key is a client bug, not a request to clear everything.
+        _ => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "filePath and changeKey must be given together; omit both to clear all comments"
+                    .to_string(),
+            )
+        }
+    };
+
+    match outcome {
+        Ok(comments) => {
+            broadcast_diff_comments_changed(&state, &folder_name_of(&folder), comments.len());
+            (StatusCode::OK, Json(json!(comments))).into_response()
+        }
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete diff comments: {}", e),
         ),
     }
 }
