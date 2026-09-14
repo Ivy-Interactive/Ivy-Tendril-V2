@@ -75,6 +75,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             put(plans::update_plan_verification_handler)
                 .delete(plans::delete_plan_verification_handler),
         )
+        .route(
+            "/api/plans/:id/events",
+            post(plans::post_plan_event_handler),
+        )
         // Inbox
         .route("/api/inbox", post(inbox::post_inbox))
         // Jobs

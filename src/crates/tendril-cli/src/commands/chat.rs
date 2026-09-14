@@ -59,6 +59,9 @@ pub struct ChatCreateArgs {
     #[arg(long, help = "Reasoning effort level")]
     pub effort: Option<String>,
 
+    #[arg(long, help = "Plan folder name to associate with this session")]
+    pub plan: Option<String>,
+
     #[arg(long, help = "Output created session as JSON")]
     pub json: bool,
 }
@@ -197,6 +200,7 @@ async fn handle_chat_create(args: ChatCreateArgs, tendril_home: &Path) -> anyhow
                 "agent_id": args.agent,
                 "model_id": args.model,
                 "effort": args.effort,
+                "planFolderName": args.plan,
             }))
             .send()
             .await?;
@@ -233,6 +237,7 @@ fn create_session_local(args: &ChatCreateArgs, tendril_home: &Path) -> anyhow::R
         messages: Vec::new(),
         effort: args.effort.clone(),
         spawned_job_ids: Vec::new(),
+        plan_folder_name: args.plan.clone(),
     };
     storage::save_session(tendril_home, &session)?;
     Ok(session)

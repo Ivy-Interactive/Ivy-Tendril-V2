@@ -48,4 +48,10 @@ pub struct ChatSession {
     pub effort: Option<String>,
     #[serde(default)]
     pub spawned_job_ids: Vec<String>,
+    #[serde(
+        rename = "planFolderName",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub plan_folder_name: Option<String>,
 }

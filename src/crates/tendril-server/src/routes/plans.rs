@@ -193,13 +193,41 @@ pub async fn update_plan_field(
 
     if body.field.eq_ignore_ascii_case("state") {
         if let Some(new_state) = PlanStatus::from_str_loose(&body.value) {
+            let was_completed = plan.state.eq_ignore_ascii_case("completed");
+            let will_be_completed = new_state == PlanStatus::Completed;
             match PlanCompletionGuard::apply_state(
                 &mut plan,
                 new_state,
                 body.allow_failed_verifications,
                 &plan_id,
             ) {
-                Ok(_) => {}
+                Ok(_) => {
+                    if !was_completed && will_be_completed {
+                        let folder_name = folder
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        let p_id: i32 = folder_name
+                            .split('-')
+                            .next()
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0);
+                        let chat_mgr = state.chat_manager.clone();
+                        let title = plan.title.clone();
+                        let cs_id = plan.chat_session_id.clone();
+                        tokio::spawn(async move {
+                            let _ = broadcast_pr_merged(
+                                &chat_mgr,
+                                &title,
+                                p_id,
+                                &folder_name,
+                                cs_id.as_deref(),
+                            )
+                            .await;
+                        });
+                    }
+                }
                 Err(e) => {
                     return (
                         StatusCode::CONFLICT,
@@ -685,4 +713,122 @@ pub async fn delete_plan_verification_handler(
         )
             .into_response(),
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlanEventRequest {
+    pub summary: String,
+    pub reason: Option<String>,
+    #[serde(rename = "sourceChatSessionId", default)]
+    pub source_chat_session_id: Option<String>,
+    #[serde(rename = "revisionFile", default)]
+    pub revision_file: Option<String>,
+}
+
+pub async fn post_plan_event_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<PlanEventRequest>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+            )
+                .into_response();
+        }
+    };
+
+    let plan = match read_plan_file(&folder) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to read plan: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let folder_name = folder
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    let clean_summary = body.summary.trim().trim_end_matches('.');
+    let reason_clause = match body
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
+    {
+        Some(r) => format!(" Reason: {}.", r.trim_end_matches('.')),
+        None => String::new(),
+    };
+
+    let message = format!(
+        "[System Event] Plan '{}' (#{id:05}) was edited directly: {clean_summary}.{reason_clause} Check whether this changes your understanding of the plan, and tell the user if anything needs follow-up.",
+        plan.metadata.title,
+        id = plan.metadata.id
+    );
+
+    match state
+        .chat_manager
+        .broadcast_plan_system_message(
+            folder_name,
+            plan.metadata.chat_session_id.as_deref(),
+            body.source_chat_session_id.as_deref(),
+            &message,
+        )
+        .await
+    {
+        Ok(recipients) => (
+            StatusCode::OK,
+            Json(json!({
+                "broadcasted": true,
+                "recipientCount": recipients.len(),
+                "recipients": recipients,
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to broadcast event: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn broadcast_pr_created(
+    chat_manager: &tendril_core::chat::execution::ChatExecutionManager,
+    plan_title: &str,
+    plan_id: i32,
+    folder_name: &str,
+    plan_chat_session_id: Option<&str>,
+    pr_url: &str,
+) -> tendril_core::error::Result<Vec<String>> {
+    let message = format!(
+        "[System Event] Pull request for plan '{}' (#{plan_id:05}) has been created: {pr_url}. Please review the pull request and next steps.",
+        plan_title
+    );
+    chat_manager
+        .broadcast_plan_system_message(folder_name, plan_chat_session_id, None, &message)
+        .await
+}
+
+pub async fn broadcast_pr_merged(
+    chat_manager: &tendril_core::chat::execution::ChatExecutionManager,
+    plan_title: &str,
+    plan_id: i32,
+    folder_name: &str,
+    plan_chat_session_id: Option<&str>,
+) -> tendril_core::error::Result<Vec<String>> {
+    let message = format!(
+        "[System Event] Pull request for plan '{}' (#{plan_id:05}) has been merged. Plan execution is complete.",
+        plan_title
+    );
+    chat_manager
+        .broadcast_plan_system_message(folder_name, plan_chat_session_id, None, &message)
+        .await
 }

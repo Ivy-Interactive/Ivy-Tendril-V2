@@ -15,11 +15,13 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize)]
 pub struct CreateSessionRequest {
     pub title: Option<String>,
-    #[serde(rename = "agentId")]
+    #[serde(rename = "agentId", alias = "agent_id")]
     pub agent_id: Option<String>,
-    #[serde(rename = "modelId")]
+    #[serde(rename = "modelId", alias = "model_id")]
     pub model_id: Option<String>,
     pub effort: Option<String>,
+    #[serde(rename = "planFolderName", alias = "plan_folder_name", default)]
+    pub plan_folder_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,7 +77,13 @@ pub async fn create_session_handler(
 ) -> impl IntoResponse {
     match state
         .chat_manager
-        .create_session(body.title, body.agent_id, body.model_id, body.effort)
+        .create_session(
+            body.title,
+            body.agent_id,
+            body.model_id,
+            body.effort,
+            body.plan_folder_name,
+        )
         .await
     {
         Ok(session) => (StatusCode::CREATED, Json(json!(session))),

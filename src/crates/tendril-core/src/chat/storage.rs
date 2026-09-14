@@ -99,3 +99,44 @@ pub fn rename_session(tendril_home: &Path, id: &str, new_title: &str) -> Result<
     save_session(tendril_home, &session)?;
     Ok(session)
 }
+
+pub fn broadcast_system_message_to_plan_sessions(
+    tendril_home: &Path,
+    folder_name: &str,
+    plan_chat_session_id: Option<&str>,
+    source_chat_session_id: Option<&str>,
+    content: &str,
+) -> Result<Vec<String>> {
+    let mut sessions = load_all_sessions(tendril_home)?;
+    let mut recipient_ids = Vec::new();
+    for session in &sessions {
+        let matches_folder = session.plan_folder_name.as_deref() == Some(folder_name);
+        let matches_plan_chat = plan_chat_session_id == Some(&session.id);
+        if matches_folder || matches_plan_chat {
+            recipient_ids.push(session.id.clone());
+        }
+    }
+    recipient_ids.sort();
+    recipient_ids.dedup();
+    if let Some(src) = source_chat_session_id {
+        recipient_ids.retain(|id| id != src);
+    }
+
+    for session in &mut sessions {
+        if recipient_ids.contains(&session.id) {
+            session.messages.push(crate::chat::models::ChatMessage {
+                id: Uuid::new_v4().to_string(),
+                role: "system".to_string(),
+                content: content.to_string(),
+                timestamp: Utc::now(),
+                agent_id: None,
+                model_id: None,
+                raw_stream: None,
+                effort: None,
+            });
+            session.updated_at = Utc::now();
+            let _ = save_session(tendril_home, session);
+        }
+    }
+    Ok(recipient_ids)
+}
