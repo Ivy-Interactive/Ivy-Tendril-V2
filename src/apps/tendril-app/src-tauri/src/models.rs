@@ -54,6 +54,8 @@ pub struct PlanSummaryDto {
     pub updated: Option<String>,
     #[serde(default)]
     pub verifications: Vec<PlanVerificationDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allocated_ports: Option<std::collections::HashMap<String, u16>>,
 }
 
 /// Mirrors `Recommendation` in tendril-core `models/plan.rs`. Sourced from the
@@ -131,6 +133,8 @@ pub struct PlanDetailDto {
     pub revision_count: i32,
     #[serde(default)]
     pub recommendations: Vec<RecommendationDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allocated_ports: Option<std::collections::HashMap<String, u16>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -201,6 +205,16 @@ pub struct StartJobResponseDto {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewActionDto {
+    pub name: String,
+    #[serde(default)]
+    pub condition: String,
+    #[serde(default)]
+    pub command: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummaryDto {
@@ -209,6 +223,8 @@ pub struct ProjectSummaryDto {
     pub repos: Vec<String>,
     #[serde(default)]
     pub verifications: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_actions: Vec<ReviewActionDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

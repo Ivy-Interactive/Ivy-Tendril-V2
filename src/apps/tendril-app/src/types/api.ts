@@ -27,6 +27,7 @@ export interface PlanSummary {
   created?: string;
   updated?: string;
   verifications: PlanVerification[];
+  allocatedPorts?: Record<string, number>;
 }
 
 export interface PlanDetail {
@@ -50,10 +51,11 @@ export interface PlanDetail {
   latestRevisionContent?: string;
   /** Absolute path of the plan folder, used to locate verification reports. */
   folderPath?: string;
-  /** Number of revisions on disk — bounds the Diff View revision selectors. */
+  /** Number of revisions on disk: bounds the Diff View revision selectors. */
   revisionCount: number;
   /** Out-of-scope follow-ups registered by ExecutePlan, read from plan.yaml. */
   recommendations: RecommendationItem[];
+  allocatedPorts?: Record<string, number>;
 }
 
 /** Mirrors `JobStatus` in tendril-core `models/job.rs`. */
@@ -111,10 +113,24 @@ export interface ServiceInfo {
   crashCount?: number;
 }
 
+export interface ReviewActionConfig {
+  name: string;
+  condition: string;
+  command: string;
+}
+
 export interface ProjectSummary {
   name: string;
   repos: string[];
   verifications: string[];
+  reviewActions?: ReviewActionConfig[];
+}
+
+export interface ProjectDetail extends ProjectSummary {
+  color?: string;
+  context?: string;
+  stackHash?: string;
+  buildDependencies?: string[];
 }
 
 export interface TendrilConfig {

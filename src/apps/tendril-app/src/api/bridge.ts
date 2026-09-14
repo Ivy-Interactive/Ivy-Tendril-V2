@@ -9,6 +9,7 @@ import type {
   ProjectSummary,
   RecommendationItem,
   RecommendationState,
+  ReviewActionConfig,
   RevisionResult,
   ServiceHealth,
   ServiceInfo,
@@ -144,6 +145,51 @@ export const bridge = {
 
   async listProjects(this: void): Promise<ProjectSummary[]> {
     return invoke<ProjectSummary[]>("cmd_list_projects");
+  },
+
+  async getProjectReviewActions(this: void, projectName: string): Promise<ReviewActionConfig[]> {
+    try {
+      const projects = await bridge.listProjects();
+      const proj = projects.find((p) => p.name.toLowerCase() === projectName.toLowerCase());
+      return proj?.reviewActions ?? [];
+    } catch {
+      return [];
+    }
+  },
+
+  async executeReviewAction(
+    this: void,
+    projectName: string,
+    actionName: string,
+    planId?: string,
+    worktree?: string,
+  ): Promise<unknown> {
+    try {
+      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+        return await invoke<unknown>("cmd_execute_review_action", {
+          projectName,
+          actionName,
+          planId,
+          worktree,
+        });
+      }
+    } catch {
+      // Fall back to direct fetch if Tauri invoke is not available
+    }
+
+    const res = await fetch(
+      `/api/projects/${encodeURIComponent(projectName)}/review-actions/${encodeURIComponent(actionName)}/execute`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId, worktree }),
+      },
+    );
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      throw new Error(`Execution failed (${res.status}): ${err}`);
+    }
+    return res.json().catch(() => ({ status: "ok" }));
   },
 
   async getConfig(this: void): Promise<TendrilConfig> {

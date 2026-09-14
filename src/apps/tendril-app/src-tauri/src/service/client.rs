@@ -2,7 +2,7 @@ use crate::error::BridgeError;
 use crate::models::{
     ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, EnqueueItemDto, ExecuteTurnDto,
     JobDetailDto, JobDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, PostMessageDto,
-    ProjectSummaryDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
+    ProjectSummaryDto, ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -728,15 +728,68 @@ impl TendrilClient {
                     })
                     .unwrap_or_default();
 
+                let review_actions = val
+                    .get("reviewActions")
+                    .or_else(|| val.get("review_actions"))
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|item| {
+                                serde_json::from_value::<ReviewActionDto>(item.clone()).ok()
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
                 ProjectSummaryDto {
                     name,
                     repos,
                     verifications,
+                    review_actions,
                 }
             })
             .collect();
 
         Ok(summaries)
+    }
+
+    pub async fn execute_review_action(
+        &self,
+        project_name: &str,
+        action_name: &str,
+        plan_id: Option<&str>,
+        worktree: Option<&str>,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!(
+            "{}/api/projects/{}/review-actions/{}/execute",
+            self.base_url,
+            path_segment(project_name),
+            path_segment(action_name)
+        );
+        let body = json!({
+            "planId": plan_id,
+            "worktree": worktree,
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "EXECUTE_REVIEW_ACTION_FAILED",
+                format!("Failed to execute review action '{action_name}' ({status}): {text}"),
+            ));
+        }
+
+        let result = resp.json().await.unwrap_or(json!({ "status": "ok" }));
+        Ok(result)
     }
 
     pub async fn get_config(&self) -> Result<TendrilConfigDto, BridgeError> {
