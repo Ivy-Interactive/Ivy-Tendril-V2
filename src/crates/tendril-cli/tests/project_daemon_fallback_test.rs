@@ -67,7 +67,7 @@ async fn stalled_daemon(label: &str) -> Fixture {
     let tendril_home = temp_home(label);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    write_master(&tendril_home, port, "test-secret", "127.0.0.1").unwrap();
+    write_master(&tendril_home, port, "test-secret", "127.0.0.1", "http").unwrap();
 
     let app = Router::new().fallback(any(|| async {
         tokio::time::sleep(STALL).await;
@@ -95,7 +95,7 @@ async fn erroring_daemon(label: &str) -> Fixture {
     let tendril_home = temp_home(label);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
-    write_master(&tendril_home, port, "test-secret", "127.0.0.1").unwrap();
+    write_master(&tendril_home, port, "test-secret", "127.0.0.1", "http").unwrap();
 
     let app = Router::new().fallback(any(|| async {
         (
@@ -126,7 +126,7 @@ fn home_with_dead_master(label: &str) -> PathBuf {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     drop(listener);
-    write_master(&tendril_home, port, "test-secret", "127.0.0.1").unwrap();
+    write_master(&tendril_home, port, "test-secret", "127.0.0.1", "http").unwrap();
     tendril_home
 }
 

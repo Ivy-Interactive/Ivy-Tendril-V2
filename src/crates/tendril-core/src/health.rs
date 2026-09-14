@@ -5,18 +5,26 @@
 //! doctor prints it; [`run_prerequisite_checks`] is the "can this machine run Tendril at all" subset
 //! the first-run wizard renders, which additionally probes each known coding-agent CLI.
 
+use crate::agents::model_cache::{self, CacheFreshness};
+use crate::agents::model_specs;
+use crate::agents::providers::agent_command;
+use crate::agents::resolution::{default_profiles, normalize_agent_name};
 use crate::config::{
-    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
+    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config, read_master,
     TendrilSettings,
 };
 use crate::db::{check_plan_search, get_last_sync_time, open_database, PlanSearchHealth};
+use crate::git::{
+    classify_path_budget, derive_worktree_relative_path, worst_case_worktree_root_len,
+    PathBudgetVerdict, MAX_WORKTREE_ROOT_LEN,
+};
 use crate::promptware::{
     configured_overlay_root, overlay_promptware_names, read_provenance, resolve_overlay,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The name of the database check, which `handle_doctor` uses to place its `--rebuild-search-index`
 /// note in the same position it has always printed.
@@ -93,7 +101,10 @@ impl CheckResult {
     }
 }
 
-/// Every check `tendril doctor` runs, in display order.
+/// Every check `tendril doctor` runs, in display order: home, environment overrides, config,
+/// overlay, server, installation, software (git/gh), agents and models, database, plans
+/// directory, path budget. Path budget runs last because it is the longest section and depends
+/// on the plans-directory line printed just above it.
 pub fn run_checks(tendril_home: &Path) -> Vec<CheckResult> {
     let mut checks = vec![CheckResult::environment(
         "Tendril Home",
@@ -101,7 +112,22 @@ pub fn run_checks(tendril_home: &Path) -> Vec<CheckResult> {
         format!("Tendril Home: {}", tendril_home.display()),
     )];
 
+    checks.extend(environment_override_checks());
+
+    let settings = load_config(&get_config_path(tendril_home)).unwrap_or_default();
     checks.extend(config_checks(tendril_home));
+    checks.extend(overlay_checks(tendril_home, &settings));
+    checks.push(server_check(tendril_home));
+
+    checks.extend(installation_checks());
+
+    checks.push(git_check());
+    checks.extend(github_cli_checks());
+
+    let (mut catalog_checks, catalog_is_static) = model_catalog_checks(tendril_home, &settings);
+    checks.append(&mut catalog_checks);
+    checks.extend(agent_model_checks(&settings, catalog_is_static));
+
     checks.extend(database_checks(tendril_home));
 
     let plans_dir = get_plans_dir(tendril_home);
@@ -119,11 +145,13 @@ pub fn run_checks(tendril_home: &Path) -> Vec<CheckResult> {
         )
     });
 
-    let settings = load_config(&get_config_path(tendril_home)).unwrap_or_default();
-    checks.extend(overlay_checks(tendril_home, &settings));
-
-    checks.push(git_check());
-    checks.push(github_cli_check());
+    if plans_dir.exists() {
+        checks.extend(path_budget_checks(
+            &plans_dir,
+            &plan_folder_names(&plans_dir),
+            &configured_repo_rel_paths(&settings, tendril_home),
+        ));
+    }
 
     checks
 }
@@ -247,6 +275,38 @@ fn github_cli_check() -> CheckResult {
     }
 }
 
+/// [`github_cli_check`] plus, when `gh` is installed, whether it is authenticated — a `gh`
+/// present but logged out fails the same PR-creation flows a missing `gh` would.
+fn github_cli_checks() -> Vec<CheckResult> {
+    let gh = github_cli_check();
+    let installed = gh.status != CheckStatus::Warn;
+    let mut checks = vec![gh];
+
+    if installed {
+        let authenticated = std::process::Command::new("gh")
+            .args(["auth", "status", "--active"])
+            .output()
+            .map(|out| out.status.success())
+            .unwrap_or(false);
+
+        checks.push(if authenticated {
+            CheckResult::environment(
+                "GitHub CLI auth",
+                CheckStatus::Ok,
+                "GitHub CLI authenticated".to_string(),
+            )
+        } else {
+            CheckResult::environment(
+                "GitHub CLI auth",
+                CheckStatus::Fail,
+                "GitHub CLI installed but not authenticated — run 'gh auth login'".to_string(),
+            )
+        });
+    }
+
+    checks
+}
+
 /// First line of `<command> --version`, or `None` when the binary is not on PATH.
 fn probe_version(command: &str) -> Option<String> {
     let out = std::process::Command::new(command)
@@ -270,6 +330,163 @@ fn probe_full_version(command: &str) -> Option<String> {
         .output()
         .ok()?;
     Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// The env vars `crate::config` honours that silently change where Tendril looks, reported right
+/// after Tendril Home so an operator sees them before wondering why a path doesn't match what
+/// `config.yaml` says. Prints nothing for a variable that isn't set — the defaults are already
+/// implied by the Tendril Home line above.
+fn environment_override_checks() -> Vec<CheckResult> {
+    let mut checks = Vec::new();
+
+    if let Ok(val) = std::env::var("TENDRIL_HOME") {
+        checks.push(CheckResult::environment(
+            "Environment overrides",
+            CheckStatus::Ok,
+            format!("TENDRIL_HOME is set: {}", val),
+        ));
+    }
+    if let Ok(val) = std::env::var("TENDRIL_CONFIG") {
+        checks.push(CheckResult::environment(
+            "Environment overrides",
+            CheckStatus::Ok,
+            format!("TENDRIL_CONFIG is set: {}", val),
+        ));
+    }
+    if let Ok(val) = std::env::var("TENDRIL_PLANS") {
+        checks.push(CheckResult::environment(
+            "Environment overrides",
+            CheckStatus::Warn,
+            format!(
+                "TENDRIL_PLANS is set: {} — this overrides plansFolder from config.yaml",
+                val
+            ),
+        ));
+    }
+
+    checks
+}
+
+/// Which build of `tendril` is actually running, whether the `tendril` an operator would invoke on
+/// PATH resolves to that same build, and whether the legacy .NET tool is still installed alongside
+/// it. Pure over its inputs (see [`installation_checks`] for the real-environment probes) so tests
+/// drive every branch without touching the real PATH.
+fn installation_lines(
+    current_exe: Option<&Path>,
+    path_hit: Option<&Path>,
+    legacy_tool: Option<&str>,
+) -> Vec<CheckResult> {
+    let mut checks = vec![CheckResult::environment(
+        "Installation",
+        CheckStatus::Ok,
+        format!("Version: tendril v{}", env!("CARGO_PKG_VERSION")),
+    )];
+
+    if let Some(exe) = current_exe {
+        checks.push(CheckResult::environment(
+            "Installation",
+            CheckStatus::Ok,
+            format!("Executable: {}", exe.display()),
+        ));
+    }
+
+    checks.push(match (current_exe, path_hit) {
+        (_, None) => CheckResult::environment(
+            "Installation",
+            CheckStatus::Warn,
+            "tendril not found on PATH".to_string(),
+        ),
+        (Some(exe), Some(hit)) if exe == hit => CheckResult::environment(
+            "Installation",
+            CheckStatus::Ok,
+            format!("tendril on PATH: {}", hit.display()),
+        ),
+        (Some(exe), Some(hit)) => CheckResult::environment(
+            "Installation",
+            CheckStatus::Warn,
+            format!(
+                "tendril on PATH resolves elsewhere: {} (running: {}) — the CLI you invoke is not this build",
+                hit.display(),
+                exe.display()
+            ),
+        ),
+        (None, Some(hit)) => CheckResult::environment(
+            "Installation",
+            CheckStatus::Ok,
+            format!("tendril on PATH: {}", hit.display()),
+        ),
+    });
+
+    if let Some(version) = legacy_tool {
+        checks.push(CheckResult::environment(
+            "Installation",
+            CheckStatus::Warn,
+            format!(
+                "Legacy .NET tool installed: Ivy.Tendril {} — run 'dotnet tool uninstall --global Ivy.Tendril'",
+                version
+            ),
+        ));
+    }
+
+    checks
+}
+
+fn installation_checks() -> Vec<CheckResult> {
+    let current_exe = std::env::current_exe().ok();
+    let path_hit = which_tendril();
+    let legacy_tool = legacy_dotnet_tool_version();
+    installation_lines(
+        current_exe.as_deref(),
+        path_hit.as_deref(),
+        legacy_tool.as_deref(),
+    )
+}
+
+/// `which tendril` on Unix, `where.exe tendril` on Windows — first line of stdout, or `None` when
+/// `tendril` is not on PATH at all.
+fn which_tendril() -> Option<PathBuf> {
+    let (cmd, arg) = if cfg!(windows) {
+        ("where.exe", "tendril")
+    } else {
+        ("which", "tendril")
+    };
+    let out = std::process::Command::new(cmd).arg(arg).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let first_line = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()?
+        .trim()
+        .to_string();
+    if first_line.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(first_line))
+    }
+}
+
+/// `dotnet tool list --global`, matched case-insensitively for `ivy.tendril`. `None` when `dotnet`
+/// is missing or the tool isn't installed — a machine without `dotnet` should not be nagged.
+fn legacy_dotnet_tool_version() -> Option<String> {
+    let out = std::process::Command::new("dotnet")
+        .args(["tool", "list", "--global"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for line in stdout.lines() {
+        let mut parts = line.split_whitespace();
+        let Some(package) = parts.next() else {
+            continue;
+        };
+        if package.eq_ignore_ascii_case("ivy.tendril") {
+            return parts.next().map(|v| v.to_string());
+        }
+    }
+    None
 }
 
 fn config_checks(tendril_home: &Path) -> Vec<CheckResult> {
@@ -454,6 +671,35 @@ pub fn plan_search_checks(
     checks
 }
 
+/// What `.master` says the running server is, including which scheme it serves: a client that
+/// guesses wrong gets a connection error rather than a redirect, so this is worth stating plainly.
+fn server_check(tendril_home: &Path) -> CheckResult {
+    match read_master(tendril_home) {
+        Some(master) => {
+            let note = if master.scheme.eq_ignore_ascii_case("https") {
+                "TLS"
+            } else {
+                "plaintext; --tls-cert/--tls-key serves HTTPS"
+            };
+            CheckResult::environment(
+                "Server",
+                CheckStatus::Ok,
+                format!(
+                    "Server: {} (pid {}, {})",
+                    master.base_url(),
+                    master.pid,
+                    note
+                ),
+            )
+        }
+        None => CheckResult::environment(
+            "Server",
+            CheckStatus::Ok,
+            "Server: not running (no .master file)".to_string(),
+        ),
+    }
+}
+
 /// Reports where the promptware overlay is, whether it resolves, and whether what is deployed still
 /// matches it. A configured-but-missing overlay is the failure mode the original mechanism could not
 /// report at all: it had no notion of an overlay path, only a git-tracked deploy target.
@@ -532,6 +778,355 @@ pub fn overlay_checks(tendril_home: &Path, settings: &TendrilSettings) -> Vec<Ch
         }
         Some(_) => {}
     }
+
+    checks
+}
+
+/// Age in whole days rendered the way an operator reads it, matching `models.rs`'s own wording.
+fn format_age(age_days: Option<i64>) -> String {
+    match age_days {
+        Some(0) => "today".to_string(),
+        Some(1) => "1 day ago".to_string(),
+        Some(d) => format!("{d} days ago"),
+        None => "an unknown age".to_string(),
+    }
+}
+
+/// Loads the on-disk models.dev cache and registers it as `model_specs`'s dynamic catalog, mirroring
+/// the bootstrap `tendril models` runs — minus the network fetch, since doctor must stay offline.
+/// The returned `bool` is whether model resolution fell back to the static catalog (no cache, unreadable
+/// cache, or a cache past `modelCacheMaxAgeDays`), which downgrades an unresolved model from `Fail` to
+/// `Warn` in [`agent_model_checks`]: the model may just be missing from a stale catalog, not actually
+/// wrong.
+fn model_catalog_checks(
+    tendril_home: &Path,
+    settings: &TendrilSettings,
+) -> (Vec<CheckResult>, bool) {
+    let catalog = match model_cache::load_disk_cache(tendril_home) {
+        Ok(catalog) if !catalog.is_empty() => catalog,
+        _ => {
+            return (
+                vec![CheckResult::environment(
+                    "Model catalog",
+                    CheckStatus::Warn,
+                    "Model catalog: static ModelSpecs fallback (no models.dev cache yet) — run 'tendril models --refresh'".to_string(),
+                )],
+                true,
+            );
+        }
+    };
+
+    let count = catalog.specs.len();
+    match model_cache::classify(
+        &catalog,
+        settings.model_cache_warn_age_days,
+        settings.model_cache_max_age_days,
+    ) {
+        CacheFreshness::Fresh { age_days } => {
+            model_specs::register_dynamic_specs(catalog.specs);
+            (
+                vec![CheckResult::environment(
+                    "Model catalog",
+                    CheckStatus::Ok,
+                    format!(
+                        "Model catalog: models.dev cache ({} models, fetched {})",
+                        count,
+                        format_age(age_days)
+                    ),
+                )],
+                false,
+            )
+        }
+        CacheFreshness::Stale { age_days } => {
+            model_specs::register_dynamic_specs(catalog.specs);
+            (
+                vec![CheckResult::environment(
+                    "Model catalog",
+                    CheckStatus::Warn,
+                    format!(
+                        "Model catalog: cache is {} — run 'tendril models --refresh'",
+                        format_age(age_days)
+                    ),
+                )],
+                false,
+            )
+        }
+        CacheFreshness::Expired { age_days } => (
+            vec![CheckResult::environment(
+                "Model catalog",
+                CheckStatus::Warn,
+                format!(
+                    "Model catalog: static ModelSpecs fallback (models.dev cache ignored: {} old) — run 'tendril models --refresh'",
+                    format_age(age_days)
+                ),
+            )],
+            true,
+        ),
+    }
+}
+
+/// The models to check for `agent`: its configured profiles' models (skipping blanks and the
+/// literal `default`), or — when it has no configured profiles at all — the built-in
+/// `deep`/`balanced`/`quick` tier defaults. Returns `(profile or tier name, model id)` pairs.
+fn configured_or_default_models(settings: &TendrilSettings, agent: &str) -> Vec<(String, String)> {
+    let configured: Vec<(String, String)> = settings
+        .coding_agents
+        .iter()
+        .filter(|a| normalize_agent_name(&a.name) == agent)
+        .flat_map(|a| a.profiles.iter())
+        .filter(|p| !p.model.is_empty() && p.model != "default")
+        .map(|p| (p.name.clone(), p.model.clone()))
+        .collect();
+
+    if !configured.is_empty() {
+        return configured;
+    }
+
+    default_profiles(agent)
+        .into_iter()
+        .filter_map(|tier| tier.model.map(|m| (tier.tier.to_string(), m.to_string())))
+        .collect()
+}
+
+/// One probe per configured coding agent: whether its CLI is installed, and whether every model it
+/// is configured (or defaulted) to use resolves in the model catalog. Model resolution is a pure
+/// catalog lookup, never a shell-out to the agent, so this stays synchronous and offline.
+fn agent_model_checks(settings: &TendrilSettings, catalog_is_static: bool) -> Vec<CheckResult> {
+    let active = normalize_agent_name(&settings.coding_agent);
+    let mut agents: Vec<(String, bool)> = vec![(active, true)];
+    for a in &settings.coding_agents {
+        let name = normalize_agent_name(&a.name);
+        if !agents.iter().any(|(n, _)| *n == name) {
+            agents.push((name, false));
+        }
+    }
+
+    let mut checks = Vec::new();
+
+    for (agent, is_active) in &agents {
+        let label = if *is_active {
+            format!("{} (active)", agent)
+        } else {
+            agent.clone()
+        };
+        let command = agent_command(agent);
+
+        if probe_version(&command).is_none() {
+            checks.push(CheckResult::environment(
+                "Agent models",
+                if *is_active {
+                    CheckStatus::Fail
+                } else {
+                    CheckStatus::Warn
+                },
+                format!("{}: CLI '{}' not found on PATH", label, command),
+            ));
+            // An unresolvable model on an uninstalled agent is noise; legacy skipped it too.
+            continue;
+        }
+
+        for (profile_name, model) in configured_or_default_models(settings, agent) {
+            match model_specs::find(&model) {
+                Some(spec) => {
+                    let matched = if spec.model_id.as_ref() != model {
+                        format!(" (matched {})", spec.model_id)
+                    } else {
+                        String::new()
+                    };
+                    checks.push(CheckResult::environment(
+                        "Agent models",
+                        CheckStatus::Ok,
+                        format!("{} {}: {}{}", label, profile_name, model, matched),
+                    ));
+                }
+                None => {
+                    let status = if catalog_is_static {
+                        CheckStatus::Warn
+                    } else {
+                        CheckStatus::Fail
+                    };
+                    checks.push(CheckResult::environment(
+                        "Agent models",
+                        status,
+                        format!(
+                            "{} {}: model '{}' is not in the model catalog — fix codingAgents.{}.profiles.{}.model in config.yaml, or run 'tendril models --refresh' if it is a new model",
+                            label, profile_name, model, agent, profile_name
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
+    checks
+}
+
+/// Existing plan folder names under `plans_root` — directory entries whose first 5 characters are
+/// all ASCII digits, matching [`crate::plans::helpers::allocate_plan_id`]'s numbering.
+fn plan_folder_names(plans_root: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(plans_root) else {
+        return Vec::new();
+    };
+
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+        .filter(|name| name.len() >= 5 && name.as_bytes()[..5].iter().all(|b| b.is_ascii_digit()))
+        .collect()
+}
+
+/// The relative path segment a worktree would use for every repo and build-dependency path
+/// configured across all projects, expanded and deduplicated. Mirrors
+/// [`crate::git::derive_worktree_relative_path`] exactly, since that is what actually determines a
+/// worktree's path length.
+fn configured_repo_rel_paths(settings: &TendrilSettings, tendril_home: &Path) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut names = Vec::new();
+
+    let push_unique = |raw_path: &str, seen: &mut HashSet<String>, names: &mut Vec<String>| {
+        let expanded = expand_variables(raw_path, &tendril_home.to_string_lossy());
+        let name = derive_worktree_relative_path(Path::new(&expanded));
+        if seen.insert(name.clone()) {
+            names.push(name);
+        }
+    };
+
+    for project in &settings.projects {
+        for r in &project.repos {
+            push_unique(&r.path, &mut seen, &mut names);
+        }
+        for dep_path in &project.build_dependencies {
+            push_unique(dep_path, &mut seen, &mut names);
+        }
+    }
+
+    names
+}
+
+/// Reports whether the worst-case worktree root — `<plans root>/<longest plan folder>/Worktrees/
+/// <longest configured repo>` — stays under the Windows path-creation budget. Pure over its inputs
+/// so tests can drive every branch with literals instead of building a plans directory on disk.
+/// `Over` is a hard `[FAIL]` only on Windows, where the budget actually bites; elsewhere it is a
+/// `[WARN]` naming Windows as the reason, since a long path is harmless on macOS/Linux.
+fn path_budget_checks(
+    plans_root: &Path,
+    plan_folder_names: &[String],
+    repo_rel_paths: &[String],
+) -> Vec<CheckResult> {
+    let plans_root_len = plans_root.to_string_lossy().len();
+    let mut checks = vec![CheckResult::environment(
+        "Path budget",
+        CheckStatus::Ok,
+        format!(
+            "Plans root: {} ({} chars)",
+            plans_root.display(),
+            plans_root_len
+        ),
+    )];
+
+    let longest_repo = repo_rel_paths.iter().max_by_key(|p| p.len());
+    checks.push(match longest_repo {
+        Some(name) => CheckResult::environment(
+            "Path budget",
+            CheckStatus::Ok,
+            format!(
+                "Longest configured repo path segment: {} ({} chars)",
+                name,
+                name.len()
+            ),
+        ),
+        None => CheckResult::environment(
+            "Path budget",
+            CheckStatus::Warn,
+            "Longest configured repo path segment: none — no repos configured".to_string(),
+        ),
+    });
+
+    let longest_folder = plan_folder_names.iter().max_by_key(|f| f.len());
+    if let Some(folder) = longest_folder {
+        checks.push(CheckResult::environment(
+            "Path budget",
+            CheckStatus::Ok,
+            format!(
+                "Longest existing plan folder: {} ({} chars)",
+                folder,
+                folder.len()
+            ),
+        ));
+    }
+
+    let repo_len = longest_repo.map(|s| s.len()).unwrap_or(0);
+    let folder_len = longest_folder.map(|s| s.len()).unwrap_or(0);
+    let worst_case = worst_case_worktree_root_len(plans_root_len, folder_len, repo_len);
+    let headroom = MAX_WORKTREE_ROOT_LEN as i64 - worst_case as i64;
+    let remediation = "shorten plansFolder, or give plans shorter titles — the worktree root must stay under 95 chars for Windows process creation";
+
+    checks.push(match classify_path_budget(worst_case) {
+        PathBudgetVerdict::Ok => CheckResult::environment(
+            "Path budget",
+            CheckStatus::Ok,
+            format!(
+                "Worst-case worktree root: {} chars (budget {}, headroom {})",
+                worst_case, MAX_WORKTREE_ROOT_LEN, headroom
+            ),
+        ),
+        PathBudgetVerdict::Tight => CheckResult::environment(
+            "Path budget",
+            CheckStatus::Warn,
+            format!(
+                "Worst-case worktree root: {} chars (budget {}, headroom {}) — {}",
+                worst_case, MAX_WORKTREE_ROOT_LEN, headroom, remediation
+            ),
+        ),
+        PathBudgetVerdict::Over if cfg!(windows) => CheckResult::environment(
+            "Path budget",
+            CheckStatus::Fail,
+            format!(
+                "Worst-case worktree root: {} chars (budget {}, headroom {}) — {}",
+                worst_case, MAX_WORKTREE_ROOT_LEN, headroom, remediation
+            ),
+        ),
+        PathBudgetVerdict::Over => CheckResult::environment(
+            "Path budget",
+            CheckStatus::Warn,
+            format!(
+                "Worst-case worktree root: {} chars (budget {}, headroom {}) (Windows path budget) — {}",
+                worst_case, MAX_WORKTREE_ROOT_LEN, headroom, remediation
+            ),
+        ),
+    });
+
+    let over_budget: Vec<&String> = plan_folder_names
+        .iter()
+        .filter(|f| {
+            worst_case_worktree_root_len(plans_root_len, f.len(), repo_len) > MAX_WORKTREE_ROOT_LEN
+        })
+        .collect();
+
+    checks.push(if over_budget.is_empty() {
+        CheckResult::environment(
+            "Path budget",
+            CheckStatus::Ok,
+            format!(
+                "Plan folders over the {}-char budget: None",
+                MAX_WORKTREE_ROOT_LEN
+            ),
+        )
+    } else {
+        let longest = over_budget.iter().max_by_key(|f| f.len()).unwrap();
+        CheckResult::environment(
+            "Path budget",
+            CheckStatus::Warn,
+            format!(
+                "Plan folders over the {}-char budget: {} (longest: {} at {} chars)",
+                MAX_WORKTREE_ROOT_LEN,
+                over_budget.len(),
+                longest,
+                longest.len()
+            ),
+        )
+    });
 
     checks
 }
@@ -1062,5 +1657,166 @@ mod tests {
                 fx.overlay.display()
             )
         );
+    }
+
+    #[test]
+    fn path_budget_lines_reports_headroom_when_inside_budget() {
+        let plans_root = Path::new("/Users/rory/.tendril/Plans");
+        let checks = path_budget_checks(
+            plans_root,
+            &["00632-AddPathBudget".to_string()],
+            &["Ivy-Tendril-V2".to_string()],
+        );
+        let lines = render(&checks);
+
+        assert!(lines[0].starts_with("[OK] Plans root:"));
+        assert!(lines[1].starts_with("[OK] Longest configured repo path segment: Ivy-Tendril-V2"));
+        assert!(lines[2].starts_with("[OK] Longest existing plan folder:"));
+        assert!(lines[3].starts_with("[OK] Worst-case worktree root:"));
+        assert!(lines[3].contains("headroom"));
+        assert_eq!(lines[4], "[OK] Plan folders over the 95-char budget: None");
+    }
+
+    #[test]
+    fn path_budget_lines_flags_over_budget_root() {
+        // A plans root alone this long already exceeds the 95-char budget once the plan folder,
+        // `Worktrees`, and a repo name are appended.
+        let plans_root = Path::new("/Users/rory/some/very/deeply/nested/tendril/home/directory/that/is/quite/long/.tendril/Plans");
+        let folder = "00632-AddPathBudgetAndAgentModelDoctorChecks".to_string();
+        let checks = path_budget_checks(plans_root, &[folder], &["Ivy-Tendril-V2".to_string()]);
+        let lines = render(&checks);
+
+        let worst_case_line = &lines[3];
+        if cfg!(windows) {
+            assert!(worst_case_line.starts_with("[FAIL] Worst-case worktree root:"));
+        } else {
+            assert!(worst_case_line.starts_with("[WARN] Worst-case worktree root:"));
+            assert!(worst_case_line.contains("Windows path budget"));
+        }
+    }
+
+    #[test]
+    fn path_budget_lines_warns_with_no_repos() {
+        let plans_root = Path::new("/Users/rory/.tendril/Plans");
+        let checks = path_budget_checks(plans_root, &["00632-Plan".to_string()], &[]);
+        let lines = render(&checks);
+
+        assert_eq!(
+            lines[1],
+            "[WARN] Longest configured repo path segment: none — no repos configured"
+        );
+    }
+
+    #[test]
+    fn path_budget_lines_counts_folders_over_budget() {
+        let plans_root = Path::new("/Users/rory/some/very/deeply/nested/tendril/home/directory/that/is/quite/long/.tendril/Plans");
+        let folders = vec![
+            "00001-Short".to_string(),
+            "00632-AddPathBudgetAndAgentModelDoctorChecksWithAVeryLongTitleIndeed".to_string(),
+        ];
+        let checks = path_budget_checks(plans_root, &folders, &["Ivy-Tendril-V2".to_string()]);
+        let lines = render(&checks);
+
+        let over_line = lines.last().unwrap();
+        assert!(over_line.starts_with("[WARN] Plan folders over the 95-char budget: "));
+        assert!(!over_line.contains(": None"));
+    }
+
+    fn agent_settings(agent: &str, model: &str) -> TendrilSettings {
+        TendrilSettings {
+            coding_agent: agent.to_string(),
+            coding_agents: vec![crate::config::AgentConfig {
+                name: agent.to_string(),
+                profiles: vec![crate::config::AgentProfileConfig {
+                    name: "deep".to_string(),
+                    model: model.to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn agent_model_lines_ok_for_builtin_defaults() {
+        let settings = TendrilSettings {
+            coding_agent: "claude".to_string(),
+            ..Default::default()
+        };
+
+        let checks = agent_model_checks(&settings, false);
+        let lines = render(&checks);
+
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("[OK]") && l.contains("(active)")),
+            "expected at least one OK line for the active agent's default models, got {:?}",
+            lines
+        );
+    }
+
+    #[test]
+    fn agent_model_lines_flags_unknown_model() {
+        let settings = agent_settings("claude", "not-a-real-model-id");
+
+        let checks = agent_model_checks(&settings, false);
+        let lines = render(&checks);
+
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.starts_with("[FAIL]") && l.contains("not-a-real-model-id")),
+            "expected a FAIL line for the unresolvable model, got {:?}",
+            lines
+        );
+    }
+
+    #[test]
+    fn agent_model_lines_marks_active_agent() {
+        let settings = agent_settings("claude", "opus");
+
+        let checks = agent_model_checks(&settings, false);
+        let lines = render(&checks);
+
+        assert!(lines.iter().any(|l| l.contains("claude (active)")));
+    }
+
+    #[test]
+    fn installation_lines_warns_when_path_differs() {
+        let current = PathBuf::from("/opt/tendril/bin/tendril");
+        let on_path = PathBuf::from("/usr/local/bin/tendril");
+
+        let checks = installation_lines(Some(&current), Some(&on_path), None);
+        let lines = render(&checks);
+
+        assert!(lines
+            .iter()
+            .any(|l| l.starts_with("[WARN]") && l.contains("tendril on PATH resolves elsewhere")));
+    }
+
+    #[test]
+    fn installation_lines_ok_when_path_matches() {
+        let current = PathBuf::from("/usr/local/bin/tendril");
+
+        let checks = installation_lines(Some(&current), Some(&current), None);
+        let lines = render(&checks);
+
+        assert!(lines
+            .iter()
+            .any(|l| l.starts_with("[OK]") && l.contains("tendril on PATH:")));
+    }
+
+    #[test]
+    fn installation_lines_warns_on_legacy_tool() {
+        let current = PathBuf::from("/usr/local/bin/tendril");
+
+        let checks = installation_lines(Some(&current), Some(&current), Some("1.0.99"));
+        let lines = render(&checks);
+
+        assert!(lines.iter().any(|l| l.starts_with("[WARN]")
+            && l.contains("Legacy .NET tool")
+            && l.contains("1.0.99")));
     }
 }

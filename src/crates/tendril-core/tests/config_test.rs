@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 use tendril_core::config::{
-    delete_master, dirs_home, dirs_home_with_env, expand_variables, expand_variables_with_env,
-    find_projects_referencing_verification, get_config_path, get_config_path_with_env,
-    get_default_tendril_home, get_default_tendril_home_with_env, get_plans_dir,
-    get_plans_dir_with_env, get_plans_dir_with_settings, get_tendril_home,
-    get_tendril_home_with_env, load_config, normalize_slashes, read_master,
+    delete_master, dirs_home, dirs_home_with_env, ensure_home_directories, expand_variables,
+    expand_variables_with_env, find_projects_referencing_verification, get_config_path,
+    get_config_path_with_env, get_default_tendril_home, get_default_tendril_home_with_env,
+    get_hooks_dir, get_plans_dir, get_plans_dir_with_env, get_plans_dir_with_settings,
+    get_tendril_home, get_tendril_home_with_env, load_config, normalize_slashes, read_master,
     remove_verification_from_projects, save_config, write_master, EnvSource, SystemEnv,
     TendrilSettings,
 };
@@ -223,7 +223,7 @@ fn test_master_file_lifecycle() {
 
     assert!(read_master(&test_dir).is_none());
 
-    write_master(&test_dir, 49200, "secret-token-xyz", "127.0.0.1")
+    write_master(&test_dir, 49200, "secret-token-xyz", "127.0.0.1", "http")
         .expect("Failed to write master");
 
     let master_info = read_master(&test_dir).expect("Master info not found");
@@ -713,10 +713,11 @@ fn public_config_keys_advertise_only_real_settings() {
         "chatTimeout has no field behind it and must not be advertised"
     );
 
-    // `planFolder` is `skip_serializing_if = "Option::is_none"`, so it only appears once populated;
-    // populate it rather than carve it out.
+    // `planFolder` and `telemetry` are both `skip_serializing_if = "Option::is_none"`, so they only
+    // appear once populated; populate them rather than carve them out.
     let settings = TendrilSettings {
         plan_folder: Some("Plans".to_string()),
+        telemetry: Some(false),
         ..TendrilSettings::default()
     };
     let serialized = serde_json::to_value(&settings).expect("settings must serialize");
@@ -832,4 +833,28 @@ fn an_inbox_section_survives_a_save_load_round_trip() {
         "The section must be written in the camelCase the original app reads, got:\n{raw}"
     );
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn test_ensure_home_directories_creates_hooks_and_is_idempotent() {
+    let home = std::env::temp_dir().join(format!(
+        "tendril-ensure-home-dirs-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    ensure_home_directories(&home).expect("must create a fresh home's directories");
+    assert!(home.is_dir());
+    assert!(get_hooks_dir(&home).is_dir());
+
+    let sentinel = get_hooks_dir(&home).join("NotifySlack.ps1");
+    std::fs::write(&sentinel, "# sentinel").expect("must write into the created Hooks dir");
+
+    ensure_home_directories(&home).expect("must be idempotent on an existing home");
+    assert!(get_hooks_dir(&home).is_dir());
+    assert!(
+        sentinel.is_file(),
+        "a second call must not recreate or wipe an existing Hooks dir"
+    );
+
+    let _ = std::fs::remove_dir_all(home);
 }

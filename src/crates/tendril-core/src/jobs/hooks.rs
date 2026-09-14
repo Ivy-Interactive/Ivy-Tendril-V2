@@ -11,6 +11,9 @@
 //! test can assert on what *would* have been executed without executing anything.
 
 use crate::config::{expand_variables_with_env, EnvSource, SystemEnv};
+use crate::jobs::hook_condition::{
+    classify_hook_condition, evaluate_powershell_condition, HookConditionLanguage,
+};
 use crate::jobs::logger::append_agent_log;
 use crate::jobs::process_tree::{kill_tree, DEFAULT_KILL_GRACE};
 use crate::models::{JobStatus, ProjectConfig, PromptwareHookConfig};
@@ -161,6 +164,17 @@ pub fn condition_holds(result: &HookCommandResult) -> bool {
     !result.stdout.trim().eq_ignore_ascii_case("False")
 }
 
+/// What a hook's condition decided, before the action ever runs.
+enum HookConditionVerdict {
+    /// The action should run.
+    Holds,
+    /// The condition was evaluated and genuinely did not hold — a normal skip.
+    NotMet(String),
+    /// The condition could not be evaluated at all (unsupported syntax, timeout, spawn failure).
+    /// Distinguished from `NotMet` so a broken condition never reads like an honest `False`.
+    Unevaluable(String),
+}
+
 /// Runs every hook of `ctx.project` that matches `ctx.job_type` and `phase`, in config order.
 ///
 /// Never returns an error and never propagates one: see the module docs.
@@ -202,24 +216,59 @@ pub async fn run_hooks_with_env(
         // next job without a restart and the stored config keeps its `%TENDRIL_HOME%` form.
         let condition = expand_variables_with_env(&hook.condition, &tendril_home, env);
         if !condition.trim().is_empty() {
-            let result = executor(HookCommandSpec {
-                hook_name: hook.name.clone(),
-                command: condition.clone(),
-                working_dir: working_dir.clone(),
-                env: hook_env.clone(),
-                timeout: HOOK_CONDITION_TIMEOUT,
-            })
-            .await;
+            let verdict = match classify_hook_condition(&condition) {
+                HookConditionLanguage::Shell => {
+                    let result = executor(HookCommandSpec {
+                        hook_name: hook.name.clone(),
+                        command: condition.clone(),
+                        working_dir: working_dir.clone(),
+                        env: hook_env.clone(),
+                        timeout: HOOK_CONDITION_TIMEOUT,
+                    })
+                    .await;
 
-            if !condition_holds(&result) {
-                log_hook(
-                    ctx,
-                    hook,
-                    phase,
-                    describe_condition_failure(&condition, &result),
-                    true,
-                );
-                continue;
+                    if condition_holds(&result) {
+                        HookConditionVerdict::Holds
+                    } else if result.timed_out || result.spawn_error.is_some() {
+                        HookConditionVerdict::Unevaluable(describe_shell_condition_unevaluable(
+                            &condition, &result,
+                        ))
+                    } else {
+                        HookConditionVerdict::NotMet(describe_condition_failure(
+                            &condition, &result,
+                        ))
+                    }
+                }
+                HookConditionLanguage::PowerShell => {
+                    match evaluate_powershell_condition(&condition, &working_dir) {
+                        Ok(true) => HookConditionVerdict::Holds,
+                        Ok(false) => HookConditionVerdict::NotMet(format!(
+                            "Condition not met (the PowerShell condition evaluated to false), \
+                             skipping.\n\n**Condition:** `{}`",
+                            condition
+                        )),
+                        Err(why) => HookConditionVerdict::Unevaluable(
+                            describe_unevaluable_condition(&condition, &why),
+                        ),
+                    }
+                }
+                HookConditionLanguage::PowerShellUnsupported(why) => {
+                    HookConditionVerdict::Unevaluable(describe_unevaluable_condition(
+                        &condition, &why,
+                    ))
+                }
+            };
+
+            match verdict {
+                HookConditionVerdict::Holds => {}
+                HookConditionVerdict::NotMet(summary) => {
+                    log_hook(ctx, hook, phase, summary, false);
+                    continue;
+                }
+                HookConditionVerdict::Unevaluable(summary) => {
+                    log_hook(ctx, hook, phase, summary, true);
+                    continue;
+                }
             }
         }
 
@@ -239,27 +288,51 @@ pub async fn run_hooks_with_env(
     }
 }
 
-/// Why the action was skipped. Always says something: a hook that ran and did nothing must be
-/// distinguishable in the log from a hook that was never configured.
+/// Why the condition genuinely did not hold (a clean run that printed `False` or exited non-zero).
+/// Never called for a timeout or spawn error — see [`describe_shell_condition_unevaluable`] — so
+/// this text always says "not met", never "could not be evaluated".
 fn describe_condition_failure(condition: &str, result: &HookCommandResult) -> String {
-    let reason = if result.timed_out {
-        format!(
-            "Condition timed out after {}s and was terminated, skipping.",
-            HOOK_CONDITION_TIMEOUT.as_secs()
-        )
-    } else if let Some(err) = &result.spawn_error {
-        format!("Could not spawn the condition ({}), skipping.", err)
-    } else {
-        match result.exit_code {
-            Some(0) => "Condition not met (it printed `False`), skipping.".to_string(),
-            Some(code) => format!("Condition not met (exit code {}), skipping.", code),
-            None => "Condition not met (terminated by a signal), skipping.".to_string(),
-        }
+    let reason = match result.exit_code {
+        Some(0) => "Condition not met (it printed `False`), skipping.".to_string(),
+        Some(code) => format!("Condition not met (exit code {}), skipping.", code),
+        None => "Condition not met (terminated by a signal), skipping.".to_string(),
     };
 
     let mut summary = format!("{}\n\n**Condition:** `{}`", reason, condition);
     append_streams(&mut summary, result);
     summary
+}
+
+/// Why a shell-executed condition could not be evaluated at all (timed out or failed to spawn).
+/// Distinct wording from [`describe_condition_failure`] so it is never confused with an honest
+/// `False`, the same rule [`describe_unevaluable_condition`] applies to the PowerShell path.
+fn describe_shell_condition_unevaluable(condition: &str, result: &HookCommandResult) -> String {
+    let why = if result.timed_out {
+        format!(
+            "the condition timed out after {}s and was terminated",
+            HOOK_CONDITION_TIMEOUT.as_secs()
+        )
+    } else {
+        format!(
+            "could not spawn the condition ({})",
+            result.spawn_error.as_deref().unwrap_or("unknown error")
+        )
+    };
+
+    let mut summary = describe_unevaluable_condition(condition, &why);
+    append_streams(&mut summary, result);
+    summary
+}
+
+/// Why a condition could not be evaluated at all — distinct wording from
+/// [`describe_condition_failure`] so it is never confused with an honest `False`.
+fn describe_unevaluable_condition(condition: &str, why: &str) -> String {
+    format!(
+        "Condition could not be evaluated: {}.\nThe action was NOT run. Hook conditions support \
+         $true/$false, Test-Path \"<path>\", -and and -or.\nRewrite the condition in that subset, \
+         or as a POSIX shell command.\n\n**Condition:** `{}`",
+        why, condition
+    )
 }
 
 fn describe_action(action: &str, result: &HookCommandResult) -> String {
@@ -278,9 +351,25 @@ fn describe_action(action: &str, result: &HookCommandResult) -> String {
         }
     };
 
+    let action_failed = result.spawn_error.is_some() || !matches!(result.exit_code, Some(0));
     let mut summary = format!("{}\n\n**Command:** `{}`", outcome, action);
+    if action_failed && looks_like_inline_powershell(action) {
+        summary.push_str(
+            "\n\nThe action looks like inline PowerShell; hooks run through the platform shell, \
+             so wrap it as: `pwsh -NoProfile -NonInteractive -Command '",
+        );
+        summary.push_str(action);
+        summary.push_str("'`");
+    }
     append_streams(&mut summary, result);
     summary
+}
+
+/// Whether `action` matches the `Verb-Noun` cmdlet shape [`classify_hook_condition`] treats as a
+/// PowerShell marker. Used only to append a diagnostic hint when the action fails — an action that
+/// invokes `pwsh` explicitly (the documented pattern) never matches this and runs unaffected.
+fn looks_like_inline_powershell(action: &str) -> bool {
+    crate::jobs::hook_condition::matches_powershell_cmdlet(action)
 }
 
 fn append_streams(summary: &mut String, result: &HookCommandResult) {

@@ -7,9 +7,10 @@
 //! **Deliberately not ported from legacy:**
 //! - `tendril_set_config` — config is read-only over MCP; a config write from an IDE agent would
 //!   silently retarget the coding agent, plan folder or concurrency limit for the whole machine.
-//! - `tendril_plan_verification_add` / `_remove` — V2 seeds verification rows from the project
-//!   config at plan creation, so adding a row no project defines yields a plan ExecutePlan cannot
-//!   verify. `tendril_plan_set_verification` covers the real need (Pending <-> Skipped).
+//! - `tendril_plan_verification_add` — V2 seeds verification rows from the project config at
+//!   plan creation, so adding a row no project defines yields a plan ExecutePlan cannot verify.
+//!   `tendril_plan_set_verification` covers the real need (Pending <-> Skipped).
+//!   `tendril_plan_verification_remove` has no such problem and is registered below.
 //! - `tendril_plan_rec_set` — no V2 core equivalent; `rec_accept` / `_decline` / `_remove` cover
 //!   the recommendation lifecycle.
 //! - `tendril_plan_update` (whole-YAML replace) — bypasses every guard by construction.
@@ -171,6 +172,12 @@ fn plan_write_tools() -> Vec<McpToolDefinition> {
                 "status": { "type": "string", "enum": ["Pending", "Pass", "Fail", "Skipped"] }
             }),
             &["plan_id", "name", "status"],
+        ),
+        tool(
+            "tendril_plan_verification_remove",
+            "Remove a verification from a plan",
+            json!({ "plan_id": plan_id_prop(), "name": { "type": "string" } }),
+            &["plan_id", "name"],
         ),
         tool(
             "tendril_plan_add_repo",

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { setThemeGlobal, type Theme } from "@ivy-interactive/components/theme";
 import { bridge } from "../api/bridge";
-import type { ServiceInfo, TendrilConfig } from "../types/api";
+import { describeBridgeError, type ServiceInfo, type TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
 import { NewsletterSignup } from "../components/NewsletterSignup";
 import { ServiceSettingsView } from "../components/service";
@@ -13,11 +13,12 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefreshHealth }) => {
-  const [_config, setConfig] = useState<TendrilConfig | null>(null);
+  const [config, setConfig] = useState<TendrilConfig | null>(null);
   const [isPinging, setIsPinging] = useState(false);
   const [pingResult, setPingResult] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Form states for editable config
   const [codingAgent, setCodingAgent] = useState("claude");
@@ -25,15 +26,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
   const [maxConcurrentJobs, setMaxConcurrentJobs] = useState(4);
   const [theme, setTheme] = useState("dark");
 
+  const applyConfig = (cfg: TendrilConfig) => {
+    setConfig(cfg);
+    if (cfg.codingAgent) setCodingAgent(cfg.codingAgent);
+    if (cfg.jobTimeout) setJobTimeout(cfg.jobTimeout);
+    if (cfg.maxConcurrentJobs) setMaxConcurrentJobs(cfg.maxConcurrentJobs);
+    if (cfg.theme) setTheme(cfg.theme);
+  };
+
   useEffect(() => {
     async function loadConfig() {
       try {
         const cfg = await bridge.getConfig();
-        setConfig(cfg);
-        if (cfg.codingAgent) setCodingAgent(cfg.codingAgent);
-        if (cfg.jobTimeout) setJobTimeout(cfg.jobTimeout);
-        if (cfg.maxConcurrentJobs) setMaxConcurrentJobs(cfg.maxConcurrentJobs);
-        if (cfg.theme) setTheme(cfg.theme);
+        applyConfig(cfg);
       } catch {
         // Use default config values
       }
@@ -65,22 +70,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
     e.preventDefault();
     setIsSaving(true);
     setSaveMessage(null);
+    setSaveError(null);
+
+    // Only changed keys: a full-object overwrite would clobber a concurrent edit to config.yaml.
+    const pending: Array<[string, string | number]> = [];
+    if (codingAgent !== config?.codingAgent) pending.push(["codingAgent", codingAgent]);
+    if (jobTimeout !== config?.jobTimeout) pending.push(["jobTimeout", jobTimeout]);
+    if (maxConcurrentJobs !== config?.maxConcurrentJobs)
+      pending.push(["maxConcurrentJobs", maxConcurrentJobs]);
+    if (theme !== config?.theme) pending.push(["theme", theme]);
 
     try {
-      // In Tendril, config values are updated through the CLI or REST put_config
-      // For the UI, we simulate or save settings
-      await bridge.saveUiState(
-        "config_preferences",
-        JSON.stringify({
-          codingAgent,
-          jobTimeout,
-          maxConcurrentJobs,
-          theme,
-        }),
+      for (const [key, value] of pending) {
+        await bridge.putConfig(key, value);
+      }
+      // Re-read so the form shows what is actually on disk, not optimistic local state.
+      const fresh = await bridge.getConfig();
+      applyConfig(fresh);
+      setSaveMessage(
+        pending.length === 0 ? "No changes to save." : "Configuration saved to config.yaml.",
       );
-      setSaveMessage("Configuration preferences saved successfully.");
     } catch (err) {
-      setSaveMessage(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+      setSaveError(`Failed to save: ${describeBridgeError(err)}`);
     } finally {
       setIsSaving(false);
     }
@@ -170,6 +181,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
           {saveMessage && (
             <div className="mt-3 rounded bg-background p-2 text-xs text-success border border-success/50">
               {saveMessage}
+            </div>
+          )}
+
+          {saveError && (
+            <div className="mt-3 rounded bg-background p-2 text-xs text-destructive border border-destructive/50">
+              {saveError}
             </div>
           )}
 

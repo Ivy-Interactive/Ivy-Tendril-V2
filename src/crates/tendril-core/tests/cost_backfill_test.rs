@@ -429,7 +429,8 @@ fn test_is_master_is_true_only_for_the_process_that_owns_the_file() {
     );
 
     // Our own pid, written the way MasterGuard::acquire writes it.
-    config::write_master(&home.path, 5010, "fixture-secret", "127.0.0.1").expect("write master");
+    config::write_master(&home.path, 5010, "fixture-secret", "127.0.0.1", "http")
+        .expect("write master");
     assert!(config::is_master(&home.path));
 
     // A foreign pid: we were superseded, or we lost the race. Either way the answer must flip without

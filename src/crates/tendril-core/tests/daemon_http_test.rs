@@ -187,7 +187,7 @@ async fn classify_transport_error_separates_refused_from_timeout() {
 async fn mcp_reports_offline_only_when_unreachable() {
     let home = TempHome::new("mcp-offline");
     let addr = refused_port().await;
-    write_master(home.path(), addr.port(), "test-secret", "127.0.0.1").unwrap();
+    write_master(home.path(), addr.port(), "test-secret", "127.0.0.1", "http").unwrap();
 
     let plans_dir = home.path().join("Plans");
     std::fs::create_dir_all(&plans_dir).unwrap();
@@ -211,7 +211,7 @@ async fn mcp_reports_timeout_not_offline() {
     // reported as "not running", telling the operator to start a daemon that is already running.
     let home = TempHome::new("mcp-timeout").with_daemon_timeout(1);
     let addr = stalled_daemon().await;
-    write_master(home.path(), addr.port(), "test-secret", "127.0.0.1").unwrap();
+    write_master(home.path(), addr.port(), "test-secret", "127.0.0.1", "http").unwrap();
 
     let plans_dir = home.path().join("Plans");
     std::fs::create_dir_all(&plans_dir).unwrap();

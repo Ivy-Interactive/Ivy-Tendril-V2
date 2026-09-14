@@ -17,14 +17,14 @@ use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanWorktreeEntry, RecommendationStatus, VerificationStatus,
 };
 use tendril_core::plans::{
-    accept_recommendation, add_recommendation, check_all_plans_health, check_plan_health,
-    check_pr_health_with_progress, create_plan, decline_recommendation, get_plan_field,
-    get_revision, list_recommendations, materialize_plan_env, order_by_project_config,
-    read_plan_file, read_plan_yaml, remove_recommendation, render_env_file, resolve_plan_folder,
-    resolve_plan_folder_name, resolve_plan_project, resolve_pr_head_via_gh, resolve_worktrees,
-    set_plan_verification_status, set_recommendation_field, write_plan_yaml, write_revision,
-    CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard,
-    RenderedEnvFile,
+    accept_recommendation, add_plan_verification, add_recommendation, check_all_plans_health,
+    check_plan_health, check_pr_health_with_progress, create_plan, decline_recommendation,
+    get_plan_field, get_revision, list_recommendations, materialize_plan_env,
+    order_by_project_config, read_plan_file, read_plan_yaml, remove_plan_verification,
+    remove_recommendation, render_env_file, resolve_plan_folder, resolve_plan_folder_name,
+    resolve_plan_project, resolve_pr_head_via_gh, resolve_worktrees, set_plan_verification_status,
+    set_recommendation_field, write_plan_yaml, write_revision, CreatePlanOptions,
+    DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard, RenderedEnvFile,
 };
 
 #[derive(Subcommand)]
@@ -100,7 +100,7 @@ pub enum PlanCommands {
     #[command(about = "Set verification status")]
     SetVerification(PlanSetVerificationArgs),
 
-    #[command(subcommand, about = "Inspect plan verifications")]
+    #[command(subcommand, about = "Manage plan verifications")]
     Verification(PlanVerificationCommands),
 
     #[command(subcommand, about = "Manage plan recommendations")]
@@ -375,6 +375,10 @@ pub struct PlanSetVerificationArgs {
 pub enum PlanVerificationCommands {
     #[command(about = "List a plan's verifications in run order")]
     List(PlanVerificationListArgs),
+    #[command(about = "Add a verification to a plan")]
+    Add(PlanVerificationAddArgs),
+    #[command(about = "Remove a verification from a plan")]
+    Remove(PlanVerificationRemoveArgs),
 }
 
 #[derive(Args)]
@@ -384,6 +388,24 @@ pub struct PlanVerificationListArgs {
     pub status: Option<String>,
     #[arg(long, help = "Print compact JSON instead of a table")]
     pub json: bool,
+}
+
+#[derive(Args)]
+pub struct PlanVerificationAddArgs {
+    pub plan_id: String,
+    pub name: String,
+    #[arg(long, help = "Initial status (default: Pending)")]
+    pub status: Option<String>,
+    #[command(flatten)]
+    pub edit: PlanEditReasonArgs,
+}
+
+#[derive(Args)]
+pub struct PlanVerificationRemoveArgs {
+    pub plan_id: String,
+    pub name: String,
+    #[command(flatten)]
+    pub edit: PlanEditReasonArgs,
 }
 
 /// `--reason` / `--chat-session`, the pair every other plan mutation carries so an edit can explain
@@ -574,10 +596,7 @@ async fn report_plan_edit_event(
     };
 
     let client = daemon_client(tendril_home);
-    let url = format!(
-        "http://{}:{}/api/plans/{}/events",
-        master.host, master.port, plan_id
-    );
+    let url = format!("{}/api/plans/{}/events", master.base_url(), plan_id);
 
     let payload = serde_json::json!({
         "summary": summary,
@@ -614,6 +633,35 @@ async fn report_plan_edit_event(
     }
 }
 
+/// Configured verification names, or `None` when there is no usable config to check against.
+fn configured_verification_names(tendril_home: &std::path::Path) -> Option<Vec<String>> {
+    let settings = load_config(&get_config_path(tendril_home)).ok()?;
+    if settings.verifications.is_empty() {
+        // A missing config.yaml loads as `TendrilSettings::default()`, which has no verification
+        // definitions at all — that is "nothing configured to check against" too, not "nothing is
+        // valid".
+        return None;
+    }
+    Some(settings.verifications.into_iter().map(|v| v.name).collect())
+}
+
+/// Rejects a name `plan verification add` would seed with no runnable prompt behind it. A missing
+/// config is treated the same tolerant way `plan verification list` treats one: leave it alone
+/// rather than block on it.
+fn validate_verification_name(tendril_home: &std::path::Path, name: &str) -> anyhow::Result<()> {
+    let Some(valid) = configured_verification_names(tendril_home) else {
+        return Ok(());
+    };
+    if valid.iter().any(|v| v.eq_ignore_ascii_case(name)) {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Unknown verification '{}'. Valid verifications: {}",
+        name,
+        valid.join(", ")
+    )
+}
+
 /// Projects a plan folder into the database after a YAML edit, best-effort.
 ///
 /// The recommendation subcommands did none of this before, which is why a CLI edit could leave the
@@ -626,9 +674,9 @@ fn sync_plan_folder(folder: &std::path::Path, db_path: &std::path::Path) {
     }
 }
 
-/// Reports a recommendation edit to the other chat sessions watching the plan, the same way
+/// Reports a plan edit to the other chat sessions watching the plan, the same way
 /// `plan set` and `plan set-verification` report theirs.
-async fn report_recommendation_edit(
+async fn report_edit_with_reason(
     tendril_home: &std::path::Path,
     plan_id: &str,
     summary: &str,
@@ -1389,6 +1437,74 @@ pub async fn handle_plan_command(
                     }
                 }
             }
+            PlanVerificationCommands::Add(args) => {
+                validate_verification_name(tendril_home, &args.name)?;
+                let status = match args.status.as_deref() {
+                    Some(s) => Some(
+                        VerificationStatus::from_str_loose(s)
+                            .ok_or_else(|| anyhow::anyhow!("Invalid verification status: {}", s))?,
+                    ),
+                    None => None,
+                };
+
+                let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+                let entry = add_plan_verification(&folder, &args.name, status)?;
+                sync_plan_folder(&folder, &db_path);
+                println!("Verification added.");
+
+                if args
+                    .edit
+                    .reason
+                    .as_deref()
+                    .is_none_or(|r| r.trim().is_empty())
+                {
+                    eprintln!("warning: no --reason given for this plan edit. Pass --reason \"<why you changed it>\" so the plan's other chat sessions are told why, not just what.");
+                }
+
+                report_edit_with_reason(
+                    tendril_home,
+                    &args.plan_id,
+                    &format!(
+                        "verification {} added as {}",
+                        entry.name,
+                        entry.status.as_str()
+                    ),
+                    &args.edit,
+                )
+                .await;
+            }
+            PlanVerificationCommands::Remove(args) => {
+                let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+                if let Err(e) = remove_plan_verification(&folder, &args.name) {
+                    let (plan, _) = read_plan_yaml(&folder)?;
+                    let current = plan
+                        .verifications
+                        .iter()
+                        .map(|v| v.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    anyhow::bail!("{}. Current verifications: {}", e, current);
+                }
+                sync_plan_folder(&folder, &db_path);
+                println!("Verification removed.");
+
+                if args
+                    .edit
+                    .reason
+                    .as_deref()
+                    .is_none_or(|r| r.trim().is_empty())
+                {
+                    eprintln!("warning: no --reason given for this plan edit. Pass --reason \"<why you changed it>\" so the plan's other chat sessions are told why, not just what.");
+                }
+
+                report_edit_with_reason(
+                    tendril_home,
+                    &args.plan_id,
+                    &format!("verification {} removed", args.name),
+                    &args.edit,
+                )
+                .await;
+            }
         },
         PlanCommands::Rec(rec_cmd) => match rec_cmd {
             PlanRecCommands::List { plan_id, state } => {
@@ -1462,7 +1578,7 @@ pub async fn handle_plan_command(
                 add_recommendation(&folder, &title, &description, impact.as_deref())?;
                 println!("Recommendation added.");
                 sync_plan_folder(&folder, &db_path);
-                report_recommendation_edit(
+                report_edit_with_reason(
                     tendril_home,
                     &plan_id,
                     &format!("recommendation '{}' added", title),
@@ -1481,7 +1597,7 @@ pub async fn handle_plan_command(
                 set_recommendation_field(&folder, &title, &field, &value)?;
                 println!("Recommendation updated.");
                 sync_plan_folder(&folder, &db_path);
-                report_recommendation_edit(
+                report_edit_with_reason(
                     tendril_home,
                     &plan_id,
                     &format!("recommendation '{}' field '{}' updated", title, field),
@@ -1503,7 +1619,7 @@ pub async fn handle_plan_command(
                     println!("Recommendation accepted.");
                 }
                 sync_plan_folder(&folder, &db_path);
-                report_recommendation_edit(
+                report_edit_with_reason(
                     tendril_home,
                     &plan_id,
                     &format!("recommendation '{}' set to {}", title, new_state),
@@ -1522,7 +1638,7 @@ pub async fn handle_plan_command(
                 decline_recommendation(&folder, &title, reason.as_deref())?;
                 println!("Recommendation declined.");
                 sync_plan_folder(&folder, &db_path);
-                report_recommendation_edit(
+                report_edit_with_reason(
                     tendril_home,
                     &plan_id,
                     &format!("recommendation '{}' declined", title),
@@ -1542,7 +1658,7 @@ pub async fn handle_plan_command(
                 remove_recommendation(&folder, &title)?;
                 println!("Recommendation removed.");
                 sync_plan_folder(&folder, &db_path);
-                report_recommendation_edit(
+                report_edit_with_reason(
                     tendril_home,
                     &plan_id,
                     &format!("recommendation '{}' removed", title),

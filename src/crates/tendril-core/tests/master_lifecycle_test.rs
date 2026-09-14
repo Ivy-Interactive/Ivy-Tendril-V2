@@ -36,6 +36,7 @@ fn live_master_info(port: u16, secret: &str) -> MasterInfo {
         version: "0.1.0".to_string(),
         api_version: 1,
         capabilities: default_capabilities(),
+        scheme: "http".to_string(),
     }
 }
 
@@ -47,7 +48,7 @@ fn test_atomic_write_master_permissions() {
     ));
     std::fs::create_dir_all(&test_dir).unwrap();
 
-    write_master(&test_dir, 5010, "secret-token-123", "127.0.0.1").unwrap();
+    write_master(&test_dir, 5010, "secret-token-123", "127.0.0.1", "http").unwrap();
 
     let master_file = test_dir.join(".master");
     assert!(master_file.exists());
@@ -98,6 +99,7 @@ fn test_master_info_version_and_capabilities() {
         secret: "new-secret".to_string(),
         started_at: "2026-09-05T12:00:00Z".to_string(),
         host: "127.0.0.1".to_string(),
+        scheme: "http".to_string(),
         version: "0.1.0".to_string(),
         api_version: 1,
         capabilities: vec![
@@ -129,6 +131,7 @@ fn test_stale_master_detection_and_cleanup() {
         secret: "stale-secret".to_string(),
         started_at: "2020-01-01T00:00:00Z".to_string(),
         host: "127.0.0.1".to_string(),
+        scheme: "http".to_string(),
         version: "0.1.0".to_string(),
         api_version: 1,
         capabilities: default_capabilities(),
@@ -136,7 +139,7 @@ fn test_stale_master_detection_and_cleanup() {
     write_master_info(&test_dir, &stale_info).unwrap();
     assert!(read_master(&test_dir).is_some());
 
-    let guard = MasterGuard::acquire(&test_dir, 5010, "fresh-secret", "127.0.0.1").unwrap();
+    let guard = MasterGuard::acquire(&test_dir, 5010, "fresh-secret", "127.0.0.1", "http").unwrap();
     assert_eq!(guard.pid(), std::process::id());
 
     let current = read_master(&test_dir).unwrap();
@@ -187,13 +190,14 @@ fn test_live_master_collision_prevention() {
         secret: "live-secret".to_string(),
         started_at: chrono::Utc::now().to_rfc3339(),
         host: "127.0.0.1".to_string(),
+        scheme: "http".to_string(),
         version: "0.1.0".to_string(),
         api_version: 1,
         capabilities: default_capabilities(),
     };
     write_master_info(&test_dir, &live_info).unwrap();
 
-    let err = MasterGuard::acquire(&test_dir, 5011, "second-secret", "127.0.0.1");
+    let err = MasterGuard::acquire(&test_dir, 5011, "second-secret", "127.0.0.1", "http");
     assert!(err.is_err());
     let err_msg = err.err().unwrap().to_string();
     assert!(
@@ -215,7 +219,7 @@ fn test_master_guard_drop_preserves_foreign_pid() {
     ));
     std::fs::create_dir_all(&test_dir).unwrap();
 
-    let guard = MasterGuard::acquire(&test_dir, 5010, "guard-secret", "127.0.0.1").unwrap();
+    let guard = MasterGuard::acquire(&test_dir, 5010, "guard-secret", "127.0.0.1", "http").unwrap();
     assert!(read_master(&test_dir).is_some());
 
     let foreign_info = MasterInfo {
@@ -224,6 +228,7 @@ fn test_master_guard_drop_preserves_foreign_pid() {
         secret: "foreign-secret".to_string(),
         started_at: chrono::Utc::now().to_rfc3339(),
         host: "127.0.0.1".to_string(),
+        scheme: "http".to_string(),
         version: "0.1.0".to_string(),
         api_version: 1,
         capabilities: default_capabilities(),
@@ -250,7 +255,7 @@ fn test_live_unresponsive_master_is_not_evicted() {
     let test_dir = temp_home("tendril-live-unresponsive-test");
     write_master_info(&test_dir, &live_master_info(closed_port(), "live-secret")).unwrap();
 
-    let err = MasterGuard::acquire(&test_dir, 5011, "second-secret", "127.0.0.1");
+    let err = MasterGuard::acquire(&test_dir, 5011, "second-secret", "127.0.0.1", "http");
     assert!(
         err.is_err(),
         "A live process that does not answer /api/ping must not be evicted"
@@ -320,7 +325,7 @@ fn test_probe_retries_before_declaring_unresponsive() {
 
     write_master_info(&test_dir, &live_master_info(port, "live-secret")).unwrap();
 
-    let err = MasterGuard::acquire(&test_dir, 5011, "second-secret", "127.0.0.1");
+    let err = MasterGuard::acquire(&test_dir, 5011, "second-secret", "127.0.0.1", "http");
     assert!(err.is_err());
     let err_msg = err.err().unwrap().to_string();
     assert!(
@@ -342,7 +347,7 @@ fn test_takeover_escape_hatch() {
     write_master_info(&test_dir, &live_master_info(closed_port(), "wedged-secret")).unwrap();
 
     std::env::set_var("TENDRIL_ALLOW_MASTER_TAKEOVER", "1");
-    let guard = MasterGuard::acquire(&test_dir, 5013, "hatch-secret", "127.0.0.1");
+    let guard = MasterGuard::acquire(&test_dir, 5013, "hatch-secret", "127.0.0.1", "http");
     std::env::remove_var("TENDRIL_ALLOW_MASTER_TAKEOVER");
 
     let guard = guard.expect("TENDRIL_ALLOW_MASTER_TAKEOVER=1 must restore the takeover behaviour");
@@ -359,7 +364,7 @@ fn test_guard_refuses_real_home_in_test_context() {
     let master_file = real_home.join(".master");
     let before = std::fs::read(&master_file).ok();
 
-    let err = MasterGuard::acquire(&real_home, 5099, "test-secret", "127.0.0.1");
+    let err = MasterGuard::acquire(&real_home, 5099, "test-secret", "127.0.0.1", "http");
 
     assert!(
         err.is_err(),
