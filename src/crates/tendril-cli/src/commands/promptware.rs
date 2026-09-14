@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use tendril_core::agents::providers::{build_agent_spec, AgentLaunchConfig};
+use tendril_core::agents::resolution::resolve_agent;
 use tendril_core::agents::runner::run_agent_process;
 use tendril_core::config::{get_config_path, get_plans_dir, load_config};
+use tendril_core::jobs::firmware_values::{build_job_context, resolve_writable_directories};
 use tendril_core::plans::resolve_plan_folder;
 use tendril_core::promptware::{
     compile_firmware, delete_memory, deploy_standard_promptwares, list_memory, read_memory,
@@ -207,14 +209,41 @@ pub async fn handle_promptware_command(
 
             let cfg_path = config.unwrap_or_else(|| get_config_path(tendril_home));
             let settings = load_config(&cfg_path).unwrap_or_default();
-            let provider = agent.unwrap_or(settings.coding_agent);
+            let provider = agent.unwrap_or_else(|| settings.coding_agent.clone());
             let work_dir = working_dir.unwrap_or_else(|| p_folder.clone());
+
+            // `--profile` names a tier (deep / balanced / quick), not an effort. Resolving it is what
+            // turns it into a model and an effort the agent CLI will actually accept.
+            let job_context = build_job_context(&values, tendril_home, &p_folder);
+            let resolution = resolve_agent(
+                &settings,
+                &provider,
+                &name,
+                profile.as_deref(),
+                &job_context,
+            );
+            let plan_folder = values
+                .get("TendrilPlanFolder")
+                .map(|s| s.as_str())
+                .unwrap_or("");
 
             let launch_config = AgentLaunchConfig {
                 prompt,
                 working_directory: work_dir,
-                model: None,
-                effort: profile,
+                model: resolution.model.clone(),
+                effort: resolution.effort.clone(),
+                permission_mode: Some("FullAuto".to_string()),
+                allowed_tools: resolution.allowed_tools.clone(),
+                denied_tools: resolution.denied_tools.clone(),
+                writable_directories: resolve_writable_directories(
+                    &name,
+                    &p_folder,
+                    Path::new(plan_folder),
+                    tendril_home,
+                    &settings,
+                ),
+                environment_variables: resolution.environment_variables.clone(),
+                extra_arguments: resolution.extra_arguments.clone(),
                 ..Default::default()
             };
 

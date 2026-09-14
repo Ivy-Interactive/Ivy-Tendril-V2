@@ -1,6 +1,7 @@
 use crate::error::{Result, TendrilError};
 use crate::models::{LevelConfig, ProjectConfig, VerificationConfig};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,11 +74,146 @@ pub struct TendrilSettings {
     #[serde(default)]
     pub beta: bool,
 
+    /// Per-coding-agent arguments, environment and named profiles. Tolerant of shape: see
+    /// [`deserialize_coding_agents`].
+    #[serde(
+        rename = "codingAgents",
+        default,
+        deserialize_with = "deserialize_coding_agents",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub coding_agents: Vec<AgentConfig>,
+
+    /// Per-promptware profile and tool rules, keyed by promptware name. The reserved key `_default`
+    /// applies to every promptware.
+    #[serde(
+        default,
+        deserialize_with = "deserialize_promptwares",
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub promptwares: BTreeMap<String, PromptwareConfig>,
+
     #[serde(rename = "enrichModels", default = "default_true")]
     pub enrich_models: bool,
 
     #[serde(flatten)]
-    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// What a single promptware asks for: the profile it runs under and the tool rules it contributes.
+///
+/// `allowed_tools` is purely additive on top of the base set; `denied_tools` is subtracted from the
+/// merged allowlist. Both are resolved by `crate::agents::resolve_agent`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PromptwareConfig {
+    #[serde(default)]
+    pub profile: String,
+
+    #[serde(rename = "allowedTools", default)]
+    pub allowed_tools: Vec<String>,
+
+    #[serde(rename = "deniedTools", default)]
+    pub denied_tools: Vec<String>,
+
+    #[serde(
+        rename = "customInstructions",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub custom_instructions: Option<String>,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// One named profile of a coding agent, e.g. `deep` mapping to `opus` at `max` effort.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentProfileConfig {
+    #[serde(default)]
+    pub name: String,
+
+    #[serde(default)]
+    pub model: String,
+
+    #[serde(default)]
+    pub effort: String,
+
+    #[serde(default)]
+    pub arguments: String,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// Configuration for one coding agent CLI.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentConfig {
+    #[serde(default)]
+    pub name: String,
+
+    #[serde(default)]
+    pub arguments: String,
+
+    #[serde(rename = "environmentVariables", default)]
+    pub environment_variables: HashMap<String, String>,
+
+    #[serde(default)]
+    pub profiles: Vec<AgentProfileConfig>,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+/// Reads `codingAgents` from either of the two shapes found in real configs — a sequence of agent
+/// entries, or a mapping of agent name to entry — and degrades a malformed section to "no configured
+/// agents" instead of failing the whole load. Built-in tier defaults then apply, which is a working
+/// Tendril; a config that refuses to parse is not.
+fn deserialize_coding_agents<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Vec<AgentConfig>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(deserializer)?;
+    Ok(match raw {
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .filter_map(|item| serde_json::from_value::<AgentConfig>(item).ok())
+            .collect(),
+        serde_json::Value::Object(map) => map
+            .into_iter()
+            .filter_map(|(key, value)| {
+                let mut agent = serde_json::from_value::<AgentConfig>(value).ok()?;
+                if agent.name.is_empty() {
+                    agent.name = key;
+                }
+                Some(agent)
+            })
+            .collect(),
+        _ => Vec::new(),
+    })
+}
+
+/// Reads `promptwares`, skipping any entry whose body is not a mapping rather than failing the load,
+/// for the same reason as [`deserialize_coding_agents`].
+fn deserialize_promptwares<'de, D>(
+    deserializer: D,
+) -> std::result::Result<BTreeMap<String, PromptwareConfig>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(deserializer)?;
+    Ok(match raw {
+        serde_json::Value::Object(map) => map
+            .into_iter()
+            .filter_map(|(key, value)| {
+                serde_json::from_value::<PromptwareConfig>(value)
+                    .ok()
+                    .map(|cfg| (key, cfg))
+            })
+            .collect(),
+        _ => BTreeMap::new(),
+    })
 }
 
 fn default_coding_agent() -> String {
@@ -160,8 +296,10 @@ impl Default for TendrilSettings {
             worktree_reaper_grace: default_worktree_reaper_grace(),
             worktree_branch_delete_mode: default_worktree_branch_delete_mode(),
             beta: false,
+            coding_agents: Vec::new(),
+            promptwares: BTreeMap::new(),
             enrich_models: true,
-            extra: std::collections::BTreeMap::new(),
+            extra: BTreeMap::new(),
         }
     }
 }

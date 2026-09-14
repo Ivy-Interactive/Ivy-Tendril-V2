@@ -1,4 +1,5 @@
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
+use crate::agents::resolution::resolve_agent;
 use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
@@ -9,8 +10,9 @@ use crate::error::{Result, TendrilError};
 use crate::git::worktree::{add_worktree, register_worktree, WorktreeMode};
 use crate::git::worktree_log::WorktreeLifecycleLog;
 use crate::jobs::firmware_values::{
-    build_firmware_values, execution_profile_override, find_project, find_repo_ref, repo_name,
-    resolve_project, resolve_working_directory,
+    build_firmware_values, build_job_context, execution_profile_override, find_project,
+    find_repo_ref, repo_name, resolve_mcp_servers, resolve_project, resolve_working_directory,
+    resolve_writable_directories,
 };
 use crate::jobs::logger::{
     append_agent_log, append_to_eventwire, append_to_raw_log, find_log_file, read_eventwire_log,
@@ -342,13 +344,54 @@ impl JobManager {
                 }
             }
 
+            let job_context = build_job_context(&values, &tendril_home, &promptware_folder);
+            let resolution = resolve_agent(
+                &settings,
+                &job.provider,
+                &job.job_type,
+                job.execution_profile.as_deref(),
+                &job_context,
+            );
+            let mcp_servers = resolve_mcp_servers(&settings, &job.project, &tendril_home);
+            // The firmware value is the authoritative plan folder: it comes from the job's args and
+            // is only set once the folder is known to exist, whereas `plan_file` is whatever the
+            // caller happened to name the job with.
+            let writable_directories = resolve_writable_directories(
+                &job.job_type,
+                &promptware_folder,
+                Path::new(
+                    values
+                        .get("TendrilPlanFolder")
+                        .map(String::as_str)
+                        .unwrap_or(""),
+                ),
+                &tendril_home,
+                &settings,
+            );
+
             let launch_config = AgentLaunchConfig {
                 prompt: compiled_prompt,
                 working_directory: working_dir.clone(),
-                model: job.model.clone(),
-                effort: job.effort.clone(),
+                // An explicitly pinned model or effort (from a chat or a retry) outranks the profile
+                // resolution, so a continuation keeps running on what it started on.
+                model: job.model.clone().or_else(|| resolution.model.clone()),
+                effort: job.effort.clone().or_else(|| resolution.effort.clone()),
+                permission_mode: Some("FullAuto".to_string()),
+                allowed_tools: resolution.allowed_tools.clone(),
+                denied_tools: resolution.denied_tools.clone(),
+                writable_directories,
+                environment_variables: resolution.environment_variables.clone(),
+                extra_arguments: resolution.extra_arguments.clone(),
+                mcp_servers,
+                timeout_seconds: timeout.map(|t| t.as_secs()),
                 ..Default::default()
             };
+
+            // Recorded at launch, not read back later: a plan's profile can be edited after the job
+            // starts, and reporting that would describe a run this job never had.
+            job.model = launch_config.model.clone();
+            job.effort = launch_config.effort.clone();
+            job.execution_profile = resolution.profile.clone();
 
             let spec = (spec_builder)(&job.provider, &launch_config);
             job.working_directory = Some(working_dir.to_string_lossy().to_string());
