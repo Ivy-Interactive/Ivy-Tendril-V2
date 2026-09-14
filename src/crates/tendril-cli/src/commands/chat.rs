@@ -6,6 +6,7 @@ use tendril_core::chat::execution::{ChatEvent, ChatExecutionManager, ChatTurnOpt
 use tendril_core::chat::models::ChatSession;
 use tendril_core::chat::storage;
 use tendril_core::config::{get_config_path, load_config, read_master, MasterInfo};
+use tendril_core::http::daemon_client;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
@@ -102,7 +103,7 @@ pub async fn handle_chat_command(cmd: ChatCommands, tendril_home: &Path) -> anyh
 
 async fn handle_chat_list(args: ChatListArgs, tendril_home: &Path) -> anyhow::Result<()> {
     let sessions = if let Some(master) = read_master(tendril_home) {
-        let client = reqwest::Client::new();
+        let client = daemon_client(tendril_home);
         let url = format!("http://{}:{}/api/chat/sessions", master.host, master.port);
         let resp = client.get(&url).bearer_auth(&master.secret).send().await?;
         if resp.status().is_success() {
@@ -190,7 +191,7 @@ async fn handle_chat_get(args: ChatGetArgs, tendril_home: &Path) -> anyhow::Resu
 
 async fn handle_chat_create(args: ChatCreateArgs, tendril_home: &Path) -> anyhow::Result<()> {
     let session = if let Some(master) = read_master(tendril_home) {
-        let client = reqwest::Client::new();
+        let client = daemon_client(tendril_home);
         let url = format!("http://{}:{}/api/chat/sessions", master.host, master.port);
         let resp = client
             .post(&url)
@@ -247,7 +248,7 @@ async fn handle_chat_delete(args: ChatDeleteArgs, tendril_home: &Path) -> anyhow
     let session = resolve_session(tendril_home, &args.id).await?;
 
     if let Some(master) = read_master(tendril_home) {
-        let client = reqwest::Client::new();
+        let client = daemon_client(tendril_home);
         let url = format!(
             "http://{}:{}/api/chat/sessions/{}",
             master.host, master.port, session.id
@@ -266,7 +267,7 @@ async fn handle_chat_send(args: ChatSendArgs, tendril_home: &Path) -> anyhow::Re
     let session_id = session.id.clone();
 
     if let Some(master) = read_master(tendril_home) {
-        stream_via_server(&master, &session_id, &args).await?;
+        stream_via_server(tendril_home, &master, &session_id, &args).await?;
     } else {
         stream_via_local(tendril_home, &session_id, &args).await?;
     }
@@ -274,7 +275,11 @@ async fn handle_chat_send(args: ChatSendArgs, tendril_home: &Path) -> anyhow::Re
     Ok(())
 }
 
+/// The execute POST only *starts* the turn and replies `{"started": true}`; the assistant's output
+/// arrives over the WebSocket opened above, which is not a reqwest request. So the daemon timeout
+/// bounds the handshake, not the length of the turn.
 async fn stream_via_server(
+    tendril_home: &Path,
     master: &MasterInfo,
     session_id: &str,
     args: &ChatSendArgs,
@@ -287,7 +292,7 @@ async fn stream_via_server(
     let (ws_stream, _) = connect_async(req).await?;
     let (_, mut read) = ws_stream.split();
 
-    let client = reqwest::Client::new();
+    let client = daemon_client(tendril_home);
     let exec_url = format!(
         "http://{}:{}/api/chat/sessions/{}/execute",
         master.host, master.port, session_id

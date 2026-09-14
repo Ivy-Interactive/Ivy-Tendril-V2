@@ -21,6 +21,14 @@ pub struct TendrilSettings {
     #[serde(rename = "gitTimeout", default = "default_git_timeout")]
     pub git_timeout: i32,
 
+    /// Seconds to wait for a reply from the local daemon. Note the unit: unlike `jobTimeout`,
+    /// which is minutes, this is seconds. `0` or negative disables the timeout entirely.
+    #[serde(
+        rename = "daemonRequestTimeout",
+        default = "default_daemon_request_timeout"
+    )]
+    pub daemon_request_timeout: i32,
+
     #[serde(rename = "maxConcurrentJobs", default = "default_max_concurrent_jobs")]
     pub max_concurrent_jobs: i32,
 
@@ -53,8 +61,24 @@ pub struct TendrilSettings {
     #[serde(default = "default_levels")]
     pub levels: Vec<LevelConfig>,
 
-    #[serde(default = "default_true")]
-    pub telemetry: bool,
+    /// Opt-in. `None` (key absent) and `Some(false)` both mean no client is constructed and no
+    /// network call is ever attempted. Skipped on serialize when absent, so V2 never *introduces* the
+    /// key into a config.yaml shared with the original app, whose policy is opt-out and which reads an
+    /// absent key as "on". An explicit value round-trips unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telemetry: Option<bool>,
+
+    /// Endpoint / key / model for the auxiliary LLM the original app uses for summarisation. Modeled
+    /// rather than left in `extra` because `telemetry_enabled`'s `app_started` event reports whether
+    /// it is configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm: Option<LlmConfig>,
+
+    /// The original defaults this to true, and unlike telemetry that default is not a privacy
+    /// decision, so it is mirrored as-is. No reader in V2 yet — modeling it stops it being silently
+    /// unreadable.
+    #[serde(rename = "desktopNotifications", default = "default_true")]
+    pub desktop_notifications: bool,
 
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -143,6 +167,33 @@ pub struct TendrilSettings {
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
+impl TendrilSettings {
+    /// The single reader of the `telemetry` key. Strictly opt-in: only an explicit `telemetry: true`
+    /// enables it, so an absent key and `telemetry: false` behave identically. No call site tests the
+    /// field directly.
+    pub fn telemetry_enabled(&self) -> bool {
+        self.telemetry == Some(true)
+    }
+}
+
+/// Mirrors the original's `LlmConfig` (endpoint / apiKey / model). `extra` is required, not
+/// defensive: a real config.yaml carries `llm: { provider: openrouter }` and the original's
+/// tolerant JSON binding keeps it. A struct without `extra` would drop `provider` on the next save.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LlmConfig {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub endpoint: String,
+
+    #[serde(rename = "apiKey", default, skip_serializing_if = "String::is_empty")]
+    pub api_key: String,
+
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
 /// Assigned-issue auto-import. `autoAcceptAssignedIssues` selects what a swept issue becomes: a
 /// `CreatePlan` job when true, a proposal awaiting a human when false. Either way the sweep still
 /// runs — the flag picks the landing mode, it does not disable the import.
@@ -214,7 +265,6 @@ impl OnboardingConfig {
         self == &Self::default()
     }
 }
-
 /// What a single promptware asks for: the profile it runs under and the tool rules it contributes.
 ///
 /// `allowed_tools` is purely additive on top of the base set; `denied_tools` is subtracted from the
@@ -343,6 +393,9 @@ fn default_stale_output_timeout() -> i32 {
 fn default_git_timeout() -> i32 {
     10
 }
+fn default_daemon_request_timeout() -> i32 {
+    crate::http::DEFAULT_DAEMON_REQUEST_TIMEOUT_SECS as i32
+}
 fn default_max_concurrent_jobs() -> i32 {
     20
 }
@@ -411,6 +464,7 @@ impl Default for TendrilSettings {
             job_timeout: default_job_timeout(),
             stale_output_timeout: default_stale_output_timeout(),
             git_timeout: default_git_timeout(),
+            daemon_request_timeout: default_daemon_request_timeout(),
             max_concurrent_jobs: default_max_concurrent_jobs(),
             projects: Vec::new(),
             verifications: Vec::new(),
@@ -418,7 +472,9 @@ impl Default for TendrilSettings {
             plan_folder: None,
             promptware_overlay: None,
             levels: default_levels(),
-            telemetry: true,
+            telemetry: None,
+            llm: None,
+            desktop_notifications: true,
             theme: default_theme(),
             worktree_reaper_interval: default_worktree_reaper_interval(),
             worktree_reaper_grace: default_worktree_reaper_grace(),
@@ -1054,8 +1110,13 @@ pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
     serde_json::from_str(&content).ok()
 }
 
-/// True when this process is the master, i.e. `.master` names our pid. The counterpart to
-/// [`MasterGuard::acquire`] for code that needs the answer without taking the guard.
+/// True when this process owns the `.master` file. [`MasterGuard::acquire`] wrote our pid there;
+/// anything else — a foreign pid, or no file at all — means we lost the race or were superseded, so
+/// we must not write to anything the master owns.
+///
+/// Checked per pass rather than once at spawn: a daemon can be superseded while running. Being a
+/// function of the file rather than of process-wide environment state, it is testable without the
+/// cross-thread interference an env-var seam would cause.
 pub fn is_master(tendril_home: &Path) -> bool {
     read_master(tendril_home).is_some_and(|m| m.pid == std::process::id())
 }
