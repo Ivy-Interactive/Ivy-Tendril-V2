@@ -1571,6 +1571,7 @@ pub async fn import_project_with(
             request.selected_mcps.as_ref(),
             |server: &ProjectMcpServerRef| server.name.clone(),
         ),
+        ..Default::default()
     };
 
     match settings

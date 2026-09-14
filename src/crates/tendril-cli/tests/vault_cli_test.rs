@@ -320,6 +320,7 @@ fn settings_with_projects(names: &[&str]) -> tendril_core::config::TendrilSettin
                 review_actions: Vec::new(),
                 build_dependencies: Vec::new(),
                 mcp_servers: Vec::new(),
+                ..Default::default()
             })
             .collect(),
         ..Default::default()

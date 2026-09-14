@@ -6,6 +6,7 @@ pub mod mcp;
 pub mod models;
 pub mod plan;
 pub mod project;
+pub mod project_analyzer;
 pub mod promptware;
 pub mod serve;
 pub mod vault;

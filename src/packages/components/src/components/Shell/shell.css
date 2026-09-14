@@ -1291,6 +1291,12 @@
   opacity: 0.6;
 }
 
+.tsh-tab-main:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
 .tsh-tab-icon {
   width: 16px;
   height: 16px;
@@ -1326,6 +1332,11 @@
 .tsh-tab-close:hover {
   opacity: 1;
   background: var(--tsh-badge-bg-active);
+}
+
+.tsh-tab-close:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
 }
 
 .tsh-tab-new {

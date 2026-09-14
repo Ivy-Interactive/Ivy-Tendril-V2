@@ -99,23 +99,23 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   return (
     <div className="flex h-full flex-col space-y-4" data-testid="job-session-view">
       {/* Session Header */}
-      <div className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card/60 p-4">
         <div className="flex items-center space-x-3">
-          <span className="font-mono text-xs font-bold text-slate-400">{currentJob.id}</span>
-          <span className="text-sm font-semibold text-slate-100">{currentJob.type}</span>
+          <span className="font-mono text-xs font-bold text-muted-foreground">{currentJob.id}</span>
+          <span className="text-sm font-semibold text-foreground">{currentJob.type}</span>
           <span
             className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
               isRunning
-                ? "bg-blue-950 text-blue-300 border border-blue-800 animate-pulse"
+                ? "bg-info/10 text-info border border-info/40 animate-pulse"
                 : currentJob.status === "Completed"
-                  ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
-                  : "bg-red-950 text-red-300 border border-red-800"
+                  ? "bg-success/10 text-success border border-success/40"
+                  : "bg-destructive/10 text-destructive border border-destructive/40"
             }`}
           >
             {currentJob.status}
           </span>
           {currentJob.planTitle && (
-            <span className="text-xs text-slate-400">Plan: {currentJob.planTitle}</span>
+            <span className="text-xs text-muted-foreground">Plan: {currentJob.planTitle}</span>
           )}
         </div>
 
@@ -124,7 +124,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             type="button"
             onClick={() => setAutoScroll(!autoScroll)}
             className={`rounded px-2 py-1 text-xs transition ${
-              autoScroll ? "bg-slate-800 text-emerald-400" : "bg-slate-900 text-slate-400"
+              autoScroll ? "bg-muted text-success" : "bg-card text-muted-foreground"
             }`}
           >
             Auto-scroll: {autoScroll ? "ON" : "OFF"}
@@ -135,7 +135,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
               type="button"
               disabled={isCancelling}
               onClick={handleCancel}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-500 disabled:opacity-50"
+              className="rounded-lg bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-50"
             >
               {isCancelling ? "Cancelling..." : "Cancel Job"}
             </button>
@@ -146,7 +146,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
               type="button"
               onClick={onCloseTab}
               aria-label="Close session tab"
-              className="rounded p-1 text-slate-400 hover:text-slate-200"
+              className="rounded p-1 text-muted-foreground hover:text-foreground"
             >
               ✕
             </button>
@@ -158,7 +158,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
         <div
           role="alert"
           data-testid="job-cancel-error"
-          className="rounded-xl border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+          className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {cancelError}
         </div>
@@ -169,19 +169,19 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
       {hasFailed && (failureReason || currentJob.statusMessage) && (
         <div
           data-testid="job-failure-reason"
-          className="rounded-xl border border-red-800 bg-red-950/40 p-4"
+          className="rounded-xl border border-destructive/40 bg-destructive/10 p-4"
         >
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-red-300">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-destructive">
             Reported failure reason
           </h3>
-          <p className="mt-1 text-sm whitespace-pre-wrap text-red-200">
+          <p className="mt-1 text-sm whitespace-pre-wrap text-destructive">
             {failureReason || currentJob.statusMessage}
           </p>
         </div>
       )}
 
       {/* Stream Viewer */}
-      <div className="flex-1 overflow-hidden rounded-xl border border-slate-800 bg-slate-950">
+      <div className="flex-1 overflow-hidden rounded-xl border border-border bg-background">
         <AgentViewer
           id={`agent-viewer-${currentJob.id}`}
           jsonStream={
