@@ -1,5 +1,5 @@
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
-use crate::agents::runner::{run_agent_process, AgentRunOutcome, TerminationReason};
+use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
     get_job, insert_job, insert_new_job, list_jobs, list_non_terminal_jobs, max_numeric_job_id,
@@ -76,6 +76,8 @@ pub struct JobManager {
     spec_builder: SpecBuilder,
     /// Overrides the `jobTimeout` setting. Only used by tests, which need sub-minute timeouts.
     job_timeout_override: Option<Duration>,
+    /// Overrides the post-result grace period. Only used by tests.
+    post_result_grace_override: Option<Duration>,
 }
 
 impl JobManager {
@@ -90,6 +92,7 @@ impl JobManager {
             alloc_lock: Arc::new(Mutex::new(())),
             spec_builder: Arc::new(build_agent_spec),
             job_timeout_override: None,
+            post_result_grace_override: None,
         }
     }
 
@@ -102,6 +105,12 @@ impl JobManager {
     /// Overrides the configured job timeout, which is expressed in whole minutes. Intended for tests.
     pub fn with_job_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.job_timeout_override = timeout;
+        self
+    }
+
+    /// Overrides the post-result grace period. Only used by tests.
+    pub fn with_post_result_grace(mut self, grace: Option<Duration>) -> Self {
+        self.post_result_grace_override = grace;
         self
     }
 
@@ -233,6 +242,9 @@ impl JobManager {
         let timeout = self
             .job_timeout_override
             .or_else(|| job_timeout_duration(&settings));
+        let post_result_grace = self
+            .post_result_grace_override
+            .unwrap_or(crate::agents::runner::DEFAULT_POST_RESULT_GRACE);
 
         tokio::spawn(async move {
             let job_id = job.id.clone();
@@ -327,7 +339,7 @@ impl JobManager {
             let home_for_pid = tendril_home.clone();
             let job_for_pid = job.clone();
 
-            let run_res = run_agent_process(
+            let run_res = run_agent_process_with_grace(
                 spec,
                 move |evt| {
                     let _ = append_to_raw_log(&th, &jid, &evt.raw_line);
@@ -345,6 +357,7 @@ impl JobManager {
                 },
                 cancel_rx,
                 timeout,
+                post_result_grace,
             )
             .await;
 
@@ -517,7 +530,7 @@ pub fn in_flight_plan_state(job_type: &str) -> Option<PlanStatus> {
 /// Where a plan lands when its job exits successfully.
 ///
 /// `ExecutePlan` and `RetryPlan` go through the verification gate, so a plan with a `Pending` or
-/// `Fail` row — or a rejected pre-execution check — cannot reach `Review`. `CreatePr` is absent on
+/// `Fail` row (or a rejected pre-execution check) cannot reach `Review`. `CreatePr` is absent on
 /// purpose: that promptware sets `Completed` itself.
 pub fn plan_state_on_success(
     job_type: &str,
@@ -533,7 +546,7 @@ pub fn plan_state_on_success(
     }
 }
 
-/// The state to fall back to when no `previousPlanState` was captured — after a restart, say.
+/// The state to fall back to when no `previousPlanState` was captured, after a restart, say.
 pub fn fallback_previous_state(job_type: &str) -> Option<PlanStatus> {
     match job_type {
         "ExecutePlan" | "ExpandPlan" | "UpdatePlan" | "SplitPlan" | "CreatePlan" => {
@@ -563,14 +576,45 @@ pub fn revert_plan_state(job: &JobItem) {
     if job.plan_file.is_empty() {
         return;
     }
+    let plan_path = Path::new(&job.plan_file);
+    let current = read_plan_state(plan_path);
+    let plan_id = plan_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&job.plan_file);
+
+    // Terminal plans (Completed or Skipped) are immutable
+    if matches!(current, Some(PlanStatus::Completed | PlanStatus::Skipped)) {
+        tracing::info!(
+            "Job {}: Not reverting plan {} because it is already {:?}",
+            job.id,
+            plan_id,
+            current.unwrap()
+        );
+        return;
+    }
+
     if let Some(target) = revert_target(job.previous_plan_state.as_deref(), &job.job_type) {
-        apply_plan_state(Path::new(&job.plan_file), target);
+        // Do not stomp Review or Failed back to Draft on stale timeout or failure
+        if matches!(current, Some(PlanStatus::Review | PlanStatus::Failed))
+            && target == PlanStatus::Draft
+        {
+            tracing::info!(
+                "Job {}: Not reverting plan {} from {:?} to Draft",
+                job.id,
+                plan_id,
+                current.unwrap()
+            );
+            return;
+        }
+
+        apply_plan_state(plan_path, target);
     }
 }
 
 /// Writes a plan state through [`PlanCompletionGuard`], so the `Completed`-over-`Fail` rule holds for
 /// every transition the job engine makes.
-pub(crate) fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
+pub fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
     if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
         return;
     }
@@ -581,6 +625,21 @@ pub(crate) fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or_default();
+
+    if let Some(current) = PlanStatus::from_str_loose(&plan.state) {
+        // Terminal plans (Completed or Skipped) are immutable
+        if matches!(current, PlanStatus::Completed | PlanStatus::Skipped)
+            && !matches!(state, PlanStatus::Completed | PlanStatus::Skipped)
+        {
+            tracing::info!(
+                "Not setting plan {} to {:?} because it is already {:?}",
+                plan_id,
+                state,
+                current
+            );
+            return;
+        }
+    }
 
     match PlanCompletionGuard::apply_state(&mut plan, state, false, plan_id) {
         Ok(warning) => {
@@ -649,6 +708,25 @@ fn classify_outcome(
                     timeout.map(|t| t.as_secs()).unwrap_or_default()
                 ),
             ),
+            TerminationReason::PostResultGraceExceeded => match outcome.exit_code {
+                Some(0) => (
+                    JobStatus::Completed,
+                    "Completed with result event outcome after post-result grace period"
+                        .to_string(),
+                ),
+                Some(code) => (
+                    JobStatus::Failed,
+                    format!(
+                        "Process terminated after post-result grace period with exit code {}",
+                        code
+                    ),
+                ),
+                None => (
+                    JobStatus::Completed,
+                    "Completed with result event outcome after post-result grace period"
+                        .to_string(),
+                ),
+            },
         },
         Err(e) => (JobStatus::Failed, format!("Execution failed: {}", e)),
     }
