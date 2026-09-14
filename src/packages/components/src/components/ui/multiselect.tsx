@@ -1,7 +1,13 @@
 import * as React from "react";
 import { X, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Command, CommandGroup, CommandItem } from "@/components/ui/command";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Command as CommandPrimitive } from "cmdk";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
@@ -9,7 +15,8 @@ import { cn } from "@/lib/utils";
 import {
   computeClearAllValues,
   computeSelectAllValues,
-  filterOptionsLikeCmdk,
+  filterOptionsBySearch,
+  type SearchMode,
 } from "@/components/ui/select/utils";
 import { cva } from "class-variance-authority";
 import { Densities } from "@/types/density";
@@ -55,7 +62,7 @@ export interface Option {
   tooltip?: string;
 }
 
-interface MultipleSelectorProps {
+export interface MultipleSelectorProps {
   value?: Option[];
   defaultOptions?: Option[];
   onValueChange?: (value: Option[]) => void;
@@ -79,6 +86,9 @@ interface MultipleSelectorProps {
   onNullableClear?: () => void;
   autoFocus?: boolean;
   rightSlot?: React.ReactNode;
+  searchable?: boolean;
+  searchMode?: SearchMode;
+  emptyMessage?: string;
 }
 
 const MultipleSelector = React.forwardRef<
@@ -108,6 +118,9 @@ const MultipleSelector = React.forwardRef<
       onNullableClear,
       autoFocus = false,
       rightSlot,
+      searchable = true,
+      searchMode = "CaseInsensitive",
+      emptyMessage,
     },
     ref,
   ) => {
@@ -157,7 +170,9 @@ const MultipleSelector = React.forwardRef<
     React.useEffect(() => {
       if (open && dropdownRef.current) {
         requestAnimationFrame(() => {
-          const scrollableElement = dropdownRef.current?.querySelector("[cmdk-group]");
+          const scrollableElement =
+            dropdownRef.current?.querySelector("[cmdk-list]") ??
+            dropdownRef.current?.querySelector("[cmdk-group]");
           if (scrollableElement) {
             scrollableElement.scrollTop = 0;
           }
@@ -288,18 +303,14 @@ const MultipleSelector = React.forwardRef<
 
     const selectedValueStrings = React.useMemo(() => value.map((v) => v.value), [value]);
 
-    const filteredForBulk = React.useMemo(() => {
-      const labeled = defaultOptions.map((o) => ({
-        label: o.label,
-        value: o.value,
-      }));
-      return filterOptionsLikeCmdk(labeled, inputValue);
-    }, [defaultOptions, inputValue]);
+    const filteredOptions = React.useMemo(() => {
+      if (searchable === false || !inputValue) return defaultOptions;
+      return filterOptionsBySearch(defaultOptions, inputValue, searchMode);
+    }, [defaultOptions, inputValue, searchable, searchMode]);
 
     const visibleEnabledForBulk = React.useMemo(() => {
-      const set = new Set(filteredForBulk.map((f: { label: string; value: string }) => f.value));
-      return defaultOptions.filter((o) => set.has(o.value) && !o.disable);
-    }, [defaultOptions, filteredForBulk]);
+      return filteredOptions.filter((o) => !o.disable);
+    }, [filteredOptions]);
 
     const bulkSelectAllDisabled = visibleEnabledForBulk.every((o) =>
       selectedValueStrings.includes(o.value),
@@ -537,17 +548,22 @@ const MultipleSelector = React.forwardRef<
             onCloseAutoFocus={(e) => e.preventDefault()}
             onInteractOutside={(e) => e.preventDefault()}
           >
-            {defaultOptions.length > 0 ? (
-              <>
-                <CommandGroup
-                  className="h-full overflow-auto slim-scrollbar"
-                  style={{ maxHeight: "min(300px, var(--radix-popover-content-available-height))" }}
-                >
-                  {defaultOptions.map((option) => {
+            <CommandList
+              className="h-full overflow-auto slim-scrollbar"
+              style={{ maxHeight: "min(300px, var(--radix-popover-content-available-height))" }}
+            >
+              {filteredOptions.length === 0 ? (
+                <CommandEmpty>
+                  {emptyIndicator ? emptyIndicator : emptyMessage || "No options available"}
+                </CommandEmpty>
+              ) : (
+                <CommandGroup>
+                  {filteredOptions.map((option) => {
                     const selected = isSelected(option);
                     return (
                       <CommandItem
                         key={option.value}
+                        value={option.value}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -598,38 +614,32 @@ const MultipleSelector = React.forwardRef<
                     );
                   })}
                 </CommandGroup>
-                {showActions && (
-                  <div
-                    className="border-t border-border p-2 flex justify-between items-center gap-2 text-sm shrink-0"
-                    role="group"
-                    aria-label="Bulk selection"
-                  >
-                    <button
-                      type="button"
-                      className="text-primary hover:underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm px-0.5"
-                      disabled={bulkSelectAllDisabled || disabled}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => handleBulkSelectAll()}
-                    >
-                      Select All
-                    </button>
-                    <button
-                      type="button"
-                      className="text-primary hover:underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm px-0.5"
-                      disabled={bulkClearAllDisabled || disabled}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => handleBulkClearAll()}
-                    >
-                      Clear All
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : emptyIndicator ? (
-              <div className="p-2">{emptyIndicator}</div>
-            ) : (
-              <div className="px-2 py-3 text-sm text-muted-foreground text-center">
-                No options available
+              )}
+            </CommandList>
+            {showActions && defaultOptions.length > 0 && (
+              <div
+                className="border-t border-border p-2 flex justify-between items-center gap-2 text-sm shrink-0"
+                role="group"
+                aria-label="Bulk selection"
+              >
+                <button
+                  type="button"
+                  className="text-primary hover:underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm px-0.5"
+                  disabled={bulkSelectAllDisabled || disabled}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleBulkSelectAll()}
+                >
+                  Select All
+                </button>
+                <button
+                  type="button"
+                  className="text-primary hover:underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:no-underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm px-0.5"
+                  disabled={bulkClearAllDisabled || disabled}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleBulkClearAll()}
+                >
+                  Clear All
+                </button>
               </div>
             )}
           </PopoverContent>
