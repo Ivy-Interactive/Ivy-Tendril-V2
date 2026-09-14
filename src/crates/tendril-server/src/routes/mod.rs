@@ -171,6 +171,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
         )
+        .route(
+            "/api/projects/:name/hooks",
+            post(projects::add_project_hook),
+        )
+        .route(
+            "/api/projects/:name/hooks/:hook",
+            delete(projects::remove_project_hook),
+        )
         // Vaults. `:id` accepts the literal `default` for the primary vault, so the static
         // `discover` and `accounts` segments are declared alongside it rather than under it.
         .route(
