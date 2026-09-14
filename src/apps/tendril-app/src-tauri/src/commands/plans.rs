@@ -1,8 +1,8 @@
 use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
-    DraftCommentDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto,
-    RepoStatusDto, RevisionResultDto, VerificationReportDto,
+    DraftCommentDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto, RepoStatusDto,
+    RevisionResultDto, VerificationReportDto,
 };
 
 #[tauri::command]
