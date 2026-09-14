@@ -46,7 +46,11 @@ export {
   type Theme,
   type ThemeContextType,
 } from "./contexts/theme-context.tsx";
-export { ThemeProvider, type ThemeProviderProps } from "./components/theme-provider.tsx";
+export {
+  ThemeProvider,
+  setThemeGlobal,
+  type ThemeProviderProps,
+} from "./components/theme-provider.tsx";
 export { TypographyContext, useTypography } from "./contexts/TypographyContext";
 
 // Density
@@ -70,6 +74,7 @@ export * from "./components/ui/button";
 export * from "./components/ui/input.tsx";
 export * from "./components/ui/card";
 export * from "./components/ui/badge";
+export * from "./components/ui/data-table";
 export * from "./components/ui/dialog";
 export * from "./components/ui/tabs";
 

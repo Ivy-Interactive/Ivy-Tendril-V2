@@ -1,6 +1,7 @@
 use crate::agents::model_specs::{self, ModelSpec};
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -107,34 +108,131 @@ pub fn parse_catalog(json: &str) -> Result<Vec<ModelSpec>> {
     Ok(specs)
 }
 
+/// Soft threshold: cache is still used, but its age is reported as a warning.
+pub const DEFAULT_CACHE_WARN_AGE_DAYS: i64 = 7;
+/// Hard threshold: cache is ignored entirely and the static SPECS table is used.
+pub const DEFAULT_CACHE_MAX_AGE_DAYS: i64 = 30;
+
+/// On-disk cache envelope. Written by `save_disk_cache`.
+#[derive(Debug, Serialize, Deserialize)]
+struct CacheFile {
+    #[serde(rename = "fetchedAt")]
+    fetched_at: DateTime<Utc>,
+    specs: Vec<ModelSpec>,
+}
+
+/// A loaded cache plus how old it is. `fetched_at` is `None` for a legacy
+/// (pre-envelope) cache file, which has no recorded fetch time.
+#[derive(Debug, Default)]
+pub struct CachedCatalog {
+    pub specs: Vec<ModelSpec>,
+    pub fetched_at: Option<DateTime<Utc>>,
+}
+
+impl CachedCatalog {
+    pub fn is_empty(&self) -> bool {
+        self.specs.is_empty()
+    }
+
+    /// Age in whole days, or `None` when no timestamp was recorded.
+    pub fn age_days(&self, now: DateTime<Utc>) -> Option<i64> {
+        self.fetched_at.map(|t| (now - t).num_days().max(0))
+    }
+
+    /// A legacy cache with no timestamp counts as stale at any threshold.
+    pub fn is_older_than(&self, now: DateTime<Utc>, days: i64) -> bool {
+        match self.age_days(now) {
+            Some(age) => age >= days,
+            None => true,
+        }
+    }
+}
+
+/// How a loaded cache should be treated relative to the configured age thresholds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheFreshness {
+    /// Younger than the warn threshold (or the warn threshold is disabled).
+    Fresh { age_days: Option<i64> },
+    /// Past the warn threshold but still usable.
+    Stale { age_days: Option<i64> },
+    /// Past the max age threshold; must not be registered.
+    Expired { age_days: Option<i64> },
+}
+
+/// Classifies a cache's freshness against the configured warn/max-age thresholds
+/// (in days). A threshold of `<= 0` disables that tier. `Expired` takes priority
+/// over `Stale` when both thresholds are exceeded, and a cache with no recorded
+/// fetch time (a legacy pre-envelope file) is always `Expired`.
+pub fn classify(catalog: &CachedCatalog, warn_days: i64, max_days: i64) -> CacheFreshness {
+    let now = Utc::now();
+    let age_days = catalog.age_days(now);
+
+    if max_days > 0 && catalog.is_older_than(now, max_days) {
+        return CacheFreshness::Expired { age_days };
+    }
+    if warn_days > 0 && catalog.is_older_than(now, warn_days) {
+        return CacheFreshness::Stale { age_days };
+    }
+    CacheFreshness::Fresh { age_days }
+}
+
 fn cache_file_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("cache").join("models_cache.json")
 }
 
-/// Reads and deserializes cached specs on startup without any network access.
-/// Returns an empty vec (not an error) when no cache file exists yet.
-pub fn load_disk_cache(tendril_home: &Path) -> Result<Vec<ModelSpec>> {
+/// Reads and deserializes the cached specs on startup without any network access.
+/// Returns an empty `CachedCatalog` (not an error) when no cache file exists yet.
+///
+/// A cache written before this change has no `fetchedAt` envelope — it is read as
+/// a bare `Vec<ModelSpec>` and returned with `fetched_at: None`.
+pub fn load_disk_cache(tendril_home: &Path) -> Result<CachedCatalog> {
     let path = cache_file_path(tendril_home);
     if !path.exists() {
-        return Ok(Vec::new());
+        return Ok(CachedCatalog::default());
     }
 
     let content = std::fs::read_to_string(&path)
         .with_context(|| format!("failed to read model cache at {}", path.display()))?;
+
+    if let Ok(file) = serde_json::from_str::<CacheFile>(&content) {
+        return Ok(CachedCatalog {
+            specs: file.specs,
+            fetched_at: Some(file.fetched_at),
+        });
+    }
+
     let specs: Vec<ModelSpec> = serde_json::from_str(&content)
         .with_context(|| format!("failed to parse model cache at {}", path.display()))?;
-    Ok(specs)
+    Ok(CachedCatalog {
+        specs,
+        fetched_at: None,
+    })
 }
 
-/// Atomically saves the given specs to the disk cache (write to a temp file, then rename).
+/// Atomically saves the given specs to the disk cache (write to a temp file, then rename),
+/// stamped with the current time as the fetch time.
 pub fn save_disk_cache(tendril_home: &Path, specs: &[ModelSpec]) -> Result<()> {
+    save_disk_cache_at(tendril_home, specs, Utc::now())
+}
+
+/// Same as `save_disk_cache`, but with an explicit `fetched_at` timestamp — used by tests
+/// to write a cache of a known age.
+pub fn save_disk_cache_at(
+    tendril_home: &Path,
+    specs: &[ModelSpec],
+    fetched_at: DateTime<Utc>,
+) -> Result<()> {
     let path = cache_file_path(tendril_home);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create cache directory {}", parent.display()))?;
     }
 
-    let json = serde_json::to_string_pretty(specs).context("failed to serialize model cache")?;
+    let file = CacheFile {
+        fetched_at,
+        specs: specs.to_vec(),
+    };
+    let json = serde_json::to_string_pretty(&file).context("failed to serialize model cache")?;
     let tmp_path = path.with_extension("json.tmp");
     std::fs::write(&tmp_path, json)
         .with_context(|| format!("failed to write temp model cache at {}", tmp_path.display()))?;

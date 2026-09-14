@@ -11,7 +11,7 @@ export const PopoverLink: React.FC<PopoverLinkProps> = ({ content, children }) =
     <Popover>
       <PopoverTrigger asChild>
         <span
-          className="cursor-pointer"
+          className="cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
           style={{
             textDecoration: "underline dotted",
             textUnderlineOffset: "3px",
