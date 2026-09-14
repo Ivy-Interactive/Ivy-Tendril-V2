@@ -51,6 +51,9 @@ pub struct TendrilSettings {
     #[serde(default)]
     pub beta: bool,
 
+    #[serde(rename = "enrichModels", default = "default_true")]
+    pub enrich_models: bool,
+
     #[serde(flatten)]
     pub extra: std::collections::BTreeMap<String, serde_json::Value>,
 }
@@ -123,6 +126,7 @@ impl Default for TendrilSettings {
             telemetry: true,
             theme: default_theme(),
             beta: false,
+            enrich_models: true,
             extra: std::collections::BTreeMap::new(),
         }
     }
