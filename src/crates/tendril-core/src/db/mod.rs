@@ -1,10 +1,12 @@
 pub mod costs;
+pub mod dashboard;
 pub mod jobs;
 pub mod migrations;
 pub mod plans;
 pub mod pr_status;
 
 pub use costs::*;
+pub use dashboard::*;
 pub use jobs::*;
 pub use migrations::*;
 pub use plans::*;
