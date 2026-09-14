@@ -6,6 +6,8 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  DialogDescription,
+  DialogTitle,
 } from "@ivy-interactive/components/ui";
 import type { DocPage } from "../lib/page";
 import type { DocsSearchIndex, SearchHit } from "../lib/search";
@@ -29,6 +31,10 @@ export function SearchDialog({ open, onOpenChange, pages }: SearchDialogProps) {
   const [loading, setLoading] = useState(false);
   const pagesRef = useRef(pages);
   pagesRef.current = pages;
+  // The in-flight guard has to live in a ref, not in `loading`: a state flag in the effect's
+  // dependency list re-runs the effect the moment it is set, and the cleanup of that first run would
+  // cancel the import it just started — leaving the dialog on "Building the index…" forever.
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -41,23 +47,22 @@ export function SearchDialog({ open, onOpenChange, pages }: SearchDialogProps) {
   }, [open, onOpenChange]);
 
   useEffect(() => {
-    if (!open || index || loading) return;
+    if (!open || index || loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
-    let cancelled = false;
     void import("../lib/search")
       .then(({ buildSearchIndex }) => {
-        if (!cancelled) setIndex(buildSearchIndex(pagesRef.current));
+        setIndex(buildSearchIndex(pagesRef.current));
       })
       .catch((error: unknown) => {
+        // Let the next open try again — a chunk that failed to fetch usually succeeds on a retry.
+        loadingRef.current = false;
         console.error("[tendril-docs] Failed to load the search index.", error);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, index, loading]);
+  }, [open, index]);
 
   const hits: SearchHit[] = index && query.trim() ? index.search(query) : [];
   const grouped = new Map<string, SearchHit[]>();
@@ -81,6 +86,15 @@ export function SearchDialog({ open, onOpenChange, pages }: SearchDialogProps) {
         onOpenChange(next);
       }}
     >
+      {/*
+       * `CommandDialog` renders a bare `DialogContent`, and Radix logs an accessibility error when
+       * the content has no title and no description. Both are for screen readers only; the visible
+       * label is the input's placeholder.
+       */}
+      <DialogTitle className="sr-only">Search the documentation</DialogTitle>
+      <DialogDescription className="sr-only">
+        Type a few words to search every page. Use the arrow keys to choose a result.
+      </DialogDescription>
       <CommandInput
         placeholder="Search the documentation…"
         value={query}

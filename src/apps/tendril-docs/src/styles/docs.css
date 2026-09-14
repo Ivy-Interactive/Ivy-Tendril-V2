@@ -35,10 +35,17 @@
     scroll-margin-top: 5rem;
   }
 
+  /* Tables stay real tables. `display: block` would make them scroll horizontally, but it also stops
+   * the rows from filling the block's width — the last column ends short of the border and the header
+   * band with it. Wrapping long cells keeps a wide table inside the article instead. */
   .docs-article :where(table) {
-    display: block;
+    width: 100%;
     max-width: 100%;
-    overflow-x: auto;
+    table-layout: auto;
+  }
+
+  .docs-article :where(th, td) {
+    overflow-wrap: break-word;
   }
 
   /* The "On this page" rail and the sidebar both scroll independently of the article. */
