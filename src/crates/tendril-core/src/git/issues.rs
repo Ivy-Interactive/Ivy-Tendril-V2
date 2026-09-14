@@ -646,6 +646,7 @@ pub async fn get_project_issues_metadata(
 }
 
 #[cfg(test)]
+#[allow(clippy::await_holding_lock)]
 mod tests {
     use super::*;
 

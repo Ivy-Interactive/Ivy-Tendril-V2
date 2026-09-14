@@ -21,6 +21,9 @@ pub fn deploy_standard_promptwares(target_dir: &Path) -> Result<()> {
 
     // Check if source promptwares dir exists in common repo locations
     let possible_sources = [
+        Path::new("src/promptwares"),
+        Path::new("../src/promptwares"),
+        Path::new("../../src/promptwares"),
         Path::new("promptwares"),
         Path::new("../promptwares"),
         Path::new("../../promptwares"),
@@ -73,4 +76,31 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deployer_finds_src_promptwares() {
+        let temp_target = std::env::temp_dir().join(format!("tendril_test_{}", uuid::Uuid::new_v4()));
+        let result = deploy_standard_promptwares(&temp_target);
+        assert!(result.is_ok(), "deploy_standard_promptwares should succeed: {:?}", result.err());
+
+        for name in STANDARD_PROMPTWARES {
+            let prog = temp_target.join(name).join("Program.md");
+            assert!(prog.exists(), "Program.md should exist for {}", name);
+        }
+
+        // Verify that existing promptwares were copied from src/promptwares rather than stubbed
+        let create_plan_prog = temp_target.join("CreatePlan").join("Program.md");
+        let content = std::fs::read_to_string(&create_plan_prog).unwrap();
+        assert!(
+            !content.starts_with("# CreatePlan\n\nInstructions for promptware"),
+            "CreatePlan should have been copied from src/promptwares, not stubbed"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_target);
+    }
 }

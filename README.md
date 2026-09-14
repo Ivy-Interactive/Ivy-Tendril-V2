@@ -3,10 +3,10 @@
 **Ivy-Tendril-V2** is the unified monorepo for the **Ivy Tendril** plan management and autonomous AI coding agent orchestration system.
 
 It brings together the complete Tendril ecosystem into a single repository:
-- **`apps/tendril-app`**: Tauri desktop application and React 19 frontend UI
-- **`packages/components`**: UI component library, renderers, widgets, and Storybook (`@ivy-interactive/components`)
-- **`crates/`**: Headless backend service (`tendril-server`), core engine (`tendril-core`), and CLI (`tendril-cli`)
-- **`promptwares/`**: Deployed promptware agent programs (CreatePlan, ExecutePlan, etc.)
+- **`src/apps/tendril-app`**: Tauri desktop application and React 19 frontend UI
+- **`src/packages/components`**: UI component library, renderers, widgets, and Storybook (`@ivy-interactive/components`)
+- **`src/crates/`**: Headless backend service (`tendril-server`), core engine (`tendril-core`), and CLI (`tendril-cli`)
+- **`src/promptwares/`**: Deployed promptware agent programs (CreatePlan, ExecutePlan, etc.)
 
 ---
 
@@ -14,18 +14,19 @@ It brings together the complete Tendril ecosystem into a single repository:
 
 ```
 Ivy-Tendril-V2/
-├── apps/
-│   └── tendril-app/            # Tauri desktop app + React frontend
-├── packages/
-│   └── components/             # @ivy-interactive/components + Storybook
-├── crates/
-│   ├── tendril-core/           # Core domain models, SQLite database, worktree engine
-│   ├── tendril-server/         # Axum REST & WebSocket HTTP server daemon
-│   └── tendril-cli/            # Command-line interface ("tendril")
-├── promptwares/                # Promptware agent definitions & firmware
-├── Cargo.toml                  # Unified Cargo workspace
-├── pnpm-workspace.yaml         # Unified pnpm workspace
-└── package.json                # Workspace root scripts
+├── src/
+│   ├── apps/
+│   │   └── tendril-app/            # Tauri desktop app + React frontend
+│   ├── packages/
+│   │   └── components/             # @ivy-interactive/components + Storybook
+│   ├── crates/
+│   │   ├── tendril-core/           # Core domain models, SQLite database, worktree engine
+│   │   ├── tendril-server/         # Axum REST & WebSocket HTTP server daemon
+│   │   └── tendril-cli/            # Command-line interface ("tendril")
+│   └── promptwares/                # Promptware agent definitions & firmware
+├── Cargo.toml                      # Unified Cargo workspace
+├── pnpm-workspace.yaml             # Unified pnpm workspace
+└── package.json                    # Workspace root scripts
 ```
 
 ---

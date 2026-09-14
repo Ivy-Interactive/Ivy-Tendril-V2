@@ -1,9 +1,7 @@
 [workspace]
 members = [
-    "crates/tendril-core",
-    "crates/tendril-server",
-    "crates/tendril-cli",
-    "apps/tendril-app/src-tauri",
+    "src/crates/*",
+    "src/apps/tendril-app/src-tauri",
 ]
 resolver = "2"
 

@@ -225,8 +225,10 @@ fn test_get_plans_dir_with_explicit_setting() {
     ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
-    let mut settings = TendrilSettings::default();
-    settings.plan_folder = Some("MyPlans".to_string());
+    let settings = TendrilSettings {
+        plan_folder: Some("MyPlans".to_string()),
+        ..Default::default()
+    };
 
     let plans_dir = get_plans_dir_with_env(&test_dir, Some(&settings), &empty_env);
     assert_eq!(plans_dir, test_dir.join("MyPlans"));
@@ -265,8 +267,10 @@ fn test_get_plans_dir_variable_expansion() {
     ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
-    let mut settings = TendrilSettings::default();
-    settings.plan_folder = Some("%TENDRIL_HOME%/CustomPlans".to_string());
+    let mut settings = TendrilSettings {
+        plan_folder: Some("%TENDRIL_HOME%/CustomPlans".to_string()),
+        ..Default::default()
+    };
 
     let plans_dir = get_plans_dir_with_env(&test_dir, Some(&settings), &empty_env);
     assert_eq!(plans_dir, test_dir.join("CustomPlans"));
@@ -301,8 +305,10 @@ fn test_get_plans_dir_precedence() {
     );
 
     // 2. planFolder in settings takes effect when TENDRIL_PLANS is not set
-    let mut configured_settings = TendrilSettings::default();
-    configured_settings.plan_folder = Some("CustomFolder".to_string());
+    let configured_settings = TendrilSettings {
+        plan_folder: Some("CustomFolder".to_string()),
+        ..Default::default()
+    };
     assert_eq!(
         get_plans_dir_with_env(&test_dir, Some(&configured_settings), &empty_env),
         test_dir.join("CustomFolder")
