@@ -68,6 +68,18 @@ enum Commands {
 
     #[command(about = "Run Model Context Protocol (MCP) server over stdio")]
     Mcp,
+
+    #[command(subcommand, about = "Inspect and maintain the Tendril database")]
+    Db(commands::db::DbCommands),
+
+    #[command(about = "Delete the Tendril home and plans directories")]
+    Reset(commands::reset::ResetArgs),
+
+    #[command(about = "Update Tendril to the latest version")]
+    Update(commands::update::UpdateArgs),
+
+    #[command(about = "Refresh deployed promptwares, preserving their Memory/ and Tools/")]
+    UpdatePromptwares(commands::update_promptwares::UpdatePromptwaresArgs),
 }
 
 #[tokio::main]
@@ -98,6 +110,12 @@ async fn main() -> anyhow::Result<()> {
             commands::serve::handle_serve(&tendril_home, port, Some(host)).await?
         }
         Commands::Mcp => commands::mcp::handle_mcp()?,
+        Commands::Db(cmd) => commands::db::handle_db_command(cmd, &tendril_home)?,
+        Commands::Reset(args) => commands::reset::handle_reset(args, &tendril_home)?,
+        Commands::Update(args) => commands::update::handle_update(args).await?,
+        Commands::UpdatePromptwares(args) => {
+            commands::update_promptwares::handle_update_promptwares(args, &tendril_home)?
+        }
     }
 
     Ok(())
