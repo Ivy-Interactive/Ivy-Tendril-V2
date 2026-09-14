@@ -1,12 +1,9 @@
 use clap::{Args, Subcommand};
+use std::io::{IsTerminal, Write};
 use std::path::Path;
 use tendril_core::config::{get_plans_dir, read_master, MasterInfo};
 use tendril_core::jobs::logger::append_agent_log;
-use tendril_core::models::{
-    CreatePlanArgs, ExecutePlanArgs, ExpandPlanArgs, JobArgs, RetryPlanArgs, SplitPlanArgs,
-    UpdatePlanArgs,
-};
-use tendril_core::plans::resolve_plan_folder;
+use tendril_core::mcp::dispatch::{build_job_args, JobStartRequest};
 
 #[derive(Subcommand)]
 #[allow(clippy::large_enum_variant)]
@@ -28,6 +25,24 @@ pub enum JobCommands {
 
     #[command(about = "Append a narrative log entry to this job's log")]
     AddLog(JobAddLogArgs),
+
+    #[command(about = "Remove a job from the job list and the database (log artifacts are kept)")]
+    Delete(JobDeleteArgs),
+
+    #[command(about = "Promote a blocked or queued job past its gates and run it next")]
+    ForceStart(JobForceStartArgs),
+
+    #[command(about = "Stop every running, queued, pending or blocked job")]
+    StopAll,
+
+    #[command(about = "Bulk-delete jobs by status")]
+    Clear(JobClearArgs),
+
+    #[command(about = "Show queued jobs in dispatch order")]
+    Queue(JobQueueArgs),
+
+    #[command(about = "Run one job maintenance pass now instead of waiting for the timer")]
+    Maintenance,
 }
 
 #[derive(Args)]
@@ -56,8 +71,17 @@ pub struct JobStartArgs {
     #[arg(long, help = "Target project (for CreatePlan)")]
     pub project: Option<String>,
 
-    #[arg(long, help = "Priority for CreatePlan")]
+    #[arg(
+        long,
+        help = "Priority (higher runs first) — applies to every job type"
+    )]
     pub priority: Option<i32>,
+
+    #[arg(
+        long = "wait-for",
+        help = "Job id this job must wait for before it is queued (repeatable)"
+    )]
+    pub wait_for: Vec<String>,
 
     #[arg(long, help = "Force CreatePlan without duplicate check")]
     pub force: bool,
@@ -147,6 +171,34 @@ pub struct JobAddLogArgs {
     pub summary: Option<String>,
 }
 
+#[derive(Args)]
+pub struct JobDeleteArgs {
+    pub job_id: String,
+}
+
+#[derive(Args)]
+pub struct JobForceStartArgs {
+    pub job_id: String,
+}
+
+#[derive(Args)]
+pub struct JobClearArgs {
+    #[arg(long, help = "Clear completed jobs (the default)")]
+    pub completed: bool,
+    #[arg(long, help = "Clear failed, timed-out and stopped jobs")]
+    pub failed: bool,
+    #[arg(long, help = "Clear every job except running, queued and blocked ones")]
+    pub all: bool,
+    #[arg(short = 'y', long, help = "Skip the confirmation prompt for --all")]
+    pub yes: bool,
+}
+
+#[derive(Args)]
+pub struct JobQueueArgs {
+    #[arg(long, help = "Output the queue as JSON")]
+    pub json: bool,
+}
+
 pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow::Result<()> {
     match cmd {
         JobCommands::AddLog(args) => {
@@ -208,168 +260,53 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             let master = get_master_or_err(tendril_home)?;
             let plans_dir = get_plans_dir(tendril_home);
 
-            let job_args = match args.job_type.to_ascii_lowercase().as_str() {
-                "createplan" => {
-                    let desc = args.description.ok_or_else(|| {
-                        anyhow::anyhow!("--description is required for CreatePlan")
-                    })?;
-                    let proj = args
-                        .project
-                        .ok_or_else(|| anyhow::anyhow!("--project is required for CreatePlan"))?;
-                    JobArgs::CreatePlan(CreatePlanArgs {
-                        description: desc,
-                        project: proj,
-                        priority: args.priority.unwrap_or(0),
-                        force: args.force,
-                        source_path: args.source_path,
-                        upload_session_id: None,
-                    })
-                }
-                "executeplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for ExecutePlan"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    JobArgs::ExecutePlan(ExecutePlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        note: args.note,
-                    })
-                }
-                "retryplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for RetryPlan"))?;
-                    let cr = args.change_request.ok_or_else(|| {
-                        anyhow::anyhow!("--change-request is required for RetryPlan")
-                    })?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    JobArgs::RetryPlan(RetryPlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        change_request: cr,
-                    })
-                }
-                "expandplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for ExpandPlan"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    JobArgs::ExpandPlan(ExpandPlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                    })
-                }
-                "updateplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for UpdatePlan"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    let inst = args.instructions.ok_or_else(|| {
-                        anyhow::anyhow!("--instructions is required for UpdatePlan")
-                    })?;
-                    JobArgs::UpdatePlan(UpdatePlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        instructions: Some(inst),
-                        upload_session_id: None,
-                    })
-                }
-                "splitplan" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for SplitPlan"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    JobArgs::SplitPlan(SplitPlanArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                    })
-                }
-                "createpr" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreatePr"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    let mut reviewers = Vec::new();
-                    for r in &args.reviewer {
-                        for sub in r.split(',') {
-                            let trimmed = sub.trim();
-                            if !trimmed.is_empty() {
-                                reviewers.push(trimmed.to_string());
-                            }
-                        }
-                    }
-                    if reviewers.is_empty() {
-                        if let Some(ass) = &args.assignee {
-                            reviewers.push(ass.clone());
-                        }
-                    }
-                    JobArgs::CreatePr(tendril_core::models::CreatePrArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        solve_merge_conflicts: true,
-                        merge: !args.no_merge,
-                        delete_branch: !args.no_delete_branch,
-                        include_artifacts: !args.no_artifacts,
-                        reviewers: if reviewers.is_empty() {
-                            None
-                        } else {
-                            Some(reviewers)
-                        },
-                        comment: args.comment,
-                        draft: args.draft,
-                    })
-                }
-                "createissue" => {
-                    let pid = args
-                        .plan_id
-                        .ok_or_else(|| anyhow::anyhow!("<plan-id> is required for CreateIssue"))?;
-                    let folder = resolve_plan_folder(&pid, &plans_dir)?;
-                    let repo = args
-                        .repo
-                        .ok_or_else(|| anyhow::anyhow!("--repo is required for CreateIssue"))?;
-                    JobArgs::CreateIssue(tendril_core::models::CreateIssueArgs {
-                        folder_path: folder.to_string_lossy().to_string(),
-                        repo,
-                        assignee: args.assignee,
-                        comment: args.comment,
-                        labels: args.labels,
-                    })
-                }
-                "setupproject" => {
-                    let name = args.plan_id.ok_or_else(|| {
-                        anyhow::anyhow!("<project-name> is required for SetupProject")
-                    })?;
-                    JobArgs::SetupProject(tendril_core::models::SetupProjectArgs {
-                        folder_path: name,
-                    })
-                }
-                "addproject" => {
-                    let name = args.plan_id.ok_or_else(|| {
-                        anyhow::anyhow!("<project-name> is required for AddProject")
-                    })?;
-                    JobArgs::AddProject(tendril_core::models::AddProjectArgs {
-                        project_name: name,
-                        repos: Vec::new(),
-                    })
-                }
-                "syncrepo" => {
-                    let rp = args
-                        .repo_path
-                        .ok_or_else(|| anyhow::anyhow!("--repo-path is required for SyncRepo"))?;
-                    let bb = args.base_branch.unwrap_or_else(|| "main".to_string());
-                    JobArgs::SyncRepo(tendril_core::models::SyncRepoArgs {
-                        repo_path: rp,
-                        base_branch: bb,
-                        plan_folder_path: None,
-                        untracked_changes_policy: args
-                            .untracked_policy
-                            .unwrap_or_else(|| "Stash".to_string()),
-                    })
-                }
-                _ => anyhow::bail!("Unsupported job type: {}", args.job_type),
+            // Shared with the MCP `tendril_start_job` tool, so the per-type required-argument
+            // rules cannot diverge between the two front ends.
+            let request = JobStartRequest {
+                job_type: args.job_type.clone(),
+                plan_id: args.plan_id,
+                description: args.description,
+                project: args.project,
+                note: args.note,
+                instructions: args.instructions,
+                change_request: args.change_request,
+                source_path: args.source_path,
+                repo: args.repo,
+                assignee: args.assignee,
+                reviewers: args.reviewer,
+                comment: args.comment,
+                labels: args.labels,
+                repo_path: args.repo_path,
+                base_branch: args.base_branch,
+                untracked_policy: args.untracked_policy,
+                priority: args.priority,
+                force: args.force,
+                no_merge: args.no_merge,
+                no_delete_branch: args.no_delete_branch,
+                no_artifacts: args.no_artifacts,
+                draft: args.draft,
             };
+            let job_args = build_job_args(&request, &plans_dir).map_err(anyhow::Error::msg)?;
+
+            // `JobArgs` is internally tagged, so it serializes as a flat object the server reads
+            // back through `#[serde(flatten)]`. The start options ride alongside those keys.
+            let mut body = serde_json::to_value(&job_args)?;
+            let map = body
+                .as_object_mut()
+                .ok_or_else(|| anyhow::anyhow!("Job args did not serialize to an object"))?;
+            if !args.wait_for.is_empty() {
+                map.insert("waitForJobs".to_string(), serde_json::json!(args.wait_for));
+            }
+            if let Some(priority) = args.priority {
+                map.insert("priority".to_string(), serde_json::json!(priority));
+            }
 
             let client = reqwest::Client::new();
             let url = format!("http://{}:{}/api/jobs", master.host, master.port);
             let resp = client
                 .post(&url)
                 .bearer_auth(&master.secret)
-                .json(&job_args)
+                .json(&body)
                 .send()
                 .await?;
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
@@ -377,6 +314,17 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                     "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
                     master.host,
                     master.port
+                );
+            }
+            // A conflict names the job already working on this plan, which is more useful than
+            // reqwest's generic status message.
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                let res: serde_json::Value = resp.json().await.unwrap_or_default();
+                anyhow::bail!(
+                    "{}",
+                    res["error"]
+                        .as_str()
+                        .unwrap_or("Another job is already in progress for this plan")
                 );
             }
             let resp = resp.error_for_status()?;
@@ -460,9 +408,168 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             resp.error_for_status()?;
             println!("Job {} cancelled.", args.job_id);
         }
+        JobCommands::Delete(args) => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!(
+                "http://{}:{}/api/jobs/{}",
+                master.host, master.port, args.job_id
+            );
+            let resp = send(reqwest::Client::new().delete(&url), &master).await?;
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Job {} not found", args.job_id);
+            }
+            resp.error_for_status()?;
+            println!("Job {} deleted.", args.job_id);
+        }
+        JobCommands::ForceStart(args) => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!(
+                "http://{}:{}/api/jobs/{}/force-start",
+                master.host, master.port, args.job_id
+            );
+            let resp = send(reqwest::Client::new().post(&url), &master).await?;
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Job {} not found", args.job_id);
+            }
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                let res: serde_json::Value = resp.json().await.unwrap_or_default();
+                anyhow::bail!(
+                    "{}",
+                    res["error"]
+                        .as_str()
+                        .unwrap_or("Job cannot be force-started")
+                );
+            }
+            resp.error_for_status()?;
+            println!("Job {} force-started.", args.job_id);
+        }
+        JobCommands::StopAll => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!("http://{}:{}/api/jobs/stop-all", master.host, master.port);
+            let resp = send(reqwest::Client::new().post(&url), &master).await?;
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+            let stopped: Vec<&str> = res["stopped"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                .unwrap_or_default();
+            if stopped.is_empty() {
+                println!("No jobs to stop.");
+            } else {
+                println!("Stopped {} job(s): {}", stopped.len(), stopped.join(", "));
+            }
+        }
+        JobCommands::Clear(args) => {
+            if args.failed as u8 + args.all as u8 + args.completed as u8 > 1 {
+                anyhow::bail!("Pass only one of --completed, --failed or --all");
+            }
+            let scope = if args.all {
+                "all"
+            } else if args.failed {
+                "failed"
+            } else {
+                "completed"
+            };
+
+            // `--all` can wipe a long history in one keystroke, so it is the one scope that asks.
+            if scope == "all" && !args.yes && !confirm("Clear all jobs?")? {
+                println!("Cancelled.");
+                return Ok(());
+            }
+
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!("http://{}:{}/api/jobs/clear", master.host, master.port);
+            let resp = send(
+                reqwest::Client::new()
+                    .post(&url)
+                    .json(&serde_json::json!({ "status": scope })),
+                &master,
+            )
+            .await?;
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+            println!(
+                "Cleared {} {} job(s).",
+                res["cleared"].as_u64().unwrap_or(0),
+                scope
+            );
+        }
+        JobCommands::Queue(args) => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!("http://{}:{}/api/jobs/queue", master.host, master.port);
+            let resp = send(reqwest::Client::new().get(&url), &master).await?;
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&res)?);
+                return Ok(());
+            }
+
+            let queued = res["queued"].as_array().cloned().unwrap_or_default();
+            println!(
+                "{} job(s) queued, {} concurrent slot(s).",
+                queued.len(),
+                res["maxConcurrent"].as_u64().unwrap_or(0)
+            );
+            if !queued.is_empty() {
+                println!("{:<8} PRIORITY", "ID");
+                println!("{}", "-".repeat(20));
+                for entry in queued {
+                    println!(
+                        "{:<8} {}",
+                        entry["id"].as_str().unwrap_or(""),
+                        entry["priority"].as_i64().unwrap_or(0)
+                    );
+                }
+            }
+        }
+        JobCommands::Maintenance => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!(
+                "http://{}:{}/api/jobs/maintenance",
+                master.host, master.port
+            );
+            let resp = send(reqwest::Client::new().post(&url), &master).await?;
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+            println!("{}", serde_json::to_string_pretty(&res)?);
+        }
     }
 
     Ok(())
+}
+
+/// Sends an authenticated request and turns the daemon's 401 into an explicit message, since
+/// `error_for_status` alone reports it as an opaque status code.
+async fn send(
+    request: reqwest::RequestBuilder,
+    master: &MasterInfo,
+) -> anyhow::Result<reqwest::Response> {
+    let resp = request.bearer_auth(&master.secret).send().await?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        anyhow::bail!(
+            "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
+            master.host,
+            master.port
+        );
+    }
+    Ok(resp)
+}
+
+/// Asks for a y/N confirmation. Without a terminal there is nobody to ask, so the answer is no and
+/// the caller is told to pass `--yes`.
+fn confirm(prompt: &str) -> anyhow::Result<bool> {
+    if !std::io::stdin().is_terminal() {
+        anyhow::bail!(
+            "{} Refusing without a terminal; pass --yes to confirm.",
+            prompt
+        );
+    }
+    print!("{} [y/N] ", prompt);
+    std::io::stdout().flush()?;
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    Ok(matches!(
+        answer.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 fn get_master_or_err(tendril_home: &Path) -> anyhow::Result<MasterInfo> {

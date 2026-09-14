@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { PlanMarkdown as DraftMarkdown } from "./PlanMarkdown";
 
 const renderContent = (content: string, props: Record<string, unknown> = {}) => {
@@ -113,13 +113,16 @@ describe("DraftMarkdown features alongside raw HTML", () => {
     expect(container.querySelector(".katex-error")).toBeNull();
   });
 
-  it("still renders highlighted code blocks", () => {
+  // `.token` elements arrive with the lazily imported Prism chunk, not on first paint.
+  it("still renders highlighted code blocks", async () => {
     const container = renderContent(
       '<details><summary>S</summary></details>\n\n```xml\n<note id="1">x</note>\n```',
     );
 
     expect(container.querySelector(".pmv-code-block")).not.toBeNull();
-    expect(container.querySelectorAll(".token").length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(container.querySelectorAll(".token").length).toBeGreaterThan(0);
+    });
   });
 
   it("still renders GFM task lists and tables", () => {

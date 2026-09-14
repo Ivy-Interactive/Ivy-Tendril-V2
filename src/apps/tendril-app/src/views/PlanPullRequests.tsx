@@ -128,16 +128,16 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
   });
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+    <div className="rounded-xl border border-border bg-card/40 p-4">
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Pull Requests
         </h4>
         <button
           type="button"
           onClick={handleRefresh}
           disabled={syncing}
-          className="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+          className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
         >
           {syncing ? "Refreshing..." : "Refresh"}
         </button>
@@ -146,7 +146,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
       {notice && <p className="mt-2 text-xs text-amber-300">{notice}</p>}
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
 
-      <ul className="mt-2 space-y-2 text-sm text-slate-300">
+      <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
         {rows.length > 0 ? (
           rows.map(({ url, key, status }) => (
             <li key={key} className="flex flex-wrap items-center gap-2">
@@ -161,23 +161,23 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-emerald-400 hover:underline font-mono text-xs"
+                className="text-success hover:underline font-mono text-xs"
                 title={url}
               >
                 {prNumber(url)}
               </a>
               {status?.branch && (
-                <span className="font-mono text-xs text-slate-400">{status.branch}</span>
+                <span className="font-mono text-xs text-muted-foreground">{status.branch}</span>
               )}
               {status?.lastChecked && (
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-muted-foreground/70">
                   checked {formatRelativeTime(status.lastChecked)}
                 </span>
               )}
             </li>
           ))
         ) : (
-          <li className="text-slate-500">No PRs created</li>
+          <li className="text-muted-foreground/70">No PRs created</li>
         )}
       </ul>
     </div>

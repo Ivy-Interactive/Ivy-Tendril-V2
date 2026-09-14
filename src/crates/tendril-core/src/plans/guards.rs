@@ -12,6 +12,29 @@ impl PlanCompletionGuard {
             .collect()
     }
 
+    /// Terminal plans (Completed, Skipped) are immutable. Returns the refusal reason, or None.
+    ///
+    /// `requested` is the state the caller wants to write, when the caller is a state transition.
+    /// A transition into another terminal state is allowed, so a plan can still move between
+    /// Completed and Skipped. Callers that mutate something other than the state (an MCP write
+    /// tool, a revert with no single target) pass `None`, which refuses on any terminal plan.
+    pub fn terminal_refusal(
+        current: Option<PlanStatus>,
+        requested: Option<PlanStatus>,
+    ) -> Option<String> {
+        let current = current?;
+        if !matches!(current, PlanStatus::Completed | PlanStatus::Skipped) {
+            return None;
+        }
+        if matches!(requested, Some(PlanStatus::Completed | PlanStatus::Skipped)) {
+            return None;
+        }
+        Some(format!(
+            "Plan is {} and terminal plans are immutable",
+            current
+        ))
+    }
+
     pub fn apply_state(
         plan: &mut PlanYaml,
         new_state: PlanStatus,

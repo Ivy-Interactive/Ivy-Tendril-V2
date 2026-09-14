@@ -7,15 +7,17 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
-use tendril_core::db::{get_plans, open_database, sync_plan};
+use tendril_core::config::load_config;
+use tendril_core::db::{delete_plan as delete_plan_row, get_plans, open_database, sync_plan};
 use tendril_core::error::TendrilError;
-use tendril_core::models::{PlanStatus, PlanVerificationEntry, VerificationStatus};
+use tendril_core::git::{cleanup_worktrees, run_git};
+use tendril_core::models::{PlanStatus, PlanVerificationEntry, PlanYaml, VerificationStatus};
 use tendril_core::plans::{
-    add_plan_verification, add_recommendation, create_plan, get_revision, list_plan_verifications,
-    list_recommendations, read_plan_file, read_plan_yaml, remove_plan_verification,
-    remove_recommendation, resolve_plan_folder, set_plan_verification_status,
-    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
-    PlanCompletionGuard,
+    add_plan_verification, add_recommendation, check_plan_health, create_plan, get_revision,
+    list_plan_verifications, list_recommendations, read_plan_file, read_plan_yaml,
+    remove_plan_verification, remove_recommendation, resolve_plan_folder, resolve_plan_folder_name,
+    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
+    CreatePlanOptions, PlanCompletionGuard,
 };
 
 #[derive(Debug, Deserialize)]
@@ -303,6 +305,576 @@ pub async fn update_plan_field(
         StatusCode::OK,
         Json(json!({ "message": format!("Field '{}' updated", body.field) })),
     )
+}
+
+// --- Plan List Mutation Handlers (repos, PRs, commits, dependencies, related plans) ---
+
+/// What a mutation closure did to the plan. `Unchanged` is an idempotent no-op: `plan.yaml` is not
+/// rewritten and no chat session is notified, but the caller still answers 200.
+enum PlanEdit {
+    Applied(String),
+    Unchanged(String),
+}
+
+struct PlanEditOutcome {
+    folder_name: String,
+    plan: PlanYaml,
+    message: String,
+    changed: bool,
+}
+
+/// Resolves the plan, applies `mutate`, and writes `plan.yaml` only when the mutation reports a
+/// change. `Err((code, msg))` short-circuits with `code` `{error}` and never writes.
+async fn modify_plan<F>(
+    state: &Arc<AppState>,
+    plan_id: &str,
+    mutate: F,
+) -> Result<PlanEditOutcome, (StatusCode, String)>
+where
+    F: FnOnce(&mut PlanYaml) -> Result<PlanEdit, (StatusCode, String)>,
+{
+    let folder = resolve_plan_folder(plan_id, &state.plans_dir).map_err(|_| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Plan '{}' not found", plan_id),
+        )
+    })?;
+
+    let (mut plan, _) = read_plan_yaml(&folder).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read plan.yaml: {}", e),
+        )
+    })?;
+
+    let (message, changed) = match mutate(&mut plan)? {
+        PlanEdit::Applied(m) => (m, true),
+        PlanEdit::Unchanged(m) => (m, false),
+    };
+
+    if changed {
+        plan.updated = Utc::now();
+        write_plan_yaml(&folder, &plan).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to write plan.yaml: {}", e),
+            )
+        })?;
+
+        if let Ok(pf) = read_plan_file(&folder) {
+            if let Ok(conn) = open_database(&state.db_path) {
+                let _ = sync_plan(&conn, &pf);
+            }
+        }
+    }
+
+    let folder_name = folder
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_string();
+
+    Ok(PlanEditOutcome {
+        folder_name,
+        plan,
+        message,
+        changed,
+    })
+}
+
+/// `plan.yaml` does not carry the plan id — it lives in the folder name (`00042-FixLoginBug`).
+fn plan_id_from_folder_name(folder_name: &str) -> i32 {
+    folder_name
+        .split('-')
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
+}
+
+fn error_response(code: StatusCode, message: String) -> axum::response::Response {
+    (code, Json(json!({ "error": message }))).into_response()
+}
+
+fn message_response(message: &str) -> axum::response::Response {
+    (StatusCode::OK, Json(json!({ "message": message }))).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlanRepoBody {
+    #[serde(rename = "repoPath", alias = "repo_path")]
+    pub repo_path: String,
+    pub reason: Option<String>,
+    #[serde(rename = "sourceChatSessionId", default)]
+    pub source_chat_session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlanPrBody {
+    #[serde(rename = "prUrl", alias = "pr_url")]
+    pub pr_url: String,
+    pub reason: Option<String>,
+    #[serde(rename = "sourceChatSessionId", default)]
+    pub source_chat_session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlanCommitBody {
+    pub sha: String,
+    pub reason: Option<String>,
+    #[serde(rename = "sourceChatSessionId", default)]
+    pub source_chat_session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlanDependsOnBody {
+    #[serde(rename = "dependsOn", alias = "depends_on")]
+    pub depends_on: String,
+    pub reason: Option<String>,
+    #[serde(rename = "sourceChatSessionId", default)]
+    pub source_chat_session_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlanRelatedPlanBody {
+    #[serde(rename = "relatedPlan", alias = "related_plan")]
+    pub related_plan: String,
+    pub reason: Option<String>,
+    #[serde(rename = "sourceChatSessionId", default)]
+    pub source_chat_session_id: Option<String>,
+}
+
+pub async fn add_plan_repo(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<PlanRepoBody>,
+) -> impl IntoResponse {
+    let repo_path = body.repo_path.trim().to_string();
+    if repo_path.is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "Repo path cannot be empty".to_string(),
+        );
+    }
+
+    let outcome = match modify_plan(&state, &plan_id, |plan| {
+        if plan
+            .repos
+            .iter()
+            .any(|r| r.eq_ignore_ascii_case(&repo_path))
+        {
+            return Ok(PlanEdit::Unchanged(format!(
+                "Repository already in plan: {}",
+                repo_path
+            )));
+        }
+        plan.repos.push(repo_path.clone());
+        Ok(PlanEdit::Applied(format!(
+            "Added repository: {}",
+            repo_path
+        )))
+    })
+    .await
+    {
+        Ok(o) => o,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    if outcome.changed {
+        broadcast_plan_edit(
+            &state,
+            &outcome.folder_name,
+            &outcome.plan,
+            &format!("repo added: {}", repo_path),
+            body.reason.as_deref(),
+            body.source_chat_session_id.as_deref(),
+        )
+        .await;
+    }
+
+    message_response(&outcome.message)
+}
+
+pub async fn remove_plan_repo(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<PlanRepoBody>,
+) -> impl IntoResponse {
+    let repo_path = body.repo_path.trim().to_string();
+    if repo_path.is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "Repo path cannot be empty".to_string(),
+        );
+    }
+
+    let outcome = match modify_plan(&state, &plan_id, |plan| {
+        let before = plan.repos.len();
+        plan.repos.retain(|r| !r.eq_ignore_ascii_case(&repo_path));
+        if plan.repos.len() == before {
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("Repository not found in plan: {}", repo_path),
+            ));
+        }
+        Ok(PlanEdit::Applied(format!(
+            "Removed repository: {}",
+            repo_path
+        )))
+    })
+    .await
+    {
+        Ok(o) => o,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    broadcast_plan_edit(
+        &state,
+        &outcome.folder_name,
+        &outcome.plan,
+        &format!("repo removed: {}", repo_path),
+        body.reason.as_deref(),
+        body.source_chat_session_id.as_deref(),
+    )
+    .await;
+
+    message_response(&outcome.message)
+}
+
+pub async fn add_plan_pr(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<PlanPrBody>,
+) -> impl IntoResponse {
+    let pr_url = body.pr_url.trim().to_string();
+    if pr_url.is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "PR url cannot be empty".to_string(),
+        );
+    }
+
+    let outcome = match modify_plan(&state, &plan_id, |plan| {
+        if plan.prs.iter().any(|p| p == &pr_url) {
+            return Ok(PlanEdit::Unchanged(format!(
+                "Pull request already in plan: {}",
+                pr_url
+            )));
+        }
+        plan.prs.push(pr_url.clone());
+        Ok(PlanEdit::Applied(format!("Added pull request: {}", pr_url)))
+    })
+    .await
+    {
+        Ok(o) => o,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    // A PR gets its own announcement rather than the generic edit notification. Awaited inline so
+    // the notification is observable the moment the endpoint answers.
+    if outcome.changed {
+        if let Err(e) = broadcast_pr_created(
+            &state.chat_manager,
+            &outcome.plan.title,
+            plan_id_from_folder_name(&outcome.folder_name),
+            &outcome.folder_name,
+            outcome.plan.chat_session_id.as_deref(),
+            &pr_url,
+            body.source_chat_session_id.as_deref(),
+            body.reason.as_deref(),
+        )
+        .await
+        {
+            // The PR is already recorded on disk; a failed announcement must not fail the request.
+            tracing::warn!("Failed to announce PR for plan {}: {}", plan_id, e);
+        }
+    }
+
+    message_response(&outcome.message)
+}
+
+pub async fn add_plan_commit(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<PlanCommitBody>,
+) -> impl IntoResponse {
+    let sha = body.sha.trim().to_string();
+    if sha.is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "Commit sha cannot be empty".to_string(),
+        );
+    }
+
+    let outcome = match modify_plan(&state, &plan_id, |plan| {
+        if plan.commits.iter().any(|c| c == &sha) {
+            return Ok(PlanEdit::Unchanged(format!(
+                "Commit already in plan: {}",
+                sha
+            )));
+        }
+        plan.commits.push(sha.clone());
+        Ok(PlanEdit::Applied(format!("Added commit: {}", sha)))
+    })
+    .await
+    {
+        Ok(o) => o,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    if outcome.changed {
+        broadcast_plan_edit(
+            &state,
+            &outcome.folder_name,
+            &outcome.plan,
+            &format!("commit added: {}", sha),
+            body.reason.as_deref(),
+            body.source_chat_session_id.as_deref(),
+        )
+        .await;
+    }
+
+    message_response(&outcome.message)
+}
+
+/// Resolves a `dependsOn` / `relatedPlan` reference to its canonical folder name. The 404 wording is
+/// deliberately distinct from the one for `{planId}` so a caller can tell which id was bad.
+fn resolve_referenced_plan(
+    state: &Arc<AppState>,
+    plan_ref: &str,
+) -> Result<String, (StatusCode, String)> {
+    let trimmed = plan_ref.trim();
+    if trimmed.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Plan reference cannot be empty".to_string(),
+        ));
+    }
+
+    resolve_plan_folder_name(trimmed, &state.plans_dir).map_err(|_| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Referenced plan '{}' not found", trimmed),
+        )
+    })
+}
+
+pub async fn add_plan_depends_on(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<PlanDependsOnBody>,
+) -> impl IntoResponse {
+    // Resolve before touching the plan, so a bad reference never writes plan.yaml.
+    let folder = match resolve_referenced_plan(&state, &body.depends_on) {
+        Ok(f) => f,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    let outcome = match modify_plan(&state, &plan_id, |plan| {
+        if plan
+            .depends_on
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(&folder))
+        {
+            return Ok(PlanEdit::Unchanged(format!(
+                "Dependency already present: {}",
+                folder
+            )));
+        }
+        plan.depends_on.push(folder.clone());
+        Ok(PlanEdit::Applied(format!("Added dependency: {}", folder)))
+    })
+    .await
+    {
+        Ok(o) => o,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    if outcome.changed {
+        broadcast_plan_edit(
+            &state,
+            &outcome.folder_name,
+            &outcome.plan,
+            &format!("dependency added: {}", folder),
+            body.reason.as_deref(),
+            body.source_chat_session_id.as_deref(),
+        )
+        .await;
+    }
+
+    message_response(&outcome.message)
+}
+
+pub async fn remove_plan_depends_on(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<PlanDependsOnBody>,
+) -> impl IntoResponse {
+    let folder = match resolve_referenced_plan(&state, &body.depends_on) {
+        Ok(f) => f,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    let outcome = match modify_plan(&state, &plan_id, |plan| {
+        let before = plan.depends_on.len();
+        plan.depends_on.retain(|d| !d.eq_ignore_ascii_case(&folder));
+        if plan.depends_on.len() == before {
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("Dependency not found: {}", folder),
+            ));
+        }
+        Ok(PlanEdit::Applied(format!("Removed dependency: {}", folder)))
+    })
+    .await
+    {
+        Ok(o) => o,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    broadcast_plan_edit(
+        &state,
+        &outcome.folder_name,
+        &outcome.plan,
+        &format!("dependency removed: {}", folder),
+        body.reason.as_deref(),
+        body.source_chat_session_id.as_deref(),
+    )
+    .await;
+
+    message_response(&outcome.message)
+}
+
+pub async fn add_plan_related(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<PlanRelatedPlanBody>,
+) -> impl IntoResponse {
+    let folder = match resolve_referenced_plan(&state, &body.related_plan) {
+        Ok(f) => f,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    let outcome = match modify_plan(&state, &plan_id, |plan| {
+        if plan
+            .related_plans
+            .iter()
+            .any(|r| r.eq_ignore_ascii_case(&folder))
+        {
+            return Ok(PlanEdit::Unchanged(format!(
+                "Related plan already present: {}",
+                folder
+            )));
+        }
+        plan.related_plans.push(folder.clone());
+        Ok(PlanEdit::Applied(format!("Added related plan: {}", folder)))
+    })
+    .await
+    {
+        Ok(o) => o,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    if outcome.changed {
+        broadcast_plan_edit(
+            &state,
+            &outcome.folder_name,
+            &outcome.plan,
+            &format!("related plan added: {}", folder),
+            body.reason.as_deref(),
+            body.source_chat_session_id.as_deref(),
+        )
+        .await;
+    }
+
+    message_response(&outcome.message)
+}
+
+pub async fn remove_plan_related(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<PlanRelatedPlanBody>,
+) -> impl IntoResponse {
+    let folder = match resolve_referenced_plan(&state, &body.related_plan) {
+        Ok(f) => f,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    let outcome = match modify_plan(&state, &plan_id, |plan| {
+        let before = plan.related_plans.len();
+        plan.related_plans
+            .retain(|r| !r.eq_ignore_ascii_case(&folder));
+        if plan.related_plans.len() == before {
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("Related plan not found: {}", folder),
+            ));
+        }
+        Ok(PlanEdit::Applied(format!(
+            "Removed related plan: {}",
+            folder
+        )))
+    })
+    .await
+    {
+        Ok(o) => o,
+        Err((code, msg)) => return error_response(code, msg),
+    };
+
+    broadcast_plan_edit(
+        &state,
+        &outcome.folder_name,
+        &outcome.plan,
+        &format!("related plan removed: {}", folder),
+        body.reason.as_deref(),
+        body.source_chat_session_id.as_deref(),
+    )
+    .await;
+
+    message_response(&outcome.message)
+}
+
+/// Answers 200 whether or not the plan is valid: a caller pre-flighting a plan needs "the plan is
+/// invalid" to be distinguishable from "the request was malformed". Only an unknown plan is a 404.
+pub async fn validate_plan_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    let issues = check_plan_health(&folder);
+    let valid = !issues
+        .iter()
+        .any(|i| i.severity.eq_ignore_ascii_case("Error"));
+    let message = if issues.is_empty() {
+        "Plan is valid".to_string()
+    } else {
+        issues
+            .iter()
+            .map(|i| i.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ")
+    };
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "valid": valid,
+            "message": message,
+            "issues": issues
+                .iter()
+                .map(|i| json!({ "severity": i.severity, "message": i.message }))
+                .collect::<Vec<_>>(),
+        })),
+    )
+        .into_response()
 }
 
 #[derive(Debug, Deserialize)]
@@ -723,6 +1295,70 @@ pub struct PlanEventRequest {
     pub source_chat_session_id: Option<String>,
     #[serde(rename = "revisionFile", default)]
     pub revision_file: Option<String>,
+    /// `edit` (default) or `pr-created`. The CLI has no `ChatExecutionManager` of its own, so this is
+    /// how it reaches the PR announcer.
+    #[serde(rename = "eventKind", default)]
+    pub event_kind: Option<String>,
+    #[serde(rename = "prUrl", default)]
+    pub pr_url: Option<String>,
+}
+
+/// ` Reason: <r>.` with the trailing period normalized away, or empty when there is no reason.
+fn reason_clause(reason: Option<&str>) -> String {
+    match reason.map(str::trim).filter(|r| !r.is_empty()) {
+        Some(r) => format!(" Reason: {}.", r.trim_end_matches('.')),
+        None => String::new(),
+    }
+}
+
+fn plan_edit_message(
+    plan_title: &str,
+    plan_id: i32,
+    summary: &str,
+    reason: Option<&str>,
+) -> String {
+    let clean_summary = summary.trim().trim_end_matches('.');
+    let reason_clause = reason_clause(reason);
+    format!(
+        "[System Event] Plan '{}' (#{plan_id:05}) was edited directly: {clean_summary}.{reason_clause} Check whether this changes your understanding of the plan, and tell the user if anything needs follow-up.",
+        plan_title
+    )
+}
+
+/// Broadcasts "[System Event] Plan '<title>' (#<id>) was edited directly: <summary>. Reason: ..."
+/// to every chat session attached to the plan except `source_chat_session_id`. The write it reports
+/// already succeeded, so a broadcast failure is logged rather than surfaced.
+pub(crate) async fn broadcast_plan_edit(
+    state: &AppState,
+    folder_name: &str,
+    plan: &PlanYaml,
+    summary: &str,
+    reason: Option<&str>,
+    source_chat_session_id: Option<&str>,
+) -> Vec<String> {
+    let message = plan_edit_message(
+        &plan.title,
+        plan_id_from_folder_name(folder_name),
+        summary,
+        reason,
+    );
+
+    match state
+        .chat_manager
+        .broadcast_plan_system_message(
+            folder_name,
+            plan.chat_session_id.as_deref(),
+            source_chat_session_id,
+            &message,
+        )
+        .await
+    {
+        Ok(recipients) => recipients,
+        Err(e) => {
+            tracing::warn!("Failed to broadcast edit for plan {}: {}", folder_name, e);
+            Vec::new()
+        }
+    }
 }
 
 pub async fn post_plan_event_handler(
@@ -756,33 +1392,60 @@ pub async fn post_plan_event_handler(
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or_default();
-    let clean_summary = body.summary.trim().trim_end_matches('.');
-    let reason_clause = match body
-        .reason
+
+    let is_pr_created = body
+        .event_kind
         .as_deref()
-        .map(str::trim)
-        .filter(|r| !r.is_empty())
-    {
-        Some(r) => format!(" Reason: {}.", r.trim_end_matches('.')),
-        None => String::new(),
-    };
+        .map(|k| k.eq_ignore_ascii_case("pr-created"))
+        .unwrap_or(false);
 
-    let message = format!(
-        "[System Event] Plan '{}' (#{id:05}) was edited directly: {clean_summary}.{reason_clause} Check whether this changes your understanding of the plan, and tell the user if anything needs follow-up.",
-        plan.metadata.title,
-        id = plan.metadata.id
-    );
+    let broadcast = if is_pr_created {
+        let pr_url = match body
+            .pr_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|u| !u.is_empty())
+        {
+            Some(u) => u,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "prUrl is required for eventKind 'pr-created'" })),
+                )
+                    .into_response();
+            }
+        };
 
-    match state
-        .chat_manager
-        .broadcast_plan_system_message(
+        broadcast_pr_created(
+            &state.chat_manager,
+            &plan.metadata.title,
+            plan.metadata.id,
             folder_name,
             plan.metadata.chat_session_id.as_deref(),
+            pr_url,
             body.source_chat_session_id.as_deref(),
-            &message,
+            body.reason.as_deref(),
         )
         .await
-    {
+    } else {
+        let message = plan_edit_message(
+            &plan.metadata.title,
+            plan.metadata.id,
+            &body.summary,
+            body.reason.as_deref(),
+        );
+        state
+            .chat_manager
+            .broadcast_plan_system_message(
+                folder_name,
+                plan.metadata.chat_session_id.as_deref(),
+                body.source_chat_session_id.as_deref(),
+                &message,
+            )
+            .await
+    };
+
+    match broadcast {
         Ok(recipients) => (
             StatusCode::OK,
             Json(json!({
@@ -800,6 +1463,9 @@ pub async fn post_plan_event_handler(
     }
 }
 
+// The signature mirrors broadcast_plan_system_message's addressing plus the announcement's own
+// fields; bundling them into a struct for one call site would obscure more than it saves.
+#[allow(clippy::too_many_arguments)]
 pub async fn broadcast_pr_created(
     chat_manager: &tendril_core::chat::execution::ChatExecutionManager,
     plan_title: &str,
@@ -807,13 +1473,21 @@ pub async fn broadcast_pr_created(
     folder_name: &str,
     plan_chat_session_id: Option<&str>,
     pr_url: &str,
+    source_chat_session_id: Option<&str>,
+    reason: Option<&str>,
 ) -> tendril_core::error::Result<Vec<String>> {
+    let reason_clause = reason_clause(reason);
     let message = format!(
-        "[System Event] Pull request for plan '{}' (#{plan_id:05}) has been created: {pr_url}. Please review the pull request and next steps.",
+        "[System Event] Pull request for plan '{}' (#{plan_id:05}) has been created: {pr_url}.{reason_clause} Please review the pull request and next steps.",
         plan_title
     );
     chat_manager
-        .broadcast_plan_system_message(folder_name, plan_chat_session_id, None, &message)
+        .broadcast_plan_system_message(
+            folder_name,
+            plan_chat_session_id,
+            source_chat_session_id,
+            &message,
+        )
         .await
 }
 
@@ -831,4 +1505,292 @@ pub async fn broadcast_pr_merged(
     chat_manager
         .broadcast_plan_system_message(folder_name, plan_chat_session_id, None, &message)
         .await
+}
+
+// --- Lifecycle Handlers (repo status, reset, delete) ---
+
+/// Uncommitted-change lines reported per repo. Enough for the dirty-repo guard
+/// to show what is in the way without streaming a whole `git status`.
+const MAX_STATUS_LINES: usize = 20;
+
+/// States held by a running promptware job. Resetting or deleting a plan while
+/// one of them owns the folder would pull the ground out from under the agent.
+fn is_in_flight(state: &str) -> bool {
+    matches!(
+        state.to_ascii_lowercase().as_str(),
+        "executing" | "creating" | "updating"
+    )
+}
+
+/// States a plan does not come back from. `Reset to Draft` refuses these; the
+/// UI disables the action too, but the 409 is the authority.
+fn is_terminal(state: &str) -> bool {
+    matches!(state.to_ascii_lowercase().as_str(), "completed" | "skipped")
+}
+
+/// The repos a plan's execution would actually touch: its own `repos` when set,
+/// otherwise its project's, mirroring how ExecutePlan resolves them.
+fn effective_repos(state: &AppState, plan: &tendril_core::models::PlanYaml) -> Vec<String> {
+    if !plan.repos.is_empty() {
+        return plan.repos.clone();
+    }
+
+    let settings = load_config(&state.config_path).unwrap_or_default();
+    settings
+        .projects
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(&plan.project))
+        .map(|p| p.repo_paths())
+        .unwrap_or_default()
+}
+
+/// `GET /api/plans/:id/repo-status` — uncommitted work in the plan's repos.
+///
+/// Read-only, and deliberately forgiving: a repo that cannot be inspected is
+/// reported with an `error` and `isDirty: false` rather than failing the whole
+/// request, because the caller is a pre-execution guard and an unreadable repo
+/// must not become a permanent block on executing the plan.
+pub async fn repo_status_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+            )
+        }
+    };
+
+    let (plan, _) = match read_plan_yaml(&folder) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to read plan.yaml: {}", e) })),
+            )
+        }
+    };
+
+    let mut repos = Vec::new();
+    for repo in effective_repos(&state, &plan) {
+        let repo_path = std::path::PathBuf::from(&repo);
+        if !repo_path.is_dir() {
+            repos.push(json!({
+                "path": repo,
+                "isDirty": false,
+                "changes": [],
+                "error": "Repository path does not exist",
+            }));
+            continue;
+        }
+
+        match run_git(&["status", "--porcelain"], &repo_path) {
+            Ok((0, stdout, _)) => {
+                let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+                let changes: Vec<String> = lines
+                    .iter()
+                    .take(MAX_STATUS_LINES)
+                    .map(|l| l.to_string())
+                    .collect();
+                repos.push(json!({
+                    "path": repo,
+                    "isDirty": !lines.is_empty(),
+                    "changes": changes,
+                    "changeCount": lines.len(),
+                }));
+            }
+            Ok((code, _, stderr)) => repos.push(json!({
+                "path": repo,
+                "isDirty": false,
+                "changes": [],
+                "error": format!("git status exited {}: {}", code, stderr.trim()),
+            })),
+            Err(e) => repos.push(json!({
+                "path": repo,
+                "isDirty": false,
+                "changes": [],
+                "error": format!("git status failed: {}", e),
+            })),
+        }
+    }
+
+    (StatusCode::OK, Json(json!({ "repos": repos })))
+}
+
+/// `POST /api/plans/:id/reset` — back to Draft, worktrees removed.
+///
+/// State change and worktree cleanup happen in one request so the UI cannot
+/// leave a plan half-reset (Draft, but still holding the previous execution's
+/// worktrees). Cleanup runs first: a failure there leaves the plan in its old
+/// state, which is retryable, where the reverse would not be.
+pub async fn reset_plan_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+            )
+        }
+    };
+
+    let (mut plan, _) = match read_plan_yaml(&folder) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to read plan.yaml: {}", e) })),
+            )
+        }
+    };
+
+    if is_terminal(&plan.state) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": format!(
+                    "Plan '{}' is {} and cannot be reset to Draft",
+                    plan_id, plan.state
+                )
+            })),
+        );
+    }
+    if is_in_flight(&plan.state) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": format!(
+                    "Plan '{}' is {}: cancel the running job before resetting it",
+                    plan_id, plan.state
+                )
+            })),
+        );
+    }
+
+    if let Err(e) = cleanup_worktrees(&folder) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to remove worktrees: {}", e) })),
+        );
+    }
+
+    plan.state = PlanStatus::Draft.to_string();
+    plan.updated = Utc::now();
+    if let Err(e) = write_plan_yaml(&folder, &plan) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to write plan.yaml: {}", e) })),
+        );
+    }
+
+    if let Ok(pf) = read_plan_file(&folder) {
+        if let Ok(conn) = open_database(&state.db_path) {
+            let _ = sync_plan(&conn, &pf);
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "message": format!("Plan '{}' reset to Draft and worktrees removed", plan_id),
+            "state": plan.state,
+        })),
+    )
+}
+
+/// `DELETE /api/plans/:id` — permanent removal of the plan folder.
+///
+/// Worktrees go first: a worktree still registered against a folder that no
+/// longer exists is the one state git cannot recover from on its own. The
+/// resolved folder is checked to be inside the plans root before anything is
+/// removed, since `resolve_plan_folder` also accepts absolute paths.
+pub async fn delete_plan_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+            )
+        }
+    };
+
+    let plans_root =
+        std::fs::canonicalize(&state.plans_dir).unwrap_or_else(|_| state.plans_dir.clone());
+    let resolved = std::fs::canonicalize(&folder).unwrap_or_else(|_| folder.clone());
+    if !resolved.starts_with(&plans_root) || resolved == plans_root {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!(
+                    "Refusing to delete '{}': it is not a plan folder inside {}",
+                    resolved.display(),
+                    plans_root.display()
+                )
+            })),
+        );
+    }
+
+    let (plan, _) = match read_plan_yaml(&folder) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to read plan.yaml: {}", e) })),
+            )
+        }
+    };
+
+    if is_in_flight(&plan.state) {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": format!(
+                    "Plan '{}' is {}: cancel the running job before deleting it",
+                    plan_id, plan.state
+                )
+            })),
+        );
+    }
+
+    if let Err(e) = cleanup_worktrees(&folder) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to remove worktrees: {}", e) })),
+        );
+    }
+
+    let numeric_id: i32 = resolved
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.split('-').next())
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0);
+
+    if let Err(e) = std::fs::remove_dir_all(&resolved) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to remove plan folder: {}", e) })),
+        );
+    }
+
+    if numeric_id > 0 {
+        if let Ok(conn) = open_database(&state.db_path) {
+            let _ = delete_plan_row(&conn, numeric_id);
+        }
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({ "message": format!("Plan '{}' deleted", plan_id) })),
+    )
 }

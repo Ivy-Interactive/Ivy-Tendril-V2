@@ -1,5 +1,25 @@
 use rusqlite::{Connection, Result};
 
+/// The schema version this batch produces, matching the last migration in the original app's chain
+/// (`Migration_025_CostsAgent`). Both apps open the same `tendril.db`, so the declarative schema
+/// below has to be indistinguishable from the original's fully migrated one.
+///
+/// The original refuses to run when the database's `user_version` exceeds its own latest migration,
+/// so bumping this past 25 is a deliberate act that requires a matching migration on the original
+/// side first.
+pub const SCHEMA_VERSION: i64 = 25;
+
+/// Every `Costs` index, in one place: `ensure_costs_cost_nullable` rebuilds the table with a
+/// `DROP TABLE`, which takes the table's indexes with it, so they have to be recreated from the
+/// same copy the fresh-database path uses.
+const COSTS_INDEXES: &str = r#"
+    CREATE INDEX IF NOT EXISTS idx_costs_plan ON Costs(PlanId);
+    CREATE INDEX IF NOT EXISTS idx_costs_plan_logtimestamp ON Costs(PlanId, LogTimestamp);
+    CREATE INDEX IF NOT EXISTS idx_costs_logtimestamp ON Costs(LogTimestamp);
+    CREATE INDEX IF NOT EXISTS idx_costs_promptware ON Costs(Promptware);
+    CREATE INDEX IF NOT EXISTS idx_costs_promptware_logtimestamp ON Costs(Promptware, LogTimestamp);
+"#;
+
 pub fn apply_migrations(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -78,20 +98,22 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_depends_plan ON DependsOn(PlanId);
 
+        -- Column order matches migration 001 + 022 + 024 + 025 so a fresh V2 database and a fully
+        -- migrated original database are indistinguishable. Cost is nullable on purpose: a
+        -- subscription-plan run reports tokens and no charge, and writing 0.0 makes an unpriceable
+        -- run read as free. SUM and COUNT(Cost) skipping NULL is the arithmetic we want.
         CREATE TABLE IF NOT EXISTS Costs (
             Id INTEGER PRIMARY KEY AUTOINCREMENT,
             PlanId INTEGER NOT NULL,
             Promptware TEXT NOT NULL,
             Tokens INTEGER NOT NULL,
-            Cost REAL NOT NULL,
+            Cost REAL NULL,
+            Model TEXT,
             LogTimestamp TEXT,
+            CostSource TEXT,
+            Agent TEXT,
             FOREIGN KEY (PlanId) REFERENCES Plans(Id) ON DELETE CASCADE
         );
-        CREATE INDEX IF NOT EXISTS idx_costs_plan ON Costs(PlanId);
-        CREATE INDEX IF NOT EXISTS idx_costs_plan_logtimestamp ON Costs(PlanId, LogTimestamp);
-        CREATE INDEX IF NOT EXISTS idx_costs_logtimestamp ON Costs(LogTimestamp);
-        CREATE INDEX IF NOT EXISTS idx_costs_promptware ON Costs(Promptware);
-        CREATE INDEX IF NOT EXISTS idx_costs_promptware_logtimestamp ON Costs(Promptware, LogTimestamp);
 
         CREATE TABLE IF NOT EXISTS Recommendations (
             Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,6 +171,9 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             ExecutionProfile TEXT,
             Effort TEXT,
             PreviousPlanState TEXT,
+            Priority INTEGER NOT NULL DEFAULT 0,
+            LastOutputAt TEXT,
+            WaitForJobIds TEXT,
             PermissionDenials TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
@@ -165,10 +190,10 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_owner_repo ON PrStatuses(Owner, Repo);
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_status ON PrStatuses(Status);
-
-        PRAGMA user_version = 25;
         "#,
     )?;
+
+    conn.execute_batch(COSTS_INDEXES)?;
 
     // The schema above is declarative `CREATE TABLE IF NOT EXISTS`, so a database created by an
     // earlier version keeps its original column set. Columns added after the fact need an
@@ -176,13 +201,159 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
     ensure_columns(
         conn,
         "Jobs",
-        &[("PreviousPlanState", "TEXT"), ("PermissionDenials", "TEXT")],
+        &[
+            ("PreviousPlanState", "TEXT"),
+            ("Priority", "INTEGER NOT NULL DEFAULT 0"),
+            ("LastOutputAt", "TEXT"),
+            ("WaitForJobIds", "TEXT"),
+            ("PermissionDenials", "TEXT"),
+        ],
     )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
     // A database carried over from V1 has PrStatuses without Branch.
     ensure_columns(conn, "PrStatuses", &[("Branch", "TEXT")])?;
+    ensure_columns(
+        conn,
+        "Costs",
+        &[("Model", "TEXT"), ("CostSource", "TEXT"), ("Agent", "TEXT")],
+    )?;
+    ensure_costs_cost_nullable(conn)?;
+    ensure_plan_search(conn)?;
+
+    stamp_user_version(conn)?;
 
     Ok(())
+}
+
+/// Stamps `user_version` with `MAX(existing, SCHEMA_VERSION)`. The old unconditional assignment
+/// inside the batch rewrote an existing 25 down to 24 on every open, which made the original app
+/// replay migration 25 only and never notice the objects migrations 2, 7, 22 and 24 produce were
+/// missing. A pragma cannot be parameterised, hence the `format!`.
+fn stamp_user_version(conn: &Connection) -> Result<()> {
+    let current: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+    if current < SCHEMA_VERSION {
+        conn.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"))?;
+    }
+    Ok(())
+}
+
+/// Drops `NOT NULL` from `Costs.Cost` on a database V2 created before this was fixed. SQLite cannot
+/// drop a constraint with `ALTER TABLE`, so the table is rebuilt exactly as migration 022 does.
+///
+/// Existing `0.0` rows stay `0.0`: which historical zero meant "unknown" is not guessable from the
+/// row.
+fn ensure_costs_cost_nullable(conn: &Connection) -> Result<()> {
+    let mut cost_is_not_null = false;
+    {
+        let mut stmt = conn.prepare("PRAGMA table_info(Costs)")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            if row.get::<_, String>(1)? == "Cost" {
+                cost_is_not_null = row.get::<_, i64>(3)? == 1;
+                break;
+            }
+        }
+    }
+
+    if !cost_is_not_null {
+        return Ok(());
+    }
+
+    // Every column of the new shape exists on the old table by now: the `ensure_columns` pass above
+    // added Model, CostSource and Agent before we got here.
+    conn.execute_batch(
+        r#"
+        CREATE TABLE Costs_new (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            PlanId INTEGER NOT NULL,
+            Promptware TEXT NOT NULL,
+            Tokens INTEGER NOT NULL,
+            Cost REAL NULL,
+            Model TEXT,
+            LogTimestamp TEXT,
+            CostSource TEXT,
+            Agent TEXT,
+            FOREIGN KEY (PlanId) REFERENCES Plans(Id) ON DELETE CASCADE
+        );
+        INSERT INTO Costs_new (Id, PlanId, Promptware, Tokens, Cost, Model, LogTimestamp, CostSource, Agent)
+            SELECT Id, PlanId, Promptware, Tokens, Cost, Model, LogTimestamp, CostSource, Agent FROM Costs;
+        DROP TABLE Costs;
+        ALTER TABLE Costs_new RENAME TO Costs;
+        "#,
+    )?;
+
+    // `DROP TABLE` took the indexes with it.
+    conn.execute_batch(COSTS_INDEXES)?;
+
+    Ok(())
+}
+
+/// Creates the original's FTS5 `PlanSearch` index and its triggers, in migration 007's shape, and
+/// backfills it from any `Plans` rows already present. Without it the original hard-fails plan
+/// search with `no such table: PlanSearch` against a database V2 created.
+///
+/// This runs outside the declarative batch because an existing V2 database needs the backfill,
+/// mirroring migration 002/007's populate step. FTS5 is available because `libsqlite3-sys`'s bundled
+/// build passes `-DSQLITE_ENABLE_FTS5`.
+fn ensure_plan_search(conn: &Connection) -> Result<()> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='PlanSearch')",
+        [],
+        |r| r.get(0),
+    )?;
+    if exists {
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        r#"
+        DROP TRIGGER IF EXISTS plans_fts_insert;
+        DROP TRIGGER IF EXISTS plans_fts_update;
+        DROP TRIGGER IF EXISTS plans_fts_delete;
+
+        CREATE VIRTUAL TABLE PlanSearch USING fts5(
+            Title,
+            LatestRevisionContent,
+            Project,
+            InitialPrompt,
+            SourceUrl,
+            content='Plans',
+            content_rowid=Id
+        );
+
+        CREATE TRIGGER plans_fts_insert AFTER INSERT ON Plans BEGIN
+            INSERT INTO PlanSearch(rowid, Title, LatestRevisionContent, Project, InitialPrompt, SourceUrl)
+            VALUES (new.Id, new.Title, new.LatestRevisionContent, new.Project, new.InitialPrompt, new.SourceUrl);
+        END;
+
+        CREATE TRIGGER plans_fts_update AFTER UPDATE ON Plans BEGIN
+            INSERT INTO PlanSearch(PlanSearch, rowid, Title, LatestRevisionContent, Project, InitialPrompt, SourceUrl)
+            VALUES ('delete', old.Id, old.Title, old.LatestRevisionContent, old.Project, old.InitialPrompt, old.SourceUrl);
+            INSERT INTO PlanSearch(rowid, Title, LatestRevisionContent, Project, InitialPrompt, SourceUrl)
+            VALUES (new.Id, new.Title, new.LatestRevisionContent, new.Project, new.InitialPrompt, new.SourceUrl);
+        END;
+
+        CREATE TRIGGER plans_fts_delete AFTER DELETE ON Plans BEGIN
+            INSERT INTO PlanSearch(PlanSearch, rowid, Title, LatestRevisionContent, Project, InitialPrompt, SourceUrl)
+            VALUES ('delete', old.Id, old.Title, old.LatestRevisionContent, old.Project, old.InitialPrompt, old.SourceUrl);
+        END;
+        "#,
+    )?;
+
+    conn.execute_batch(
+        r#"
+        INSERT INTO PlanSearch(rowid, Title, LatestRevisionContent, Project, InitialPrompt, SourceUrl)
+        SELECT Id, Title, LatestRevisionContent, Project, InitialPrompt, SourceUrl FROM Plans;
+        "#,
+    )?;
+
+    Ok(())
+}
+
+/// Reads the schema version recorded in `PRAGMA user_version`. Compare against
+/// [`SCHEMA_VERSION`] to tell whether a database needs migrating.
+pub fn get_schema_version(conn: &Connection) -> Result<i64> {
+    conn.query_row("PRAGMA user_version", [], |row| row.get(0))
 }
 
 /// Adds any of `columns` that `table` does not already have. Idempotent: existing columns are left
@@ -207,4 +378,40 @@ pub fn ensure_columns(conn: &Connection, table: &str, columns: &[(&str, &str)]) 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch_db() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "tendril-migrations-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.join("tendril.db")
+    }
+
+    #[test]
+    fn fresh_database_is_stamped_with_schema_version() {
+        let path = scratch_db();
+        let conn = crate::db::open_database(&path).unwrap();
+        assert_eq!(get_schema_version(&conn).unwrap(), SCHEMA_VERSION);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn apply_migrations_restores_a_zeroed_version() {
+        let path = scratch_db();
+        let conn = crate::db::open_database(&path).unwrap();
+        conn.pragma_update(None, "user_version", 0i64).unwrap();
+        assert_eq!(get_schema_version(&conn).unwrap(), 0);
+
+        apply_migrations(&conn).unwrap();
+        assert_eq!(get_schema_version(&conn).unwrap(), SCHEMA_VERSION);
+        drop(conn);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
 }

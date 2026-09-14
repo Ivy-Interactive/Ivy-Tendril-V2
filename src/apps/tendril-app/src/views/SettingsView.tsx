@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { setThemeGlobal, type Theme } from "@ivy-interactive/components/theme";
 import { bridge } from "../api/bridge";
 import type { ServiceInfo, TendrilConfig } from "../types/api";
+import { ModelCatalogCard } from "../components/ModelCatalogCard";
 import { ServiceSettingsView } from "../components/service";
 
 interface SettingsViewProps {
@@ -36,6 +38,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
     }
     void loadConfig();
   }, []);
+
+  const handleThemeChange = (value: string) => {
+    setTheme(value);
+    // Apply the choice immediately; the form's Save still persists it to config.
+    setThemeGlobal(value as Theme);
+  };
 
   const handlePing = async () => {
     setIsPinging(true);
@@ -79,68 +87,72 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
   return (
     <div className="space-y-6" data-testid="settings-view">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-100">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Settings & Service Diagnostics
         </h1>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-muted-foreground">
           Inspect local Tendril daemon connectivity and configure operator defaults.
         </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Service Daemon Diagnostics */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-            <h2 className="text-base font-semibold text-slate-100">Daemon Diagnostics</h2>
+        <div className="rounded-xl border border-border bg-card/60 p-6">
+          <div className="flex items-center justify-between border-b border-border pb-4">
+            <h2 className="text-base font-semibold text-foreground">Daemon Diagnostics</h2>
             <button
               type="button"
               disabled={isPinging}
               onClick={handlePing}
-              className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
+              className="rounded-lg bg-primary/80 px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
             >
               {isPinging ? "Pinging..." : "Test Latency (Ping)"}
             </button>
           </div>
 
           {pingResult && (
-            <div className="mt-3 rounded bg-slate-950 p-2 font-mono text-xs text-emerald-400">
+            <div className="mt-3 rounded bg-background p-2 font-mono text-xs text-success">
               {pingResult}
             </div>
           )}
 
           <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
-              <dt className="text-slate-400">Connection State:</dt>
-              <dd className="font-semibold text-slate-200">{serviceInfo?.state || "NotRunning"}</dd>
+              <dt className="text-muted-foreground">Connection State:</dt>
+              <dd className="font-semibold text-foreground">
+                {serviceInfo?.state || "NotRunning"}
+              </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-slate-400">Daemon Host & Port:</dt>
-              <dd className="font-mono text-xs text-slate-300">
+              <dt className="text-muted-foreground">Daemon Host & Port:</dt>
+              <dd className="font-mono text-xs text-muted-foreground">
                 {serviceInfo?.host || "127.0.0.1"}:{serviceInfo?.port || "N/A"}
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-slate-400">Process PID:</dt>
-              <dd className="font-mono text-xs text-slate-300">{serviceInfo?.pid || "N/A"}</dd>
+              <dt className="text-muted-foreground">Process PID:</dt>
+              <dd className="font-mono text-xs text-muted-foreground">
+                {serviceInfo?.pid || "N/A"}
+              </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-slate-400">TENDRIL_HOME:</dt>
+              <dt className="text-muted-foreground">TENDRIL_HOME:</dt>
               <dd
-                className="font-mono text-xs text-slate-300 truncate max-w-[200px]"
+                className="font-mono text-xs text-muted-foreground truncate max-w-[200px]"
                 title={serviceInfo?.tendrilHome}
               >
                 {serviceInfo?.tendrilHome || "~/.tendril"}
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-slate-400">Security / Secret:</dt>
-              <dd className="font-mono text-xs text-emerald-400">
+              <dt className="text-muted-foreground">Security / Secret:</dt>
+              <dd className="font-mono text-xs text-success">
                 Managed natively (hidden from webview storage)
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-slate-400">Capabilities:</dt>
-              <dd className="text-xs text-slate-300">
+              <dt className="text-muted-foreground">Capabilities:</dt>
+              <dd className="text-xs text-muted-foreground">
                 {serviceInfo?.capabilities?.join(", ") || "None reported"}
               </dd>
             </div>
@@ -148,13 +160,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
         </div>
 
         {/* Configuration Editor */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-          <h2 className="border-b border-slate-800 pb-4 text-base font-semibold text-slate-100">
+        <div className="rounded-xl border border-border bg-card/60 p-6">
+          <h2 className="border-b border-border pb-4 text-base font-semibold text-foreground">
             Operator Configuration
           </h2>
 
           {saveMessage && (
-            <div className="mt-3 rounded bg-slate-950 p-2 text-xs text-emerald-300 border border-emerald-800/50">
+            <div className="mt-3 rounded bg-background p-2 text-xs text-success border border-success/50">
               {saveMessage}
             </div>
           )}
@@ -163,7 +175,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
             <div>
               <label
                 htmlFor="coding-agent-select"
-                className="block text-xs font-medium text-slate-300 mb-1"
+                className="block text-xs font-medium text-muted-foreground mb-1"
               >
                 Coding Agent CLI
               </label>
@@ -172,7 +184,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
                 aria-label="Coding Agent CLI"
                 value={codingAgent}
                 onChange={(e) => setCodingAgent(e.target.value)}
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
               >
                 <option value="claude">Claude Code (claude)</option>
                 <option value="gemini">Gemini CLI (gemini)</option>
@@ -184,7 +196,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
               <div>
                 <label
                   htmlFor="job-timeout-input"
-                  className="block text-xs font-medium text-slate-300 mb-1"
+                  className="block text-xs font-medium text-muted-foreground mb-1"
                 >
                   Job Timeout (seconds)
                 </label>
@@ -194,14 +206,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
                   type="number"
                   value={jobTimeout}
                   onChange={(e) => setJobTimeout(parseInt(e.target.value, 10) || 1800)}
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="max-concurrent-jobs-input"
-                  className="block text-xs font-medium text-slate-300 mb-1"
+                  className="block text-xs font-medium text-muted-foreground mb-1"
                 >
                   Max Concurrent Jobs
                 </label>
@@ -211,7 +223,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
                   type="number"
                   value={maxConcurrentJobs}
                   onChange={(e) => setMaxConcurrentJobs(parseInt(e.target.value, 10) || 4)}
-                  className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
                 />
               </div>
             </div>
@@ -219,7 +231,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
             <div>
               <label
                 htmlFor="theme-select"
-                className="block text-xs font-medium text-slate-300 mb-1"
+                className="block text-xs font-medium text-muted-foreground mb-1"
               >
                 Theme
               </label>
@@ -227,8 +239,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
                 id="theme-select"
                 aria-label="Theme"
                 value={theme}
-                onChange={(e) => setTheme(e.target.value)}
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                onChange={(e) => handleThemeChange(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
               >
                 <option value="dark">Dark</option>
                 <option value="light">Light</option>
@@ -240,13 +252,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
               <button
                 type="submit"
                 disabled={isSaving}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+                className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
               >
                 {isSaving ? "Saving..." : "Save Preferences"}
               </button>
             </div>
           </form>
         </div>
+
+        <ModelCatalogCard />
       </div>
 
       <ServiceSettingsView serviceInfo={serviceInfo} onRefreshHealth={onRefreshHealth} />

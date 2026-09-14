@@ -38,6 +38,17 @@ describe("Bundle Exports and Code-Splitting", () => {
     expect(content).toContain('from "refractor/core"');
   });
 
+  // CodeBlock and ErrorDisplay both render the Prism highlighter, and both are
+  // eagerly reachable from the tendril entrypoint, so a static import here pulls
+  // react-syntax-highlighter and the whole refractor language set onto the
+  // consuming app's initial load. Both load it through lazyWithRetry instead.
+  it("does not contain static imports of react-syntax-highlighter", () => {
+    const content = readFileSync(tendrilMjsPath, "utf-8");
+    const staticHighlighter =
+      /import\s+(?:(?:\*\s+as\s+\w+|\{[^}]*\}|\w+)\s+from\s+)?["']react-syntax-highlighter["'];?/g;
+    expect(content).not.toMatch(staticHighlighter);
+  });
+
   it("does not statically import the diagram renderer chunk", () => {
     const content = readFileSync(tendrilMjsPath, "utf-8");
     const staticDiagramRenderer = /from\s+["']\.\/(?:Mermaid|Graphviz)Renderer-[\w-]+\.mjs["']/;

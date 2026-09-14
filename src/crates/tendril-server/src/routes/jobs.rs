@@ -6,7 +6,10 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
-use tendril_core::jobs::{find_log_file, read_eventwire_log, read_job_log, read_raw_log};
+use tendril_core::error::TendrilError;
+use tendril_core::jobs::{
+    find_log_file, read_eventwire_log, read_job_log, read_raw_log, StartOptions,
+};
 use tendril_core::models::{JobArgs, JobStatus};
 
 #[derive(Debug, Deserialize)]
@@ -32,14 +35,37 @@ pub async fn list_jobs(
     }
 }
 
+/// A job start. The args are flattened, so the current bare-`JobArgs` body keeps working and the new
+/// options ride alongside it.
+#[derive(Debug, Deserialize)]
+pub struct StartJobRequest {
+    #[serde(flatten)]
+    pub args: JobArgs,
+    #[serde(rename = "waitForJobs", default)]
+    pub wait_for_jobs: Vec<String>,
+    #[serde(default)]
+    pub priority: Option<i32>,
+}
+
 pub async fn start_job(
     State(state): State<Arc<AppState>>,
-    Json(args): Json<JobArgs>,
+    Json(req): Json<StartJobRequest>,
 ) -> impl IntoResponse {
-    match state.job_manager.start_job(args).await {
+    let opts = StartOptions {
+        wait_for_jobs: req.wait_for_jobs,
+        priority: req.priority,
+    };
+
+    match state.job_manager.start_job_with(req.args, opts).await {
         Ok(job_id) => (
             StatusCode::OK,
             Json(json!({ "jobId": job_id, "status": "Started" })),
+        )
+            .into_response(),
+        // A rejected conflict is not a malformed request: it names the job that holds the plan.
+        Err(TendrilError::Conflict(msg)) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": msg, "status": "Conflict" })),
         )
             .into_response(),
         Err(e) => (
@@ -161,6 +187,119 @@ pub async fn cancel_job(
             Json(json!({ "error": format!("Error cancelling job: {}", e) })),
         ),
     }
+}
+
+/// Removes a job from the job list and the database. Its log artifacts are kept.
+pub async fn delete_job(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+) -> impl IntoResponse {
+    match state.job_manager.delete_job(&job_id).await {
+        Ok(true) => (StatusCode::OK, Json(json!({ "status": "Deleted" }))),
+        Ok(false) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Job not found" })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Error deleting job: {}", e) })),
+        ),
+    }
+}
+
+/// Promotes a Blocked or Queued job to the head of the queue, skipping its gates.
+pub async fn force_start_job(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+) -> impl IntoResponse {
+    match state.job_manager.force_start_job(&job_id).await {
+        Ok(()) => (StatusCode::OK, Json(json!({ "status": "Started" }))),
+        Err(TendrilError::JobNotFound(_)) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Job not found" })),
+        ),
+        Err(e) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// Stops every job that has not finished.
+pub async fn stop_all_jobs(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match state.job_manager.stop_all_jobs().await {
+        Ok(stopped) => (
+            StatusCode::OK,
+            Json(json!({ "stopped": stopped, "count": stopped.len() })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Error stopping jobs: {}", e) })),
+        ),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ClearJobsRequest {
+    /// `completed` (the default), `failed` or `all`.
+    pub status: Option<String>,
+}
+
+/// Bulk-deletes jobs by status.
+pub async fn clear_jobs(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<Option<ClearJobsRequest>>,
+) -> impl IntoResponse {
+    let scope = req
+        .and_then(|r| r.status)
+        .unwrap_or_else(|| "completed".to_string());
+
+    let result = match scope.to_ascii_lowercase().as_str() {
+        "completed" => state.job_manager.clear_completed_jobs().await,
+        "failed" => state.job_manager.clear_failed_jobs().await,
+        "all" => state.job_manager.clear_all_jobs().await,
+        other => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Unknown clear scope '{}'; expected completed, failed or all", other)
+                })),
+            );
+        }
+    };
+
+    match result {
+        Ok(cleared) => (StatusCode::OK, Json(json!({ "cleared": cleared }))),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Error clearing jobs: {}", e) })),
+        ),
+    }
+}
+
+/// The queue in dispatch order, so an operator can see what runs next and why.
+pub async fn job_queue(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let queued: Vec<serde_json::Value> = state
+        .job_manager
+        .queue_snapshot()
+        .await
+        .into_iter()
+        .map(|(id, priority)| json!({ "id": id, "priority": priority }))
+        .collect();
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "queued": queued,
+            "maxConcurrent": state.job_manager.max_concurrent_jobs().await,
+        })),
+    )
+}
+
+/// Runs one maintenance pass now, instead of waiting for the 60s timer.
+pub async fn run_maintenance(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let report = state.job_manager.run_maintenance_pass().await;
+    (StatusCode::OK, Json(json!(report)))
 }
 
 #[derive(Debug, Deserialize)]
