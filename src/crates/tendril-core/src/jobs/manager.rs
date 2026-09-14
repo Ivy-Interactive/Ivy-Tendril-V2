@@ -9,6 +9,14 @@ use crate::db::open_database;
 use crate::error::{Result, TendrilError};
 use crate::git::worktree::{add_worktree, register_worktree, WorktreeMode};
 use crate::git::worktree_log::WorktreeLifecycleLog;
+use crate::jobs::attachments::move_attachments_to_plan_folder;
+use crate::jobs::deliverable::{
+    cleanup_plan_folder_and_database, resolve_created_plan_folder, revision_count,
+    verify_deliverable, Cleanup, Deliverable,
+};
+use crate::jobs::denials::{describe_denials, extract_permission_denials, summarize_denials};
+use crate::jobs::dependents::release_dependents;
+use crate::jobs::failure_analysis::extract_failure_reason;
 use crate::jobs::firmware_values::{
     build_firmware_values, build_job_context, execution_profile_override, find_project,
     find_repo_ref, repo_name, resolve_mcp_servers, resolve_project, resolve_working_directory,
@@ -18,6 +26,7 @@ use crate::jobs::logger::{
     append_agent_log, append_to_eventwire, append_to_raw_log, find_log_file, read_eventwire_log,
     read_raw_log, write_prompt,
 };
+use crate::jobs::outcome::write_job_outcome_log;
 use crate::jobs::process_tree::{kill_tree, DEFAULT_KILL_GRACE};
 use crate::models::{JobArgs, JobItem, JobStatus, PlanStatus, PlanWorktreeEntry, PlanYaml};
 use crate::plans::dependencies::check_dependencies;
@@ -30,7 +39,7 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, Weak};
 use std::time::Duration;
 use tokio::sync::{watch, Mutex, RwLock, Semaphore};
 
@@ -83,6 +92,10 @@ pub struct JobManager {
     job_timeout_override: Option<Duration>,
     /// Overrides the post-result grace period. Only used by tests.
     post_result_grace_override: Option<Duration>,
+    /// A handle back to this manager, so a finished job can start the jobs that were waiting on it.
+    /// Empty unless the manager was published with [`JobManager::share`]; empty simply means no
+    /// restarts happen, which is what a manager nobody can reach should do.
+    self_handle: OnceLock<Weak<JobManager>>,
 }
 
 impl JobManager {
@@ -98,7 +111,19 @@ impl JobManager {
             spec_builder: Arc::new(build_agent_spec),
             job_timeout_override: None,
             post_result_grace_override: None,
+            self_handle: OnceLock::new(),
         }
+    }
+
+    /// Publishes the manager as an `Arc` and records a weak handle to itself.
+    ///
+    /// Releasing a dependent means starting a job, which needs the manager — but the job runner is a
+    /// free function reached from a spawned task. A `Weak` keeps that reachable without the manager
+    /// holding itself alive.
+    pub fn share(self) -> Arc<Self> {
+        let arc = Arc::new(self);
+        let _ = arc.self_handle.set(Arc::downgrade(&arc));
+        arc
     }
 
     /// Replaces the agent spec builder. Intended for tests.
@@ -240,10 +265,14 @@ impl JobManager {
         settings: TendrilSettings,
     ) {
         let tendril_home = self.tendril_home.clone();
+        // Resolved once, here, and passed down: `finish_job` deletes orphan plan folders, and an
+        // ambient `TENDRIL_PLANS` lookup inside it would point a test at the real plans directory.
+        let plans_dir = get_plans_dir_with_settings(&self.tendril_home, Some(&settings));
         let jobs_map = self.jobs.clone();
         let handles = self.handles.clone();
         let sem = self.semaphore.clone();
         let spec_builder = self.spec_builder.clone();
+        let self_handle = self.self_handle.get().cloned();
         let timeout = self
             .job_timeout_override
             .or_else(|| job_timeout_duration(&settings));
@@ -275,6 +304,7 @@ impl JobManager {
                 );
                 finish_job(
                     &tendril_home,
+                    &plans_dir,
                     &jobs_map,
                     &handles,
                     &completion_claimed,
@@ -294,6 +324,7 @@ impl JobManager {
                 if let Err(msg) = prepare_plan_worktrees(&tendril_home, &job, &settings).await {
                     finish_job(
                         &tendril_home,
+                        &plans_dir,
                         &jobs_map,
                         &handles,
                         &completion_claimed,
@@ -318,6 +349,7 @@ impl JobManager {
                     );
                     finish_job(
                         &tendril_home,
+                        &plans_dir,
                         &jobs_map,
                         &handles,
                         &completion_claimed,
@@ -431,8 +463,10 @@ impl JobManager {
             let duration = start_time.elapsed().as_secs() as i64;
             let (final_status, msg) = classify_outcome(run_res, timeout);
 
+            let finished = job.clone();
             finish_job(
                 &tendril_home,
+                &plans_dir,
                 &jobs_map,
                 &handles,
                 &completion_claimed,
@@ -440,6 +474,19 @@ impl JobManager {
                 final_status,
                 msg,
                 Some(duration),
+            )
+            .await;
+
+            // Anything that was waiting on this job is re-gated now the terminal state is written.
+            // A manager that was never published as an `Arc` yields `None` and simply restarts
+            // nothing.
+            let manager = self_handle.as_ref().and_then(Weak::upgrade);
+            release_dependents(
+                &tendril_home,
+                &plans_dir,
+                &jobs_map,
+                manager.as_ref(),
+                &finished,
             )
             .await;
         });
@@ -1190,9 +1237,18 @@ fn check_job_truncation(tendril_home: &Path, job: &JobItem) -> bool {
 
 /// Writes a job's terminal state and moves its plan, claiming completion first so a simultaneous
 /// cancellation cannot be overwritten.
-#[allow(clippy::too_many_arguments)]
+///
+/// A job that exited zero is only recorded `Completed` once [`verify_deliverable`] confirms it
+/// produced something: no commits, an unsettled verification row or a missing plan revision all land
+/// on `Failed` instead, with the worktree left in place for a human to look at.
+///
+/// `plans_dir` is a parameter rather than an ambient lookup on purpose — this function deletes orphan
+/// plan folders, and `TENDRIL_PLANS` in the environment would otherwise aim that at the operator's
+/// real plans directory during a test run.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub async fn finish_job(
     tendril_home: &Path,
+    plans_dir: &Path,
     jobs_map: &Arc<RwLock<HashMap<String, JobItem>>>,
     handles: &Arc<RwLock<HashMap<String, JobHandle>>>,
     completion_claimed: &AtomicBool,
@@ -1206,15 +1262,24 @@ pub async fn finish_job(
         return;
     }
 
-    let (effective_status, effective_msg) = if final_status == JobStatus::Completed {
-        let mut all_lines = Vec::new();
-        if let Ok(Some(raw_lines)) = read_raw_log(tendril_home, &job.id, None) {
-            all_lines.extend(raw_lines);
-        }
-        if let Ok(Some(ev_lines)) = read_eventwire_log(tendril_home, &job.id, None) {
-            all_lines.extend(ev_lines);
-        }
-        let abandoned = find_abandoned_background_tasks(&all_lines);
+    // Read the output once. Denials, the abandoned-task guard, deliverable verification and failure
+    // analysis all read the same stream, and it can be tens of megabytes.
+    let mut output_lines = Vec::new();
+    if let Ok(Some(raw_lines)) = read_raw_log(tendril_home, &job.id, None) {
+        output_lines.extend(raw_lines);
+    }
+    if let Ok(Some(ev_lines)) = read_eventwire_log(tendril_home, &job.id, None) {
+        output_lines.extend(ev_lines);
+    }
+
+    // Denials explain a job that failed or did nothing; they never fail one by themselves.
+    let denials = extract_permission_denials(&output_lines);
+    if !denials.is_empty() {
+        job.permission_denials = Some(describe_denials(&denials));
+    }
+
+    let (mut effective_status, mut effective_msg) = if final_status == JobStatus::Completed {
+        let abandoned = find_abandoned_background_tasks(&output_lines);
 
         if let Some(reason) = &job.reported_failure_reason {
             (JobStatus::Failed, reason.clone())
@@ -1236,10 +1301,42 @@ pub async fn finish_job(
     } else {
         let failure_msg = match &job.reported_failure_reason {
             Some(reason) if final_status == JobStatus::Failed => reason.clone(),
-            _ => msg,
+            _ => enrich_failure_message(&output_lines, &job, final_status, msg),
         };
         (final_status, failure_msg)
     };
+
+    // The deliverable check: the job says it succeeded, so ask what it produced.
+    let mut deliverable = Deliverable::Present;
+    if effective_status == JobStatus::Completed {
+        deliverable = verify_deliverable(plans_dir, &mut job, &output_lines);
+
+        if let Deliverable::Missing { reason, cleanup } = &deliverable {
+            tracing::warn!(
+                "Job {} ({}) exited successfully but produced no deliverable: {}",
+                job.id,
+                job.job_type,
+                reason
+            );
+            effective_status = JobStatus::Failed;
+            effective_msg = reason.clone();
+            if job.reported_failure_reason.is_none() {
+                job.reported_failure_reason = Some(reason.clone());
+            }
+            if let Cleanup::OrphanPlan(folder) = cleanup {
+                cleanup_plan_folder_and_database(tendril_home, plans_dir, folder);
+            }
+        }
+    } else if job.job_type == "CreatePlan" {
+        // A CreatePlan that failed, timed out or was killed must not leave an empty folder behind
+        // either — it would look like a real plan nobody ever wrote.
+        cleanup_empty_create_plan(tendril_home, plans_dir, &mut job, &output_lines);
+    }
+
+    if !denials.is_empty() {
+        // Appended to the existing status message so the Jobs UI shows it with no frontend change.
+        effective_msg = format!("{} — {}", effective_msg, summarize_denials(&denials));
+    }
 
     job.status = effective_status;
     job.completed_at = Some(Utc::now());
@@ -1280,6 +1377,17 @@ pub async fn finish_job(
                 }
             }
         }
+
+        // Uploads live in a session temp directory until the plan they belong to exists.
+        if matches!(job.job_type.as_str(), "CreatePlan" | "UpdatePlan") {
+            move_attachments_to_plan_folder(tendril_home, plans_dir, &job);
+        }
+    } else if matches!(deliverable, Deliverable::Missing { .. })
+        && matches!(job.job_type.as_str(), "ExecutePlan" | "RetryPlan")
+    {
+        // An execution that produced nothing goes to `Failed`, not back to `Draft`: the worktree is
+        // still on disk, and reverting would erase the only sign that an attempt happened.
+        apply_plan_state(Path::new(&job.plan_file), PlanStatus::Failed);
     } else {
         revert_plan_state(&job);
     }
@@ -1288,6 +1396,50 @@ pub async fn finish_job(
 
     persist(tendril_home, jobs_map, &job).await;
     handles.write().await.remove(&job.id);
+
+    // Written last, so the record carries the final status, usage and plan outcome. Never fails a job.
+    write_job_outcome_log(tendril_home, &job);
+}
+
+/// Replaces a bare `Process exited with code 1` with what the output actually says went wrong.
+///
+/// Only for `Failed`: a timeout and a cancellation already carry the whole story. Leaves the original
+/// message in place as context, and says nothing when the analysis has nothing to add.
+fn enrich_failure_message(
+    output_lines: &[String],
+    job: &JobItem,
+    final_status: JobStatus,
+    msg: String,
+) -> String {
+    if final_status != JobStatus::Failed || output_lines.is_empty() {
+        return msg;
+    }
+
+    let reason = extract_failure_reason(output_lines, &job.job_type, None);
+    if reason.is_empty() || reason == "Unknown error (exit code non-zero)" || msg.contains(&reason)
+    {
+        return msg;
+    }
+    format!("{} — {}", msg, reason)
+}
+
+/// Removes the folder a CreatePlan run left behind with no revision in it.
+fn cleanup_empty_create_plan(
+    tendril_home: &Path,
+    plans_dir: &Path,
+    job: &mut JobItem,
+    output_lines: &[String],
+) {
+    let Some(folder) = resolve_created_plan_folder(plans_dir, job, output_lines) else {
+        return;
+    };
+    if revision_count(&folder) > 0 {
+        return;
+    }
+    if cleanup_plan_folder_and_database(tendril_home, plans_dir, &folder) {
+        // Nothing to link to any more.
+        job.plan_file = String::new();
+    }
 }
 
 /// Writes a job to the in-memory map and SQLite.

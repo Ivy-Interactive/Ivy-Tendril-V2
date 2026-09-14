@@ -56,6 +56,7 @@ fn create_plan_emits_its_task_description_and_omits_force_when_false() {
             priority: 0,
             force: false,
             source_path: None,
+            upload_session_id: None,
         }),
         "",
     );
@@ -82,6 +83,7 @@ fn create_plan_reflects_explicit_plan_folder_setting() {
             priority: 0,
             force: false,
             source_path: None,
+            upload_session_id: None,
         }),
         "",
     );
@@ -105,6 +107,7 @@ fn build_firmware_values_with_isolates_plans_folder_from_ambient_env() {
             priority: 0,
             force: false,
             source_path: None,
+            upload_session_id: None,
         }),
         "",
     );
@@ -132,6 +135,7 @@ fn build_firmware_values_default_entrypoint_emits_expected_keys() {
             priority: 0,
             force: false,
             source_path: None,
+            upload_session_id: None,
         }),
         "",
     );
@@ -152,6 +156,7 @@ fn create_plan_emits_force_and_source_path_when_set() {
             priority: 3,
             force: true,
             source_path: Some("/tmp/spec.md".to_string()),
+            upload_session_id: None,
         }),
         "",
     );
@@ -251,6 +256,7 @@ fn update_plan_emits_instructions_only_when_given() {
         JobArgs::UpdatePlan(UpdatePlanArgs {
             folder_path: path.clone(),
             instructions: Some("Split out the CLI work".to_string()),
+            upload_session_id: None,
         }),
         &path,
     );
@@ -266,6 +272,7 @@ fn update_plan_emits_instructions_only_when_given() {
         JobArgs::UpdatePlan(UpdatePlanArgs {
             folder_path: path.clone(),
             instructions: None,
+            upload_session_id: None,
         }),
         &path,
     );
@@ -556,6 +563,7 @@ fn project_resolution_prefers_the_plan_then_the_args() {
             priority: 0,
             force: false,
             source_path: None,
+            upload_session_id: None,
         }),
         "",
     );
@@ -642,6 +650,7 @@ fn the_working_directory_falls_back_to_the_promptware_then_the_home() {
             priority: 0,
             force: false,
             source_path: None,
+            upload_session_id: None,
         }),
         "",
     );

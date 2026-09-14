@@ -66,7 +66,9 @@ impl AppState {
             });
         }
 
-        let job_manager = Arc::new(JobManager::new(tendril_home.clone(), settings));
+        // `share` rather than `Arc::new`: a finished job needs a handle back to the manager to start
+        // the jobs that were waiting on it.
+        let job_manager = JobManager::new(tendril_home.clone(), settings).share();
         let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
 
