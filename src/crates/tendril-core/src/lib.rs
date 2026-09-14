@@ -11,6 +11,7 @@ pub mod inbox;
 pub mod jobs;
 pub mod mcp;
 pub mod models;
+pub mod newsletter;
 pub mod onboarding;
 pub mod plans;
 pub mod promptware;
