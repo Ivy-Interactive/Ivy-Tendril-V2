@@ -1,0 +1,46 @@
+{
+  "name": "@ivy-interactive/tendril-docs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "vp preview",
+    "test": "vp test",
+    "typecheck": "tsc --noEmit",
+    "check": "vp check && tsc --noEmit",
+    "check:fix": "vp check --fix",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check"
+  },
+  "dependencies": {
+    "@ivy-interactive/components": "workspace:*",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.562.0",
+    "minisearch": "^7.2.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "tailwind-merge": "^3.3.1",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.4.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^26.0.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.8.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "vitest": "4.1.11"
+  },
+  "packageManager": "pnpm@11.25.0"
+}
