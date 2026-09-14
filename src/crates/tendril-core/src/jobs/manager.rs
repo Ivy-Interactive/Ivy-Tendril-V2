@@ -115,6 +115,7 @@ struct DispatchContext {
     semaphore: Arc<Semaphore>,
     queue: Arc<Mutex<JobQueue>>,
     dispatch_notify: Arc<Notify>,
+    dispatcher_started: Arc<AtomicBool>,
     spec_builder: SpecBuilder,
     job_timeout_override: Option<Duration>,
     post_result_grace_override: Option<Duration>,
@@ -143,6 +144,8 @@ pub struct JobManager {
     post_result_grace_override: Option<Duration>,
     /// Overrides the `staleOutputTimeout` setting. Only used by tests.
     stale_output_timeout_override: Option<Duration>,
+    /// Overrides the plans directory the maintenance pass scans. Only used by tests.
+    plans_dir_override: Option<PathBuf>,
 }
 
 impl JobManager {
@@ -162,6 +165,7 @@ impl JobManager {
             job_timeout_override: None,
             post_result_grace_override: None,
             stale_output_timeout_override: None,
+            plans_dir_override: None,
         }
     }
 
@@ -190,6 +194,21 @@ impl JobManager {
         self
     }
 
+    /// Pins the plans directory the maintenance pass scans, instead of resolving it from the
+    /// `TENDRIL_PLANS` environment variable and the settings. Intended for tests: the resolved
+    /// directory is the operator's real one, and a maintenance pass must never be pointed at it.
+    pub fn with_plans_dir(mut self, dir: Option<PathBuf>) -> Self {
+        self.plans_dir_override = dir;
+        self
+    }
+
+    /// The plans directory this manager scans.
+    fn plans_dir(&self, settings: &TendrilSettings) -> PathBuf {
+        self.plans_dir_override
+            .clone()
+            .unwrap_or_else(|| get_plans_dir_with_settings(&self.tendril_home, Some(settings)))
+    }
+
     /// Snapshot of the shared state the dispatcher and runner tasks work through. Taken after the
     /// `with_*` builders have run, so a test's overrides are always the ones the runner sees.
     fn ctx(&self) -> DispatchContext {
@@ -201,6 +220,7 @@ impl JobManager {
             semaphore: self.semaphore.clone(),
             queue: self.queue.clone(),
             dispatch_notify: self.dispatch_notify.clone(),
+            dispatcher_started: self.dispatcher_started.clone(),
             spec_builder: self.spec_builder.clone(),
             job_timeout_override: self.job_timeout_override,
             post_result_grace_override: self.post_result_grace_override,
@@ -211,11 +231,7 @@ impl JobManager {
     /// Starts the single dispatcher task, once. Called on the first enqueue, so a manager that never
     /// starts a job never spawns anything.
     pub fn spawn_dispatcher(&self) {
-        if self.dispatcher_started.swap(true, Ordering::SeqCst) {
-            return;
-        }
-        let ctx = self.ctx();
-        tokio::spawn(async move { dispatch_loop(ctx).await });
+        spawn_dispatcher(&self.ctx());
     }
 
     pub async fn allocate_job_id(&self) -> Result<String> {
@@ -268,9 +284,7 @@ impl JobManager {
                 let plans_dir = plan_folder
                     .parent()
                     .map(|p| p.to_path_buf())
-                    .unwrap_or_else(|| {
-                        get_plans_dir_with_settings(&self.tendril_home, Some(&settings))
-                    });
+                    .unwrap_or_else(|| self.plans_dir(&settings));
                 match check_dependencies(&plan_folder, &plans_dir) {
                     Ok(res) if !res.ok => Some(
                         res.block_reason
@@ -749,7 +763,7 @@ impl JobManager {
         let mut report = MaintenanceReport::default();
         let plans_dir = {
             let settings = self.settings.read().await.clone();
-            get_plans_dir_with_settings(&self.tendril_home, Some(&settings))
+            self.plans_dir(&settings)
         };
 
         // 1. Blocked plans whose dependencies have since been satisfied. This is the pass that used
@@ -1082,7 +1096,20 @@ async fn release_blocked_job(ctx: &DispatchContext, mut job: JobItem) {
 
     ensure_handle(&ctx.handles, &job.id).await;
     ctx.queue.lock().await.push(job.id.clone(), job.priority);
+    // A release is an enqueue, so it has to arm the dispatcher too: the first job a manager sees can
+    // be one that blocks, in which case nothing has gone through `enqueue` and there is no
+    // `dispatch_loop` alive to hear the notification.
+    spawn_dispatcher(ctx);
     ctx.dispatch_notify.notify_one();
+}
+
+/// Starts the single [`dispatch_loop`] task, once per manager.
+fn spawn_dispatcher(ctx: &DispatchContext) {
+    if ctx.dispatcher_started.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let ctx = ctx.clone();
+    tokio::spawn(async move { dispatch_loop(ctx).await });
 }
 
 /// Why the maintenance pass considers a `Running` job stuck, if it does.
