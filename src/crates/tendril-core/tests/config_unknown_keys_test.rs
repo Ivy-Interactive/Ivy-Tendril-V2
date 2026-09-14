@@ -84,7 +84,10 @@ fn test_config_unknown_keys_survive_load_and_save() {
     assert!(settings.extra.contains_key("vault"));
     assert!(settings.extra.contains_key("vaults"));
     assert!(settings.extra.contains_key("shareTunnel"));
-    assert!(settings.extra.contains_key("codingAgents"));
+    // `codingAgents` is a modeled field now, so `#[serde(flatten)] extra` can no longer claim it.
+    assert!(!settings.extra.contains_key("codingAgents"));
+    assert_eq!(settings.coding_agents.len(), 1);
+    assert_eq!(settings.coding_agents[0].name, "custom-agent");
     assert!(settings.extra.contains_key("desktopNotifications"));
     assert!(settings.extra.contains_key("sidebarOpen"));
     assert!(settings.extra.contains_key("themeMode"));
