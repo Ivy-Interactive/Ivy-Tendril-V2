@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { JobSessionView } from "../src/views/JobSessionView";
 import { jobsStore } from "../src/state/jobsStore";
-import type { Job } from "../types/api";
+import type { Job } from "../src/types/api";
 
 describe("JobSessionView Real-Time Subscription", () => {
   const originalFetch = globalThis.fetch;
