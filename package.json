@@ -18,9 +18,13 @@
     "check": "pnpm -r check",
     "check:links": "lychee --config .lychee.toml README*.md docs/**/*.md",
     "lint": "pnpm -r lint",
-    "format": "pnpm -r format"
+    "format": "pnpm -r format",
+    "install:playwright": "playwright install chromium",
+    "install:playwright:deps": "playwright install --with-deps chromium",
+    "screenshot": "playwright screenshot"
   },
   "devDependencies": {
+    "playwright": "1.63.0",
     "tsx": "^4.23.13"
   },
   "packageManager": "pnpm@11.25.0"
