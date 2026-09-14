@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: tendril-app
+
+      - name: Checkout components-storybook
+        uses: actions/checkout@v4
+        with:
+          repository: SpaceCorps/components-storybook
+          # Pinned so a change on components-storybook main cannot break this repo's CI
+          # without a commit here. Bump: see "UI dependency pin" in README.md.
+          ref: 6b0049203305004085d5ccb945ecfc4c6099343b
+          token: ${{ secrets.COMPONENTS_STORYBOOK_TOKEN }}
+          path: components-storybook
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.19.0
+        with:
+          node-version: 24
+          cache: true
+
+      - name: Install components-storybook dependencies
+        working-directory: components-storybook
+        run: pnpm install --frozen-lockfile
+
+      - name: Build components-storybook
+        working-directory: components-storybook
+        run: pnpm build
+
+      - name: Install dependencies
+        working-directory: tendril-app
+        run: pnpm install --frozen-lockfile
+
+      - name: Check frontend (lint, format, typecheck)
+        working-directory: tendril-app
+        run: vp check
+
+      - name: Build frontend
+        working-directory: tendril-app
+        run: vp build
+
+      - name: Test frontend
+        working-directory: tendril-app
+        run: vp test
+
+  tauri:
+    name: Tauri / Rust
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Format check
+        run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
+
+      - name: Clippy check
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml

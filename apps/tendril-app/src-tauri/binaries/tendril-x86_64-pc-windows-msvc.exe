@@ -1,0 +1,6 @@
+#!/bin/sh
+if [ "$1" = "--version" ] || [ "$1" = "-V" ]; then
+    echo "tendril 0.1.0 (release-desktop)"
+    exit 0
+fi
+echo "Tendril companion daemon stub running"

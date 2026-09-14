@@ -1,0 +1,45 @@
+codingAgent: antigravity
+jobTimeout: 120
+staleOutputTimeout: 20
+gitTimeout: 10
+maxConcurrentJobs: 20
+editor: code
+promptwares:
+  CreatePlan:
+    model: default
+codingAgents:
+  antigravity:
+    command: agy
+shareTunnel:
+  enabled: false
+vault:
+  name: DefaultVault
+  enabled: true
+vaults: []
+llm:
+  provider: openrouter
+auth:
+  enabled: false
+api:
+  port: 5010
+tunnel:
+  provider: cloudflare
+desktopNotifications: true
+sidebarOpen: false
+themeMode: system
+dismissedUpdateVersion: 1.1.35
+theme: default
+projects:
+  - name: Tendril-App
+    repos:
+      - path: /Users/rorychatt/.tendril/Projects/Tendril-App/Repos/SpaceCorps/Tendril-App
+        baseBranch: main
+    verifications:
+      - name: RustClippy
+        required: true
+      - name: RustBuild
+        required: true
+      - name: RustTest
+        required: true
+      - name: CheckResult
+        required: true
