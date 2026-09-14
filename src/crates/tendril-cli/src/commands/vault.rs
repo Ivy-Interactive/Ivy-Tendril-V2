@@ -163,7 +163,7 @@ enum DaemonOutcome {
 
 /// A daemon call that failed at the transport level.
 ///
-/// Only an unreachable daemon may fall back to `config.json`: a timed-out mutation may already have
+/// Only an unreachable daemon may fall back to `config.yaml`: a timed-out mutation may already have
 /// been applied by the daemon, and applying it locally too would apply it twice.
 fn fallback_or_fail(
     err: reqwest::Error,
