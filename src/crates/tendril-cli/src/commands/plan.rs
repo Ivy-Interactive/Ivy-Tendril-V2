@@ -9,8 +9,9 @@ use tendril_core::models::{PlanStatus, PlanVerificationEntry, VerificationStatus
 use tendril_core::plans::{
     add_recommendation, check_all_plans_health, check_plan_health, create_plan, get_revision,
     list_recommendations, read_plan_file, read_plan_yaml, remove_recommendation,
-    resolve_plan_folder, set_plan_verification_status, set_recommendation_state, write_plan_yaml,
-    write_revision, CreatePlanOptions, DuplicateCandidateFinder, PlanCompletionGuard,
+    resolve_plan_folder, resolve_plan_folder_name, set_plan_verification_status,
+    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
+    DuplicateCandidateFinder, PlanCompletionGuard,
 };
 
 #[derive(Subcommand)]
@@ -205,48 +206,104 @@ pub struct PlanGetRevisionArgs {
 pub struct PlanAddRepoArgs {
     pub plan_id: String,
     pub path: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanRemoveRepoArgs {
     pub plan_id: String,
     pub path: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanAddPrArgs {
     pub plan_id: String,
     pub url: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanAddCommitArgs {
     pub plan_id: String,
     pub sha: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanAddDependsOnArgs {
     pub plan_id: String,
     pub folder: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanRemoveDependsOnArgs {
     pub plan_id: String,
     pub folder: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanAddRelatedArgs {
     pub plan_id: String,
     pub folder: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
 pub struct PlanRemoveRelatedArgs {
     pub plan_id: String,
     pub folder: String,
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
 }
 
 #[derive(Args)]
@@ -302,14 +359,41 @@ pub fn resolve_source_chat_session(chat_session: Option<&str>) -> Option<String>
         .filter(|s| !s.is_empty())
 }
 
+/// Resolves a `depends-on` / `related-plan` reference to its canonical folder name, failing the same
+/// way the REST endpoints 404 so the CLI and HTTP agree on what an unknown reference means.
+fn resolve_referenced_plan_folder(
+    plan_ref: &str,
+    plans_dir: &std::path::Path,
+) -> anyhow::Result<String> {
+    resolve_plan_folder_name(plan_ref.trim(), plans_dir)
+        .map_err(|_| anyhow::anyhow!("Referenced plan '{}' not found", plan_ref.trim()))
+}
+
+/// The plan edit to report to the plan's other chat sessions. `event_kind` defaults to `edit`;
+/// `pr-created` routes the notification to the server's PR announcer instead, and requires `pr_url`.
+#[derive(Default)]
+struct PlanEditEvent<'a> {
+    summary: &'a str,
+    reason: Option<&'a str>,
+    source_chat_session_id: Option<&'a str>,
+    revision_file: Option<&'a str>,
+    event_kind: Option<&'a str>,
+    pr_url: Option<&'a str>,
+}
+
 async fn report_plan_edit_event(
     tendril_home: &std::path::Path,
     plan_id: &str,
-    summary: &str,
-    reason: Option<&str>,
-    source_chat_session_id: Option<&str>,
-    revision_file: Option<&str>,
+    event: PlanEditEvent<'_>,
 ) {
+    let PlanEditEvent {
+        summary,
+        reason,
+        source_chat_session_id,
+        revision_file,
+        event_kind,
+        pr_url,
+    } = event;
     let master = match read_master(tendril_home) {
         Some(m) => m,
         None => {
@@ -332,6 +416,8 @@ async fn report_plan_edit_event(
         "reason": reason,
         "sourceChatSessionId": source_chat_session_id,
         "revisionFile": revision_file,
+        "eventKind": event_kind,
+        "prUrl": pr_url,
     });
 
     match client
@@ -626,10 +712,12 @@ pub async fn handle_plan_command(
             report_plan_edit_event(
                 tendril_home,
                 &args.plan_id,
-                &format!("{} set to {}", args.field, args.value),
-                args.reason.as_deref(),
-                source_chat.as_deref(),
-                None,
+                PlanEditEvent {
+                    summary: &format!("{} set to {}", args.field, args.value),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
             )
             .await;
         }
@@ -703,10 +791,13 @@ pub async fn handle_plan_command(
             report_plan_edit_event(
                 tendril_home,
                 &args.plan_id,
-                &format!("revision {:03}.md written", rev_num),
-                args.reason.as_deref(),
-                source_chat.as_deref(),
-                Some(&format!("{:03}.md", rev_num)),
+                PlanEditEvent {
+                    summary: &format!("revision {:03}.md written", rev_num),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    revision_file: Some(&format!("{:03}.md", rev_num)),
+                    ..Default::default()
+                },
             )
             .await;
 
@@ -734,87 +825,225 @@ pub async fn handle_plan_command(
         PlanCommands::AddRepo(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.repos.contains(&args.path) {
-                plan.repos.push(args.path);
+            let changed = !plan
+                .repos
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(&args.path));
+            if changed {
+                plan.repos.push(args.path.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("Repo added.");
+
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("repo added: {}", args.path),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::RemoveRepo(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            plan.repos.retain(|r| r != &args.path);
+            let before = plan.repos.len();
+            plan.repos.retain(|r| !r.eq_ignore_ascii_case(&args.path));
+            if plan.repos.len() == before {
+                anyhow::bail!("Repository not found in plan: {}", args.path);
+            }
             plan.updated = Utc::now();
             write_plan_yaml(&folder, &plan)?;
             println!("Repo removed.");
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                PlanEditEvent {
+                    summary: &format!("repo removed: {}", args.path),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
         PlanCommands::AddPr(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.prs.contains(&args.url) {
+            let changed = !plan.prs.contains(&args.url);
+            if changed {
                 plan.prs.push(args.url.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("PR added.");
 
-            let source_chat = resolve_source_chat_session(None);
-            report_plan_edit_event(
-                tendril_home,
-                &args.plan_id,
-                &format!("PR added: {}", args.url),
-                None,
-                source_chat.as_deref(),
-                None,
-            )
-            .await;
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("PR added: {}", args.url),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        event_kind: Some("pr-created"),
+                        pr_url: Some(&args.url),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::AddCommit(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.commits.contains(&args.sha) {
-                plan.commits.push(args.sha);
+            let changed = !plan.commits.contains(&args.sha);
+            if changed {
+                plan.commits.push(args.sha.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("Commit added.");
+
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("commit added: {}", args.sha),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::AddDependsOn(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            // Store the canonical folder name: a bare `123` written verbatim would block the plan
+            // forever with "Dependency plan folder '123' does not exist".
+            let target = resolve_referenced_plan_folder(&args.folder, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.depends_on.contains(&args.folder) {
-                plan.depends_on.push(args.folder);
+            let changed = !plan
+                .depends_on
+                .iter()
+                .any(|d| d.eq_ignore_ascii_case(&target));
+            if changed {
+                plan.depends_on.push(target.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("Dependency added.");
+
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("dependency added: {}", target),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::RemoveDependsOn(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            let target = resolve_referenced_plan_folder(&args.folder, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            plan.depends_on.retain(|d| d != &args.folder);
+            let before = plan.depends_on.len();
+            plan.depends_on.retain(|d| !d.eq_ignore_ascii_case(&target));
+            if plan.depends_on.len() == before {
+                anyhow::bail!("Dependency not found: {}", target);
+            }
             plan.updated = Utc::now();
             write_plan_yaml(&folder, &plan)?;
             println!("Dependency removed.");
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                PlanEditEvent {
+                    summary: &format!("dependency removed: {}", target),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
         PlanCommands::AddRelatedPlan(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            let target = resolve_referenced_plan_folder(&args.folder, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            if !plan.related_plans.contains(&args.folder) {
-                plan.related_plans.push(args.folder);
+            let changed = !plan
+                .related_plans
+                .iter()
+                .any(|r| r.eq_ignore_ascii_case(&target));
+            if changed {
+                plan.related_plans.push(target.clone());
                 plan.updated = Utc::now();
                 write_plan_yaml(&folder, &plan)?;
             }
             println!("Related plan added.");
+
+            if changed {
+                let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+                report_plan_edit_event(
+                    tendril_home,
+                    &args.plan_id,
+                    PlanEditEvent {
+                        summary: &format!("related plan added: {}", target),
+                        reason: args.reason.as_deref(),
+                        source_chat_session_id: source_chat.as_deref(),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            }
         }
         PlanCommands::RemoveRelatedPlan(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+            let target = resolve_referenced_plan_folder(&args.folder, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
-            plan.related_plans.retain(|r| r != &args.folder);
+            let before = plan.related_plans.len();
+            plan.related_plans
+                .retain(|r| !r.eq_ignore_ascii_case(&target));
+            if plan.related_plans.len() == before {
+                anyhow::bail!("Related plan not found: {}", target);
+            }
             plan.updated = Utc::now();
             write_plan_yaml(&folder, &plan)?;
             println!("Related plan removed.");
+
+            let source_chat = resolve_source_chat_session(args.chat_session.as_deref());
+            report_plan_edit_event(
+                tendril_home,
+                &args.plan_id,
+                PlanEditEvent {
+                    summary: &format!("related plan removed: {}", target),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
+            )
+            .await;
         }
         PlanCommands::SetVerification(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
@@ -828,10 +1057,12 @@ pub async fn handle_plan_command(
             report_plan_edit_event(
                 tendril_home,
                 &args.plan_id,
-                &format!("verification {} set to {}", args.name, args.status),
-                args.reason.as_deref(),
-                source_chat.as_deref(),
-                None,
+                PlanEditEvent {
+                    summary: &format!("verification {} set to {}", args.name, args.status),
+                    reason: args.reason.as_deref(),
+                    source_chat_session_id: source_chat.as_deref(),
+                    ..Default::default()
+                },
             )
             .await;
         }
