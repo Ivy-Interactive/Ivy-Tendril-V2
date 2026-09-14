@@ -44,4 +44,13 @@ describe("content-input.css theming and responsive variables", () => {
     expect(css).toMatch(/\.civ-split-btn-container\s*\{[^}]*background:\s*var\(--primary\);/);
     expect(css).toMatch(/\.civ-split-btn-arrow\s*\{[^}]*color:\s*var\(--primary-foreground\);/);
   });
+
+  it("preserves primary-foreground contrast on submit and split button hover states", () => {
+    expect(css).toMatch(
+      /\.civ-submit-btn\.civ-submit-btn-labeled:hover:not\(:disabled\)\s*\{[^}]*color:\s*var\(--primary-foreground\);/,
+    );
+    expect(css).toMatch(
+      /\.civ-split-btn-left:hover:not\(:disabled\)\s*\{[^}]*color:\s*var\(--primary-foreground\);/,
+    );
+  });
 });
