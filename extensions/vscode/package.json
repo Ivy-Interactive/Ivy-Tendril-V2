@@ -1,5 +1,5 @@
 {
-  "name": "tendril-extension",
+  "name": "ivy-tendril",
   "displayName": "Ivy Tendril",
   "description": "Visual Studio Code integration for Ivy Tendril, plan management and autonomous execution system",
   "version": "0.1.0",
