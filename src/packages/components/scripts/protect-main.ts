@@ -12,12 +12,142 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = fileURLToPath(new URL("..", import.meta.url));
-const rulesetPath = join(repoRoot, ".github/rulesets/main-require-green-suite.json");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+export function resolveRulesetPath(baseDir: string = repoRoot): string {
+  const packageRulesetPath = join(baseDir, ".github/rulesets/main-require-green-suite.json");
+  if (existsSync(packageRulesetPath)) {
+    return packageRulesetPath;
+  }
+  const monorepoRulesetPath = join(
+    baseDir,
+    "../..",
+    ".github/rulesets/main-require-green-suite.json",
+  );
+  if (existsSync(monorepoRulesetPath)) {
+    return monorepoRulesetPath;
+  }
+  return packageRulesetPath;
+}
+
+const rulesetPath = resolveRulesetPath();
+
+export const GITHUB_REMOTE_REGEX = /(?:github\.com[:/])(?<owner>[^/]+)\/(?<repo>[^/]+?)(?:\.git)?$/;
+
+export function parseGitRemoteUrl(url: string): string | null {
+  const match = GITHUB_REMOTE_REGEX.exec(url.trim());
+  if (match?.groups?.owner && match?.groups?.repo) {
+    return `${match.groups.owner}/${match.groups.repo}`;
+  }
+  return null;
+}
+
+export function isValidRepoSlug(slug: string): boolean {
+  if (!slug) return false;
+  const parts = slug.trim().split("/");
+  if (parts.length !== 2) return false;
+  const [owner, repo] = parts;
+  if (!owner || !repo) return false;
+  if (/\s/.test(owner) || /\s/.test(repo)) return false;
+  return true;
+}
+
+export function parseRepoFromArgs(args: string[]): string | null {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--repo") {
+      const next = args[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        return next;
+      }
+      return "";
+    }
+    if (arg.startsWith("--repo=")) {
+      return arg.slice("--repo=".length);
+    }
+  }
+  return null;
+}
+
+export interface ResolveSlugOptions {
+  env?: NodeJS.ProcessEnv;
+  cwd?: string;
+  exec?: typeof execFileSync;
+}
+
+export function resolveRepositorySlug(argv?: string[], options?: ResolveSlugOptions): string {
+  const args = argv ?? process.argv.slice(2);
+  const env = options?.env ?? process.env;
+  const cwd = options?.cwd;
+  const exec = options?.exec ?? execFileSync;
+
+  // 1. Command-line argument: --repo <owner/repo> or --repo=<owner/repo>
+  const fromArgs = parseRepoFromArgs(args);
+  if (fromArgs !== null) {
+    if (isValidRepoSlug(fromArgs)) {
+      return fromArgs;
+    }
+    console.error(
+      "ERROR: Could not resolve GitHub repository slug. Provide --repo <owner/repo> or set GITHUB_REPOSITORY.",
+    );
+    process.exit(1);
+  }
+
+  // 2. Environment variable: GITHUB_REPOSITORY
+  const fromEnv = env.GITHUB_REPOSITORY?.trim();
+  if (fromEnv) {
+    if (isValidRepoSlug(fromEnv)) {
+      return fromEnv;
+    }
+    console.error(
+      "ERROR: Could not resolve GitHub repository slug. Provide --repo <owner/repo> or set GITHUB_REPOSITORY.",
+    );
+    process.exit(1);
+  }
+
+  // 3. Git remote origin: git remote get-url origin
+  try {
+    const remoteUrl = exec("git", ["remote", "get-url", "origin"], {
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+      cwd,
+    }).trim();
+    const fromGit = parseGitRemoteUrl(remoteUrl);
+    if (fromGit && isValidRepoSlug(fromGit)) {
+      return fromGit;
+    }
+  } catch {
+    // Ignore git failure and fall back
+  }
+
+  // 4. GitHub CLI fallback: gh repo view --json nameWithOwner --jq .nameWithOwner
+  try {
+    const ghOutput = exec(
+      "gh",
+      ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+      {
+        encoding: "utf8",
+        stdio: ["pipe", "pipe", "pipe"],
+        cwd,
+      },
+    ).trim();
+    if (ghOutput && isValidRepoSlug(ghOutput)) {
+      return ghOutput;
+    }
+  } catch {
+    // Ignore gh failure and fall back
+  }
+
+  // 5. Error handling
+  console.error(
+    "ERROR: Could not resolve GitHub repository slug. Provide --repo <owner/repo> or set GITHUB_REPOSITORY.",
+  );
+  process.exit(1);
+}
 
 interface StatusCheckRule {
   type: string;
@@ -37,10 +167,13 @@ interface ExecFileError extends Error {
   stderr?: string | Buffer;
 }
 
-function main(): void {
+export function main(): void {
+  const repoSlug = resolveRepositorySlug();
+  const owner = repoSlug.split("/")[0];
+
   // First, try to GET existing rulesets to detect 403 early
   try {
-    execFileSync("gh", ["api", "repos/SpaceCorps/components-storybook/rulesets", "--jq", "."], {
+    execFileSync("gh", ["api", `repos/${repoSlug}/rulesets`, "--jq", "."], {
       encoding: "utf8",
       stdio: ["inherit", "pipe", "pipe"],
     });
@@ -50,7 +183,7 @@ function main(): void {
     if (err.status === 1 && stderr.includes("HTTP 403")) {
       console.error("ERROR: Cannot activate ruleset - GitHub API returned 403 Forbidden.\n");
       console.error(
-        "This repository is private and the SpaceCorps organization is on the GitHub Free plan.",
+        `This repository (${repoSlug}) is private and the ${owner} organization is on the GitHub Free plan.`,
       );
       console.error("Rulesets and branch protection require GitHub Pro or higher.\n");
       console.error("To activate branch protection, either:");
@@ -74,7 +207,7 @@ function main(): void {
   try {
     const output = execFileSync(
       "gh",
-      ["api", "--method", "POST", "repos/SpaceCorps/components-storybook/rulesets", "--input", "-"],
+      ["api", "--method", "POST", `repos/${repoSlug}/rulesets`, "--input", "-"],
       { encoding: "utf8", input: rulesetBody, stdio: ["pipe", "pipe", "pipe"] },
     );
     const created = JSON.parse(output) as RulesetResponse;
@@ -97,4 +230,6 @@ function main(): void {
   }
 }
 
-main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main();
+}
