@@ -32,6 +32,11 @@ fn worktree_for(fx: &GitRepoFixture, plan_folder: &Path) -> PathBuf {
     .path
 }
 
+/// The fixture's repository as the one-repo slice `build_plan_git_data` takes.
+fn repos(fx: &GitRepoFixture) -> &[PathBuf] {
+    std::slice::from_ref(&fx.repo)
+}
+
 /// Commits a file inside a worktree and returns the commit's full hash.
 fn commit_in(fx: &GitRepoFixture, worktree: &Path, file: &str, content: &str) -> String {
     std::fs::write(worktree.join(file), content).expect("write file in worktree");
@@ -52,11 +57,7 @@ fn commits_made_in_a_worktree_are_grouped_under_it() {
     let first = commit_in(&fx, &worktree, "one.txt", "one\n");
     let second = commit_in(&fx, &worktree, "two.txt", "two\n");
 
-    let data = build_plan_git_data(
-        &folder,
-        &[first.clone(), second.clone()],
-        &[fx.repo.clone()],
-    );
+    let data = build_plan_git_data(&folder, &[first.clone(), second.clone()], repos(&fx));
 
     assert_eq!(data.worktrees.len(), 1, "the plan has exactly one worktree");
     let section = &data.worktrees[0];
@@ -104,7 +105,7 @@ fn a_dirty_worktree_is_flagged() {
 
     std::fs::write(worktree.join("scratch.txt"), "uncommitted\n").expect("write scratch file");
 
-    let data = build_plan_git_data(&folder, &[], &[fx.repo.clone()]);
+    let data = build_plan_git_data(&folder, &[], repos(&fx));
 
     assert_eq!(data.worktrees.len(), 1);
     assert!(
@@ -127,7 +128,7 @@ fn a_commit_whose_worktree_and_branch_are_gone_is_reported_unreachable() {
     fx.git(&["worktree", "remove", "--force", &worktree.to_string_lossy()]);
     fx.git(&["branch", "-D", "tendril/00203-LostWork"]);
 
-    let data = build_plan_git_data(&folder, &[hash.clone()], &[fx.repo.clone()]);
+    let data = build_plan_git_data(&folder, std::slice::from_ref(&hash), repos(&fx));
 
     assert!(
         data.worktrees.is_empty(),
@@ -168,7 +169,7 @@ fn a_commit_another_branch_still_holds_is_unassociated_but_not_at_risk() {
     fx.commit_on("feature", "elsewhere.txt", "elsewhere\n");
     let hash = fx.git(&["rev-parse", "HEAD"]).trim().to_string();
 
-    let data = build_plan_git_data(&folder, &[hash.clone()], &[fx.repo.clone()]);
+    let data = build_plan_git_data(&folder, std::slice::from_ref(&hash), repos(&fx));
 
     assert_eq!(
         data.unassociated_commits.len(),
@@ -192,7 +193,7 @@ fn a_commit_no_repo_holds_is_reported_missing() {
     let folder = plan_folder(&home, "00205-MissingCommit");
 
     let hash = "0123456789abcdef0123456789abcdef01234567".to_string();
-    let data = build_plan_git_data(&folder, &[hash.clone()], &[fx.repo.clone()]);
+    let data = build_plan_git_data(&folder, std::slice::from_ref(&hash), repos(&fx));
 
     assert_eq!(
         data.unassociated_commit_ref_status.get(&hash),
@@ -236,7 +237,7 @@ fn a_worktree_directory_git_no_longer_knows_about_is_skipped() {
     )
     .expect("write orphan .git file");
 
-    let data = build_plan_git_data(&folder, &[], &[fx.repo.clone()]);
+    let data = build_plan_git_data(&folder, &[], repos(&fx));
 
     assert!(
         data.worktrees.is_empty(),
