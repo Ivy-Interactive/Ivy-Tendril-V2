@@ -316,3 +316,38 @@ function patchFenceBody(lines: string[], answers: InProgressQuestionAnswers): st
 
   return result;
 }
+
+/**
+ * Merges confirmed questions blocks from server message content into local in-flight message content.
+ * Replaces the matched questions fence in localContent with the confirmed fence from serverContent,
+ * preserving all newly accumulated streaming text and deltas outside the fence.
+ */
+export function mergeConfirmedQuestionsBlock(localContent: string, serverContent: string): string {
+  if (!localContent) return serverContent;
+  if (!serverContent) return localContent;
+
+  const serverFences = scanQuestionsFences(serverContent);
+  const localFences = scanQuestionsFences(localContent);
+
+  if (serverFences.length === 0 || localFences.length === 0) {
+    return localContent;
+  }
+
+  const serverLines = serverContent.split(/\r?\n/);
+  const localLines = localContent.split(/\r?\n/);
+
+  for (let i = Math.min(serverFences.length, localFences.length) - 1; i >= 0; i--) {
+    const sFence = serverFences[i];
+    const lFence = localFences[i];
+
+    const sCloseIndex = sFence.closeLineIndex ?? serverLines.length - 1;
+    const serverFenceLines = serverLines.slice(sFence.openLineIndex, sCloseIndex + 1);
+
+    const lCloseIndex = lFence.closeLineIndex ?? localLines.length - 1;
+    const deleteCount = lCloseIndex - lFence.openLineIndex + 1;
+
+    localLines.splice(lFence.openLineIndex, deleteCount, ...serverFenceLines);
+  }
+
+  return localLines.join("\n");
+}

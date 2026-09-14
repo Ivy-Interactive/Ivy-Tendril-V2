@@ -58,7 +58,19 @@ Populate `--verification` flags from the project's verifications in the **Projec
 
 Do NOT read or modify `.counter` directly — `tendril plan create` handles ID allocation.
 
-After creating each plan, write the revision via CLI:
+After creating each plan, write the revision via CLI. To avoid output truncation when writing large plans, assemble the revision in chunks to a temporary file, then submit via `--file`:
+
+```bash
+cat >> /tmp/revision-<PlanId>.md <<'EOF'
+<first chunk of revision content>
+EOF
+cat >> /tmp/revision-<PlanId>.md <<'EOF'
+<next chunk of revision content>
+EOF
+tendril plan write-revision <PlanId> --file=/tmp/revision-<PlanId>.md
+```
+
+For small revisions, `--stdin` remains supported as an alternative:
 
 ```bash
 tendril plan write-revision <PlanId> --stdin <<'EOF'
@@ -66,9 +78,9 @@ tendril plan write-revision <PlanId> --stdin <<'EOF'
 EOF
 ```
 
-**The revision's first line is the `# {title}` H1 heading — it MUST be the exact same string you passed as `<Title>` to `tendril plan create` for that plan** (human-readable Title Case, not the PascalCase folder form). The `plan.yaml` title and the spec H1 must always match.
+**The revision's first line is the `# {title}` H1 heading: it MUST be the exact same string you passed as `<Title>` to `tendril plan create` for that plan** (human-readable Title Case, not the PascalCase folder form). The `plan.yaml` title and the spec H1 must always match.
 
-The command reads from STDIN and auto-creates the next numbered revision file. Fill in Problem, Solution, Tests sections. Each plan must be fully self-contained. Do NOT use the Write or Edit tools to create revision files directly in `Revisions/`.
+This auto-creates the next numbered revision file. Fill in Problem, Solution, Tests sections. Each plan must be fully self-contained. Do NOT use the Write or Edit tools to create revision files directly in `Revisions/`.
 
 #### Open Questions
 

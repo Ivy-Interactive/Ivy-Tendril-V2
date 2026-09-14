@@ -588,4 +588,71 @@ describe("DraftMarkdown interactive questions", () => {
     expect(container.querySelector(".pmv-code-block")).not.toBeNull();
     expect(container.querySelector("pre")).not.toBeNull();
   });
+
+  it("updates the checked radio state optimistically on the initial render before any document content update", () => {
+    const eventHandler = vi.fn();
+    const { container } = render(
+      <DraftMarkdown
+        id="w1"
+        content={SINGLE}
+        events={["OnAnswersChange"]}
+        eventHandler={eventHandler}
+      />,
+    );
+
+    const checkInputs = checks(container);
+    expect(checkInputs[0].checked).toBe(false);
+    expect(checkInputs[1].checked).toBe(false);
+
+    // User clicks first option ("per-request")
+    fireEvent.click(checkInputs[0]);
+
+    // Check that eventHandler was fired
+    expect(eventHandler).toHaveBeenCalled();
+
+    // Check that radio is immediately checked optimistically WITHOUT content prop changing
+    expect(checkInputs[0].checked).toBe(true);
+    expect(checkInputs[1].checked).toBe(false);
+  });
+
+  it("reconciles pending answers and drops local overlay once document content contains the matching answer", () => {
+    const eventHandler = vi.fn();
+    const { container, rerender } = render(
+      <DraftMarkdown
+        id="w1"
+        content={SINGLE}
+        events={["OnAnswersChange"]}
+        eventHandler={eventHandler}
+      />,
+    );
+
+    const checkInputs = checks(container);
+    fireEvent.click(checkInputs[0]);
+    expect(checkInputs[0].checked).toBe(true);
+
+    // Document is updated with the confirmed answer matching the selection
+    rerender(
+      <DraftMarkdown
+        id="w1"
+        content={SINGLE_ANSWERED}
+        events={["OnAnswersChange"]}
+        eventHandler={eventHandler}
+      />,
+    );
+
+    const updatedInputs = checks(container);
+    expect(updatedInputs[0].checked).toBe(true);
+
+    // Now if content updates to unanswered or changed answer, it adheres to the document authority since overlay was pruned
+    rerender(
+      <DraftMarkdown
+        id="w1"
+        content={SINGLE}
+        events={["OnAnswersChange"]}
+        eventHandler={eventHandler}
+      />,
+    );
+    const revertedInputs = checks(container);
+    expect(revertedInputs[0].checked).toBe(false);
+  });
 });

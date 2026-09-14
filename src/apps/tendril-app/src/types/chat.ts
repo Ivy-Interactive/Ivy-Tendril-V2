@@ -87,4 +87,5 @@ export interface ChatState {
   isLoading: boolean;
   error: string | null;
   inProgressAnswers: Record<string, InProgressQuestionAnswers>; // messageId -> { questionId: answer[] }
+  submittingAnswers: Record<string, Record<string, boolean>>; // messageId -> questionId -> boolean
 }

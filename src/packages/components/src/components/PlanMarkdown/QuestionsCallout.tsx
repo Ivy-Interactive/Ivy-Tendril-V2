@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { extractTextContent } from "@/lib/markdown-utils";
@@ -57,17 +57,27 @@ const StaticCallout: React.FC<{ content: string }> = ({ content }) => (
 interface QuestionViewProps {
   question: PlanQuestion;
   blockIndex: number;
-  onAnswer: AnswerCallback;
+  pendingAnswer?: string[];
+  hasPendingAnswer: boolean;
+  onAnswer: (questionId: string, answer: string[] | undefined) => void;
 }
 
-const QuestionView: React.FC<QuestionViewProps> = ({ question, blockIndex, onAnswer }) => {
-  const entries = answerEntries(question);
+const QuestionView: React.FC<QuestionViewProps> = ({
+  question,
+  blockIndex,
+  pendingAnswer,
+  hasPendingAnswer,
+  onAnswer,
+}) => {
+  const entries = hasPendingAnswer ? (pendingAnswer ?? []) : answerEntries(question);
   const options = question.options ?? [];
   const hasOptions = options.length > 0;
   // Not memoized: `options` is a fresh array whenever `question.options` is absent, so a memo keyed
   // on it would never hit anyway, and a set of 2-4 slugs is cheaper to rebuild than to track.
   const optionValues = new Set(options.map((o) => o.value));
-  const typed = otherEntry(question);
+  const typed = hasPendingAnswer
+    ? (pendingAnswer ?? []).find((entry) => !optionValues.has(entry))
+    : otherEntry(question);
 
   // The typed text is a draft, not answer state: the host is told only what changed and may never
   // echo an updated document back, so the input has to hold what the user is typing. Selection
@@ -75,11 +85,22 @@ const QuestionView: React.FC<QuestionViewProps> = ({ question, blockIndex, onAns
   const [draft, setDraft] = useState(typed ?? "");
   const [seenTyped, setSeenTyped] = useState(typed);
   const [otherOpen, setOtherOpen] = useState(typed !== undefined);
+  const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const isInputFocused =
+    isFocused ||
+    (inputRef.current !== null &&
+      typeof document !== "undefined" &&
+      document.activeElement === inputRef.current);
+
   if (typed !== seenTyped) {
-    // The document changed underneath us — resync the draft to it.
+    // The document changed underneath us: resync the draft to it, unless actively focused
     setSeenTyped(typed);
-    setDraft(typed ?? "");
-    setOtherOpen(typed !== undefined);
+    if (!isInputFocused) {
+      setDraft(typed ?? "");
+      setOtherOpen(typed !== undefined);
+    }
   }
 
   const groupName = `pmv-q-${blockIndex}-${question.id}`;
@@ -95,9 +116,19 @@ const QuestionView: React.FC<QuestionViewProps> = ({ question, blockIndex, onAns
     // Emptying the field is not an answer of "": clearing the box means the question is unanswered
     // again. Written literally it would stay struck through in the index and counted as answered,
     // with nothing in it.
-    const empty = answer === "" || (Array.isArray(answer) && answer.length === 0);
+    const empty =
+      answer === "" ||
+      (Array.isArray(answer) && answer.length === 0) ||
+      answer === null ||
+      answer === undefined;
 
-    onAnswer(question.id, empty ? undefined : answer);
+    const formatted = empty
+      ? undefined
+      : Array.isArray(answer)
+        ? answer.map(String)
+        : [String(answer)];
+
+    onAnswer(question.id, formatted);
   };
 
   const selectOption = (option: QuestionOption) => {
@@ -143,11 +174,14 @@ const QuestionView: React.FC<QuestionViewProps> = ({ question, blockIndex, onAns
 
   const freeTextInput = (
     <input
+      ref={inputRef}
       type="text"
       className="pmv-question-other-input"
       value={draft}
       placeholder="Type your answer"
       aria-label={`Other answer for ${question.title || question.id}`}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
       onChange={(e) => writeOther(e.target.value)}
     />
   );
@@ -287,12 +321,30 @@ export interface QuestionsCalloutProps {
   onAnswer?: AnswerCallback;
 }
 
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return sortedA.every((val, idx) => val === sortedB[idx]);
+}
+
 export const QuestionsCallout: React.FC<QuestionsCalloutProps> = ({
   content,
   blockIndex = 0,
   onAnswer,
 }) => {
   const parsed = useMemo(() => parseQuestions(content), [content]);
+  const [pendingAnswers, setPendingAnswers] = useState<Record<string, string[] | undefined>>({});
+  const safetyTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    return () => {
+      for (const timer of Object.values(safetyTimersRef.current)) {
+        clearTimeout(timer);
+      }
+      safetyTimersRef.current = {};
+    };
+  }, []);
 
   // A block that does not parse is the pre-schema plain-text form, and there is nothing to render
   // but the text itself.
@@ -301,6 +353,42 @@ export const QuestionsCallout: React.FC<QuestionsCalloutProps> = ({
   }
 
   const questions = parsed.questions;
+
+  // Reconcile pendingAnswers during render: if the document's confirmed answer matches pendingAnswers[question.id], prune the pending key
+  const hasReconciliation = Object.keys(pendingAnswers).some((qId) => {
+    const q = questions.find((item) => item.id === qId);
+    if (!q) return true;
+    const pending = pendingAnswers[qId];
+    const confirmed = answerEntries(q);
+    return pending === undefined ? confirmed.length === 0 : arraysEqual(pending, confirmed);
+  });
+
+  if (hasReconciliation) {
+    const next = { ...pendingAnswers };
+    for (const qId of Object.keys(pendingAnswers)) {
+      const q = questions.find((item) => item.id === qId);
+      if (!q) {
+        delete next[qId];
+        if (safetyTimersRef.current[qId]) {
+          clearTimeout(safetyTimersRef.current[qId]);
+          delete safetyTimersRef.current[qId];
+        }
+        continue;
+      }
+      const pending = pendingAnswers[qId];
+      const confirmed = answerEntries(q);
+      const matches =
+        pending === undefined ? confirmed.length === 0 : arraysEqual(pending, confirmed);
+      if (matches) {
+        delete next[qId];
+        if (safetyTimersRef.current[qId]) {
+          clearTimeout(safetyTimersRef.current[qId]);
+          delete safetyTimersRef.current[qId];
+        }
+      }
+    }
+    setPendingAnswers(next);
+  }
 
   // No subscriber means the host is showing a plan rather than working through it — the Review
   // stage, or any other read-only view. Present the decisions.
@@ -314,16 +402,37 @@ export const QuestionsCallout: React.FC<QuestionsCalloutProps> = ({
     );
   }
 
-  // One Clear for the whole block rather than one per question: the block is what the user is
-  // working through, and a row of identical buttons down a stack reads as clutter. It resets
-  // every answered question in the block, and stays hidden until there is one.
-  //
-  // Optional questions are included: being optional does not make an answer unretractable.
-  const answered = questions.filter((question) => question.answerPresent);
+  const handleAnswer = (questionId: string, answer: string[] | undefined) => {
+    setPendingAnswers((prev) => ({ ...prev, [questionId]: answer }));
+
+    if (safetyTimersRef.current[questionId]) {
+      clearTimeout(safetyTimersRef.current[questionId]);
+    }
+    safetyTimersRef.current[questionId] = setTimeout(() => {
+      setPendingAnswers((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, questionId)) return prev;
+        const next = { ...prev };
+        delete next[questionId];
+        return next;
+      });
+      delete safetyTimersRef.current[questionId];
+    }, 5000);
+
+    onAnswer(questionId, answer);
+  };
+
+  const isQuestionAnswered = (q: PlanQuestion) => {
+    if (Object.prototype.hasOwnProperty.call(pendingAnswers, q.id)) {
+      const p = pendingAnswers[q.id];
+      return p !== undefined && p.length > 0;
+    }
+    return q.answerPresent;
+  };
+  const answered = questions.filter(isQuestionAnswered);
 
   const clearAll = () => {
     for (const question of answered) {
-      onAnswer(question.id, undefined);
+      handleAnswer(question.id, undefined);
     }
   };
 
@@ -350,7 +459,9 @@ export const QuestionsCallout: React.FC<QuestionsCalloutProps> = ({
           key={question.id}
           question={question}
           blockIndex={blockIndex}
-          onAnswer={onAnswer}
+          pendingAnswer={pendingAnswers[question.id]}
+          hasPendingAnswer={Object.prototype.hasOwnProperty.call(pendingAnswers, question.id)}
+          onAnswer={handleAnswer}
         />
       ))}
     </Shell>

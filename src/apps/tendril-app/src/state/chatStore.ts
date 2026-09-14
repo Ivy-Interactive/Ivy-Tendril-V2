@@ -8,7 +8,11 @@ import type {
   ChatState,
   InProgressQuestionAnswers,
 } from "../types/chat";
-import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
+import {
+  extractPlanQuestions,
+  mergeConfirmedQuestionsBlock,
+  patchQuestionsMarkdown,
+} from "../utils/questionMarkdown";
 
 export type { ChatState, InProgressQuestionAnswers } from "../types/chat";
 
@@ -165,6 +169,7 @@ class ChatStore {
     isLoading: false,
     error: null,
     inProgressAnswers: loadStoredInProgressAnswers(),
+    submittingAnswers: {},
   };
 
   private listeners: Set<() => void> = new Set();
@@ -274,6 +279,7 @@ class ChatStore {
       isLoading: false,
       error: null,
       inProgressAnswers: {},
+      submittingAnswers: {},
     };
     saveStoredInProgressAnswers({});
     this.draftOwners = {};
@@ -430,15 +436,29 @@ class ChatStore {
 
       case "chat.question_answered": {
         if (this.state.activeSessionId === event.sessionId && this.state.activeSession) {
-          if (event.answers) {
-            for (const qId of Object.keys(event.answers)) {
-              this.clearInProgressAnswers(event.messageId, qId);
+          void (async () => {
+            await this.refreshActiveSession().catch(() => {});
+            if (this.state.activeSession) {
+              const msg = this.state.activeSession.messages.find((m) => m.id === event.messageId);
+              if (msg) {
+                const confirmedQuestions = extractPlanQuestions(msg.content);
+                if (event.answers) {
+                  for (const qId of Object.keys(event.answers)) {
+                    const q = confirmedQuestions.find((item) => item.id === qId);
+                    if (q?.answerPresent) {
+                      this.clearInProgressAnswers(event.messageId, qId);
+                    }
+                  }
+                } else {
+                  for (const q of confirmedQuestions) {
+                    if (q.answerPresent) {
+                      this.clearInProgressAnswers(event.messageId, q.id);
+                    }
+                  }
+                }
+              }
             }
-          } else {
-            this.clearInProgressAnswers(event.messageId);
-          }
-          // Refresh session to get server-rendered answered state
-          this.refreshActiveSession().catch(() => {});
+          })();
         }
         break;
       }
@@ -610,14 +630,31 @@ class ChatStore {
       session.isPinned = isPinned;
       session.pinnedAt = isPinned ? this.pinnedSessions[session.id] : undefined;
 
-      this.state.activeSession = session;
+      if (this.state.isGenerating && this.state.activeSession) {
+        const mergedMessages = session.messages.map((serverMsg) => {
+          const localMsg = this.state.activeSession?.messages.find((m) => m.id === serverMsg.id);
+          if (localMsg && localMsg.content.length > serverMsg.content.length) {
+            return {
+              ...localMsg,
+              content: mergeConfirmedQuestionsBlock(localMsg.content, serverMsg.content),
+            };
+          }
+          return serverMsg;
+        });
+        this.state.activeSession = {
+          ...session,
+          messages: mergedMessages,
+        };
+      } else {
+        this.state.activeSession = session;
+      }
       this.state.queuedItems = queue;
       this.backfillDraftOwners([session]);
 
       // Also update in sessions list
       const idx = this.state.sessions.findIndex((s) => s.id === session.id);
       if (idx >= 0) {
-        this.state.sessions[idx] = session;
+        this.state.sessions[idx] = this.state.activeSession ?? session;
         this.state.sessions = this.sortSessions(this.state.sessions);
       }
 
@@ -885,6 +922,36 @@ class ChatStore {
     this.notify();
   }
 
+  public isSubmittingAnswer(messageId: string, questionId?: string): boolean {
+    const msgSubmitting = this.state.submittingAnswers[messageId];
+    if (!msgSubmitting) return false;
+    if (questionId) {
+      return msgSubmitting[questionId] === true;
+    }
+    return Object.values(msgSubmitting).some((v) => v === true);
+  }
+
+  private setSubmitting(messageId: string, questionId: string, isSubmitting: boolean): void {
+    const nextSubmitting = { ...this.state.submittingAnswers };
+    if (isSubmitting) {
+      nextSubmitting[messageId] = {
+        ...nextSubmitting[messageId],
+        [questionId]: true,
+      };
+    } else {
+      if (nextSubmitting[messageId]) {
+        const nextMsg = { ...nextSubmitting[messageId] };
+        delete nextMsg[questionId];
+        if (Object.keys(nextMsg).length === 0) {
+          delete nextSubmitting[messageId];
+        } else {
+          nextSubmitting[messageId] = nextMsg;
+        }
+      }
+    }
+    this.state.submittingAnswers = nextSubmitting;
+  }
+
   public async submitAnswer(
     messageId: string,
     questionId: string,
@@ -892,8 +959,9 @@ class ChatStore {
   ): Promise<void> {
     if (!this.state.activeSessionId) return;
 
-    // Immediately record into inProgressAnswers
+    // Immediately record into inProgressAnswers and track submitting state
     this.setInProgressAnswer(messageId, questionId, answer);
+    this.setSubmitting(messageId, questionId, true);
 
     const values =
       answer === undefined || answer === null
@@ -931,19 +999,54 @@ class ChatStore {
       );
 
       if (this.state.activeSessionId === updatedSession.id) {
-        this.state.activeSession = updatedSession;
+        if (this.state.isGenerating && this.state.activeSession) {
+          const mergedMessages = this.state.activeSession.messages.map((localMsg) => {
+            const serverMsg = updatedSession.messages.find((m) => m.id === localMsg.id);
+            if (!serverMsg) return localMsg;
+            if (localMsg.content.length > serverMsg.content.length) {
+              return {
+                ...localMsg,
+                content: mergeConfirmedQuestionsBlock(localMsg.content, serverMsg.content),
+              };
+            }
+            return serverMsg;
+          });
+          for (const serverMsg of updatedSession.messages) {
+            if (!mergedMessages.some((m) => m.id === serverMsg.id)) {
+              mergedMessages.push(serverMsg);
+            }
+          }
+          this.state.activeSession = {
+            ...updatedSession,
+            messages: mergedMessages,
+          };
+        } else {
+          this.state.activeSession = updatedSession;
+        }
       }
       const idx = this.state.sessions.findIndex((s) => s.id === updatedSession.id);
       if (idx >= 0) {
-        this.state.sessions[idx] = updatedSession;
+        this.state.sessions[idx] =
+          this.state.activeSessionId === updatedSession.id && this.state.activeSession
+            ? this.state.activeSession
+            : updatedSession;
       }
 
-      this.clearInProgressAnswers(messageId, questionId);
-      this.notify();
+      // Only clear inProgressAnswers once confirmed message content in activeSession actually contains the parsed answer
+      const targetMsg = this.state.activeSession?.messages.find((m) => m.id === messageId);
+      if (targetMsg) {
+        const questions = extractPlanQuestions(targetMsg.content);
+        const q = questions.find((item) => item.id === questionId);
+        if (q && q.answerPresent) {
+          this.clearInProgressAnswers(messageId, questionId);
+        }
+      }
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);
-      this.notify();
       throw err;
+    } finally {
+      this.setSubmitting(messageId, questionId, false);
+      this.notify();
     }
   }
 

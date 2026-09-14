@@ -1791,3 +1791,99 @@ async fn test_delete_verification_unreferenced_succeeds() {
         .unwrap();
     assert_eq!(get_ver.status(), reqwest::StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn test_get_job_events_stream() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let job_id = "00881";
+    let logs_dir = server.tendril_home.join("Logs").join("Jobs");
+    std::fs::create_dir_all(&logs_dir).unwrap();
+
+    let eventwire_content = "{\"kind\":\"step\",\"text\":\"starting job\"}\n{\"type\":\"status\",\"message\":\"in progress\"}\n";
+    std::fs::write(
+        logs_dir.join(format!("{}.eventwire.jsonl", job_id)),
+        eventwire_content,
+    )
+    .unwrap();
+
+    let stream_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/{}/events",
+            server.port, job_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stream_resp.status(), reqwest::StatusCode::OK);
+
+    let stream_text = stream_resp.text().await.unwrap();
+    assert!(stream_text.contains("event: event"));
+    assert!(stream_text.contains("data: {\"kind\":\"step\",\"text\":\"starting job\"}"));
+    assert!(stream_text.contains("data: {\"type\":\"status\",\"message\":\"in progress\"}"));
+    assert!(stream_text.contains("event: end"));
+    assert!(stream_text.contains("Completed"));
+}
+
+#[tokio::test]
+async fn test_get_job_events_kind_filtering() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let job_id = "00882";
+    let logs_dir = server.tendril_home.join("Logs").join("Jobs");
+    std::fs::create_dir_all(&logs_dir).unwrap();
+
+    let eventwire_content = [
+        "{\"type\":\"tool_call\",\"tool_name\":\"bash\"}",
+        "{\"kind\":\"tool_result\",\"output\":\"success\"}",
+        "{\"kind\":\"assistant\",\"text\":\"hello\"}",
+        "{\"kind\":\"status\",\"text\":\"running\"}",
+        "{\"type\":\"log\",\"text\":\"internal detail\"}",
+    ]
+    .join("\n");
+    std::fs::write(
+        logs_dir.join(format!("{}.eventwire.jsonl", job_id)),
+        format!("{}\n", eventwire_content),
+    )
+    .unwrap();
+
+    let stream_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/{}/events?kinds=tool_use,assistant",
+            server.port, job_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stream_resp.status(), reqwest::StatusCode::OK);
+
+    let stream_text = stream_resp.text().await.unwrap();
+    assert!(stream_text.contains("tool_call"));
+    assert!(stream_text.contains("tool_result"));
+    assert!(stream_text.contains("assistant"));
+    assert!(!stream_text.contains("\"running\""));
+    assert!(!stream_text.contains("internal detail"));
+    assert!(stream_text.contains("event: end"));
+}
+
+#[tokio::test]
+async fn test_get_job_events_not_found() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/nonexistent-9999/events",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
