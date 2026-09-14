@@ -16,7 +16,6 @@ pub use commands::state::*;
 pub use commands::*;
 
 use service::{MasterDiscovery, WsBridge};
-use tauri::Manager;
 
 pub fn run() {
     use tauri::Manager;
