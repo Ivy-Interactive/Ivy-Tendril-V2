@@ -16,7 +16,12 @@ async function main(): Promise<void> {
         await runTests({
           extensionDevelopmentPath,
           extensionTestsPath,
-          extensionTestsEnv: { TENDRIL_HOME: home.path, [TEST_ISOLATION_ENV]: '1' },
+          extensionTestsEnv: {
+            TENDRIL_HOME: home.path,
+            TENDRIL_PLANS: path.join(home.path, 'Plans'),
+            TENDRIL_CONFIG: path.join(home.path, 'config.yaml'),
+            [TEST_ISOLATION_ENV]: '1'
+          },
           launchArgs: ['--user-data-dir', path.join(home.path, 'vscode-user'), '--disable-extensions']
         });
       } finally {

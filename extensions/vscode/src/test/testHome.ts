@@ -49,6 +49,10 @@ export function createIsolatedTendrilHome(): IsolatedHome {
   );
 
   process.env.TENDRIL_HOME = homePath;
+  // TENDRIL_PLANS and TENDRIL_CONFIG take precedence over the home-derived paths, so an inherited
+  // value would send plan writes back to the developer's live Plans directory despite the temp home.
+  process.env.TENDRIL_PLANS = path.join(homePath, 'Plans');
+  process.env.TENDRIL_CONFIG = path.join(homePath, 'config.yaml');
   process.env[TEST_ISOLATION_ENV] = '1';
 
   return {

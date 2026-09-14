@@ -27,6 +27,19 @@ describe('Tendril Home Guard Suite', () => {
     });
   });
 
+  describe('isolated home environment', () => {
+    it('should pin every home-overriding variable inside the temp home', () => {
+      const isolatedHome = process.env.TENDRIL_HOME as string;
+
+      assert.ok(isolatedHome, 'The suite must run with TENDRIL_HOME set');
+      assert.strictEqual(isRealTendrilHome(isolatedHome), false, 'TENDRIL_HOME must be a temp home');
+      // TENDRIL_PLANS and TENDRIL_CONFIG outrank the home-derived paths, so an inherited value from
+      // the developer's shell would send writes back to the live Plans directory regardless.
+      assert.strictEqual(process.env.TENDRIL_PLANS, path.join(isolatedHome, 'Plans'));
+      assert.strictEqual(process.env.TENDRIL_CONFIG, path.join(isolatedHome, 'config.yaml'));
+    });
+  });
+
   describe('assertIsolatedTendrilHome', () => {
     let originalHome: string | undefined;
     let originalFlag: string | undefined;
