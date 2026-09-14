@@ -127,9 +127,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     // Snapshot for rollback
     const previous = recommendations;
     setRecommendations((prev) =>
-      prev.map((r) =>
-        r.title === title ? { ...r, state: targetState, declineReason, notes } : r,
-      ),
+      prev.map((r) => (r.title === title ? { ...r, state: targetState, declineReason, notes } : r)),
     );
 
     try {
