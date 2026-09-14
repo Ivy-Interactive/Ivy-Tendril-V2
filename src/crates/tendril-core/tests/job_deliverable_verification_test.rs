@@ -211,7 +211,7 @@ async fn execute_plan_exiting_zero_with_no_commits_is_failed_and_worktree_preser
     let job = job_of(
         "ExecutePlan",
         "00805",
-        &plan_folder.to_string_lossy().to_string(),
+        plan_folder.to_string_lossy().as_ref(),
     );
     let finished = run_finish(&home, job, JobStatus::Completed).await;
 
@@ -252,7 +252,7 @@ async fn execute_plan_with_commits_but_pending_verifications_is_failed() {
     let job = job_of(
         "ExecutePlan",
         "00806",
-        &plan_folder.to_string_lossy().to_string(),
+        plan_folder.to_string_lossy().as_ref(),
     );
     let finished = run_finish(&home, job, JobStatus::Completed).await;
 
@@ -282,7 +282,7 @@ async fn execute_plan_with_commits_and_passing_verifications_completes() {
     let job = job_of(
         "ExecutePlan",
         "00807",
-        &plan_folder.to_string_lossy().to_string(),
+        plan_folder.to_string_lossy().as_ref(),
     );
     let finished = run_finish(&home, job, JobStatus::Completed).await;
 
@@ -299,11 +299,7 @@ async fn retry_plan_is_held_to_the_same_bar() {
         &executing_plan(&[], ("RustTest", VerificationStatus::Pass)),
     );
 
-    let job = job_of(
-        "RetryPlan",
-        "00808",
-        &plan_folder.to_string_lossy().to_string(),
-    );
+    let job = job_of("RetryPlan", "00808", plan_folder.to_string_lossy().as_ref());
     let finished = run_finish(&home, job, JobStatus::Completed).await;
 
     assert_eq!(finished.status, JobStatus::Failed);
@@ -335,11 +331,7 @@ async fn create_pr_with_recorded_pr_url_completes() {
     plan.prs = vec!["https://github.com/Ivy-Interactive/Ivy-Tendril-V2/pull/7".to_string()];
     let plan_folder = home.write_plan("00707-HasPr", &plan);
 
-    let job = job_of(
-        "CreatePr",
-        "00810",
-        &plan_folder.to_string_lossy().to_string(),
-    );
+    let job = job_of("CreatePr", "00810", plan_folder.to_string_lossy().as_ref());
     let finished = run_finish(&home, job, JobStatus::Completed).await;
 
     assert_eq!(finished.status, JobStatus::Completed);
@@ -351,11 +343,7 @@ async fn create_pr_without_pr_url_is_failed() {
     let home = HomeFixture::new("deliv-pr-missing");
     let plan_folder = home.write_plan("00708-NoPr", &plan_with(PlanStatus::Review, &[]));
 
-    let job = job_of(
-        "CreatePr",
-        "00811",
-        &plan_folder.to_string_lossy().to_string(),
-    );
+    let job = job_of("CreatePr", "00811", plan_folder.to_string_lossy().as_ref());
     let finished = run_finish(&home, job, JobStatus::Completed).await;
 
     assert_eq!(finished.status, JobStatus::Failed);
@@ -373,11 +361,7 @@ async fn create_pr_reconciles_a_url_from_the_output() {
     let home = HomeFixture::new("deliv-pr-reconcile");
     let plan_folder = home.write_plan("00709-ReconcilePr", &plan_with(PlanStatus::Review, &[]));
 
-    let job = job_of(
-        "CreatePr",
-        "00812",
-        &plan_folder.to_string_lossy().to_string(),
-    );
+    let job = job_of("CreatePr", "00812", plan_folder.to_string_lossy().as_ref());
     append_to_eventwire(
         &home.path,
         &job.id,
@@ -412,7 +396,7 @@ async fn permission_denials_are_recorded_on_the_job() {
     let job = job_of(
         "ExecutePlan",
         "00813",
-        &plan_folder.to_string_lossy().to_string(),
+        plan_folder.to_string_lossy().as_ref(),
     );
     append_to_eventwire(
         &home.path,
@@ -469,7 +453,7 @@ async fn outcome_summary_is_written_to_the_job_log() {
     let job = job_of(
         "ExecutePlan",
         "00814",
-        &plan_folder.to_string_lossy().to_string(),
+        plan_folder.to_string_lossy().as_ref(),
     );
     append_agent_log(&home.path, &job.id, "Implementing", Some("did the thing")).unwrap();
 
@@ -515,11 +499,7 @@ async fn unverified_job_types_still_complete_with_no_plan_changes() {
             ),
         );
 
-        let job = job_of(
-            job_type,
-            "00815",
-            &plan_folder.to_string_lossy().to_string(),
-        );
+        let job = job_of(job_type, "00815", plan_folder.to_string_lossy().as_ref());
         let finished = run_finish(&home, job, JobStatus::Completed).await;
 
         assert_eq!(
@@ -560,7 +540,7 @@ async fn a_still_blocked_job_row_is_not_restarted() {
     let mut blocked = job_of(
         "ExecutePlan",
         "00816",
-        &dependent_folder.to_string_lossy().to_string(),
+        dependent_folder.to_string_lossy().as_ref(),
     );
     blocked.status = JobStatus::Blocked;
     let db_path = get_database_path(&home.path);
@@ -577,7 +557,7 @@ async fn a_still_blocked_job_row_is_not_restarted() {
     let job = job_of(
         "ExecutePlan",
         "00817",
-        &done_folder.to_string_lossy().to_string(),
+        done_folder.to_string_lossy().as_ref(),
     );
     let jobs_map = Arc::new(RwLock::new(HashMap::new()));
     let finished = run_finish(&home, job, JobStatus::Completed).await;
@@ -629,7 +609,7 @@ async fn dependents_are_released_on_completion() {
     let job = job_of(
         "ExecutePlan",
         "00818",
-        &done_folder.to_string_lossy().to_string(),
+        done_folder.to_string_lossy().as_ref(),
     );
     let jobs_map = Arc::new(RwLock::new(HashMap::new()));
     let finished = run_finish(&home, job, JobStatus::Completed).await;

@@ -53,7 +53,9 @@ impl AppState {
                     .await
                 {
                     Ok(count) => {
-                        tracing::info!("Enriched model specs cache from models.dev ({count} models)")
+                        tracing::info!(
+                            "Enriched model specs cache from models.dev ({count} models)"
+                        )
                     }
                     Err(err) => {
                         tracing::warn!(
