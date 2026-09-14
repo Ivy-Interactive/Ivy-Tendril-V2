@@ -131,6 +131,63 @@ fn test_disk_cache_persistence() {
 }
 
 #[test]
+fn test_cache_status_missing_cache() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-model-cache-status-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).expect("failed to create test dir");
+
+    let status = model_cache::cache_status(&tendril_home);
+    assert!(!status.exists);
+    assert!(status.cached_at.is_none());
+    assert_eq!(status.cached_model_count, 0);
+
+    std::fs::remove_dir_all(&tendril_home).ok();
+}
+
+#[test]
+fn test_cache_status_existing_cache() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-model-cache-status-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).expect("failed to create test dir");
+
+    let specs = vec![
+        ModelSpec {
+            model_id: Cow::Borrowed("status-model-a"),
+            display_name: Cow::Borrowed("Status Model A"),
+            context_window: 128_000,
+            max_output_tokens: 8_000,
+            input_per_million: 0.5,
+            output_per_million: 1.5,
+            cache_read_per_million: 0.05,
+            cache_write_per_million: 0.15,
+        },
+        ModelSpec {
+            model_id: Cow::Borrowed("status-model-b"),
+            display_name: Cow::Borrowed("Status Model B"),
+            context_window: 64_000,
+            max_output_tokens: 4_000,
+            input_per_million: 0.25,
+            output_per_million: 0.75,
+            cache_read_per_million: 0.025,
+            cache_write_per_million: 0.075,
+        },
+    ];
+    model_cache::save_disk_cache(&tendril_home, &specs).expect("save should succeed");
+
+    let status = model_cache::cache_status(&tendril_home);
+    assert!(status.exists);
+    assert!(status.cached_at.is_some());
+    assert_eq!(status.cached_model_count, 2);
+    assert!(status.path.ends_with("cache/models_cache.json"));
+
+    std::fs::remove_dir_all(&tendril_home).ok();
+}
+
+#[test]
 fn test_pricing_calculation_with_dynamic_model() {
     let _guard = DYNAMIC_REGISTRY_LOCK.lock().unwrap();
     model_specs::register_dynamic_specs(vec![ModelSpec {
