@@ -249,6 +249,12 @@ pub fn list_non_terminal_jobs(conn: &Connection) -> Result<Vec<JobItem>> {
 }
 
 /// Removes a job row. Returns whether a row existed.
+///
+/// The return value is the caller's *claim*, not a courtesy: a `Blocked` row is replaced by a fresh
+/// job, and this delete is what grants the right to start that job. `false` means another pass
+/// already claimed the row, so the caller must not start anything. `Id` is the primary key, so the
+/// row count can only ever be 0 or 1 and a `bool` carries the whole answer.
+#[must_use = "the delete is a claim: false means another caller already took this row"]
 pub fn delete_job(conn: &Connection, id: &str) -> Result<bool> {
     let affected = conn.execute("DELETE FROM Jobs WHERE Id = ?1", params![id])?;
     Ok(affected > 0)
