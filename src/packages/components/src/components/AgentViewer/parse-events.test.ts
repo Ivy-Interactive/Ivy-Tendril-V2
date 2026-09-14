@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { parseEventWireStream } from "./parse-events.ts";
+import { deriveStatus } from "./status.ts";
 
 describe("parseEventWireStream", () => {
   it("marks tool as success when tool_result has output", () => {
@@ -96,22 +97,22 @@ describe("parseEventWireStream", () => {
     }
   });
 
-  it("parses status event with message into assistant-text", () => {
+  it("parses status event with message into status presentation event", () => {
     const stream = '{"kind":"status","message":"Waiting for agent output..."}';
     const events = parseEventWireStream(stream);
     expect(events).toHaveLength(1);
-    expect(events[0].kind).toBe("assistant-text");
-    if (events[0].kind === "assistant-text") {
+    expect(events[0].kind).toBe("status");
+    if (events[0].kind === "status") {
       expect(events[0].text).toBe("Waiting for agent output...");
     }
   });
 
-  it("parses status event with text property into assistant-text", () => {
+  it("parses status event with text property into status presentation event", () => {
     const stream = '{"kind":"status","text":"Preparing execution..."}';
     const events = parseEventWireStream(stream);
     expect(events).toHaveLength(1);
-    expect(events[0].kind).toBe("assistant-text");
-    if (events[0].kind === "assistant-text") {
+    expect(events[0].kind).toBe("status");
+    if (events[0].kind === "status") {
       expect(events[0].text).toBe("Preparing execution...");
     }
   });
@@ -124,5 +125,27 @@ describe("parseEventWireStream", () => {
     if (events[0].kind === "assistant-text") {
       expect(events[0].text).toBe("Waiting for agent output...");
     }
+  });
+});
+
+describe("deriveStatus", () => {
+  it("returns status text from a status presentation event", () => {
+    const status = deriveStatus([{ kind: "status", text: "Compiling shaders..." }]);
+    expect(status).toEqual({ text: "Compiling shaders...", complete: false });
+  });
+
+  it("prioritizes active tool use over preceding status event", () => {
+    const status = deriveStatus([
+      { kind: "status", text: "Compiling shaders..." },
+      {
+        kind: "tool-use",
+        tool: {
+          toolUseId: "t1",
+          name: "Read",
+          input: { file_path: "shader.wgsl" },
+        },
+      },
+    ]);
+    expect(status).toEqual({ text: "Reading shader.wgsl", complete: false });
   });
 });
