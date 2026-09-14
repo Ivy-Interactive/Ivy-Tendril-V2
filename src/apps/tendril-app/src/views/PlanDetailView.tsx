@@ -12,6 +12,7 @@ import {
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
+import { PlanGit } from "./PlanGit";
 import { PlanPullRequests } from "./PlanPullRequests";
 import { draftActions, type DraftAction } from "../controllers/draft_actions";
 import { collectExecuteGuards, type ExecuteGuard } from "../controllers/execute_guards";
@@ -69,7 +70,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   onBack,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<
-    "spec" | "diff" | "verifications" | "recommendations" | "metadata"
+    "spec" | "diff" | "verifications" | "recommendations" | "git" | "metadata"
   >("spec");
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -447,6 +448,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         </button>
         <button
           type="button"
+          onClick={() => setActiveSubTab("git")}
+          className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
+            activeSubTab === "git"
+              ? "border-ring text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Git
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveSubTab("metadata")}
           className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
             activeSubTab === "metadata"
@@ -510,6 +522,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             )}
           </div>
         )}
+
+        {activeSubTab === "git" && <PlanGit planId={plan.id} />}
 
         {activeSubTab === "metadata" && (
           <div className="grid gap-4 sm:grid-cols-2">
