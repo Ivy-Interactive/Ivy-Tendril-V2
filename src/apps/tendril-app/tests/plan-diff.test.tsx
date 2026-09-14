@@ -69,6 +69,8 @@ describe("buildRevisionPatch", () => {
 describe("PlanRevisionDiff", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // The tab loads its draft comments on mount; these cases are about the patch, not the review.
+    vi.spyOn(bridge, "listDiffComments").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -90,7 +92,8 @@ describe("PlanRevisionDiff", () => {
     const view = screen.getByTestId("plan-diff-view");
     expect(view.textContent).toContain("-The diff tab lies.");
     expect(view.textContent).toContain("+The diff tab shows real revisions.");
-    expect(view.getAttribute("data-file-path")).toBe("plan.md");
+    // The path is scoped to the revision pair, so comments cannot drift between diffs.
+    expect(view.getAttribute("data-file-path")).toBe("plan.md@1-2");
     expect(view.getAttribute("data-old-revision")).toBe("1");
     expect(view.getAttribute("data-new-revision")).toBe("2");
   });
