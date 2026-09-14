@@ -503,6 +503,12 @@ pub struct PrStatusDto {
     pub plan_title: String,
     #[serde(default)]
     pub project: String,
+    /// `SUM(Cost)` over the plan's `Costs` rows; `0.0` when the plan has none or none is priceable.
+    #[serde(default)]
+    pub cost: f64,
+    /// `SUM(Tokens)` over the plan's `Costs` rows; `0` when the plan has none.
+    #[serde(default)]
+    pub tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

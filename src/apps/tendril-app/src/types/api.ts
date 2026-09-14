@@ -254,6 +254,10 @@ export interface PrStatus {
   planFolder: string;
   planTitle: string;
   project: string;
+  /** `SUM(Cost)` over the plan's cost rows; `0` when the plan has none or none is priceable. */
+  cost: number;
+  /** `SUM(Tokens)` over the plan's cost rows; `0` when the plan has none. */
+  tokens: number;
 }
 
 export interface PrTransition {
