@@ -17,7 +17,7 @@ export interface QuestionOption {
 }
 
 export interface PlanQuestion {
-  /** Stable and unique across the whole document — `OnAnswersChange` identifies a question by it. */
+  /** Stable and unique across the whole document, `OnAnswersChange` identifies a question by it. */
   id: string;
   title: string;
   header?: string;
@@ -27,7 +27,7 @@ export interface PlanQuestion {
   /** Whether the user may type a value of their own. Defaults to true, per the schema. */
   other: boolean;
   /**
-   * Whether the plan is complete without an answer. Worth asking, not worth blocking on — an index
+   * Whether the plan is complete without an answer. Worth asking, not worth blocking on: an index
    * treats an unanswered optional question as settled.
    */
   optional: boolean;
@@ -36,7 +36,7 @@ export interface PlanQuestion {
   answer?: unknown;
   /**
    * Whether the question carries an answer. A present-but-null `answer` is not a state the schema
-   * has — the validator rejects it — so it reads as unanswered.
+   * has (the validator rejects it), so it reads as unanswered.
    */
   answerPresent: boolean;
 }
@@ -44,8 +44,7 @@ export interface PlanQuestion {
 export type ParsedQuestions =
   | { kind: "questions"; questions: PlanQuestion[] }
   /**
-   * The body is not a mapping with a `questions` key — the plain-text form that predates the
-   * schema, which existing revisions contain — or its `id`s are missing or collide within this
+   * The body is not a valid question mapping or list, or its `id`s are missing or collide within this
    * block. Renders as the static callout.
    */
   | { kind: "invalid" };
@@ -61,7 +60,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  *
  * The schema says these fields are strings, but YAML decides otherwise: an option titled `4.2` or
  * valued `2024` parses as a number, and a `title: yes` as a boolean. The C# validator accepts all
- * of them — YamlDotNet coerces a scalar into a `string` field — so a block that lints clean would
+ * of them (YamlDotNet coerces a scalar into a `string` field), so a block that lints clean would
  * otherwise render blank here. Coerce rather than reject: the widget's job is to display a plan.
  */
 function scalarString(value: unknown): string | undefined {
@@ -79,6 +78,34 @@ function optionalString(value: unknown): string | undefined {
   return text !== undefined && text.length > 0 ? text : undefined;
 }
 
+/**
+ * A mapping carrying an `id`. That is the one field a question cannot do without: an answer travels
+ * as an id and a value and nothing else, and it is what tells a wrapper-less block apart from a
+ * legacy bullet list of prose.
+ */
+function looksLikeQuestion(value: unknown): boolean {
+  return isRecord(value) && "id" in value;
+}
+
+/**
+ * The question list of one fence body, or undefined when the body is not a questions block at all.
+ *
+ * Three shapes say the same thing, and agents write all three: the canonical `questions:` mapping,
+ * the list written bare without that wrapper, and a single question written without either. The
+ * fence already says `questions`, so repeating the word inside reads as redundant, and a block
+ * turned away here renders as a code listing the user cannot answer.
+ *
+ * The C# `QuestionBlockParser` and `QuestionAnswers` accept exactly these three, and must keep
+ * agreeing with this: a shape one side reads and another does not is a picker whose answer goes
+ * nowhere.
+ */
+function questionList(raw: unknown): unknown[] | undefined {
+  if (Array.isArray(raw)) return raw.length > 0 && raw.every(looksLikeQuestion) ? raw : undefined;
+  if (!isRecord(raw)) return undefined;
+  if (Array.isArray(raw.questions)) return raw.questions;
+  return looksLikeQuestion(raw) ? [raw] : undefined;
+}
+
 function readOptions(raw: unknown): QuestionOption[] | undefined {
   if (!Array.isArray(raw)) return undefined;
 
@@ -90,28 +117,170 @@ function readOptions(raw: unknown): QuestionOption[] | undefined {
   }));
 }
 
+function isAlreadyQuoted(val: string): boolean {
+  const trimmed = val.trim();
+  if (trimmed.length < 2) return false;
+
+  if (trimmed.startsWith('"')) {
+    let escaped = false;
+    for (let i = 1; i < trimmed.length; i++) {
+      const c = trimmed[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (c === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (c === '"') {
+        const rest = trimmed.slice(i + 1).trim();
+        return rest.length === 0 || rest.startsWith("#");
+      }
+    }
+    return false;
+  }
+
+  if (trimmed.startsWith("'")) {
+    for (let i = 1; i < trimmed.length; i++) {
+      const c = trimmed[i];
+      if (c === "'") {
+        if (i + 1 < trimmed.length && trimmed[i + 1] === "'") {
+          i++;
+          continue;
+        }
+        const rest = trimmed.slice(i + 1).trim();
+        return rest.length === 0 || rest.startsWith("#");
+      }
+    }
+    return false;
+  }
+
+  return false;
+}
+
+function getIndent(line: string): number {
+  let count = 0;
+  while (count < line.length && line[count] === " ") {
+    count++;
+  }
+  return count;
+}
+
+const FIELD_REGEX = /^(\s*(?:-\s+)?)(title|header|description):[ \t]*(.*)$/;
+const BLOCK_SCALAR_REGEX = /^[|>][-+]?\d*(?:\s+.*)?$/;
+
 /**
- * Reads one fence body. Never throws: malformed YAML, prose, and a mapping without a `questions`
- * key all come back as `kind: "invalid"`.
+ * Sanitizes YAML text in a questions block by wrapping unquoted strings in text fields
+ * (`title`, `header`, `description`) in double quotes, making them resilient to colons,
+ * code snippets, and formatting. Preserves block scalars (| and >) intact.
+ */
+export function sanitizeQuestionYaml(body: string): string {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const result: string[] = [];
+
+  let inBlockScalar = false;
+  let blockScalarIndent = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (inBlockScalar) {
+      if (line.trim().length === 0) {
+        result.push(line);
+        continue;
+      }
+
+      const indent = getIndent(line);
+      if (indent > blockScalarIndent) {
+        result.push(line);
+        continue;
+      }
+
+      inBlockScalar = false;
+    }
+
+    const match = line.match(FIELD_REGEX);
+    if (!match) {
+      result.push(line);
+      continue;
+    }
+
+    const prefix = match[1];
+    const key = match[2];
+    const val = match[3];
+    const trimmedVal = val.trim();
+
+    if (trimmedVal.length === 0) {
+      result.push(line);
+      continue;
+    }
+
+    if (BLOCK_SCALAR_REGEX.test(trimmedVal)) {
+      inBlockScalar = true;
+      blockScalarIndent = prefix.length;
+      result.push(line);
+      continue;
+    }
+
+    if (isAlreadyQuoted(trimmedVal)) {
+      result.push(line);
+      continue;
+    }
+
+    const escaped = trimmedVal.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    result.push(`${prefix}${key}: "${escaped}"`);
+  }
+
+  return result.join("\n");
+}
+
+/**
+ * Reading options shared by every parse of a block: a key an agent repeated within one mapping
+ * (`other: true` written twice) keeps its last value instead of failing the whole block.
+ */
+export const TOLERANT_YAML = { uniqueKeys: false } as const;
+
+/**
+ * Reads one fence body. Never throws: malformed YAML, prose, and a mapping that is none of the
+ * shapes `questionList` knows all come back as `kind: "invalid"`.
  *
- * `id` is required and must be unique **within this block**. A cross-block collision is out of
- * reach here — this parser only ever sees one fence — and belongs in the C# validator, the one
+ * `id` is required and must be unique within this block. A cross-block collision is out of
+ * reach here (this parser only ever sees one fence) and belongs in the C# validator, the one
  * component with the whole document in view.
  */
 export function parseQuestions(body: string): ParsedQuestions {
   let raw: unknown;
+  let usedSanitization = false;
   try {
-    raw = parse(body);
+    raw = parse(body, TOLERANT_YAML);
   } catch {
-    return { kind: "invalid" };
+    try {
+      raw = parse(sanitizeQuestionYaml(body), TOLERANT_YAML);
+      usedSanitization = true;
+    } catch {
+      return { kind: "invalid" };
+    }
   }
 
-  if (!isRecord(raw) || !Array.isArray(raw.questions)) return { kind: "invalid" };
+  let list = questionList(raw);
+  if (list === undefined && !usedSanitization) {
+    try {
+      const sanitized = sanitizeQuestionYaml(body);
+      if (sanitized !== body) {
+        raw = parse(sanitized, TOLERANT_YAML);
+        list = questionList(raw);
+      }
+    } catch {
+      // ignore
+    }
+  }
+  if (list === undefined) return { kind: "invalid" };
 
   const seen = new Set<string>();
   const questions: PlanQuestion[] = [];
 
-  for (const entry of raw.questions) {
+  for (const entry of list) {
     if (!isRecord(entry)) return { kind: "invalid" };
 
     const id = scalarString(entry.id);
@@ -124,7 +293,7 @@ export function parseQuestions(body: string): ParsedQuestions {
       header: optionalString(entry.header),
       description: optionalString(entry.description),
       multiple: entry.multiple === true,
-      other: entry.other !== false,
+      other: entry.other !== false, // Retired key, kept for back-compat
       optional: entry.optional === true,
       options: readOptions(entry.options),
       answer: entry.answer,
