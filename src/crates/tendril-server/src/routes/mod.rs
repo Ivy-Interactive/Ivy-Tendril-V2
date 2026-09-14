@@ -8,6 +8,7 @@ pub mod models;
 pub mod ping;
 pub mod plans;
 pub mod projects;
+pub mod vault;
 pub mod verifications;
 pub mod ws;
 
@@ -136,6 +137,29 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
+        )
+        // Vaults. `:id` accepts the literal `default` for the primary vault, so the static
+        // `discover` and `accounts` segments are declared alongside it rather than under it.
+        .route(
+            "/api/vaults",
+            get(vault::list_vaults).post(vault::connect_vault),
+        )
+        .route("/api/vaults/create", post(vault::create_vault_repo))
+        .route("/api/vaults/discover", get(vault::discover_vaults))
+        .route("/api/vaults/accounts", get(vault::github_accounts))
+        .route(
+            "/api/vaults/:id",
+            get(vault::get_vault_status)
+                .put(vault::set_always_up_to_date)
+                .delete(vault::disconnect_vault),
+        )
+        .route("/api/vaults/:id/catalog", get(vault::get_catalog))
+        .route("/api/vaults/:id/pull", post(vault::pull_latest))
+        .route("/api/vaults/:id/push", post(vault::push_and_create_pr))
+        .route("/api/vaults/:id/projects", post(vault::import_project))
+        .route(
+            "/api/vaults/:id/projects/:project",
+            delete(vault::delete_project_from_vault),
         )
         .route(
             "/api/verifications",

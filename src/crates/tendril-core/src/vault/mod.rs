@@ -36,7 +36,7 @@ pub use service::{
     disconnect_vault, GhFuture, GhRunner,
 };
 pub use settings::{
-    ensure_vaults_initialized, extract_repo_name, load_vaults, new_vault_id, normalize_repo_url,
-    resolve_vault, save_vaults, split_owner_and_name, strip_git_suffix, vault_dir, vault_index,
+    ensure_vaults_initialized, extract_repo_name, find_vault, load_vaults, new_vault_id,
+    normalize_repo_url, resolve_vault, save_vaults, split_owner_and_name, strip_git_suffix, vault_dir, vault_index,
     ProjectVaultTracking, VaultSettings, VaultState, VAULTS_KEY, VAULT_KEY,
 };

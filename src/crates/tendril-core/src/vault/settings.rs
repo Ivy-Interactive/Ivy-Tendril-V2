@@ -232,18 +232,12 @@ pub fn new_vault_id() -> String {
 /// The literal `default` is the route contract's way of saying "whichever vault is primary", so it
 /// skips the lookup rather than matching a vault that happens to be *named* `default`.
 pub fn resolve_vault(state: &VaultState, vault_id: Option<&str>) -> Option<VaultSettings> {
-    if let Some(vault_id) = vault_id
+    if let Some(found) = vault_id
         .map(str::trim)
         .filter(|id| !id.is_empty() && !id.eq_ignore_ascii_case("default"))
+        .and_then(|id| find_vault(state, id))
     {
-        let found = state.vaults.iter().find(|v| {
-            v.id.eq_ignore_ascii_case(vault_id)
-                || v.repo_url.eq_ignore_ascii_case(vault_id)
-                || v.name.eq_ignore_ascii_case(vault_id)
-        });
-        if let Some(found) = found {
-            return Some(found.clone());
-        }
+        return Some(found);
     }
 
     state
@@ -252,6 +246,23 @@ pub fn resolve_vault(state: &VaultState, vault_id: Option<&str>) -> Option<Vault
         .find(|v| v.enabled)
         .cloned()
         .or_else(|| state.primary.clone())
+}
+
+/// Looks up a vault by id, repository URL or name, *without* [`resolve_vault`]'s fallback.
+///
+/// Route handlers need the distinction: `GET /api/vaults/nope` must answer 404 rather than quietly
+/// reporting on the primary vault instead.
+pub fn find_vault(state: &VaultState, vault_id: &str) -> Option<VaultSettings> {
+    let vault_id = vault_id.trim();
+    state
+        .vaults
+        .iter()
+        .find(|v| {
+            v.id.eq_ignore_ascii_case(vault_id)
+                || v.repo_url.eq_ignore_ascii_case(vault_id)
+                || v.name.eq_ignore_ascii_case(vault_id)
+        })
+        .cloned()
 }
 
 /// The index of a vault in `vaults:`, by id.
