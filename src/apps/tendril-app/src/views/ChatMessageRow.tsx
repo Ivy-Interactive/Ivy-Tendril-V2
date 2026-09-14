@@ -52,10 +52,10 @@ const imageSrc = (path: string): string => {
 };
 
 const SYSTEM_EVENT_ICONS: Record<SystemEventKind, React.ReactNode> = {
-  completed: <CheckCircle2 className="size-3.5 text-emerald-400" aria-hidden="true" />,
-  failed: <XCircle className="size-3.5 text-rose-400" aria-hidden="true" />,
-  started: <PlayCircle className="size-3.5 text-sky-400" aria-hidden="true" />,
-  info: <Info className="size-3.5 text-slate-400" aria-hidden="true" />,
+  completed: <CheckCircle2 className="size-3.5 text-success" aria-hidden="true" />,
+  failed: <XCircle className="size-3.5 text-destructive" aria-hidden="true" />,
+  started: <PlayCircle className="size-3.5 text-info" aria-hidden="true" />,
+  info: <Info className="size-3.5 text-muted-foreground" aria-hidden="true" />,
 };
 
 export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function ChatMessageRow({
@@ -164,7 +164,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
         data-kind={systemEvent.kind}
         className="flex justify-center px-4 py-1.5"
       >
-        <div className="flex max-w-3xl flex-wrap items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 text-xs text-slate-300">
+        <div className="flex max-w-3xl flex-wrap items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1 text-xs text-muted-foreground">
           {SYSTEM_EVENT_ICONS[systemEvent.kind]}
           <span>{systemEvent.text}</span>
           {systemEvent.plan &&
@@ -174,15 +174,15 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                 data-testid="chat-system-event-plan"
                 onClick={() => onOpenPlan(systemEvent.plan!.id)}
                 title="Open plan"
-                className="rounded px-1 font-medium text-emerald-400 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="rounded px-1 font-medium text-success underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 {systemEvent.plan.label}
               </button>
             ) : (
-              <span className="font-medium text-slate-200">{systemEvent.plan.label}</span>
+              <span className="font-medium text-foreground">{systemEvent.plan.label}</span>
             ))}
           {systemEvent.detail && (
-            <span className="text-slate-500" title={systemEvent.detail}>
+            <span className="text-muted-foreground" title={systemEvent.detail}>
               — {systemEvent.detail}
             </span>
           )}
@@ -198,8 +198,8 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
           variant={isUser ? "sent" : "received"}
           className={
             isUser
-              ? "bg-emerald-600 text-white"
-              : "bg-slate-900 border border-slate-800 text-slate-100"
+              ? "bg-primary text-primary-foreground"
+              : "bg-card border border-border text-foreground"
           }
         >
           {isUser ? (
@@ -215,7 +215,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
               {isSubmitting && (
                 <div
                   data-testid="submitting-answer-indicator"
-                  className="flex items-center gap-1.5 text-xs text-emerald-400 mt-2 font-medium"
+                  className="flex items-center gap-1.5 text-xs text-success mt-2 font-medium"
                 >
                   <Loader2 className="size-3.5 animate-spin" />
                   <span>Submitting answer...</span>
@@ -228,7 +228,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
             <div
               data-testid="message-attachments"
               className={`mt-2 flex flex-wrap gap-1.5 pt-1.5 border-t ${
-                isUser ? "border-emerald-500/40" : "border-slate-800"
+                isUser ? "border-success/40" : "border-border"
               }`}
             >
               {message.attachments.map((att, idx) =>
@@ -240,7 +240,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                     onClick={() => onOpenImage({ url: imageSrc(att.path), title: att.name })}
                     title={`Open ${att.name}`}
                     aria-label={`Open ${att.name}`}
-                    className="overflow-hidden rounded border border-slate-700 hover:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                    className="overflow-hidden rounded border border-border hover:border-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <img
                       src={imageSrc(att.path)}
@@ -253,7 +253,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                   <div
                     key={`${att.path}-${idx}`}
                     className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
-                      isUser ? "bg-black/20 text-white/95" : "bg-slate-800 text-slate-300"
+                      isUser ? "bg-black/20 text-white/95" : "bg-muted text-muted-foreground"
                     }`}
                     title={att.path}
                   >
@@ -271,12 +271,12 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
           <ChatBubbleAction
             icon={<Copy className="size-3.5" />}
             onClick={() => onCopy(message)}
-            className={isCopied ? "text-emerald-400" : "text-slate-400"}
+            className={isCopied ? "text-success" : "text-muted-foreground"}
           />
           <button
             type="button"
             onClick={() => onCreatePlan(message.content)}
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 px-2 py-1 rounded transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-success px-2 py-1 rounded transition-colors"
             title="Create Plan from message"
           >
             <FilePlus className="size-3.5" />

@@ -199,7 +199,7 @@ export const App: React.FC = () => {
 
       if (!detail) {
         return (
-          <div className="flex h-64 items-center justify-center text-sm text-slate-400">
+          <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
             Loading plan {planId}...
           </div>
         );
@@ -320,22 +320,22 @@ export const App: React.FC = () => {
       case "jobs":
         return (
           <div className="space-y-4">
-            <h1 className="text-2xl font-bold text-slate-100">Jobs Activity</h1>
+            <h1 className="text-2xl font-bold text-foreground">Jobs Activity</h1>
             <div className="grid gap-3">
               {jobsState.jobs.map((j) => (
                 <div
                   key={j.id}
                   onClick={() => handleSelectJob(j.id)}
-                  className="cursor-pointer rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition hover:border-slate-700"
+                  className="cursor-pointer rounded-xl border border-border bg-card/60 p-4 transition hover:border-ring"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs text-slate-400">{j.id}</span>
-                    <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                    <span className="font-mono text-xs text-muted-foreground">{j.id}</span>
+                    <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
                       {j.status}
                     </span>
                   </div>
-                  <h3 className="mt-1 text-sm font-semibold text-slate-100">{j.type}</h3>
-                  <p className="text-xs text-slate-400">{j.planTitle || j.project}</p>
+                  <h3 className="mt-1 text-sm font-semibold text-foreground">{j.type}</h3>
+                  <p className="text-xs text-muted-foreground">{j.planTitle || j.project}</p>
                 </div>
               ))}
             </div>
@@ -407,14 +407,14 @@ export const App: React.FC = () => {
           <div
             role="alert"
             data-testid="shell-error"
-            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
           >
             <span>{shellError}</span>
             <button
               type="button"
               onClick={() => setShellError(null)}
               aria-label="Dismiss error"
-              className="text-red-400 hover:text-red-200"
+              className="text-destructive hover:text-destructive/80"
             >
               ✕
             </button>
@@ -423,10 +423,10 @@ export const App: React.FC = () => {
         <React.Suspense
           fallback={
             <div
-              className="flex h-64 items-center justify-center text-slate-400"
+              className="flex h-64 items-center justify-center text-muted-foreground"
               data-testid="view-fallback-spinner"
             >
-              <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+              <Loader2 className="h-6 w-6 animate-spin text-success" />
             </div>
           }
         >

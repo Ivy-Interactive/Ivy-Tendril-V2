@@ -54,10 +54,10 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
           title={runningCount > 0 ? `${runningCount} job(s) running` : "View jobs"}
           className={`flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${
             runningCount > 0
-              ? "border-emerald-800/60 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/60"
+              ? "border-success/60 bg-success/10 text-success hover:bg-success/20"
               : failedCount > 0
-                ? "border-rose-800/60 bg-rose-950/50 text-rose-300 hover:bg-rose-900/50"
-                : "border-slate-700 bg-slate-800/70 text-slate-300 hover:bg-slate-700"
+                ? "border-destructive/60 bg-destructive/10 text-destructive hover:bg-destructive/20"
+                : "border-border bg-muted/70 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           }`}
         >
           {runningCount > 0 ? (
@@ -214,19 +214,19 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onReviewJobs,
   agentPicker,
 }) => (
-  <div className="flex items-center justify-between border-b border-slate-800 bg-slate-900/40 px-4 py-2.5">
+  <div className="flex items-center justify-between border-b border-border bg-card/40 px-4 py-2.5">
     <div className="flex min-w-0 items-center gap-3">
-      <h2 className="truncate text-sm font-medium text-slate-200">{title}</h2>
+      <h2 className="truncate text-sm font-medium text-foreground">{title}</h2>
       {messageCount !== undefined && (
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-muted-foreground/70">
           {messageCount} message{messageCount === 1 ? "" : "s"}
         </span>
       )}
       {isGenerating && (
-        <div className="flex items-center gap-1.5 rounded-full border border-emerald-800/60 bg-emerald-950/60 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+        <div className="flex items-center gap-1.5 rounded-full border border-success/60 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-success"></span>
           </span>
           <span>Streaming...</span>
         </div>
@@ -244,8 +244,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         onClick={onToggleAutoScroll}
         className={`rounded px-2 py-1 text-xs font-medium transition ${
           autoScrollEnabled
-            ? "border border-slate-700 bg-slate-800 text-emerald-400"
-            : "border border-slate-800 bg-slate-900 text-slate-400"
+            ? "border border-border bg-muted text-success"
+            : "border border-border bg-card text-muted-foreground"
         }`}
         title="Toggle auto-scrolling to streaming deltas"
       >

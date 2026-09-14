@@ -485,8 +485,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
         onClick={() => chatStore.selectSession(session.id)}
         className={`group flex items-center justify-between rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors ${
           isActive
-            ? "bg-slate-800 text-white font-medium shadow-sm"
-            : "text-slate-300 hover:bg-slate-800/50 hover:text-slate-100"
+            ? "bg-muted text-foreground font-medium shadow-sm"
+            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
         }`}
       >
         <div className="flex-1 min-w-0 pr-2">
@@ -501,12 +501,12 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                   if (e.key === "Escape") setEditingSessionId(null);
                 }}
                 autoFocus
-                className="w-full rounded bg-slate-950 px-1.5 py-0.5 text-xs text-white border border-slate-700 focus:outline-none focus:border-emerald-500"
+                className="w-full rounded bg-background px-1.5 py-0.5 text-xs text-foreground border border-border focus:outline-none focus:border-ring"
               />
               <button
                 type="button"
                 onClick={(e) => handleSaveRename(session.id, e)}
-                className="text-slate-400 hover:text-emerald-400 p-0.5"
+                className="text-muted-foreground hover:text-success p-0.5"
                 title="Save"
               >
                 <Check className="size-3.5" />
@@ -516,11 +516,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
             <>
               <div className="flex items-center gap-1.5 min-w-0">
                 {session.isPinned && (
-                  <Pin className="size-3 text-amber-400 shrink-0" data-testid="pin-indicator" />
+                  <Pin className="size-3 text-warning shrink-0" data-testid="pin-indicator" />
                 )}
                 <span className="truncate text-xs font-medium">{session.title}</span>
               </div>
-              <div className="text-[10px] text-slate-500">
+              <div className="text-[10px] text-muted-foreground/70">
                 {formatRelativeTime(session.updatedAt || session.createdAt)}
               </div>
             </>
@@ -537,8 +537,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
               }}
               className={`rounded p-1 ${
                 session.isPinned
-                  ? "text-amber-400 hover:bg-slate-700 hover:text-amber-300"
-                  : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                  ? "text-warning hover:bg-accent"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
               }`}
               title={session.isPinned ? "Unpin chat" : "Pin chat"}
             >
@@ -547,7 +547,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
             <button
               type="button"
               onClick={(e) => handleStartRename(session, e)}
-              className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
               title="Rename"
             >
               <Edit2 className="size-3" />
@@ -555,7 +555,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
             <button
               type="button"
               onClick={(e) => handleDeleteSession(session.id, e)}
-              className="rounded p-1 text-slate-400 hover:bg-rose-900/50 hover:text-rose-300"
+              className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               title="Delete"
             >
               <Trash2 className="size-3" />
@@ -567,17 +567,17 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   };
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
       {/* Session Sidebar */}
       <aside
         style={{ width: `${sidebarWidth}px` }}
-        className="relative flex flex-shrink-0 flex-col border-r border-slate-800 bg-slate-900/60"
+        className="relative flex flex-shrink-0 flex-col border-r border-border bg-card/60"
       >
-        <div className="p-3 border-b border-slate-800">
+        <div className="p-3 border-b border-border">
           <button
             type="button"
             onClick={handleCreateSession}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-emerald-500 transition-colors"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
           >
             <Plus className="size-4" />
             <span>New Chat</span>
@@ -586,18 +586,18 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
 
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {sessions.length === 0 ? (
-            <div className="p-4 text-center text-xs text-slate-400">
+            <div className="p-4 text-center text-xs text-muted-foreground">
               No chat sessions yet. Click "New Chat" to start.
             </div>
           ) : pinnedSessionsList.length > 0 ? (
             <>
-              <div className="px-2.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              <div className="px-2.5 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                 Pinned
               </div>
               {pinnedSessionsList.map((session) => renderSessionItem(session))}
               {unpinnedSessionsList.length > 0 && (
                 <>
-                  <div className="pt-2 px-2.5 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  <div className="pt-2 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                     Recent
                   </div>
                   {unpinnedSessionsList.map((session) => renderSessionItem(session))}
@@ -612,8 +612,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
         {/* Resizer Handle */}
         <div
           {...separatorProps}
-          className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-emerald-500/50 transition-colors z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950 focus-visible:bg-emerald-500/50 ${
-            isResizingSidebar ? "bg-emerald-500 w-2" : "bg-transparent"
+          className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/50 transition-colors z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:bg-primary/50 ${
+            isResizingSidebar ? "bg-success w-2" : "bg-transparent"
           }`}
           title="Drag to resize chat sidebar, double-click to reset"
         />
@@ -623,7 +623,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* Error Banner */}
         {error && (
-          <div className="border-b border-rose-800/50 bg-rose-950/40 px-4 py-2 text-xs text-rose-300 flex items-center justify-between">
+          <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive flex items-center justify-between">
             <span>{error}</span>
           </div>
         )}
@@ -644,20 +644,20 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
         {/* Message Thread List */}
         <div className="flex-1 overflow-hidden relative">
           {!activeSession || activeSession.messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center text-center p-6 text-slate-400">
+            <div className="flex h-full flex-col items-center justify-center text-center p-6 text-muted-foreground">
               <div className="max-w-md space-y-4">
                 <div className="space-y-2">
-                  <h3 className="text-lg font-semibold text-slate-200">
+                  <h3 className="text-lg font-semibold text-foreground">
                     Tendril Conversational Agent
                   </h3>
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-muted-foreground">
                     Ask questions, research codebase architecture, or plan new features. Interactive
                     question blocks and live streaming will appear here.
                   </p>
                 </div>
 
                 <div className="pt-2">
-                  <div className="text-xs font-medium text-slate-500 mb-2.5 uppercase tracking-wider">
+                  <div className="text-xs font-medium text-muted-foreground/70 mb-2.5 uppercase tracking-wider">
                     Suggested Prompts
                   </div>
                   <div className="flex flex-wrap justify-center gap-2" data-testid="sample-prompts">
@@ -669,7 +669,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                           setInputPrompt(item.prompt);
                           requestComposerFocus();
                         }}
-                        className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-300 hover:border-emerald-600 hover:bg-slate-800 hover:text-white transition-colors shadow-xs"
+                        className="rounded-lg border border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground hover:border-ring hover:bg-muted hover:text-foreground transition-colors shadow-xs"
                       >
                         {item.label}
                       </button>
@@ -739,8 +739,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
               )}
 
               {isGenerating && (
-                <div className="flex items-center gap-2 text-xs text-slate-400 px-4 py-2">
-                  <Loader2 className="size-4 animate-spin text-emerald-500" />
+                <div className="flex items-center gap-2 text-xs text-muted-foreground px-4 py-2">
+                  <Loader2 className="size-4 animate-spin text-success" />
                   <span>Generating response...</span>
                 </div>
               )}
@@ -769,9 +769,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 type="button"
                 data-testid="chat-jump-to-question-button"
                 onClick={() => handleJumpToQuestion(targetPendingQuestion.messageIndex)}
-                className="pointer-events-auto flex items-center gap-2 rounded-full bg-amber-950/90 border border-amber-700/80 px-3.5 py-1.5 text-xs font-medium text-amber-200 shadow-lg backdrop-blur hover:bg-amber-900 hover:text-amber-100 transition-all cursor-pointer"
+                className="pointer-events-auto flex items-center gap-2 rounded-full bg-warning/10 border border-warning/40 px-3.5 py-1.5 text-xs font-medium text-warning shadow-lg backdrop-blur hover:bg-warning/20 transition-all cursor-pointer"
               >
-                <HelpCircle className="size-3.5 text-amber-400" />
+                <HelpCircle className="size-3.5 text-warning" />
                 <span>
                   Jump to pending question {targetPendingQuestion.direction === "down" ? "↓" : "↑"}
                 </span>
@@ -783,13 +783,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 type="button"
                 data-testid="chat-scroll-tail-button"
                 onClick={() => scrollToTail(true)}
-                className="pointer-events-auto flex items-center gap-2 rounded-full bg-slate-900/90 border border-slate-700 px-3.5 py-1.5 text-xs font-medium text-slate-200 shadow-lg backdrop-blur hover:bg-slate-800 hover:text-white transition-all cursor-pointer"
+                className="pointer-events-auto flex items-center gap-2 rounded-full bg-card/90 border border-border px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur hover:bg-muted transition-all cursor-pointer"
               >
-                <ArrowDown className="size-3.5 text-emerald-400" />
+                <ArrowDown className="size-3.5 text-success" />
                 {isGenerating ? (
                   <>
                     <span>Scroll to streaming tail</span>
-                    <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="flex h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
                   </>
                 ) : (
                   <span>Scroll to bottom</span>
@@ -801,9 +801,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
 
         {/* Queued Items Drawer */}
         {queuedItems.length > 0 && (
-          <div className="border-t border-slate-800 bg-slate-900/80 px-4 py-2">
+          <div className="border-t border-border bg-card/80 px-4 py-2">
             <div
-              className="flex items-center justify-between cursor-pointer text-xs font-semibold text-slate-300 select-none"
+              className="flex items-center justify-between cursor-pointer text-xs font-semibold text-muted-foreground select-none"
               onClick={() => setIsQueueExpanded(!isQueueExpanded)}
             >
               <div className="flex items-center gap-2">
@@ -822,7 +822,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                   <div
                     key={item.id}
                     data-testid="queued-item"
-                    className="flex items-center justify-between gap-2 rounded bg-slate-950 px-2 py-1 text-xs border border-slate-800"
+                    className="flex items-center justify-between gap-2 rounded bg-background px-2 py-1 text-xs border border-border"
                   >
                     {editingQueuedId === item.id ? (
                       <>
@@ -850,13 +850,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                               handleCancelEditQueued();
                             }
                           }}
-                          className="h-6 flex-1 border-slate-700 bg-slate-900 px-1.5 py-0.5 text-xs text-slate-100"
+                          className="h-6 flex-1 border-border bg-card px-1.5 py-0.5 text-xs text-foreground"
                         />
                         <button
                           type="button"
                           data-testid="queued-item-save"
                           onClick={() => void handleSaveEditQueued(item.id)}
-                          className="text-slate-500 hover:text-emerald-400"
+                          className="text-muted-foreground/70 hover:text-success"
                           title="Save queued prompt"
                         >
                           <Check className="size-3" />
@@ -865,7 +865,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                           type="button"
                           data-testid="queued-item-cancel"
                           onClick={handleCancelEditQueued}
-                          className="text-slate-500 hover:text-slate-200"
+                          className="text-muted-foreground/70 hover:text-foreground"
                           title="Cancel edit"
                         >
                           <X className="size-3" />
@@ -873,13 +873,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                       </>
                     ) : (
                       <>
-                        <span className="truncate pr-2 text-slate-300">{item.prompt}</span>
+                        <span className="truncate pr-2 text-muted-foreground">{item.prompt}</span>
                         <div className="flex shrink-0 items-center gap-1.5">
                           <button
                             type="button"
                             data-testid="queued-item-edit"
                             onClick={() => handleStartEditQueued(item.id, item.prompt)}
-                            className="text-slate-500 hover:text-emerald-400"
+                            className="text-muted-foreground/70 hover:text-success"
                             title="Edit queued prompt"
                           >
                             <Edit2 className="size-3" />
@@ -887,7 +887,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                           <button
                             type="button"
                             onClick={() => chatStore.deleteQueuedMessage(item.id)}
-                            className="text-slate-500 hover:text-rose-400"
+                            className="text-muted-foreground/70 hover:text-destructive"
                             title="Remove from queue"
                           >
                             <Trash2 className="size-3" />
@@ -910,13 +910,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
           onDrop={handleDrop}
           className={`relative border-t p-4 transition-colors ${
             isDraggingOver
-              ? "border-emerald-500 bg-emerald-950/20 ring-2 ring-emerald-500/50 ring-dashed"
-              : "border-slate-800 bg-slate-900"
+              ? "border-ring bg-success/10 ring-2 ring-ring/50 ring-dashed"
+              : "border-border bg-card"
           }`}
         >
           {isDraggingOver && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-950/80 backdrop-blur-xs border-2 border-dashed border-emerald-500 pointer-events-none">
-              <div className="flex items-center gap-2 text-emerald-400 font-medium text-sm">
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-xs border-2 border-dashed border-ring pointer-events-none">
+              <div className="flex items-center gap-2 text-success font-medium text-sm">
                 <Paperclip className="size-5 animate-bounce" />
                 <span>Drop files here to attach</span>
               </div>
@@ -933,15 +933,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 {attachments.map((att, index) => (
                   <div
                     key={`${att.path}-${index}`}
-                    className="flex items-center gap-1 rounded-md bg-slate-800 border border-slate-700 px-2 py-1 text-xs text-slate-200 shadow-sm"
+                    className="flex items-center gap-1 rounded-md bg-muted border border-border px-2 py-1 text-xs text-foreground shadow-sm"
                     title={att.path}
                   >
-                    <Paperclip className="size-3 text-slate-400 shrink-0" />
+                    <Paperclip className="size-3 text-muted-foreground shrink-0" />
                     <span className="max-w-[140px] truncate">{att.name}</span>
                     <button
                       type="button"
                       onClick={() => handleRemoveAttachment(index)}
-                      className="ml-0.5 rounded p-0.5 text-slate-400 hover:bg-slate-700 hover:text-slate-100"
+                      className="ml-0.5 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                       title={`Remove ${att.name}`}
                     >
                       <X className="size-3" />
@@ -952,7 +952,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                   <button
                     type="button"
                     onClick={() => setAttachments([])}
-                    className="text-[11px] text-slate-400 hover:text-rose-400 px-1.5 py-0.5 rounded transition-colors"
+                    className="text-[11px] text-muted-foreground hover:text-destructive px-1.5 py-0.5 rounded transition-colors"
                   >
                     Clear all
                   </button>
@@ -974,7 +974,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 data-testid="composer-attach-button"
                 onClick={handleAttachClick}
                 disabled={isGenerating}
-                className="flex items-center justify-center rounded-lg border border-slate-700 bg-slate-800 p-3 text-slate-300 shadow hover:bg-slate-700 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center justify-center rounded-lg border border-border bg-muted p-3 text-muted-foreground shadow hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title="Attach files from disk"
               >
                 <Paperclip className="size-5" />
@@ -996,7 +996,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 <button
                   type="button"
                   onClick={() => chatStore.cancelGeneration()}
-                  className="flex items-center justify-center rounded-lg bg-rose-600 p-3 text-white shadow hover:bg-rose-500 transition-colors"
+                  className="flex items-center justify-center rounded-lg bg-destructive p-3 text-destructive-foreground shadow hover:bg-destructive/90 transition-colors"
                   title="Stop generation"
                 >
                   <Square className="size-5" />
@@ -1006,7 +1006,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                   type="button"
                   onClick={() => void handleSendMessage()}
                   disabled={!inputPrompt.trim() && attachments.length === 0}
-                  className="flex items-center justify-center rounded-lg bg-emerald-600 p-3 text-white shadow hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="flex items-center justify-center rounded-lg bg-primary p-3 text-primary-foreground shadow hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   title="Send message"
                 >
                   <Send className="size-5" />
