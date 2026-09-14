@@ -1,30 +1,31 @@
-name: Publish VS Code Extension
-
-permissions:
-  contents: write
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+name: Release Extension
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Version override (e.g. 0.1.1). Defaults to version in package.json if empty.'
-        required: false
-        type: string
-        default: ''
       test-mode:
-        description: 'Run in test mode (build, test, package, and upload artifacts without publishing)'
-        required: false
+        description: 'Dry-run test mode (skips publishing)'
         type: boolean
-        default: false
+        default: true
+      version:
+        description: 'Version override (e.g. 0.1.0)'
+        type: string
+        required: false
   push:
     tags:
+      - 'extension-v*'
       - 'vscode-v*'
 
+permissions:
+  contents: write
+
+concurrency:
+  group: release-extension-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  publish-vscode-extension:
+  release-extension:
+    name: Release Extension
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -35,12 +36,14 @@ jobs:
         with:
           version: 11.25.0
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
-          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -48,74 +51,87 @@ jobs:
       - name: Run typecheck
         run: pnpm --filter tendril-extension typecheck
 
-      - name: Build extension and tests
+      - name: Build extension
         run: pnpm --filter tendril-extension build
 
       - name: Run tests
         run: pnpm --filter tendril-extension test
 
-      - name: Resolve version
+      - name: Determine version
         id: version
-        working-directory: extensions/vscode
         run: |
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            VERSION="${TAG#vscode-v}"
-            VERSION="${VERSION#v}"
-          elif [ -n "${{ inputs.version }}" ]; then
+          if [ -n "${{ inputs.version }}" ]; then
             INPUT_VER="${{ inputs.version }}"
             VERSION="${INPUT_VER#v}"
+          elif [[ "${{ github.ref }}" == refs/tags/extension-v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/extension-v}"
+          elif [[ "${{ github.ref }}" == refs/tags/vscode-v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/vscode-v}"
           else
-            VERSION=$(node -p "require('./package.json').version")
+            VERSION=$(node -p "require('./extensions/vscode/package.json').version")
           fi
-          echo "Resolved version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Resolved version: $VERSION"
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          else
+            TAG_NAME="extension-v$VERSION"
+          fi
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          cd extensions/vscode
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
-      - name: Package extension (.vsix)
-        working-directory: extensions/vscode
+      - name: Package extension
+        run: pnpm package:extension
+
+      - name: Generate SHA256 checksum
         run: |
-          npx --yes @vscode/vsce package --no-git-tag-version --allow-missing-repository --skip-license -o ivy-tendril-${{ steps.version.outputs.version }}.vsix
+          cd extensions/vscode
+          VSIX_FILE=$(ls tendril-extension-*.vsix)
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$VSIX_FILE" > "${VSIX_FILE}.sha256"
+          else
+            shasum -a 256 "$VSIX_FILE" > "${VSIX_FILE}.sha256"
+          fi
+          echo "VSIX_FILE=$VSIX_FILE" >> $GITHUB_ENV
 
       - name: Upload VS Code Extension Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tendril-vscode-extension-${{ steps.version.outputs.version }}
-          path: extensions/vscode/*.vsix
+          name: tendril-extension-${{ steps.version.outputs.version }}
+          path: |
+            extensions/vscode/*.vsix
+            extensions/vscode/*.vsix.sha256
 
-      - name: Upload VSIX to Release Assets
+      - name: Attach to GitHub Release
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.test-mode)
-        working-directory: extensions/vscode
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="vscode-v${{ steps.version.outputs.version }}"
-          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release $TAG does not exist yet; creating release..."
-            gh release create "$TAG" --repo "${{ github.repository }}" --title "VS Code Extension v${{ steps.version.outputs.version }}" --generate-notes
-          fi
-          gh release upload "$TAG" *.vsix --repo "${{ github.repository }}" --clobber
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          files: |
+            extensions/vscode/*.vsix
+            extensions/vscode/*.vsix.sha256
 
       - name: Publish to Visual Studio Code Marketplace
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.test-mode)
-        working-directory: extensions/vscode
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           if [ -n "$VSCE_PAT" ]; then
-            npx --yes @vscode/vsce publish --packagePath *.vsix --skip-duplicate
+            npx --yes @vscode/vsce publish --packagePath extensions/vscode/*.vsix --skip-duplicate
           else
             echo "VSCE_PAT secret is not set; skipping Visual Studio Code Marketplace publishing."
           fi
 
-      - name: Publish to Open VSX Registry (Optional)
+      - name: Publish to Open VSX Registry
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.test-mode)
-        working-directory: extensions/vscode
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           if [ -n "$OVSX_PAT" ]; then
-            npx --yes ovsx publish *.vsix --skip-duplicate
+            npx --yes ovsx publish extensions/vscode/*.vsix --skip-duplicate
           else
             echo "OVSX_PAT secret is not set; skipping Open VSX publishing."
           fi

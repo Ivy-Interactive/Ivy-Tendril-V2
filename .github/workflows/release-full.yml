@@ -386,9 +386,74 @@ jobs:
           name: full-release-app-${{ matrix.platform }}
           path: dist-bundles/*
 
+  build-extension:
+    name: Build Extension
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run checks and tests
+        run: |
+          pnpm --filter tendril-extension typecheck
+          pnpm --filter tendril-extension build
+          pnpm --filter tendril-extension test
+
+      - name: Determine version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION=$(node -p "require('./extensions/vscode/package.json').version")
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Resolved version: $VERSION"
+          cd extensions/vscode
+          npm version --no-git-tag-version --allow-same-version "$VERSION"
+
+      - name: Package extension
+        run: pnpm package:extension
+
+      - name: Generate SHA256 checksum
+        run: |
+          cd extensions/vscode
+          VSIX_FILE=$(ls tendril-extension-*.vsix)
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$VSIX_FILE" > "${VSIX_FILE}.sha256"
+          else
+            shasum -a 256 "$VSIX_FILE" > "${VSIX_FILE}.sha256"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-release-extension
+          path: |
+            extensions/vscode/*.vsix
+            extensions/vscode/*.vsix.sha256
+
   publish-full-release:
     name: Publish Full Release
-    needs: [build-components, build-cli, build-server, build-desktop-app]
+    needs: [build-components, build-cli, build-server, build-desktop-app, build-extension]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
