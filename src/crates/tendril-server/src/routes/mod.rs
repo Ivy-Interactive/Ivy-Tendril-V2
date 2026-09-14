@@ -6,6 +6,7 @@ pub mod health;
 pub mod inbox;
 pub mod jobs;
 pub mod models;
+pub mod onboarding;
 pub mod ping;
 pub mod plans;
 pub mod projects;
@@ -211,6 +212,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
         )
+        // Onboarding
+        .route("/api/onboarding", get(onboarding::get_status_handler))
+        .route(
+            "/api/onboarding/complete",
+            post(onboarding::complete_handler),
+        )
+        .route("/api/onboarding/dismiss", post(onboarding::dismiss_handler))
+        .route("/api/doctor", get(health::doctor_handler))
         // Costs
         .route("/api/costs/summary", get(costs::get_costs_summary))
         .route("/api/costs/series", get(costs::get_costs_series))

@@ -1,9 +1,10 @@
 use crate::error::BridgeError;
 use crate::models::{
-    AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, EnqueueItemDto,
-    ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto, PlanDetailDto, PlanQueryDto,
-    PlanSummaryDto, PostMessageDto, ProjectSummaryDto, RepoStatusDto, ReviewActionDto,
-    RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
+    AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateProjectDto, CreateSessionDto,
+    DoctorCheckDto, EnqueueItemDto, ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto,
+    OnboardingStatusDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, PostMessageDto,
+    ProjectSummaryDto, RepoStatusDto, ReviewActionDto, RevisionResultDto, StartJobResponseDto,
+    TendrilConfigDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -938,13 +939,17 @@ impl TendrilClient {
         })
     }
 
+    /// Merges a single top-level key into `config.yaml`. `PUT /api/config` takes the patch as a JSON
+    /// *object* and rejects anything else, so the value is wrapped here — an earlier version sent the
+    /// bare value with the key as a query parameter, which the server never read.
     pub async fn put_config(&self, key: &str, value: serde_json::Value) -> Result<(), BridgeError> {
-        let url = format!("{}/api/config?key={}", self.base_url, urlencoding(key));
+        let url = format!("{}/api/config", self.base_url);
+        let patch = json!({ key: value });
         let resp = self
             .client
             .put(&url)
             .headers(self.headers())
-            .json(&value)
+            .json(&patch)
             .send()
             .await?;
 
@@ -958,6 +963,97 @@ impl TendrilClient {
         }
 
         Ok(())
+    }
+
+    pub async fn get_onboarding_status(&self) -> Result<OnboardingStatusDto, BridgeError> {
+        let url = format!("{}/api/onboarding", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_ONBOARDING_STATUS_FAILED",
+                format!("Failed to get onboarding status ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn complete_onboarding(&self) -> Result<(), BridgeError> {
+        self.post_onboarding("complete", "COMPLETE_ONBOARDING_FAILED")
+            .await
+    }
+
+    pub async fn dismiss_onboarding(&self) -> Result<(), BridgeError> {
+        self.post_onboarding("dismiss", "DISMISS_ONBOARDING_FAILED")
+            .await
+    }
+
+    async fn post_onboarding(&self, action: &str, code: &str) -> Result<(), BridgeError> {
+        let url = format!("{}/api/onboarding/{}", self.base_url, action);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&json!({}))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                code,
+                format!("Failed to {action} onboarding ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn run_doctor(&self) -> Result<Vec<DoctorCheckDto>, BridgeError> {
+        let url = format!("{}/api/doctor", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "RUN_DOCTOR_FAILED",
+                format!("Failed to run health checks ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Creates a project. A duplicate name comes back as 409, which surfaces here as a
+    /// `CREATE_PROJECT_FAILED` error carrying the server's message.
+    pub async fn create_project(
+        &self,
+        request: CreateProjectDto,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/projects", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&request)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CREATE_PROJECT_FAILED",
+                format!("Failed to create project ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     pub async fn get_models_status(&self) -> Result<ModelCatalogStatusDto, BridgeError> {

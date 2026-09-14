@@ -143,6 +143,42 @@ export interface TendrilConfig {
   raw?: Record<string, unknown>;
 }
 
+/** Why the first-run wizard is (or is not) needed; mirrors `onboarding::OnboardingReason`. */
+export type OnboardingReason =
+  | "FreshInstall"
+  | "NoProjects"
+  | "AlreadyConfigured"
+  | "Completed"
+  | "Dismissed";
+
+export interface OnboardingStatus {
+  needed: boolean;
+  reason: OnboardingReason;
+  projectCount: number;
+  configExists: boolean;
+  tendrilHome: string;
+}
+
+export type DoctorCheckStatus = "Ok" | "Warn" | "Fail";
+
+export type DoctorCheckCategory = "Prerequisite" | "Environment";
+
+/** One health probe from the `tendril-core` registry that `tendril doctor` also prints. */
+export interface DoctorCheck {
+  name: string;
+  status: DoctorCheckStatus;
+  message: string;
+  required: boolean;
+  installUrl?: string | null;
+  category: DoctorCheckCategory;
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  color?: string;
+  repos?: string[];
+}
+
 export type ModelCatalogSource = "models.dev" | "static";
 
 export interface ModelCatalogStatus {

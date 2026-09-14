@@ -1,9 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CreateProjectRequest,
+  DoctorCheck,
   GitHubIssuesPage,
   Job,
   JobDetail,
   ModelCatalogStatus,
+  OnboardingStatus,
   PlanDetail,
   PlanQuery,
   PlanSummary,
@@ -215,8 +218,33 @@ export const bridge = {
     return res.json().catch(() => ({ status: "ok" }));
   },
 
+  async createProject(this: void, request: CreateProjectRequest): Promise<unknown> {
+    return invoke<unknown>("cmd_create_project", { request });
+  },
+
   async getConfig(this: void): Promise<TendrilConfig> {
     return invoke<TendrilConfig>("cmd_get_config");
+  },
+
+  /** Merges a single top-level key into `config.yaml`, leaving every other key untouched. */
+  async putConfig(this: void, key: string, value: unknown): Promise<void> {
+    return invoke<void>("cmd_put_config", { key, value });
+  },
+
+  async getOnboardingStatus(this: void): Promise<OnboardingStatus> {
+    return invoke<OnboardingStatus>("cmd_get_onboarding_status");
+  },
+
+  async completeOnboarding(this: void): Promise<void> {
+    return invoke<void>("cmd_complete_onboarding");
+  },
+
+  async dismissOnboarding(this: void): Promise<void> {
+    return invoke<void>("cmd_dismiss_onboarding");
+  },
+
+  async runDoctor(this: void): Promise<DoctorCheck[]> {
+    return invoke<DoctorCheck[]>("cmd_run_doctor");
   },
 
   async getModelsStatus(this: void): Promise<ModelCatalogStatus> {

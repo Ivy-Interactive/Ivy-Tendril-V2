@@ -5,10 +5,11 @@ import { jobsStore } from "./state/jobsStore";
 import { serviceStore } from "./state/serviceStore";
 import { bridge } from "./api/bridge";
 import { onJobEvent, onPlanEvent, onServiceStatus } from "./api/events";
-import { describeBridgeError, type ProjectSummary } from "./types/api";
+import { describeBridgeError, type OnboardingStatus, type ProjectSummary } from "./types/api";
 
 import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
+import { OnboardingWizard } from "./views/onboarding/OnboardingWizard";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 
@@ -64,6 +65,9 @@ export const App: React.FC = () => {
     project?: string;
   }>({});
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  // Null means "no wizard": either it is not needed, or the status call failed. An unreachable
+  // daemon must never produce a first-run wizard, and must never block the shell.
+  const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   // Failures from actions the shell itself owns (service restart/repair).
   const [shellError, setShellError] = useState<string | null>(null);
 
@@ -88,6 +92,11 @@ export const App: React.FC = () => {
         setProjectsLoaded(true);
       })
       .catch(() => {});
+
+    bridge
+      .getOnboardingStatus()
+      .then(setOnboarding)
+      .catch(() => setOnboarding(null));
 
     return () => {
       unsubUi();
@@ -383,6 +392,28 @@ export const App: React.FC = () => {
         );
     }
   };
+
+  // The wizard replaces the shell rather than overlaying it: on a fresh install there is nothing
+  // behind it to look at, and the stores it would refetch have nothing to show yet.
+  if (onboarding?.needed) {
+    return (
+      <OnboardingWizard
+        status={onboarding}
+        onFinished={() => {
+          setOnboarding(null);
+          bridge
+            .listProjects()
+            .then((list) => {
+              setProjects(list);
+              setProjectsLoaded(true);
+            })
+            .catch(() => {});
+          plansStore.fetchPlans().catch(() => {});
+          jobsStore.fetchJobs().catch(() => {});
+        }}
+      />
+    );
+  }
 
   return (
     <>
