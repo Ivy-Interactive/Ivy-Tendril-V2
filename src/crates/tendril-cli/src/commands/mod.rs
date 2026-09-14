@@ -4,6 +4,7 @@ pub mod confirm;
 pub mod daemon_guard;
 pub mod db;
 pub mod doctor;
+pub mod hash_password;
 pub mod job;
 pub mod mcp;
 pub mod models;

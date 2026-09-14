@@ -100,6 +100,21 @@ enum Commands {
 
     #[command(about = "Refresh deployed promptwares, preserving their Memory/ and Tools/")]
     UpdatePromptwares(commands::update_promptwares::UpdatePromptwaresArgs),
+
+    #[command(
+        about = "Hash a password for config.yaml's auth block",
+        long_about = "Hashes PASSWORD with Argon2i and prints the encoded hash plus the secret \
+(pepper) it was hashed with.\n\nThe pepper is NOT part of the hash string, so both values have to \
+be stored: the hash as `auth.password` and the pepper as `auth.hashSecret` in config.yaml. Pass \
+SECRET to reuse an existing pepper; omit it to generate a new 32-byte one."
+    )]
+    HashPassword {
+        #[arg(value_name = "PASSWORD")]
+        password: String,
+
+        #[arg(value_name = "SECRET")]
+        secret: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -141,6 +156,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Update(args) => commands::update::handle_update(args).await?,
         Commands::UpdatePromptwares(args) => {
             commands::update_promptwares::handle_update_promptwares(args, &tendril_home)?
+        }
+        Commands::HashPassword { password, secret } => {
+            commands::hash_password::handle_hash_password(&password, secret.as_deref())?
         }
     }
 
