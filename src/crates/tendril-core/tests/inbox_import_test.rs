@@ -99,6 +99,7 @@ fn plan_with(source_url: Option<&str>, initial_prompt: Option<&str>) -> PlanFile
             source_url: source_url.map(str::to_string),
             partial_delivery: false,
             chat_session_id: None,
+            recommendations: None,
         },
         latest_revision_content: String::new(),
         folder_path: "/plans/00604-Existing".to_string(),

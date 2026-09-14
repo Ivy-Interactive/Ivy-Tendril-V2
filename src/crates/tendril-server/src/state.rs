@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tendril_core::agents::model_cache::{self, CacheFreshness};
 use tendril_core::chat::execution::ChatExecutionManager;
@@ -23,6 +24,9 @@ pub struct AppState {
     /// publish on it directly and a daemon that lost the master race still serves the route.
     pub change_tx: broadcast::Sender<ChangeEvent>,
     pub secret: String,
+    /// Held for the duration of a PR reconciliation pass, so the periodic driver and a manual
+    /// `POST /api/pull-requests/sync` can never run concurrently.
+    pub pr_sync_running: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -104,6 +108,16 @@ impl AppState {
             }
         });
 
+        // Reconcile tracked pull requests on a timer. The task captures clones rather than the
+        // `AppState` it is being constructed inside, so nothing here has to be `Arc`ed early.
+        let pr_sync_running = Arc::new(AtomicBool::new(false));
+        crate::pr_sync::spawn_pr_status_sync(
+            db_path.clone(),
+            plans_dir.clone(),
+            pr_sync_running.clone(),
+            ws_tx.clone(),
+        );
+
         Self {
             tendril_home,
             config_path,
@@ -114,6 +128,7 @@ impl AppState {
             ws_tx,
             change_tx,
             secret,
+            pr_sync_running,
         }
     }
 }

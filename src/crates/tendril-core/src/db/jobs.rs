@@ -9,7 +9,7 @@ const JOB_COLUMNS: &str = "Id, Type, PlanFile, Project, Status, Provider, Starte
      CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, \
      Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, \
      ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState, \
-     Priority, LastOutputAt, WaitForJobIds, PermissionDenials";
+     Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey";
 
 const INSERT_SQL: &str = r#"
     INSERT INTO Jobs (
@@ -18,14 +18,17 @@ const INSERT_SQL: &str = r#"
         CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
         Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
         ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState,
-        Priority, LastOutputAt, WaitForJobIds, PermissionDenials
+        Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey
     ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
         ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
-        ?31, ?32, ?33, ?34
+        ?31, ?32, ?33, ?34, ?35
     )
 "#;
 
+/// `DedupeKey` is deliberately absent from the `DO UPDATE SET` list: the key identifies the work a
+/// job was created for and never changes, so a later write of the same row — a status change, a cost
+/// update — must not be able to clear or rewrite it.
 const UPSERT_TAIL: &str = r#"
     ON CONFLICT(Id) DO UPDATE SET
         Status = excluded.Status,
@@ -109,6 +112,7 @@ fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
             last_output_at_str,
             wait_for_json,
             permission_denials_json,
+            job.dedupe_key,
         ],
     )?;
 
@@ -187,6 +191,7 @@ fn row_to_job(row: &Row<'_>) -> Result<JobItem> {
         .as_deref()
         .and_then(|json| serde_json::from_str::<Vec<String>>(json).ok())
         .filter(|d| !d.is_empty());
+    item.dedupe_key = row.get(34)?;
 
     // `typed_args` has no column of its own; it is rehydrated from the Args JSON so a job loaded
     // after a daemon restart still knows what it was launched with.
@@ -248,7 +253,38 @@ pub fn list_non_terminal_jobs(conn: &Connection) -> Result<Vec<JobItem>> {
     Ok(jobs)
 }
 
+/// Statuses a job holds while its work is genuinely in flight, as SQL literals.
+///
+/// `Blocked` is excluded on purpose: a `Blocked` row was never spawned, so it holds no worktree and
+/// no agent, and [`crate::jobs::dependents`] deletes it before submitting its replacement. Including
+/// it would make a queued intention block the job that is meant to replace it.
+pub const INFLIGHT_STATUSES_SQL: &str = "'Pending', 'Queued', 'Running'";
+
+/// The in-flight job holding `key`, if any. See [`INFLIGHT_STATUSES_SQL`] for what counts as
+/// in-flight.
+///
+/// Parameterised, unlike the string-interpolated `list_jobs` above: a dedupe key is derived from
+/// user text (a plan folder path, a `CreatePlan` description).
+pub fn find_inflight_job_by_dedupe_key(conn: &Connection, key: &str) -> Result<Option<JobItem>> {
+    let sql = format!(
+        "SELECT {} FROM Jobs WHERE DedupeKey = ?1 AND Status IN ({}) ORDER BY Id ASC LIMIT 1",
+        JOB_COLUMNS, INFLIGHT_STATUSES_SQL
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([key])?;
+    if let Some(row) = rows.next()? {
+        return Ok(Some(row_to_job(row)?));
+    }
+    Ok(None)
+}
+
 /// Removes a job row. Returns whether a row existed.
+///
+/// The return value is the caller's *claim*, not a courtesy: a `Blocked` row is replaced by a fresh
+/// job, and this delete is what grants the right to start that job. `false` means another pass
+/// already claimed the row, so the caller must not start anything. `Id` is the primary key, so the
+/// row count can only ever be 0 or 1 and a `bool` carries the whole answer.
+#[must_use = "the delete is a claim: false means another caller already took this row"]
 pub fn delete_job(conn: &Connection, id: &str) -> Result<bool> {
     let affected = conn.execute("DELETE FROM Jobs WHERE Id = ?1", params![id])?;
     Ok(affected > 0)
