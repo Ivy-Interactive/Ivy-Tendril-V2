@@ -1,0 +1,302 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { VaultSettingsView } from "../src/views/VaultSettingsView";
+import { bridge } from "../src/api/bridge";
+import type {
+  ProjectSummary,
+  VaultCatalog,
+  VaultCatalogItem,
+  VaultImportRequest,
+  VaultStatus,
+} from "../src/types/api";
+
+/**
+ * The five vault dialogs are replaced by shims that submit a fixed request, the way
+ * `plan-diff.test.tsx` replaces `PlanDiffView`: what this file owns is the view's routing — which
+ * dialog a row action opens and which `bridge.vault*` wrapper its submission reaches — while the
+ * dialogs' own inputs and validation are covered where they live, in the components package's
+ * `tests/vault-dialogs.test.tsx`.
+ *
+ * They also cannot be mounted here: they are the only vault components built on Radix's `Dialog`,
+ * whose `react-remove-scroll` dependency resolves to the React installed beside it under
+ * `packages/components/node_modules` — a second React, which throws on its first hook. Everything
+ * that is not dialog-based (the status card's `Switch`, the table, the gated buttons) renders for
+ * real below.
+ */
+vi.mock("@ivy-interactive/components/tendril", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  const importRequest = (projectName: string, localName: string): VaultImportRequest => ({
+    projectName,
+    targetLocalProjectName: localName,
+    localRepoMappings: {},
+    selectedSkills: [],
+    selectedMcps: [],
+    selectedMemories: [],
+    selectedReviewActions: [],
+    selectedVerifications: [],
+    importPermissions: true,
+  });
+
+  return {
+    ...actual,
+    ImportFromVaultDialog: ({
+      item,
+      mergeMode = false,
+      onSubmit,
+    }: {
+      item: VaultCatalogItem;
+      mergeMode?: boolean;
+      onSubmit: (request: VaultImportRequest) => void;
+    }) => (
+      <div data-testid={mergeMode ? "merge-vault-dialog" : "import-vault-dialog"}>
+        <button type="button" onClick={() => onSubmit(importRequest(item.name, item.name))}>
+          {mergeMode ? "Link & Merge" : "Import Project"}
+        </button>
+      </div>
+    ),
+    CreateVaultDialog: () => <div data-testid="create-vault-dialog" />,
+    ConnectVaultDialog: () => <div data-testid="connect-vault-dialog" />,
+    PushToVaultDialog: () => <div data-testid="push-vault-dialog" />,
+    ConfirmVaultDeleteDialog: () => <div data-testid="confirm-vault-delete-dialog" />,
+  };
+});
+
+function vaultStatus(overrides: Partial<VaultStatus> = {}): VaultStatus {
+  return {
+    id: "v1",
+    name: "Tendril-Vault",
+    isConfigured: true,
+    repoUrl: "https://github.com/acme/Tendril-Vault.git",
+    localPath: "/Users/test/.tendril/Vault",
+    currentBranch: "main",
+    commitsAhead: 0,
+    commitsBehind: 0,
+    alwaysUpToDate: false,
+    ...overrides,
+  };
+}
+
+function catalogItem(overrides: Partial<VaultCatalogItem> = {}): VaultCatalogItem {
+  return {
+    name: "Alpha",
+    description: "",
+    color: "blue",
+    remoteVersion: "2026.01.01.120000",
+    reposCount: 0,
+    skillsCount: 0,
+    mcpsCount: 0,
+    memoriesCount: 0,
+    reviewActionsCount: 0,
+    verificationsCount: 0,
+    skillNames: [],
+    mcpServerNames: [],
+    memoryFileNames: [],
+    reviewActionNames: [],
+    verificationNames: [],
+    syncStatus: "NotImported",
+    repos: [],
+    hasLocalConflict: false,
+    ...overrides,
+  };
+}
+
+const catalog = (items: VaultCatalogItem[]): VaultCatalog => ({
+  projects: items,
+  globalSkills: [],
+  globalMcps: [],
+});
+
+const localProject = (name: string): ProjectSummary => ({
+  name,
+  repos: [`/Users/test/git/${name}`],
+  verifications: [],
+});
+
+/**
+ * Stubs the whole vault surface of the bridge, so a test only states what it cares about. Every
+ * loader is spied on rather than mocked at the module level: the view is allowed to know the bridge,
+ * and asserting on these spies is how "the wrappers are the only adapter" is checked.
+ */
+function stubBridge(
+  options: {
+    vaults?: VaultStatus[];
+    status?: VaultStatus;
+    catalog?: VaultCatalog | Error;
+    accounts?: { login: string; type: string }[];
+    projects?: ProjectSummary[];
+  } = {},
+) {
+  const vaults = options.vaults ?? [];
+  const status = options.status ?? vaults[0] ?? vaultStatus();
+
+  const listVaults = vi.spyOn(bridge, "listVaults").mockResolvedValue(vaults);
+  const getVaultStatus = vi.spyOn(bridge, "getVaultStatus").mockResolvedValue(status);
+  const getVaultCatalog = vi.spyOn(bridge, "getVaultCatalog");
+  if (options.catalog instanceof Error) {
+    getVaultCatalog.mockRejectedValue(options.catalog);
+  } else {
+    getVaultCatalog.mockResolvedValue(options.catalog ?? catalog([]));
+  }
+  const listGitHubAccounts = vi
+    .spyOn(bridge, "listGitHubAccounts")
+    .mockResolvedValue(options.accounts ?? [{ login: "acme", type: "Organization" }]);
+  const listProjects = vi.spyOn(bridge, "listProjects").mockResolvedValue(options.projects ?? []);
+
+  return {
+    listVaults,
+    getVaultStatus,
+    getVaultCatalog,
+    listGitHubAccounts,
+    listProjects,
+    createVaultRepo: vi.spyOn(bridge, "createVaultRepo"),
+    pullVaultLatest: vi.spyOn(bridge, "pullVaultLatest"),
+    collectProjectAssets: vi
+      .spyOn(bridge, "collectProjectAssets")
+      .mockImplementation(async (projectName: string) => ({
+        projectName,
+        skills: [],
+        mcpServers: [],
+        memories: [],
+        reviewActions: [],
+        verifications: [],
+      })),
+    setVaultAlwaysUpToDate: vi
+      .spyOn(bridge, "setVaultAlwaysUpToDate")
+      .mockResolvedValue({ success: true, message: "Saved" }),
+    importVaultProject: vi
+      .spyOn(bridge, "importVaultProject")
+      .mockResolvedValue({ success: true, message: "Imported" }),
+    mergeVaultProject: vi
+      .spyOn(bridge, "mergeVaultProject")
+      .mockResolvedValue({ success: true, message: "Merged" }),
+  };
+}
+
+describe("VaultSettingsView", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("offers create and connect while no vault is configured", async () => {
+    stubBridge({ vaults: [] });
+
+    render(<VaultSettingsView tendrilHome="/Users/test/.tendril" />);
+
+    expect(await screen.findByTestId("vault-empty-state")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Create GitHub Vault/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Connect Existing Git Vault/ })).toBeEnabled();
+    expect(screen.queryByTestId("vault-status-card")).not.toBeInTheDocument();
+  });
+
+  it("disables the create action with the sign-in reason and calls nothing when signed out", async () => {
+    const spies = stubBridge({ vaults: [], accounts: [] });
+
+    render(<VaultSettingsView />);
+
+    const create = await screen.findByRole("button", { name: /Create GitHub Vault/ });
+    expect(create).toBeDisabled();
+    expect(create).toHaveAttribute("title", "Sign in to GitHub to create or connect a vault");
+
+    fireEvent.click(create);
+    expect(spies.createVaultRepo).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("create-vault-dialog")).not.toBeInTheDocument();
+  });
+
+  it("disables Sync and Open a PR with 'Connect a vault first' until a vault exists", async () => {
+    const spies = stubBridge({ vaults: [] });
+
+    render(<VaultSettingsView />);
+
+    await screen.findByTestId("vault-empty-state");
+    const sync = screen.getByRole("button", { name: /^Sync$/ });
+    const openPr = screen.getByRole("button", { name: /Open a PR/ });
+
+    for (const button of [sync, openPr]) {
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute("title", "Connect a vault first");
+    }
+
+    fireEvent.click(sync);
+    fireEvent.click(openPr);
+    expect(spies.pullVaultLatest).not.toHaveBeenCalled();
+    expect(spies.collectProjectAssets).not.toHaveBeenCalled();
+  });
+
+  it("shows the connected vault and persists the always-in-sync toggle", async () => {
+    const spies = stubBridge({
+      vaults: [vaultStatus({ commitsBehind: 2 })],
+      status: vaultStatus({ commitsBehind: 2 }),
+    });
+
+    render(<VaultSettingsView tendrilHome="/Users/test/.tendril" />);
+
+    const card = await screen.findByTestId("vault-status-card");
+    expect(within(card).getByRole("button", { name: "acme/Tendril-Vault" })).toBeInTheDocument();
+    expect(within(card).getByText("main")).toBeInTheDocument();
+    expect(within(card).getByTestId("vault-git-status")).toHaveTextContent("2 behind");
+
+    fireEvent.click(within(card).getByRole("switch", { name: "Always in sync" }));
+
+    await waitFor(() => {
+      expect(spies.setVaultAlwaysUpToDate).toHaveBeenCalledWith(true, "v1");
+    });
+  });
+
+  it("routes a name conflict through merge and a new project through import", async () => {
+    const spies = stubBridge({
+      vaults: [vaultStatus()],
+      catalog: catalog([
+        catalogItem({ name: "Alpha", syncStatus: "Conflict", hasLocalConflict: true }),
+        catalogItem({ name: "Beta", syncStatus: "NotImported" }),
+      ]),
+      projects: [localProject("Alpha")],
+    });
+
+    render(<VaultSettingsView tendrilHome="/Users/test/.tendril" />);
+
+    const alpha = await screen.findByTestId("vault-project-row-Alpha");
+    fireEvent.click(within(alpha).getByRole("button", { name: /Link & Merge/ }));
+
+    const mergeDialog = await screen.findByTestId("merge-vault-dialog");
+    fireEvent.click(within(mergeDialog).getByRole("button", { name: "Link & Merge" }));
+
+    await waitFor(() => {
+      expect(spies.mergeVaultProject).toHaveBeenCalledWith(
+        expect.objectContaining({ projectName: "Alpha", targetLocalProjectName: "Alpha" }),
+        "v1",
+      );
+    });
+    expect(spies.importVaultProject).not.toHaveBeenCalled();
+
+    const beta = await screen.findByTestId("vault-project-row-Beta");
+    fireEvent.click(within(beta).getByRole("button", { name: /Import/ }));
+
+    const importDialog = await screen.findByTestId("import-vault-dialog");
+    fireEvent.click(within(importDialog).getByRole("button", { name: "Import Project" }));
+
+    await waitFor(() => {
+      expect(spies.importVaultProject).toHaveBeenCalledWith(
+        expect.objectContaining({ projectName: "Beta", targetLocalProjectName: "Beta" }),
+        "v1",
+      );
+    });
+  });
+
+  it("keeps the section usable when the catalog cannot be read", async () => {
+    stubBridge({
+      vaults: [vaultStatus()],
+      catalog: new Error("vault unreachable"),
+    });
+
+    render(<VaultSettingsView />);
+
+    const error = await screen.findByTestId("vault-settings-error");
+    expect(error).toHaveTextContent(/Could not read the vault catalog/);
+    expect(screen.getByTestId("vault-settings-view")).toBeInTheDocument();
+    expect(screen.getByTestId("vault-status-card")).toBeInTheDocument();
+  });
+});
