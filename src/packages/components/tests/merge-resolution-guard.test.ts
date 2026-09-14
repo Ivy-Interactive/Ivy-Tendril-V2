@@ -1,11 +1,13 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const script = resolve(repoRoot, "scripts", "verify-merge-resolution.mjs");
+const script = resolve(repoRoot, "scripts", "verify-merge-resolution.ts");
 const fixturesDir = resolve(repoRoot, "tests", "fixtures", "merge-resolution");
+const tsxCli = createRequire(import.meta.url).resolve("tsx/cli");
 
 interface MergeResolutionReport {
   lostChanges: Array<{
@@ -22,14 +24,14 @@ interface MergeResolutionReport {
 }
 
 function runJson(...args: string[]): MergeResolutionReport {
-  const stdout = execFileSync(process.execPath, [script, "--json", ...args], {
+  const stdout = execFileSync(process.execPath, [tsxCli, script, "--json", ...args], {
     encoding: "utf8",
   });
   return JSON.parse(stdout) as MergeResolutionReport;
 }
 
 function runExitCode(...args: string[]): number {
-  const result = spawnSync(process.execPath, [script, ...args], {
+  const result = spawnSync(process.execPath, [tsxCli, script, ...args], {
     encoding: "utf8",
   });
   return result.status ?? 1;
@@ -175,7 +177,7 @@ describe("verify-merge-resolution", () => {
 
   describe("--range mode", () => {
     it("reports clean when no merge commits exist in range", () => {
-      const result = spawnSync(process.execPath, [script, "--range", "HEAD~1", "--json"], {
+      const result = spawnSync(process.execPath, [tsxCli, script, "--range", "HEAD~1", "--json"], {
         encoding: "utf8",
       });
 

@@ -63,21 +63,21 @@ describe("Storybook dev server runner", () => {
   it("defines non-interactive storybook dev server scripts in package.json", () => {
     const scripts = packageJson.scripts ?? {};
 
-    expect(scripts.storybook).toBe("node scripts/storybook-dev.mjs");
+    expect(scripts.storybook).toBe("tsx scripts/storybook-dev.ts");
     expect(scripts["storybook:dev"]).toBe(scripts.storybook);
     expect(scripts["build-storybook"]).toBe("storybook build");
   });
 
   it("configures the dev server for non-blocking startup on a loopback port", () => {
     // The port is pinned to the first free slot in 6006..6015 so the URL is bookmarkable, which the
-    // wrapper does by probing 127.0.0.1 itself — Storybook's own probe checks a different host and
+    // wrapper does by probing 127.0.0.1 itself - Storybook's own probe checks a different host and
     // so hard-fails with EADDRINUSE on a held port. The flags therefore live in the wrapper source,
     // not in the package.json script.
-    const wrapper = readFileSync(path.join(repoRoot, "scripts", "storybook-dev.mjs"), "utf8");
+    const wrapper = readFileSync(path.join(repoRoot, "scripts", "storybook-dev.ts"), "utf8");
 
     // --ci suppresses telemetry/port prompts and stops the browser from being opened.
     expect(wrapper).toContain("--ci");
-    // Loopback only — never expose the dev server on every network interface.
+    // Loopback only - never expose the dev server on every network interface.
     expect(wrapper).toContain("127.0.0.1");
     // --exact-port would exit(-1) silently on the very probe disagreement this wrapper works around.
     expect(wrapper).not.toContain("--exact-port");
