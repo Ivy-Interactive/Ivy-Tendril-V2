@@ -14,17 +14,23 @@ if (!existsSync(extDir)) {
 
 console.log(`==> Verifying extension structure in: ${extDir}`);
 
-let errors = 0;
+let errors: number = 0;
+
+interface PackageJson {
+  name?: string;
+  version?: string;
+}
 
 const packageJsonPath = resolve(extDir, 'package.json');
 if (!existsSync(packageJsonPath)) {
   console.warn(`WARNING: package.json not found in ${extDir}`);
 } else {
   try {
-    const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+    const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as PackageJson;
     console.log(`PASS: Found package.json for ${pkg.name || 'unnamed'} (${pkg.version || '0.0.0'})`);
-  } catch (err) {
-    console.error(`FAIL: Malformed package.json: ${err.message}`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`FAIL: Malformed package.json: ${message}`);
     errors++;
   }
 }

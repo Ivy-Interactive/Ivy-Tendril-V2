@@ -14,7 +14,7 @@ if (!existsSync(extDir)) {
 
 console.log(`==> Packaging Ivy Tendril VSIX archive in ${extDir}...`);
 
-function run(cmd, args) {
+function run(cmd: string, args: string[]): void {
   console.log(`> ${cmd} ${args.join(' ')}`);
   const res = spawnSync(cmd, args, { cwd: extDir, stdio: 'inherit', shell: true });
   if (res.status !== 0) {
@@ -28,7 +28,7 @@ run('pnpm', ['run', 'build']);
 run('npx', ['@vscode/vsce', 'package', '--no-dependencies']);
 
 const files = existsSync(extDir) ? readdirSync(extDir) : [];
-const vsixFile = files.filter(f => f.endsWith('.vsix')).pop();
+const vsixFile = files.filter((f) => f.endsWith('.vsix')).pop();
 if (vsixFile) {
   console.log(`==> VSIX Package created successfully: ${vsixFile}`);
 } else {
