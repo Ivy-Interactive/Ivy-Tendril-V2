@@ -713,10 +713,11 @@ fn public_config_keys_advertise_only_real_settings() {
         "chatTimeout has no field behind it and must not be advertised"
     );
 
-    // `planFolder` is `skip_serializing_if = "Option::is_none"`, so it only appears once populated;
-    // populate it rather than carve it out.
+    // `planFolder` and `telemetry` are both `skip_serializing_if = "Option::is_none"`, so they only
+    // appear once populated; populate them rather than carve them out.
     let settings = TendrilSettings {
         plan_folder: Some("Plans".to_string()),
+        telemetry: Some(false),
         ..TendrilSettings::default()
     };
     let serialized = serde_json::to_value(&settings).expect("settings must serialize");
