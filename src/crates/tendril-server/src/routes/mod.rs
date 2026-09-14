@@ -1,3 +1,4 @@
+pub mod agents;
 pub mod chat;
 pub mod config;
 pub mod costs;
@@ -203,6 +204,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .put(verifications::update_verification)
                 .delete(verifications::delete_verification),
         )
+        // Agents
+        .route("/api/agents", get(agents::get_agents_handler))
         // Config
         .route(
             "/api/config",
@@ -250,7 +253,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/api/chat/sessions/:id/queue/:item_id",
-            delete(chat::delete_queued_item_handler),
+            put(chat::update_queued_item_handler).delete(chat::delete_queued_item_handler),
         )
         // WebSocket
         .route("/api/ws", get(ws::ws_handler))

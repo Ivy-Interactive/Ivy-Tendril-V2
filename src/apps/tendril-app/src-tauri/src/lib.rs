@@ -5,6 +5,7 @@ pub mod models;
 pub mod service;
 pub mod verification_reports;
 
+pub use commands::agents::*;
 pub use commands::chat::*;
 pub use commands::config::*;
 pub use commands::github::*;
@@ -66,6 +67,8 @@ pub fn run() {
             cmd_enqueue_chat_message,
             cmd_clear_chat_queue,
             cmd_delete_queued_chat_item,
+            cmd_update_queued_chat_item,
+            cmd_list_agents,
             cmd_list_github_issues,
         ])
         .run(tauri::generate_context!())
