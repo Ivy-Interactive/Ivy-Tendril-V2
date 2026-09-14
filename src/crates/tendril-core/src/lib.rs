@@ -11,6 +11,8 @@ pub mod plans;
 pub mod promptware;
 pub mod questions;
 
+pub use agents::model_specs;
+pub use agents::truncation;
 pub use config::*;
 pub use error::*;
 pub use models::*;
