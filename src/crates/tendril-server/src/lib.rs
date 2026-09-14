@@ -82,12 +82,66 @@ pub async fn run_server(
     });
 
     spawn_worktree_reaper(tendril_home.clone());
+    spawn_assigned_issues_importer(tendril_home.clone(), state.clone());
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
     Ok(())
+}
+
+/// Periodic import of the GitHub issues assigned to the user, following `spawn_worktree_reaper`'s
+/// shape: sleep first, re-read the config each pass, and treat a non-positive interval as "disabled,
+/// recheck occasionally" rather than "never look again".
+///
+/// The master check lives inside the sweep rather than here, so a daemon that loses the election
+/// while running stops importing on the next pass instead of racing the winner. That is also why the
+/// pass takes the config from disk each time: an operator can enable the importer, or change its
+/// cadence, without restarting the daemon.
+fn spawn_assigned_issues_importer(tendril_home: PathBuf, state: Arc<AppState>) {
+    /// Startup is busy enough without a `gh` call; the first sweep waits.
+    const SEED_DELAY: Duration = Duration::from_secs(90);
+    /// How long a disabled importer waits before re-reading the config.
+    const DISABLED_RECHECK: Duration = Duration::from_secs(30 * 60);
+
+    tokio::spawn(async move {
+        tokio::time::sleep(SEED_DELAY).await;
+
+        loop {
+            let config_path = tendril_core::config::get_config_path(&tendril_home);
+            let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
+
+            let interval = settings.inbox.check_interval_minutes;
+            if interval <= 0 {
+                tokio::time::sleep(DISABLED_RECHECK).await;
+                continue;
+            }
+
+            let report = tendril_core::inbox::run_assigned_issues_sweep(
+                &tendril_home,
+                &settings,
+                &state.job_manager,
+            )
+            .await;
+
+            if !report.imported.is_empty() {
+                tracing::info!(
+                    "Assigned issue import: {} imported ({} auto-accepted), {} already known",
+                    report.imported.len(),
+                    report.accepted,
+                    report.skipped,
+                );
+            }
+            for error in &report.errors {
+                tracing::warn!("Assigned issue import: {}", error);
+            }
+
+            // `max(1)`: a fractional-minute interval is not expressible, and a zero-length sleep would
+            // spin on `gh`.
+            tokio::time::sleep(Duration::from_secs((interval as u64).max(1) * 60)).await;
+        }
+    });
 }
 
 /// Periodic worktree reclamation. Started only by the master — the `MasterGuard` has already been

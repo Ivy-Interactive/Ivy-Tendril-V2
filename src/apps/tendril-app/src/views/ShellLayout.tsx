@@ -55,6 +55,12 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
     { id: "inbox", label: "Inbox", icon: "Inbox", isActive: activeNav === "inbox" },
     { id: "plans", label: "Plans", icon: "Feather", isActive: activeNav === "plans" },
     { id: "review", label: "Review", icon: "ThumbsUp", isActive: activeNav === "review" },
+    {
+      id: "pull-requests",
+      label: "Pull Requests",
+      icon: "GitPullRequest",
+      isActive: activeNav === "pull-requests",
+    },
     { id: "jobs", label: "Jobs", icon: "Activity", isActive: activeNav === "jobs" },
     { id: "settings", label: "Settings", icon: "Sliders", isActive: activeNav === "settings" },
   ];
@@ -83,6 +89,10 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
     } else if (tabId === "review") {
       title = "Review";
       icon = "ThumbsUp";
+      isClosable = false;
+    } else if (tabId === "pull-requests") {
+      title = "Pull Requests";
+      icon = "GitPullRequest";
       isClosable = false;
     } else if (tabId === "settings") {
       title = "Settings";

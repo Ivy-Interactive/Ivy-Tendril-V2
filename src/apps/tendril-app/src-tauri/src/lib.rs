@@ -9,6 +9,7 @@ pub use commands::agents::*;
 pub use commands::chat::*;
 pub use commands::config::*;
 pub use commands::github::*;
+pub use commands::inbox::*;
 pub use commands::jobs::*;
 pub use commands::plans::*;
 pub use commands::pull_requests::*;
@@ -134,6 +135,10 @@ pub fn run() {
             cmd_update_queued_chat_item,
             cmd_list_agents,
             cmd_list_github_issues,
+            cmd_check_inbox,
+            cmd_list_inbox_proposals,
+            cmd_accept_inbox_proposal,
+            cmd_dismiss_inbox_proposal,
             cmd_list_pull_requests,
             cmd_sync_pull_requests,
         ])

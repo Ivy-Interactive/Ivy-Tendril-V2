@@ -136,8 +136,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/plans/:id/validate",
             post(plans::validate_plan_handler),
         )
-        // Inbox
+        // Inbox. Static segments before `:id`, so `check` and `proposals` can never be read as a
+        // proposal id.
         .route("/api/inbox", post(inbox::post_inbox))
+        .route("/api/inbox/check", post(inbox::post_inbox_check))
+        .route("/api/inbox/proposals", get(inbox::list_proposals_handler))
+        .route(
+            "/api/inbox/proposals/:id/accept",
+            post(inbox::accept_proposal_handler),
+        )
+        .route(
+            "/api/inbox/proposals/:id/dismiss",
+            post(inbox::dismiss_proposal_handler),
+        )
         // Jobs
         .route("/api/jobs", get(jobs::list_jobs).post(jobs::start_job))
         // Static segments before `:id`, so a literal path can never be read as a job id. Axum

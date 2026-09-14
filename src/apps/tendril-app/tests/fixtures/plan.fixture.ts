@@ -85,6 +85,8 @@ export function prStatus(overrides: Partial<PrStatus> = {}): PrStatus {
     planFolder: "00021-BuildDesktopOperator",
     planTitle: "Build Desktop Operator Experience",
     project: "Tendril-App",
+    cost: 1.23,
+    tokens: 160_000,
     ...overrides,
   };
 }
