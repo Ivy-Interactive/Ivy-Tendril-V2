@@ -7,10 +7,12 @@ pub mod health;
 pub mod inbox;
 pub mod jobs;
 pub mod models;
+pub mod onboarding;
 pub mod ping;
 pub mod plans;
 pub mod projects;
 pub mod pull_requests;
+pub mod recommendations;
 pub mod vault;
 pub mod verifications;
 pub mod ws;
@@ -84,6 +86,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/plans/:id/recommendations/:title",
             put(plans::update_recommendation_handler).delete(plans::delete_recommendation_handler),
+        )
+        .route(
+            "/api/plans/:id/recommendations/:title/accept",
+            put(plans::accept_recommendation_handler),
+        )
+        .route(
+            "/api/plans/:id/recommendations/:title/decline",
+            put(plans::decline_recommendation_handler),
+        )
+        // Recommendations across every plan, read from the denormalised projection
+        .route(
+            "/api/recommendations",
+            get(recommendations::list_recommendations),
+        )
+        .route(
+            "/api/recommendations/rebuild",
+            post(recommendations::rebuild_recommendations),
         )
         .route(
             "/api/plans/:id/verifications",
@@ -182,6 +201,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
         )
+        .route(
+            "/api/projects/:name/hooks",
+            post(projects::add_project_hook),
+        )
+        .route(
+            "/api/projects/:name/hooks/:hook",
+            delete(projects::remove_project_hook),
+        )
         // Vaults. `:id` accepts the literal `default` for the primary vault, so the static
         // `discover` and `accounts` segments are declared alongside it rather than under it.
         .route(
@@ -222,6 +249,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
         )
+        // Onboarding
+        .route("/api/onboarding", get(onboarding::get_status_handler))
+        .route(
+            "/api/onboarding/complete",
+            post(onboarding::complete_handler),
+        )
+        .route("/api/onboarding/dismiss", post(onboarding::dismiss_handler))
+        .route("/api/doctor", get(health::doctor_handler))
         // Pull requests
         .route("/api/pull-requests", get(pull_requests::list_pull_requests))
         .route(

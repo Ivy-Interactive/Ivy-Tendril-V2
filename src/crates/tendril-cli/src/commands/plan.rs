@@ -5,22 +5,25 @@ use std::path::PathBuf;
 use tendril_core::config::{
     get_config_path, get_database_path, get_plans_dir, load_config, read_master,
 };
-use tendril_core::db::{get_plans, open_database, sync_plan};
+use tendril_core::db::{
+    get_plans, get_recommendations, open_database, rebuild_recommendations_projection, sync_plan,
+};
 use tendril_core::git::worktree::{
     add_worktree, cleanup_worktrees, register_worktree, remove_worktree, RemoveOutcome,
     WorktreeMode,
 };
 use tendril_core::models::{
-    PlanStatus, PlanVerificationEntry, PlanWorktreeEntry, VerificationStatus,
+    PlanStatus, PlanVerificationEntry, PlanWorktreeEntry, RecommendationStatus, VerificationStatus,
 };
 use tendril_core::plans::{
-    add_recommendation, check_all_plans_health, check_plan_health, check_pr_health_with_progress,
-    create_plan, get_plan_field, get_revision, list_recommendations, materialize_plan_env,
-    order_by_project_config, read_plan_file, read_plan_yaml, remove_recommendation,
-    render_env_file, resolve_plan_folder, resolve_plan_folder_name, resolve_plan_project,
-    resolve_pr_head_via_gh, resolve_worktrees, set_plan_verification_status,
-    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
-    DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard, RenderedEnvFile,
+    accept_recommendation, add_recommendation, check_all_plans_health, check_plan_health,
+    check_pr_health_with_progress, create_plan, decline_recommendation, get_plan_field,
+    get_revision, list_recommendations, materialize_plan_env, order_by_project_config,
+    read_plan_file, read_plan_yaml, remove_recommendation, render_env_file, resolve_plan_folder,
+    resolve_plan_folder_name, resolve_plan_project, resolve_pr_head_via_gh, resolve_worktrees,
+    set_plan_verification_status, set_recommendation_field, write_plan_yaml, write_revision,
+    CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard,
+    RenderedEnvFile,
 };
 
 #[derive(Subcommand)]
@@ -382,10 +385,42 @@ pub struct PlanVerificationListArgs {
     pub json: bool,
 }
 
+/// `--reason` / `--chat-session`, the pair every other plan mutation carries so an edit can explain
+/// itself to the other chat sessions watching the plan.
+#[derive(Args, Default)]
+pub struct PlanEditReasonArgs {
+    #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+    pub reason: Option<String>,
+    #[arg(
+        long,
+        help = "Chat session making the edit, excluded from self-notification"
+    )]
+    pub chat_session: Option<String>,
+}
+
 #[derive(Subcommand)]
 pub enum PlanRecCommands {
     #[command(about = "List recommendations")]
-    List { plan_id: String },
+    List {
+        plan_id: String,
+        #[arg(
+            long,
+            help = "Only recommendations in this state (Pending, Accepted, AcceptedWithNotes, Declined)"
+        )]
+        state: Option<String>,
+    },
+    #[command(about = "List recommendations across every plan")]
+    All {
+        #[arg(long, help = "Only recommendations of plans in this project")]
+        project: Option<String>,
+        #[arg(
+            long,
+            help = "Only recommendations in this state (Pending, Accepted, AcceptedWithNotes, Declined)"
+        )]
+        state: Option<String>,
+    },
+    #[command(about = "Rebuild the recommendations projection from the plan folders on disk")]
+    Rebuild,
     #[command(about = "Add recommendation")]
     Add {
         plan_id: String,
@@ -394,18 +429,61 @@ pub enum PlanRecCommands {
         description: String,
         #[arg(long)]
         impact: Option<String>,
+        #[command(flatten)]
+        edit: PlanEditReasonArgs,
     },
-    #[command(about = "Accept recommendation")]
-    Accept { plan_id: String, title: String },
-    #[command(about = "Decline recommendation")]
+    #[command(
+        about = "Set a recommendation field (title, description, state, impact, declineReason, notes)"
+    )]
+    Set {
+        plan_id: String,
+        title: String,
+        field: String,
+        value: String,
+        #[command(flatten)]
+        edit: PlanEditReasonArgs,
+    },
+    #[command(about = "Accept recommendation, with optional notes")]
+    Accept {
+        plan_id: String,
+        title: String,
+        #[arg(
+            long,
+            help = "Why it was accepted; any text promotes it to AcceptedWithNotes"
+        )]
+        notes: Option<String>,
+        #[command(flatten)]
+        edit: PlanEditReasonArgs,
+    },
+    // `--reason` here is the *decline* reason, which is the documented public surface of this command
+    // and what it has always meant. The notification reason every other mutation spells `--reason` is
+    // therefore `--edit-reason` on this one command.
+    #[command(
+        about = "Decline recommendation. --reason is the decline reason; use --edit-reason for the notification reason"
+    )]
     Decline {
         plan_id: String,
         title: String,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Why the recommendation was declined, stored in plan.yaml"
+        )]
         reason: Option<String>,
+        #[arg(long, help = "Why this edit was made, reported to other chat sessions")]
+        edit_reason: Option<String>,
+        #[arg(
+            long,
+            help = "Chat session making the edit, excluded from self-notification"
+        )]
+        chat_session: Option<String>,
     },
     #[command(about = "Remove recommendation")]
-    Remove { plan_id: String, title: String },
+    Remove {
+        plan_id: String,
+        title: String,
+        #[command(flatten)]
+        edit: PlanEditReasonArgs,
+    },
 }
 
 #[derive(Subcommand)]
@@ -533,6 +611,40 @@ async fn report_plan_edit_event(
             );
         }
     }
+}
+
+/// Projects a plan folder into the database after a YAML edit, best-effort.
+///
+/// The recommendation subcommands did none of this before, which is why a CLI edit could leave the
+/// `Recommendations` table behind while the server's own routes kept it current.
+fn sync_plan_folder(folder: &std::path::Path, db_path: &std::path::Path) {
+    if let Ok(pf) = read_plan_file(folder) {
+        if let Ok(conn) = open_database(db_path) {
+            let _ = sync_plan(&conn, &pf);
+        }
+    }
+}
+
+/// Reports a recommendation edit to the other chat sessions watching the plan, the same way
+/// `plan set` and `plan set-verification` report theirs.
+async fn report_recommendation_edit(
+    tendril_home: &std::path::Path,
+    plan_id: &str,
+    summary: &str,
+    edit: &PlanEditReasonArgs,
+) {
+    let source_chat = resolve_source_chat_session(edit.chat_session.as_deref());
+    report_plan_edit_event(
+        tendril_home,
+        plan_id,
+        PlanEditEvent {
+            summary,
+            reason: edit.reason.as_deref(),
+            source_chat_session_id: source_chat.as_deref(),
+            ..Default::default()
+        },
+    )
+    .await;
 }
 
 pub async fn handle_plan_command(
@@ -1278,41 +1390,164 @@ pub async fn handle_plan_command(
             }
         },
         PlanCommands::Rec(rec_cmd) => match rec_cmd {
-            PlanRecCommands::List { plan_id } => {
+            PlanRecCommands::List { plan_id, state } => {
                 let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
-                let recs = list_recommendations(&folder)?;
-                for r in recs {
+                let filter = match state.as_deref() {
+                    Some(raw) => Some(RecommendationStatus::canonical(raw).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Invalid recommendation state: {} (valid: {})",
+                            raw,
+                            RecommendationStatus::ALL.join(", ")
+                        )
+                    })?),
+                    None => None,
+                };
+
+                for r in list_recommendations(&folder)? {
+                    if let Some(want) = filter {
+                        if !r.state.eq_ignore_ascii_case(want) {
+                            continue;
+                        }
+                    }
                     println!("[{}] {} - {}", r.state, r.title, r.description);
+                    if let Some(notes) = &r.notes {
+                        println!("    notes: {}", notes);
+                    }
+                    if let Some(reason) = &r.decline_reason {
+                        println!("    declineReason: {}", reason);
+                    }
                 }
+            }
+            PlanRecCommands::All { project, state } => {
+                // The cross-plan view is the one recommendation read that cannot come from a single
+                // plan.yaml, so it reads the projection instead.
+                let state = match state.as_deref() {
+                    Some(raw) => Some(RecommendationStatus::canonical(raw).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Invalid recommendation state: {} (valid: {})",
+                            raw,
+                            RecommendationStatus::ALL.join(", ")
+                        )
+                    })?),
+                    None => None,
+                };
+
+                let conn = open_database(&db_path)?;
+                let rows = get_recommendations(&conn, project.as_deref(), state)?;
+                for row in &rows {
+                    let impact = row.impact.as_deref().unwrap_or("-");
+                    println!(
+                        "[{}] {} / {} — {}",
+                        row.state, row.plan_folder_name, row.title, impact
+                    );
+                }
+                if rows.is_empty() {
+                    println!("No recommendations.");
+                }
+            }
+            PlanRecCommands::Rebuild => {
+                let conn = open_database(&db_path)?;
+                let (rows, plans) = rebuild_recommendations_projection(&conn, &plans_dir)?;
+                println!("Rebuilt {} recommendation rows from {} plans.", rows, plans);
             }
             PlanRecCommands::Add {
                 plan_id,
                 title,
                 description,
                 impact,
+                edit,
             } => {
                 let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
                 add_recommendation(&folder, &title, &description, impact.as_deref())?;
                 println!("Recommendation added.");
+                sync_plan_folder(&folder, &db_path);
+                report_recommendation_edit(
+                    tendril_home,
+                    &plan_id,
+                    &format!("recommendation '{}' added", title),
+                    &edit,
+                )
+                .await;
             }
-            PlanRecCommands::Accept { plan_id, title } => {
+            PlanRecCommands::Set {
+                plan_id,
+                title,
+                field,
+                value,
+                edit,
+            } => {
                 let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
-                set_recommendation_state(&folder, &title, "Accepted", None)?;
-                println!("Recommendation accepted.");
+                set_recommendation_field(&folder, &title, &field, &value)?;
+                println!("Recommendation updated.");
+                sync_plan_folder(&folder, &db_path);
+                report_recommendation_edit(
+                    tendril_home,
+                    &plan_id,
+                    &format!("recommendation '{}' field '{}' updated", title, field),
+                    &edit,
+                )
+                .await;
+            }
+            PlanRecCommands::Accept {
+                plan_id,
+                title,
+                notes,
+                edit,
+            } => {
+                let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
+                let new_state = accept_recommendation(&folder, &title, notes.as_deref())?;
+                if new_state == RecommendationStatus::ACCEPTED_WITH_NOTES {
+                    println!("Recommendation accepted with notes.");
+                } else {
+                    println!("Recommendation accepted.");
+                }
+                sync_plan_folder(&folder, &db_path);
+                report_recommendation_edit(
+                    tendril_home,
+                    &plan_id,
+                    &format!("recommendation '{}' set to {}", title, new_state),
+                    &edit,
+                )
+                .await;
             }
             PlanRecCommands::Decline {
                 plan_id,
                 title,
                 reason,
+                edit_reason,
+                chat_session,
             } => {
                 let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
-                set_recommendation_state(&folder, &title, "Declined", reason.as_deref())?;
+                decline_recommendation(&folder, &title, reason.as_deref())?;
                 println!("Recommendation declined.");
+                sync_plan_folder(&folder, &db_path);
+                report_recommendation_edit(
+                    tendril_home,
+                    &plan_id,
+                    &format!("recommendation '{}' declined", title),
+                    &PlanEditReasonArgs {
+                        reason: edit_reason,
+                        chat_session,
+                    },
+                )
+                .await;
             }
-            PlanRecCommands::Remove { plan_id, title } => {
+            PlanRecCommands::Remove {
+                plan_id,
+                title,
+                edit,
+            } => {
                 let folder = resolve_plan_folder(&plan_id, &plans_dir)?;
                 remove_recommendation(&folder, &title)?;
                 println!("Recommendation removed.");
+                sync_plan_folder(&folder, &db_path);
+                report_recommendation_edit(
+                    tendril_home,
+                    &plan_id,
+                    &format!("recommendation '{}' removed", title),
+                    &edit,
+                )
+                .await;
             }
         },
         PlanCommands::Env(env_cmd) => match env_cmd {
