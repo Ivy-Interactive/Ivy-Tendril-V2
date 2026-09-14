@@ -21,6 +21,7 @@ describe("Package Exports", () => {
       expect(root.Input).toBeDefined();
       expect(root.Card).toBeDefined();
       expect(root.Badge).toBeDefined();
+      expect(root.DataTable).toBeDefined();
       expect(root.Dialog).toBeDefined();
       expect(root.Tabs).toBeDefined();
     });
@@ -73,6 +74,8 @@ describe("Package Exports", () => {
       expect(ui.Toggle).toBeDefined();
       expect(ui.Label).toBeDefined();
       expect(ui.Select).toBeDefined();
+      expect(ui.DataTable).toBeDefined();
+      expect(ui.DataTablePagination).toBeDefined();
     });
 
     it("should export variant namespaces", () => {
