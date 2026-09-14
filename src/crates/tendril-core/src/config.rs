@@ -1,5 +1,5 @@
 use crate::error::{Result, TendrilError};
-use crate::models::{LevelConfig, ProjectConfig, VerificationConfig};
+use crate::models::{LevelConfig, ProjectConfig, ProjectVerificationRef, VerificationConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -95,6 +95,14 @@ pub struct TendrilSettings {
 
     #[serde(rename = "enrichModels", default = "default_true")]
     pub enrich_models: bool,
+
+    /// Hours between background models.dev refreshes while `enrichModels` is on. `0` or
+    /// negative means "refresh once at startup and never again".
+    #[serde(
+        rename = "modelEnrichmentIntervalHours",
+        default = "default_model_enrichment_interval_hours"
+    )]
+    pub model_enrichment_interval_hours: i32,
 
     /// Soft age threshold (in days) past which the models.dev disk cache is still used but
     /// logged as a warning. `0` or negative disables this tier (never warn).
@@ -254,6 +262,9 @@ fn default_true() -> bool {
 fn default_theme() -> String {
     "default".to_string()
 }
+fn default_model_enrichment_interval_hours() -> i32 {
+    crate::agents::model_cache::DEFAULT_ENRICHMENT_INTERVAL_HOURS
+}
 fn default_model_cache_warn_age_days() -> i64 {
     crate::agents::model_cache::DEFAULT_CACHE_WARN_AGE_DAYS
 }
@@ -322,6 +333,7 @@ impl Default for TendrilSettings {
             coding_agents: Vec::new(),
             promptwares: BTreeMap::new(),
             enrich_models: true,
+            model_enrichment_interval_hours: default_model_enrichment_interval_hours(),
             model_cache_warn_age_days: default_model_cache_warn_age_days(),
             model_cache_max_age_days: default_model_cache_max_age_days(),
             extra: BTreeMap::new(),
@@ -565,6 +577,38 @@ pub fn get_plans_dir(tendril_home: &Path) -> PathBuf {
 
 pub fn get_database_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("tendril.db")
+}
+
+/// Strip everything outside `[A-Za-z0-9._-]`, matching the C# `InputSanitizer.SanitizeProjectName`
+/// so the directory layout stays byte-identical between the two implementations.
+pub fn sanitize_project_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '_' || *c == '-')
+        .collect()
+}
+
+pub fn get_project_root_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    let projects = tendril_home.join("Projects");
+    if project_name.trim().is_empty() {
+        return projects;
+    }
+    projects.join(sanitize_project_name(project_name))
+}
+
+pub fn get_project_repos_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Repos")
+}
+
+pub fn get_project_skills_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Skills")
+}
+
+pub fn get_project_mcp_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("MCP")
+}
+
+pub fn get_project_memory_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Memory")
 }
 
 pub fn load_config(config_path: &Path) -> Result<TendrilSettings> {
@@ -915,4 +959,121 @@ pub fn remove_verification_from_projects(
         }
     }
     modified
+}
+
+/// Where a verification goes in a project's ordered verification list. The order is the run
+/// order, which is why moving an entry is a first-class operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VerificationPlacement {
+    /// Immediately before the named verification.
+    Before(String),
+    /// Immediately after the named verification.
+    After(String),
+    /// At this zero-based index, clamped to the list length.
+    Position(usize),
+}
+
+/// Resolves a placement to an insert index against `verifications` as it stands. For a move,
+/// pass the list with the moved entry already removed — that is what makes `--after` behave
+/// correctly when an entry moves forward.
+fn resolve_insert_index(
+    verifications: &[ProjectVerificationRef],
+    placement: &VerificationPlacement,
+) -> Result<usize> {
+    let find = |name: &str| {
+        verifications
+            .iter()
+            .position(|v| v.name.eq_ignore_ascii_case(name))
+    };
+    let available = || {
+        verifications
+            .iter()
+            .map(|v| v.name.clone())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    match placement {
+        VerificationPlacement::Before(name) => find(name).ok_or_else(|| {
+            TendrilError::Config(format!(
+                "Target verification for --before not found: '{}'. Available: {}",
+                name,
+                available()
+            ))
+        }),
+        VerificationPlacement::After(name) => find(name).map(|i| i + 1).ok_or_else(|| {
+            TendrilError::Config(format!(
+                "Target verification for --after not found: '{}'. Available: {}",
+                name,
+                available()
+            ))
+        }),
+        VerificationPlacement::Position(n) => Ok((*n).min(verifications.len())),
+    }
+}
+
+/// Moves an existing verification within a project, returning the index it landed at.
+/// The list is left untouched if the placement target cannot be resolved.
+pub fn move_project_verification(
+    project: &mut ProjectConfig,
+    verification: &str,
+    placement: &VerificationPlacement,
+) -> Result<usize> {
+    let current = project
+        .verifications
+        .iter()
+        .position(|v| v.name.eq_ignore_ascii_case(verification))
+        .ok_or_else(|| {
+            TendrilError::Config(format!(
+                "Verification not found: '{}'. Available: {}",
+                verification,
+                project
+                    .verifications
+                    .iter()
+                    .map(|v| v.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        })?;
+
+    // Resolve against the shortened list, but before mutating, so a bad target leaves the
+    // project's order exactly as it was.
+    let mut shortened = project.verifications.clone();
+    let item = shortened.remove(current);
+    let insert_index = resolve_insert_index(&shortened, placement)?;
+
+    shortened.insert(insert_index, item);
+    project.verifications = shortened;
+    Ok(insert_index)
+}
+
+/// Inserts a new verification into a project, returning the index it landed at.
+/// `after: None` appends. Errors if the verification is already present, or if `after`
+/// names a verification the project does not have.
+pub fn insert_project_verification(
+    project: &mut ProjectConfig,
+    entry: ProjectVerificationRef,
+    after: Option<&str>,
+) -> Result<usize> {
+    if project
+        .verifications
+        .iter()
+        .any(|v| v.name.eq_ignore_ascii_case(&entry.name))
+    {
+        return Err(TendrilError::Config(format!(
+            "Verification already exists in project: {}",
+            entry.name
+        )));
+    }
+
+    let insert_index = match after {
+        Some(name) => resolve_insert_index(
+            &project.verifications,
+            &VerificationPlacement::After(name.to_string()),
+        )?,
+        None => project.verifications.len(),
+    };
+
+    project.verifications.insert(insert_index, entry);
+    Ok(insert_index)
 }

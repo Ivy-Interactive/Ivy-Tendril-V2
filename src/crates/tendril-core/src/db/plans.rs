@@ -2,7 +2,8 @@ use crate::models::{
     PlanFile, PlanMetadata, PlanStatus, PlanVerificationEntry, VerificationStatus,
 };
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
+use std::path::Path;
 
 pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
     conn.execute(
@@ -119,7 +120,81 @@ pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
         tracing::warn!("Failed to reconcile costs for plan {}: {}", plan_id, e);
     }
 
+    // `sync_plan` and `delete_plan` are the only two writers of `Plans` rows, so stamping here gives
+    // every one of their call sites incremental-sync bookkeeping without an edit, and stops V2
+    // looking frozen to the original, which reads the same key.
+    set_last_sync_time(conn, Utc::now())?;
+
     Ok(())
+}
+
+/// Every column a `PlanFile` needs, aliased `p` so an FTS5 join can be bolted on without touching
+/// the projection.
+const PLAN_SELECT: &str = "SELECT p.Id, p.Title, p.Project, p.Level, p.State, p.FolderPath, p.FolderName, p.YamlRaw, p.RevisionCount, p.LatestRevisionContent, p.Created, p.Updated, p.InitialPrompt, p.SourceUrl, p.ChatSessionId";
+
+type BoxedParams = Vec<Box<dyn rusqlite::ToSql>>;
+
+/// Appends the status and project filters shared by all three search paths.
+fn push_plan_filters(
+    sql: &mut String,
+    params_vec: &mut BoxedParams,
+    status_filter: Option<PlanStatus>,
+    project_filter: Option<&str>,
+) {
+    if let Some(status) = status_filter {
+        sql.push_str(" AND p.State = ?");
+        params_vec.push(Box::new(status.as_str().to_string()));
+    }
+
+    if let Some(proj) = project_filter {
+        sql.push_str(" AND (LOWER(p.Project) = LOWER(?) OR LOWER(p.Project) LIKE LOWER(?))");
+        params_vec.push(Box::new(proj.to_string()));
+        params_vec.push(Box::new(format!("%{}%", proj)));
+    }
+}
+
+/// Strips the FTS5 syntax a search box produces by accident, so a pasted URL or a stray bracket is
+/// a search rather than an error. Ported from the original's `SanitizeFts5Query`, plus `:` — FTS5's
+/// column-filter operator, which turns any pasted URL into `no such column: https`.
+///
+/// This cannot make every input valid (`AND` on its own still fails, while *stepping* rather than
+/// preparing), which is why [`get_plans`] also tolerates an error from the FTS statement.
+pub(crate) fn sanitize_fts5_query(query: &str) -> String {
+    let mut kept: Vec<char> = Vec::with_capacity(query.len());
+
+    for ch in query.chars() {
+        match ch {
+            '/' | '\\' | ':' => kept.push(' '),
+            '(' | ')' | '^' => {}
+            // Keep a prefix wildcard (`button*`), drop a bare one — FTS5 rejects `*` that does not
+            // follow a token. The original used a `(?<!\w)\*` lookbehind, which `regex` has no
+            // equivalent for, so the previously kept character is inspected instead.
+            '*' => {
+                if kept
+                    .last()
+                    .is_some_and(|prev| prev.is_alphanumeric() || *prev == '_')
+                {
+                    kept.push('*');
+                }
+            }
+            _ => kept.push(ch),
+        }
+    }
+
+    // An unbalanced quote is an unterminated phrase, and FTS5 treats that as a syntax error.
+    if kept.iter().filter(|c| **c == '"').count() % 2 != 0 {
+        for ch in kept.iter_mut() {
+            if *ch == '"' {
+                *ch = ' ';
+            }
+        }
+    }
+
+    kept.iter()
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub fn get_plans(
@@ -128,36 +203,85 @@ pub fn get_plans(
     project_filter: Option<&str>,
     text_filter: Option<&str>,
 ) -> Result<Vec<PlanFile>> {
-    let mut sql = "SELECT Id, Title, Project, Level, State, FolderPath, FolderName, YamlRaw, RevisionCount, LatestRevisionContent, Created, Updated, InitialPrompt, SourceUrl, ChatSessionId FROM Plans WHERE 1=1".to_string();
-    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    let Some(text) = text_filter.map(str::trim).filter(|t| !t.is_empty()) else {
+        let mut sql = format!("{} FROM Plans p WHERE 1=1", PLAN_SELECT);
+        let mut params_vec: BoxedParams = Vec::new();
+        push_plan_filters(&mut sql, &mut params_vec, status_filter, project_filter);
+        sql.push_str(" ORDER BY p.Id DESC");
+        return query_plans(conn, &sql, &params_vec);
+    };
 
-    if let Some(status) = status_filter {
-        sql.push_str(" AND State = ?");
-        params_vec.push(Box::new(status.as_str().to_string()));
-    }
-
-    if let Some(proj) = project_filter {
-        sql.push_str(" AND (LOWER(Project) = LOWER(?) OR LOWER(Project) LIKE LOWER(?))");
-        params_vec.push(Box::new(proj.to_string()));
-        params_vec.push(Box::new(format!("%{}%", proj)));
-    }
-
-    if let Some(text) = text_filter {
-        if !text.trim().is_empty() {
-            sql.push_str(
-                " AND (Title LIKE ? OR LatestRevisionContent LIKE ? OR CAST(Id AS TEXT) LIKE ?)",
-            );
-            let pattern = format!("%{}%", text.trim());
-            params_vec.push(Box::new(pattern.clone()));
-            params_vec.push(Box::new(pattern.clone()));
-            params_vec.push(Box::new(pattern));
+    // A bare plan number is a lookup, not a search — `42` and `00042` both mean plan 42. It has to
+    // be a separate statement: SQLite rejects a `MATCH` that is OR'd with anything else ("unable to
+    // use function MATCH in the requested context"), and an exact id deserves the top slot anyway.
+    let id_hit = match text.parse::<i32>() {
+        Ok(id) if id > 0 => {
+            let mut sql = format!("{} FROM Plans p WHERE p.Id = ?", PLAN_SELECT);
+            let mut params_vec: BoxedParams = vec![Box::new(id)];
+            push_plan_filters(&mut sql, &mut params_vec, status_filter, project_filter);
+            query_plans(conn, &sql, &params_vec)?
         }
+        _ => Vec::new(),
+    };
+
+    let sanitized = sanitize_fts5_query(text);
+    let mut plans = if sanitized.is_empty() {
+        Vec::new()
+    } else {
+        let mut sql = format!(
+            "{} FROM Plans p INNER JOIN PlanSearch fts ON fts.rowid = p.Id WHERE PlanSearch MATCH ?",
+            PLAN_SELECT
+        );
+        let mut params_vec: BoxedParams = vec![Box::new(sanitized.clone())];
+        push_plan_filters(&mut sql, &mut params_vec, status_filter, project_filter);
+        // `rank` is bm25 and negative, so ascending is best-first; ties keep V2's newest-first order.
+        sql.push_str(" ORDER BY rank, p.Id DESC");
+
+        // Anything the user typed can be invalid FTS5, and a missing `PlanSearch` table (a database
+        // created before the index existed) fails here too. Either way it is "no FTS results", never
+        // a 500 for the caller.
+        query_plans(conn, &sql, &params_vec).unwrap_or_else(|e| {
+            tracing::debug!(
+                "FTS5 search for {:?} failed, falling back to LIKE: {}",
+                sanitized,
+                e
+            );
+            Vec::new()
+        })
+    };
+
+    if plans.is_empty() {
+        // FTS5 only matches whole tokens, but a search box is used for fragments — `worktre` has to
+        // keep finding `worktree`. Same six columns the original falls back on.
+        let mut sql = format!(
+            "{} FROM Plans p WHERE (p.Title LIKE ? OR p.LatestRevisionContent LIKE ? OR CAST(p.Id AS TEXT) LIKE ? OR p.Project LIKE ? OR p.SourceUrl LIKE ? OR p.InitialPrompt LIKE ?)",
+            PLAN_SELECT
+        );
+        let pattern = format!("%{}%", text);
+        let mut params_vec: BoxedParams = (0..6)
+            .map(|_| Box::new(pattern.clone()) as Box<dyn rusqlite::ToSql>)
+            .collect();
+        push_plan_filters(&mut sql, &mut params_vec, status_filter, project_filter);
+        sql.push_str(" ORDER BY p.Id DESC");
+        plans = query_plans(conn, &sql, &params_vec)?;
     }
 
-    sql.push_str(" ORDER BY Id DESC");
+    if id_hit.is_empty() {
+        return Ok(plans);
+    }
 
+    let hit_ids: Vec<i32> = id_hit.iter().map(|p| p.metadata.id).collect();
+    plans.retain(|p| !hit_ids.contains(&p.metadata.id));
+    let mut merged = id_hit;
+    merged.append(&mut plans);
+    Ok(merged)
+}
+
+/// Runs a query whose projection is [`PLAN_SELECT`] and maps every row to a [`PlanFile`]. Child
+/// tables (repos, commits, …) are not loaded — see [`get_plan_by_id`] for those.
+fn query_plans(conn: &Connection, sql: &str, params_vec: &BoxedParams) -> Result<Vec<PlanFile>> {
     let params_slice: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare(sql)?;
 
     let mut rows = stmt.query(params_slice.as_slice())?;
     let mut plans = Vec::new();
@@ -221,8 +345,13 @@ pub fn get_plans(
 }
 
 pub fn get_plan_by_id(conn: &Connection, id: i32) -> Result<Option<PlanFile>> {
-    let plans = get_plans(conn, None, None, Some(&id.to_string()))?;
-    if let Some(mut plan) = plans.into_iter().find(|p| p.metadata.id == id) {
+    // Reached directly by primary key: routing a single-plan lookup through `get_plans` would make
+    // it depend on the search path's FTS/LIKE fallback chain.
+    let sql = format!("{} FROM Plans p WHERE p.Id = ?", PLAN_SELECT);
+    let params_vec: BoxedParams = vec![Box::new(id)];
+    let plans = query_plans(conn, &sql, &params_vec)?;
+
+    if let Some(mut plan) = plans.into_iter().next() {
         // Load child tables
         let mut repo_stmt = conn.prepare("SELECT RepoPath FROM Repos WHERE PlanId = ?")?;
         let repos: Vec<String> = repo_stmt
@@ -278,7 +407,192 @@ pub fn get_plan_by_id(conn: &Connection, id: i32) -> Result<Option<PlanFile>> {
 
 pub fn delete_plan(conn: &Connection, id: i32) -> Result<()> {
     conn.execute("DELETE FROM Plans WHERE Id = ?1", params![id])?;
+    set_last_sync_time(conn, Utc::now())?;
     Ok(())
+}
+
+/// Discards and reinserts every FTS5 row from `Plans`, returning the number of plans indexed.
+/// Idempotent, and the repair path for an index the triggers could not have maintained (rows written
+/// while the index did not exist yet).
+pub fn rebuild_search_index(conn: &Connection) -> Result<usize> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "INSERT INTO PlanSearch(PlanSearch) VALUES('delete-all')",
+        [],
+    )?;
+    let indexed = tx.execute(
+        r#"
+        INSERT INTO PlanSearch(rowid, Title, LatestRevisionContent, Project, InitialPrompt, SourceUrl)
+        SELECT Id, Title, LatestRevisionContent, Project, InitialPrompt, SourceUrl FROM Plans
+        "#,
+        [],
+    )?;
+    tx.commit()?;
+    Ok(indexed)
+}
+
+/// What `tendril doctor` needs to know about the plan search index. Collected in `tendril-core` so
+/// the CLI can report on it without a `rusqlite` dependency of its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanSearchHealth {
+    pub index_present: bool,
+    /// Triggers named in the schema that are absent — an index that silently stops tracking writes.
+    pub missing_triggers: Vec<String>,
+    pub integrity_ok: bool,
+}
+
+/// The three triggers that keep `PlanSearch` in step with `Plans`.
+pub const PLAN_SEARCH_TRIGGERS: [&str; 3] =
+    ["plans_fts_insert", "plans_fts_update", "plans_fts_delete"];
+
+pub fn check_plan_search(conn: &Connection) -> Result<PlanSearchHealth> {
+    let index_present: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='PlanSearch')",
+        [],
+        |r| r.get(0),
+    )?;
+
+    let mut missing_triggers = Vec::new();
+    for trigger in PLAN_SEARCH_TRIGGERS {
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?1)",
+            params![trigger],
+            |r| r.get(0),
+        )?;
+        if !exists {
+            missing_triggers.push(trigger.to_string());
+        }
+    }
+
+    // A corrupt index reports itself only when asked; the check is a no-op on a healthy one.
+    let integrity_ok = index_present
+        && conn
+            .execute(
+                "INSERT INTO PlanSearch(PlanSearch) VALUES('integrity-check')",
+                [],
+            )
+            .is_ok();
+
+    Ok(PlanSearchHealth {
+        index_present,
+        missing_triggers,
+        integrity_ok,
+    })
+}
+
+/// Reads the `LastSyncTime` stamp. An absent or unparseable value is `None` rather than an error:
+/// the only sensible response to either is a full scan.
+pub fn get_last_sync_time(conn: &Connection) -> Result<Option<DateTime<Utc>>> {
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT Value FROM SyncMetadata WHERE Key = 'LastSyncTime'",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+
+    Ok(raw.and_then(|value| {
+        DateTime::parse_from_rfc3339(&value)
+            .map(|dt| dt.with_timezone(&Utc))
+            .ok()
+    }))
+}
+
+/// Stamps `LastSyncTime`. RFC 3339 with a `+00:00` offset, which the original's
+/// `DateTime.TryParse(..., AdjustToUniversal)` reads, just as `parse_from_rfc3339` reads the seven
+/// fractional digits the original writes.
+pub fn set_last_sync_time(conn: &Connection, time: DateTime<Utc>) -> Result<()> {
+    conn.execute(
+        r#"
+        INSERT INTO SyncMetadata (Key, Value) VALUES ('LastSyncTime', ?1)
+        ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value
+        "#,
+        params![time.to_rfc3339()],
+    )?;
+    Ok(())
+}
+
+/// Syncs plan folders whose `plan.yaml` or newest revision changed since `since` (`None` = all),
+/// returning the number of folders synced and stamping `LastSyncTime`.
+///
+/// This is V2's only disk-to-database reconciliation: without it a plan folder written outside a V2
+/// write path — by the original, by hand, or by a plan migration — never reaches the `Plans` table.
+pub fn sync_plans_from_disk(
+    conn: &Connection,
+    plans_dir: &Path,
+    since: Option<DateTime<Utc>>,
+) -> crate::error::Result<usize> {
+    // Stamped before the scan, so a plan written while it runs is picked up by the next pass rather
+    // than falling into the gap between "read" and "stamped".
+    let started = Utc::now();
+
+    // Filesystem mtime granularity is a whole second on some volumes, so a plan written in the same
+    // second as the last stamp would otherwise be missed.
+    let cutoff = since.map(|s| s - chrono::Duration::seconds(2));
+
+    let mut synced = 0usize;
+
+    for entry in std::fs::read_dir(plans_dir)? {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!(
+                    "Skipping unreadable entry in {}: {}",
+                    plans_dir.display(),
+                    e
+                );
+                continue;
+            }
+        };
+
+        let folder = entry.path();
+        if !folder.is_dir() || !folder.join("plan.yaml").exists() {
+            continue;
+        }
+
+        if let Some(cutoff) = cutoff {
+            match plan_folder_modified(&folder) {
+                Some(modified) if modified <= cutoff => continue,
+                _ => {}
+            }
+        }
+
+        match crate::plans::read_plan_file(&folder) {
+            Ok(plan) => match sync_plan(conn, &plan) {
+                Ok(()) => synced += 1,
+                Err(e) => tracing::warn!("Failed to sync plan {}: {}", folder.display(), e),
+            },
+            // One unparseable plan.yaml must not abort the scan for every other plan.
+            Err(e) => tracing::warn!("Skipping unreadable plan {}: {}", folder.display(), e),
+        }
+    }
+
+    set_last_sync_time(conn, started)?;
+    Ok(synced)
+}
+
+/// Newest mtime of `plan.yaml` and of the files directly inside `Revisions/` — the two inputs to a
+/// plan's database row. Never descends into `Worktrees/`, which is a whole checkout per plan.
+fn plan_folder_modified(folder: &Path) -> Option<DateTime<Utc>> {
+    fn modified(path: &Path) -> Option<DateTime<Utc>> {
+        std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .map(DateTime::<Utc>::from)
+            .ok()
+    }
+
+    let mut newest = modified(&folder.join("plan.yaml"));
+
+    if let Ok(revisions) = std::fs::read_dir(folder.join("Revisions")) {
+        for revision in revisions.filter_map(|e| e.ok()) {
+            let candidate = modified(&revision.path());
+            if candidate > newest {
+                newest = candidate;
+            }
+        }
+    }
+
+    newest
 }
 
 pub fn rename_verification(conn: &Connection, old_name: &str, new_name: &str) -> Result<usize> {

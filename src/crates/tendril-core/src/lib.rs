@@ -11,6 +11,8 @@ pub mod models;
 pub mod plans;
 pub mod promptware;
 pub mod questions;
+pub mod stack;
+pub mod vault;
 pub mod watcher;
 
 pub use agents::model_specs;

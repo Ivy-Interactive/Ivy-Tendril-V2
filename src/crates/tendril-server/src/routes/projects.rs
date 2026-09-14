@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tendril_core::config::{load_config, save_config};
+use tendril_core::config::{
+    insert_project_verification, load_config, move_project_verification, save_config,
+    VerificationPlacement,
+};
 use tendril_core::db::open_database;
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
@@ -36,7 +39,28 @@ impl From<RepoInput> for RepoRef {
 #[serde(untagged)]
 pub enum VerificationInput {
     String(String),
-    Object(ProjectVerificationRef),
+    Object(VerificationObjectInput),
+}
+
+/// A verification in a request body. `after` is a placement hint, not part of the stored
+/// verification: it names the verification this one goes behind, and only the add endpoint reads
+/// it — requests that supply the whole list already carry their own order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VerificationObjectInput {
+    pub name: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+}
+
+impl VerificationInput {
+    pub fn after(&self) -> Option<&str> {
+        match self {
+            VerificationInput::String(_) => None,
+            VerificationInput::Object(v) => v.after.as_deref(),
+        }
+    }
 }
 
 impl From<VerificationInput> for ProjectVerificationRef {
@@ -46,7 +70,10 @@ impl From<VerificationInput> for ProjectVerificationRef {
                 name,
                 required: true,
             },
-            VerificationInput::Object(v) => v,
+            VerificationInput::Object(v) => ProjectVerificationRef {
+                name: v.name,
+                required: v.required,
+            },
         }
     }
 }
@@ -598,6 +625,7 @@ pub async fn add_project_verification(
         }
     };
 
+    let after = input.after().map(|s| s.to_string());
     let ver_ref: ProjectVerificationRef = input.into();
     if ver_ref.name.trim().is_empty() {
         return (
@@ -624,9 +652,18 @@ pub async fn add_project_verification(
         return (StatusCode::OK, Json(json!(updated))).into_response();
     }
 
-    settings.projects[proj_idx]
-        .verifications
-        .push(ver_ref.clone());
+    if let Err(e) = insert_project_verification(
+        &mut settings.projects[proj_idx],
+        ver_ref.clone(),
+        after.as_deref(),
+    ) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        )
+            .into_response();
+    }
+
     if let Err(e) = save_config(&state.config_path, &settings) {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -636,6 +673,91 @@ pub async fn add_project_verification(
     }
 
     (StatusCode::CREATED, Json(json!(ver_ref))).into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MoveVerificationRequest {
+    pub name: String,
+    pub before: Option<String>,
+    pub after: Option<String>,
+    pub position: Option<usize>,
+}
+
+/// Reorders a project's verifications. Verifications run in configured order, so this is how a
+/// caller says "this one runs before that one".
+pub async fn move_project_verification_route(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(req): Json<MoveVerificationRequest>,
+) -> impl IntoResponse {
+    let placement = match (&req.before, &req.after, req.position) {
+        (Some(target), None, None) => VerificationPlacement::Before(target.clone()),
+        (None, Some(target), None) => VerificationPlacement::After(target.clone()),
+        (None, None, Some(pos)) => VerificationPlacement::Position(pos),
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Specify exactly one of before, after, or position" })),
+            )
+                .into_response();
+        }
+    };
+
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let index =
+        match move_project_verification(&mut settings.projects[proj_idx], &req.name, &placement) {
+            Ok(idx) => idx,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": e.to_string() })),
+                )
+                    .into_response();
+            }
+        };
+
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "name": req.name,
+            "position": index,
+            "verifications": settings.projects[proj_idx].verifications,
+        })),
+    )
+        .into_response()
 }
 
 pub async fn remove_project_verification(
@@ -696,6 +818,12 @@ pub struct AddReviewActionRequest {
     pub condition: String,
     #[serde(default)]
     pub command: String,
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub before: Option<String>,
+    #[serde(default)]
+    pub after: Option<String>,
 }
 
 pub async fn add_project_review_action(
@@ -742,13 +870,62 @@ pub async fn add_project_review_action(
         .review_actions
         .retain(|a| !a.name.eq_ignore_ascii_case(&action_name));
 
-    settings.projects[proj_idx]
-        .review_actions
-        .push(ReviewActionConfig {
+    let review_actions = &settings.projects[proj_idx].review_actions;
+    let insert_idx = if let Some(target) = req.before.as_deref() {
+        match review_actions
+            .iter()
+            .position(|a| a.name.eq_ignore_ascii_case(target))
+        {
+            Some(idx) => idx,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!(
+                            "Review action '{}' not found in project '{}'. Available: {}",
+                            target,
+                            name,
+                            review_actions.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ")
+                        )
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    } else if let Some(target) = req.after.as_deref() {
+        match review_actions
+            .iter()
+            .position(|a| a.name.eq_ignore_ascii_case(target))
+        {
+            Some(idx) => idx + 1,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!(
+                            "Review action '{}' not found in project '{}'. Available: {}",
+                            target,
+                            name,
+                            review_actions.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ")
+                        )
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        review_actions.len()
+    };
+
+    settings.projects[proj_idx].review_actions.insert(
+        insert_idx,
+        ReviewActionConfig {
             name: action_name.clone(),
             condition: req.condition,
             command: req.command,
-        });
+            paths: req.paths,
+        },
+    );
 
     if let Err(e) = save_config(&state.config_path, &settings) {
         return (

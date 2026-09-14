@@ -64,6 +64,10 @@ export function MadeWithIvy(_props?: MadeWithIvyProps) {
           cursor-pointer
           ${isHovered ? "size-48" : "size-16"}
           bg-ivy-green
+          focus-visible:outline-none
+          focus-visible:ring-2
+          focus-visible:ring-ring
+          focus-visible:ring-offset-1
         `}
         onClick={handleClick}
         role="button"

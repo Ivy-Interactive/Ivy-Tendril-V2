@@ -5,6 +5,7 @@ pub mod models;
 pub mod service;
 pub mod verification_reports;
 
+pub use commands::agents::*;
 pub use commands::chat::*;
 pub use commands::config::*;
 pub use commands::github::*;
@@ -53,6 +54,9 @@ pub fn run() {
             cmd_list_plans,
             cmd_get_plan,
             cmd_update_plan_field,
+            cmd_delete_plan,
+            cmd_reset_plan,
+            cmd_get_repo_status,
             cmd_get_revision,
             cmd_write_revision,
             cmd_get_verification_report,
@@ -66,6 +70,8 @@ pub fn run() {
             cmd_cancel_job,
             cmd_list_projects,
             cmd_get_config,
+            cmd_get_models_status,
+            cmd_refresh_models,
             cmd_execute_review_action,
             cmd_save_ui_state,
             cmd_load_ui_state,
@@ -86,6 +92,8 @@ pub fn run() {
             cmd_enqueue_chat_message,
             cmd_clear_chat_queue,
             cmd_delete_queued_chat_item,
+            cmd_update_queued_chat_item,
+            cmd_list_agents,
             cmd_list_github_issues,
         ])
         .run(tauri::generate_context!())
