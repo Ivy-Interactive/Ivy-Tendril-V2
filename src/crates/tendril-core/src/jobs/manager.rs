@@ -19,7 +19,7 @@ use crate::jobs::dependents::release_dependents;
 use crate::jobs::failure_analysis::extract_failure_reason;
 use crate::jobs::firmware_values::{
     build_firmware_values, execution_profile_override, find_project, find_repo_ref, repo_name,
-    resolve_project, resolve_working_directory,
+    resolve_project, resolve_project_skills, resolve_working_directory,
 };
 use crate::jobs::logger::{
     append_agent_log, append_to_eventwire, append_to_raw_log, find_log_file, read_eventwire_log,
@@ -36,7 +36,7 @@ use crate::plans::guards::PlanCompletionGuard;
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::verification_gate::resolve_post_execution_state;
 use crate::plans::writer::write_plan_yaml;
-use crate::promptware::compiler::compile_firmware;
+use crate::promptware::compiler::compile_firmware_with_skills;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -1424,32 +1424,34 @@ fn spawn_runner(
         }
 
         let values = build_firmware_values(&job, &tendril_home, &settings);
-        let compiled_prompt = match compile_firmware(&promptware_folder, &values) {
-            Ok(p) => p,
-            Err(e) => {
-                let msg = format!(
-                    "Failed to compile firmware from {}: {}",
-                    promptware_folder.display(),
-                    e
-                );
-                finish_job(
-                    &tendril_home,
-                    &plans_dir,
-                    &jobs_map,
-                    &handles,
-                    &completion_claimed,
-                    job,
-                    JobStatus::Failed,
-                    msg,
-                    None,
-                )
-                .await;
-                release_wait_dependents(&ctx, &job_id).await;
-                drop(permit);
-                dispatch_notify.notify_one();
-                return;
-            }
-        };
+        let skills = resolve_project_skills(&settings, &job.project, &tendril_home);
+        let compiled_prompt =
+            match compile_firmware_with_skills(&promptware_folder, &values, &skills) {
+                Ok(p) => p,
+                Err(e) => {
+                    let msg = format!(
+                        "Failed to compile firmware from {}: {}",
+                        promptware_folder.display(),
+                        e
+                    );
+                    finish_job(
+                        &tendril_home,
+                        &plans_dir,
+                        &jobs_map,
+                        &handles,
+                        &completion_claimed,
+                        job,
+                        JobStatus::Failed,
+                        msg,
+                        None,
+                    )
+                    .await;
+                    release_wait_dependents(&ctx, &job_id).await;
+                    drop(permit);
+                    dispatch_notify.notify_one();
+                    return;
+                }
+            };
 
         if let Err(e) = write_prompt(&tendril_home, &job_id, &compiled_prompt) {
             tracing::warn!("Failed to persist prompt for job {}: {}", job_id, e);
