@@ -1,5 +1,8 @@
 pub mod chat;
 pub mod config;
+pub mod confirm;
+pub mod daemon_guard;
+pub mod db;
 pub mod doctor;
 pub mod job;
 pub mod mcp;
@@ -8,6 +11,9 @@ pub mod plan;
 pub mod project;
 pub mod project_analyzer;
 pub mod promptware;
+pub mod reset;
 pub mod serve;
+pub mod update;
+pub mod update_promptwares;
 pub mod vault;
 pub mod verification;
