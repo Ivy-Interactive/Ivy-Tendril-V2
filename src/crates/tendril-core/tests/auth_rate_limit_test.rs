@@ -111,7 +111,10 @@ fn test_delay_elapses_and_success_clears_the_record() {
     // Halfway through the delay: still blocked, with the remaining time reported.
     let midway = now + ChronoDuration::seconds(1);
     assert!(!limiter.is_login_allowed_at(ip, midway));
-    assert_eq!(limiter.required_delay_at(ip, midway), Duration::from_secs(1));
+    assert_eq!(
+        limiter.required_delay_at(ip, midway),
+        Duration::from_secs(1)
+    );
 
     // Past the delay: allowed again, and nothing left to wait for.
     let later = now + ChronoDuration::seconds(3);

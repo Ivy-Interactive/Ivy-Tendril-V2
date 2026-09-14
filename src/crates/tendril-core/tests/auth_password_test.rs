@@ -57,7 +57,11 @@ fn test_csharp_generated_hash_verifies() {
         verify_password(CSHARP_PHC, CSHARP_PASSWORD, CSHARP_SECRET),
         "a hash produced by the original app must verify in Rust"
     );
-    assert!(!verify_password(CSHARP_PHC, "wrong password", CSHARP_SECRET));
+    assert!(!verify_password(
+        CSHARP_PHC,
+        "wrong password",
+        CSHARP_SECRET
+    ));
     // Wrong pepper, right password.
     assert!(!verify_password(
         CSHARP_PHC,
@@ -79,7 +83,11 @@ fn test_malformed_input_returns_false_without_panicking() {
     // Not a PHC string at all.
     assert!(!verify_password("not-a-hash", "pw", &secret));
     // Truncated PHC string.
-    assert!(!verify_password("$argon2i$v=19$m=65536,t=3,p=1$", "pw", &secret));
+    assert!(!verify_password(
+        "$argon2i$v=19$m=65536,t=3,p=1$",
+        "pw",
+        &secret
+    ));
     assert!(!verify_password(&valid[..valid.len() - 8], "pw", &secret));
     // Non-base64 hashSecret.
     assert!(!verify_password(&valid, "pw", "not base64 !!!"));

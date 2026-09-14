@@ -113,7 +113,8 @@ impl LoginRateLimiter {
             return Duration::ZERO;
         };
 
-        let remaining = self.required_delay_for(record.failed_attempts) - (now - record.last_attempt);
+        let remaining =
+            self.required_delay_for(record.failed_attempts) - (now - record.last_attempt);
         remaining.to_std().unwrap_or(Duration::ZERO)
     }
 
@@ -132,8 +133,7 @@ impl LoginRateLimiter {
         }
 
         let exponent = failed_attempts - self.config.threshold;
-        let delay_seconds =
-            self.config.base_delay_seconds * 2f64.powi(exponent.saturating_sub(1));
+        let delay_seconds = self.config.base_delay_seconds * 2f64.powi(exponent.saturating_sub(1));
         let capped = delay_seconds.min(self.config.max_delay_seconds).max(0.0);
 
         // `from_secs_f64` would panic on a non-finite or out-of-range value, which a hand-edited
