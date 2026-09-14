@@ -6,6 +6,7 @@ use tendril_core::config::{
     get_config_path, get_database_path, get_plans_dir_with_settings, load_config,
 };
 use tendril_core::jobs::JobManager;
+use tendril_core::watcher::ChangeEvent;
 use tokio::sync::broadcast;
 
 #[derive(Clone)]
@@ -17,6 +18,10 @@ pub struct AppState {
     pub job_manager: Arc<JobManager>,
     pub chat_manager: Arc<ChatExecutionManager>,
     pub ws_tx: broadcast::Sender<String>,
+    /// Filesystem change notifications, fed by the watcher the master daemon starts and consumed by
+    /// `/api/changes/events`. The channel exists whether or not a watcher is running, so a test can
+    /// publish on it directly and a daemon that lost the master race still serves the route.
+    pub change_tx: broadcast::Sender<ChangeEvent>,
     pub secret: String,
 }
 
@@ -83,6 +88,10 @@ impl AppState {
         let job_manager = JobManager::new(tendril_home.clone(), settings).share();
         let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
+        // Coalesced change events, so 256 is generous: a client would have to be a full burst-window
+        // behind to lag, and `stream_changes` degrades a lag to one full rescan anyway. Constructing
+        // state deliberately does not start a watcher — only the master daemon does that.
+        let (change_tx, _) = broadcast::channel(256);
 
         // Forward chat events to WebSocket clients
         let mut chat_rx = chat_manager.subscribe_events();
@@ -103,6 +112,7 @@ impl AppState {
             job_manager,
             chat_manager,
             ws_tx,
+            change_tx,
             secret,
         }
     }

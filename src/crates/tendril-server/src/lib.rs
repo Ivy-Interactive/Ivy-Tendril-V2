@@ -2,12 +2,14 @@ pub mod auth;
 pub mod master;
 pub mod routes;
 pub mod state;
+pub mod watch;
 mod webviewer;
 
 pub use auth::*;
 pub use master::*;
 pub use routes::*;
 pub use state::*;
+pub use watch::spawn_change_watcher;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -40,6 +42,18 @@ pub async fn run_server(
     println!(">>> Tendril Server running on http://{}:{}", host, port);
 
     let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host)?;
+
+    // Master-only, for the same reason as the reconcile below: two daemons mirroring the same Plans
+    // folder into the same database would fight. Held for the process lifetime — dropping the handle
+    // stops watching. A daemon up without realtime push is more useful than one refusing to boot, so
+    // a failure here is a warning and clients fall back to polling.
+    let _watcher = match spawn_change_watcher(state.clone()) {
+        Ok(watcher) => Some(watcher),
+        Err(e) => {
+            tracing::warn!("Filesystem watcher unavailable; clients must poll: {}", e);
+            None
+        }
+    };
 
     // Only the master reconciles: a daemon that lost the race must never reap the winner's jobs.
     reconcile_after_restart(&tendril_home).await;
