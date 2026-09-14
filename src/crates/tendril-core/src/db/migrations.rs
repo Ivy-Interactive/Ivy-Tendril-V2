@@ -174,7 +174,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             Priority INTEGER NOT NULL DEFAULT 0,
             LastOutputAt TEXT,
             WaitForJobIds TEXT,
-            PermissionDenials TEXT
+            PermissionDenials TEXT,
+            DedupeKey TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
         CREATE INDEX IF NOT EXISTS idx_jobs_completed ON Jobs(CompletedAt DESC);
@@ -207,6 +208,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             ("LastOutputAt", "TEXT"),
             ("WaitForJobIds", "TEXT"),
             ("PermissionDenials", "TEXT"),
+            ("DedupeKey", "TEXT"),
         ],
     )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
@@ -219,6 +221,19 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
     )?;
     ensure_costs_cost_nullable(conn)?;
     ensure_plan_search(conn)?;
+
+    // Must run *after* the `ensure_columns` pass above, not inside the batch: on a database created
+    // before `DedupeKey` existed, the batch runs before the ALTER and the index would reference a
+    // column that is not there yet.
+    //
+    // A `NULL` key never collides in a SQLite unique index, which is the intended reading of a forced
+    // submission and of a job type that is not deduplicated: both store `NULL` and opt out entirely
+    // rather than blocking the next submission.
+    conn.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedupe_inflight
+           ON Jobs(DedupeKey)
+           WHERE DedupeKey IS NOT NULL AND Status IN ('Pending', 'Queued', 'Running');",
+    )?;
 
     stamp_user_version(conn)?;
 

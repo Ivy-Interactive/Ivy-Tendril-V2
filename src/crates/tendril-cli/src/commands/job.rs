@@ -83,7 +83,11 @@ pub struct JobStartArgs {
     )]
     pub wait_for: Vec<String>,
 
-    #[arg(long, help = "Force CreatePlan without duplicate check")]
+    #[arg(
+        long,
+        help = "Submit again even if identical work is already in flight (also skips CreatePlan's \
+                own plan-level duplicate check)"
+    )]
     pub force: bool,
 
     #[arg(long, help = "Source path (for CreatePlan)")]
@@ -302,7 +306,12 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             }
 
             let client = reqwest::Client::new();
-            let url = format!("http://{}:{}/api/jobs", master.host, master.port);
+            let mut url = format!("http://{}:{}/api/jobs", master.host, master.port);
+            // `CreatePlanArgs` carries `force` in the body; every other job type needs the query
+            // parameter, so `--force` works for ExecutePlan and friends too.
+            if args.force {
+                url.push_str("?force=true");
+            }
             let resp = client
                 .post(&url)
                 .bearer_auth(&master.secret)
