@@ -60,6 +60,9 @@ pub enum TendrilError {
     #[error("Chat error: {0}")]
     Chat(String),
 
+    #[error("Watcher error: {0}")]
+    Watcher(String),
+
     #[error("{0}")]
     Other(String),
 }

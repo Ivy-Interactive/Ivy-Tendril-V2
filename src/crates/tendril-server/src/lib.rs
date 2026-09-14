@@ -1,12 +1,16 @@
 pub mod auth;
 pub mod master;
+pub mod pr_sync;
 pub mod routes;
 pub mod state;
+pub mod watch;
+mod webviewer;
 
 pub use auth::*;
 pub use master::*;
 pub use routes::*;
 pub use state::*;
+pub use watch::spawn_change_watcher;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -39,6 +43,18 @@ pub async fn run_server(
     println!(">>> Tendril Server running on http://{}:{}", host, port);
 
     let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host)?;
+
+    // Master-only, for the same reason as the reconcile below: two daemons mirroring the same Plans
+    // folder into the same database would fight. Held for the process lifetime — dropping the handle
+    // stops watching. A daemon up without realtime push is more useful than one refusing to boot, so
+    // a failure here is a warning and clients fall back to polling.
+    let _watcher = match spawn_change_watcher(state.clone()) {
+        Ok(watcher) => Some(watcher),
+        Err(e) => {
+            tracing::warn!("Filesystem watcher unavailable; clients must poll: {}", e);
+            None
+        }
+    };
 
     // Only the master reconciles: a daemon that lost the race must never reap the winner's jobs.
     reconcile_after_restart(&tendril_home).await;
@@ -175,6 +191,25 @@ async fn reconcile_after_restart(tendril_home: &std::path::Path) {
             }
         }
         Err(e) => tracing::warn!("Plan migration failed: {}", e),
+    }
+
+    // Runs after the migrator so a rewritten plan.yaml is read in its migrated shape. This is the
+    // only place V2 reconciles the database from disk: a plan folder created outside a V2 write path
+    // (by the original, by hand, or by the migration above) otherwise never reaches the Plans table.
+    let db_path = tendril_core::config::get_database_path(tendril_home);
+    match tendril_core::db::open_database(&db_path) {
+        Ok(conn) => {
+            let since = tendril_core::db::get_last_sync_time(&conn).unwrap_or(None);
+            match tendril_core::db::sync_plans_from_disk(&conn, &plans_dir, since) {
+                Ok(synced) => {
+                    if synced > 0 {
+                        tracing::info!("Synced {} plan folder(s) from disk", synced);
+                    }
+                }
+                Err(e) => tracing::warn!("Plan disk sync failed: {}", e),
+            }
+        }
+        Err(e) => tracing::warn!("Plan disk sync skipped, database unavailable: {}", e),
     }
 }
 

@@ -603,7 +603,7 @@ fn test_doctor_warns_on_non_existent_verification() {
     });
     save_config(&cfg_path, &settings).unwrap();
 
-    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home);
+    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home, false);
     assert!(res.is_ok());
 
     let _ = std::fs::remove_dir_all(&tendril_home);
@@ -648,7 +648,7 @@ fn test_doctor_warns_on_non_existent_repository_path() {
     });
     save_config(&cfg_path, &settings).unwrap();
 
-    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home);
+    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home, false);
     assert!(res.is_ok());
 
     let _ = std::fs::remove_dir_all(&tendril_home);
@@ -692,7 +692,7 @@ fn test_doctor_warns_on_non_git_repository_path() {
     });
     save_config(&cfg_path, &settings).unwrap();
 
-    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home);
+    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home, false);
     assert!(res.is_ok());
 
     let _ = std::fs::remove_dir_all(&tendril_home);
@@ -721,7 +721,7 @@ fn test_doctor_warns_on_bad_build_dependency_path() {
     });
     save_config(&cfg_path, &settings).unwrap();
 
-    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home);
+    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home, false);
     assert!(res.is_ok());
 
     let _ = std::fs::remove_dir_all(&tendril_home);

@@ -9,6 +9,7 @@ import {
   pingServer,
   resolveTendrilHome
 } from './masterDiscovery';
+import { assertIsolatedTendrilHome } from './homeGuard';
 import { DiscoveryResult, ServerHealthInfo, TendrilPlanSummary, TendrilProjectSummary } from './types';
 
 export function buildServerArgs(port = 0): string[] {
@@ -115,6 +116,8 @@ export class ServerManager implements vscode.Disposable {
   }
 
   public async executeCli(args: string[]): Promise<string> {
+    assertIsolatedTendrilHome(this.tendrilHome, `run 'tendril ${args.join(' ')}'`);
+
     const config = vscode.workspace.getConfiguration();
     const executable = config.get<string>(CONFIG_KEYS.executablePath, 'tendril');
 
@@ -161,6 +164,8 @@ export class ServerManager implements vscode.Disposable {
   }
 
   public async startServer(): Promise<DiscoveryResult> {
+    assertIsolatedTendrilHome(this.tendrilHome, 'start a Tendril server');
+
     if (this.isSpawning) {
       throw new Error('Tendril server is already in the process of starting.');
     }

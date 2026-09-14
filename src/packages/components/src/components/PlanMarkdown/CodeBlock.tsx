@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import React, { Suspense, useCallback, useState } from "react";
 import { prismTheme } from "@/lib/prismTheme";
 import { copyToClipboard } from "@/lib/clipboard";
+import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
 /**
  * A highlighted code block with a copy button — the plain-fence rendering, with no dispatch on the
@@ -11,6 +11,13 @@ import { copyToClipboard } from "@/lib/clipboard";
  * code blocks too, and importing `BlockHandler` from there would close a cycle (`BlockHandler`
  * already imports `QuestionsCallout`). Same reasoning as `questionsContext.ts`.
  */
+
+/** `CodeBlock` is eagerly reachable from the `tendril` entrypoint, so a static import here puts
+ * `react-syntax-highlighter` and its ~600 refractor language packs (617 kB) on the initial load. The
+ * shape mirrors `markdown/MarkdownCodeBlock.tsx`, which already does this. */
+const SyntaxHighlighter = lazyWithRetry(() =>
+  import("react-syntax-highlighter").then((mod) => ({ default: mod.Prism })),
+);
 
 const CopyIcon = () => (
   <svg
@@ -85,23 +92,32 @@ interface CodeBlockProps {
   language?: string;
 }
 
+/** The no-language rendering, reused as the Suspense fallback: same geometry as the highlighted
+ * output, so the block does not reflow when the highlighter chunk arrives, and the code stays
+ * readable and copyable in the meantime. */
+const PlainPre: React.FC<{ content: string }> = ({ content }) => (
+  <pre style={codeBlockPreStyle}>
+    <code>{content}</code>
+  </pre>
+);
+
 export const CodeBlock: React.FC<CodeBlockProps> = ({ content, language }) => (
   <div className="pmv-code-block">
     <CopyButton content={content} />
     {language ? (
-      <SyntaxHighlighter
-        style={prismTheme as unknown as { [key: string]: React.CSSProperties }}
-        language={normalizeLanguage(language)}
-        PreTag="pre"
-        customStyle={codeBlockPreStyle}
-        wrapLongLines={false}
-      >
-        {content}
-      </SyntaxHighlighter>
+      <Suspense fallback={<PlainPre content={content} />}>
+        <SyntaxHighlighter
+          style={prismTheme as unknown as { [key: string]: React.CSSProperties }}
+          language={normalizeLanguage(language)}
+          PreTag="pre"
+          customStyle={codeBlockPreStyle}
+          wrapLongLines={false}
+        >
+          {content}
+        </SyntaxHighlighter>
+      </Suspense>
     ) : (
-      <pre style={codeBlockPreStyle}>
-        <code>{content}</code>
-      </pre>
+      <PlainPre content={content} />
     )}
   </div>
 );

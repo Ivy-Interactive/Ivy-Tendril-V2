@@ -140,7 +140,11 @@ describe("Code-Splitting & Suspense Boundaries", () => {
 
     // Check required vendor manual chunks
     const requiredVendorChunks = [
-      "vendor-refractor",
+      // The refractor registry is split from the language packs: the registry is
+      // imported synchronously by PlanDiffView, the packs are dynamically imported
+      // one at a time, and a chunk is one loading unit.
+      "vendor-refractor-core",
+      "vendor-syntax",
       "vendor-pdfjs",
       "vendor-diff",
       "vendor-mermaid",
@@ -185,5 +189,55 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     // Monolithic baseline was 3.38 MB (3,461,242 bytes).
     // The entry chunk must be dramatically reduced (< 700 kB).
     expect(entryStat.size).toBeLessThan(700 * 1024);
+  });
+
+  it("keeps the diagram and syntax-highlighter chunks off the initial load", () => {
+    if (buildError !== null || distIsMissingOrStale()) {
+      throw new Error(
+        "dist/ is missing or stale relative to vite.config.ts - run pnpm build" +
+          (buildError ? ` (automatic rebuild in beforeAll also failed: ${buildError})` : ""),
+      );
+    }
+
+    const indexHtml = fs.readFileSync(distIndexHtml, "utf8");
+    const entry = indexHtml.match(/src="\/assets\/([^"]+\.js)"/)?.[1];
+    expect(entry, "no entry script in dist/index.html").toBeDefined();
+
+    // The rel and href attributes appear in either order depending on the emitter,
+    // so match both forms and de-duplicate.
+    const preloads = [
+      ...indexHtml.matchAll(/rel="modulepreload"[^>]*href="\/assets\/([^"]+\.js)"/g),
+      ...indexHtml.matchAll(/href="\/assets\/([^"]+\.js)"[^>]*rel="modulepreload"/g),
+    ].map((match) => match[1]);
+    const eager = [...new Set([entry!, ...preloads])];
+
+    // These are the heavyweights this app must never fetch up front: two diagram
+    // renderers, the Prism language packs and the PDF viewer. Each is reached only
+    // through a dynamic import(), so a name appearing here means a static edge
+    // crept back into the eager graph - most likely a shared dependency absorbed
+    // into the chunk by a codeSplitting group with too low a priority.
+    const mustBeLazy = ["vendor-mermaid", "vendor-graphviz", "vendor-syntax", "vendor-pdfjs"];
+    for (const chunkPrefix of mustBeLazy) {
+      const leaked = eager.filter((file) => file.startsWith(chunkPrefix));
+      expect(
+        leaked,
+        `${chunkPrefix} must not be in the initial load (entry or modulepreload), found: ${leaked.join(", ")}`,
+      ).toEqual([]);
+    }
+
+    const eagerBytes = eager.reduce(
+      (total, file) => total + fs.statSync(path.join(distAssetsDir, file)).size,
+      0,
+    );
+
+    // Baseline before this split: 4,893,138 bytes of eager JS, of which
+    // vendor-mermaid alone was 3,092,317. After: ~1,200,000. The 1.6 MB ceiling
+    // leaves headroom for the still-eager vendor-katex (259,052 bytes, tracked as
+    // a separate recommendation) and for ordinary app growth. A failure here is a
+    // regression, not a signal to raise the number - check what became eager first.
+    expect(
+      eagerBytes,
+      `eager JS is ${eagerBytes} bytes across ${eager.length} chunks: ${eager.join(", ")}`,
+    ).toBeLessThan(1.6 * 1024 * 1024);
   });
 });

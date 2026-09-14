@@ -1,3 +1,5 @@
+import type { AgentOption } from "./agents";
+
 export interface ChatAttachment {
   name: string;
   path: string;
@@ -83,6 +85,11 @@ export interface ChatState {
   sessions: ChatSession[];
   activeSessionId: string | null;
   activeSession: ChatSession | null;
+  /** The catalog behind the composer's agent picker; empty when it could not be fetched. */
+  agents: AgentOption[];
+  selectedAgentId: string;
+  selectedModelId: string;
+  selectedEffort: string;
   queuedItems: ChatQueuedItem[];
   isGenerating: boolean;
   isLoading: boolean;

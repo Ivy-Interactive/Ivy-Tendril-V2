@@ -96,6 +96,14 @@ pub struct TendrilSettings {
     #[serde(rename = "enrichModels", default = "default_true")]
     pub enrich_models: bool,
 
+    /// Hours between background models.dev refreshes while `enrichModels` is on. `0` or
+    /// negative means "refresh once at startup and never again".
+    #[serde(
+        rename = "modelEnrichmentIntervalHours",
+        default = "default_model_enrichment_interval_hours"
+    )]
+    pub model_enrichment_interval_hours: i32,
+
     /// Soft age threshold (in days) past which the models.dev disk cache is still used but
     /// logged as a warning. `0` or negative disables this tier (never warn).
     #[serde(
@@ -254,6 +262,9 @@ fn default_true() -> bool {
 fn default_theme() -> String {
     "default".to_string()
 }
+fn default_model_enrichment_interval_hours() -> i32 {
+    crate::agents::model_cache::DEFAULT_ENRICHMENT_INTERVAL_HOURS
+}
 fn default_model_cache_warn_age_days() -> i64 {
     crate::agents::model_cache::DEFAULT_CACHE_WARN_AGE_DAYS
 }
@@ -322,6 +333,7 @@ impl Default for TendrilSettings {
             coding_agents: Vec::new(),
             promptwares: BTreeMap::new(),
             enrich_models: true,
+            model_enrichment_interval_hours: default_model_enrichment_interval_hours(),
             model_cache_warn_age_days: default_model_cache_warn_age_days(),
             model_cache_max_age_days: default_model_cache_max_age_days(),
             extra: BTreeMap::new(),
@@ -439,6 +451,72 @@ pub fn get_tendril_home_with_env(env: &impl EnvSource) -> PathBuf {
 
 pub fn get_tendril_home() -> PathBuf {
     get_default_tendril_home()
+}
+
+/// The operator's real Tendril home, resolved as if `TENDRIL_HOME` were not set.
+///
+/// A test that pins `TENDRIL_HOME` to a temp directory still needs to know which path it must never
+/// touch, so this deliberately ignores the variable that isolates it.
+pub fn real_user_tendril_home() -> PathBuf {
+    get_default_tendril_home_with_env(&|key: &str| {
+        if key == "TENDRIL_HOME" {
+            None
+        } else {
+            std::env::var(key).ok()
+        }
+    })
+}
+
+/// True when the current process looks like a test binary.
+///
+/// `TENDRIL_TEST_ISOLATION=1` is the explicit opt-in (the VS Code extension harness sets it for its
+/// children); the `target/*/deps/` check covers cargo test binaries, so a harness added later cannot
+/// silently opt out of [`ensure_not_real_home`].
+pub fn in_test_context() -> bool {
+    if std::env::var("TENDRIL_TEST_ISOLATION").as_deref() == Ok("1") {
+        return true;
+    }
+
+    std::env::current_exe()
+        .map(|p| p.components().any(|c| c.as_os_str() == "deps"))
+        .unwrap_or(false)
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| -> String {
+        let resolved = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let s = normalize_slashes(&resolved)
+            .trim_end_matches('/')
+            .to_string();
+        if cfg!(windows) || cfg!(target_os = "macos") {
+            s.to_lowercase()
+        } else {
+            s
+        }
+    };
+
+    norm(a) == norm(b)
+}
+
+/// Refuses to claim the operator's real Tendril home from a test process.
+///
+/// Outside a test context this is a no-op, so production behaviour is unchanged.
+pub fn ensure_not_real_home(home: &Path) -> Result<()> {
+    if !in_test_context() {
+        return Ok(());
+    }
+
+    let real = real_user_tendril_home();
+    if paths_equal(home, &real) {
+        return Err(TendrilError::Other(format!(
+            "Refusing to use the real Tendril home {} from a test process: claiming mastership \
+             there hijacks the operator's running daemon. Set TENDRIL_HOME to a temp directory for \
+             this test.",
+            real.display()
+        )));
+    }
+
+    Ok(())
 }
 
 pub fn normalize_slashes(path: &Path) -> String {
@@ -567,6 +645,38 @@ pub fn get_database_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("tendril.db")
 }
 
+/// Strip everything outside `[A-Za-z0-9._-]`, matching the C# `InputSanitizer.SanitizeProjectName`
+/// so the directory layout stays byte-identical between the two implementations.
+pub fn sanitize_project_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '_' || *c == '-')
+        .collect()
+}
+
+pub fn get_project_root_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    let projects = tendril_home.join("Projects");
+    if project_name.trim().is_empty() {
+        return projects;
+    }
+    projects.join(sanitize_project_name(project_name))
+}
+
+pub fn get_project_repos_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Repos")
+}
+
+pub fn get_project_skills_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Skills")
+}
+
+pub fn get_project_mcp_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("MCP")
+}
+
+pub fn get_project_memory_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Memory")
+}
+
 pub fn load_config(config_path: &Path) -> Result<TendrilSettings> {
     if !config_path.exists() {
         return Ok(TendrilSettings::default());
@@ -587,6 +697,10 @@ pub fn load_config(config_path: &Path) -> Result<TendrilSettings> {
     Ok(settings)
 }
 
+/// Replaces `config.yaml` atomically while holding its lock.
+///
+/// The caller must not already hold that lock — see
+/// [`FileLock::acquire`][crate::fs_lock::FileLock::acquire] on nesting.
 pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()> {
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -595,11 +709,16 @@ pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()>
     let yaml = serde_yaml::to_string(settings)
         .map_err(|e| TendrilError::Config(format!("Failed to serialize settings: {}", e)))?;
 
-    std::fs::write(config_path, yaml)?;
-    Ok(())
+    let _lock = crate::fs_lock::FileLock::acquire(config_path)?;
+    crate::fs_lock::write_atomic(config_path, yaml.as_bytes())
 }
 
+/// Merges `incoming` into `config.yaml` and writes the result.
+///
+/// This is a read-modify-write, so the lock is held across **both** halves: releasing it between the
+/// read and the write is exactly how two concurrent settings edits drop one another.
 pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Result<()> {
+    let _lock = crate::fs_lock::FileLock::acquire(config_path)?;
     let existing_raw = if config_path.exists() {
         std::fs::read_to_string(config_path).map_err(|e| {
             TendrilError::Config(format!("Failed to read {}: {}", config_path.display(), e))
@@ -642,8 +761,9 @@ pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Re
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::write(config_path, yaml_str)?;
-    Ok(())
+    // `write_atomic` rather than `save_config`: the lock is already held here, and re-acquiring it
+    // would deadlock.
+    crate::fs_lock::write_atomic(config_path, yaml_str.as_bytes())
 }
 
 pub fn generate_bearer_secret() -> String {
@@ -660,6 +780,7 @@ pub fn default_capabilities() -> Vec<String> {
         "projects".to_string(),
         "ws".to_string(),
         "auth_bearer".to_string(),
+        "auth_api_key".to_string(),
     ]
 }
 
@@ -827,21 +948,64 @@ pub struct MasterGuard {
     pid: u32,
 }
 
+/// Number of `/api/ping` attempts before a running master is declared unresponsive.
+pub const HEALTH_PROBE_ATTEMPTS: u32 = 3;
+const HEALTH_PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// Probes `/api/ping` repeatedly, so one dropped probe on a loaded machine cannot decide mastership.
+pub fn probe_health_with_retries(host: &str, port: u16, attempts: u32) -> bool {
+    for attempt in 0..attempts.max(1) {
+        if probe_health(host, port) {
+            return true;
+        }
+        if attempt + 1 < attempts {
+            std::thread::sleep(HEALTH_PROBE_INTERVAL);
+        }
+    }
+    false
+}
+
+fn master_takeover_allowed() -> bool {
+    std::env::var("TENDRIL_ALLOW_MASTER_TAKEOVER").as_deref() == Ok("1")
+}
+
 impl MasterGuard {
     pub fn acquire(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<Self> {
-        if let Some(existing) = read_master(tendril_home) {
-            let running = is_process_running(existing.pid);
-            let responding = probe_health(&existing.host, existing.port);
+        ensure_not_real_home(tendril_home)?;
 
-            if running && responding {
-                return Err(TendrilError::Other(format!(
-                    "Another Tendril instance is running with PID {} on port {}",
-                    existing.pid, existing.port
-                )));
+        if let Some(existing) = read_master(tendril_home) {
+            if is_process_running(existing.pid) {
+                if probe_health_with_retries(&existing.host, existing.port, HEALTH_PROBE_ATTEMPTS) {
+                    return Err(TendrilError::Other(format!(
+                        "Another Tendril instance is running with PID {} on port {}",
+                        existing.pid, existing.port
+                    )));
+                }
+
+                if !master_takeover_allowed() {
+                    return Err(TendrilError::Other(format!(
+                        "Refusing to take mastership from live PID {} on port {} recorded in \
+                         {}/.master: the process is alive but did not answer /api/ping after {} \
+                         probes. Stop that instance, or start this one with a different \
+                         TENDRIL_HOME.",
+                        existing.pid,
+                        existing.port,
+                        tendril_home.display(),
+                        HEALTH_PROBE_ATTEMPTS
+                    )));
+                }
+
+                tracing::warn!(
+                    "TENDRIL_ALLOW_MASTER_TAKEOVER=1: evicting live but unresponsive master PID {} on port {}",
+                    existing.pid,
+                    existing.port
+                );
+                delete_master(tendril_home);
             } else {
                 tracing::warn!(
-                    "Cleaning up stale .master file from PID {} on port {} (running: {}, responding: {})",
-                    existing.pid, existing.port, running, responding
+                    "Cleaning up stale .master file from PID {} on port {} (process is not running)",
+                    existing.pid,
+                    existing.port
                 );
                 delete_master(tendril_home);
             }

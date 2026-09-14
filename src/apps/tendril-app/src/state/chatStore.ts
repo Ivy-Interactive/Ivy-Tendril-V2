@@ -1,5 +1,7 @@
+import { agentsApi } from "../api/agentsApi";
 import { chatApi } from "../api/chatApi";
 import { onChatEvent, type EventUnsubscribe } from "../api/events";
+import { DEFAULT_OPTION_ID, type AgentOption } from "../types/agents";
 import type {
   ChatAttachment,
   ChatEvent,
@@ -8,6 +10,14 @@ import type {
   ChatState,
   InProgressQuestionAnswers,
 } from "../types/chat";
+import {
+  loadStoredAgentPreferences,
+  loadStoredSelectedAgent,
+  saveStoredAgentPreferences,
+  saveStoredSelectedAgent,
+  type AgentPreference,
+  type AgentPreferences,
+} from "./agentPreferences";
 import {
   extractPlanQuestions,
   mergeConfirmedQuestionsBlock,
@@ -19,6 +29,9 @@ export type { ChatState, InProgressQuestionAnswers } from "../types/chat";
 const IN_PROGRESS_ANSWERS_STORAGE_KEY = "tendril:chat:in_progress_answers";
 const DRAFT_OWNERS_STORAGE_KEY = "tendril:chat:draft_session_owners";
 export const PINNED_SESSIONS_STORAGE_KEY = "tendril:chat:pinned_sessions";
+
+/** The agent every chat runs with until the catalog says otherwise. */
+export const FALLBACK_AGENT_ID = "claude";
 
 function loadStoredPinnedSessions(): Record<string, string> {
   try {
@@ -159,11 +172,15 @@ function saveStoredDraftOwners(data: Record<string, string>): void {
   }
 }
 
-class ChatStore {
+export class ChatStore {
   private state: ChatState = {
     sessions: [],
     activeSessionId: null,
     activeSession: null,
+    agents: [],
+    selectedAgentId: loadStoredSelectedAgent() ?? FALLBACK_AGENT_ID,
+    selectedModelId: DEFAULT_OPTION_ID,
+    selectedEffort: DEFAULT_OPTION_ID,
     queuedItems: [],
     isGenerating: false,
     isLoading: false,
@@ -177,11 +194,13 @@ class ChatStore {
   private storageListenerAttached = false;
   private draftOwners: Record<string, string> = loadStoredDraftOwners();
   private pinnedSessions: Record<string, string> = loadStoredPinnedSessions();
+  private agentPreferences: AgentPreferences = loadStoredAgentPreferences();
 
   constructor() {
     if (typeof window !== "undefined") {
       this.attachStorageListener();
     }
+    this.applyAgentPreference(this.state.selectedAgentId);
   }
 
   private handleStorageEvent = (event: StorageEvent): void => {
@@ -249,6 +268,7 @@ class ChatStore {
     this.draftOwners = loadStoredDraftOwners();
     this.pinnedSessions = loadStoredPinnedSessions();
     this.attachStorageListener();
+    await this.loadAgents();
     if (!this.eventUnsubscribe) {
       try {
         this.eventUnsubscribe = await onChatEvent((event) => {
@@ -259,6 +279,109 @@ class ChatStore {
       }
     }
     await this.fetchSessions();
+  }
+
+  /**
+   * Fetches the agent catalog and restores the last-used agent along with the model and effort
+   * that agent is remembered with. A failure leaves the catalog empty and the selection on the
+   * `claude` / `default` floor, which is what the backend would have used anyway.
+   */
+  public async loadAgents(): Promise<AgentOption[]> {
+    try {
+      const agents = await agentsApi.listAgents();
+      this.state.agents = agents;
+      const remembered = loadStoredSelectedAgent();
+      const restored =
+        agents.find((a) => a.id === remembered) ??
+        agents.find((a) => a.id === this.state.selectedAgentId) ??
+        agents[0];
+      if (restored) {
+        this.state.selectedAgentId = restored.id;
+      }
+      this.applyAgentPreference(this.state.selectedAgentId);
+      this.notify();
+      return agents;
+    } catch {
+      this.state.agents = [];
+      this.notify();
+      return [];
+    }
+  }
+
+  private agentById(agentId: string): AgentOption | undefined {
+    return this.state.agents.find((a) => a.id === agentId);
+  }
+
+  /** Where an agent with no remembered preference starts: the head of each of its lists. */
+  private agentDefaults(agentId: string): { modelId: string; effort: string } {
+    const agent = this.agentById(agentId);
+    return {
+      modelId: agent?.models[0]?.id ?? DEFAULT_OPTION_ID,
+      effort: agent?.efforts[0]?.id ?? DEFAULT_OPTION_ID,
+    };
+  }
+
+  private applyAgentPreference(agentId: string): void {
+    const preference = this.agentPreferences[agentId];
+    const defaults = this.agentDefaults(agentId);
+    this.state.selectedModelId = preference?.modelId ?? defaults.modelId;
+    this.state.selectedEffort = preference?.effort ?? defaults.effort;
+  }
+
+  /**
+   * Selects an agent and restores *its* model and effort — switching away and back never leaves
+   * an agent wearing another one's model.
+   */
+  public setAgent(agentId: string): void {
+    this.state.selectedAgentId = agentId;
+    saveStoredSelectedAgent(agentId);
+    this.applyAgentPreference(agentId);
+    this.notify();
+  }
+
+  /** Remembers a model for an agent, selected or not, and applies it if that agent is current. */
+  public setModelForAgent(agentId: string, modelId: string): void {
+    this.agentPreferences = {
+      ...this.agentPreferences,
+      [agentId]: { ...this.agentPreferences[agentId], modelId },
+    };
+    saveStoredAgentPreferences(this.agentPreferences);
+    if (agentId === this.state.selectedAgentId) {
+      this.state.selectedModelId = modelId;
+    }
+    this.notify();
+  }
+
+  /** Remembers an effort for an agent, selected or not, and applies it if that agent is current. */
+  public setEffortForAgent(agentId: string, effort: string): void {
+    this.agentPreferences = {
+      ...this.agentPreferences,
+      [agentId]: { ...this.agentPreferences[agentId], effort },
+    };
+    saveStoredAgentPreferences(this.agentPreferences);
+    if (agentId === this.state.selectedAgentId) {
+      this.state.selectedEffort = effort;
+    }
+    this.notify();
+  }
+
+  /** The model and effort an agent is remembered with, for the picker's per-agent rows. */
+  public getAgentPreference(agentId: string): AgentPreference {
+    return this.agentPreferences[agentId] ?? {};
+  }
+
+  /**
+   * The selection an outbound turn carries. `default` is dropped rather than sent, because
+   * `AgentLaunchConfig.model` is passed straight through to `--model`.
+   */
+  private turnOptions(): { agentId?: string; modelId?: string; effort?: string } {
+    const onWire = (value: string): string | undefined =>
+      value && value !== DEFAULT_OPTION_ID ? value : undefined;
+    return {
+      agentId: onWire(this.state.selectedAgentId),
+      modelId: onWire(this.state.selectedModelId),
+      effort: onWire(this.state.selectedEffort),
+    };
   }
 
   public destroy(): void {
@@ -274,6 +397,10 @@ class ChatStore {
       sessions: [],
       activeSessionId: null,
       activeSession: null,
+      agents: [],
+      selectedAgentId: FALLBACK_AGENT_ID,
+      selectedModelId: DEFAULT_OPTION_ID,
+      selectedEffort: DEFAULT_OPTION_ID,
       queuedItems: [],
       isGenerating: false,
       isLoading: false,
@@ -286,6 +413,9 @@ class ChatStore {
     saveStoredDraftOwners({});
     this.pinnedSessions = {};
     saveStoredPinnedSessions({});
+    this.agentPreferences = {};
+    saveStoredAgentPreferences({});
+    saveStoredSelectedAgent(null);
     try {
       const legacyStorage =
         typeof sessionStorage !== "undefined"
@@ -678,9 +808,11 @@ class ChatStore {
         await this.pruneEmptySessions();
       }
 
+      // A session records its agent/model/effort, so the very first turn runs with the current
+      // selection rather than the backend's defaults.
       const newSession = await chatApi.createSession({
         title,
-        ...args,
+        ...(args ?? this.turnOptions()),
       });
       newSession.isPinned = false;
       newSession.pinnedAt = undefined;
@@ -819,16 +951,18 @@ class ChatStore {
     }
 
     try {
-      const hasOptions =
-        options &&
-        (options.enqueue !== undefined ||
-          options.role !== undefined ||
-          (options.attachments !== undefined && options.attachments.length > 0));
-      const res = await chatApi.postMessage(sessionId, prompt, hasOptions ? options : undefined);
-      if (res.queued) {
-        const queue = await chatApi.getQueue(sessionId);
-        this.state.queuedItems = queue;
-        this.notify();
+      if (options?.enqueue) {
+        // Only `postMessage` persists attachments onto the queued item.
+        const res = await chatApi.postMessage(sessionId, prompt, options);
+        if (res.queued) {
+          const queue = await chatApi.getQueue(sessionId);
+          this.state.queuedItems = queue;
+          this.notify();
+        }
+      } else {
+        // `postMessage` starts the turn with ChatTurnOptions::default(), so it cannot carry the
+        // agent/model/effort selection; the execute route can.
+        await chatApi.executeTurn(sessionId, { prompt, ...this.turnOptions() });
       }
     } catch (err) {
       this.state.isGenerating = false;
@@ -1046,6 +1180,33 @@ class ChatStore {
       throw err;
     } finally {
       this.setSubmitting(messageId, questionId, false);
+      this.notify();
+    }
+  }
+
+  /**
+   * Rewrites a queued prompt in place. An empty prompt deletes the item, matching the legacy
+   * widget: clearing the text of a queued message is how you drop it.
+   */
+  public async updateQueuedMessage(itemId: string, prompt: string): Promise<void> {
+    if (!this.state.activeSessionId) return;
+    const trimmed = prompt.trim();
+    if (!trimmed) {
+      await this.deleteQueuedMessage(itemId);
+      return;
+    }
+
+    const previous = this.state.queuedItems;
+    this.state.queuedItems = previous.map((item) =>
+      item.id === itemId ? { ...item, prompt: trimmed } : item,
+    );
+    this.notify();
+
+    try {
+      await chatApi.updateQueuedItem(this.state.activeSessionId, itemId, trimmed);
+    } catch (err) {
+      this.state.queuedItems = previous;
+      this.state.error = err instanceof Error ? err.message : String(err);
       this.notify();
     }
   }

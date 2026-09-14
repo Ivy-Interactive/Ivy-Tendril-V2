@@ -117,6 +117,7 @@ export interface ReviewActionConfig {
   name: string;
   condition: string;
   command: string;
+  paths?: string[];
 }
 
 export interface ProjectSummary {
@@ -142,6 +143,18 @@ export interface TendrilConfig {
   raw?: Record<string, unknown>;
 }
 
+export type ModelCatalogSource = "models.dev" | "static";
+
+export interface ModelCatalogStatus {
+  source: ModelCatalogSource;
+  totalModelCount: number;
+  dynamicModelCount: number;
+  staticModelCount: number;
+  enrichModels: boolean;
+  cachedAt: string | null;
+  cachePath: string;
+}
+
 export interface StartJobArgs {
   type: string;
   project?: string;
@@ -159,9 +172,59 @@ export interface StartJobResponse {
   status: string;
 }
 
+/**
+ * Uncommitted-change status of one repo a plan targets, from
+ * `cmd_get_repo_status`. A repo that could not be inspected carries `error` and
+ * `isDirty: false`, so the dirty-repo guard treats "unknown" as "not blocking".
+ */
+export interface RepoStatus {
+  path: string;
+  isDirty: boolean;
+  /** `git status --porcelain` lines, capped by the service. */
+  changes: string[];
+  /** Total changed entries, which may exceed `changes.length`. */
+  changeCount?: number;
+  error?: string;
+}
+
+/** Options the Create PR dialog passes through to the `CreatePr` job. */
+export interface CreatePrOptions {
+  solveMergeConflicts?: boolean;
+  merge?: boolean;
+  deleteBranch?: boolean;
+  includeArtifacts?: boolean;
+  draft?: boolean;
+  reviewers?: string[];
+  comment?: string;
+}
+
+/** Fields the Create Issue dialog collects for the `CreateIssue` job. */
+export interface CreateIssueFields {
+  repo: string;
+  assignee?: string;
+  comment?: string;
+  labels?: string[];
+}
+
 export interface RevisionResult {
   revision: number;
   message: string;
+}
+
+/**
+ * One inline diff comment, mirroring `DraftCommentDto` in `src-tauri/src/models.rs` and
+ * `PlanDiffView`'s own `DraftComment`, so a comment passes between them without translation.
+ *
+ * `filePath` is the anchor: `plan.md@<old>-<new>` scopes a comment to one revision pair, while a
+ * bare `plan.md` is what the original Tendril wrote and stays readable.
+ */
+export interface DraftComment {
+  filePath: string;
+  changeKey: string;
+  content: string;
+  lineNumber: number;
+  author?: string;
+  isResolved?: boolean;
 }
 
 export type RecommendationState = "Pending" | "Accepted" | "AcceptedWithNotes" | "Declined";
@@ -188,6 +251,44 @@ export interface PlanQuery {
   status?: string;
   project?: string;
   q?: string;
+}
+
+/** `Unknown` means the daemon could not resolve the PR, never that it is open. */
+export type PrState = "Open" | "Closed" | "Merged" | "Unknown";
+
+/** One tracked pull request, as of the daemon's last reconciliation pass. */
+export interface PrStatus {
+  prUrl: string;
+  owner: string;
+  repo: string;
+  number: number;
+  status: PrState;
+  branch?: string | null;
+  /** `null` until the PR has been through one pass. */
+  lastChecked?: string | null;
+  planId: string;
+  planFolder: string;
+  planTitle: string;
+  project: string;
+}
+
+export interface PrTransition {
+  prUrl: string;
+  from?: PrState | null;
+  to: PrState;
+}
+
+export interface PrSyncReport {
+  tracked: number;
+  checked: number;
+  skippedMerged: number;
+  skippedFresh: number;
+  transitions: PrTransition[];
+  completedPlans: string[];
+  refusedCompletions: string[];
+  unblockedPlans: string[];
+  errors: string[];
+  changed: boolean;
 }
 
 /**

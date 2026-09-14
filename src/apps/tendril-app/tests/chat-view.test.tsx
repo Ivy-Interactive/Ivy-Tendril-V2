@@ -80,7 +80,7 @@ questions:
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+    const executeSpy = vi.spyOn(chatApi, "executeTurn").mockResolvedValue();
 
     render(<ChatView />);
 
@@ -96,7 +96,12 @@ questions:
     fireEvent.click(sendBtn);
 
     await waitFor(() => {
-      expect(postSpy).toHaveBeenCalledWith("session-10", "Let us discuss API design.", undefined);
+      expect(executeSpy).toHaveBeenCalledWith("session-10", {
+        prompt: "Let us discuss API design.",
+        agentId: "claude",
+        modelId: undefined,
+        effort: undefined,
+      });
     });
   });
 
@@ -232,7 +237,7 @@ questions:
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+    const executeSpy = vi.spyOn(chatApi, "executeTurn").mockResolvedValue();
 
     render(<ChatView />);
 
@@ -255,16 +260,21 @@ questions:
     const sendBtn = screen.getByTitle("Send message");
     fireEvent.click(sendBtn);
 
+    // The turn itself carries only the prompt and the agent selection — the attachments live on
+    // the optimistic message, which is where the thread renders them from.
     await waitFor(() => {
-      expect(postSpy).toHaveBeenCalledWith("session-10", "Review this file", {
-        attachments: [
-          {
-            name: "payload.txt",
-            path: "/data/payload.txt",
-            mimeType: "text/plain",
-          },
-        ],
+      expect(executeSpy).toHaveBeenCalledWith("session-10", {
+        prompt: "Review this file",
+        agentId: "claude",
+        modelId: undefined,
+        effort: undefined,
       });
+    });
+
+    expect(chatStore.getState().activeSession?.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: "Review this file",
+      attachments: [{ name: "payload.txt", path: "/data/payload.txt", mimeType: "text/plain" }],
     });
 
     await waitFor(() => {
@@ -527,7 +537,7 @@ questions:
       expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
-    const attachBtn = screen.getByTitle("Attach files");
+    const attachBtn = screen.getByTestId("composer-attach-button");
     fireEvent.click(attachBtn);
 
     await waitFor(() => {
@@ -560,7 +570,7 @@ questions:
     const fileInput = screen.getByTestId("file-upload-input");
     const clickSpy = vi.spyOn(fileInput, "click");
 
-    const attachBtn = screen.getByTitle("Attach files");
+    const attachBtn = screen.getByTestId("composer-attach-button");
     fireEvent.click(attachBtn);
 
     await waitFor(() => {
@@ -586,7 +596,7 @@ questions:
     const fileInput = screen.getByTestId("file-upload-input");
     const clickSpy = vi.spyOn(fileInput, "click");
 
-    const attachBtn = screen.getByTitle("Attach files");
+    const attachBtn = screen.getByTestId("composer-attach-button");
     fireEvent.click(attachBtn);
 
     await waitFor(() => {
