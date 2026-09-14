@@ -4,6 +4,7 @@ import type {
   DoctorCheck,
   DraftComment,
   GitHubIssuesPage,
+  InboxProposal,
   Job,
   JobDetail,
   ModelCatalogStatus,
@@ -23,6 +24,7 @@ import type {
   ServiceInfo,
   StartJobArgs,
   StartJobResponse,
+  SweepReport,
   TendrilConfig,
   VerificationReport,
   VerificationStatus,
@@ -327,5 +329,27 @@ export const bridge = {
       page,
       perPage,
     });
+  },
+
+  /**
+   * Forces an assigned-issue sweep. Resolves for both `Ran` and
+   * `AlreadyRunning` — read `outcome` to tell them apart. Rejects when the
+   * daemon is not the master, since it cannot do the work.
+   */
+  async checkInbox(this: void): Promise<SweepReport> {
+    return invoke<SweepReport>("cmd_check_inbox");
+  },
+
+  /** Swept issues awaiting a decision. Omitting `state` returns the pending ones. */
+  async listInboxProposals(this: void, state?: string): Promise<InboxProposal[]> {
+    return invoke<InboxProposal[]>("cmd_list_inbox_proposals", { state });
+  },
+
+  async acceptInboxProposal(this: void, id: number): Promise<{ jobId: string }> {
+    return invoke<{ jobId: string }>("cmd_accept_inbox_proposal", { id });
+  },
+
+  async dismissInboxProposal(this: void, id: number): Promise<void> {
+    await invoke("cmd_dismiss_inbox_proposal", { id });
   },
 };

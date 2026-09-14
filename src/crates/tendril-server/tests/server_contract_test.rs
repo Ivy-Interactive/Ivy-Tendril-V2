@@ -4,6 +4,7 @@ use tendril_core::config::{
     get_config_path, get_database_path, load_config, read_master, MasterGuard,
 };
 use tendril_core::db::open_database;
+use tendril_core::inbox::ProposalState;
 use tendril_core::plans::reader::read_plan_yaml;
 use tendril_server::{create_router, AppState};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -2504,6 +2505,317 @@ async fn test_models_status_api_route() {
     assert_eq!(models_resp.status(), reqwest::StatusCode::OK);
     let models: Vec<serde_json::Value> = models_resp.json().await.unwrap();
     assert!(!models.is_empty());
+}
+
+/// Writes a proposal straight into the test server's database and returns its id.
+///
+/// The sweep itself is not what these tests exercise — it needs `gh` and a real assignee — so the
+/// rows the routes read are planted directly.
+fn plant_proposal(
+    tendril_home: &std::path::Path,
+    number: u64,
+    state: tendril_core::inbox::ProposalState,
+) -> i64 {
+    let conn = open_database(&get_database_path(tendril_home)).expect("open test database");
+    tendril_core::db::insert_proposal(
+        &conn,
+        &tendril_core::inbox::InboxProposal {
+            id: 0,
+            number,
+            repository: "Ivy-Interactive/Ivy-Tendril-V2".to_string(),
+            title: format!("Planted issue {}", number),
+            body: "Body.".to_string(),
+            issue_url: format!(
+                "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues/{}",
+                number
+            ),
+            project: "Ivy-Tendril-V2".to_string(),
+            state,
+            job_id: None,
+            discovered: "2026-01-01T00:00:00Z".to_string(),
+            updated: "2026-01-01T00:00:00Z".to_string(),
+        },
+    )
+    .expect("plant a proposal")
+}
+
+#[tokio::test]
+async fn test_inbox_routes_require_auth() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    let resp = client
+        .get(format!("{}/api/inbox/proposals", base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    for path in [
+        "/api/inbox/check",
+        "/api/inbox/proposals/1/accept",
+        "/api/inbox/proposals/1/dismiss",
+    ] {
+        let resp = client
+            .post(format!("{}{}", base_url, path))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            reqwest::StatusCode::UNAUTHORIZED,
+            "{} must require a bearer token",
+            path
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_list_inbox_proposals_defaults_to_pending() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    let pending = plant_proposal(&server.tendril_home, 1, ProposalState::Pending);
+    let dismissed = plant_proposal(&server.tendril_home, 2, ProposalState::Dismissed);
+
+    let resp = client
+        .get(format!("{}/api/inbox/proposals", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: Vec<serde_json::Value> = resp.json().await.unwrap();
+    assert_eq!(
+        body.iter()
+            .map(|p| p["id"].as_i64().unwrap())
+            .collect::<Vec<_>>(),
+        vec![pending],
+        "no state filter means the panel's view: what still needs a decision"
+    );
+    // camelCase on the wire, matching the frontend's `InboxProposal`.
+    assert_eq!(
+        body[0]["issueUrl"].as_str().unwrap(),
+        format!(
+            "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues/{}",
+            1
+        )
+    );
+    assert_eq!(body[0]["state"], "Pending");
+
+    let all_resp = client
+        .get(format!("{}/api/inbox/proposals?state=all", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(all_resp.status(), reqwest::StatusCode::OK);
+    let all: Vec<serde_json::Value> = all_resp.json().await.unwrap();
+    assert_eq!(
+        all.iter()
+            .map(|p| p["id"].as_i64().unwrap())
+            .collect::<Vec<_>>(),
+        vec![dismissed, pending],
+        "?state=all audits everything the importer has seen, newest first"
+    );
+
+    let filtered_resp = client
+        .get(format!("{}/api/inbox/proposals?state=dismissed", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    let filtered: Vec<serde_json::Value> = filtered_resp.json().await.unwrap();
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0]["id"].as_i64().unwrap(), dismissed);
+}
+
+#[tokio::test]
+async fn test_list_inbox_proposals_rejects_an_unknown_state() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/inbox/proposals?state=snoozed",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "a typo'd filter must not silently return everything"
+    );
+}
+
+#[tokio::test]
+async fn test_inbox_check_runs_a_sweep_on_the_master() {
+    // The temp home has no projects configured, so the sweep finds nothing to fetch and `gh` is
+    // never invoked. What is under test is the route contract, not the fetch.
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(format!("http://127.0.0.1:{}/api/inbox/check", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "this process holds the MasterGuard, so it may sweep"
+    );
+
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let outcome = body["outcome"].as_str().expect("outcome is reported");
+    // `AlreadyRunning` is legitimate here: the overlap guard is process-wide and another test in this
+    // binary may hold the permit. Either way the sweep is not `NotMaster`.
+    assert!(
+        outcome == "Ran" || outcome == "AlreadyRunning",
+        "unexpected outcome {outcome}"
+    );
+    assert!(body["imported"].is_array());
+    assert!(body["accepted"].is_u64());
+    assert!(body["skipped"].is_u64());
+    assert!(body["errors"].is_array());
+}
+
+#[tokio::test]
+async fn test_accept_and_dismiss_report_a_missing_proposal() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+
+    for path in [
+        "/api/inbox/proposals/4242/accept",
+        "/api/inbox/proposals/4242/dismiss",
+    ] {
+        let resp = client
+            .post(format!("{}{}", base_url, path))
+            .bearer_auth(&server.secret)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "{} must 404 rather than pretend to succeed",
+            path
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_dismiss_inbox_proposal_keeps_the_row() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+    let id = plant_proposal(&server.tendril_home, 5, ProposalState::Pending);
+
+    let resp = client
+        .post(format!("{}/api/inbox/proposals/{}/dismiss", base_url, id))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["state"], "Dismissed");
+
+    // The row must survive the dismissal: its existence is what stops the next sweep re-importing.
+    let listed = client
+        .get(format!("{}/api/inbox/proposals?state=all", base_url))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap()
+        .json::<Vec<serde_json::Value>>()
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0]["state"], "Dismissed");
+}
+
+#[tokio::test]
+async fn test_accept_and_dismiss_conflict_on_a_decided_proposal() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://127.0.0.1:{}", server.port);
+    let accepted = plant_proposal(&server.tendril_home, 6, ProposalState::Accepted);
+    let dismissed = plant_proposal(&server.tendril_home, 7, ProposalState::Dismissed);
+
+    // Accepting twice would start a second plan for one issue.
+    for id in [accepted, dismissed] {
+        let resp = client
+            .post(format!("{}/api/inbox/proposals/{}/accept", base_url, id))
+            .bearer_auth(&server.secret)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            reqwest::StatusCode::CONFLICT,
+            "accepting an already-decided proposal must conflict"
+        );
+    }
+
+    // Dismissing an accepted proposal would orphan the job it started.
+    let resp = client
+        .post(format!(
+            "{}/api/inbox/proposals/{}/dismiss",
+            base_url, accepted
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::CONFLICT);
+
+    // Dismissing an already-dismissed one is harmless and stays a 200.
+    let resp = client
+        .post(format!(
+            "{}/api/inbox/proposals/{}/dismiss",
+            base_url, dismissed
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_inbox_static_segments_are_not_read_as_proposal_ids() {
+    // `check` and `proposals` are registered before `:id`, so neither can be parsed as one.
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .post(format!("http://127.0.0.1:{}/api/inbox/check", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_ne!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+    assert_ne!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // A non-numeric id is a 400 from the path extractor, not a 500.
+    let resp = client
+        .post(format!(
+            "http://127.0.0.1:{}/api/inbox/proposals/not-a-number/accept",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

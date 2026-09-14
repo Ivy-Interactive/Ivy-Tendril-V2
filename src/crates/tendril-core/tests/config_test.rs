@@ -658,3 +658,99 @@ fn test_get_default_tendril_home_fallback_with_env() {
 
     let _ = std::fs::remove_dir_all(test_dir);
 }
+
+fn write_config(body: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "tendril-inbox-cfg-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&dir).expect("Failed to create scratch config dir");
+    let path = dir.join("config.yaml");
+    std::fs::write(&path, body).expect("Failed to write scratch config");
+    path
+}
+
+#[test]
+fn inbox_defaults_are_off_and_fifteen_minutes() {
+    let settings = TendrilSettings::default();
+    assert!(
+        !settings.inbox.auto_accept_assigned_issues,
+        "Auto-accept must default to off: a swept issue turning straight into a plan is not \
+         something a user should get without asking for it"
+    );
+    assert_eq!(settings.inbox.check_interval_minutes, 15);
+}
+
+#[test]
+fn an_absent_inbox_section_loads_as_defaults() {
+    let path = write_config("codingAgent: claude\n");
+    let settings = load_config(&path).expect("A config without an inbox section must still load");
+
+    assert!(!settings.inbox.auto_accept_assigned_issues);
+    assert_eq!(settings.inbox.check_interval_minutes, 15);
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn inbox_reads_camel_case_keys() {
+    let path =
+        write_config("inbox:\n  autoAcceptAssignedIssues: true\n  checkIntervalMinutes: 5\n");
+    let settings = load_config(&path).expect("Config with an inbox section must load");
+
+    assert!(settings.inbox.auto_accept_assigned_issues);
+    assert_eq!(settings.inbox.check_interval_minutes, 5);
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn a_partial_inbox_section_keeps_the_default_for_the_missing_key() {
+    let path = write_config("inbox:\n  autoAcceptAssignedIssues: true\n");
+    let settings = load_config(&path).expect("A partial inbox section must load");
+
+    assert!(settings.inbox.auto_accept_assigned_issues);
+    assert_eq!(
+        settings.inbox.check_interval_minutes, 15,
+        "Setting one inbox key must not zero the other, which would silently disable the importer"
+    );
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn a_malformed_inbox_section_degrades_to_defaults_instead_of_failing_the_load() {
+    // A bad hand-edit to one section must not take Tendril down, the same rule `codingAgents`
+    // follows.
+    for body in [
+        "inbox: not-a-mapping\n",
+        "inbox: []\n",
+        "inbox:\n  checkIntervalMinutes: \"every so often\"\n",
+    ] {
+        let path = write_config(body);
+        let settings =
+            load_config(&path).unwrap_or_else(|e| panic!("Config {body:?} must still load: {e}"));
+
+        assert!(!settings.inbox.auto_accept_assigned_issues);
+        assert_eq!(settings.inbox.check_interval_minutes, 15);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+}
+
+#[test]
+fn an_inbox_section_survives_a_save_load_round_trip() {
+    let mut settings = TendrilSettings::default();
+    settings.inbox.auto_accept_assigned_issues = true;
+    settings.inbox.check_interval_minutes = 30;
+
+    let path = write_config("");
+    save_config(&path, &settings).expect("Saving settings with an inbox section must succeed");
+    let reloaded = load_config(&path).expect("Reloading saved settings must succeed");
+
+    assert!(reloaded.inbox.auto_accept_assigned_issues);
+    assert_eq!(reloaded.inbox.check_interval_minutes, 30);
+
+    let raw = std::fs::read_to_string(&path).expect("Saved config must be readable");
+    assert!(
+        raw.contains("autoAcceptAssignedIssues"),
+        "The section must be written in the camelCase the original app reads, got:\n{raw}"
+    );
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
