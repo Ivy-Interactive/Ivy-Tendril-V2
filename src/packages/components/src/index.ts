@@ -46,7 +46,11 @@ export {
   type Theme,
   type ThemeContextType,
 } from "./contexts/theme-context.tsx";
-export { ThemeProvider, type ThemeProviderProps } from "./components/theme-provider.tsx";
+export {
+  ThemeProvider,
+  setThemeGlobal,
+  type ThemeProviderProps,
+} from "./components/theme-provider.tsx";
 export { TypographyContext, useTypography } from "./contexts/TypographyContext";
 
 // Density

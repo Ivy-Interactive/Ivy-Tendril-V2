@@ -297,10 +297,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
   return (
     <div data-testid="inbox-view" className="space-y-6">
       {/* Header & Project/Repo Switcher */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-800 pb-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100">GitHub Issue Inbox</h1>
-          <p className="text-xs text-slate-400">
+          <h1 className="text-2xl font-bold text-foreground">GitHub Issue Inbox</h1>
+          <p className="text-xs text-muted-foreground">
             Triage issues, review pull requests, and convert incoming work into autonomous plans.
           </p>
         </div>
@@ -309,7 +309,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         {projects.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center space-x-2">
-              <label htmlFor="inbox-project-select" className="text-xs text-slate-400">
+              <label htmlFor="inbox-project-select" className="text-xs text-muted-foreground">
                 Project:
               </label>
               <select
@@ -327,7 +327,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   }
                   resetToFirstPage();
                 }}
-                className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground focus:border-ring focus:outline-none"
               >
                 {projects.map((p) => (
                   <option key={p.name} value={p.name}>
@@ -339,7 +339,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
             {activeProjectRepos.length > 1 && (
               <div className="flex items-center space-x-2">
-                <label htmlFor="inbox-repo-select" className="text-xs text-slate-400">
+                <label htmlFor="inbox-repo-select" className="text-xs text-muted-foreground">
                   Repo:
                 </label>
                 <select
@@ -350,7 +350,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     setSelectedRepo(e.target.value);
                     resetToFirstPage();
                   }}
-                  className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                  className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground focus:border-ring focus:outline-none"
                 >
                   {activeProjectRepos.map((r) => (
                     <option key={r} value={r}>
@@ -365,7 +365,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
       </div>
 
       {/* Category Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-800/80 pb-3" role="tablist">
+      <div className="flex flex-wrap gap-2 border-b border-border/80 pb-3" role="tablist">
         <button
           type="button"
           role="tab"
@@ -377,8 +377,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
           }}
           className={`flex items-center space-x-2 rounded-full px-4 py-1.5 text-xs font-medium transition ${
             selectedCategory === "my-issues"
-              ? "bg-emerald-600 text-white shadow-sm"
-              : "bg-slate-900 text-slate-300 hover:bg-slate-800"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "bg-card text-muted-foreground hover:bg-muted"
           }`}
         >
           <span>My Issues</span>
@@ -386,8 +386,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] ${
                 selectedCategory === "my-issues"
-                  ? "bg-emerald-700 text-emerald-100"
-                  : "bg-slate-800 text-slate-400"
+                  ? "bg-primary text-success"
+                  : "bg-muted text-muted-foreground"
               }`}
             >
               {counts["my-issues"]}
@@ -406,8 +406,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
           }}
           className={`flex items-center space-x-2 rounded-full px-4 py-1.5 text-xs font-medium transition ${
             selectedCategory === "review-requests"
-              ? "bg-emerald-600 text-white shadow-sm"
-              : "bg-slate-900 text-slate-300 hover:bg-slate-800"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "bg-card text-muted-foreground hover:bg-muted"
           }`}
         >
           <span>Review Requests</span>
@@ -415,8 +415,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] ${
                 selectedCategory === "review-requests"
-                  ? "bg-emerald-700 text-emerald-100"
-                  : "bg-slate-800 text-slate-400"
+                  ? "bg-primary text-success"
+                  : "bg-muted text-muted-foreground"
               }`}
             >
               {counts["review-requests"]}
@@ -435,8 +435,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
           }}
           className={`flex items-center space-x-2 rounded-full px-4 py-1.5 text-xs font-medium transition ${
             selectedCategory === "project-issues"
-              ? "bg-emerald-600 text-white shadow-sm"
-              : "bg-slate-900 text-slate-300 hover:bg-slate-800"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "bg-card text-muted-foreground hover:bg-muted"
           }`}
         >
           <span>Project Issues</span>
@@ -444,8 +444,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] ${
                 selectedCategory === "project-issues"
-                  ? "bg-emerald-700 text-emerald-100"
-                  : "bg-slate-800 text-slate-400"
+                  ? "bg-primary text-success"
+                  : "bg-muted text-muted-foreground"
               }`}
             >
               {counts["project-issues"]}
@@ -467,7 +467,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 setSearchQuery(e.target.value);
                 resetToFirstPage();
               }}
-              className="w-full rounded-lg border border-slate-800 bg-slate-900/80 px-4 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              className="w-full rounded-lg border border-border bg-card/80 px-4 py-2 text-xs text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none"
             />
             {searchQuery && (
               <button
@@ -477,7 +477,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   resetToFirstPage();
                 }}
                 aria-label="Clear search"
-                className="absolute right-3 top-2 text-xs text-slate-400 hover:text-slate-200"
+                className="absolute right-3 top-2 text-xs text-muted-foreground hover:text-foreground"
               >
                 ✕
               </button>
@@ -487,17 +487,17 @@ export const InboxView: React.FC<InboxViewProps> = ({
           <div className="flex items-center gap-2">
             <span
               className={`h-2 w-2 rounded-full ${
-                isBackgroundRefreshing ? "bg-emerald-400 animate-pulse" : "bg-slate-700"
+                isBackgroundRefreshing ? "bg-success animate-pulse" : "bg-accent"
               }`}
               aria-hidden="true"
             />
-            <span className="text-[11px] text-slate-500" data-testid="inbox-last-updated">
+            <span className="text-[11px] text-muted-foreground/70" data-testid="inbox-last-updated">
               {lastUpdated ? formatLastUpdated(lastUpdated) : "Not yet updated"}
             </span>
           </div>
 
           <div className="flex items-center gap-1.5">
-            <label htmlFor="inbox-poll-interval" className="text-xs text-slate-400">
+            <label htmlFor="inbox-poll-interval" className="text-xs text-muted-foreground">
               Auto-refresh:
             </label>
             <select
@@ -505,7 +505,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               aria-label="Auto-refresh interval"
               value={pollInterval}
               onChange={(e) => handlePollIntervalChange(e.target.value as PollInterval)}
-              className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+              className="rounded-lg border border-border bg-card px-2 py-1.5 text-xs text-foreground focus:border-ring focus:outline-none"
             >
               {(Object.keys(POLL_INTERVAL_LABELS) as PollInterval[]).map((opt) => (
                 <option key={opt} value={opt}>
@@ -519,7 +519,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             type="button"
             onClick={() => fetchIssues()}
             disabled={isLoading}
-            className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800"
+            className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:bg-muted"
           >
             {isLoading ? "Refreshing..." : "Refresh"}
           </button>
@@ -528,7 +528,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         {/* Filter Chips for Labels & Assignees */}
         {(availableLabels.length > 0 || availableAssignees.length > 0) && (
           <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-            <span className="text-slate-500 text-[11px]">Filters:</span>
+            <span className="text-muted-foreground/70 text-[11px]">Filters:</span>
 
             {availableLabels.map((lbl) => {
               const isSelected = selectedLabels.includes(lbl.name);
@@ -541,8 +541,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   aria-pressed={isSelected}
                   className={`inline-flex items-center space-x-1.5 rounded-full px-2.5 py-1 text-[11px] transition border ${
                     isSelected
-                      ? "border-emerald-500 bg-emerald-950/60 text-emerald-300"
-                      : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                      ? "border-ring bg-success/10 text-success"
+                      : "border-border bg-card/60 text-muted-foreground hover:border-ring"
                   }`}
                 >
                   <span
@@ -564,8 +564,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   aria-pressed={isSelected}
                   className={`inline-flex items-center space-x-1 rounded-full px-2.5 py-1 text-[11px] transition border ${
                     isSelected
-                      ? "border-blue-500 bg-blue-950/60 text-blue-300"
-                      : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                      ? "border-info bg-info/10 text-info"
+                      : "border-border bg-card/60 text-muted-foreground hover:border-ring"
                   }`}
                 >
                   <span>@{login}</span>
@@ -581,7 +581,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   setSelectedAssignees([]);
                   resetToFirstPage();
                 }}
-                className="text-[11px] text-slate-500 hover:text-slate-300 underline"
+                className="text-[11px] text-muted-foreground/70 hover:text-muted-foreground underline"
               >
                 Clear all filters
               </button>
@@ -595,19 +595,19 @@ export const InboxView: React.FC<InboxViewProps> = ({
         <div
           role="alert"
           data-testid="inbox-error"
-          className="rounded-xl border border-red-800 bg-red-950/40 p-4 text-xs text-red-300 space-y-2"
+          className="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive space-y-2"
         >
-          <div className="font-semibold text-red-200">Failed to load GitHub issues</div>
+          <div className="font-semibold text-destructive">Failed to load GitHub issues</div>
           <p>{error}</p>
           {error.toLowerCase().includes("auth login") && (
-            <div className="rounded bg-slate-950 p-2 font-mono text-[11px] text-slate-300">
+            <div className="rounded bg-background p-2 font-mono text-[11px] text-muted-foreground">
               $ gh auth login
             </div>
           )}
           <button
             type="button"
             onClick={() => fetchIssues()}
-            className="mt-2 rounded bg-red-900/60 px-3 py-1 font-medium text-red-100 hover:bg-red-800"
+            className="mt-2 rounded bg-destructive/10 px-3 py-1 font-medium text-destructive hover:bg-destructive/20"
           >
             Retry
           </button>
@@ -618,7 +618,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
       {isLoading && (
         <div
           data-testid="inbox-loading"
-          className="flex h-32 items-center justify-center text-xs text-slate-500"
+          className="flex h-32 items-center justify-center text-xs text-muted-foreground/70"
         >
           Loading issues from GitHub...
         </div>
@@ -628,10 +628,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
       {!isLoading && !error && filteredIssues.length === 0 && (
         <div
           data-testid="inbox-empty"
-          className="rounded-2xl border border-dashed border-slate-800 p-8 text-center"
+          className="rounded-2xl border border-dashed border-border p-8 text-center"
         >
-          <p className="text-sm font-medium text-slate-300">No issues found</p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="text-sm font-medium text-muted-foreground">No issues found</p>
+          <p className="mt-1 text-xs text-muted-foreground/70">
             {issues.length === 0
               ? "No open issues found in this category."
               : "No issues match your current search and filter criteria."}
@@ -650,45 +650,45 @@ export const InboxView: React.FC<InboxViewProps> = ({
               <div
                 key={`${issue.number}-${issue.url}`}
                 data-testid={`issue-card-${issue.number}`}
-                className="group rounded-xl border border-slate-800 bg-slate-900/60 p-4 transition hover:border-slate-700 hover:bg-slate-900"
+                className="group rounded-xl border border-border bg-card/60 p-4 transition hover:border-ring hover:bg-card"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                   {/* Issue Info */}
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs font-bold text-emerald-400">
+                      <span className="font-mono text-xs font-bold text-success">
                         #{issue.number}
                       </span>
                       {issue.isPullRequest && (
-                        <span className="rounded bg-purple-950/80 px-2 py-0.5 font-mono text-[10px] text-purple-300 border border-purple-800/60">
+                        <span className="rounded bg-purple/10 px-2 py-0.5 font-mono text-[10px] text-purple border border-purple/40">
                           PR
                         </span>
                       )}
-                      <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">
+                      <span className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
                         {repoLabel}
                       </span>
                       {issue.author && (
-                        <span className="text-[11px] text-slate-400">
-                          by <span className="text-slate-300">@{issue.author.login}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          by <span className="text-muted-foreground">@{issue.author.login}</span>
                         </span>
                       )}
-                      <span className="text-[11px] text-slate-500">
+                      <span className="text-[11px] text-muted-foreground/70">
                         {formatRelativeTime(issue.updatedAt)}
                       </span>
                       {issue.commentsCount > 0 && (
-                        <span className="inline-flex items-center space-x-1 text-[11px] text-slate-400">
+                        <span className="inline-flex items-center space-x-1 text-[11px] text-muted-foreground">
                           <span>💬</span>
                           <span>{issue.commentsCount}</span>
                         </span>
                       )}
                     </div>
 
-                    <h3 className="text-sm font-semibold text-slate-100 leading-snug break-words">
+                    <h3 className="text-sm font-semibold text-foreground leading-snug break-words">
                       {issue.title}
                     </h3>
 
                     {issue.body && (
-                      <p className="text-xs text-slate-400 line-clamp-2 break-words">
+                      <p className="text-xs text-muted-foreground line-clamp-2 break-words">
                         {issue.body}
                       </p>
                     )}
@@ -700,7 +700,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                         return (
                           <span
                             key={l.name}
-                            className="inline-flex items-center space-x-1 rounded-full px-2 py-0.5 text-[10px] font-medium border border-slate-800"
+                            className="inline-flex items-center space-x-1 rounded-full px-2 py-0.5 text-[10px] font-medium border border-border"
                             style={{
                               backgroundColor: `${hexColor}22`,
                               color: hexColor,
@@ -718,7 +718,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                       {issue.assignees.map((a) => (
                         <span
                           key={a.login}
-                          className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] text-slate-300"
+                          className="rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground"
                         >
                           👤 @{a.login}
                         </span>
@@ -732,7 +732,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                       type="button"
                       data-testid={`create-plan-btn-${issue.number}`}
                       onClick={() => handleCreatePlan(issue)}
-                      className="inline-flex items-center space-x-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-500"
+                      className="inline-flex items-center space-x-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90"
                     >
                       <span>Create Plan</span>
                     </button>
@@ -740,7 +740,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenGitHub(issue.url)}
-                      className="text-xs text-slate-400 hover:text-slate-200 transition"
+                      className="text-xs text-muted-foreground hover:text-foreground transition"
                       title="Open on GitHub"
                     >
                       View on GitHub ↗
@@ -757,7 +757,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
       {!isLoading && !error && (
         <div
           data-testid="inbox-pagination"
-          className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3 text-xs text-slate-400"
+          className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3 text-xs text-muted-foreground"
         >
           <span data-testid="inbox-pagination-summary">
             {totalCount !== null
@@ -770,7 +770,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5">
-              <label htmlFor="inbox-page-size" className="text-slate-500">
+              <label htmlFor="inbox-page-size" className="text-muted-foreground/70">
                 Per page:
               </label>
               <select
@@ -781,7 +781,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   setPageSize(Number(e.target.value));
                   resetToFirstPage();
                 }}
-                className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none"
+                className="rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground focus:border-ring focus:outline-none"
               >
                 {PAGE_SIZE_OPTIONS.map((size) => (
                   <option key={size} value={size}>
@@ -795,7 +795,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || isLoading}
-              className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900"
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-card"
             >
               Previous
             </button>
@@ -803,7 +803,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               type="button"
               onClick={() => setPage((p) => p + 1)}
               disabled={!hasMore || isLoading}
-              className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-slate-300 hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900"
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:hover:bg-card"
             >
               Next
             </button>
