@@ -96,6 +96,14 @@ pub struct TendrilSettings {
     #[serde(rename = "enrichModels", default = "default_true")]
     pub enrich_models: bool,
 
+    /// Hours between background models.dev refreshes while `enrichModels` is on. `0` or
+    /// negative means "refresh once at startup and never again".
+    #[serde(
+        rename = "modelEnrichmentIntervalHours",
+        default = "default_model_enrichment_interval_hours"
+    )]
+    pub model_enrichment_interval_hours: i32,
+
     /// Soft age threshold (in days) past which the models.dev disk cache is still used but
     /// logged as a warning. `0` or negative disables this tier (never warn).
     #[serde(
@@ -254,6 +262,9 @@ fn default_true() -> bool {
 fn default_theme() -> String {
     "default".to_string()
 }
+fn default_model_enrichment_interval_hours() -> i32 {
+    crate::agents::model_cache::DEFAULT_ENRICHMENT_INTERVAL_HOURS
+}
 fn default_model_cache_warn_age_days() -> i64 {
     crate::agents::model_cache::DEFAULT_CACHE_WARN_AGE_DAYS
 }
@@ -322,6 +333,7 @@ impl Default for TendrilSettings {
             coding_agents: Vec::new(),
             promptwares: BTreeMap::new(),
             enrich_models: true,
+            model_enrichment_interval_hours: default_model_enrichment_interval_hours(),
             model_cache_warn_age_days: default_model_cache_warn_age_days(),
             model_cache_max_age_days: default_model_cache_max_age_days(),
             extra: BTreeMap::new(),
