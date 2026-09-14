@@ -33,6 +33,9 @@ enum Commands {
     #[command(subcommand, about = "Manage projects")]
     Project(commands::project::ProjectCommands),
 
+    #[command(subcommand, about = "Manage team configuration vaults")]
+    Vault(commands::vault::VaultCommands),
+
     #[command(subcommand, about = "Manage verification definitions")]
     Verification(commands::verification::VerificationCommands),
 
@@ -82,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Project(cmd) => {
             commands::project::handle_project_command(cmd, &tendril_home).await?
         }
+        Commands::Vault(cmd) => commands::vault::handle_vault_command(cmd, &tendril_home).await?,
         Commands::Verification(cmd) => {
             commands::verification::handle_verification_command(cmd, &tendril_home).await?
         }

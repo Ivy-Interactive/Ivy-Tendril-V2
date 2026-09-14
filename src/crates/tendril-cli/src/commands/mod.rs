@@ -8,4 +8,5 @@ pub mod plan;
 pub mod project;
 pub mod promptware;
 pub mod serve;
+pub mod vault;
 pub mod verification;
