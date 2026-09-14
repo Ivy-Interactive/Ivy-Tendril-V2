@@ -26,6 +26,7 @@ export * from "./components/ui/checkbox";
 export * from "./components/ui/collapsible";
 export * from "./components/ui/command";
 export * from "./components/ui/context-menu";
+export * from "./components/ui/data-table";
 export * from "./components/ui/detail.tsx";
 export * as DetailVariants from "./components/ui/detail/index";
 export * from "./components/ui/dialog";
