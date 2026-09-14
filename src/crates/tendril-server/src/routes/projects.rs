@@ -251,6 +251,7 @@ pub async fn create_project(
         stack_hash: req.stack_hash,
         review_actions: req.review_actions,
         build_dependencies: req.build_dependencies,
+        mcp_servers: Vec::new(),
     };
 
     settings.projects.push(project.clone());
