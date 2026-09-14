@@ -87,7 +87,9 @@ pub fn is_sensitive_key(key: &str) -> bool {
         return false;
     }
     let lowered = key.to_lowercase();
-    SENSITIVE_KEY_WORDS.iter().any(|word| lowered.contains(word))
+    SENSITIVE_KEY_WORDS
+        .iter()
+        .any(|word| lowered.contains(word))
 }
 
 /// Turns a key into a shell-safe environment variable name: upper-cased, `-` and `.` folded to `_`,
