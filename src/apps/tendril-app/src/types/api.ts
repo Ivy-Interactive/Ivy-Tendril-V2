@@ -1,3 +1,6 @@
+/** Team Vault DTOs live in `./vault`, next to the components that own their shape. */
+export type * from "./vault";
+
 export type PlanLifecycleState =
   | "Draft"
   | "Creating"
@@ -140,7 +143,87 @@ export interface TendrilConfig {
   maxConcurrentJobs?: number;
   planTemplate?: string;
   theme?: string;
+  inbox?: InboxConfig;
   raw?: Record<string, unknown>;
+}
+
+/**
+ * Assigned-issue auto-import settings. `autoAcceptAssignedIssues` selects what a
+ * swept issue becomes — a plan-creation job when true, a proposal awaiting a
+ * human when false — it does not turn the importer off. A
+ * `checkIntervalMinutes` of `0` or less is what disables it.
+ */
+export interface InboxConfig {
+  autoAcceptAssignedIssues?: boolean;
+  checkIntervalMinutes?: number;
+}
+
+export type ProposalState = "Pending" | "Accepted" | "Dismissed";
+
+/**
+ * An assigned GitHub issue the importer swept. The row survives every decision,
+ * `Dismissed` included: that record is what stops the next sweep from
+ * re-importing an issue the user said no to.
+ */
+export interface InboxProposal {
+  id: number;
+  number: number;
+  repository: string;
+  title: string;
+  body: string;
+  issueUrl: string;
+  project: string;
+  state: ProposalState;
+  jobId?: string;
+  discovered: string;
+  updated: string;
+}
+
+export type SweepOutcome = "Ran" | "NotMaster" | "AlreadyRunning";
+
+/** What one import pass did. Per-project failures land in `errors` and are never fatal. */
+export interface SweepReport {
+  imported: InboxProposal[];
+  accepted: number;
+  skipped: number;
+  errors: string[];
+  outcome: SweepOutcome;
+}
+
+/** Why the first-run wizard is (or is not) needed; mirrors `onboarding::OnboardingReason`. */
+export type OnboardingReason =
+  | "FreshInstall"
+  | "NoProjects"
+  | "AlreadyConfigured"
+  | "Completed"
+  | "Dismissed";
+
+export interface OnboardingStatus {
+  needed: boolean;
+  reason: OnboardingReason;
+  projectCount: number;
+  configExists: boolean;
+  tendrilHome: string;
+}
+
+export type DoctorCheckStatus = "Ok" | "Warn" | "Fail";
+
+export type DoctorCheckCategory = "Prerequisite" | "Environment";
+
+/** One health probe from the `tendril-core` registry that `tendril doctor` also prints. */
+export interface DoctorCheck {
+  name: string;
+  status: DoctorCheckStatus;
+  message: string;
+  required: boolean;
+  installUrl?: string | null;
+  category: DoctorCheckCategory;
+}
+
+export interface CreateProjectRequest {
+  name: string;
+  color?: string;
+  repos?: string[];
 }
 
 export type ModelCatalogSource = "models.dev" | "static";
@@ -153,6 +236,13 @@ export interface ModelCatalogStatus {
   enrichModels: boolean;
   cachedAt: string | null;
   cachePath: string;
+}
+
+export interface VersionInfo {
+  currentVersion: string;
+  latestVersion: string | null;
+  hasUpdate: boolean;
+  lastChecked: string | null;
 }
 
 export interface StartJobArgs {
@@ -273,6 +363,10 @@ export interface PrStatus {
   planFolder: string;
   planTitle: string;
   project: string;
+  /** `SUM(Cost)` over the plan's cost rows; `0` when the plan has none or none is priceable. */
+  cost: number;
+  /** `SUM(Tokens)` over the plan's cost rows; `0` when the plan has none. */
+  tokens: number;
 }
 
 export interface PrTransition {

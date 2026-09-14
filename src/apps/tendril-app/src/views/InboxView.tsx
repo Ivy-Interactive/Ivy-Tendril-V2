@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
-import type { GitHubIssue, ProjectSummary } from "../types/api";
+import type { GitHubIssue, InboxProposal, ProjectSummary } from "../types/api";
 
 export type InboxCategory = "my-issues" | "review-requests" | "project-issues";
 
@@ -71,6 +71,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
   // Background polling state
   const [pollInterval, setPollInterval] = useState<PollInterval>("off");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Auto-imported assigned issues waiting on a human. Kept separate from `issues`: these are rows
+  // the daemon already swept, not a live GitHub query, and the decision buttons act on the row id.
+  const [proposals, setProposals] = useState<InboxProposal[]>([]);
+  const [isChecking, setIsChecking] = useState<boolean>(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
+  const [checkSummary, setCheckSummary] = useState<string | null>(null);
+  const [decidingId, setDecidingId] = useState<number | null>(null);
 
   // Update selectedProject and selectedRepo when projects prop changes
   useEffect(() => {
@@ -158,6 +166,68 @@ export const InboxView: React.FC<InboxViewProps> = ({
   useEffect(() => {
     void fetchIssues();
   }, [fetchIssues]);
+
+  // Pending proposals are independent of the category/repo/page selection, so this fetch has no
+  // dependencies and is not part of `fetchIssues`.
+  const fetchProposals = useCallback(async () => {
+    try {
+      const rows = await bridge.listInboxProposals();
+      setProposals(rows);
+      setProposalError(null);
+    } catch (err) {
+      // A daemon too old to know the route, or one that is down, must not blank the issue list.
+      setProposalError(describeBridgeError(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchProposals();
+  }, [fetchProposals]);
+
+  const handleCheckNow = async () => {
+    setIsChecking(true);
+    setProposalError(null);
+    try {
+      const report = await bridge.checkInbox();
+      setCheckSummary(
+        report.outcome === "AlreadyRunning"
+          ? "A check is already running."
+          : `Imported ${report.imported.length}, skipped ${report.skipped}.`,
+      );
+      await fetchProposals();
+    } catch (err) {
+      setCheckSummary(null);
+      setProposalError(describeBridgeError(err));
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  const handleAcceptProposal = async (id: number) => {
+    setDecidingId(id);
+    setProposalError(null);
+    try {
+      await bridge.acceptInboxProposal(id);
+      await fetchProposals();
+    } catch (err) {
+      setProposalError(describeBridgeError(err));
+    } finally {
+      setDecidingId(null);
+    }
+  };
+
+  const handleDismissProposal = async (id: number) => {
+    setDecidingId(id);
+    setProposalError(null);
+    try {
+      await bridge.dismissInboxProposal(id);
+      await fetchProposals();
+    } catch (err) {
+      setProposalError(describeBridgeError(err));
+    } finally {
+      setDecidingId(null);
+    }
+  };
 
   // Background polling: silently refetch on the configured interval, skipping
   // ticks while the tab/window is hidden to preserve GitHub API rate limits.
@@ -523,6 +593,19 @@ export const InboxView: React.FC<InboxViewProps> = ({
           >
             {isLoading ? "Refreshing..." : "Refresh"}
           </button>
+
+          {/* Refresh re-queries GitHub; this asks the daemon to run an import sweep, which is what
+              turns assigned issues into proposals or plans. */}
+          <button
+            type="button"
+            data-testid="inbox-check-now"
+            onClick={() => void handleCheckNow()}
+            disabled={isChecking}
+            title="Import GitHub issues assigned to you now, without waiting for the next scheduled check"
+            className="rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:bg-muted"
+          >
+            {isChecking ? "Checking..." : "Check now"}
+          </button>
         </div>
 
         {/* Filter Chips for Labels & Assignees */}
@@ -589,6 +672,91 @@ export const InboxView: React.FC<InboxViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Imported proposals awaiting a decision. Hidden entirely when there are none, so the panel
+          costs nothing on the common path — but a check that failed still reports, since a silent
+          failure looks identical to "nothing was assigned to you". */}
+      {checkSummary && proposals.length === 0 && !proposalError && (
+        <p data-testid="inbox-check-summary" className="text-[11px] text-muted-foreground/70">
+          {checkSummary}
+        </p>
+      )}
+
+      {proposalError && (
+        <div
+          role="alert"
+          data-testid="inbox-proposal-error"
+          className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+        >
+          {proposalError}
+        </div>
+      )}
+
+      {proposals.length > 0 && (
+        <div data-testid="inbox-proposals" className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-semibold text-foreground">
+              Assigned issues awaiting your decision
+              <span className="ml-2 text-[11px] font-normal text-muted-foreground/70">
+                {proposals.length}
+              </span>
+            </h2>
+            {checkSummary && (
+              <span
+                data-testid="inbox-check-summary"
+                className="text-[11px] text-muted-foreground/70"
+              >
+                {checkSummary}
+              </span>
+            )}
+          </div>
+
+          {proposals.map((proposal) => (
+            <div
+              key={proposal.id}
+              data-testid={`proposal-card-${proposal.id}`}
+              className="rounded-xl border border-info/40 bg-info/5 p-4"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => void handleOpenGitHub(proposal.issueUrl)}
+                    className="truncate text-sm font-medium text-foreground hover:underline"
+                  >
+                    #{proposal.number} {proposal.title}
+                  </button>
+                  <p className="mt-1 text-[11px] text-muted-foreground/70">
+                    {proposal.repository} → {proposal.project} ·{" "}
+                    {formatRelativeTime(proposal.discovered)}
+                  </p>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid={`accept-proposal-${proposal.id}`}
+                    onClick={() => void handleAcceptProposal(proposal.id)}
+                    disabled={decidingId === proposal.id}
+                    className="rounded-lg bg-success/10 px-3 py-1.5 text-xs font-medium text-success hover:bg-success/20"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`dismiss-proposal-${proposal.id}`}
+                    onClick={() => void handleDismissProposal(proposal.id)}
+                    disabled={decidingId === proposal.id}
+                    className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Error State */}
       {error && (

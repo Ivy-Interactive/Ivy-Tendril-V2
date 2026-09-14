@@ -43,6 +43,15 @@ pub struct ModelCatalogStatusDto {
     pub cache_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionInfoDto {
+    pub current_version: String,
+    pub latest_version: Option<String>,
+    pub has_update: bool,
+    pub last_checked: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanVerificationDto {
@@ -301,6 +310,51 @@ pub struct TendrilConfigDto {
     pub raw: serde_json::Value,
 }
 
+/// Mirrors `tendril_core::onboarding::OnboardingStatus`. `reason` stays a `String` rather than an
+/// enum so a reason added server-side does not break an older app build.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingStatusDto {
+    pub needed: bool,
+    #[serde(default)]
+    pub reason: String,
+    #[serde(default)]
+    pub project_count: usize,
+    #[serde(default)]
+    pub config_exists: bool,
+    #[serde(default)]
+    pub tendril_home: String,
+}
+
+/// Mirrors `tendril_core::health::CheckResult`; `status` is `"Ok" | "Warn" | "Fail"` and `category`
+/// is `"Prerequisite" | "Environment"`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DoctorCheckDto {
+    pub name: String,
+    pub status: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_url: Option<String>,
+    #[serde(default)]
+    pub category: String,
+}
+
+/// The subset of `POST /api/projects` the onboarding wizard sends. Everything else on the server's
+/// request struct has a `#[serde(default)]`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectDto {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub repos: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanQueryDto {
@@ -527,6 +581,12 @@ pub struct PrStatusDto {
     pub plan_title: String,
     #[serde(default)]
     pub project: String,
+    /// `SUM(Cost)` over the plan's `Costs` rows; `0.0` when the plan has none or none is priceable.
+    #[serde(default)]
+    pub cost: f64,
+    /// `SUM(Tokens)` over the plan's `Costs` rows; `0` when the plan has none.
+    #[serde(default)]
+    pub tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

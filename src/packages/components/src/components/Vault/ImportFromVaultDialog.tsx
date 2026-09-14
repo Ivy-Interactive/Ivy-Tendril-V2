@@ -1,0 +1,260 @@
+import React from "react";
+import { FolderGit2 } from "lucide-react";
+import { Alert, AlertDescription } from "../ui/alert";
+import { Badge } from "../ui/badge";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Switch } from "../ui/switch";
+import { AssetChecklist } from "./AssetChecklist";
+import { VaultDialogShell } from "./VaultDialogShell";
+import type { LocalProjectRef, VaultCatalogItem, VaultImportRequest } from "./types";
+import {
+  isLocalProjectNameTaken,
+  seedRepoMappings,
+  suggestLocalProjectName,
+  vaultRepoKey,
+} from "./utils";
+
+export interface ImportFromVaultDialogProps {
+  open: boolean;
+  onClose: () => void;
+  item: VaultCatalogItem;
+  /** Names of the local projects, used for the collision check and the suggested name. */
+  existingNames: string[];
+  /** Local projects with their repo paths, so merge mode can preserve where repos already live. */
+  localProjects?: LocalProjectRef[];
+  /** Repo paths that exist on disk. The dialog is pure, so the caller does the looking. */
+  existingPaths?: string[];
+  /** Home directory used for the `<home>/git/<repo>` defaults. */
+  homeDir: string;
+  /** *Link & Merge*: adopt the vault project into the local one of the same name. */
+  mergeMode?: boolean;
+  onSubmit: (request: VaultImportRequest) => void;
+  error?: string | null;
+  isBusy?: boolean;
+}
+
+const CATEGORIES = [
+  {
+    key: "skills",
+    label: "Skills",
+    names: (item: VaultCatalogItem) => item.skillNames,
+    emptyText: "No custom skills in this vault project.",
+  },
+  {
+    key: "mcpServers",
+    label: "MCP Servers",
+    names: (item: VaultCatalogItem) => item.mcpServerNames,
+    emptyText: "No MCP servers in this vault project.",
+  },
+  {
+    key: "memories",
+    label: "Project Memories",
+    names: (item: VaultCatalogItem) => item.memoryFileNames,
+    emptyText: "No project memory markdown files in this vault project.",
+  },
+  {
+    key: "reviewActions",
+    label: "Review Actions",
+    names: (item: VaultCatalogItem) => item.reviewActionNames,
+    emptyText: "No review actions in this vault project.",
+  },
+  {
+    key: "verifications",
+    label: "Verifications",
+    names: (item: VaultCatalogItem) => item.verificationNames,
+    emptyText: "No verifications in this vault project.",
+  },
+] as const;
+
+type CategoryKey = (typeof CATEGORIES)[number]["key"];
+
+export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
+  open,
+  onClose,
+  item,
+  existingNames,
+  localProjects,
+  existingPaths,
+  homeDir,
+  mergeMode = false,
+  onSubmit,
+  error,
+  isBusy = false,
+}) => {
+  /* Merge keeps the vault's name — that name *is* the link to the local project. */
+  const suggestedName = mergeMode ? item.name : suggestLocalProjectName(item.name, existingNames);
+  const localMatch = React.useMemo(
+    () =>
+      localProjects?.find((project) => project.name.toLowerCase() === item.name.toLowerCase()) ??
+      null,
+    [localProjects, item.name],
+  );
+
+  const [name, setName] = React.useState(suggestedName);
+  const [mappings, setMappings] = React.useState<Record<string, string>>(() =>
+    seedRepoMappings(item.repos, homeDir, mergeMode ? localMatch : null),
+  );
+  const [selections, setSelections] = React.useState<Record<CategoryKey, string[]>>(() => ({
+    skills: [...item.skillNames],
+    mcpServers: [...item.mcpServerNames],
+    memories: [...item.memoryFileNames],
+    reviewActions: [...item.reviewActionNames],
+    verifications: [...item.verificationNames],
+  }));
+  const [importPermissions, setImportPermissions] = React.useState(true);
+  const [collision, setCollision] = React.useState<string | null>(null);
+
+  const effectiveName = name.trim() === "" ? suggestedName : name.trim();
+  const existingPathSet = new Set(existingPaths ?? []);
+  const submitDisabled = isBusy || effectiveName === "";
+
+  const handleSubmit = () => {
+    if (submitDisabled) return;
+
+    /* Importing onto an existing name would silently take over that project, so it is refused —
+       except in merge mode, where taking it over is the point, and for an update of a project
+       already imported from this vault. */
+    if (
+      !mergeMode &&
+      item.syncStatus !== "UpdateAvailable" &&
+      isLocalProjectNameTaken(effectiveName, existingNames)
+    ) {
+      setCollision(
+        `A local project named '${effectiveName}' already exists. Please pick a different name (e.g. ${suggestLocalProjectName(effectiveName, existingNames)}).`,
+      );
+      return;
+    }
+
+    setCollision(null);
+    onSubmit({
+      sourceVaultId: item.sourceVaultId ?? undefined,
+      projectName: item.name,
+      targetLocalProjectName: effectiveName,
+      localRepoMappings: mappings,
+      selectedSkills: selections.skills,
+      selectedMcps: selections.mcpServers,
+      selectedMemories: selections.memories,
+      selectedReviewActions: selections.reviewActions,
+      selectedVerifications: selections.verifications,
+      importPermissions,
+    });
+  };
+
+  const nameWasTaken = isLocalProjectNameTaken(item.name, existingNames);
+
+  return (
+    <VaultDialogShell
+      open={open}
+      onClose={onClose}
+      title={
+        mergeMode ? `Merge '${item.name}' with Local Project` : `Import '${item.name}' from Vault`
+      }
+      testId={mergeMode ? "merge-vault-dialog" : "import-vault-dialog"}
+      error={collision ?? error}
+      submitLabel={mergeMode ? "Link & Merge" : "Import Project"}
+      submitDisabled={submitDisabled}
+      onSubmit={handleSubmit}
+    >
+      {mergeMode ? (
+        <Alert data-testid="merge-vault-callout">
+          <AlertDescription>
+            Merging will link this vault project with your existing local project &apos;{item.name}
+            &apos;. Local repository paths and unconflicted settings will be preserved while
+            selected vault assets (verifications, actions, skills, MCPs, memories) will be
+            integrated.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        nameWasTaken &&
+        effectiveName !== item.name && (
+          <Alert data-testid="import-vault-rename-notice">
+            <AlertDescription>
+              A local project named &apos;{item.name}&apos; already exists. We&apos;ve suggested
+              &apos;{effectiveName}&apos; for this import to avoid conflicts.
+            </AlertDescription>
+          </Alert>
+        )
+      )}
+
+      <div className="space-y-1.5">
+        <Label htmlFor="import-vault-name">Local Project Name</Label>
+        <Input
+          id="import-vault-name"
+          value={mergeMode ? item.name : name}
+          readOnly={mergeMode}
+          disabled={mergeMode}
+          placeholder={suggestedName}
+          onChange={(event) => setName(event.target.value)}
+        />
+      </div>
+
+      <p className="flex items-center gap-2 text-xs font-semibold text-foreground">
+        Vault Source: {item.name}
+        <Badge variant="secondary">v{item.remoteVersion}</Badge>
+      </p>
+      {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
+      {item.latestChangelog && (
+        <p className="text-xs text-muted-foreground">Changelog: {item.latestChangelog}</p>
+      )}
+
+      {item.repos.length > 0 && (
+        <section className="space-y-2" data-testid="import-vault-repos">
+          <p className="text-xs font-semibold text-foreground">Repositories</p>
+          <p className="text-xs text-muted-foreground">
+            Will link to existing local folders on disk or auto-clone missing repositories from
+            GitHub.
+          </p>
+          <ul className="space-y-2">
+            {item.repos.map((repo) => {
+              const key = vaultRepoKey(repo);
+              const path = mappings[key] ?? "";
+              const exists = existingPathSet.has(path);
+              return (
+                <li key={key} className="space-y-1" data-testid={`import-vault-repo-${key}`}>
+                  <span className="flex items-center gap-2 text-xs">
+                    <FolderGit2 className="size-3.5" aria-hidden="true" />
+                    <span className="font-semibold text-foreground">{key}</span>
+                    <Badge variant={exists ? "secondary" : "outline"}>
+                      {exists ? "✓ Existing Local Folder" : "Will Clone from GitHub"}
+                    </Badge>
+                  </span>
+                  <Input
+                    aria-label={`Local path for ${key}`}
+                    value={path}
+                    onChange={(event) =>
+                      setMappings((current) => ({ ...current, [key]: event.target.value }))
+                    }
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      <section className="space-y-3">
+        <p className="text-xs font-semibold text-foreground">Assets to Import</p>
+        {CATEGORIES.map((category) => (
+          <AssetChecklist
+            key={category.key}
+            label={category.label}
+            category={category.key}
+            items={[...category.names(item)]}
+            selected={selections[category.key]}
+            emptyText={category.emptyText}
+            onChange={(next) => setSelections((current) => ({ ...current, [category.key]: next }))}
+          />
+        ))}
+        <label className="flex items-center gap-2 text-xs text-foreground">
+          <Switch
+            checked={importPermissions}
+            aria-label="Import Security & Permissions Policies"
+            onCheckedChange={setImportPermissions}
+          />
+          Import Security &amp; Permissions Policies
+        </label>
+      </section>
+    </VaultDialogShell>
+  );
+};

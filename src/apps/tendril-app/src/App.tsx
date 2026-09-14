@@ -12,10 +12,17 @@ import {
   onServiceStatus,
 } from "./api/events";
 import { applyChangeEvent } from "./api/changes";
-import { describeBridgeError, type ProjectSummary } from "./types/api";
+import {
+  describeBridgeError,
+  type OnboardingStatus,
+  type ProjectSummary,
+  type VersionInfo,
+} from "./types/api";
+import { getUpdateCommand } from "./utils/updateCommand";
 
 import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
+import { OnboardingWizard } from "./views/onboarding/OnboardingWizard";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 
@@ -52,6 +59,9 @@ const ChatView = React.lazy(() =>
 const InboxView = React.lazy(() =>
   import("./views/InboxView").then((m) => ({ default: m.InboxView })),
 );
+const PullRequestsView = React.lazy(() =>
+  import("./views/PullRequestsView").then((m) => ({ default: m.PullRequestsView })),
+);
 
 export const App: React.FC = () => {
   const [uiState, setUiState] = useState<UiState>(uiStore.getState());
@@ -71,8 +81,12 @@ export const App: React.FC = () => {
     project?: string;
   }>({});
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  // Null means "no wizard": either it is not needed, or the status call failed. An unreachable
+  // daemon must never produce a first-run wizard, and must never block the shell.
+  const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   // Failures from actions the shell itself owns (service restart/repair).
   const [shellError, setShellError] = useState<string | null>(null);
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
 
   // Subscribe to stores
   useEffect(() => {
@@ -96,11 +110,33 @@ export const App: React.FC = () => {
       })
       .catch(() => {});
 
+    bridge
+      .getOnboardingStatus()
+      .then(setOnboarding)
+      .catch(() => setOnboarding(null));
+
+    // The app only ever reads the daemon's cached release-check result, never the release feed
+    // itself — a 6-hour poll matches the daemon's own success-path interval.
+    bridge
+      .getVersionInfo()
+      .then(setVersionInfo)
+      .catch(() => {});
+    const versionInterval = setInterval(
+      () => {
+        bridge
+          .getVersionInfo()
+          .then(setVersionInfo)
+          .catch(() => {});
+      },
+      6 * 60 * 60 * 1000,
+    );
+
     return () => {
       unsubUi();
       unsubPlans();
       unsubJobs();
       unsubService();
+      clearInterval(versionInterval);
     };
   }, []);
 
@@ -372,6 +408,17 @@ export const App: React.FC = () => {
           />
         );
 
+      case "pull-requests":
+        return (
+          <PullRequestsView
+            onSelectPlan={handleSelectPlan}
+            onOpenNewPlanModal={(prefill) => {
+              setNewPlanPrefill(prefill);
+              setIsNewPlanOpen(true);
+            }}
+          />
+        );
+
       case "jobs":
         return (
           <div className="space-y-4">
@@ -423,6 +470,28 @@ export const App: React.FC = () => {
     }
   };
 
+  // The wizard replaces the shell rather than overlaying it: on a fresh install there is nothing
+  // behind it to look at, and the stores it would refetch have nothing to show yet.
+  if (onboarding?.needed) {
+    return (
+      <OnboardingWizard
+        status={onboarding}
+        onFinished={() => {
+          setOnboarding(null);
+          bridge
+            .listProjects()
+            .then((list) => {
+              setProjects(list);
+              setProjectsLoaded(true);
+            })
+            .catch(() => {});
+          plansStore.fetchPlans().catch(() => {});
+          jobsStore.fetchJobs().catch(() => {});
+        }}
+      />
+    );
+  }
+
   return (
     <>
       <ShellLayout
@@ -457,6 +526,10 @@ export const App: React.FC = () => {
         onViewDiagnostics={() => {
           uiStore.setActiveNav("settings");
         }}
+        versionInfo={versionInfo}
+        dismissedUpdateVersion={uiState.dismissedUpdateVersion}
+        onDismissUpdate={(version) => uiStore.setDismissedUpdateVersion(version)}
+        onCopyUpdateCommand={() => void navigator.clipboard.writeText(getUpdateCommand())}
       >
         {shellError && (
           <div

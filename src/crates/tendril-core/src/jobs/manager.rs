@@ -1,4 +1,5 @@
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
+use crate::agents::reconcile::build_missing_result_lines;
 use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
@@ -39,6 +40,7 @@ use crate::plans::reader::read_plan_yaml;
 use crate::plans::verification_gate::resolve_post_execution_state;
 use crate::plans::writer::write_plan_yaml;
 use crate::promptware::compiler::compile_firmware_with_skills;
+use crate::telemetry::Track;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -570,6 +572,13 @@ impl JobManager {
         if let Some(state) = target_plan_state {
             self.set_plan_state(&plan_folder, state);
         }
+
+        // A no-op unless telemetry is explicitly enabled; the raw plan id is hashed by the client.
+        crate::telemetry::tracker().track_job_created(&crate::telemetry::JobCreatedContext {
+            job_type: job.job_type.clone(),
+            agent: non_empty(&job.provider),
+            plan_id: telemetry_plan_id(&job),
+        });
 
         if job.status != JobStatus::Queued {
             // Blocked or failed at a gate: no slot is claimed and no runner is armed.
@@ -1841,6 +1850,26 @@ fn spawn_runner(
 
         finished.store(true, Ordering::SeqCst);
         job.process_id = Some(pid.load(Ordering::SeqCst)).filter(|p| *p != 0);
+
+        // A tool_call that never received a tool_result leaves its card spinning forever in
+        // AgentViewer, since that's fed straight from this eventwire log. Close any out before
+        // classifying the outcome, using the same reason text the chat path uses.
+        let synthetic_output = match &run_res {
+            Ok(outcome) => match outcome.terminated {
+                TerminationReason::Cancelled => "[Cancelled]",
+                TerminationReason::TimedOut => "[Timed out]",
+                TerminationReason::Exited | TerminationReason::PostResultGraceExceeded => {
+                    "[No output received]"
+                }
+            },
+            Err(_) => "[No output received]",
+        };
+        if let Ok(Some(ev_lines)) = read_eventwire_log(&tendril_home, &job_id, None) {
+            for line in build_missing_result_lines(&ev_lines, synthetic_output, true) {
+                let _ = append_to_eventwire(&tendril_home, &job_id, &line);
+            }
+        }
+
         let duration = start_time.elapsed().as_secs() as i64;
         let (final_status, msg) = classify_outcome(
             run_res,
@@ -2181,6 +2210,8 @@ pub fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
         return;
     }
 
+    let from_state = plan.state.clone();
+
     match PlanCompletionGuard::apply_state(&mut plan, state, false, plan_id) {
         Ok(warning) => {
             if let Some(w) = warning {
@@ -2189,7 +2220,17 @@ pub fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
             plan.updated = Utc::now();
             if let Err(e) = write_plan_yaml(plan_folder, &plan) {
                 tracing::warn!("Failed to write plan state for {}: {}", plan_id, e);
+                return;
             }
+            // Tracked only for a transition that actually reached disk, and only from the process that
+            // installed a client — so a CLI `tendril plan set` sends nothing.
+            crate::telemetry::tracker().track_plan_state_transition(
+                &crate::telemetry::PlanStateTransitionContext {
+                    from_state,
+                    to_state: state.as_str().to_string(),
+                    plan_id: plan_id_from_folder_name(plan_id),
+                },
+            );
         }
         Err(e) => tracing::warn!("Plan {} state transition refused: {}", plan_id, e),
     }
@@ -2297,6 +2338,29 @@ fn classify_outcome(
         },
         Err(e) => (JobStatus::Failed, format!("Execution failed: {}", e)),
     }
+}
+
+/// `Some` only for a genuinely non-empty string. Telemetry omits a property rather than sending an
+/// empty one, as the original does.
+fn non_empty(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
+/// The plan id to hand a telemetry context, as a string. `Telemetry` normalizes and salts it into
+/// `plan_uuid`; the raw value never leaves the process.
+fn telemetry_plan_id(job: &JobItem) -> Option<String> {
+    resolve_numerical_plan_id(job).map(|id| id.to_string())
+}
+
+/// The leading id of a `NNNNN-SafeTitle` folder name. Same reason as [`telemetry_plan_id`]: the
+/// caller has a folder name rather than a job.
+fn plan_id_from_folder_name(folder_name: &str) -> Option<String> {
+    let digits: String = folder_name
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    (!digits.is_empty()).then_some(digits)
 }
 
 fn resolve_numerical_plan_id(job: &JobItem) -> Option<i32> {
@@ -2735,6 +2799,8 @@ pub async fn finish_job(
         cleanup_empty_create_plan(tendril_home, plans_dir, &mut job, &output_lines);
     }
 
+    let deliverable_present = matches!(deliverable, Deliverable::Present);
+
     if !denials.is_empty() {
         // Appended to the existing status message so the Jobs UI shows it with no frontend change.
         effective_msg = format!("{} — {}", effective_msg, summarize_denials(&denials));
@@ -2796,6 +2862,8 @@ pub async fn finish_job(
 
     extract_and_record_usage(tendril_home, &mut job);
 
+    track_job_completion(tendril_home, &job, deliverable_present);
+
     persist(tendril_home, jobs_map, &job).await;
     handles.write().await.remove(&job.id);
 
@@ -2803,6 +2871,72 @@ pub async fn finish_job(
     write_job_outcome_log(tendril_home, &job);
 
     Some(job)
+}
+
+/// Emits the completion events for a finished job: `job_completed` always, plus `plan_created` or
+/// `pr_created` for the job type that produced one.
+///
+/// Returns immediately in a process with no client installed, which is every CLI invocation — and in
+/// particular does no config I/O there, since `plan_created` is the only event needing the project's
+/// stack hash and it would otherwise read `config.yaml` on every job completion.
+fn track_job_completion(tendril_home: &Path, job: &JobItem, deliverable_present: bool) {
+    use crate::telemetry::{JobCompletedContext, PlanCreatedContext, PrCreatedContext};
+
+    let Some(telemetry) = crate::telemetry::tracker() else {
+        return;
+    };
+
+    let plan_id = telemetry_plan_id(job);
+    let agent = non_empty(&job.provider);
+
+    telemetry.track_job_completed(&JobCompletedContext {
+        job_type: job.job_type.clone(),
+        status: job.status.as_str().to_string(),
+        duration_seconds: job.duration_seconds,
+        agent: agent.clone(),
+        plan_id: plan_id.clone(),
+    });
+
+    if job.status != JobStatus::Completed {
+        return;
+    }
+
+    match job.job_type.as_str() {
+        // A CreatePlan that produced no revision is not a plan; `verify_deliverable` has already
+        // demoted it to `Failed`, and the `deliverable_present` check keeps the event honest if that
+        // ever stops being true.
+        "CreatePlan" if deliverable_present => {
+            let plan_folder = PathBuf::from(&job.plan_file);
+            let Ok((plan, _)) = read_plan_yaml(&plan_folder) else {
+                return;
+            };
+            telemetry.track_plan_created(&PlanCreatedContext {
+                level: plan.level.clone(),
+                duration_seconds: job.duration_seconds,
+                agent,
+                stack_hash: project_stack_hash(tendril_home, &plan.project),
+                plan_id,
+            });
+        }
+        "CreatePr" => telemetry.track_pr_created(&PrCreatedContext {
+            duration_seconds: job.duration_seconds,
+            agent,
+            plan_id,
+        }),
+        _ => {}
+    }
+}
+
+/// A project's stack descriptor hash, or `None` for one that has not been analyzed. Carries no names,
+/// paths or free text by construction — see `docs/TELEMETRY.md`.
+fn project_stack_hash(tendril_home: &Path, project_name: &str) -> Option<String> {
+    let config_path = crate::config::get_config_path(tendril_home);
+    let settings = crate::config::load_config(&config_path).ok()?;
+    settings
+        .projects
+        .iter()
+        .find(|p| p.name == project_name)
+        .and_then(|p| p.stack_hash.clone())
 }
 
 /// Replaces a bare `Process exited with code 1` with what the output actually says went wrong.
