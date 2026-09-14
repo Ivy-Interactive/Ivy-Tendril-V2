@@ -337,14 +337,15 @@ impl JobManager {
     /// Gates run in this order:
     ///
     /// 1. **Missing plan folder** — a plan-scoped job with no folder is refused outright.
-    /// 2. **Conflict fast path** — outside the lock, so an obvious duplicate is rejected before the
-    ///    dependency gate can spend a network round trip on it. Not authoritative: without the lock
-    ///    two concurrent starts can both pass it. Skipped for a keyed submission, which step 4 may
-    ///    recognize as a replay rather than a duplicate.
+    /// 2. **Conflict fast path** — memory-only and outside the lock, so an obvious duplicate is
+    ///    rejected before the dependency gate can spend a network round trip on it. Not authoritative:
+    ///    without the lock two concurrent starts can both pass it, and without the database it is
+    ///    blind after a restart. Skipped for a keyed submission, which step 4 may recognize as a
+    ///    replay rather than a duplicate.
     /// 3. **The plan dependency gate**, then **the wait-for-jobs gate**. Both may await for a long
     ///    time, so both run outside `start_lock`.
-    /// 4. Under `start_lock`, indivisibly: **the idempotency-key replay**, **the authoritative
-    ///    conflict check**, **the duplicate-work rejection**, ID allocation, the row insert and the
+    /// 4. Under `start_lock`, indivisibly: **the idempotency-key replay**, **the duplicate-work
+    ///    rejection**, **the authoritative conflict check**, ID allocation, the row insert and the
     ///    map insert.
     /// 5. **The plan state transition**, only now that a row exists.
     /// 6. **The enqueue.**
@@ -389,19 +390,19 @@ impl JobManager {
         // obviously a duplicate. The authoritative check is the one inside `start_lock` below, and it
         // is the one that makes concurrent starts safe.
         //
-        // A DB error is swallowed rather than returned: the authoritative check hits the same error a
-        // moment later and reports it properly, so failing the fast path would only turn a
-        // recoverable read error into a lost submission.
+        // Memory-only, so it does no I/O and cannot fail. That also keeps it from pre-empting the
+        // per-type duplicate check under the lock, which reads the database and has the more specific
+        // answer — it names the predecessor's status, not just its id. Anything this misses that gate
+        // or the authoritative conflict check catches.
         //
         // Skipped entirely when the submission carries an idempotency key. A keyed retry is most
-        // likely a replay of the *same* job the fast path would report as the conflict, and answering
-        // it with a conflict is the exact failure a key exists to prevent. The replay lookup needs the
-        // database, so it belongs under the lock with the authoritative check rather than up here.
+        // likely a replay of the *same* job this would report as the conflict, and answering it with a
+        // conflict is the exact failure a key exists to prevent. The replay lookup needs the database,
+        // so it belongs under the lock with the authoritative check rather than up here.
         if !force && opts.idempotency_key.is_none() {
             if let Some(existing_id) = self
-                .find_conflicting_job(&job_type, &plan_folder_str)
+                .find_conflicting_job_in_memory(&job_type, &plan_folder_str)
                 .await
-                .unwrap_or(None)
             {
                 return Err(TendrilError::Conflict(format!(
                     "{} already in progress for this plan (job {}). Use force to submit it again.",
@@ -518,9 +519,28 @@ impl JobManager {
                 }
             }
 
+            // Idempotency at the door: the same work already in flight is a conflict, not a second
+            // job, worktree and agent.
+            //
+            // Ahead of the group check below because it is the more specific answer — it names the
+            // predecessor's status, not just its id — and because it is the only gate that can see a
+            // duplicate of a job type in no conflict group, `CreatePlan` first among them.
+            if let Some(key) = &dedupe_key {
+                if let Some(existing) = find_inflight_job_by_dedupe_key(&conn, key)? {
+                    return Err(TendrilError::DuplicateJob(format!(
+                        "{} is already in flight as job {} ({}). Use force to submit it again.",
+                        job_type, existing.id, existing.status
+                    )));
+                }
+            }
+
             // The authoritative conflict check, unlike the fast path above: inside the lock, so two
             // concurrent starts cannot both pass it, and DB-backed, so a restart that leaves the
             // in-memory map empty cannot admit a second job either.
+            //
+            // The broader net of the two. A dedupe key is per job type, so it cannot express
+            // `ExecutePlan` versus `CreatePr` on one plan; and a forced submission stores no key at
+            // all, so a forced predecessor is invisible to the gate above but not to this one.
             if !force {
                 if let Some(existing_id) = self
                     .find_conflicting_job(&job_type, &plan_folder_str)
@@ -530,17 +550,6 @@ impl JobManager {
                         "{} already in progress for this plan (job {}). Use force to submit it \
                          again.",
                         job_type, existing_id
-                    )));
-                }
-            }
-
-            // Idempotency at the door: the same work already in flight is a conflict, not a second
-            // job, worktree and agent.
-            if let Some(key) = &dedupe_key {
-                if let Some(existing) = find_inflight_job_by_dedupe_key(&conn, key)? {
-                    return Err(TendrilError::DuplicateJob(format!(
-                        "{} is already in flight as job {} ({}). Use force to submit it again.",
-                        job_type, existing.id, existing.status
                     )));
                 }
             }
@@ -748,32 +757,11 @@ impl JobManager {
         job_type: &str,
         plan_folder: &str,
     ) -> Result<Option<String>> {
-        let Some(group) = conflict_group(job_type) else {
+        let Some((group, folder)) = conflict_scope(job_type, plan_folder) else {
             return Ok(None);
         };
-        let folder = normalize_plan_folder(plan_folder);
-        if folder.is_empty() {
-            // Genuinely unmatchable rather than a free pass: `start_job_with` refuses a plan-scoped
-            // job with no folder before it ever gets here.
-            return Ok(None);
-        }
 
-        let mut ids: Vec<String> = {
-            let jobs = self.jobs.read().await;
-            jobs.values()
-                .filter(|j| {
-                    matches!(
-                        j.status,
-                        JobStatus::Running
-                            | JobStatus::Queued
-                            | JobStatus::Pending
-                            | JobStatus::Blocked
-                    ) && normalize_plan_folder(&j.plan_file).eq_ignore_ascii_case(&folder)
-                        && conflict_group(&j.job_type) == Some(group)
-                })
-                .map(|j| j.id.clone())
-                .collect()
-        };
+        let mut ids = self.conflicting_ids_in_memory(group, &folder).await;
 
         let conn = open_database(&crate::config::get_database_path(&self.tendril_home))?;
         ids.extend(
@@ -789,6 +777,51 @@ impl JobManager {
         ids.sort();
         ids.dedup();
         Ok(ids.into_iter().next())
+    }
+
+    /// The same search as [`Self::find_conflicting_job`] over the in-memory map alone.
+    ///
+    /// An optimization, not a guard: it is the fast path in `start_job_with`, where rejecting before
+    /// the dependency gate — which can invoke `gh` over the network — is worth a cheap look. It does no
+    /// I/O and it cannot be authoritative, because the map is empty after a restart and because two
+    /// concurrent starts can both pass it. The authoritative check is the one inside `start_lock`.
+    ///
+    /// Memory-only *by design*, not just for speed: a persisted row this misses is still caught inside
+    /// the lock, and by a gate that may have a better answer for it — an idempotency-key replay, or the
+    /// per-type duplicate rejection that names the predecessor's status. Answering here would pre-empt
+    /// both with the blunter conflict error.
+    pub async fn find_conflicting_job_in_memory(
+        &self,
+        job_type: &str,
+        plan_folder: &str,
+    ) -> Option<String> {
+        let (group, folder) = conflict_scope(job_type, plan_folder)?;
+        let mut ids = self.conflicting_ids_in_memory(group, &folder).await;
+        ids.sort();
+        ids.into_iter().next()
+    }
+
+    /// Ids of unfinished jobs in `group` held against `folder` according to the in-memory map, in no
+    /// particular order. `folder` must already be normalized.
+    ///
+    /// `Blocked` counts as unfinished: a blocked job still intends to touch the plan, and
+    /// [`crate::jobs::dependents`] removes its row from both the database and this map before
+    /// submitting a replacement, so it cannot block the job meant to replace it.
+    async fn conflicting_ids_in_memory(&self, group: &str, folder: &str) -> Vec<String> {
+        let jobs = self.jobs.read().await;
+        jobs.values()
+            .filter(|j| {
+                matches!(
+                    j.status,
+                    JobStatus::Running
+                        | JobStatus::Queued
+                        | JobStatus::Pending
+                        | JobStatus::Blocked
+                ) && normalize_plan_folder(&j.plan_file).eq_ignore_ascii_case(folder)
+                    && conflict_group(&j.job_type) == Some(group)
+            })
+            .map(|j| j.id.clone())
+            .collect()
     }
 
     /// Re-runs the wait-for gate for every `Blocked` job listing `finished_id`, enqueueing the ones
@@ -1204,6 +1237,20 @@ pub fn conflict_group(job_type: &str) -> Option<&'static str> {
 /// the string would corrupt the value rather than merely relax the match.
 fn normalize_plan_folder(folder: &str) -> String {
     folder.trim().trim_end_matches(['/', '\\']).to_string()
+}
+
+/// The `(group, normalized folder)` pair a conflict search compares against, or `None` when there is
+/// nothing to search for: a job type in no conflict group, or a plan-scoped type with no folder.
+///
+/// An empty folder is genuinely unmatchable rather than a free pass — `start_job_with` refuses a
+/// plan-scoped job with no folder before either search runs, so nothing reaches here with one.
+fn conflict_scope(job_type: &str, plan_folder: &str) -> Option<(&'static str, String)> {
+    let group = conflict_group(job_type)?;
+    let folder = normalize_plan_folder(plan_folder);
+    if folder.is_empty() {
+        return None;
+    }
+    Some((group, folder))
 }
 
 /// Translates a failed `insert_new_job` into the right error.

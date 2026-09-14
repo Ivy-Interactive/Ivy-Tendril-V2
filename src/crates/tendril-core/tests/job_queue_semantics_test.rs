@@ -671,11 +671,16 @@ async fn assert_one_concurrent_start_wins(
     );
     let (winner_index, winner) = winners.remove(0);
     for refusal in &refusals {
-        // Always `Conflict`, never `DuplicateJob`: the conflict check runs first inside the lock, so
-        // it — not the per-type dedupe key — is what refuses every loser.
+        // Either refusal is correct, and which one a given loser gets is a race: the dedupe key gate
+        // runs first inside the lock and answers a loser of the winner's own type, while the conflict
+        // check answers one of the other type. Both are 409 on the wire, and both name the winner —
+        // which is what the assertion below, the one that matters, pins.
         assert!(
-            matches!(refusal, TendrilError::Conflict(_)),
-            "{:?}",
+            matches!(
+                refusal,
+                TendrilError::Conflict(_) | TendrilError::DuplicateJob(_)
+            ),
+            "a loser must be refused as a conflict or a duplicate, got {:?}",
             refusal
         );
         assert!(
@@ -718,6 +723,10 @@ async fn a_persisted_conflicting_job_is_detected_after_a_restart() {
     // And a queued row with no process at all — recovery has no durable queue, so it leaves those
     // alone too, which makes them just as invisible to the map and just as real to the plan.
     assert_persisted_job_blocks_a_start("queue-restart-queued", JobStatus::Queued, None).await;
+    // `Blocked` counts too, and the group gate is the only gate that says so: a blocked job is a
+    // standing intention to mutate this plan, and the way to replace one is the delete-then-start
+    // claim in `dependents.rs`, not a second submission that leaves two rows racing for the worktree.
+    assert_persisted_job_blocks_a_start("queue-restart-blocked", JobStatus::Blocked, None).await;
 }
 
 async fn assert_persisted_job_blocks_a_start(
