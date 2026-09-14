@@ -159,3 +159,28 @@ export const ProxyRequired: Story = {
     },
   },
 };
+
+export const WithToolbar: Story = {
+  args: {
+    id: "web-viewer-with-toolbar",
+    url: "https://example.com",
+    toolbar: true,
+    device: "Desktop",
+    width: "100%",
+    height: "800px",
+    actions: [
+      {
+        id: "comments",
+        icon: "MessageSquare",
+        label: "Send 2 comments",
+        badge: "2",
+        primary: true,
+      },
+      { id: "share", icon: "Share", label: "Share" },
+    ],
+    events: ["OnEvent"],
+    eventHandler: (eventName: string, id: string, args: unknown[]) => {
+      console.log("WebViewer event:", eventName, id, args);
+    },
+  },
+};
