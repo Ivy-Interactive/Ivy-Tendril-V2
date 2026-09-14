@@ -34,7 +34,9 @@ describe("Consumer Smoke Verification", () => {
     expect(packOutput).toContain("dist/style.css");
     expect(packOutput).toContain("dist/tendril.mjs");
     expect(packOutput).toContain("dist/tendril.d.mts");
-  });
+    // `pnpm pack --dry-run` walks the whole `files` list and takes ~7-10s here, well past the
+    // 5s default.
+  }, 30000);
 
   it("verifies all declared export map targets exist on disk", () => {
     const exportsMap = packageJson.exports as Record<
