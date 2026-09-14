@@ -9,7 +9,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 authors = ["Ivy Interactive"]
-license = "Apache-2.0"
+license = "FSL-1.1-ALv2"
 repository = "https://github.com/Ivy-Interactive/Ivy-Tendril-V2"
 
 [workspace.dependencies]

@@ -56,7 +56,7 @@ skills/tendril-extension/scripts/package-vsix.sh
 Or using the Node.js script:
 
 ```bash
-node skills/tendril-extension/scripts/package.mjs
+pnpm tsx skills/tendril-extension/scripts/package.ts
 ```
 
 Or manually:
@@ -78,7 +78,7 @@ npx @vscode/vsce package --no-dependencies
 To verify extension integrity and TypeScript compliance:
 
 ```bash
-node skills/tendril-extension/scripts/verify.mjs
+pnpm tsx skills/tendril-extension/scripts/verify.ts
 ```
 
 Or manually:

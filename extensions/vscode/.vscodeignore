@@ -11,3 +11,4 @@ pnpm-lock.yaml
 .npmrc
 .agents/**
 skills/**
+*.vsix

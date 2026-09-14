@@ -7,15 +7,15 @@
  * pnpm-workspace.yaml, if one parent changed the value from the base and the merged result matches
  * the base, that change was lost.
  *
- * Node builtins and `git` only — runs in CI with no install.
+ * Node builtins and `git` only - runs in CI with no install.
  *
  * Usage:
- *   node scripts/verify-merge-resolution.mjs                    in-progress merge (reads MERGE_HEAD)
- *   node scripts/verify-merge-resolution.mjs --commit <ref>     single merge commit
- *   node scripts/verify-merge-resolution.mjs --range <ref>      all merge commits in ref..HEAD
- *   node scripts/verify-merge-resolution.mjs --files <base> <ours> <theirs> <merged>
- *   node scripts/verify-merge-resolution.mjs --json             report as JSON, exit 0
- *   node scripts/verify-merge-resolution.mjs --allow <section>.<key>  suppress one finding (repeatable)
+ *   tsx scripts/verify-merge-resolution.ts                    in-progress merge (reads MERGE_HEAD)
+ *   tsx scripts/verify-merge-resolution.ts --commit <ref>     single merge commit
+ *   tsx scripts/verify-merge-resolution.ts --range <ref>      all merge commits in ref..HEAD
+ *   tsx scripts/verify-merge-resolution.ts --files <base> <ours> <theirs> <merged>
+ *   tsx scripts/verify-merge-resolution.ts --json             report as JSON, exit 0
+ *   tsx scripts/verify-merge-resolution.ts --allow <section>.<key>  suppress one finding (repeatable)
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -36,11 +36,36 @@ const TOP_LEVEL_KEYS = ["packageManager", "devEngines", "type", "main", "types",
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
-function parseArgs() {
-  const args = {
+interface ParsedArgs {
+  mode: "in-progress" | "files" | "commit" | "range";
+  jsonOutput: boolean;
+  allowed: Set<string>;
+  files: string[];
+  ref: string | null;
+}
+
+interface Finding {
+  section: string;
+  key: string;
+  action: "added" | "removed" | "changed";
+  lostFrom: "ours" | "theirs";
+  base: string | null;
+  ours: string | null;
+  theirs: string | null;
+  merged: string | null;
+  manifest: string;
+}
+
+interface CommitFindingResult {
+  ref: string;
+  findings: Finding[];
+}
+
+function parseArgs(): ParsedArgs {
+  const args: ParsedArgs = {
     mode: "in-progress",
     jsonOutput: false,
-    allowed: new Set(),
+    allowed: new Set<string>(),
     files: [],
     ref: null,
   };
@@ -80,29 +105,30 @@ function parseArgs() {
   return args;
 }
 
-function gitShow(ref, path) {
+function gitShow(ref: string, path: string): string | null {
   try {
     return execFileSync("git", ["show", `${ref}:${path}`], {
       cwd: repoRoot,
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
     });
-  } catch (error) {
-    if (error.status === 128) {
+  } catch (error: unknown) {
+    const err = error as { status?: number };
+    if (err.status === 128) {
       return null;
     }
     throw error;
   }
 }
 
-function gitMergeBase(ref1, ref2) {
+function gitMergeBase(ref1: string, ref2: string): string {
   return execFileSync("git", ["merge-base", ref1, ref2], {
     cwd: repoRoot,
     encoding: "utf8",
   }).trim();
 }
 
-function gitRevList(range) {
+function gitRevList(range: string): string[] {
   const output = spawnSync("git", ["rev-list", "--merges", "--first-parent", range], {
     cwd: repoRoot,
     encoding: "utf8",
@@ -117,25 +143,35 @@ function gitRevList(range) {
     .filter((line) => line.length > 0);
 }
 
-function parseManifest(text) {
+function parseManifest(text: string | null): Record<string, unknown> {
   if (!text) {
     return {};
   }
   try {
-    return JSON.parse(text);
+    return JSON.parse(text) as Record<string, unknown>;
   } catch {
     return {};
   }
 }
 
-function parseWorkspace(text) {
+interface WorkspaceNode {
+  [key: string]: unknown;
+  _list?: string[];
+}
+
+interface StackEntry {
+  obj: WorkspaceNode;
+  indent: number;
+}
+
+function parseWorkspace(text: string | null): Record<string, unknown> | null {
   if (!text) {
     return {};
   }
 
   const lines = text.split("\n");
-  const root = {};
-  const stack = [{ obj: root, indent: -1 }];
+  const root: WorkspaceNode = {};
+  const stack: StackEntry[] = [{ obj: root, indent: -1 }];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -171,7 +207,7 @@ function parseWorkspace(text) {
 
     let colonIndex = -1;
     let inQuote = false;
-    let quoteChar = null;
+    let quoteChar: string | null = null;
 
     for (let j = 0; j < trimmed.length; j++) {
       const char = trimmed[j];
@@ -205,7 +241,7 @@ function parseWorkspace(text) {
     const parent = stack[stack.length - 1].obj;
 
     if (value === "") {
-      const nested = {};
+      const nested: WorkspaceNode = {};
       parent[key] = nested;
       stack.push({ obj: nested, indent });
     } else {
@@ -213,13 +249,15 @@ function parseWorkspace(text) {
     }
   }
 
-  function flattenLists(obj) {
+  function flattenLists(obj: Record<string, unknown>): void {
     for (const key in obj) {
-      if (obj[key] && typeof obj[key] === "object") {
-        if ("_list" in obj[key]) {
-          obj[key] = obj[key]._list;
+      const val = obj[key];
+      if (val && typeof val === "object") {
+        const valObj = val as WorkspaceNode;
+        if ("_list" in valObj) {
+          obj[key] = valObj._list;
         } else {
-          flattenLists(obj[key]);
+          flattenLists(valObj as Record<string, unknown>);
         }
       }
     }
@@ -229,27 +267,34 @@ function parseWorkspace(text) {
   return root;
 }
 
-function unquote(str) {
+function unquote(str: string): string {
   if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
     return str.slice(1, -1);
   }
   return str;
 }
 
-function getValueAtPath(obj, path) {
+function getValueAtPath(obj: unknown, path: string): unknown {
   const parts = path.split(".");
-  let current = obj;
+  let current: unknown = obj;
   for (const part of parts) {
     if (current == null || typeof current !== "object") {
       return null;
     }
-    current = current[part];
+    current = (current as Record<string, unknown>)[part];
   }
   return current === undefined ? null : current;
 }
 
-function diffFlatMap(section, baseMap, oursMap, theirsMap, mergedMap, manifest = "package.json") {
-  const findings = [];
+function diffFlatMap(
+  section: string,
+  baseMap: Record<string, unknown>,
+  oursMap: Record<string, unknown>,
+  theirsMap: Record<string, unknown>,
+  mergedMap: Record<string, unknown>,
+  manifest = "package.json",
+): Finding[] {
+  const findings: Finding[] = [];
   const allKeys = new Set([
     ...Object.keys(baseMap),
     ...Object.keys(oursMap),
@@ -258,10 +303,10 @@ function diffFlatMap(section, baseMap, oursMap, theirsMap, mergedMap, manifest =
   ]);
 
   for (const key of allKeys) {
-    const baseVal = baseMap[key] || null;
-    const oursVal = oursMap[key] || null;
-    const theirsVal = theirsMap[key] || null;
-    const mergedVal = mergedMap[key] || null;
+    const baseVal = (baseMap[key] as string) || null;
+    const oursVal = (oursMap[key] as string) || null;
+    const theirsVal = (theirsMap[key] as string) || null;
+    const mergedVal = (mergedMap[key] as string) || null;
 
     if (oursVal !== baseVal && mergedVal === baseVal) {
       findings.push({
@@ -295,22 +340,27 @@ function diffFlatMap(section, baseMap, oursMap, theirsMap, mergedMap, manifest =
   return findings;
 }
 
-function walkWorkspaceLeafs(obj, prefix = "workspace") {
-  const maps = {};
+function walkWorkspaceLeafs(
+  obj: Record<string, unknown>,
+  prefix = "workspace",
+): Record<string, Record<string, string | null>> {
+  const maps: Record<string, Record<string, string | null>> = {};
 
-  function walk(current, path) {
+  function walk(current: unknown, path: string): void {
     if (current == null || typeof current !== "object") {
       return;
     }
 
+    const currentObj = current as Record<string, unknown>;
+
     if (Array.isArray(current)) {
-      maps[path] = { [path.split(".").pop()]: JSON.stringify(current) };
+      maps[path] = { [path.split(".").pop()!]: JSON.stringify(current) };
       return;
     }
 
     let hasScalarChild = false;
-    for (const key in current) {
-      const value = current[key];
+    for (const key in currentObj) {
+      const value = currentObj[key];
       if (value == null || typeof value !== "object") {
         hasScalarChild = true;
         break;
@@ -318,11 +368,14 @@ function walkWorkspaceLeafs(obj, prefix = "workspace") {
     }
 
     if (hasScalarChild) {
-      const flatMap = {};
-      for (const key in current) {
-        const value = current[key];
+      const flatMap: Record<string, string | null> = {};
+      for (const key in currentObj) {
+        const value = currentObj[key];
         if (value == null || typeof value !== "object") {
-          flatMap[key] = value === null || value === undefined ? null : String(value);
+          flatMap[key] =
+            value === null || value === undefined
+              ? null
+              : String(value as string | number | boolean);
         } else if (Array.isArray(value)) {
           flatMap[key] = JSON.stringify(value);
         }
@@ -332,8 +385,8 @@ function walkWorkspaceLeafs(obj, prefix = "workspace") {
       }
     }
 
-    for (const key in current) {
-      const value = current[key];
+    for (const key in currentObj) {
+      const value = currentObj[key];
       if (value != null && typeof value === "object" && !Array.isArray(value)) {
         walk(value, path ? `${path}.${key}` : key);
       }
@@ -344,22 +397,25 @@ function walkWorkspaceLeafs(obj, prefix = "workspace") {
   return maps;
 }
 
-function sortKeysDeep(value) {
+function sortKeysDeep(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeysDeep);
   if (value === null || typeof value !== "object") return value;
-  const sorted = {};
-  for (const key of Object.keys(value).sort()) sorted[key] = sortKeysDeep(value[key]);
+  const sorted: Record<string, unknown> = {};
+  const obj = value as Record<string, unknown>;
+  for (const key of Object.keys(obj).sort()) sorted[key] = sortKeysDeep(obj[key]);
   return sorted;
 }
 
-function canonicalValue(value) {
+function canonicalValue(value: unknown): string | null {
   if (value === null || value === undefined) return null;
-  if (typeof value !== "object") return String(value);
+  if (typeof value !== "object") return String(value as string | number | boolean);
   return JSON.stringify(sortKeysDeep(value));
 }
 
-function topLevelMap(manifest) {
-  const map = {};
+function topLevelMap(
+  manifest: Record<string, unknown> | null | undefined,
+): Record<string, string | null> {
+  const map: Record<string, string | null> = {};
   for (const key of TOP_LEVEL_KEYS) {
     const canonical = canonicalValue(manifest?.[key]);
     if (canonical !== null) map[key] = canonical;
@@ -367,14 +423,23 @@ function topLevelMap(manifest) {
   return map;
 }
 
-function compareManifests(base, ours, theirs, merged, baseWs, oursWs, theirsWs, mergedWs) {
-  const findings = [];
+function compareManifests(
+  base: Record<string, unknown>,
+  ours: Record<string, unknown>,
+  theirs: Record<string, unknown>,
+  merged: Record<string, unknown>,
+  baseWs?: Record<string, unknown> | null,
+  oursWs?: Record<string, unknown> | null,
+  theirsWs?: Record<string, unknown> | null,
+  mergedWs?: Record<string, unknown> | null,
+): Finding[] {
+  const findings: Finding[] = [];
 
   for (const section of SECTIONS) {
-    const baseSection = getValueAtPath(base, section) || {};
-    const oursSection = getValueAtPath(ours, section) || {};
-    const theirsSection = getValueAtPath(theirs, section) || {};
-    const mergedSection = getValueAtPath(merged, section) || {};
+    const baseSection = (getValueAtPath(base, section) as Record<string, unknown>) || {};
+    const oursSection = (getValueAtPath(ours, section) as Record<string, unknown>) || {};
+    const theirsSection = (getValueAtPath(theirs, section) as Record<string, unknown>) || {};
+    const mergedSection = (getValueAtPath(merged, section) as Record<string, unknown>) || {};
 
     findings.push(
       ...diffFlatMap(
@@ -400,10 +465,10 @@ function compareManifests(base, ours, theirs, merged, baseWs, oursWs, theirsWs, 
   );
 
   const pnpmOverridesPath = "pnpm.overrides";
-  const basePnpm = getValueAtPath(base, pnpmOverridesPath) || {};
-  const oursPnpm = getValueAtPath(ours, pnpmOverridesPath) || {};
-  const theirsPnpm = getValueAtPath(theirs, pnpmOverridesPath) || {};
-  const mergedPnpm = getValueAtPath(merged, pnpmOverridesPath) || {};
+  const basePnpm = (getValueAtPath(base, pnpmOverridesPath) as Record<string, unknown>) || {};
+  const oursPnpm = (getValueAtPath(ours, pnpmOverridesPath) as Record<string, unknown>) || {};
+  const theirsPnpm = (getValueAtPath(theirs, pnpmOverridesPath) as Record<string, unknown>) || {};
+  const mergedPnpm = (getValueAtPath(merged, pnpmOverridesPath) as Record<string, unknown>) || {};
 
   findings.push(
     ...diffFlatMap("pnpm.overrides", basePnpm, oursPnpm, theirsPnpm, mergedPnpm, "package.json"),
@@ -444,7 +509,12 @@ function compareManifests(base, ours, theirs, merged, baseWs, oursWs, theirsWs, 
   return findings;
 }
 
-function checkFiles(basePath, oursPath, theirsPath, mergedPath) {
+function checkFiles(
+  basePath: string,
+  oursPath: string,
+  theirsPath: string,
+  mergedPath: string,
+): Finding[] {
   const isJson = basePath.endsWith(".json");
   const isYaml = basePath.endsWith(".yaml") || basePath.endsWith(".yml");
 
@@ -485,7 +555,7 @@ function checkFiles(basePath, oursPath, theirsPath, mergedPath) {
   }
 }
 
-function checkCommit(ref) {
+function checkCommit(ref: string): CommitFindingResult {
   const mergeBase = gitMergeBase(`${ref}^1`, `${ref}^2`);
 
   const base = parseManifest(gitShow(mergeBase, "package.json"));
@@ -518,9 +588,9 @@ function checkCommit(ref) {
   };
 }
 
-function checkRange(ref) {
+function checkRange(ref: string): CommitFindingResult[] {
   const commits = gitRevList(`${ref}..HEAD`);
-  const results = [];
+  const results: CommitFindingResult[] = [];
   for (const commit of commits) {
     const result = checkCommit(commit);
     if (result.findings.length > 0) {
@@ -530,7 +600,7 @@ function checkRange(ref) {
   return results;
 }
 
-function checkInProgress() {
+function checkInProgress(): Finding[] {
   const mergeHeadPath = join(repoRoot, ".git", "MERGE_HEAD");
   if (!existsSync(mergeHeadPath)) {
     throw new Error("Not in a merge (no .git/MERGE_HEAD found)");
@@ -577,14 +647,14 @@ function checkInProgress() {
   );
 }
 
-function filterFindings(findings, allowed) {
+function filterFindings(findings: Finding[], allowed: Set<string>): Finding[] {
   return findings.filter((finding) => {
     const key = `${finding.section}.${finding.key}`;
     return !allowed.has(key);
   });
 }
 
-function formatTable(findings) {
+function formatTable(findings: Finding[]): string {
   if (findings.length === 0) {
     return "No lost changes detected.\n";
   }
@@ -611,20 +681,20 @@ function formatTable(findings) {
   return lines.join("\n");
 }
 
-function run() {
+function run(): number {
   const args = parseArgs();
 
-  let allFindings = [];
-  let results = [];
+  let allFindings: Finding[] = [];
+  let results: CommitFindingResult[] = [];
 
   if (args.mode === "files") {
-    allFindings = checkFiles(...args.files);
+    allFindings = checkFiles(args.files[0], args.files[1], args.files[2], args.files[3]);
   } else if (args.mode === "commit") {
-    const result = checkCommit(args.ref);
+    const result = checkCommit(args.ref!);
     allFindings = result.findings;
     results = [result];
   } else if (args.mode === "range") {
-    results = checkRange(args.ref);
+    results = checkRange(args.ref!);
     allFindings = results.flatMap((r) => r.findings);
   } else if (args.mode === "in-progress") {
     allFindings = checkInProgress();
@@ -652,7 +722,8 @@ function run() {
 
 try {
   process.exit(run());
-} catch (error) {
-  process.stderr.write(`Error: ${error.message}\n`);
+} catch (error: unknown) {
+  const err = error as Error;
+  process.stderr.write(`Error: ${err.message}\n`);
   process.exit(1);
 }

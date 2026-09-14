@@ -6,12 +6,12 @@
  * Storybook 8.6 cannot do this with `-p` alone: its free-port probe (`detect-port`) never learns
  * which host the server is about to bind, so a port held on 127.0.0.1 reads as free on Windows
  * (where `localhost` resolves to ::1 first) and the real `listen` then throws EADDRINUSE. This
- * wrapper probes 127.0.0.1 itself — the same host Storybook binds — which is strictly more
+ * wrapper probes 127.0.0.1 itself - the same host Storybook binds - which is strictly more
  * accurate, and leaves Storybook's own silent fallback as the safety net for the millisecond race
  * between probe and bind.
  *
  * Usage:
- *   node scripts/storybook-dev.mjs [--print-port] [extra storybook dev args]
+ *   tsx scripts/storybook-dev.ts [--print-port] [extra storybook dev args]
  *
  * Env:
  *   STORYBOOK_PORT_BASE  first port to probe (default 6006); the range is base..base+9
@@ -30,12 +30,12 @@ const forwarded = argv.filter((arg) => arg !== "--print-port");
 const portBase = Number(process.env.STORYBOOK_PORT_BASE) || 6006;
 
 /** True when the caller already picked a port, in which case their choice wins and we never probe. */
-function hasPortFlag(args) {
+function hasPortFlag(args: string[]): boolean {
   return args.some((arg) => arg === "-p" || arg === "--port" || /^(?:-p|--port)=/.test(arg));
 }
 
 /** The caller's port, or 0 when the flag is present but carries no readable value. */
-function callerPort(args) {
+function callerPort(args: string[]): number {
   for (const [index, arg] of args.entries()) {
     if (arg === "-p" || arg === "--port") {
       const value = Number(args[index + 1]);
@@ -48,7 +48,7 @@ function callerPort(args) {
 }
 
 /** Resolves true when `port` accepts a listener on the loopback interface Storybook binds. */
-function isPortFree(port) {
+function isPortFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = net.createServer();
     probe.once("error", () => {
@@ -62,7 +62,7 @@ function isPortFree(port) {
 }
 
 /** First free port in base..base+9, or 0 when every one of them is taken. */
-async function findFreePort(base) {
+async function findFreePort(base: number): Promise<number> {
   for (let port = base; port < base + RANGE_SIZE; port++) {
     if (await isPortFree(port)) return port;
   }
@@ -84,7 +84,7 @@ if (!callerOwnsPort && port === 0) {
   );
 }
 
-let cli;
+let cli: string;
 try {
   cli = createRequire(import.meta.url).resolve("storybook/bin/index.cjs");
 } catch {

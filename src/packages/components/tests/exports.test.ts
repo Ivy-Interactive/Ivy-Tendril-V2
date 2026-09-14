@@ -42,6 +42,11 @@ describe("Package Exports", () => {
       expect(root.DensityScale).toBeDefined();
       expect(typeof root.useDensityScale).toBe("function");
     });
+
+    it("should export shared hooks", () => {
+      expect(root.useResizableSidebar).toBeDefined();
+      expect(typeof root.useResizableSidebar).toBe("function");
+    });
   });
 
   describe("UI Primitives Export (components-storybook/ui)", () => {
@@ -134,6 +139,11 @@ describe("Package Exports", () => {
       expect(tendril.ShellSidebarSection).toBeDefined();
       expect(tendril.BrandIcon).toBeDefined();
       expect(tendril.brandIcons).toBeDefined();
+    });
+
+    it("should export shared hooks", () => {
+      expect(tendril.useResizableSidebar).toBeDefined();
+      expect(typeof tendril.useResizableSidebar).toBe("function");
     });
 
     it("should export agent and execution visualizers", () => {

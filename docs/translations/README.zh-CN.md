@@ -1,9 +1,9 @@
 <p align="right">
-  <a href="README.md">English</a> | <strong>简体中文</strong> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <a href="README.fr.md">Français</a>
+  <a href="../../README.md">English</a> | <strong>简体中文</strong> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <a href="README.fr.md">Français</a>
 </p>
 
 <h1>
-  <a href="https://tendril.ivy.app"><img src="src/logo.png" alt="Tendril Logo" width="64" valign="middle" /></a> Ivy Tendril
+  <a href="https://tendril.ivy.app"><img src="../../src/logo.png" alt="Tendril Logo" width="64" valign="middle" /></a> Ivy Tendril
 </h1>
 
 <p>
@@ -22,7 +22,7 @@ AI 智能体现在可以编写 99% 的代码。这彻底改变了作为开发者
 
 <p>
 <a href="https://youtu.be/_KVG1NnAj-8">
-  <img src="docs/yt-thumbnail-in-two-minutes-2.png" alt="两分钟了解 Ivy Tendril: 在 YouTube 上观看" width="720">
+  <img src="../yt-thumbnail-in-two-minutes-2.png" alt="两分钟了解 Ivy Tendril: 在 YouTube 上观看" width="720">
 </a>
 </p>
 
@@ -42,7 +42,7 @@ AI 智能体现在可以编写 99% 的代码。这彻底改变了作为开发者
 
 </td>
 <td width="50%">
-  <img src="src/worktrees.gif" alt="并行工作区" width="100%" />
+  <img src="../../src/worktrees.gif" alt="并行工作区" width="100%" />
 </td>
 </tr>
 <tr>
@@ -56,7 +56,7 @@ AI 智能体现在可以编写 99% 的代码。这彻底改变了作为开发者
 
 </td>
 <td width="50%">
-  <img src="src/tunneling.gif" alt="远程穿透" width="100%" />
+  <img src="../../src/tunneling.gif" alt="远程穿透" width="100%" />
 </td>
 </tr>
 <tr>
@@ -70,7 +70,7 @@ AI 智能体现在可以编写 99% 的代码。这彻底改变了作为开发者
 
 </td>
 <td width="50%">
-  <img src="src/voice.gif" alt="语音与富文本输入" width="100%" />
+  <img src="../../src/voice.gif" alt="语音与富文本输入" width="100%" />
 </td>
 </tr>
 <tr>
@@ -84,7 +84,7 @@ AI 智能体现在可以编写 99% 的代码。这彻底改变了作为开发者
 
 </td>
 <td width="50%">
-  <img src="src/annotation.gif" alt="计划内联批注" width="100%" />
+  <img src="../../src/annotation.gif" alt="计划内联批注" width="100%" />
 </td>
 </tr>
 <tr>
@@ -98,7 +98,7 @@ AI 智能体现在可以编写 99% 的代码。这彻底改变了作为开发者
 
 </td>
 <td width="50%">
-  <img src="src/review.gif" alt="强大代码审查" width="100%" />
+  <img src="../../src/review.gif" alt="强大代码审查" width="100%" />
 </td>
 </tr>
 <tr>
@@ -112,7 +112,7 @@ AI 智能体现在可以编写 99% 的代码。这彻底改变了作为开发者
 
 </td>
 <td width="50%">
-  <img src="src/github.gif" alt="GitHub 集成与自动收件箱" width="100%" />
+  <img src="../../src/github.gif" alt="GitHub 集成与自动收件箱" width="100%" />
 </td>
 </tr>
 </table>
@@ -178,7 +178,7 @@ npx skills add ivy-interactive/ivy-tendril --agent github-copilot -g
 
 如需完整的编辑器集成，请安装官方 [Ivy Tendril VS Code 扩展](https://marketplace.visualstudio.com/items?itemName=ivy-interactive.ivy-tendril)，以获取内嵌的计划仪表板、工作区导航和实时执行监控。
 
-请参阅 [VS Code 配置指南](docs/vscode-setup.md) 了解详细配置选项。
+请参阅 [VS Code 配置指南](../vscode-setup.md) 了解详细配置选项。
 </details>
 
 <details>
@@ -197,7 +197,7 @@ npx skills add ivy-interactive/ivy-tendril --agent github-copilot -g
 claude --plugin-dir /path/to/ivy-tendril
 ```
 
-请参阅 [Claude Code 配置指南](docs/claude-setup.md) 了解详细配置选项。
+请参阅 [Claude Code 配置指南](../claude-setup.md) 了解详细配置选项。
 </details>
 
 <details>
@@ -215,7 +215,7 @@ agy plugin install https://github.com/ivy-interactive/ivy-tendril.git
 agy plugin install ./
 ```
 
-请参阅 [Antigravity 配置指南](docs/antigravity-setup.md) 了解详细配置选项。
+请参阅 [Antigravity 配置指南](../antigravity-setup.md) 了解详细配置选项。
 </details>
 
 <details>
@@ -229,7 +229,7 @@ npx skills add ivy-interactive/ivy-tendril --agent cursor
 
 或将技能复制到 `.cursor/skills/` (项目级) 或 `~/.cursor/skills/` (全局)。
 
-请参阅 [Cursor 配置指南](docs/cursor-setup.md) 了解详细配置选项。
+请参阅 [Cursor 配置指南](../cursor-setup.md) 了解详细配置选项。
 </details>
 
 <details>
@@ -362,4 +362,4 @@ Ivy-Tendril-V2/
 
 ## 许可证
 
-Apache-2.0 © Ivy Interactive
+Tendril 是源码可用的，并根据 [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) 获得许可。智能体技能和插件（`skills/`、`.claude-plugin/`、`.codex-plugin/`、`.agents/`）同样遵循根仓库条款（[Functional Source License (FSL-1.1-ALv2)](../../LICENSE)）获得许可。

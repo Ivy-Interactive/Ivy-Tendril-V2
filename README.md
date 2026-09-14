@@ -1,5 +1,5 @@
 <p align="right">
-  <strong>English</strong> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <a href="README.fr.md">Français</a>
+  <strong>English</strong> | <a href="docs/translations/README.zh-CN.md">简体中文</a> | <a href="docs/translations/README.ja.md">日本語</a> | <a href="docs/translations/README.es.md">Español</a> | <a href="docs/translations/README.de.md">Deutsch</a> | <a href="docs/translations/README.fr.md">Français</a>
 </p>
 
 <h1>
@@ -482,4 +482,4 @@ codex plugin add tendril-skills@tendril-skills
 
 ## License
 
-Apache-2.0 © Ivy Interactive
+Tendril is source-available and licensed under the [Functional Source License (FSL-1.1-ALv2)](LICENSE). Agent skills and plugins (`skills/`, `.claude-plugin/`, `.codex-plugin/`, `.agents/`) are also licensed under the root repository terms ([Functional Source License (FSL-1.1-ALv2)](LICENSE)).

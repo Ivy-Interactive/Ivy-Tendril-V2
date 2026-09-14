@@ -20,7 +20,7 @@ Each item details the **Owner**, **Reproduction**, **Fix**, and **Regression Tes
   - Serialize the merged mapping back to disk atomically, or expand `TendrilSettings` to include a `#[serde(flatten)] extra: BTreeMap<String, serde_yaml::Value>`.
 - **Regression Test**:
   - `cargo test --test migration_compat_test test_ivy_config_yaml_preserves_unknown_keys_on_app_mapping`
-  - Harness rehearsal: `node scripts/migration/rehearse-cutover.mjs` verifies SHA-256 digest preservation.
+  - Harness rehearsal: `pnpm tsx scripts/migration/rehearse-cutover.ts` verifies SHA-256 digest preservation.
 
 ---
 
