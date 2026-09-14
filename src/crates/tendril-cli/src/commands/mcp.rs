@@ -17,7 +17,9 @@ pub async fn handle_mcp(tendril_home: &Path) -> anyhow::Result<()> {
     // Before anything else, so no log line can escape to stdout and corrupt the stream.
     let _ = tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")),
+        )
         .try_init();
 
     let auth = McpAuth::from_env();

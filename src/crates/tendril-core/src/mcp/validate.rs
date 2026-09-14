@@ -65,11 +65,7 @@ fn validate_node(schema: &Value, value: &Value, path: &str) -> Result<(), String
                     other => other.to_string(),
                 })
                 .collect();
-            return Err(format!(
-                "{} must be one of [{}]",
-                path,
-                rendered.join(", ")
-            ));
+            return Err(format!("{} must be one of [{}]", path, rendered.join(", ")));
         }
     }
 

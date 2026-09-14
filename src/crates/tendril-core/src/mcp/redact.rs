@@ -34,12 +34,14 @@ const SECRET_KEY_SUBSTRINGS: &[&str] = &[
 
 static SECRET_KEY_WORD: LazyLock<Regex> = LazyLock::new(|| {
     // `key` on its own, or as a `_key` / `Key` suffix — so `monkey` and `keyBindings` survive.
-    Regex::new(r"(?x)
+    Regex::new(
+        r"(?x)
         ^key$
       | (^|[^A-Za-z])key([^A-Za-z]|$)
       | _key$
       | [a-z0-9]Key$
-    ")
+    ",
+    )
     .expect("secret key-word regex")
 });
 

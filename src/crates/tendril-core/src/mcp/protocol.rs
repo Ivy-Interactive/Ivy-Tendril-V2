@@ -76,7 +76,11 @@ impl McpSession {
             Err(e) => {
                 // Parse errors are answered with a null id, since there is no id to echo.
                 tracing::warn!("MCP parse error: {}", e);
-                return Some(render(error_response(Value::Null, PARSE_ERROR, "Parse error")));
+                return Some(render(error_response(
+                    Value::Null,
+                    PARSE_ERROR,
+                    "Parse error",
+                )));
             }
         };
 
@@ -132,7 +136,11 @@ impl McpSession {
             "resources/list" => success(id, json!({ "resources": [] })),
             "resources/templates/list" => success(id, json!({ "resourceTemplates": [] })),
             "prompts/list" => success(id, json!({ "prompts": [] })),
-            other => error_response(id, METHOD_NOT_FOUND, &format!("Method not found: {}", other)),
+            other => error_response(
+                id,
+                METHOD_NOT_FOUND,
+                &format!("Method not found: {}", other),
+            ),
         };
 
         Some(render(response))

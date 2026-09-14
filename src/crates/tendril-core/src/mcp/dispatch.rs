@@ -169,9 +169,13 @@ impl McpDispatcher {
             "tendril_plan_write_revision" => self.plan_write_revision(args),
             "tendril_plan_set" => self.plan_set(args),
             "tendril_plan_set_verification" => self.plan_set_verification(args),
-            "tendril_plan_add_repo" | "tendril_plan_remove_repo" | "tendril_plan_add_pr"
-            | "tendril_plan_add_commit" | "tendril_plan_add_related_plan"
-            | "tendril_plan_remove_related_plan" | "tendril_plan_add_depends_on"
+            "tendril_plan_add_repo"
+            | "tendril_plan_remove_repo"
+            | "tendril_plan_add_pr"
+            | "tendril_plan_add_commit"
+            | "tendril_plan_add_related_plan"
+            | "tendril_plan_remove_related_plan"
+            | "tendril_plan_add_depends_on"
             | "tendril_plan_remove_depends_on" => self.plan_list_edit(name, args),
             "tendril_plan_rec_add" => self.rec_add(args),
             "tendril_plan_rec_accept" => self.rec_state(args, "Accepted"),
@@ -211,7 +215,10 @@ impl McpDispatcher {
                 other => {
                     let key = camel_key(other);
                     metadata.get(&key).cloned().ok_or_else(|| {
-                        format!("Plan has no field '{}'. Omit 'field' for the whole plan.", other)
+                        format!(
+                            "Plan has no field '{}'. Omit 'field' for the whole plan.",
+                            other
+                        )
                     })?
                 }
             };
@@ -281,9 +288,7 @@ impl McpDispatcher {
                 if let Some(term) = search {
                     let id_str = format!("{:05}", p.metadata.id);
                     let lower = term.to_lowercase();
-                    if !p.metadata.title.to_lowercase().contains(&lower)
-                        && !id_str.contains(term)
-                    {
+                    if !p.metadata.title.to_lowercase().contains(&lower) && !id_str.contains(term) {
                         return false;
                     }
                 }
@@ -323,7 +328,10 @@ impl McpDispatcher {
 
     fn get_plan_revision(&self, args: &Value) -> Exec {
         let folder = self.resolve(args)?;
-        let number = args.get("number").and_then(|n| n.as_i64()).map(|n| n as i32);
+        let number = args
+            .get("number")
+            .and_then(|n| n.as_i64())
+            .map(|n| n as i32);
         let content = get_revision(&folder, number).map_err(|e| e.to_string())?;
         Ok(ToolOutcome::text(content))
     }
@@ -348,7 +356,9 @@ impl McpDispatcher {
             .iter()
             .map(|v| json!({ "name": v.name, "status": v.status.to_string() }))
             .collect();
-        Ok(ToolOutcome::structured(json!({ "verifications": rendered })))
+        Ok(ToolOutcome::structured(
+            json!({ "verifications": rendered }),
+        ))
     }
 
     fn rec_list(&self, args: &Value) -> Exec {
@@ -373,7 +383,8 @@ impl McpDispatcher {
 
         // Seed the verification rows from the project's configuration, so the plan is verifiable by
         // ExecutePlan without a second call.
-        let settings = load_config(&get_config_path(&self.tendril_home)).map_err(|e| e.to_string())?;
+        let settings =
+            load_config(&get_config_path(&self.tendril_home)).map_err(|e| e.to_string())?;
         let verifications: Vec<PlanVerificationEntry> = settings
             .projects
             .iter()
@@ -396,7 +407,10 @@ impl McpDispatcher {
             initial_prompt: str_arg(args, "initial_prompt").map(|s| s.to_string()),
             source_url: str_arg(args, "source_url").map(|s| s.to_string()),
             execution_profile: str_arg(args, "execution_profile").map(|s| s.to_string()),
-            priority: args.get("priority").and_then(|p| p.as_i64()).map(|p| p as i32),
+            priority: args
+                .get("priority")
+                .and_then(|p| p.as_i64())
+                .map(|p| p as i32),
             repos: Vec::new(),
             verifications,
             depends_on: string_list(args, "depends_on"),
@@ -486,7 +500,8 @@ impl McpDispatcher {
         let status_str = required_str(args, "status")?;
         let status = VerificationStatus::from_str_loose(status_str)
             .ok_or_else(|| format!("Invalid verification status: {}", status_str))?;
-        let entry = set_plan_verification_status(&folder, name, status).map_err(|e| e.to_string())?;
+        let entry =
+            set_plan_verification_status(&folder, name, status).map_err(|e| e.to_string())?;
         self.sync(&folder);
         Ok(ToolOutcome::structured(json!({
             "name": entry.name,
@@ -608,7 +623,10 @@ impl McpDispatcher {
             repo_path: str_arg(args, "repo_path").map(|s| s.to_string()),
             base_branch: str_arg(args, "base_branch").map(|s| s.to_string()),
             untracked_policy: str_arg(args, "untracked_policy").map(|s| s.to_string()),
-            priority: args.get("priority").and_then(|p| p.as_i64()).map(|p| p as i32),
+            priority: args
+                .get("priority")
+                .and_then(|p| p.as_i64())
+                .map(|p| p as i32),
             force: bool_arg(args, "force"),
             no_merge: bool_arg(args, "no_merge"),
             no_delete_branch: bool_arg(args, "no_delete_branch"),
@@ -663,20 +681,16 @@ impl McpDispatcher {
     // -----------------------------------------------------------------------
 
     fn get_config(&self, args: &Value) -> Exec {
-        let settings = load_config(&get_config_path(&self.tendril_home)).map_err(|e| e.to_string())?;
+        let settings =
+            load_config(&get_config_path(&self.tendril_home)).map_err(|e| e.to_string())?;
         let serialized = serde_json::to_value(&settings).map_err(|e| e.to_string())?;
 
         if let Some(requested) = str_arg(args, "key") {
             let canonical = PUBLIC_CONFIG_KEYS
                 .iter()
                 .find(|k| k.eq_ignore_ascii_case(requested))
-                .ok_or_else(|| {
-                    format!("Unknown or non-public config key: {}", requested)
-                })?;
-            let value = serialized
-                .get(*canonical)
-                .cloned()
-                .unwrap_or(Value::Null);
+                .ok_or_else(|| format!("Unknown or non-public config key: {}", requested))?;
+            let value = serialized.get(*canonical).cloned().unwrap_or(Value::Null);
             return Ok(ToolOutcome::structured(
                 json!({ *canonical: redact_named(canonical, &value) }),
             ));
@@ -692,7 +706,8 @@ impl McpDispatcher {
     }
 
     fn list_projects(&self) -> Exec {
-        let settings = load_config(&get_config_path(&self.tendril_home)).map_err(|e| e.to_string())?;
+        let settings =
+            load_config(&get_config_path(&self.tendril_home)).map_err(|e| e.to_string())?;
         let projects = serde_json::to_value(&settings.projects).map_err(|e| e.to_string())?;
         Ok(ToolOutcome::structured(
             json!({ "projects": redact_value(&projects) }),
@@ -700,7 +715,8 @@ impl McpDispatcher {
     }
 
     fn list_verifications(&self, args: &Value) -> Exec {
-        let settings = load_config(&get_config_path(&self.tendril_home)).map_err(|e| e.to_string())?;
+        let settings =
+            load_config(&get_config_path(&self.tendril_home)).map_err(|e| e.to_string())?;
         let mut verifications = settings.verifications;
         if let Some(name) = str_arg(args, "name") {
             verifications.retain(|v| v.name.eq_ignore_ascii_case(name));
@@ -732,9 +748,10 @@ impl McpDispatcher {
     ) -> std::result::Result<(PathBuf, PlanYaml), String> {
         let folder = self.resolve(args)?;
         let (plan, _) = read_plan_yaml(&folder).map_err(|e| e.to_string())?;
-        if let Some(reason) =
-            PlanCompletionGuard::terminal_refusal(PlanStatus::from_str_loose(&plan.state), requested)
-        {
+        if let Some(reason) = PlanCompletionGuard::terminal_refusal(
+            PlanStatus::from_str_loose(&plan.state),
+            requested,
+        ) {
             return Err(format!(
                 "Refused: {} for plan {}. Terminal plans are read-only over MCP.",
                 reason,
