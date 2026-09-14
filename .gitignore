@@ -10,6 +10,8 @@ dist-storybook/
 storybook-static/
 dist-ssr/
 .pnpm-store/
+out/
+*.vsix
 *.local
 
 # Tauri build artifacts
