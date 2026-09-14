@@ -1631,10 +1631,12 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
         } => {
             let repo_path =
                 resolve_import_repo(find_project(&settings, &name)?, &repo, tendril_home)?;
-            // Both flags set means both halves run: the two are computed independently, as in the
-            // original, so --mcp-only --skills-only is not a contradiction the user has to resolve.
-            let import_mcp = !skills_only;
-            let import_skills = !mcp_only;
+            // Neither flag and both flags both mean "import everything". The original computes
+            // these independently (`!skills_only` / `!mcp_only`), which makes
+            // `--mcp-only --skills-only` import nothing at all — a silent no-op is not worth
+            // reproducing, so both flags together run both halves.
+            let import_mcp = mcp_only || !skills_only;
+            let import_skills = skills_only || !mcp_only;
 
             let discovered_servers = if import_mcp {
                 scan_repo_mcp_servers(&repo_path)
