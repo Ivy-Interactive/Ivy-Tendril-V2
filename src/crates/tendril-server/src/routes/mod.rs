@@ -231,6 +231,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
+        // Alias for the original Tendril's GET /api/jobs/health, same handler/payload. Kept
+        // unauthenticated to match /api/health (the original guards it, but a peer that hasn't
+        // read the secret yet still needs to probe it) and registered on this router so the
+        // static segment wins over the protected router's /api/jobs/:id.
+        .route("/api/jobs/health", get(health::health_handler))
         .merge(protected)
         .layer(cors)
         .with_state(state)
