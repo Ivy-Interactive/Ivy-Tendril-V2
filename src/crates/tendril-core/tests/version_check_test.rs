@@ -180,5 +180,9 @@ async fn check_once_against_unreachable_host_is_err_and_leaves_cache_intact() {
     let entries: Vec<_> = std::fs::read_dir(&cache_dir)
         .expect("read cache dir")
         .collect();
-    assert_eq!(entries.len(), 1, "no stray files should appear in the cache dir");
+    assert_eq!(
+        entries.len(),
+        1,
+        "no stray files should appear in the cache dir"
+    );
 }
