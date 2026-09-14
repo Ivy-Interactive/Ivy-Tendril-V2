@@ -33,7 +33,26 @@ pub struct CostRecord {
     pub plan_id: i32,
     pub promptware: String,
     pub tokens: i64,
-    pub cost: f64,
+    /// `None` when the run was unpriceable — a subscription plan reports tokens and no charge. The
+    /// original's schema permits NULL here, so this cannot be a bare `f64`.
+    pub cost: Option<f64>,
+    pub model: Option<String>,
+    pub log_timestamp: Option<String>,
+    pub cost_source: Option<String>,
+    pub agent: Option<String>,
+}
+
+/// One row of a plan's `costs.csv`, which is the durable record both apps append to. A plan's
+/// `Costs` rows are a projection of that file — see [`crate::plans::costs_csv`].
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CostEntry {
+    pub promptware: String,
+    pub tokens: i64,
+    pub cost: Option<f64>,
+    pub model: Option<String>,
+    pub cost_source: Option<String>,
+    pub agent: Option<String>,
     pub log_timestamp: Option<String>,
 }
 
@@ -66,12 +85,14 @@ fn build_filter_sql(filter: &CostsFilter) -> (String, Vec<String>, Vec<String>) 
     (join_str, where_clauses, params)
 }
 
+/// Inserts a bare cost row, leaving `Model`, `CostSource` and `Agent` NULL. The low-level primitive;
+/// [`insert_cost_entry`] is what production code wants.
 pub fn insert_cost(
     conn: &Connection,
     plan_id: i32,
     promptware: &str,
     tokens: i64,
-    cost: f64,
+    cost: Option<f64>,
     log_timestamp: Option<&str>,
 ) -> Result<i64> {
     conn.execute(
@@ -82,6 +103,40 @@ pub fn insert_cost(
         params![plan_id, promptware, tokens, cost, log_timestamp],
     )?;
     Ok(conn.last_insert_rowid())
+}
+
+/// Inserts a full cost row. Column list and order match the original's `UpsertCosts`.
+pub fn insert_cost_entry(conn: &Connection, plan_id: i32, entry: &CostEntry) -> Result<i64> {
+    conn.execute(
+        r#"
+        INSERT INTO Costs (PlanId, Promptware, Tokens, Cost, Model, LogTimestamp, CostSource, Agent)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+        "#,
+        params![
+            plan_id,
+            entry.promptware,
+            entry.tokens,
+            entry.cost,
+            entry.model,
+            entry.log_timestamp,
+            entry.cost_source,
+            entry.agent,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// Replaces every `Costs` row for a plan with `entries`, in one transaction. The Rust twin of the
+/// original's `UpsertCosts`: it is what makes the table a pure function of the plan's `costs.csv`,
+/// so both apps converge on the same rows whoever synced last.
+pub fn replace_plan_costs(conn: &Connection, plan_id: i32, entries: &[CostEntry]) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM Costs WHERE PlanId = ?1", params![plan_id])?;
+    for entry in entries {
+        insert_cost_entry(&tx, plan_id, entry)?;
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 pub fn get_costs_summary(conn: &Connection, filter: &CostsFilter) -> Result<CostsSummary> {
@@ -199,7 +254,7 @@ pub fn get_costs_series(
 
 pub fn list_costs_by_plan(conn: &Connection, plan_id: i32) -> Result<Vec<CostRecord>> {
     let mut stmt = conn.prepare(
-        "SELECT Id, PlanId, Promptware, Tokens, Cost, LogTimestamp FROM Costs WHERE PlanId = ?1 ORDER BY Id ASC",
+        "SELECT Id, PlanId, Promptware, Tokens, Cost, Model, LogTimestamp, CostSource, Agent FROM Costs WHERE PlanId = ?1 ORDER BY Id ASC",
     )?;
     let rows = stmt.query_map(params![plan_id], |row| {
         Ok(CostRecord {
@@ -208,7 +263,10 @@ pub fn list_costs_by_plan(conn: &Connection, plan_id: i32) -> Result<Vec<CostRec
             promptware: row.get(2)?,
             tokens: row.get(3)?,
             cost: row.get(4)?,
-            log_timestamp: row.get(5)?,
+            model: row.get(5)?,
+            log_timestamp: row.get(6)?,
+            cost_source: row.get(7)?,
+            agent: row.get(8)?,
         })
     })?;
 

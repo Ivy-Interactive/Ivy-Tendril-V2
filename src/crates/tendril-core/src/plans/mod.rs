@@ -1,3 +1,4 @@
+pub mod costs_csv;
 pub mod dependencies;
 pub mod doctor;
 pub mod duplicates;

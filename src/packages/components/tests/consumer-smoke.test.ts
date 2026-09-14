@@ -25,6 +25,8 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 describe("Consumer Smoke Verification", () => {
   const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf-8"));
 
+  // `pnpm pack` runs this package's `prepare` script (`vp config` + the tsgolint patch), so the
+  // subprocess routinely takes longer than the 5s default timeout. Give it a generous budget.
   it("verifies package packing succeeds with pnpm pack", () => {
     const packOutput = execSync("pnpm pack --dry-run", {
       cwd: repoRoot,
@@ -34,9 +36,7 @@ describe("Consumer Smoke Verification", () => {
     expect(packOutput).toContain("dist/style.css");
     expect(packOutput).toContain("dist/tendril.mjs");
     expect(packOutput).toContain("dist/tendril.d.mts");
-    // `pnpm pack --dry-run` walks the whole `files` list and takes ~7-10s here, well past the
-    // 5s default.
-  }, 30000);
+  }, 60_000);
 
   it("verifies all declared export map targets exist on disk", () => {
     const exportsMap = packageJson.exports as Record<
