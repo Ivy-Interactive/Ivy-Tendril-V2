@@ -35,6 +35,10 @@ pub enum TendrilError {
     #[error("Dependency unsatisfied: {0}")]
     DependencyUnsatisfied(String),
 
+    /// Another job is already doing something this one would fight over. Maps to HTTP 409.
+    #[error("{0}")]
+    Conflict(String),
+
     #[error("Config error: {0}")]
     Config(String),
 

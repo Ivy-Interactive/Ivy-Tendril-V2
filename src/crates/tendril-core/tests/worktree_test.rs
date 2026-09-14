@@ -1,4 +1,4 @@
-//! Worktree creation, the plan-level worktree registry, and the unattended reaper.
+//! Worktree creation, removal, the plan-level worktree registry, and the unattended reaper.
 //!
 //! These tests drive real `git` against a throwaway repository with a bare `origin` beside it:
 //! `git worktree add` cannot be stubbed, and every reaper decision is an answer git gives about
@@ -12,7 +12,8 @@ use std::time::Duration;
 use tendril_core::config::TendrilSettings;
 use tendril_core::error::Result;
 use tendril_core::git::worktree::{
-    add_worktree, register_worktree, WorktreeCreation, WorktreeMode,
+    add_worktree, register_worktree, remove_worktree, RemoveOutcome, WorktreeCreation,
+    WorktreeMode,
 };
 use tendril_core::git::worktree_log::WorktreeLifecycleLog;
 use tendril_core::git::worktree_reaper::{
@@ -216,6 +217,114 @@ fn a_repo_path_that_does_not_exist_is_an_error() {
     .expect_err("a missing repo cannot yield a worktree");
 
     assert!(err.to_string().contains("does not exist"), "got: {}", err);
+}
+
+#[test]
+fn remove_worktree_removes_exactly_one() {
+    let home = HomeFixture::new("wt-remove-one");
+    let repo_a = GitRepoFixture::new("removeone-a");
+    let repo_b = GitRepoFixture::new("removeone-b");
+    let plan_folder = write_plan(&home, "00105-RemoveOne", PlanStatus::Executing, &[]);
+
+    let worktree_a = add_worktree(
+        &repo_a.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("add worktree a");
+    let worktree_b = add_worktree(
+        &repo_b.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("add worktree b");
+    assert!(repo_a.branch_exists(&worktree_a.branch));
+    assert!(repo_b.branch_exists(&worktree_b.branch));
+
+    let name_a = worktree_a
+        .path
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+    let outcome = remove_worktree(&plan_folder, &name_a, None).expect("remove_worktree");
+
+    assert!(
+        matches!(
+            outcome,
+            RemoveOutcome::Removed(_) | RemoveOutcome::ForceDeleted(_)
+        ),
+        "unexpected outcome: {:?}",
+        outcome
+    );
+    assert!(!worktree_a.path.exists(), "removed worktree should be gone");
+    assert!(worktree_b.path.exists(), "the other worktree must be untouched");
+
+    assert!(
+        !repo_a.branch_exists(&worktree_a.branch),
+        "the removed worktree's branch should be deleted"
+    );
+    assert!(
+        repo_b.branch_exists(&worktree_b.branch),
+        "the surviving worktree's branch must be left alone"
+    );
+}
+
+#[test]
+fn remove_worktree_missing_directory_is_ok() {
+    let home = HomeFixture::new("wt-remove-missing");
+    let plan_folder = write_plan(&home, "00106-MissingWorktree", PlanStatus::Executing, &[]);
+    std::fs::create_dir_all(plan_folder.join("Worktrees")).expect("create Worktrees dir");
+
+    // CreatePr runs cleanup unconditionally, so "already gone" has to be success rather than an
+    // error, or a second run would fail the plan.
+    let outcome = remove_worktree(&plan_folder, "NotThere", None).expect("missing worktree is Ok");
+    assert!(matches!(outcome, RemoveOutcome::NotFound(_)));
+}
+
+#[test]
+fn remove_worktree_finds_nested_worktree_by_name() {
+    let home = HomeFixture::new("wt-remove-nested");
+    let repo = GitRepoFixture::new("removenested");
+    let plan_folder = write_plan(&home, "00107-NestedWorktree", PlanStatus::Executing, &[]);
+
+    let creation = add_worktree(
+        &repo.repo,
+        &plan_folder,
+        Some("main"),
+        WorktreeMode::ReuseIfValid,
+        None,
+    )
+    .expect("add_worktree");
+    let repo_name = creation
+        .path
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .to_string();
+
+    // Move it into an owner folder, which is the `Worktrees/<owner>/<repo>` layout in use, so the
+    // case-insensitive fallback scan is what has to find it.
+    let owner_dir = plan_folder.join("Worktrees").join("Ivy-Interactive");
+    std::fs::create_dir_all(&owner_dir).expect("create owner dir");
+    let nested = owner_dir.join(&repo_name);
+    std::fs::rename(&creation.path, &nested).expect("move worktree under owner dir");
+
+    let outcome =
+        remove_worktree(&plan_folder, &repo_name.to_uppercase(), None).expect("remove nested");
+    assert!(
+        matches!(
+            outcome,
+            RemoveOutcome::Removed(_) | RemoveOutcome::ForceDeleted(_)
+        ),
+        "unexpected outcome: {:?}",
+        outcome
+    );
+    assert!(!nested.exists());
 }
 
 #[test]
