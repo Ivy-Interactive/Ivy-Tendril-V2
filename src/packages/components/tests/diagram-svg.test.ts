@@ -54,8 +54,7 @@ describe("sanitizeSvg", () => {
 
 describe("applyFontToSvg", () => {
   it("sets font-family on every <text> element", () => {
-    const svg =
-      '<svg xmlns="http://www.w3.org/2000/svg"><text>a</text><text>b</text></svg>';
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>a</text><text>b</text></svg>';
     const result = applyFontToSvg(svg);
     const matches = result.match(/font-family="[^"]*"/g) ?? [];
     expect(matches).toHaveLength(2);
@@ -65,7 +64,8 @@ describe("applyFontToSvg", () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text font-size="14">a</text></svg>';
     expect(applyFontToSvg(svg)).toContain('font-size="11.20"');
 
-    const svgWithUnit = '<svg xmlns="http://www.w3.org/2000/svg"><text font-size="14pt">a</text></svg>';
+    const svgWithUnit =
+      '<svg xmlns="http://www.w3.org/2000/svg"><text font-size="14pt">a</text></svg>';
     expect(applyFontToSvg(svgWithUnit)).toContain('font-size="11.20pt"');
   });
 });
