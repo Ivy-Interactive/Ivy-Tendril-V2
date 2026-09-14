@@ -455,7 +455,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
         {/* Resizer Handle */}
         <div
           {...separatorProps}
-          className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-emerald-500/50 transition-colors z-10 ${
+          className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-emerald-500/50 transition-colors z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950 focus-visible:bg-emerald-500/50 ${
             isResizingSidebar ? "bg-emerald-500 w-2" : "bg-transparent"
           }`}
           title="Drag to resize chat sidebar, double-click to reset"
