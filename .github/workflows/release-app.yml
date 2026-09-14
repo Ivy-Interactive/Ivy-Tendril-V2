@@ -1,0 +1,134 @@
+name: Release Desktop App
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-mode:
+        description: 'Dry-run test mode (skips creating GitHub release)'
+        type: boolean
+        default: true
+      version:
+        description: 'Version override (e.g. 0.1.0)'
+        type: string
+        required: false
+  push:
+    tags:
+      - 'app-v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-app-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-app:
+    name: Build App (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-latest
+            platform: linux
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Determine version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/app-v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/app-v}"
+          else
+            VERSION=$(jq -r '.version' src/apps/tendril-app/src-tauri/tauri.conf.json)
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Resolved version: $VERSION"
+          if [ -n "${{ inputs.version }}" ] || [[ "${{ github.ref }}" == refs/tags/app-v* ]]; then
+            jq --arg v "$VERSION" '.version = $v' src/apps/tendril-app/src-tauri/tauri.conf.json > src/apps/tendril-app/src-tauri/tauri.conf.json.tmp && mv src/apps/tendril-app/src-tauri/tauri.conf.json.tmp src/apps/tendril-app/src-tauri/tauri.conf.json
+          fi
+
+      - name: Build components and frontend
+        run: |
+          pnpm --filter @ivy-interactive/components build
+          pnpm --filter @ivy-interactive/tendril-app build
+
+      - name: Build companion CLI binary
+        run: |
+          cargo build --release --bin tendril
+          TARGET=$(rustc -vV | sed -n 's|host: ||p')
+          mkdir -p src/apps/tendril-app/src-tauri/binaries
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp target/release/tendril.exe "src/apps/tendril-app/src-tauri/binaries/tendril-${TARGET}.exe"
+          else
+            cp target/release/tendril "src/apps/tendril-app/src-tauri/binaries/tendril-${TARGET}"
+            chmod +x "src/apps/tendril-app/src-tauri/binaries/tendril-${TARGET}"
+          fi
+
+      - name: Build Tauri desktop app
+        run: pnpm --filter @ivy-interactive/tendril-app exec tauri build
+
+      - name: Collect bundle installers
+        run: |
+          mkdir -p dist-bundles
+          find target/release/bundle src/apps/tendril-app/src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app" -o -name "*.msi" -o -name "*.exe" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} dist-bundles/ \; 2>/dev/null || true
+          cd dist-bundles
+          for f in *; do
+            [ -f "$f" ] || continue
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$f" > "$f.sha256"
+            else
+              shasum -a 256 "$f" > "$f.sha256"
+            fi
+          done
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tendril-app-${{ matrix.platform }}
+          path: dist-bundles/*
+
+      - name: Publish GitHub Release
+        if: (github.event_name == 'push' && !inputs.test-mode) || (github.event_name == 'workflow_dispatch' && inputs.test-mode == false)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: app-v${{ env.VERSION }}
+          files: dist-bundles/*

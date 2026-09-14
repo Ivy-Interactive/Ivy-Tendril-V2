@@ -1,0 +1,93 @@
+name: Release Components
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-mode:
+        description: 'Dry-run test mode (skips publishing to npm)'
+        type: boolean
+        default: true
+      version:
+        description: 'Version override (e.g. 0.1.0)'
+        type: string
+        required: false
+  push:
+    tags:
+      - 'components-v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-components-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-components:
+    name: Release Components
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org/'
+          cache: 'pnpm'
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run checks
+        run: pnpm --filter @ivy-interactive/components check
+
+      - name: Run tests
+        run: pnpm --filter @ivy-interactive/components test
+
+      - name: Determine version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/components-v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/components-v}"
+          else
+            VERSION=$(node -p "require('./src/packages/components/package.json').version")
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Resolved version: $VERSION"
+          if [ -n "${{ inputs.version }}" ]; then
+            cd src/packages/components
+            npm version --no-git-tag-version "$VERSION"
+          fi
+
+      - name: Build components package
+        run: pnpm --filter @ivy-interactive/components build
+
+      - name: Pack tarball
+        run: |
+          mkdir -p dist-pack
+          pnpm --filter @ivy-interactive/components pack --pack-destination dist-pack
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: components-${{ env.VERSION }}
+          path: dist-pack/*.tgz
+
+      - name: Publish to npm
+        if: (github.event_name == 'push' && !inputs.test-mode) || (github.event_name == 'workflow_dispatch' && inputs.test-mode == false)
+        working-directory: src/packages/components
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
