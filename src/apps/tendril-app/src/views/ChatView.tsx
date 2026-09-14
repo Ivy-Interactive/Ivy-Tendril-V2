@@ -475,6 +475,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                           onCopy={handleCopyMessage}
                           onCreatePlan={handleCreatePlanFromMessage}
                           inProgressAnswers={storeState.inProgressAnswers[msg.id]}
+                          isSubmittingAnswer={chatStore.isSubmittingAnswer(msg.id)}
                         />
                       </div>
                     );
@@ -489,6 +490,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                       onCopy={handleCopyMessage}
                       onCreatePlan={handleCreatePlanFromMessage}
                       inProgressAnswers={storeState.inProgressAnswers[msg.id]}
+                      isSubmittingAnswer={chatStore.isSubmittingAnswer(msg.id)}
                     />
                   </div>
                 ))
