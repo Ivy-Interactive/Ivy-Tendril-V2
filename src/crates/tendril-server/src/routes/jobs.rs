@@ -486,7 +486,9 @@ pub async fn stream_job_events(
                 .unwrap_or_default();
 
             while emitted_lines < lines.len() {
-                if emitted_lines >= since_line && matches_kinds(&lines[emitted_lines], &allowed_kinds) {
+                if emitted_lines >= since_line
+                    && matches_kinds(&lines[emitted_lines], &allowed_kinds)
+                {
                     let event = axum::response::sse::Event::default()
                         .event("event")
                         .data(&lines[emitted_lines]);
@@ -521,7 +523,9 @@ pub async fn stream_job_events(
                     .or_else(|| read_raw_log(&tendril_home, &job_id, None).ok().flatten())
                     .unwrap_or_default();
                 while emitted_lines < final_lines.len() {
-                    if emitted_lines >= since_line && matches_kinds(&final_lines[emitted_lines], &allowed_kinds) {
+                    if emitted_lines >= since_line
+                        && matches_kinds(&final_lines[emitted_lines], &allowed_kinds)
+                    {
                         let event = axum::response::sse::Event::default()
                             .event("event")
                             .data(&final_lines[emitted_lines]);
@@ -546,7 +550,8 @@ pub async fn stream_job_events(
 
     let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
     axum::response::sse::Sse::new(stream)
-        .keep_alive(axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)))
+        .keep_alive(
+            axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
+        )
         .into_response()
 }
-

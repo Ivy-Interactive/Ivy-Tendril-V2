@@ -146,7 +146,10 @@ async fn handle_project_command_daemon(
             if !p.review_actions.is_empty() {
                 println!("Review Actions:");
                 for a in &p.review_actions {
-                    println!("  - {} (command: {}, condition: {})", a.name, a.command, a.condition);
+                    println!(
+                        "  - {} (command: {}, condition: {})",
+                        a.name, a.command, a.condition
+                    );
                 }
             }
         }
@@ -430,10 +433,7 @@ async fn handle_project_command_daemon(
                 anyhow::bail!("Failed to set field on project '{}': {}", name, err);
             }
 
-            println!(
-                "Project '{}' field '{}' set to '{}'.",
-                name, field, value
-            );
+            println!("Project '{}' field '{}' set to '{}'.", name, field, value);
         }
     }
 
@@ -469,7 +469,10 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 if !p.review_actions.is_empty() {
                     println!("Review Actions:");
                     for a in &p.review_actions {
-                        println!("  - {} (command: {}, condition: {})", a.name, a.command, a.condition);
+                        println!(
+                            "  - {} (command: {}, condition: {})",
+                            a.name, a.command, a.condition
+                        );
                     }
                 }
             } else {
@@ -681,10 +684,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 }
             }
             save_config(&cfg_path, &settings)?;
-            println!(
-                "Project '{}' field '{}' set to '{}'.",
-                name, field, value
-            );
+            println!("Project '{}' field '{}' set to '{}'.", name, field, value);
         }
     }
 
