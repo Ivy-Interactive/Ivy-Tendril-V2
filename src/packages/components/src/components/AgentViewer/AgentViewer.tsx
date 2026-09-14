@@ -50,6 +50,7 @@ interface AgentViewerProps {
   showSystemEvents?: boolean;
   showStatusLabel?: boolean;
   statusLabelOverride?: string;
+  showStatusEvents?: boolean;
   groupToolCalls?: boolean;
 }
 
@@ -67,6 +68,7 @@ export const AgentViewer: React.FC<AgentViewerProps> = ({
   showSystemEvents = false,
   showStatusLabel = true,
   statusLabelOverride,
+  showStatusEvents = true,
   groupToolCalls = false,
 }) => {
   const [streamedLines, setStreamedLines] = useState<string[]>([]);
@@ -205,6 +207,15 @@ export const AgentViewer: React.FC<AgentViewerProps> = ({
                   {event.text}
                 </div>
               );
+            case "status": {
+              if (!showStatusEvents) return null;
+              return (
+                <div key={idx} className="aov-status-event" data-testid="agent-status-event">
+                  <span className="aov-status-event-dot" />
+                  <span className="aov-status-event-text">{event.text}</span>
+                </div>
+              );
+            }
             case "assistant-text": {
               const taggedText = tagQuestionBlocks(event.text);
               return (

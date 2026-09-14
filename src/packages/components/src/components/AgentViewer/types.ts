@@ -149,6 +149,7 @@ export interface ToolUsePresentation {
 export type PresentationEvent =
   | { kind: "system"; model?: string; sessionId?: string }
   | { kind: "assistant-text"; text: string }
+  | { kind: "status"; text: string; timestamp?: string }
   | { kind: "thinking"; text: string }
   | { kind: "tool-use"; tool: ToolUsePresentation }
   | { kind: "result"; wire: ResultWire }

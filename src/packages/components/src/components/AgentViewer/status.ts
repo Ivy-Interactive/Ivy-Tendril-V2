@@ -25,6 +25,7 @@ export function deriveStatus(events: PresentationEvent[]): DerivedStatus {
     }
   }
 
+  if (last.kind === "status") return { text: last.text, complete: false };
   if (last.kind === "assistant-text") return { text: "Thinking…", complete: false };
   if (last.kind === "thinking") return { text: "Thinking…", complete: false };
   return { text: "Working…", complete: false };

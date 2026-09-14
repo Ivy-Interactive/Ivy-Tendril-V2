@@ -172,4 +172,48 @@ Done.`,
       ).toBeTruthy();
     });
   });
+
+  it("renders status event as .aov-status-event and does not generate .aov-assistant", () => {
+    const jsonStream = [
+      mockSessionInit,
+      JSON.stringify({
+        kind: "status",
+        timestamp: "2026-09-05T08:30:01Z",
+        message: "Scanning directory tree...",
+      }),
+    ].join("\n");
+
+    const { container } = render(
+      <AgentViewer id="test-status-event" jsonStream={jsonStream} eventHandler={() => {}} />,
+    );
+
+    const statusElement = container.querySelector(".aov-status-event");
+    expect(statusElement).toBeTruthy();
+    expect(statusElement?.textContent).toContain("Scanning directory tree...");
+    expect(container.querySelector(".aov-assistant")).toBeNull();
+  });
+
+  it("suppresses status events when showStatusEvents is false", () => {
+    const jsonStream = [
+      mockSessionInit,
+      JSON.stringify({
+        kind: "status",
+        timestamp: "2026-09-05T08:30:01Z",
+        message: "Scanning directory tree...",
+      }),
+    ].join("\n");
+
+    const { container } = render(
+      <AgentViewer
+        id="test-status-event-suppressed"
+        jsonStream={jsonStream}
+        showStatusEvents={false}
+        showStatusLabel={false}
+        eventHandler={() => {}}
+      />,
+    );
+
+    expect(container.querySelector(".aov-status-event")).toBeNull();
+    expect(screen.queryByText("Scanning directory tree...")).toBeNull();
+  });
 });

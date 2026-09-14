@@ -94,7 +94,7 @@ export function parseEventWireStream(jsonStream: string): PresentationEvent[] {
         flushText();
         const msg = evt.text ?? evt.message;
         if (msg && msg.trim().length > 0) {
-          out.push({ kind: "assistant-text", text: msg });
+          out.push({ kind: "status", text: msg.trim(), timestamp: evt.timestamp });
         }
         break;
       }

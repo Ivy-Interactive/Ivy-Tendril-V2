@@ -23,6 +23,11 @@ const mockSessionInit = JSON.stringify({
 const mockStreamingLines = [
   mockSessionInit,
   JSON.stringify({
+    kind: "status",
+    timestamp: "2026-09-05T08:30:00Z",
+    message: "Verifying package configuration...",
+  }),
+  JSON.stringify({
     kind: "text",
     timestamp: "2026-09-05T08:30:01Z",
     text: "I will inspect the workspace and verify toolchain dependencies before proceeding.",
@@ -33,6 +38,11 @@ const mockStreamingLines = [
     timestamp: "2026-09-05T08:30:02Z",
     content:
       "Checking whether `components-storybook` already has React 19 and `@storybook/react` installed. Need to inspect `package.json`.",
+  }),
+  JSON.stringify({
+    kind: "status",
+    timestamp: "2026-09-05T08:30:02Z",
+    message: "Reading package.json dependencies...",
   }),
   JSON.stringify({
     kind: "tool_call",
@@ -73,6 +83,11 @@ const mockCompletedLines = [
     timestamp: "2026-09-05T08:30:02Z",
     content:
       "All source files found in Ivy.Tendril.Widgets. Beginning port into components-storybook.",
+  }),
+  JSON.stringify({
+    kind: "status",
+    timestamp: "2026-09-05T08:30:02Z",
+    message: "Locating widget components...",
   }),
   JSON.stringify({
     kind: "tool_call",
