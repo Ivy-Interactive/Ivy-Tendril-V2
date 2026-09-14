@@ -148,7 +148,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             CostSource TEXT,
             ExecutionProfile TEXT,
             Effort TEXT,
-            PreviousPlanState TEXT
+            PreviousPlanState TEXT,
+            PermissionDenials TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
         CREATE INDEX IF NOT EXISTS idx_jobs_completed ON Jobs(CompletedAt DESC);
@@ -165,14 +166,18 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_owner_repo ON PrStatuses(Owner, Repo);
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_status ON PrStatuses(Status);
 
-        PRAGMA user_version = 24;
+        PRAGMA user_version = 25;
         "#,
     )?;
 
     // The schema above is declarative `CREATE TABLE IF NOT EXISTS`, so a database created by an
     // earlier version keeps its original column set. Columns added after the fact need an
     // idempotent ALTER pass.
-    ensure_columns(conn, "Jobs", &[("PreviousPlanState", "TEXT")])?;
+    ensure_columns(
+        conn,
+        "Jobs",
+        &[("PreviousPlanState", "TEXT"), ("PermissionDenials", "TEXT")],
+    )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
 
     Ok(())

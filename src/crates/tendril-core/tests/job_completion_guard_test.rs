@@ -168,10 +168,11 @@ async fn test_post_result_grace_period_completes_with_result_outcome() {
 
     let home = HomeFixture::new("guard-grace");
     home.write_promptware("ExecutePlan");
-    let folder = home.write_plan(
-        "00007-GracePlan",
-        &plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]),
-    );
+    // A recorded commit, so this test still tests only the grace period: an ExecutePlan job that
+    // produced nothing is failed by the deliverable check whatever its process did afterwards.
+    let mut plan = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
+    plan.commits = vec!["abc1234".to_string()];
+    let folder = home.write_plan("00007-GracePlan", &plan);
 
     // Script emits a terminal result event, then sleeps
     let script_body = "#!/bin/sh\necho '{\"kind\":\"result\",\"is_success\":true}'\nsleep 30\n";
