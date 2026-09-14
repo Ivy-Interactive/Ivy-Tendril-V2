@@ -33,14 +33,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// A `gh` invocation yielding `(exit_code, stdout, stderr)`.
-pub type GhFuture<'a> = BoxFuture<'a, Result<(i32, String, String)>>;
+///
+/// `'static` because the arguments are owned: a runner borrows nothing from its caller, which keeps the
+/// future's lifetime out of [`GhRunner`] and lets a test pass a stub held in a local variable.
+pub type GhFuture = BoxFuture<'static, Result<(i32, String, String)>>;
 
 /// The injectable `gh` seam. Production code passes [`production_gh`]; tests pass a stub, and a
 /// *panicking* stub on any path that must not touch `gh` at all.
-pub type GhRunner<'a> = &'a (dyn Fn(Vec<String>, Option<PathBuf>) -> GhFuture<'a> + Send + Sync);
+pub type GhRunner<'a> = &'a (dyn Fn(Vec<String>, Option<PathBuf>) -> GhFuture + Send + Sync);
 
 /// The real `gh` CLI, via the shared [`run_gh_command_raw`] entry point.
-pub fn production_gh(argv: Vec<String>, working_dir: Option<PathBuf>) -> GhFuture<'static> {
+pub fn production_gh(argv: Vec<String>, working_dir: Option<PathBuf>) -> GhFuture {
     Box::pin(async move { run_gh_command_raw(&argv, working_dir.as_deref()).await })
 }
 
@@ -1788,7 +1791,13 @@ fn copy_permissions(
     Ok(())
 }
 
-fn vault_project_dir(tendril_home: &Path, vault: &VaultSettings, project_name: &str) -> PathBuf {
+/// Where a project lives inside a vault clone. Public so a route handler can answer 404 for a project
+/// the vault does not contain, instead of reporting the service's generic failure.
+pub fn vault_project_dir(
+    tendril_home: &Path,
+    vault: &VaultSettings,
+    project_name: &str,
+) -> PathBuf {
     vault_dir(tendril_home, Some(vault))
         .join("projects")
         .join(project_name)

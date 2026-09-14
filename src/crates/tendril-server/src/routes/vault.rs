@@ -76,11 +76,38 @@ fn ensure_vault_exists(state: &Arc<AppState>, id: &str) -> Result<(), axum::resp
         return Ok(());
     }
 
-    Err((
+    Err(not_found(format!("Vault '{}' not found", id)))
+}
+
+/// Rejects a project the vault does not contain, so the UI can tell "no such project" apart from a
+/// git or GitHub failure, which the service reports the same way.
+fn ensure_vault_project_exists(
+    state: &Arc<AppState>,
+    id: &str,
+    project: &str,
+) -> Result<(), axum::response::Response> {
+    let settings = load_config(&state.config_path).unwrap_or_default();
+    let vaults = vault::load_vaults(&settings);
+    let Some(resolved) = vault::resolve_vault(&vaults, requested_id(id)) else {
+        return Err(not_found("No vault is configured"));
+    };
+
+    if vault::vault_project_dir(&state.tendril_home, &resolved, project).exists() {
+        return Ok(());
+    }
+
+    Err(not_found(format!(
+        "Project '{}' was not found in vault '{}'",
+        project, resolved.id
+    )))
+}
+
+fn not_found(message: impl std::fmt::Display) -> axum::response::Response {
+    (
         StatusCode::NOT_FOUND,
-        Json(json!({ "error": format!("Vault '{}' not found", id) })),
+        Json(json!({ "error": message.to_string() })),
     )
-        .into_response())
+        .into_response()
 }
 
 fn internal_error(what: &str, e: impl std::fmt::Display) -> axum::response::Response {
@@ -89,6 +116,16 @@ fn internal_error(what: &str, e: impl std::fmt::Display) -> axum::response::Resp
         Json(json!({ "error": format!("Failed to {}: {}", what, e) })),
     )
         .into_response()
+}
+
+/// A `success: false` result answers 500 carrying the whole body: the UI needs the `message` and
+/// `errorMessage`, not just a status code. Only genuinely missing things answer 404.
+fn result_status(success: bool) -> StatusCode {
+    if success {
+        StatusCode::OK
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
 }
 
 pub async fn list_vaults(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -209,14 +246,7 @@ pub async fn pull_latest(
     }
 
     match vault::pull_latest(&state.tendril_home, requested_id(&id)).await {
-        Ok(result) => {
-            let status = if result.success {
-                StatusCode::OK
-            } else {
-                StatusCode::BAD_REQUEST
-            };
-            (status, Json(json!(result))).into_response()
-        }
+        Ok(result) => (result_status(result.success), Json(json!(result))).into_response(),
         Err(e) => internal_error("pull vault changes", e),
     }
 }
@@ -231,14 +261,7 @@ pub async fn push_and_create_pr(
     }
 
     match vault::push_and_create_pr(&state.tendril_home, &body, requested_id(&id)).await {
-        Ok(result) => {
-            let status = if result.success {
-                StatusCode::OK
-            } else {
-                StatusCode::BAD_REQUEST
-            };
-            (status, Json(json!(result))).into_response()
-        }
+        Ok(result) => (result_status(result.success), Json(json!(result))).into_response(),
         Err(e) => internal_error("push to vault", e),
     }
 }
@@ -249,6 +272,9 @@ pub async fn import_project(
     Json(body): Json<ImportProjectRequest>,
 ) -> impl IntoResponse {
     if let Err(response) = ensure_vault_exists(&state, &id) {
+        return response;
+    }
+    if let Err(response) = ensure_vault_project_exists(&state, &id, &body.request.project_name) {
         return response;
     }
 
@@ -272,27 +298,16 @@ pub async fn delete_project_from_vault(
     if let Err(response) = ensure_vault_exists(&state, &id) {
         return response;
     }
+    if let Err(response) = ensure_vault_project_exists(&state, &id, &project) {
+        return response;
+    }
 
     match vault::delete_project_from_vault(&state.tendril_home, &project, requested_id(&id)).await {
-        Ok(result) => {
-            let status = if result.success {
-                StatusCode::OK
-            } else {
-                StatusCode::BAD_REQUEST
-            };
-            (status, Json(json!(result))).into_response()
-        }
+        Ok(result) => (result_status(result.success), Json(json!(result))).into_response(),
         Err(e) => internal_error("delete vault project", e),
     }
 }
 
-/// A `VaultResult` carries its own success flag, so an unsuccessful operation answers 400 with the
-/// full result body — the UI needs the `message` and `errorMessage`, not just a status code.
 fn vault_result_response(result: vault::VaultResult) -> axum::response::Response {
-    let status = if result.success {
-        StatusCode::OK
-    } else {
-        StatusCode::BAD_REQUEST
-    };
-    (status, Json(json!(result))).into_response()
+    (result_status(result.success), Json(json!(result))).into_response()
 }

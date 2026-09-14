@@ -33,7 +33,7 @@ pub use service::{
     import_project, import_project_with, import_project_with_mappings, list_github_accounts,
     list_github_accounts_with, merge_project, production_gh, project_assets, pull_latest,
     pull_latest_with, push_and_create_pr, push_and_create_pr_with, set_always_up_to_date,
-    disconnect_vault, GhFuture, GhRunner,
+    disconnect_vault, vault_project_dir, GhFuture, GhRunner,
 };
 pub use settings::{
     ensure_vaults_initialized, extract_repo_name, find_vault, load_vaults, new_vault_id,
