@@ -7,10 +7,11 @@ use tendril_core::db::{get_plans, open_database, sync_plan};
 use tendril_core::git::worktree::cleanup_worktrees;
 use tendril_core::models::{PlanStatus, PlanVerificationEntry, VerificationStatus};
 use tendril_core::plans::{
-    add_recommendation, check_all_plans_health, check_plan_health, create_plan, get_revision,
-    list_recommendations, read_plan_file, read_plan_yaml, remove_recommendation,
-    resolve_plan_folder, set_plan_verification_status, set_recommendation_state, write_plan_yaml,
-    write_revision, CreatePlanOptions, DuplicateCandidateFinder, PlanCompletionGuard,
+    add_recommendation, check_all_plans_health, check_plan_health, check_pr_health_with_progress,
+    create_plan, get_revision, list_recommendations, read_plan_file, read_plan_yaml,
+    remove_recommendation, resolve_plan_folder, resolve_pr_head_via_gh,
+    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
+    CreatePlanOptions, DuplicateCandidateFinder, PlanCompletionGuard,
 };
 
 #[derive(Subcommand)]
@@ -37,6 +38,11 @@ pub enum PlanCommands {
     Doctor {
         #[arg(long)]
         fix: bool,
+
+        /// Also verify every recorded pull request against GitHub. Opt-in: it costs one `gh` call
+        /// per distinct PR, so the default doctor pass stays offline and free.
+        #[arg(long)]
+        prs: bool,
     },
 
     #[command(about = "Remove plan worktrees")]
@@ -644,7 +650,7 @@ pub async fn handle_plan_command(
                 }
             }
         }
-        PlanCommands::Doctor { fix } => {
+        PlanCommands::Doctor { fix, prs } => {
             if fix {
                 let migrator = tendril_core::plans::migrations::PlanMigrator::new();
                 let count = migrator.migrate_plans(&plans_dir, None)?;
@@ -656,7 +662,14 @@ pub async fn handle_plan_command(
                     );
                 }
             }
-            let issues = check_all_plans_health(&plans_dir)?;
+            let mut issues = check_all_plans_health(&plans_dir)?;
+            if prs {
+                issues.extend(check_pr_health_with_progress(
+                    &plans_dir,
+                    &resolve_pr_head_via_gh,
+                    &|count| println!("Resolving {} pull request(s) via gh...", count),
+                )?);
+            }
             if issues.is_empty() {
                 println!("All plans are healthy.");
             } else {
