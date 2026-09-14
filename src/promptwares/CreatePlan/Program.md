@@ -274,7 +274,19 @@ Adjust them as the task warrants (the user can also toggle them later in the UI;
 
 #### 4.2. Write the revision
 
-Write the revision content via CLI:
+To avoid output truncation when writing large plans, assemble the revision in chunks to a temporary file, then submit via `--file`:
+
+```bash
+cat >> /tmp/revision-<PlanId>.md <<'EOF'
+<first chunk of revision content>
+EOF
+cat >> /tmp/revision-<PlanId>.md <<'EOF'
+<next chunk of revision content>
+EOF
+tendril plan write-revision <PlanId> --file=/tmp/revision-<PlanId>.md
+```
+
+For small revisions, `--stdin` remains supported as an alternative:
 
 ```bash
 tendril plan write-revision <PlanId> --stdin <<'EOF'
@@ -282,9 +294,9 @@ tendril plan write-revision <PlanId> --stdin <<'EOF'
 EOF
 ```
 
-**The revision's first line is the `# {title}` H1 heading — it MUST be the exact same string you passed as `<Title>` to `tendril plan create` above** (human-readable Title Case, not the PascalCase folder form). The `plan.yaml` title and the spec H1 must always match.
+**The revision's first line is the `# {title}` H1 heading: it MUST be the exact same string you passed as `<Title>` to `tendril plan create` above** (human-readable Title Case, not the PascalCase folder form). The `plan.yaml` title and the spec H1 must always match.
 
-This reads from STDIN and auto-creates `Revisions/001.md` (or the next sequential number) in the plan folder. Do NOT use the Write or Edit tools to create revision files directly in `Revisions/`.
+This auto-creates `Revisions/001.md` (or the next sequential number) in the plan folder. Do NOT use the Write or Edit tools to create revision files directly in `Revisions/`.
 
 **Duplicate candidates at finalization.** `write-revision` prints this to **stderr** when it finds overlapping plans, while still writing the revision and exiting 0:
 

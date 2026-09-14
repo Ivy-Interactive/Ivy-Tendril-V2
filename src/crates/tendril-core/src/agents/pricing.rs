@@ -1,3 +1,6 @@
+use crate::agents::model_specs;
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModelPrice {
     pub input_per_million: f64,
     pub output_per_million: f64,
@@ -6,34 +9,12 @@ pub struct ModelPrice {
 }
 
 pub fn get_model_price(model_name: &str) -> ModelPrice {
-    let lower = model_name.to_ascii_lowercase();
-    if lower.contains("claude-3-7-sonnet") || lower.contains("claude-3-5-sonnet") {
+    if let Some(spec) = model_specs::find(model_name) {
         ModelPrice {
-            input_per_million: 3.0,
-            output_per_million: 15.0,
-            cache_read_per_million: 0.30,
-            cache_write_per_million: 3.75,
-        }
-    } else if lower.contains("claude-3-5-haiku") || lower.contains("haiku") {
-        ModelPrice {
-            input_per_million: 0.80,
-            output_per_million: 4.0,
-            cache_read_per_million: 0.08,
-            cache_write_per_million: 1.0,
-        }
-    } else if lower.contains("gpt-4o-mini") {
-        ModelPrice {
-            input_per_million: 0.15,
-            output_per_million: 0.60,
-            cache_read_per_million: 0.075,
-            cache_write_per_million: 0.15,
-        }
-    } else if lower.contains("gpt-4o") {
-        ModelPrice {
-            input_per_million: 2.50,
-            output_per_million: 10.0,
-            cache_read_per_million: 1.25,
-            cache_write_per_million: 2.50,
+            input_per_million: spec.input_per_million,
+            output_per_million: spec.output_per_million,
+            cache_read_per_million: spec.cache_read_per_million,
+            cache_write_per_million: spec.cache_write_per_million,
         }
     } else {
         // Fallback default
