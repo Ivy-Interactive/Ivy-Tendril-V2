@@ -339,7 +339,7 @@ pub fn find_project<'a>(settings: &'a TendrilSettings, name: &str) -> Option<&'a
         .find(|p| p.name.eq_ignore_ascii_case(name))
 }
 
-fn find_repo_ref<'a>(
+pub(crate) fn find_repo_ref<'a>(
     config: &'a ProjectConfig,
     repo_path: &str,
 ) -> Option<&'a crate::models::RepoRef> {
@@ -350,7 +350,7 @@ fn find_repo_ref<'a>(
         .find(|r| repo_name(&r.path).to_ascii_lowercase() == target)
 }
 
-fn repo_name(path: &str) -> &str {
+pub(crate) fn repo_name(path: &str) -> &str {
     path.trim_end_matches(['/', '\\'])
         .rsplit(['/', '\\'])
         .next()
