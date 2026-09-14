@@ -1,3 +1,4 @@
+pub mod changes;
 pub mod chat;
 pub mod config;
 pub mod costs;
@@ -94,6 +95,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/jobs/:id/logs/stream", get(jobs::stream_job_logs))
         .route("/api/jobs/:id/events", get(jobs::stream_job_events))
+        // Filesystem changes
+        .route("/api/changes/events", get(changes::stream_changes))
         // Projects & Verifications
         .route(
             "/api/projects",
