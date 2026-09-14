@@ -106,6 +106,19 @@ pub fn sync_plan(conn: &Connection, plan: &PlanFile) -> Result<()> {
         )?;
     }
 
+    // The plan folder's costs.csv is the durable record of what the plan spent, shared with the
+    // original app; the Costs table is a projection of it. Reconciling here is what makes V2 pick up
+    // rows the original appended, on every sync_plan call site. Errors are logged and swallowed:
+    // this returns rusqlite::Result, so an I/O failure must not abort the plan sync.
+    if let Err(e) = crate::plans::costs_csv::reconcile_plan_costs(
+        conn,
+        std::path::Path::new(&plan.folder_path),
+        plan_id,
+        None,
+    ) {
+        tracing::warn!("Failed to reconcile costs for plan {}: {}", plan_id, e);
+    }
+
     Ok(())
 }
 

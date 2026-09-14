@@ -28,22 +28,22 @@ export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="shortcuts-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl"
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <h2 id="shortcuts-dialog-title" className="text-lg font-bold text-slate-100">
+        <div className="flex items-center justify-between border-b border-border pb-4">
+          <h2 id="shortcuts-dialog-title" className="text-lg font-bold text-foreground">
             Keyboard Shortcuts
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="rounded p-1 text-slate-400 hover:text-slate-200"
+            className="rounded p-1 text-muted-foreground hover:text-foreground"
           >
             ✕
           </button>
@@ -52,8 +52,8 @@ export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
         <div className="mt-4 space-y-3">
           {shortcuts.map((s, idx) => (
             <div key={idx} className="flex items-center justify-between text-sm">
-              <span className="text-slate-400">{s.desc}</span>
-              <kbd className="rounded bg-slate-800 px-2.5 py-1 font-mono text-xs text-slate-200 border border-slate-700">
+              <span className="text-muted-foreground">{s.desc}</span>
+              <kbd className="rounded bg-muted px-2.5 py-1 font-mono text-xs text-foreground border border-border">
                 {s.key}
               </kbd>
             </div>
