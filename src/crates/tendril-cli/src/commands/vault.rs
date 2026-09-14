@@ -109,7 +109,10 @@ pub enum VaultCommands {
         repo: Vec<String>,
         #[arg(long = "no-permissions")]
         no_permissions: bool,
-        #[arg(long, help = "Merge into an existing local project instead of replacing it")]
+        #[arg(
+            long,
+            help = "Merge into an existing local project instead of replacing it"
+        )]
         merge: bool,
     },
 
@@ -127,7 +130,11 @@ pub enum VaultCommands {
         title: Option<String>,
         #[arg(long)]
         body: Option<String>,
-        #[arg(long = "reviewer", value_name = "LOGINS", help = "Repeatable; also accepts a comma-separated list")]
+        #[arg(
+            long = "reviewer",
+            value_name = "LOGINS",
+            help = "Repeatable; also accepts a comma-separated list"
+        )]
         reviewer: Vec<String>,
     },
 
@@ -420,7 +427,12 @@ fn print_vault_list(statuses: &[VaultStatus]) {
                     .last_synced_at
                     .map(|synced| synced.format("%Y-%m-%d %H:%M").to_string())
                     .unwrap_or_else(|| "never".to_string()),
-                if status.always_up_to_date { "on" } else { "off" }.to_string(),
+                if status.always_up_to_date {
+                    "on"
+                } else {
+                    "off"
+                }
+                .to_string(),
             ]
         })
         .collect();
@@ -498,7 +510,13 @@ fn print_discovered(repos: &[vault::DiscoveredVaultRepo]) {
         .collect();
 
     print_table(
-        &["Full Name", "Repo URL", "Owner", "Account Type", "Visibility"],
+        &[
+            "Full Name",
+            "Repo URL",
+            "Owner",
+            "Account Type",
+            "Visibility",
+        ],
         &rows,
     );
 }
@@ -609,10 +627,7 @@ fn report_sync_result(result: &VaultSyncResult) -> anyhow::Result<()> {
 // Filesystem path
 // ---------------------------------------------------------------------------------------------
 
-async fn handle_vault_command_fs(
-    cmd: VaultCommands,
-    tendril_home: &Path,
-) -> anyhow::Result<()> {
+async fn handle_vault_command_fs(cmd: VaultCommands, tendril_home: &Path) -> anyhow::Result<()> {
     match cmd {
         VaultCommands::List { json } => {
             let statuses = vault::get_vaults(tendril_home)?;
@@ -752,12 +767,9 @@ async fn handle_vault_command_fs(
                 println!("Cancelled.");
                 return Ok(());
             }
-            let result = vault::delete_project_from_vault(
-                tendril_home,
-                &project_name,
-                vault_id.as_deref(),
-            )
-            .await?;
+            let result =
+                vault::delete_project_from_vault(tendril_home, &project_name, vault_id.as_deref())
+                    .await?;
             report_pr_result(&result)?;
         }
     }
@@ -783,8 +795,8 @@ async fn handle_vault_command_daemon(
     cmd: &VaultCommands,
     master: &MasterInfo,
 ) -> anyhow::Result<DaemonOutcome> {
-    let client = reqwest::Client::new();
-    let base_url = format!("http://{}:{}", master.host, master.port);
+    let client = super::daemon_client(master)?;
+    let base_url = master.base_url();
 
     /// A transport failure means the daemon is gone; anything else is a real error.
     macro_rules! send {
@@ -852,13 +864,13 @@ async fn handle_vault_command_daemon(
             public,
             org,
         } => {
-            let response = send!(client
-                .post(format!("{}/api/vaults/create", base_url))
-                .json(&serde_json::json!({
+            let response = send!(client.post(format!("{}/api/vaults/create", base_url)).json(
+                &serde_json::json!({
                     "repoName": repo_name,
                     "private": !public,
                     "org": org,
-                })));
+                })
+            ));
             let result: VaultResult = parse!(response, "create vault repository");
             report_result(&result)?;
         }

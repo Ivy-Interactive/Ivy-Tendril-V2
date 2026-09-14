@@ -784,6 +784,12 @@ fn default_api_version() -> u32 {
     1
 }
 
+/// `.master` files written before `serve --tls-cert/--tls-key` existed carry no `scheme`, and every
+/// one of them describes a plaintext server.
+fn default_scheme() -> String {
+    "http".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MasterInfo {
     pub port: u16,
@@ -804,6 +810,17 @@ pub struct MasterInfo {
     pub api_version: u32,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// `"http"` or `"https"` — which one `serve` was started with. Clients must not guess: a request
+    /// to the wrong scheme is a connection error, not a redirect.
+    #[serde(default = "default_scheme")]
+    pub scheme: String,
+}
+
+impl MasterInfo {
+    /// The base URL of the daemon's API, e.g. `https://127.0.0.1:5010`.
+    pub fn base_url(&self) -> String {
+        format!("{}://{}:{}", self.scheme, self.host, self.port)
+    }
 }
 
 pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
@@ -845,7 +862,13 @@ pub fn write_master_info(tendril_home: &Path, info: &MasterInfo) -> Result<()> {
     Ok(())
 }
 
-pub fn write_master(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<()> {
+pub fn write_master(
+    tendril_home: &Path,
+    port: u16,
+    secret: &str,
+    host: &str,
+    scheme: &str,
+) -> Result<()> {
     let info = MasterInfo {
         port,
         pid: std::process::id(),
@@ -855,6 +878,7 @@ pub fn write_master(tendril_home: &Path, port: u16, secret: &str, host: &str) ->
         version: env!("CARGO_PKG_VERSION").to_string(),
         api_version: 1,
         capabilities: default_capabilities(),
+        scheme: scheme.to_string(),
     };
     write_master_info(tendril_home, &info)
 }
@@ -872,10 +896,23 @@ pub struct MasterGuard {
 }
 
 impl MasterGuard {
-    pub fn acquire(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<Self> {
+    pub fn acquire(
+        tendril_home: &Path,
+        port: u16,
+        secret: &str,
+        host: &str,
+        scheme: &str,
+    ) -> Result<Self> {
         if let Some(existing) = read_master(tendril_home) {
             let running = is_process_running(existing.pid);
-            let responding = probe_health(&existing.host, existing.port);
+            // `probe_health` speaks plaintext HTTP, so it cannot tell a live TLS server from a dead
+            // one. Trusting it there would delete a healthy instance's `.master` and start a second
+            // server on the same port; for those, the pid check is the whole answer.
+            let responding = if existing.scheme.eq_ignore_ascii_case("https") {
+                running
+            } else {
+                probe_health(&existing.host, existing.port)
+            };
 
             if running && responding {
                 return Err(TendrilError::Other(format!(
@@ -891,7 +928,7 @@ impl MasterGuard {
             }
         }
 
-        write_master(tendril_home, port, secret, host)?;
+        write_master(tendril_home, port, secret, host, scheme)?;
         Ok(Self {
             tendril_home: tendril_home.to_path_buf(),
             pid: std::process::id(),

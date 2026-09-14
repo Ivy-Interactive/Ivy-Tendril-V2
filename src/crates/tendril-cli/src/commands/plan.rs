@@ -489,11 +489,19 @@ async fn report_plan_edit_event(
         }
     };
 
-    let client = reqwest::Client::new();
-    let url = format!(
-        "http://{}:{}/api/plans/{}/events",
-        master.host, master.port, plan_id
-    );
+    // This function only warns on failure — a plan edit is not undone because the notification did
+    // not land — so a client that cannot even be built is warned about the same way.
+    let client = match super::daemon_client(&master) {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!(
+                "Warning: could not report the edit to plan {}: {}",
+                plan_id, e
+            );
+            return;
+        }
+    };
+    let url = format!("{}/api/plans/{}/events", master.base_url(), plan_id);
 
     let payload = serde_json::json!({
         "summary": summary,

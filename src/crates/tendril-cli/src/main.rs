@@ -84,6 +84,22 @@ enum Commands {
 
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
+
+        #[arg(
+            long,
+            value_name = "PATH",
+            requires = "tls_key",
+            help = "PEM certificate; serves HTTPS instead of HTTP (see `tendril generate-certs`)"
+        )]
+        tls_cert: Option<PathBuf>,
+
+        #[arg(
+            long,
+            value_name = "PATH",
+            requires = "tls_cert",
+            help = "PEM private key matching --tls-cert"
+        )]
+        tls_key: Option<PathBuf>,
     },
 
     #[command(about = "Run Model Context Protocol (MCP) server over stdio")]
@@ -124,6 +140,19 @@ chat session, with this installation's paths substituted in.\n\nThe output is th
 only, with no trailing newline, so it can be piped straight into an agent's system prompt."
     )]
     AgentInstructions,
+
+    #[command(
+        name = "generate-certs",
+        about = "Generate a self-signed localhost certificate for `serve --tls-cert`",
+        long_about = "Writes a self-signed `localhost.crt` / `localhost.key` PEM pair into \
+OUTPUT_DIR, valid for localhost, 127.0.0.1 and ::1.\n\nThis is a PEM pair, not the PKCS#12 `.pfx` \
+bundle earlier versions wrote: it is what `tendril serve --tls-cert/--tls-key` reads. The \
+certificate is self-signed, so clients have to be told to trust it."
+    )]
+    GenerateCerts {
+        #[arg(value_name = "OUTPUT_DIR")]
+        output_dir: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -156,8 +185,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::Models { refresh } => {
             commands::models::handle_models(refresh, &tendril_home).await?
         }
-        Commands::Serve { port, host } => {
-            commands::serve::handle_serve(&tendril_home, port, Some(host)).await?
+        Commands::Serve {
+            port,
+            host,
+            tls_cert,
+            tls_key,
+        } => {
+            commands::serve::handle_serve(&tendril_home, port, Some(host), tls_cert, tls_key)
+                .await?
         }
         Commands::Mcp => commands::mcp::handle_mcp(&tendril_home).await?,
         Commands::Db(cmd) => commands::db::handle_db_command(cmd, &tendril_home)?,
@@ -171,6 +206,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::AgentInstructions => {
             commands::agent_instructions::handle_agent_instructions(&tendril_home)?
+        }
+        Commands::GenerateCerts { output_dir } => {
+            commands::generate_certs::handle_generate_certs(&output_dir)?
         }
     }
 

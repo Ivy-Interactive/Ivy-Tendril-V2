@@ -34,7 +34,7 @@ async fn start_test_server() -> TestServer {
     let port = tokio_listener.local_addr().unwrap().port();
 
     let secret = tendril_core::config::generate_bearer_secret();
-    let _guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str).unwrap();
+    let _guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str, "http").unwrap();
 
     let plans_dir = tendril_home.join("Plans");
     std::fs::create_dir_all(&plans_dir).unwrap();
@@ -1118,7 +1118,6 @@ async fn add_verification_optional_sets_required_false() {
     .await;
 }
 
-
 #[tokio::test]
 async fn project_port_add_list_remove() {
     let tendril_home = std::env::temp_dir().join(format!(
@@ -1330,7 +1329,6 @@ async fn project_env_file_add_list_remove() {
 
     let _ = std::fs::remove_dir_all(&tendril_home);
 }
-
 
 #[tokio::test]
 async fn test_project_cli_add_review_action_persists_paths() {

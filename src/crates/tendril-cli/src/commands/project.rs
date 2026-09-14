@@ -228,8 +228,8 @@ async fn handle_project_command_daemon(
     cmd: &ProjectCommands,
     master: &MasterInfo,
 ) -> anyhow::Result<DaemonOutcome> {
-    let client = reqwest::Client::new();
-    let base_url = format!("http://{}:{}", master.host, master.port);
+    let client = super::daemon_client(master)?;
+    let base_url = master.base_url();
 
     match cmd {
         ProjectCommands::List => {

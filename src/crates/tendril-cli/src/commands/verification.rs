@@ -67,8 +67,8 @@ async fn handle_verification_command_daemon(
     cmd: &VerificationCommands,
     master: &MasterInfo,
 ) -> anyhow::Result<DaemonOutcome> {
-    let client = reqwest::Client::new();
-    let base_url = format!("http://{}:{}", master.host, master.port);
+    let client = super::daemon_client(master)?;
+    let base_url = master.base_url();
 
     match cmd {
         VerificationCommands::List { json } => {

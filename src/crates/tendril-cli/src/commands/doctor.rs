@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashSet;
 use std::path::Path;
 use tendril_core::config::{
-    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
+    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config, read_master,
 };
 use tendril_core::db::{
     check_plan_search, get_last_sync_time, open_database, rebuild_search_index, PlanSearchHealth,
@@ -104,16 +104,24 @@ pub(crate) fn plan_search_lines(
     lines
 }
 
-pub fn handle_doctor(tendril_home: &Path, rebuild_search_index_flag: bool) -> anyhow::Result<()> {
-    println!("Checking Tendril system health...");
+/// The health report `tendril doctor` prints, as lines. Split from [`handle_doctor`] so `report-bug`
+/// can put the same text in its bundle without shelling out to the CLI or capturing stdout.
+// `report-bug`, the only caller, lands in a later commit.
+#[allow(dead_code)]
+pub(crate) fn collect_doctor_report(tendril_home: &Path) -> Vec<String> {
+    doctor_report(tendril_home, false)
+}
 
-    println!("[OK] Tendril Home: {}", tendril_home.display());
+fn doctor_report(tendril_home: &Path, rebuild_search_index_flag: bool) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    lines.push(format!("[OK] Tendril Home: {}", tendril_home.display()));
 
     let cfg_path = get_config_path(tendril_home);
     if cfg_path.exists() {
         match load_config(&cfg_path) {
             Ok(settings) => {
-                println!("[OK] Config file valid: {}", cfg_path.display());
+                lines.push(format!("[OK] Config file valid: {}", cfg_path.display()));
                 for project in &settings.projects {
                     for v in &project.verifications {
                         if !settings
@@ -121,10 +129,10 @@ pub fn handle_doctor(tendril_home: &Path, rebuild_search_index_flag: bool) -> an
                             .iter()
                             .any(|def| def.name.eq_ignore_ascii_case(&v.name))
                         {
-                            println!(
+                            lines.push(format!(
                                 "[WARN] Project '{}' references non-existent verification '{}'",
                                 project.name, v.name
-                            );
+                            ));
                         }
                     }
 
@@ -138,7 +146,7 @@ pub fn handle_doctor(tendril_home: &Path, rebuild_search_index_flag: bool) -> an
                             &r.path,
                             tendril_home,
                         ) {
-                            println!("{}", warning);
+                            lines.push(warning);
                         }
                     }
 
@@ -154,71 +162,112 @@ pub fn handle_doctor(tendril_home: &Path, rebuild_search_index_flag: bool) -> an
                             dep_path,
                             tendril_home,
                         ) {
-                            println!("{}", warning);
+                            lines.push(warning);
                         }
                     }
                 }
             }
-            Err(e) => println!("[FAIL] Config file error: {}", e),
+            Err(e) => lines.push(format!("[FAIL] Config file error: {}", e)),
         }
     } else {
-        println!("[WARN] Config file does not exist: {}", cfg_path.display());
+        lines.push(format!(
+            "[WARN] Config file does not exist: {}",
+            cfg_path.display()
+        ));
     }
 
     let db_path = get_database_path(tendril_home);
     match open_database(&db_path) {
         Ok(conn) => {
-            println!(
+            lines.push(format!(
                 "[OK] Database accessible and migrated: {}",
                 db_path.display()
-            );
+            ));
 
             if rebuild_search_index_flag {
                 match rebuild_search_index(&conn) {
-                    Ok(indexed) => println!("Rebuilt plan search index ({} plans).", indexed),
-                    Err(e) => println!("[FAIL] Could not rebuild plan search index: {}", e),
+                    Ok(indexed) => {
+                        lines.push(format!("Rebuilt plan search index ({} plans).", indexed))
+                    }
+                    Err(e) => {
+                        lines.push(format!("[FAIL] Could not rebuild plan search index: {}", e))
+                    }
                 }
             }
 
             match check_plan_search(&conn) {
                 Ok(health) => {
                     let last_sync = get_last_sync_time(&conn).unwrap_or(None);
-                    for line in plan_search_lines(&health, last_sync) {
-                        println!("{}", line);
-                    }
+                    lines.extend(plan_search_lines(&health, last_sync));
                 }
-                Err(e) => println!("[FAIL] Could not inspect plan search index: {}", e),
+                Err(e) => lines.push(format!("[FAIL] Could not inspect plan search index: {}", e)),
             }
         }
-        Err(e) => println!("[FAIL] Database error: {}", e),
+        Err(e) => lines.push(format!("[FAIL] Database error: {}", e)),
     }
 
     let plans_dir = get_plans_dir(tendril_home);
     if plans_dir.exists() {
-        println!("[OK] Plans directory: {}", plans_dir.display());
+        lines.push(format!("[OK] Plans directory: {}", plans_dir.display()));
     } else {
-        println!("[WARN] Plans directory not found: {}", plans_dir.display());
+        lines.push(format!(
+            "[WARN] Plans directory not found: {}",
+            plans_dir.display()
+        ));
     }
+
+    lines.push(server_line(tendril_home));
 
     // Git check
     match std::process::Command::new("git").arg("--version").output() {
-        Ok(out) => println!(
+        Ok(out) => lines.push(format!(
             "[OK] Git installed: {}",
             String::from_utf8_lossy(&out.stdout).trim()
-        ),
-        Err(_) => println!("[FAIL] Git not found on PATH"),
+        )),
+        Err(_) => lines.push("[FAIL] Git not found on PATH".to_string()),
     }
 
     // GitHub CLI check
     match std::process::Command::new("gh").arg("--version").output() {
-        Ok(out) => println!(
+        Ok(out) => lines.push(format!(
             "[OK] GitHub CLI installed: {}",
             String::from_utf8_lossy(&out.stdout)
                 .lines()
                 .next()
                 .unwrap_or("")
-        ),
-        Err(_) => println!("[WARN] GitHub CLI ('gh') not found on PATH"),
+        )),
+        Err(_) => lines.push("[WARN] GitHub CLI ('gh') not found on PATH".to_string()),
+    }
+
+    lines
+}
+
+/// What `.master` says the running server is, including which scheme it serves: a client that guesses
+/// wrong gets a connection error rather than a redirect, so this is worth stating plainly.
+fn server_line(tendril_home: &Path) -> String {
+    match read_master(tendril_home) {
+        Some(master) => {
+            let note = if master.scheme.eq_ignore_ascii_case("https") {
+                "TLS"
+            } else {
+                "plaintext; --tls-cert/--tls-key serves HTTPS"
+            };
+            format!(
+                "[OK] Server: {} (pid {}, {})",
+                master.base_url(),
+                master.pid,
+                note
+            )
+        }
+        None => "[OK] Server: not running (no .master file)".to_string(),
+    }
+}
+
+pub fn handle_doctor(tendril_home: &Path, rebuild_search_index_flag: bool) -> anyhow::Result<()> {
+    println!("Checking Tendril system health...");
+
+    for line in doctor_report(tendril_home, rebuild_search_index_flag) {
+        println!("{}", line);
     }
 
     Ok(())
