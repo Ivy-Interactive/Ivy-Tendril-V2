@@ -1,4 +1,10 @@
+use crate::config::normalize_slashes;
 use crate::error::Result;
+use crate::promptware::overlay::{
+    overlay_promptware_names, read_version, OverlayLayer, VERSION_FILE,
+};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Per-promptware directories that belong to the running installation, not to the shipped program:
@@ -53,28 +59,316 @@ pub fn find_promptware_source_with_override(override_dir: Option<&str>) -> Optio
         .find(|candidate| candidate.is_dir())
 }
 
-pub fn deploy_standard_promptwares(target_dir: &Path) -> Result<()> {
+/// Directories that are never written by a deploy, at either layer.
+///
+/// `Memory/` holds reflections the agents wrote themselves, so no layer may supply, overwrite or
+/// prune anything inside it. `Tools/` is deliberately **not** listed: it merges, because the shipped
+/// tools, the overlay's tools and the ones agents write at run time all have to coexist.
+const NEVER_DEPLOYED_DIRS: &[&str] = &["Memory"];
+
+/// Name of the provenance manifest written at the Promptwares root.
+pub const PROVENANCE_FILE: &str = ".provenance.json";
+
+/// Which layer a deployed file came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Layer {
+    Shipped,
+    Overlay,
+}
+
+impl Layer {
+    pub fn label(self) -> &'static str {
+        match self {
+            Layer::Shipped => "shipped",
+            Layer::Overlay => "overlay",
+        }
+    }
+}
+
+/// The two layers a deploy draws from. `Default` is shipped-only with the source probed, which is
+/// the behaviour every existing call site expects.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DeployOptions<'a> {
+    /// `None` probes via [`find_promptware_source`]. Tests pass an explicit path so their results do
+    /// not depend on the directory `cargo test` happens to run from.
+    pub shipped_root: Option<&'a Path>,
+    pub overlay: Option<&'a OverlayLayer>,
+}
+
+/// What the two layers contributed to one promptware.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptwareProvenance {
+    pub name: String,
+    /// Which layer supplied `Program.md`. `None` means neither did and the stub was used.
+    #[serde(default)]
+    pub program: Option<Layer>,
+    /// The overlay supplied this promptware and the shipped layer did not.
+    pub overlay_only: bool,
+    /// Relative path (forward slashes) to the layer that last wrote it. Excludes `Memory/`.
+    #[serde(default)]
+    pub files: BTreeMap<String, Layer>,
+    /// `<Name>/.version`, preferring the overlay's over the shipped one.
+    #[serde(default)]
+    pub version: Option<String>,
+}
+
+impl PromptwareProvenance {
+    /// Files under `Tools/` that came from `layer`. Used by `tendril promptware layers`.
+    pub fn tool_count(&self, layer: Layer) -> usize {
+        self.files
+            .iter()
+            .filter(|(path, from)| **from == layer && path.starts_with("Tools/"))
+            .count()
+    }
+}
+
+/// The outcome of a deploy. Serialized to `<target>/.provenance.json`, which is deploy output rather
+/// than user-editable input — its absence only means "not deployed since layering landed".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeployReport {
+    #[serde(default)]
+    pub shipped_root: Option<PathBuf>,
+    #[serde(default)]
+    pub overlay_root: Option<PathBuf>,
+    /// `<overlayRoot>/.version` — the team's revision string.
+    #[serde(default)]
+    pub overlay_version: Option<String>,
+    /// The `tendril-core` version that performed the deploy, mirroring the original's assembly stamp.
+    pub shipped_version: String,
+    pub promptwares: Vec<PromptwareProvenance>,
+}
+
+impl DeployReport {
+    pub fn promptware(&self, name: &str) -> Option<&PromptwareProvenance> {
+        self.promptwares.iter().find(|p| p.name == name)
+    }
+}
+
+/// The version this build stamps a deployed tree with.
+pub fn shipped_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
+/// Deploys the shipped layer and then the overlay into `target_dir`, overlay winning per file.
+///
+/// The promptware set is `STANDARD_PROMPTWARES` unioned with the overlay's own directories, so an
+/// overlay-only promptware needs no entry in `STANDARD_PROMPTWARES`. `Memory/` is never written and
+/// never pruned; `Tools/` merges, so a tool written at run time by
+/// [`write_tool`][crate::promptware::memory::write_tool] survives.
+pub fn deploy_promptwares(target_dir: &Path, opts: DeployOptions<'_>) -> Result<DeployReport> {
     std::fs::create_dir_all(target_dir)?;
 
-    let source_dir = find_promptware_source();
+    let shipped_root = match opts.shipped_root {
+        Some(explicit) => Some(explicit.to_path_buf()),
+        None => find_promptware_source(),
+    };
 
-    for name in STANDARD_PROMPTWARES {
+    let mut names: Vec<String> = STANDARD_PROMPTWARES.iter().map(|n| n.to_string()).collect();
+    if let Some(overlay) = opts.overlay {
+        names.extend(overlay_promptware_names(&overlay.root));
+    }
+    names.sort();
+    names.dedup();
+
+    let mut promptwares = Vec::new();
+    for name in &names {
         let p_target = target_dir.join(name);
         std::fs::create_dir_all(p_target.join("Tools"))?;
         std::fs::create_dir_all(p_target.join("Memory"))?;
 
-        if let Some(src) = source_dir.as_deref() {
-            let p_src = src.join(name);
-            if p_src.exists() {
-                copy_dir_recursive(&p_src, &p_target)?;
-                continue;
-            }
+        let shipped_dir = layer_dir(shipped_root.as_deref(), name);
+        let overlay_dir = layer_dir(opts.overlay.map(|o| o.root.as_path()), name);
+
+        // Shipped first, overlay second: the second copy overwrites same-named files, which is
+        // exactly "overlay wins per file" and leaves unnamed shipped files in place.
+        let mut files = BTreeMap::new();
+        if let Some(src) = &shipped_dir {
+            copy_layer(src, &p_target, Layer::Shipped, &mut files)?;
+        }
+        if let Some(src) = &overlay_dir {
+            copy_layer(src, &p_target, Layer::Overlay, &mut files)?;
         }
 
-        let prog_file = p_target.join("Program.md");
+        promptwares.push(PromptwareProvenance {
+            program: files.get("Program.md").copied(),
+            overlay_only: overlay_dir.is_some() && shipped_dir.is_none(),
+            version: overlay_dir
+                .as_deref()
+                .and_then(read_version)
+                .or_else(|| shipped_dir.as_deref().and_then(read_version)),
+            name: name.clone(),
+            files,
+        });
+    }
+
+    let report = DeployReport {
+        shipped_root,
+        overlay_root: opts.overlay.map(|o| o.root.clone()),
+        overlay_version: opts.overlay.and_then(|o| o.version.clone()),
+        shipped_version: shipped_version().to_string(),
+        promptwares,
+    };
+
+    // Prune before stubbing, so a `Program.md` whose layer dropped it is replaced by a stub in this
+    // same run rather than leaving the promptware with no program at all.
+    prune_removed_files(target_dir, &report)?;
+
+    for entry in &report.promptwares {
+        let prog_file = target_dir.join(&entry.name).join("Program.md");
         if !prog_file.exists() {
-            let stub = format!("# {}\n\nInstructions for promptware {}.\n", name, name);
+            let stub = format!(
+                "# {}\n\nInstructions for promptware {}.\n",
+                entry.name, entry.name
+            );
             std::fs::write(prog_file, stub)?;
+        }
+    }
+
+    // Mirrors the original's assembly stamp at the Promptwares root.
+    std::fs::write(
+        target_dir.join(VERSION_FILE),
+        format!("{}\n", report.shipped_version),
+    )?;
+    write_provenance(target_dir, &report)?;
+
+    Ok(report)
+}
+
+/// Shipped-only deploy with the source probed. Retained so existing call sites and tests are
+/// unaffected by layering.
+pub fn deploy_standard_promptwares(target_dir: &Path) -> Result<()> {
+    deploy_promptwares(target_dir, DeployOptions::default()).map(|_| ())
+}
+
+/// Whether `target_dir` needs re-deploying for the given layers.
+///
+/// True when nothing has been deployed yet, when this build is newer than the deployed stamp, or
+/// when the overlay's root or `.version` differs from what was deployed — including an overlay being
+/// added or removed. This is the stale-overlay detection the original could only do for its own
+/// assembly version.
+pub fn needs_refresh(target_dir: &Path, opts: DeployOptions<'_>) -> bool {
+    let Some(previous) = read_provenance(target_dir) else {
+        return true;
+    };
+
+    if previous.shipped_version != shipped_version() {
+        return true;
+    }
+
+    let overlay_root = opts.overlay.map(|o| o.root.clone());
+    if previous.overlay_root != overlay_root {
+        return true;
+    }
+
+    previous.overlay_version != opts.overlay.and_then(|o| o.version.clone())
+}
+
+/// Reads the provenance manifest. `None` when absent or unparseable — either way the only sane
+/// response is to deploy again.
+pub fn read_provenance(target_dir: &Path) -> Option<DeployReport> {
+    let raw = std::fs::read_to_string(target_dir.join(PROVENANCE_FILE)).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+fn write_provenance(target_dir: &Path, report: &DeployReport) -> Result<()> {
+    let json = serde_json::to_string_pretty(report)
+        .map_err(|e| crate::error::TendrilError::Config(format!("{}", e)))?;
+    std::fs::write(target_dir.join(PROVENANCE_FILE), format!("{}\n", json))?;
+    Ok(())
+}
+
+/// `<root>/<name>` when both the root and that subdirectory exist.
+fn layer_dir(root: Option<&Path>, name: &str) -> Option<PathBuf> {
+    let candidate = root?.join(name);
+    if candidate.is_dir() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+/// Deletes files the previous deploy recorded that neither layer supplies any more.
+///
+/// Only ever touches paths a previous manifest recorded, so a tool an agent wrote at run time — which
+/// no manifest ever mentions — is never removed. `Memory/` cannot appear in a manifest at all, which
+/// is what makes it structurally unprunable rather than merely unlisted.
+fn prune_removed_files(target_dir: &Path, report: &DeployReport) -> Result<()> {
+    let Some(previous) = read_provenance(target_dir) else {
+        return Ok(());
+    };
+
+    for old in &previous.promptwares {
+        let current = report.promptware(&old.name);
+        for path in old.files.keys() {
+            if current.is_some_and(|c| c.files.contains_key(path)) {
+                continue;
+            }
+            if is_never_deployed(path) {
+                continue;
+            }
+            let stale = target_dir.join(&old.name).join(path);
+            if stale.is_file() {
+                std::fs::remove_file(&stale)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Whether a manifest-relative path lies under a directory no deploy may write.
+fn is_never_deployed(relative: &str) -> bool {
+    NEVER_DEPLOYED_DIRS
+        .iter()
+        .any(|dir| relative == *dir || relative.starts_with(&format!("{}/", dir)))
+}
+
+/// Copies one layer over `dst`, skipping [`NEVER_DEPLOYED_DIRS`] at the layer root and recording each
+/// file it wrote against `layer`.
+fn copy_layer(
+    src: &Path,
+    dst: &Path,
+    layer: Layer,
+    files: &mut BTreeMap<String, Layer>,
+) -> Result<()> {
+    copy_layer_inner(src, dst, layer, Path::new(""), files)
+}
+
+fn copy_layer_inner(
+    src: &Path,
+    dst: &Path,
+    layer: Layer,
+    relative: &Path,
+    files: &mut BTreeMap<String, Layer>,
+) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ft = entry.file_type()?;
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy().to_string();
+        let child_relative = relative.join(&name_str);
+
+        if ft.is_dir() {
+            // Only at the layer root: a `Memory` directory nested inside `Tools/` is an ordinary file
+            // tree and has nothing to do with learned memory.
+            if relative.as_os_str().is_empty() && NEVER_DEPLOYED_DIRS.contains(&name_str.as_str()) {
+                continue;
+            }
+            copy_layer_inner(
+                &entry.path(),
+                &dst.join(&name_str),
+                layer,
+                &child_relative,
+                files,
+            )?;
+        } else if ft.is_file() {
+            std::fs::copy(entry.path(), dst.join(&name_str))?;
+            files.insert(normalize_slashes(&child_relative), layer);
         }
     }
 

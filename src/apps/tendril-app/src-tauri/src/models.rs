@@ -80,9 +80,14 @@ pub struct RecommendationDto {
     pub description: String,
     #[serde(default = "default_recommendation_state")]
     pub state: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Why the recommendation was declined. Distinct from `notes`: this one is
+    /// set only for `Declined`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decline_reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Why the recommendation was accepted. Set only for `AcceptedWithNotes`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub impact: Option<String>,
 }
 
@@ -154,6 +159,25 @@ pub struct PlanDetailDto {
 pub struct RevisionResultDto {
     pub revision: i32,
     pub message: String,
+}
+
+/// One inline diff comment, as stored in `<planFolder>/Artifacts/draft_diff_comments.yaml`.
+///
+/// The field names are the legacy on-disk spelling, which is also the JSON the service speaks and
+/// the shape `PlanDiffView`'s own `DraftComment` expects, so the DTO passes straight through.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftCommentDto {
+    pub file_path: String,
+    pub change_key: String,
+    #[serde(default)]
+    pub content: String,
+    #[serde(default)]
+    pub line_number: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub is_resolved: bool,
 }
 
 /// One repo of a plan, as reported by `GET /api/plans/:id/repo-status`.
@@ -275,6 +299,51 @@ pub struct TendrilConfigDto {
     pub theme: Option<String>,
     #[serde(default)]
     pub raw: serde_json::Value,
+}
+
+/// Mirrors `tendril_core::onboarding::OnboardingStatus`. `reason` stays a `String` rather than an
+/// enum so a reason added server-side does not break an older app build.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingStatusDto {
+    pub needed: bool,
+    #[serde(default)]
+    pub reason: String,
+    #[serde(default)]
+    pub project_count: usize,
+    #[serde(default)]
+    pub config_exists: bool,
+    #[serde(default)]
+    pub tendril_home: String,
+}
+
+/// Mirrors `tendril_core::health::CheckResult`; `status` is `"Ok" | "Warn" | "Fail"` and `category`
+/// is `"Prerequisite" | "Environment"`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DoctorCheckDto {
+    pub name: String,
+    pub status: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_url: Option<String>,
+    #[serde(default)]
+    pub category: String,
+}
+
+/// The subset of `POST /api/projects` the onboarding wizard sends. Everything else on the server's
+/// request struct has a `#[serde(default)]`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectDto {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub repos: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -474,4 +543,102 @@ pub struct EnqueueItemDto {
         alias = "Attachments"
     )]
     pub attachments: Option<Vec<ChatAttachmentDto>>,
+}
+
+/// One tracked pull request as the daemon last saw it. `status` is `Open` / `Closed` / `Merged` /
+/// `Unknown`; `lastChecked` is absent until the first reconciliation pass has seen the PR.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrStatusDto {
+    #[serde(default)]
+    pub pr_url: String,
+    #[serde(default)]
+    pub owner: String,
+    #[serde(default)]
+    pub repo: String,
+    #[serde(default)]
+    pub number: u64,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_checked: Option<String>,
+    #[serde(default)]
+    pub plan_id: String,
+    #[serde(default)]
+    pub plan_folder: String,
+    #[serde(default)]
+    pub plan_title: String,
+    #[serde(default)]
+    pub project: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrTransitionDto {
+    #[serde(default)]
+    pub pr_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    #[serde(default)]
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrSyncReportDto {
+    #[serde(default)]
+    pub tracked: usize,
+    #[serde(default)]
+    pub checked: usize,
+    #[serde(default)]
+    pub skipped_merged: usize,
+    #[serde(default)]
+    pub skipped_fresh: usize,
+    #[serde(default)]
+    pub transitions: Vec<PrTransitionDto>,
+    #[serde(default)]
+    pub completed_plans: Vec<String>,
+    #[serde(default)]
+    pub refused_completions: Vec<String>,
+    #[serde(default)]
+    pub unblocked_plans: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+    #[serde(default)]
+    pub changed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelOptionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "DisplayName")]
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EffortOptionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "DisplayName")]
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentOptionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "Label")]
+    pub label: String,
+    #[serde(default, alias = "Models")]
+    pub models: Vec<ModelOptionDto>,
+    #[serde(default, alias = "SupportsEffort")]
+    pub supports_effort: bool,
+    #[serde(default, alias = "Efforts")]
+    pub efforts: Vec<EffortOptionDto>,
 }

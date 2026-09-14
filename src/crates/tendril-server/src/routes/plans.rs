@@ -8,32 +8,64 @@ use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
 use tendril_core::config::load_config;
-use tendril_core::db::{delete_plan as delete_plan_row, get_plans, open_database, sync_plan};
+use tendril_core::db::{
+    delete_plan as delete_plan_row, get_plans_limited, open_database, sync_plan,
+};
 use tendril_core::error::TendrilError;
 use tendril_core::git::{cleanup_worktrees, run_git};
-use tendril_core::models::{PlanStatus, PlanVerificationEntry, PlanYaml, VerificationStatus};
+use tendril_core::models::{
+    PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
+};
 use tendril_core::plans::{
-    add_plan_verification, add_recommendation, check_plan_health, create_plan, get_revision,
-    list_plan_verifications, list_recommendations, read_plan_file, read_plan_yaml,
-    remove_plan_verification, remove_recommendation, resolve_plan_folder, resolve_plan_folder_name,
-    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
-    CreatePlanOptions, PlanCompletionGuard,
+    accept_recommendation, add_plan_verification, add_recommendation, check_plan_health,
+    clear_diff_comments, create_plan, decline_recommendation, get_plan_field, get_revision,
+    list_plan_verifications, list_recommendations, read_diff_comments, read_plan_file,
+    read_plan_yaml, remove_diff_comment, remove_plan_verification, remove_recommendation,
+    resolve_plan_folder, resolve_plan_folder_name, set_plan_verification_status,
+    set_recommendation_field, set_recommendation_state, upsert_diff_comment, write_diff_comments,
+    write_plan_yaml, write_revision, CreatePlanOptions, DraftComment, PlanCompletionGuard,
+    SUPPORTED_PLAN_FIELDS,
 };
 
 #[derive(Debug, Deserialize)]
 pub struct PlanQuery {
     pub status: Option<String>,
+    /// Alias for `status`, matching the original Tendril's `?state=` query parameter.
+    /// `status` wins when both are present.
+    pub state: Option<String>,
     pub project: Option<String>,
     pub level: Option<String>,
     pub q: Option<String>,
     pub field: Option<String>,
+    /// Unlike the original Tendril (which defaults to 50), V2 defaults to unbounded: the
+    /// desktop app's plan list depends on receiving all plans unless a caller opts in.
+    pub limit: Option<usize>,
 }
 
 pub async fn list_plans(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PlanQuery>,
 ) -> impl IntoResponse {
-    let status_filter = query.status.as_deref().and_then(PlanStatus::from_str_loose);
+    let status_value = query.status.as_deref().or(query.state.as_deref());
+    let status_filter = match status_value {
+        Some(v) => match PlanStatus::from_str_loose(v) {
+            Some(s) => Some(s),
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!("Unknown plan state '{}'", v),
+                        "supportedStates": [
+                            "Draft", "Creating", "Updating", "Executing", "Completed",
+                            "Failed", "Review", "Skipped", "Icebox", "Blocked",
+                        ],
+                    })),
+                )
+                    .into_response()
+            }
+        },
+        None => None,
+    };
     let project_filter = query.project.as_deref();
     let text_filter = query.q.as_deref();
 
@@ -48,7 +80,13 @@ pub async fn list_plans(
         }
     };
 
-    match get_plans(&conn, status_filter, project_filter, text_filter) {
+    match get_plans_limited(
+        &conn,
+        status_filter,
+        project_filter,
+        text_filter,
+        query.limit,
+    ) {
         Ok(plans) => Json(json!(plans)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -86,17 +124,32 @@ pub async fn get_plan(
     };
 
     if let Some(field) = query.field {
-        let val = match field.to_ascii_lowercase().as_str() {
-            "title" => plan_file.metadata.title,
-            "state" => plan_file.metadata.state.to_string(),
-            "project" => plan_file.metadata.project,
-            "level" => plan_file.metadata.level,
-            "id" => plan_file.metadata.id.to_string(),
-            "initialprompt" => plan_file.metadata.initial_prompt.unwrap_or_default(),
-            "sourceurl" => plan_file.metadata.source_url.unwrap_or_default(),
-            _ => String::new(),
+        if field.eq_ignore_ascii_case("id") {
+            return plan_file.metadata.id.to_string().into_response();
+        }
+
+        let (plan_yaml, _) = match read_plan_yaml(&folder) {
+            Ok(y) => y,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("Failed to read plan: {}", e) })),
+                )
+                    .into_response()
+            }
         };
-        return val.into_response();
+
+        return match get_plan_field(&plan_yaml, &field) {
+            Some(val) => val.into_response(),
+            None => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Unknown field '{}'", field),
+                    "supportedFields": SUPPORTED_PLAN_FIELDS,
+                })),
+            )
+                .into_response(),
+        };
     }
 
     Json(json!(plan_file)).into_response()
@@ -961,6 +1014,181 @@ pub async fn write_revision_handler(
     }
 }
 
+// --- Draft Diff Comment Handlers ---
+//
+// A reviewer's inline diff comments live in `<planFolder>/Artifacts/draft_diff_comments.yaml`, not
+// in `plan.yaml`, so unlike the verification handlers these must not call `sync_plan`: there is no
+// DB-projected field to refresh.
+
+#[derive(Debug, Deserialize)]
+pub struct DiffCommentQuery {
+    #[serde(rename = "filePath")]
+    pub file_path: Option<String>,
+    #[serde(rename = "changeKey")]
+    pub change_key: Option<String>,
+}
+
+/// `PUT` accepts `{ "comments": [...] }` and a bare array alike — the wrapper reads better from a
+/// client, the bare form is what a naive caller sends.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ReplaceDiffCommentsBody {
+    Wrapped { comments: Vec<DraftComment> },
+    Bare(Vec<DraftComment>),
+}
+
+impl ReplaceDiffCommentsBody {
+    fn into_comments(self) -> Vec<DraftComment> {
+        match self {
+            Self::Wrapped { comments } => comments,
+            Self::Bare(comments) => comments,
+        }
+    }
+}
+
+/// Tell every connected client that a plan's diff comments moved.
+///
+/// `send` on a `broadcast::Sender` with no subscribers returns `Err`; ignoring it is deliberate — a
+/// failed broadcast must never fail the write that triggered it.
+fn broadcast_diff_comments_changed(state: &AppState, folder_name: &str, count: usize) {
+    let _ = state.ws_tx.send(
+        json!({
+            "type": "plan.diff_comments_changed",
+            "planId": format!("{:05}", plan_id_from_folder_name(folder_name)),
+            "folderName": folder_name,
+            "count": count,
+        })
+        .to_string(),
+    );
+}
+
+fn folder_name_of(folder: &std::path::Path) -> String {
+    folder
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+pub async fn list_diff_comments_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    match read_diff_comments(&folder) {
+        Ok(comments) => (StatusCode::OK, Json(json!(comments))).into_response(),
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read diff comments: {}", e),
+        ),
+    }
+}
+
+pub async fn upsert_diff_comment_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(comment): Json<DraftComment>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    match upsert_diff_comment(&folder, &comment) {
+        Ok(comments) => {
+            broadcast_diff_comments_changed(&state, &folder_name_of(&folder), comments.len());
+            (StatusCode::OK, Json(json!(comments))).into_response()
+        }
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to save diff comment: {}", e),
+        ),
+    }
+}
+
+pub async fn replace_diff_comments_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<ReplaceDiffCommentsBody>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    let comments = body.into_comments();
+    match write_diff_comments(&folder, &comments) {
+        Ok(()) => {
+            broadcast_diff_comments_changed(&state, &folder_name_of(&folder), comments.len());
+            (StatusCode::OK, Json(json!(comments))).into_response()
+        }
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to replace diff comments: {}", e),
+        ),
+    }
+}
+
+/// `?filePath=..&changeKey=..` removes one comment; no query at all clears the plan's whole review.
+pub async fn delete_diff_comments_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Query(query): Query<DiffCommentQuery>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    let outcome = match (query.file_path.as_deref(), query.change_key.as_deref()) {
+        (Some(file_path), Some(change_key)) => remove_diff_comment(&folder, file_path, change_key),
+        (None, None) => clear_diff_comments(&folder).map(|()| Vec::new()),
+        // Half a key is a client bug, not a request to clear everything.
+        _ => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "filePath and changeKey must be given together; omit both to clear all comments"
+                    .to_string(),
+            )
+        }
+    };
+
+    match outcome {
+        Ok(comments) => {
+            broadcast_diff_comments_changed(&state, &folder_name_of(&folder), comments.len());
+            (StatusCode::OK, Json(json!(comments))).into_response()
+        }
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete diff comments: {}", e),
+        ),
+    }
+}
+
 // --- Recommendations Handlers ---
 
 #[derive(Debug, Deserialize)]
@@ -970,11 +1198,30 @@ pub struct AddRecommendationBody {
     pub impact: Option<String>,
 }
 
+/// Body of `PUT /api/plans/:id/recommendations/:title`. Every field is optional so the two shapes
+/// coexist: `{field, value}` edits one field of the recommendation, while `{state, declineReason}` is
+/// the state-only contract the desktop app and the contract tests already send.
 #[derive(Debug, Deserialize)]
 pub struct UpdateRecommendationBody {
-    pub state: String,
+    pub state: Option<String>,
     #[serde(rename = "declineReason")]
     pub decline_reason: Option<String>,
+    pub notes: Option<String>,
+    pub field: Option<String>,
+    pub value: Option<String>,
+}
+
+/// Body of `PUT /api/plans/:id/recommendations/:title/accept`. The notes are optional, and so is the
+/// body itself.
+#[derive(Debug, Default, Deserialize)]
+pub struct AcceptRecommendationBody {
+    pub notes: Option<String>,
+}
+
+/// Body of `PUT /api/plans/:id/recommendations/:title/decline`.
+#[derive(Debug, Default, Deserialize)]
+pub struct DeclineRecommendationBody {
+    pub reason: Option<String>,
 }
 
 pub async fn list_recommendations_handler(
@@ -1065,24 +1312,139 @@ pub async fn update_recommendation_handler(
         }
     };
 
-    match set_recommendation_state(&folder, &title, &body.state, body.decline_reason.as_deref()) {
+    // `{field, value}` edits content, `{state, ...}` moves the recommendation through its lifecycle.
+    // Neither is a 404 case, so the failure modes are distinguished below rather than collapsed into
+    // one status the way this handler used to.
+    let result = match (body.field.as_deref(), body.state.as_deref()) {
+        (Some(field), _) => {
+            let Some(value) = body.value.as_deref() else {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "Field edits require a 'value'" })),
+                )
+                    .into_response();
+            };
+            set_recommendation_field(&folder, &title, field, value)
+        }
+        (None, Some(new_state)) => set_recommendation_state(
+            &folder,
+            &title,
+            new_state,
+            body.notes.as_deref().or(body.decline_reason.as_deref()),
+        ),
+        (None, None) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Provide either 'field' and 'value', or 'state'" })),
+            )
+                .into_response();
+        }
+    };
+
+    match result {
         Ok(_) => {
-            if let Ok(pf) = read_plan_file(&folder) {
-                if let Ok(conn) = open_database(&state.db_path) {
-                    let _ = sync_plan(&conn, &pf);
-                }
-            }
+            sync_plan_folder(&state, &folder);
             (
                 StatusCode::OK,
                 Json(json!({ "message": "Recommendation updated" })),
             )
                 .into_response()
         }
-        Err(e) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": format!("Failed to update recommendation: {}", e) })),
-        )
-            .into_response(),
+        Err(e) => recommendation_error_response(e, "update"),
+    }
+}
+
+/// Syncs a plan folder into the database, best-effort. Every recommendation write path ends here,
+/// which is what keeps the `Recommendations` projection in step with `plan.yaml`.
+fn sync_plan_folder(state: &Arc<AppState>, folder: &std::path::Path) {
+    if let Ok(pf) = read_plan_file(folder) {
+        if let Ok(conn) = open_database(&state.db_path) {
+            let _ = sync_plan(&conn, &pf);
+        }
+    }
+}
+
+/// Maps a recommendation write failure onto a status code. The core layer reports all of these as
+/// `TendrilError::Plan`, so the message is what distinguishes them: a missing recommendation is a
+/// `404`, a rename onto an existing title is a `409`, and an invalid field, state or impact is a
+/// `400`.
+fn recommendation_error_response(e: TendrilError, verb: &str) -> axum::response::Response {
+    let message = e.to_string();
+    let status = if message.contains("not found") {
+        StatusCode::NOT_FOUND
+    } else if message.contains("already exists") {
+        StatusCode::CONFLICT
+    } else {
+        StatusCode::BAD_REQUEST
+    };
+
+    (
+        status,
+        Json(json!({ "error": format!("Failed to {} recommendation: {}", verb, message) })),
+    )
+        .into_response()
+}
+
+/// `PUT /api/plans/:id/recommendations/:title/accept` — accepts a recommendation, storing any notes.
+/// The response echoes the state it landed in, so the caller sees whether the notes promoted it to
+/// `AcceptedWithNotes`.
+pub async fn accept_recommendation_handler(
+    State(state): State<Arc<AppState>>,
+    Path((plan_id, title)): Path<(String, String)>,
+    body: Option<Json<AcceptRecommendationBody>>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+            )
+                .into_response();
+        }
+    };
+
+    let notes = body.and_then(|Json(b)| b.notes);
+
+    match accept_recommendation(&folder, &title, notes.as_deref()) {
+        Ok(new_state) => {
+            sync_plan_folder(&state, &folder);
+            (StatusCode::OK, Json(json!({ "state": new_state }))).into_response()
+        }
+        Err(e) => recommendation_error_response(e, "accept"),
+    }
+}
+
+/// `PUT /api/plans/:id/recommendations/:title/decline` — declines a recommendation with an optional
+/// reason.
+pub async fn decline_recommendation_handler(
+    State(state): State<Arc<AppState>>,
+    Path((plan_id, title)): Path<(String, String)>,
+    body: Option<Json<DeclineRecommendationBody>>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+            )
+                .into_response();
+        }
+    };
+
+    let reason = body.and_then(|Json(b)| b.reason);
+
+    match decline_recommendation(&folder, &title, reason.as_deref()) {
+        Ok(_) => {
+            sync_plan_folder(&state, &folder);
+            (
+                StatusCode::OK,
+                Json(json!({ "state": RecommendationStatus::DECLINED })),
+            )
+                .into_response()
+        }
+        Err(e) => recommendation_error_response(e, "decline"),
     }
 }
 

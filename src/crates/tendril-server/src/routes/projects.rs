@@ -13,7 +13,9 @@ use tendril_core::config::{
 };
 use tendril_core::db::open_database;
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
-use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
+use tendril_core::models::{
+    ProjectConfig, ProjectVerificationRef, PromptwareHookConfig, RepoRef, ReviewActionConfig,
+};
 use tendril_core::plans::helpers::resolve_plan_folder;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +95,8 @@ pub struct CreateProjectRequest {
     pub stack_hash: Option<String>,
     #[serde(rename = "reviewActions", alias = "review_actions", default)]
     pub review_actions: Vec<ReviewActionConfig>,
+    #[serde(default)]
+    pub hooks: Vec<PromptwareHookConfig>,
     #[serde(rename = "buildDependencies", alias = "build_dependencies", default)]
     pub build_dependencies: Vec<String>,
 }
@@ -114,6 +118,7 @@ pub struct UpdateProjectRequest {
     pub stack_hash: Option<Option<String>>,
     #[serde(rename = "reviewActions", alias = "review_actions")]
     pub review_actions: Option<Vec<ReviewActionConfig>>,
+    pub hooks: Option<Vec<PromptwareHookConfig>>,
     #[serde(rename = "buildDependencies", alias = "build_dependencies")]
     pub build_dependencies: Option<Vec<String>>,
 }
@@ -277,6 +282,7 @@ pub async fn create_project(
         context: req.context,
         stack_hash: req.stack_hash,
         review_actions: req.review_actions,
+        hooks: req.hooks,
         build_dependencies: req.build_dependencies,
         ..Default::default()
     };
@@ -379,6 +385,10 @@ pub async fn update_project(
 
     if let Some(review_actions) = req.review_actions {
         settings.projects[proj_idx].review_actions = review_actions;
+    }
+
+    if let Some(hooks) = req.hooks {
+        settings.projects[proj_idx].hooks = hooks;
     }
 
     if let Some(build_dependencies) = req.build_dependencies {
@@ -818,6 +828,12 @@ pub struct AddReviewActionRequest {
     pub condition: String,
     #[serde(default)]
     pub command: String,
+    #[serde(default)]
+    pub paths: Vec<String>,
+    #[serde(default)]
+    pub before: Option<String>,
+    #[serde(default)]
+    pub after: Option<String>,
 }
 
 pub async fn add_project_review_action(
@@ -864,13 +880,62 @@ pub async fn add_project_review_action(
         .review_actions
         .retain(|a| !a.name.eq_ignore_ascii_case(&action_name));
 
-    settings.projects[proj_idx]
-        .review_actions
-        .push(ReviewActionConfig {
+    let review_actions = &settings.projects[proj_idx].review_actions;
+    let insert_idx = if let Some(target) = req.before.as_deref() {
+        match review_actions
+            .iter()
+            .position(|a| a.name.eq_ignore_ascii_case(target))
+        {
+            Some(idx) => idx,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!(
+                            "Review action '{}' not found in project '{}'. Available: {}",
+                            target,
+                            name,
+                            review_actions.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ")
+                        )
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    } else if let Some(target) = req.after.as_deref() {
+        match review_actions
+            .iter()
+            .position(|a| a.name.eq_ignore_ascii_case(target))
+        {
+            Some(idx) => idx + 1,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!(
+                            "Review action '{}' not found in project '{}'. Available: {}",
+                            target,
+                            name,
+                            review_actions.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ")
+                        )
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    } else {
+        review_actions.len()
+    };
+
+    settings.projects[proj_idx].review_actions.insert(
+        insert_idx,
+        ReviewActionConfig {
             name: action_name.clone(),
             condition: req.condition,
             command: req.command,
-        });
+            paths: req.paths,
+        },
+    );
 
     if let Err(e) = save_config(&state.config_path, &settings) {
         return (
@@ -946,6 +1011,168 @@ pub async fn remove_project_review_action(
         StatusCode::OK,
         Json(json!({
             "message": format!("Review action '{}' removed from project '{}'", action, name)
+        })),
+    )
+        .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddHookRequest {
+    pub name: String,
+    #[serde(default = "default_hook_when")]
+    pub when: String,
+    #[serde(default)]
+    pub promptwares: Vec<String>,
+    #[serde(default)]
+    pub condition: String,
+    #[serde(default)]
+    pub action: String,
+}
+
+fn default_hook_when() -> String {
+    "before".to_string()
+}
+
+/// Adds or replaces a project hook, keyed by name — the same upsert as
+/// [`add_project_review_action`], so re-running the request does not accumulate duplicates.
+///
+/// An unrecognised `when` is rejected here rather than stored: the config model treats it as
+/// matching no phase, which would leave the caller with a hook that silently never fires.
+pub async fn add_project_hook(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(req): Json<AddHookRequest>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let hook_name = req.name.trim().to_string();
+    if hook_name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Hook name cannot be empty" })),
+        )
+            .into_response();
+    }
+
+    let when = req.when.trim().to_ascii_lowercase();
+    if when != "before" && when != "after" {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!("Hook 'when' must be 'before' or 'after', got '{}'", req.when)
+            })),
+        )
+            .into_response();
+    }
+
+    let hooks = &mut settings.projects[proj_idx].hooks;
+    hooks.retain(|h| !h.name.eq_ignore_ascii_case(&hook_name));
+    hooks.push(PromptwareHookConfig {
+        name: hook_name.clone(),
+        when,
+        promptwares: req.promptwares,
+        condition: req.condition,
+        action: req.action,
+    });
+
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "message": format!("Hook '{}' added to project '{}'", hook_name, name)
+        })),
+    )
+        .into_response()
+}
+
+pub async fn remove_project_hook(
+    State(state): State<Arc<AppState>>,
+    Path((name, hook)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let before = settings.projects[proj_idx].hooks.len();
+    settings.projects[proj_idx]
+        .hooks
+        .retain(|h| !h.name.eq_ignore_ascii_case(&hook));
+
+    if settings.projects[proj_idx].hooks.len() == before {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": format!("Hook '{}' not found in project '{}'", hook, name)
+            })),
+        )
+            .into_response();
+    }
+
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "message": format!("Hook '{}' removed from project '{}'", hook, name)
         })),
     )
         .into_response()

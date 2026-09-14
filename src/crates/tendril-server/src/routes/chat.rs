@@ -59,6 +59,11 @@ pub struct EnqueueItemRequest {
     pub attachments: Option<Vec<ChatAttachment>>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateQueuedItemRequest {
+    pub prompt: String,
+}
+
 // Handlers
 
 pub async fn list_sessions_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -257,6 +262,24 @@ pub async fn clear_queue_handler(
 ) -> impl IntoResponse {
     state.chat_manager.clear_queued_messages(&id).await;
     (StatusCode::NO_CONTENT, ())
+}
+
+pub async fn update_queued_item_handler(
+    State(state): State<Arc<AppState>>,
+    Path((session_id, item_id)): Path<(String, String)>,
+    Json(body): Json<UpdateQueuedItemRequest>,
+) -> impl IntoResponse {
+    match state
+        .chat_manager
+        .update_queued_message(&session_id, &item_id, &body.prompt)
+        .await
+    {
+        Some(item) => (StatusCode::OK, Json(json!(item))),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Queued item not found" })),
+        ),
+    }
 }
 
 pub async fn delete_queued_item_handler(

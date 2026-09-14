@@ -1,14 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CreateProjectRequest,
   DiscoveredVaultRepo,
+  DoctorCheck,
+  DraftComment,
   GitHubAccountOption,
   GitHubIssuesPage,
+  InboxProposal,
   Job,
   JobDetail,
   ModelCatalogStatus,
+  OnboardingStatus,
   PlanDetail,
   PlanQuery,
   PlanSummary,
+  PrStatus,
+  PrSyncReport,
   ProjectAssets,
   ProjectSummary,
   RecommendationItem,
@@ -20,6 +27,7 @@ import type {
   ServiceInfo,
   StartJobArgs,
   StartJobResponse,
+  SweepReport,
   TendrilConfig,
   VaultCatalog,
   VaultExportRequest,
@@ -152,6 +160,37 @@ export const bridge = {
     return invoke<RevisionResult>("cmd_write_revision", { id, content });
   },
 
+  /**
+   * Every inline diff comment drafted against a plan, across all revision pairs.
+   *
+   * The mutations below all return the plan's new full list, so a caller replaces its state from
+   * the response instead of guessing at the outcome.
+   */
+  async listDiffComments(this: void, planId: string): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_list_diff_comments", { planId });
+  },
+
+  async upsertDiffComment(
+    this: void,
+    planId: string,
+    comment: DraftComment,
+  ): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_upsert_diff_comment", { planId, comment });
+  },
+
+  async deleteDiffComment(
+    this: void,
+    planId: string,
+    filePath: string,
+    changeKey: string,
+  ): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_delete_diff_comment", { planId, filePath, changeKey });
+  },
+
+  async clearDiffComments(this: void, planId: string): Promise<void> {
+    return invoke<void>("cmd_clear_diff_comments", { planId });
+  },
+
   /** Markdown of one `<planFolder>/Verification/<name>.md` report. */
   async getVerificationReport(
     this: void,
@@ -188,18 +227,26 @@ export const bridge = {
     return invoke<RecommendationItem[]>("cmd_list_recommendations", { planId });
   },
 
+  /**
+   * `declineReason` and `notes` are separate fields, not one field reused: a
+   * decline reason is why the recommendation was rejected, a note is why it was
+   * accepted. Pass `notes` with `AcceptedWithNotes` and `declineReason` with
+   * `Declined`.
+   */
   async setRecommendationState(
     this: void,
     planId: string,
     title: string,
     state: RecommendationState,
     declineReason?: string,
+    notes?: string,
   ): Promise<void> {
     return invoke<void>("cmd_set_recommendation_state", {
       planId,
       title,
       state,
       declineReason,
+      notes,
     });
   },
 
@@ -221,6 +268,15 @@ export const bridge = {
 
   async listProjects(this: void): Promise<ProjectSummary[]> {
     return invoke<ProjectSummary[]>("cmd_list_projects");
+  },
+
+  async listPullRequests(this: void): Promise<PrStatus[]> {
+    return invoke<PrStatus[]>("cmd_list_pull_requests");
+  },
+
+  /** Rejects with code `PR_SYNC_IN_PROGRESS` when the daemon is already reconciling. */
+  async syncPullRequests(this: void): Promise<PrSyncReport> {
+    return invoke<PrSyncReport>("cmd_sync_pull_requests");
   },
 
   async getProjectReviewActions(this: void, projectName: string): Promise<ReviewActionConfig[]> {
@@ -248,8 +304,33 @@ export const bridge = {
     );
   },
 
+  async createProject(this: void, request: CreateProjectRequest): Promise<unknown> {
+    return invoke<unknown>("cmd_create_project", { request });
+  },
+
   async getConfig(this: void): Promise<TendrilConfig> {
     return invoke<TendrilConfig>("cmd_get_config");
+  },
+
+  /** Merges a single top-level key into `config.yaml`, leaving every other key untouched. */
+  async putConfig(this: void, key: string, value: unknown): Promise<void> {
+    return invoke<void>("cmd_put_config", { key, value });
+  },
+
+  async getOnboardingStatus(this: void): Promise<OnboardingStatus> {
+    return invoke<OnboardingStatus>("cmd_get_onboarding_status");
+  },
+
+  async completeOnboarding(this: void): Promise<void> {
+    return invoke<void>("cmd_complete_onboarding");
+  },
+
+  async dismissOnboarding(this: void): Promise<void> {
+    return invoke<void>("cmd_dismiss_onboarding");
+  },
+
+  async runDoctor(this: void): Promise<DoctorCheck[]> {
+    return invoke<DoctorCheck[]>("cmd_run_doctor");
   },
 
   async getModelsStatus(this: void): Promise<ModelCatalogStatus> {
@@ -426,5 +507,27 @@ export const bridge = {
       page,
       perPage,
     });
+  },
+
+  /**
+   * Forces an assigned-issue sweep. Resolves for both `Ran` and
+   * `AlreadyRunning` — read `outcome` to tell them apart. Rejects when the
+   * daemon is not the master, since it cannot do the work.
+   */
+  async checkInbox(this: void): Promise<SweepReport> {
+    return invoke<SweepReport>("cmd_check_inbox");
+  },
+
+  /** Swept issues awaiting a decision. Omitting `state` returns the pending ones. */
+  async listInboxProposals(this: void, state?: string): Promise<InboxProposal[]> {
+    return invoke<InboxProposal[]>("cmd_list_inbox_proposals", { state });
+  },
+
+  async acceptInboxProposal(this: void, id: number): Promise<{ jobId: string }> {
+    return invoke<{ jobId: string }>("cmd_accept_inbox_proposal", { id });
+  },
+
+  async dismissInboxProposal(this: void, id: number): Promise<void> {
+    await invoke("cmd_dismiss_inbox_proposal", { id });
   },
 };

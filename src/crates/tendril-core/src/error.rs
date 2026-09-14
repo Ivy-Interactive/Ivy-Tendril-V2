@@ -39,6 +39,12 @@ pub enum TendrilError {
     #[error("{0}")]
     Conflict(String),
 
+    /// This exact work is already in flight, so the submission is a repeat rather than a new job.
+    /// Distinct from [`TendrilError::Conflict`], which is two *different* job types fighting over one
+    /// plan, but maps to the same HTTP 409.
+    #[error("Duplicate job: {0}")]
+    DuplicateJob(String),
+
     #[error("Config error: {0}")]
     Config(String),
 
@@ -53,6 +59,9 @@ pub enum TendrilError {
 
     #[error("Chat error: {0}")]
     Chat(String),
+
+    #[error("Watcher error: {0}")]
+    Watcher(String),
 
     #[error("{0}")]
     Other(String),

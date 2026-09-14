@@ -101,4 +101,17 @@ export const chatApi = {
   async deleteQueuedItem(sessionId: string, itemId: string): Promise<void> {
     await invoke("cmd_delete_queued_chat_item", { sessionId, itemId });
   },
+
+  /** Rewrites a queued prompt in place, so an edit keeps its position in the queue. */
+  async updateQueuedItem(
+    sessionId: string,
+    itemId: string,
+    prompt: string,
+  ): Promise<ChatQueuedItem> {
+    return await invoke<ChatQueuedItem>("cmd_update_queued_chat_item", {
+      sessionId,
+      itemId,
+      prompt,
+    });
+  },
 };

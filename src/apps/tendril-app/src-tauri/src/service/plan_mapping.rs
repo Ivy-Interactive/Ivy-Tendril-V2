@@ -8,9 +8,12 @@
 //!   serialized **snake_case** (`latest_revision_content`, `initial_prompt`,
 //!   `depends_on`, ...) — not camelCase.
 //! * `PlanMetadata.id` is an `i32`, not a string.
-//! * `PlanMetadata` has no `priority`, `executionProfile` or `recommendations`.
-//!   Those live only in `plan.yaml`, which the response exposes verbatim as
-//!   `yaml_raw`, so they are parsed back out of that.
+//! * `PlanMetadata` has no `priority` or `executionProfile`. Those live only in
+//!   `plan.yaml`, which the response exposes verbatim as `yaml_raw`, so they are
+//!   parsed back out of that.
+//! * `PlanMetadata` *does* carry `recommendations`, but only on the detail
+//!   response and only from a daemon new enough to have the field — the list
+//!   projection omits it. `yaml_raw` stays the fallback for both cases.
 //! * `GET /api/plans` and `GET /api/plans/:id` do **not** agree on how complete
 //!   `metadata` is: the list projection comes back with `verifications` and
 //!   `repos` empty, while the detail response reads them from `plan.yaml`. Both
@@ -93,6 +96,18 @@ fn resolve_verifications(metadata: &Value, extras: &PlanYamlExtras) -> Vec<PlanV
     }
 }
 
+/// Recommendations from `metadata`, falling back to `plan.yaml` when the
+/// response omitted them — which is what the list projection does, and what any
+/// daemon predating the `recommendations` field on `PlanMetadata` does.
+fn resolve_recommendations(metadata: &Value, extras: &PlanYamlExtras) -> Vec<RecommendationDto> {
+    metadata
+        .get("recommendations")
+        .and_then(|v| serde_json::from_value::<Vec<RecommendationDto>>(v.clone()).ok())
+        .filter(|from_metadata| !from_metadata.is_empty())
+        .or_else(|| extras.recommendations.clone())
+        .unwrap_or_default()
+}
+
 fn resolve_repos(metadata: &Value, extras: &PlanYamlExtras) -> Vec<String> {
     let from_metadata = string_list(metadata, "repos");
     if from_metadata.is_empty() {
@@ -149,6 +164,7 @@ pub fn map_plan_detail(value: &Value, fallback_id: &str) -> PlanDetailDto {
     let extras = PlanYamlExtras::parse(value.get("yaml_raw").and_then(|v| v.as_str()));
     let repos = resolve_repos(metadata, &extras);
     let verifications = resolve_verifications(metadata, &extras);
+    let recommendations = resolve_recommendations(metadata, &extras);
 
     PlanDetailDto {
         id: plan_id(metadata, fallback_id),
@@ -174,7 +190,7 @@ pub fn map_plan_detail(value: &Value, fallback_id: &str) -> PlanDetailDto {
             .get("revision_count")
             .and_then(|v| v.as_i64())
             .unwrap_or(0) as i32,
-        recommendations: extras.recommendations.unwrap_or_default(),
+        recommendations,
         allocated_ports: extras.allocated_ports,
     }
 }
@@ -282,6 +298,47 @@ mod tests {
 
         let summary = map_plan_summary(&plan_file_payload(), "fallback");
         assert_eq!(summary.priority, Some(15));
+    }
+
+    /// `PlanMetadata` carries `recommendations` now, so the detail response no
+    /// longer has to be reparsed out of `yaml_raw`. `notes` in particular has to
+    /// survive: it is what an `AcceptedWithNotes` entry keeps its rationale in.
+    #[test]
+    fn prefers_metadata_recommendations_over_yaml_raw() {
+        let mut payload = plan_file_payload();
+        payload["metadata"]["recommendations"] = json!([{
+            "title": "Tauri WebDriver E2E Automation",
+            "description": "Add WebDriver smoke tests.",
+            "state": "AcceptedWithNotes",
+            "notes": "After the driver upgrade",
+            "impact": "Medium"
+        }]);
+
+        let detail = map_plan_detail(&payload, "fallback");
+
+        assert_eq!(detail.recommendations.len(), 1, "yaml_raw must not win");
+        let only = &detail.recommendations[0];
+        assert_eq!(only.state, "AcceptedWithNotes");
+        assert_eq!(only.notes.as_deref(), Some("After the driver upgrade"));
+        assert_eq!(only.decline_reason, None);
+    }
+
+    /// The list projection leaves `recommendations` off, and a daemon older than
+    /// the field never sends it at all. Both have to keep falling back to
+    /// `yaml_raw` rather than showing an empty list.
+    #[test]
+    fn falls_back_to_yaml_raw_when_metadata_omits_recommendations() {
+        let detail = map_plan_detail(&plan_file_payload(), "fallback");
+        assert_eq!(detail.recommendations.len(), 2);
+
+        let mut payload = plan_file_payload();
+        payload["metadata"]["recommendations"] = json!([]);
+        let detail = map_plan_detail(&payload, "fallback");
+        assert_eq!(
+            detail.recommendations.len(),
+            2,
+            "an empty list is indistinguishable from an omitted one here"
+        );
     }
 
     #[test]

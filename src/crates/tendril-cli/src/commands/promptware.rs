@@ -9,8 +9,8 @@ use tendril_core::config::{get_config_path, get_plans_dir, load_config};
 use tendril_core::jobs::firmware_values::{build_job_context, resolve_writable_directories};
 use tendril_core::plans::resolve_plan_folder;
 use tendril_core::promptware::{
-    compile_firmware, delete_memory, deploy_standard_promptwares, list_memory, read_memory,
-    write_memory, write_tool,
+    compile_firmware, delete_memory, deploy_promptwares, list_memory, read_memory, read_provenance,
+    resolve_overlay, write_memory, write_tool, DeployOptions, DeployReport, Layer,
 };
 
 #[derive(Subcommand)]
@@ -42,6 +42,12 @@ pub enum PromptwareCommands {
 
     #[command(about = "Deploy standard promptwares")]
     Deploy,
+
+    #[command(about = "Show which layer supplied each deployed promptware")]
+    Layers {
+        #[arg(help = "Limit the report to one promptware")]
+        name: Option<String>,
+    },
 
     #[command(about = "Run a promptware directly (bypasses job service)")]
     Run {
@@ -79,11 +85,70 @@ pub enum PromptwareCommands {
     },
 }
 
+/// Renders a [`DeployReport`] as the `tendril promptware layers` table, optionally narrowed to one
+/// promptware. Pure so the wording can be asserted in tests.
+fn layer_lines(report: &DeployReport, filter: Option<&str>) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    match (&report.overlay_root, &report.overlay_version) {
+        (Some(root), Some(version)) => lines.push(format!(
+            "Overlay: {} (.version {})",
+            root.display(),
+            version
+        )),
+        (Some(root), None) => lines.push(format!("Overlay: {}", root.display())),
+        (None, _) => lines.push("Overlay: (none configured)".to_string()),
+    }
+    match &report.shipped_root {
+        Some(root) => lines.push(format!(
+            "Shipped: {} ({})",
+            root.display(),
+            report.shipped_version
+        )),
+        None => lines.push(format!("Shipped: (not found) ({})", report.shipped_version)),
+    }
+    lines.push(String::new());
+
+    for entry in &report.promptwares {
+        if let Some(want) = filter {
+            if !entry.name.eq_ignore_ascii_case(want) {
+                continue;
+            }
+        }
+        // Neither layer supplied a program, so the stub fallback wrote one.
+        let program = entry.program.map(Layer::label).unwrap_or("stub");
+        let mut line = format!(
+            "{:<26} Program.md: {:<9} Tools: {} overlay / {} shipped",
+            entry.name,
+            program,
+            entry.tool_count(Layer::Overlay),
+            entry.tool_count(Layer::Shipped)
+        );
+        if entry.overlay_only {
+            line.push_str("   (overlay-only)");
+        }
+        lines.push(line);
+    }
+
+    lines
+}
+
 pub async fn handle_promptware_command(
     cmd: PromptwareCommands,
     tendril_home: &Path,
 ) -> anyhow::Result<()> {
     let p_dir = tendril_home.join("Promptwares");
+
+    // Resolved once here so every deploy path in this command — explicit, lazy, and the layers
+    // report — sees the same overlay.
+    let overlay = resolve_overlay(
+        tendril_home,
+        &load_config(&get_config_path(tendril_home)).unwrap_or_default(),
+    );
+    let deploy_opts = DeployOptions {
+        shipped_root: None,
+        overlay: overlay.as_ref(),
+    };
 
     match cmd {
         PromptwareCommands::ListMemory { name } => {
@@ -131,9 +196,24 @@ pub async fn handle_promptware_command(
             println!("Tool written.");
         }
         PromptwareCommands::Deploy => {
-            deploy_standard_promptwares(&p_dir)?;
-            println!("Standard promptwares deployed to {}", p_dir.display());
+            let report = deploy_promptwares(&p_dir, deploy_opts)?;
+            println!("Promptwares deployed to {}", p_dir.display());
+            println!();
+            for line in layer_lines(&report, None) {
+                println!("{}", line);
+            }
         }
+        PromptwareCommands::Layers { name } => match read_provenance(&p_dir) {
+            Some(report) => {
+                for line in layer_lines(&report, name.as_deref()) {
+                    println!("{}", line);
+                }
+            }
+            None => println!(
+                "No promptware provenance recorded at {} — run 'tendril promptware deploy'.",
+                p_dir.display()
+            ),
+        },
         PromptwareCommands::Run {
             name,
             args,
@@ -158,8 +238,9 @@ pub async fn handle_promptware_command(
             };
 
             if !p_folder.join("Program.md").exists() {
-                // Ensure standard promptwares are deployed
-                let _ = deploy_standard_promptwares(&p_dir);
+                // Ensure promptwares are deployed. Passing the overlay is what lets an overlay-only
+                // promptware (e.g. IvyFrameworkVerification) be materialized here rather than fail.
+                let _ = deploy_promptwares(&p_dir, deploy_opts);
                 if !p_folder.join("Program.md").exists() {
                     anyhow::bail!("Promptware '{}' not found at {}", name, p_folder.display());
                 }
@@ -274,4 +355,124 @@ pub async fn handle_promptware_command(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+    use tendril_core::promptware::PromptwareProvenance;
+
+    fn provenance(
+        name: &str,
+        program: Option<Layer>,
+        overlay_only: bool,
+        files: &[(&str, Layer)],
+    ) -> PromptwareProvenance {
+        PromptwareProvenance {
+            name: name.to_string(),
+            program,
+            overlay_only,
+            files: files
+                .iter()
+                .map(|(p, l)| (p.to_string(), *l))
+                .collect::<BTreeMap<_, _>>(),
+            version: None,
+        }
+    }
+
+    fn report_with_overlay() -> DeployReport {
+        DeployReport {
+            shipped_root: Some(PathBuf::from("/repo/src/promptwares")),
+            overlay_root: Some(PathBuf::from("/team/Promptwares")),
+            overlay_version: Some("1.0.45".to_string()),
+            shipped_version: "0.1.0".to_string(),
+            promptwares: vec![
+                provenance(
+                    "CreatePlan",
+                    Some(Layer::Overlay),
+                    false,
+                    &[("Program.md", Layer::Overlay)],
+                ),
+                provenance(
+                    "ExecutePlan",
+                    Some(Layer::Shipped),
+                    false,
+                    &[("Program.md", Layer::Shipped)],
+                ),
+                provenance(
+                    "IvyFrameworkVerification",
+                    Some(Layer::Overlay),
+                    true,
+                    &[
+                        ("Program.md", Layer::Overlay),
+                        ("Tools/Test-SampleBuild.ps1", Layer::Overlay),
+                    ],
+                ),
+            ],
+        }
+    }
+
+    #[test]
+    fn layer_lines_report_both_roots_and_each_program_layer() {
+        let lines = layer_lines(&report_with_overlay(), None);
+
+        assert_eq!(lines[0], "Overlay: /team/Promptwares (.version 1.0.45)");
+        assert_eq!(lines[1], "Shipped: /repo/src/promptwares (0.1.0)");
+        assert_eq!(lines[2], "");
+        assert!(lines[3].starts_with("CreatePlan"));
+        assert!(lines[3].contains("Program.md: overlay"));
+        assert!(lines[3].contains("Tools: 0 overlay / 0 shipped"));
+        assert!(lines[4].contains("Program.md: shipped"));
+    }
+
+    #[test]
+    fn layer_lines_flag_an_overlay_only_promptware_and_count_its_tools() {
+        let lines = layer_lines(&report_with_overlay(), None);
+
+        let row = lines
+            .iter()
+            .find(|l| l.starts_with("IvyFrameworkVerification"))
+            .expect("overlay-only promptware is listed");
+        assert!(row.contains("Tools: 1 overlay / 0 shipped"), "{row}");
+        assert!(row.ends_with("(overlay-only)"), "{row}");
+    }
+
+    #[test]
+    fn layer_lines_report_no_overlay_as_shipped_everywhere() {
+        let mut report = report_with_overlay();
+        report.overlay_root = None;
+        report.overlay_version = None;
+        report.promptwares = vec![provenance(
+            "CreatePlan",
+            Some(Layer::Shipped),
+            false,
+            &[("Program.md", Layer::Shipped)],
+        )];
+
+        let lines = layer_lines(&report, None);
+
+        assert_eq!(lines[0], "Overlay: (none configured)");
+        assert!(lines[3].contains("Program.md: shipped"));
+        assert!(!lines.iter().any(|l| l.contains("overlay-only")));
+    }
+
+    #[test]
+    fn layer_lines_narrow_to_one_promptware() {
+        let lines = layer_lines(&report_with_overlay(), Some("executeplan"));
+
+        // Header lines and the blank separator, then exactly the one requested row.
+        assert_eq!(lines.len(), 4);
+        assert!(lines[3].starts_with("ExecutePlan"));
+    }
+
+    #[test]
+    fn layer_lines_label_a_stubbed_program() {
+        let mut report = report_with_overlay();
+        report.promptwares = vec![provenance("UpdateProject", None, false, &[])];
+
+        let lines = layer_lines(&report, None);
+
+        assert!(lines[3].contains("Program.md: stub"), "{}", lines[3]);
+    }
 }
