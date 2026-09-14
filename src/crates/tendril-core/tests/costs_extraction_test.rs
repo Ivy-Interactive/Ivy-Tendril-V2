@@ -113,5 +113,5 @@ async fn test_job_completion_cost_extraction() {
     assert_eq!(records[0].plan_id, 42);
     assert_eq!(records[0].promptware, "ExecutePlan");
     assert_eq!(records[0].tokens, 18000);
-    assert!((records[0].cost - cost_val).abs() < 1e-6);
+    assert!((records[0].cost.unwrap() - cost_val).abs() < 1e-6);
 }
