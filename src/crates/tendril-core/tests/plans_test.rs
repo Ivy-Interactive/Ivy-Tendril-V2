@@ -4,10 +4,11 @@ use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
 };
 use tendril_core::plans::{
-    add_plan_verification, add_recommendation, allocate_plan_id, create_plan, get_revision,
-    list_plan_verifications, list_recommendations, read_plan_file, remove_plan_verification,
-    remove_recommendation, rename_project_in_plans, rename_verification_in_plans,
-    set_plan_verification_status, set_recommendation_state, to_safe_title, write_revision,
+    accept_recommendation, add_plan_verification, add_recommendation, allocate_plan_id,
+    create_plan, decline_recommendation, get_revision, list_plan_verifications,
+    list_recommendations, read_plan_file, remove_plan_verification, remove_recommendation,
+    rename_project_in_plans, rename_verification_in_plans, set_plan_verification_status,
+    set_recommendation_field, set_recommendation_state, to_safe_title, write_revision,
     CreatePlanOptions, PlanCompletionGuard,
 };
 
@@ -533,6 +534,286 @@ fn test_db_cascading_renames() {
         )
         .unwrap();
     assert_eq!(rec_proj, "NewProj");
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// A plan folder with one `Pending` recommendation, for the field-edit and
+/// accept/decline tests below. The folder is left for the caller to remove.
+fn plan_with_one_recommendation(prefix: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let test_dir =
+        std::env::temp_dir().join(format!("{}-{}", prefix, uuid::Uuid::new_v4().simple()));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let opts = CreatePlanOptions {
+        title: "Tune The Scheduler".to_string(),
+        project: "TendrilService".to_string(),
+        level: Some("Chore".to_string()),
+        initial_prompt: None,
+        source_url: None,
+        execution_profile: None,
+        priority: None,
+        repos: vec![],
+        verifications: vec![],
+        depends_on: vec![],
+        related_plans: vec![],
+        chat_session_id: None,
+    };
+
+    let plan = create_plan(&test_dir, opts).expect("Failed to create plan");
+    let folder = std::path::PathBuf::from(&plan.folder_path);
+    add_recommendation(&folder, "Add Index", "Index the jobs table", Some("High"))
+        .expect("Failed to add recommendation");
+
+    (test_dir, folder)
+}
+
+fn only_recommendation(folder: &Path) -> tendril_core::models::Recommendation {
+    let mut recs = list_recommendations(folder).expect("Failed to list recommendations");
+    assert_eq!(recs.len(), 1, "expected exactly one recommendation");
+    recs.remove(0)
+}
+
+#[test]
+fn set_recommendation_field_edits_content_not_just_state() {
+    let (test_dir, folder) = plan_with_one_recommendation("tendril-rec-field-test");
+
+    set_recommendation_field(&folder, "Add Index", "description", "Index Jobs(Status)")
+        .expect("Failed to set description");
+    assert_eq!(
+        only_recommendation(&folder).description,
+        "Index Jobs(Status)"
+    );
+
+    // Impact is canonicalized, so a lowercase value is accepted and stored in the
+    // one spelling every consumer matches on.
+    set_recommendation_field(&folder, "Add Index", "impact", "medium")
+        .expect("Failed to set impact");
+    assert_eq!(
+        only_recommendation(&folder).impact.as_deref(),
+        Some("Medium")
+    );
+
+    // Clearing an optional field is a set to empty rather than a separate verb.
+    set_recommendation_field(&folder, "Add Index", "impact", "").expect("Failed to clear impact");
+    assert_eq!(only_recommendation(&folder).impact, None);
+
+    // The field name itself is matched case-insensitively.
+    set_recommendation_field(
+        &folder,
+        "Add Index",
+        "DESCRIPTION",
+        "Case insensitive field",
+    )
+    .expect("Failed to set description via a differently cased field name");
+    assert_eq!(
+        only_recommendation(&folder).description,
+        "Case insensitive field"
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn renaming_a_recommendation_moves_it_and_refuses_a_collision() {
+    let (test_dir, folder) = plan_with_one_recommendation("tendril-rec-rename-test");
+    add_recommendation(&folder, "Cache Results", "Memoize the hot query", None)
+        .expect("Failed to add second recommendation");
+
+    // The title is the key every route and projection row looks the entry up by,
+    // so a rename onto a sibling has to fail rather than produce two of one key.
+    let collision = set_recommendation_field(&folder, "Add Index", "title", "Cache Results");
+    assert!(collision.is_err(), "a rename onto a sibling must fail");
+    assert!(
+        collision
+            .unwrap_err()
+            .to_string()
+            .contains("already exists"),
+        "the error has to be distinguishable from a not-found, so HTTP can map it to 409"
+    );
+
+    set_recommendation_field(&folder, "Add Index", "title", "Add Jobs Index")
+        .expect("Failed to rename recommendation");
+
+    let recs = list_recommendations(&folder).unwrap();
+    assert!(recs.iter().any(|r| r.title == "Add Jobs Index"));
+    assert!(
+        !recs.iter().any(|r| r.title == "Add Index"),
+        "the entry must be findable under the new title only"
+    );
+    // Renaming keeps the rest of the entry: it is a rename, not a replace.
+    let renamed = recs
+        .iter()
+        .find(|r| r.title == "Add Jobs Index")
+        .expect("the renamed entry");
+    assert_eq!(renamed.description, "Index the jobs table");
+    assert_eq!(renamed.impact.as_deref(), Some("High"));
+
+    // An empty title would leave the entry unaddressable.
+    assert!(set_recommendation_field(&folder, "Add Jobs Index", "title", "   ").is_err());
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn set_recommendation_field_rejects_unknown_fields_and_values() {
+    let (test_dir, folder) = plan_with_one_recommendation("tendril-rec-invalid-test");
+
+    let unknown_field = set_recommendation_field(&folder, "Add Index", "priority", "1");
+    assert!(unknown_field.is_err());
+    assert!(
+        unknown_field
+            .unwrap_err()
+            .to_string()
+            .contains("declineReason"),
+        "the error names the fields that are valid, so a typo is self-correcting"
+    );
+
+    assert!(set_recommendation_field(&folder, "Add Index", "state", "Approved").is_err());
+    assert!(set_recommendation_field(&folder, "Add Index", "impact", "Enormous").is_err());
+    assert!(set_recommendation_field(&folder, "No Such Rec", "description", "x").is_err());
+
+    // A rejected write leaves the plan exactly as it was.
+    let rec = only_recommendation(&folder);
+    assert_eq!(rec.state, RecommendationStatus::PENDING);
+    assert_eq!(rec.description, "Index the jobs table");
+    assert_eq!(rec.impact.as_deref(), Some("High"));
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn accepting_with_notes_lands_in_accepted_with_notes() {
+    let (test_dir, folder) = plan_with_one_recommendation("tendril-rec-accept-test");
+
+    let state = accept_recommendation(&folder, "Add Index", None).expect("Failed to accept");
+    assert_eq!(state, RecommendationStatus::ACCEPTED);
+    let rec = only_recommendation(&folder);
+    assert_eq!(rec.state, RecommendationStatus::ACCEPTED);
+    assert_eq!(rec.notes, None, "a bare accept has nothing to note");
+
+    let state = accept_recommendation(
+        &folder,
+        "Add Index",
+        Some("Do it after the index migration"),
+    )
+    .expect("Failed to accept with notes");
+    assert_eq!(state, RecommendationStatus::ACCEPTED_WITH_NOTES);
+    let rec = only_recommendation(&folder);
+    assert_eq!(rec.state, RecommendationStatus::ACCEPTED_WITH_NOTES);
+    assert_eq!(
+        rec.notes.as_deref(),
+        Some("Do it after the index migration")
+    );
+
+    // Whitespace is not a note: `AcceptedWithNotes` with an empty note would show
+    // an empty "Notes:" line in the app and read as a lost note in the CLI.
+    let state = accept_recommendation(&folder, "Add Index", Some("   ")).expect("Failed to accept");
+    assert_eq!(state, RecommendationStatus::ACCEPTED);
+    assert_eq!(only_recommendation(&folder).notes, None);
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn a_decline_reason_and_an_accept_note_never_coexist() {
+    let (test_dir, folder) = plan_with_one_recommendation("tendril-rec-exclusive-test");
+
+    accept_recommendation(&folder, "Add Index", Some("Worth doing")).expect("Failed to accept");
+    decline_recommendation(&folder, "Add Index", Some("Superseded by partitioning"))
+        .expect("Failed to decline");
+
+    let rec = only_recommendation(&folder);
+    assert_eq!(rec.state, RecommendationStatus::DECLINED);
+    assert_eq!(
+        rec.decline_reason.as_deref(),
+        Some("Superseded by partitioning")
+    );
+    assert_eq!(
+        rec.notes, None,
+        "the accept note must not survive a decline: it would read as the reason"
+    );
+
+    accept_recommendation(&folder, "Add Index", Some("Reinstated")).expect("Failed to re-accept");
+    let rec = only_recommendation(&folder);
+    assert_eq!(rec.notes.as_deref(), Some("Reinstated"));
+    assert_eq!(rec.decline_reason, None);
+
+    // Moving back to Pending drops both: an untriaged recommendation has neither.
+    set_recommendation_field(&folder, "Add Index", "state", RecommendationStatus::PENDING)
+        .expect("Failed to reset state");
+    let rec = only_recommendation(&folder);
+    assert_eq!(rec.notes, None);
+    assert_eq!(rec.decline_reason, None);
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn notes_round_trip_through_plan_yaml_and_are_omitted_when_absent() {
+    let (test_dir, folder) = plan_with_one_recommendation("tendril-rec-yaml-test");
+
+    accept_recommendation(&folder, "Add Index", Some("Ship with the 0.2 migration"))
+        .expect("Failed to accept with notes");
+
+    // Read back through the file, not through an in-memory value: `notes` has to
+    // actually be serialized, or the app reads it back empty after a restart.
+    let raw = std::fs::read_to_string(folder.join("plan.yaml")).expect("read plan.yaml");
+    assert!(
+        raw.contains("notes: Ship with the 0.2 migration"),
+        "plan.yaml should carry the note verbatim:\n{raw}"
+    );
+    assert_eq!(
+        only_recommendation(&folder).notes.as_deref(),
+        Some("Ship with the 0.2 migration")
+    );
+
+    decline_recommendation(&folder, "Add Index", Some("Not this quarter"))
+        .expect("Failed to decline");
+    let raw = std::fs::read_to_string(folder.join("plan.yaml")).expect("read plan.yaml");
+    assert!(
+        !raw.contains("notes:"),
+        "an absent note must be omitted rather than written as null:\n{raw}"
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn set_recommendation_state_keeps_the_notes_rules_for_the_http_contract() {
+    let (test_dir, folder) = plan_with_one_recommendation("tendril-rec-state-test");
+
+    // The desktop app's existing `{state, declineReason}` shape reaches this
+    // function, so an AcceptedWithNotes arriving with no text has to degrade to a
+    // plain Accepted rather than claiming notes it does not have.
+    set_recommendation_state(
+        &folder,
+        "Add Index",
+        RecommendationStatus::ACCEPTED_WITH_NOTES,
+        None,
+    )
+    .expect("Failed to set state");
+    let rec = only_recommendation(&folder);
+    assert_eq!(rec.state, RecommendationStatus::ACCEPTED);
+    assert_eq!(rec.notes, None);
+
+    set_recommendation_state(
+        &folder,
+        RecommendationStatus::ACCEPTED_WITH_NOTES,
+        RecommendationStatus::ACCEPTED_WITH_NOTES,
+        Some("ignored"),
+    )
+    .expect_err("an unknown title is not silently created");
+
+    // Case-insensitive on the state as well as on the title, matching every other
+    // loose parse in the plan model.
+    set_recommendation_state(&folder, "add index", "declined", Some("Later"))
+        .expect("Failed to decline");
+    let rec = only_recommendation(&folder);
+    assert_eq!(rec.state, RecommendationStatus::DECLINED);
+    assert_eq!(rec.decline_reason.as_deref(), Some("Later"));
+
+    assert!(set_recommendation_state(&folder, "Add Index", "Approved", None).is_err());
 
     let _ = std::fs::remove_dir_all(test_dir);
 }
