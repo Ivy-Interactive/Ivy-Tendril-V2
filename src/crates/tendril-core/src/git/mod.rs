@@ -1,17 +1,21 @@
 pub mod github;
 pub mod issues;
+pub mod path_budget;
 pub mod pr_sync;
 pub mod pr_url;
 pub mod service;
+pub mod sync;
 pub mod worktree;
 pub mod worktree_log;
 pub mod worktree_reaper;
 
 pub use github::*;
 pub use issues::*;
+pub use path_budget::*;
 pub use pr_sync::*;
 pub use pr_url::*;
 pub use service::*;
+pub use sync::*;
 pub use worktree::*;
 pub use worktree_log::*;
 pub use worktree_reaper::*;

@@ -430,6 +430,34 @@ describe("Operator Views Component & Accessibility Tests", () => {
       expect(handleSelectNav).toHaveBeenCalledWith("jobs");
     });
 
+    it("exposes a Pull Requests nav entry that selects the cross-plan view", () => {
+      const handleSelectNav = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="pull-requests"
+          activeTabs={["dashboard", "pull-requests"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={handleSelectNav}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+        >
+          <div>Pull Requests View Content</div>
+        </ShellLayout>,
+      );
+
+      expect(screen.getByText("Pull Requests View Content")).toBeInTheDocument();
+      // The nav item plus the tab.
+      expect(screen.getAllByText("Pull Requests").length).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getByTitle("Pull Requests"));
+      expect(handleSelectNav).toHaveBeenCalledWith("pull-requests");
+    });
+
     it("calls onCloseTab (not onSelectTab) with the tab id when a tab's close control is clicked", () => {
       const handleSelectTab = vi.fn();
       const handleCloseTab = vi.fn();

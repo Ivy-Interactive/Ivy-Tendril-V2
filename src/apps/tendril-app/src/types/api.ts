@@ -1,3 +1,6 @@
+/** Team Vault DTOs live in `./vault`, next to the components that own their shape. */
+export type * from "./vault";
+
 export type PlanLifecycleState =
   | "Draft"
   | "Creating"
@@ -203,6 +206,12 @@ export interface OnboardingStatus {
   tendrilHome: string;
 }
 
+/** Mirrors `tendril_core::newsletter::SubscribeOutcome`. */
+export interface SubscribeOutcome {
+  subscribed: boolean;
+  error: string | null;
+}
+
 export type DoctorCheckStatus = "Ok" | "Warn" | "Fail";
 
 export type DoctorCheckCategory = "Prerequisite" | "Environment";
@@ -233,6 +242,13 @@ export interface ModelCatalogStatus {
   enrichModels: boolean;
   cachedAt: string | null;
   cachePath: string;
+}
+
+export interface VersionInfo {
+  currentVersion: string;
+  latestVersion: string | null;
+  hasUpdate: boolean;
+  lastChecked: string | null;
 }
 
 export interface StartJobArgs {
@@ -353,6 +369,10 @@ export interface PrStatus {
   planFolder: string;
   planTitle: string;
   project: string;
+  /** `SUM(Cost)` over the plan's cost rows; `0` when the plan has none or none is priceable. */
+  cost: number;
+  /** `SUM(Tokens)` over the plan's cost rows; `0` when the plan has none. */
+  tokens: number;
 }
 
 export interface PrTransition {

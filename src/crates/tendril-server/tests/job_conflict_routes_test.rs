@@ -48,7 +48,7 @@ async fn start_test_server() -> TestServer {
     let port = listener.local_addr().unwrap().port();
 
     let secret = tendril_core::config::generate_bearer_secret();
-    let guard = MasterGuard::acquire(&tendril_home, port, &secret, "127.0.0.1").unwrap();
+    let guard = MasterGuard::acquire(&tendril_home, port, &secret, "127.0.0.1", "http").unwrap();
 
     let plans_dir = tendril_home.join("Plans");
     std::fs::create_dir_all(&plans_dir).unwrap();

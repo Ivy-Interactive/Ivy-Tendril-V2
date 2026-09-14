@@ -56,6 +56,13 @@ pub fn build_agent_spec(provider: &str, config: &AgentLaunchConfig) -> AgentProc
     }
 }
 
+/// The binary `provider` is launched as, derived from the same builders that launch it so the two
+/// can never drift. Safe to call for its command alone: a default `AgentLaunchConfig` has no
+/// system prompt and no MCP servers, so no temp files are written.
+pub fn agent_command(provider: &str) -> String {
+    build_agent_spec(provider, &AgentLaunchConfig::default()).command
+}
+
 // ---------------------------------------------------------------------------
 // Antigravity (agy)
 // ---------------------------------------------------------------------------
