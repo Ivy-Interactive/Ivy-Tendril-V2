@@ -28,15 +28,15 @@ pub use sanitizer::{
 };
 pub use service::{
     connect_vault, connect_vault_with, create_vault_repo, create_vault_repo_with,
-    delete_project_from_vault, delete_project_from_vault_with, discover_existing_vaults,
-    discover_existing_vaults_with, generate_version_timestamp, get_catalog, get_status, get_vaults,
-    import_project, import_project_with, import_project_with_mappings, list_github_accounts,
-    list_github_accounts_with, merge_project, production_gh, project_assets, pull_latest,
-    pull_latest_with, push_and_create_pr, push_and_create_pr_with, set_always_up_to_date,
-    disconnect_vault, vault_project_dir, GhFuture, GhRunner,
+    delete_project_from_vault, delete_project_from_vault_with, disconnect_vault,
+    discover_existing_vaults, discover_existing_vaults_with, generate_version_timestamp,
+    get_catalog, get_status, get_vaults, import_project, import_project_with,
+    import_project_with_mappings, list_github_accounts, list_github_accounts_with, merge_project,
+    production_gh, project_assets, pull_latest, pull_latest_with, push_and_create_pr,
+    push_and_create_pr_with, set_always_up_to_date, vault_project_dir, GhFuture, GhRunner,
 };
 pub use settings::{
     ensure_vaults_initialized, extract_repo_name, find_vault, load_vaults, new_vault_id,
-    normalize_repo_url, resolve_vault, save_vaults, split_owner_and_name, strip_git_suffix, vault_dir, vault_index,
-    ProjectVaultTracking, VaultSettings, VaultState, VAULTS_KEY, VAULT_KEY,
+    normalize_repo_url, resolve_vault, save_vaults, split_owner_and_name, strip_git_suffix,
+    vault_dir, vault_index, ProjectVaultTracking, VaultSettings, VaultState, VAULTS_KEY, VAULT_KEY,
 };
