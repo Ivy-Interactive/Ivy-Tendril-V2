@@ -8,6 +8,7 @@ pub mod verification_reports;
 pub use commands::agents::*;
 pub use commands::chat::*;
 pub use commands::config::*;
+pub use commands::dashboard::*;
 pub use commands::github::*;
 pub use commands::jobs::*;
 pub use commands::plans::*;
@@ -135,6 +136,11 @@ pub fn run() {
             cmd_list_github_issues,
             cmd_list_pull_requests,
             cmd_sync_pull_requests,
+            cmd_get_dashboard_activity,
+            cmd_get_shipped_features,
+            cmd_get_recent_merged_prs,
+            cmd_get_recent_plan_costs,
+            cmd_get_agent_cost_breakdown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
