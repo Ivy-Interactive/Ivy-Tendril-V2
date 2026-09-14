@@ -125,6 +125,91 @@ describe("TendrilShell", () => {
     expect(panes[1]?.getAttribute("data-active")).toBe("true");
     expect(panes[2]?.getAttribute("data-active")).toBe("false");
   });
+
+  it("supports sidebar resizing within min/max bounds and resets on double click", () => {
+    localStorage.clear();
+    act(() => {
+      root.render(
+        <TendrilShell
+          id="test-shell"
+          eventHandler={vi.fn()}
+          slots={{
+            SidebarHeader: <div>Header</div>,
+            Content: <div>Content</div>,
+          }}
+        />,
+      );
+    });
+
+    const rootEl = container.querySelector(".tsh-root") as HTMLElement;
+    const resizer = container.querySelector(".tsh-sidebar-resizer") as HTMLElement;
+    expect(resizer).not.toBeNull();
+    expect(rootEl.style.getPropertyValue("--tsh-sidebar-width")).toBe("320px");
+
+    // Pointer down to start drag
+    act(() => {
+      resizer.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, pointerId: 1, bubbles: true }),
+      );
+    });
+
+    // Move to 450px
+    act(() => {
+      resizer.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 450, pointerId: 1, bubbles: true }),
+      );
+    });
+    expect(rootEl.style.getPropertyValue("--tsh-sidebar-width")).toBe("450px");
+    expect(localStorage.getItem("tendril.shell.sidebarWidth")).toBe("450");
+
+    // Clamp to MIN_SIDEBAR_WIDTH (200)
+    act(() => {
+      resizer.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 100, pointerId: 1, bubbles: true }),
+      );
+    });
+    expect(rootEl.style.getPropertyValue("--tsh-sidebar-width")).toBe("200px");
+    expect(localStorage.getItem("tendril.shell.sidebarWidth")).toBe("200");
+
+    // Clamp to MAX_SIDEBAR_WIDTH (640)
+    act(() => {
+      resizer.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 800, pointerId: 1, bubbles: true }),
+      );
+    });
+    expect(rootEl.style.getPropertyValue("--tsh-sidebar-width")).toBe("640px");
+    expect(localStorage.getItem("tendril.shell.sidebarWidth")).toBe("640");
+
+    // Pointer up
+    act(() => {
+      resizer.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1, bubbles: true }));
+    });
+
+    // Double-click resets to default (320px)
+    act(() => {
+      resizer.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    expect(rootEl.style.getPropertyValue("--tsh-sidebar-width")).toBe("320px");
+    expect(localStorage.getItem("tendril.shell.sidebarWidth")).toBe("320");
+  });
+
+  it("restores stored sidebar width from localStorage on mount", () => {
+    localStorage.setItem("tendril.shell.sidebarWidth", "400");
+    act(() => {
+      root.render(
+        <TendrilShell
+          id="test-shell"
+          eventHandler={vi.fn()}
+          slots={{
+            Content: <div>Content</div>,
+          }}
+        />,
+      );
+    });
+
+    const rootEl = container.querySelector(".tsh-root") as HTMLElement;
+    expect(rootEl.style.getPropertyValue("--tsh-sidebar-width")).toBe("400px");
+  });
 });
 
 describe("ShellNav", () => {
