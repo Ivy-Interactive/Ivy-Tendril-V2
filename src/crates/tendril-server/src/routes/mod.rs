@@ -4,6 +4,7 @@ pub mod costs;
 pub mod health;
 pub mod inbox;
 pub mod jobs;
+pub mod models;
 pub mod ping;
 pub mod plans;
 pub mod projects;
@@ -154,6 +155,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Costs
         .route("/api/costs/summary", get(costs::get_costs_summary))
         .route("/api/costs/series", get(costs::get_costs_series))
+        // Models
+        .route("/api/models", get(models::list_models))
+        .route("/api/models/refresh", post(models::refresh_models))
         // Chat
         .route(
             "/api/chat/sessions",

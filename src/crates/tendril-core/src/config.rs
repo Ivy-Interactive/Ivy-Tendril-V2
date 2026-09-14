@@ -48,8 +48,33 @@ pub struct TendrilSettings {
     #[serde(default = "default_theme")]
     pub theme: String,
 
+    /// Minutes between worktree reaper passes. `0` or negative disables the reaper entirely.
+    #[serde(
+        rename = "worktreeReaperInterval",
+        default = "default_worktree_reaper_interval"
+    )]
+    pub worktree_reaper_interval: i32,
+
+    /// Minutes a plan must be idle (since `updated`) before an eligible plan is reaped.
+    #[serde(
+        rename = "worktreeReaperGrace",
+        default = "default_worktree_reaper_grace"
+    )]
+    pub worktree_reaper_grace: i32,
+
+    /// `PreserveUnpushed` or `Force`. An unrecognised value falls back to `PreserveUnpushed`: a typo
+    /// must not escalate to force-delete.
+    #[serde(
+        rename = "worktreeBranchDeleteMode",
+        default = "default_worktree_branch_delete_mode"
+    )]
+    pub worktree_branch_delete_mode: String,
+
     #[serde(default)]
     pub beta: bool,
+
+    #[serde(rename = "enrichModels", default = "default_true")]
+    pub enrich_models: bool,
 
     #[serde(flatten)]
     pub extra: std::collections::BTreeMap<String, serde_json::Value>,
@@ -75,6 +100,15 @@ fn default_true() -> bool {
 }
 fn default_theme() -> String {
     "default".to_string()
+}
+fn default_worktree_reaper_interval() -> i32 {
+    30
+}
+fn default_worktree_reaper_grace() -> i32 {
+    10
+}
+fn default_worktree_branch_delete_mode() -> String {
+    "PreserveUnpushed".to_string()
 }
 
 fn default_levels() -> Vec<LevelConfig> {
@@ -122,7 +156,11 @@ impl Default for TendrilSettings {
             levels: default_levels(),
             telemetry: true,
             theme: default_theme(),
+            worktree_reaper_interval: default_worktree_reaper_interval(),
+            worktree_reaper_grace: default_worktree_reaper_grace(),
+            worktree_branch_delete_mode: default_worktree_branch_delete_mode(),
             beta: false,
+            enrich_models: true,
             extra: std::collections::BTreeMap::new(),
         }
     }
