@@ -12,6 +12,15 @@ import { ShellLayout } from "./views/ShellLayout";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 
+// Lazy, and by module rather than through the `./views/dialogs` barrel. App.tsx
+// is the one eager module in the shell — every view below it is lazy — and the
+// dialog family pulls in `@ivy-interactive/components/ui`, a ~190 kB entry point
+// nothing else here needs. Loading it eagerly for a dialog that only appears
+// when no project is configured put the entry chunk over its size budget.
+const NoProjectsDialog = React.lazy(() =>
+  import("./views/dialogs/NoProjectsDialog").then((m) => ({ default: m.NoProjectsDialog })),
+);
+
 const DashboardView = React.lazy(() =>
   import("./views/DashboardView").then((m) => ({ default: m.DashboardView })),
 );
@@ -44,6 +53,9 @@ export const App: React.FC = () => {
   const [serviceState, setServiceState] = useState(serviceStore.getState());
 
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  // Distinguishes "no projects configured" from "the list has not arrived yet",
+  // so the new-plan flow does not flash the empty state on startup.
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [isNewPlanOpen, setIsNewPlanOpen] = useState(false);
   const [newPlanPrefill, setNewPlanPrefill] = useState<{
     title?: string;
@@ -71,7 +83,10 @@ export const App: React.FC = () => {
 
     bridge
       .listProjects()
-      .then(setProjects)
+      .then((list) => {
+        setProjects(list);
+        setProjectsLoaded(true);
+      })
       .catch(() => {});
 
     return () => {
@@ -209,15 +224,20 @@ export const App: React.FC = () => {
         <PlanDetailView
           plan={detail}
           allPlans={plansState.plans}
+          projectRepos={projects.find((p) => p.name === detail.project)?.repos ?? []}
           onExecute={(id) => startJobAndOpenSession({ type: "ExecutePlan", folderPath: id })}
-          onRetry={(id) =>
-            startJobAndOpenSession({
-              type: "RetryPlan",
-              folderPath: id,
-              changeRequest: "Please resolve failing issues.",
-            })
-          }
-          onCreatePr={(id) => startJobAndOpenSession({ type: "CreatePr", folderPath: id })}
+          // The dialogs dispatch their own jobs, so the shell's part is opening
+          // the session tab for whatever they started.
+          onJobStarted={(res) => handleSelectJob(res.jobId)}
+          onPlanChanged={(id) => {
+            plansStore.fetchPlans().catch(() => {});
+            plansStore.fetchPlanDetail(id).catch(() => {});
+          }}
+          onPlanDeleted={() => {
+            plansStore.fetchPlans().catch(() => {});
+            uiStore.closeTab(activeNav);
+            uiStore.setActiveNav("plans");
+          }}
           onBack={() => uiStore.setActiveNav("plans")}
         />
       );
@@ -306,14 +326,10 @@ export const App: React.FC = () => {
           <ReviewView
             plans={plansState.plans}
             onSelectPlan={handleSelectPlan}
-            onCreatePr={(id) => startJobAndOpenSession({ type: "CreatePr", folderPath: id })}
-            onRetry={(id, feedback) =>
-              startJobAndOpenSession({
-                type: "RetryPlan",
-                folderPath: id,
-                changeRequest: feedback,
-              })
-            }
+            onJobStarted={(res) => handleSelectJob(res.jobId)}
+            onPlanChanged={() => {
+              plansStore.fetchPlans().catch(() => {});
+            }}
           />
         );
 
@@ -434,8 +450,24 @@ export const App: React.FC = () => {
         </React.Suspense>
       </ShellLayout>
 
+      {/* A plan needs a project. With none configured the new-plan flow explains
+          that instead of offering an empty picker. Mounted only while it applies,
+          so the lazy chunk is fetched at that moment and not before. */}
+      {isNewPlanOpen && projectsLoaded && projects.length === 0 && (
+        <React.Suspense fallback={null}>
+          <NoProjectsDialog
+            isOpen
+            onClose={() => setIsNewPlanOpen(false)}
+            onOpenSettings={() => {
+              setIsNewPlanOpen(false);
+              uiStore.setActiveNav("settings");
+            }}
+          />
+        </React.Suspense>
+      )}
+
       <NewPlanModal
-        isOpen={isNewPlanOpen}
+        isOpen={isNewPlanOpen && !(projectsLoaded && projects.length === 0)}
         onClose={() => {
           setIsNewPlanOpen(false);
           setNewPlanPrefill({});

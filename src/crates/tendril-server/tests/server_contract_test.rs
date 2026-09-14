@@ -1907,3 +1907,43 @@ async fn test_models_api_route() {
     assert!(first.get("model_id").is_some());
     assert!(first.get("input_per_million").is_some());
 }
+
+#[tokio::test]
+async fn test_models_status_api_route() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/models/status",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let source = body.get("source").and_then(|v| v.as_str()).unwrap();
+    assert!(source == "models.dev" || source == "static");
+    assert!(
+        body.get("totalModelCount")
+            .and_then(|v| v.as_u64())
+            .unwrap()
+            > 0
+    );
+    assert!(body.get("enrichModels").is_some());
+    assert!(body.get("cachePath").is_some());
+
+    // Guard against regressing the existing `GET /api/models` array contract.
+    let models_resp = client
+        .get(format!("http://127.0.0.1:{}/api/models", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(models_resp.status(), reqwest::StatusCode::OK);
+    let models: Vec<serde_json::Value> = models_resp.json().await.unwrap();
+    assert!(!models.is_empty());
+}

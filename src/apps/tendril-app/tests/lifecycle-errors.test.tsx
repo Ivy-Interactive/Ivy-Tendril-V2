@@ -76,7 +76,11 @@ describe("PlanDetailView lifecycle actions", () => {
     expect(screen.queryByTestId("plan-action-error")).not.toBeInTheDocument();
   });
 
-  it("reports Retry and Create PR failures from the Review state toolbar", async () => {
+  it("reports a Retry failure inside the dialog that raised it", async () => {
+    // Retry Plan no longer dispatches from the toolbar: it opens the
+    // Suggest Changes dialog, which owns the change request and therefore owns
+    // the failure. The banner the toolbar used to show would be in the wrong
+    // place — the operator's cursor is in the dialog.
     const reviewPlan = planDetail({
       id: "00021",
       state: "Review",
@@ -85,19 +89,25 @@ describe("PlanDetailView lifecycle actions", () => {
         { name: "RustTest", status: "Pass" },
       ],
     });
-    const onRetry = vi
-      .fn()
+    const startJob = vi
+      .spyOn(bridge, "startJob")
       .mockRejectedValue(bridgeError({ code: "START_JOB_FAILED", message: "queue is full" }));
 
-    render(<PlanDetailView plan={reviewPlan} allPlans={[planSummary()]} onRetry={onRetry} />);
+    render(<PlanDetailView plan={reviewPlan} allPlans={[planSummary()]} />);
 
     fireEvent.click(screen.getByRole("button", { name: /retry plan/i }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("plan-action-error")).toHaveTextContent(
-        /Retry Plan failed: queue is full/,
-      ),
-    );
+    const dialog = await screen.findByTestId("suggest-changes-dialog");
+    expect(startJob).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Change request"), {
+      target: { value: "The guard lists the wrong repos." },
+    });
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/queue is full/));
+    expect(dialog).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-action-error")).not.toBeInTheDocument();
   });
 
   it("awaits an async handler, which the old sync try/catch could not do", async () => {

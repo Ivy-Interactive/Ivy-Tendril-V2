@@ -3,12 +3,14 @@ import type {
   GitHubIssuesPage,
   Job,
   JobDetail,
+  ModelCatalogStatus,
   PlanDetail,
   PlanQuery,
   PlanSummary,
   ProjectSummary,
   RecommendationItem,
   RecommendationState,
+  RepoStatus,
   ReviewActionConfig,
   RevisionResult,
   ServiceHealth,
@@ -66,6 +68,27 @@ export const bridge = {
       value,
       allowFailed,
     });
+  },
+
+  /**
+   * Permanently delete a plan folder and its database row. Rejects with a
+   * `CONFLICT` bridge error while a job still holds the plan.
+   */
+  async deletePlan(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_delete_plan", { id });
+  },
+
+  /**
+   * Send a plan back to Draft and remove its worktrees. Rejects with a
+   * `CONFLICT` bridge error for Completed/Skipped plans and for running ones.
+   */
+  async resetPlan(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_reset_plan", { id });
+  },
+
+  /** Uncommitted-change status of each repo the plan targets. */
+  async getRepoStatus(this: void, id: string): Promise<RepoStatus[]> {
+    return invoke<RepoStatus[]>("cmd_get_repo_status", { id });
   },
 
   async getRevision(this: void, id: string, number?: number): Promise<string> {
@@ -194,6 +217,14 @@ export const bridge = {
 
   async getConfig(this: void): Promise<TendrilConfig> {
     return invoke<TendrilConfig>("cmd_get_config");
+  },
+
+  async getModelsStatus(this: void): Promise<ModelCatalogStatus> {
+    return invoke<ModelCatalogStatus>("cmd_get_models_status");
+  },
+
+  async refreshModels(this: void): Promise<ModelCatalogStatus> {
+    return invoke<ModelCatalogStatus>("cmd_refresh_models");
   },
 
   async saveUiState(this: void, key: string, value: string): Promise<void> {

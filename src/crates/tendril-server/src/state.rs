@@ -34,11 +34,14 @@ impl AppState {
 
         let settings = load_config(&config_path).unwrap_or_default();
         let enrich_models = settings.enrich_models;
+        let enrichment_hours = settings.model_enrichment_interval_hours;
         let warn_age_days = settings.model_cache_warn_age_days;
         let max_age_days = settings.model_cache_max_age_days;
 
         // Make any cached models.dev enrichment immediately available (unless it has expired),
-        // then optionally refresh it in the background so startup never blocks on network access.
+        // then optionally refresh it in the background — on a repeating cadence, not just once —
+        // so startup never blocks on network access and pricing/limit changes are eventually
+        // picked up without restarting the daemon.
         if let Ok(catalog) = model_cache::load_disk_cache(&tendril_home) {
             if !catalog.is_empty() {
                 match model_cache::classify(&catalog, warn_age_days, max_age_days) {
@@ -69,27 +72,10 @@ impl AppState {
             }
         }
         if enrich_models {
-            let enrich_home = tendril_home.clone();
-            tokio::spawn(async move {
-                let client = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(10))
-                    .build()
-                    .unwrap_or_default();
-                match tendril_core::agents::model_cache::fetch_live_models(&client, &enrich_home)
-                    .await
-                {
-                    Ok(count) => {
-                        tracing::info!(
-                            "Enriched model specs cache from models.dev ({count} models)"
-                        )
-                    }
-                    Err(err) => {
-                        tracing::warn!(
-                            "models.dev live enrichment skipped (offline or network error): {err}"
-                        )
-                    }
-                }
-            });
+            model_cache::spawn_enrichment(
+                tendril_home.clone(),
+                model_cache::enrichment_interval(enrichment_hours),
+            );
         }
 
         // `share` rather than `Arc::new`: a finished job needs a handle back to the manager to start
