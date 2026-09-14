@@ -567,6 +567,38 @@ pub fn get_database_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("tendril.db")
 }
 
+/// Strip everything outside `[A-Za-z0-9._-]`, matching the C# `InputSanitizer.SanitizeProjectName`
+/// so the directory layout stays byte-identical between the two implementations.
+pub fn sanitize_project_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '.' || *c == '_' || *c == '-')
+        .collect()
+}
+
+pub fn get_project_root_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    let projects = tendril_home.join("Projects");
+    if project_name.trim().is_empty() {
+        return projects;
+    }
+    projects.join(sanitize_project_name(project_name))
+}
+
+pub fn get_project_repos_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Repos")
+}
+
+pub fn get_project_skills_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Skills")
+}
+
+pub fn get_project_mcp_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("MCP")
+}
+
+pub fn get_project_memory_dir(tendril_home: &Path, project_name: &str) -> PathBuf {
+    get_project_root_dir(tendril_home, project_name).join("Memory")
+}
+
 pub fn load_config(config_path: &Path) -> Result<TendrilSettings> {
     if !config_path.exists() {
         return Ok(TendrilSettings::default());
