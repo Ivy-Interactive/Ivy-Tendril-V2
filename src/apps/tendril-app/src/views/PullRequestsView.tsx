@@ -183,12 +183,15 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
     });
   }, [rows, search, selectedStatuses]);
 
+  // The percentage widths below sum to 52% and the fixed ones to 470px, deliberately under budget:
+  // the row-actions column is 144px on top of that, and a budget of 100% + fixed pushed it out of
+  // the viewport entirely — the table overflowed and the four actions were unreachable.
   const columns: DataTableColumn<PrStatus>[] = useMemo(
     () => [
       {
         name: "plan",
         header: "Plan",
-        width: "25%",
+        width: "24%",
         // Numeric so the default Descending sort orders 00610 above 00099 rather than lexically.
         accessor: (row) => Number.parseInt(row.planId, 10) || 0,
         cell: (_value, row) => (
@@ -205,7 +208,9 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       {
         name: "project",
         header: "Project",
-        width: "100px",
+        // Wide enough for `Ivy-Tendril-V2`; at 110px every row read `Ivy-Tendril-...`, so the column
+        // carried no information at all.
+        width: "140px",
         accessor: (row) => row.project,
         cell: (_value, row) => (
           <span className="rounded bg-muted/80 px-2 py-0.5 text-xs font-medium text-muted-foreground">
@@ -231,7 +236,8 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       {
         name: "pr",
         header: "PR",
-        width: "25%",
+        // A PR number is five characters; the original's 25% was a copy-paste from the text columns.
+        width: "70px",
         accessor: (row) => row.number,
         cell: (_value, row) => (
           <button
@@ -263,15 +269,26 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       {
         name: "repository",
         header: "Repository",
-        width: "25%",
+        width: "15%",
         accessor: (row) => `${row.owner}/${row.repo}`,
+        // `owner/repo` and a `tendril/00610-...` branch are both longer than any column that fits on
+        // screen, so the truncated cells carry the full value as a tooltip.
+        cell: (_value, row) => (
+          <span title={`${row.owner}/${row.repo}`}>
+            {row.owner}/{row.repo}
+          </span>
+        ),
       },
       {
         name: "branch",
         header: "Branch",
-        width: "25%",
+        width: "13%",
         accessor: (row) => row.branch ?? "",
-        cell: (_value, row) => <span className="font-mono text-xs">{row.branch ?? ""}</span>,
+        cell: (_value, row) => (
+          <span className="font-mono text-xs" title={row.branch ?? ""}>
+            {row.branch ?? ""}
+          </span>
+        ),
       },
     ],
     [openPlanSheet],
@@ -323,6 +340,19 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         />
       ) : (
         <DataTable<PrStatus>
+          // `table-fixed` is what makes the declared column widths binding. Under the default auto
+          // layout a long branch name or `owner/repo` sets the column's minimum, the table grows past
+          // its scroll container, and the row-actions column — which declares no width — ends up off
+          // the right edge, unreachable. Fixed layout also lets the library's own
+          // `td.ivy-data-table-nowrap` ellipsis rule take effect, which needs a constrained width.
+          // The selector reaches the inner `<table>` because `DataTable` puts `className` on its
+          // wrapper and hardcodes the table's own class.
+          //
+          // The row-actions header ships as `w-0`, which fixed layout takes literally: the four icon
+          // buttons then overflow their cell and paint over the Branch text. It is the last header,
+          // and sizing the header alone is enough — fixed layout reads column widths from the first
+          // row only.
+          className="[&_table.ivy-data-table]:table-fixed [&_table.ivy-data-table_th:last-child]:w-36"
           columns={columns}
           rows={filteredRows}
           getRowId={(row) => `${row.planId}-${row.number}`}
@@ -404,7 +434,13 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
           if (!open) setSheetRow(null);
         }}
       >
-        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
+        {/* `inset-y-0` is repeated from `SheetContent`'s own `side="right"` variant on purpose. The
+            components package's built `style.css` carries the theme and base layers but no utility
+            classes, so a utility named only inside that package is never generated — Tailwind emits
+            utilities from the *app's* sources. `inset-y-0` appears nowhere else in this app, so the
+            sheet had no `top`/`bottom` at all and rendered one viewport below the fold. Naming it
+            here is what brings the rule into existence. */}
+        <SheetContent className="inset-y-0 w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
             <SheetTitle>
               {sheetRow ? `#${sheetRow.planId} ${sheetRow.planTitle}` : "Plan"}
