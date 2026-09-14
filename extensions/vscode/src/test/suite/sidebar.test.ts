@@ -1,10 +1,13 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { COMMANDS } from '../../constants';
 import { ServerManager } from '../../server/serverManager';
 import { ServerHealthInfo } from '../../server/types';
 import { SidebarProvider } from '../../views/sidebarProvider';
-import { activate, deactivate } from '../../extension';
+import { activate, awaitBackgroundInit, deactivate } from '../../extension';
+import { readStubInvocations } from '../testHome';
 const vscodeMock = vscode as any;
 
 describe('Tendril Sidebar & Browser Action Suite', () => {
@@ -96,8 +99,11 @@ describe('Tendril Sidebar & Browser Action Suite', () => {
       await activate(context);
     });
 
-    afterEach(() => {
+    afterEach(async () => {
       ServerManager.prototype.ensureServerRunning = originalEnsure;
+      // Let the fire-and-forget auto-start finish before disposing, so no spawned server outlives
+      // this test as an orphan holding the .master claim.
+      await awaitBackgroundInit();
       deactivate();
     });
 
@@ -128,6 +134,50 @@ describe('Tendril Sidebar & Browser Action Suite', () => {
       assert.strictEqual(vscodeMock.env.lastOpenedUri, undefined);
       assert.ok(vscodeMock.window.lastErrorMessage?.includes('Failed to open Tendril in browser'));
       assert.ok(vscodeMock.window.lastErrorMessage?.includes('Server failed to start'));
+    });
+  });
+
+  describe('Activation auto-start isolation', () => {
+    const isolatedHome = process.env.TENDRIL_HOME as string;
+
+    beforeEach(async () => {
+      const subscriptions: vscode.Disposable[] = [];
+      const context = {
+        subscriptions,
+        extensionUri: vscode.Uri.file('/mock/path')
+      } as unknown as vscode.ExtensionContext;
+
+      await activate(context);
+      await awaitBackgroundInit();
+    });
+
+    afterEach(() => {
+      deactivate();
+    });
+
+    it('should auto-start the stub executable pinned to the isolated Tendril home', () => {
+      const serverInvocations = readStubInvocations(isolatedHome).filter(i => i.mode === 'server');
+
+      assert.ok(
+        serverInvocations.length > 0,
+        'Activation must have spawned the stub server (the real activation path is under test)'
+      );
+      for (const invocation of serverInvocations) {
+        assert.strictEqual(
+          invocation.tendrilHome,
+          isolatedHome,
+          'Every spawned server must inherit the isolated TENDRIL_HOME'
+        );
+      }
+    });
+
+    it('should write .master under the isolated home, never the real one', () => {
+      const masterFile = path.join(isolatedHome, '.master');
+      assert.ok(fs.existsSync(masterFile), `Expected a .master under ${isolatedHome}`);
+
+      const master = JSON.parse(fs.readFileSync(masterFile, 'utf-8')) as { port: number; pid: number };
+      assert.ok(master.port > 0, 'Stub server must record its port');
+      assert.notStrictEqual(master.pid, process.pid, '.master must belong to the spawned stub');
     });
   });
 });

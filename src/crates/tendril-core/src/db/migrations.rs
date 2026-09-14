@@ -125,6 +125,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             PlanTitle TEXT NOT NULL DEFAULT '',
             PlanFolderName TEXT NOT NULL DEFAULT '',
             Project TEXT NOT NULL DEFAULT '',
+            Notes TEXT,
             Date TEXT NOT NULL,
             SourcePlanStatus TEXT NOT NULL DEFAULT 'Draft',
             Impact TEXT,
@@ -132,6 +133,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_recommendations_plan ON Recommendations(PlanId);
         CREATE INDEX IF NOT EXISTS idx_recommendations_state ON Recommendations(State);
+        CREATE INDEX IF NOT EXISTS idx_recommendations_project ON Recommendations(Project);
 
         CREATE TABLE IF NOT EXISTS SyncMetadata (
             Key TEXT PRIMARY KEY,
@@ -174,7 +176,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             Priority INTEGER NOT NULL DEFAULT 0,
             LastOutputAt TEXT,
             WaitForJobIds TEXT,
-            PermissionDenials TEXT
+            PermissionDenials TEXT,
+            DedupeKey TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
         CREATE INDEX IF NOT EXISTS idx_jobs_completed ON Jobs(CompletedAt DESC);
@@ -190,6 +193,31 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_owner_repo ON PrStatuses(Owner, Repo);
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_status ON PrStatuses(Status);
+
+        -- V2-only: the landing place for an assigned GitHub issue the auto-importer swept but
+        -- nobody has accepted yet. A row is kept in every state, `Dismissed` included, because
+        -- that record is what stops the next sweep from re-importing an issue the user said no
+        -- to. The original wrote a markdown file per issue instead, so deleting the file brought
+        -- the issue straight back.
+        --
+        -- Deliberately not accompanied by a `user_version` bump: the original hard-fails on a
+        -- database whose version exceeds its own latest migration (025), and an extra table it
+        -- never queries is invisible to it. See `SCHEMA_VERSION` above.
+        CREATE TABLE IF NOT EXISTS InboxProposals (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Number INTEGER NOT NULL,
+            Repository TEXT NOT NULL,
+            Title TEXT NOT NULL,
+            Body TEXT NOT NULL DEFAULT '',
+            IssueUrl TEXT NOT NULL,
+            Project TEXT NOT NULL,
+            State TEXT NOT NULL DEFAULT 'Pending',
+            JobId TEXT,
+            Discovered TEXT NOT NULL,
+            Updated TEXT NOT NULL,
+            UNIQUE (Repository, Number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_inbox_proposals_state ON InboxProposals(State);
         "#,
     )?;
 
@@ -207,6 +235,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             ("LastOutputAt", "TEXT"),
             ("WaitForJobIds", "TEXT"),
             ("PermissionDenials", "TEXT"),
+            ("DedupeKey", "TEXT"),
         ],
     )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
@@ -217,8 +246,25 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         "Costs",
         &[("Model", "TEXT"), ("CostSource", "TEXT"), ("Agent", "TEXT")],
     )?;
+    // `Notes` carries why a recommendation was accepted, which used to be smuggled through
+    // `DeclineReason`. It is nullable and additive, so it needs no `user_version` bump: bumping past
+    // 25 would make the original app refuse to open the shared database (see `SCHEMA_VERSION`).
+    ensure_columns(conn, "Recommendations", &[("Notes", "TEXT")])?;
     ensure_costs_cost_nullable(conn)?;
     ensure_plan_search(conn)?;
+
+    // Must run *after* the `ensure_columns` pass above, not inside the batch: on a database created
+    // before `DedupeKey` existed, the batch runs before the ALTER and the index would reference a
+    // column that is not there yet.
+    //
+    // A `NULL` key never collides in a SQLite unique index, which is the intended reading of a forced
+    // submission and of a job type that is not deduplicated: both store `NULL` and opt out entirely
+    // rather than blocking the next submission.
+    conn.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedupe_inflight
+           ON Jobs(DedupeKey)
+           WHERE DedupeKey IS NOT NULL AND Status IN ('Pending', 'Queued', 'Running');",
+    )?;
 
     stamp_user_version(conn)?;
 

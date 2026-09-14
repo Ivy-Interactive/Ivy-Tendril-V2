@@ -82,6 +82,7 @@ async fn test_job_completion_cost_extraction() {
         priority: 0,
         last_output_at: None,
         wait_for_job_ids: Vec::new(),
+        dedupe_key: None,
     };
 
     let jobs_map = Arc::new(RwLock::new(HashMap::new()));

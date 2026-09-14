@@ -1,16 +1,22 @@
-use std::path::PathBuf;
+use clap::Parser;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use tendril_cli::commands::plan::{
-    handle_plan_command, PlanAddDependsOnArgs, PlanCommands, PlanRemoveRepoArgs, PlanSetArgs,
-    PlanSetVerificationArgs, PlanWriteRevisionArgs,
+    handle_plan_command, PlanAddDependsOnArgs, PlanCommands, PlanEditReasonArgs, PlanRecCommands,
+    PlanRemoveRepoArgs, PlanSetArgs, PlanSetVerificationArgs, PlanWriteRevisionArgs,
 };
 use tendril_core::config::{
-    generate_bearer_secret, get_config_path, load_config, save_config, MasterGuard,
+    generate_bearer_secret, get_config_path, get_database_path, load_config, save_config,
+    MasterGuard,
 };
+use tendril_core::db::{get_recommendations, open_database, RecommendationRow};
 use tendril_core::models::{
-    PlanVerificationEntry, ProjectConfig, ProjectVerificationRef, VerificationStatus,
+    PlanVerificationEntry, ProjectConfig, ProjectVerificationRef, RecommendationStatus,
+    VerificationStatus,
 };
-use tendril_core::plans::{create_plan, read_plan_file, read_plan_yaml, CreatePlanOptions};
+use tendril_core::plans::{
+    create_plan, list_recommendations, read_plan_file, read_plan_yaml, CreatePlanOptions,
+};
 use tendril_server::{create_router, AppState};
 
 static ENV_LOCK: LazyLock<Arc<tokio::sync::Mutex<()>>> =
@@ -709,4 +715,701 @@ async fn test_plan_remove_repo_fails_when_not_attached() {
 
     let (plan, _) = read_plan_yaml(std::path::Path::new(&pf.folder_path)).unwrap();
     assert_eq!(plan.repos, vec!["/tmp/attached-repo".to_string()]);
+}
+
+// ---------------------------------------------------------------------------
+// Recommendations
+//
+// The CLI is the surface ExecutePlan drives recommendations through, so every mutating subcommand has
+// to leave `plan.yaml` and the `Recommendations` projection agreeing. The cross-plan read comes from
+// the projection alone, so a mutation that forgets to sync is invisible until that view is wrong.
+// ---------------------------------------------------------------------------
+
+fn rec_plan_opts(title: &str, project: &str) -> CreatePlanOptions {
+    CreatePlanOptions {
+        title: title.to_string(),
+        project: project.to_string(),
+        level: Some("Feature".to_string()),
+        initial_prompt: None,
+        source_url: None,
+        execution_profile: None,
+        priority: Some(0),
+        repos: vec![],
+        verifications: vec![],
+        depends_on: vec![],
+        related_plans: vec![],
+        chat_session_id: None,
+    }
+}
+
+async fn run_rec(server: &TestServer, cmd: PlanRecCommands) {
+    handle_plan_command(PlanCommands::Rec(cmd), &server.tendril_home)
+        .await
+        .expect("handle_plan_command Rec");
+}
+
+/// `plan.yaml`'s only recommendation.
+fn yaml_rec(folder: &Path) -> tendril_core::models::Recommendation {
+    let recs = list_recommendations(folder).expect("list recommendations");
+    assert_eq!(recs.len(), 1, "expected exactly one recommendation");
+    recs.into_iter().next().unwrap()
+}
+
+/// The projected row for one recommendation, or `None` when the table never got it.
+fn db_rec(tendril_home: &Path, plan_id: i32, title: &str) -> Option<RecommendationRow> {
+    let conn = open_database(&get_database_path(tendril_home)).expect("open database");
+    get_recommendations(&conn, None, None)
+        .expect("query recommendations")
+        .into_iter()
+        .find(|r| r.plan_id == plan_id && r.title == title)
+}
+
+/// Editing content — not just state — is what the CLI could not do at all before, and every edit has
+/// to land in the projection too.
+#[tokio::test]
+async fn test_plan_rec_set_edits_both_plan_yaml_and_the_database_row() {
+    let server = start_test_server().await;
+    let pf = create_plan(
+        &server.state.plans_dir,
+        rec_plan_opts("Recommendation Editing Plan", "test-proj"),
+    )
+    .unwrap();
+    let folder = PathBuf::from(&pf.folder_path);
+    let plan_id = pf.id();
+
+    run_rec(
+        &server,
+        PlanRecCommands::Add {
+            plan_id: plan_id.to_string(),
+            title: "Add Jobs Index".to_string(),
+            description: "Index the jobs table".to_string(),
+            impact: Some("Small".to_string()),
+            edit: PlanEditReasonArgs::default(),
+        },
+    )
+    .await;
+
+    let row = db_rec(&server.tendril_home, plan_id, "Add Jobs Index")
+        .expect("adding a recommendation must project it");
+    assert_eq!(row.description, "Index the jobs table");
+    assert_eq!(row.state, RecommendationStatus::PENDING);
+    assert_eq!(row.project, "test-proj");
+
+    run_rec(
+        &server,
+        PlanRecCommands::Set {
+            plan_id: plan_id.to_string(),
+            title: "Add Jobs Index".to_string(),
+            field: "description".to_string(),
+            value: "Index Jobs(Status, Created)".to_string(),
+            edit: PlanEditReasonArgs::default(),
+        },
+    )
+    .await;
+    assert_eq!(yaml_rec(&folder).description, "Index Jobs(Status, Created)");
+    assert_eq!(
+        db_rec(&server.tendril_home, plan_id, "Add Jobs Index")
+            .expect("row after edit")
+            .description,
+        "Index Jobs(Status, Created)"
+    );
+
+    run_rec(
+        &server,
+        PlanRecCommands::Set {
+            plan_id: plan_id.to_string(),
+            title: "Add Jobs Index".to_string(),
+            field: "impact".to_string(),
+            value: "High".to_string(),
+            edit: PlanEditReasonArgs::default(),
+        },
+    )
+    .await;
+    assert_eq!(yaml_rec(&folder).impact.as_deref(), Some("High"));
+    assert_eq!(
+        db_rec(&server.tendril_home, plan_id, "Add Jobs Index")
+            .expect("row after impact edit")
+            .impact
+            .as_deref(),
+        Some("High")
+    );
+
+    // A rename changes the row's own key, so the pre-rename row has to go rather than
+    // be left behind next to the new one.
+    run_rec(
+        &server,
+        PlanRecCommands::Set {
+            plan_id: plan_id.to_string(),
+            title: "Add Jobs Index".to_string(),
+            field: "title".to_string(),
+            value: "Add A Jobs Status Index".to_string(),
+            edit: PlanEditReasonArgs::default(),
+        },
+    )
+    .await;
+    assert_eq!(yaml_rec(&folder).title, "Add A Jobs Status Index");
+    assert!(
+        db_rec(&server.tendril_home, plan_id, "Add Jobs Index").is_none(),
+        "the pre-rename row must not survive in the projection"
+    );
+    let renamed = db_rec(&server.tendril_home, plan_id, "Add A Jobs Status Index")
+        .expect("row under the new title");
+    assert_eq!(renamed.impact.as_deref(), Some("High"));
+
+    // An unknown field has to fail rather than silently do nothing.
+    let err = handle_plan_command(
+        PlanCommands::Rec(PlanRecCommands::Set {
+            plan_id: plan_id.to_string(),
+            title: "Add A Jobs Status Index".to_string(),
+            field: "urgency".to_string(),
+            value: "later".to_string(),
+            edit: PlanEditReasonArgs::default(),
+        }),
+        &server.tendril_home,
+    )
+    .await
+    .expect_err("an unknown field must not report success");
+    assert!(err.to_string().contains("urgency"), "got: {}", err);
+}
+
+/// An accept note and a decline reason are different facts, and the CLI is where the app's old habit
+/// of storing one in the other would be re-introduced.
+#[tokio::test]
+async fn test_plan_rec_accept_and_decline_keep_notes_and_reasons_apart() {
+    let server = start_test_server().await;
+    let pf = create_plan(
+        &server.state.plans_dir,
+        rec_plan_opts("Recommendation States Plan", "test-proj"),
+    )
+    .unwrap();
+    let folder = PathBuf::from(&pf.folder_path);
+    let plan_id = pf.id();
+
+    run_rec(
+        &server,
+        PlanRecCommands::Add {
+            plan_id: plan_id.to_string(),
+            title: "Batch The Writes".to_string(),
+            description: "Coalesce inbox writes".to_string(),
+            impact: None,
+            edit: PlanEditReasonArgs::default(),
+        },
+    )
+    .await;
+
+    // A bare accept is a plain `Accepted`: no notes means no note-bearing state.
+    run_rec(
+        &server,
+        PlanRecCommands::Accept {
+            plan_id: plan_id.to_string(),
+            title: "Batch The Writes".to_string(),
+            notes: None,
+            edit: PlanEditReasonArgs::default(),
+        },
+    )
+    .await;
+    let rec = yaml_rec(&folder);
+    assert_eq!(rec.state, RecommendationStatus::ACCEPTED);
+    assert_eq!(rec.notes, None);
+    let row = db_rec(&server.tendril_home, plan_id, "Batch The Writes").expect("row after accept");
+    assert_eq!(row.state, RecommendationStatus::ACCEPTED);
+    assert_eq!(row.notes, None);
+
+    run_rec(
+        &server,
+        PlanRecCommands::Accept {
+            plan_id: plan_id.to_string(),
+            title: "Batch The Writes".to_string(),
+            notes: Some("Do it with the queue rewrite".to_string()),
+            edit: PlanEditReasonArgs::default(),
+        },
+    )
+    .await;
+    let rec = yaml_rec(&folder);
+    assert_eq!(rec.state, RecommendationStatus::ACCEPTED_WITH_NOTES);
+    assert_eq!(rec.notes.as_deref(), Some("Do it with the queue rewrite"));
+    assert_eq!(rec.decline_reason, None);
+    let row = db_rec(&server.tendril_home, plan_id, "Batch The Writes").expect("row after notes");
+    assert_eq!(row.state, RecommendationStatus::ACCEPTED_WITH_NOTES);
+    assert_eq!(row.notes.as_deref(), Some("Do it with the queue rewrite"));
+    assert_eq!(row.decline_reason, None);
+
+    run_rec(
+        &server,
+        PlanRecCommands::Decline {
+            plan_id: plan_id.to_string(),
+            title: "Batch The Writes".to_string(),
+            reason: Some("Superseded by partitioning".to_string()),
+            edit_reason: None,
+            chat_session: None,
+        },
+    )
+    .await;
+    let rec = yaml_rec(&folder);
+    assert_eq!(rec.state, RecommendationStatus::DECLINED);
+    assert_eq!(
+        rec.decline_reason.as_deref(),
+        Some("Superseded by partitioning")
+    );
+    assert_eq!(
+        rec.notes, None,
+        "the accept note must not linger on a declined recommendation"
+    );
+    let row = db_rec(&server.tendril_home, plan_id, "Batch The Writes").expect("row after decline");
+    assert_eq!(row.state, RecommendationStatus::DECLINED);
+    assert_eq!(
+        row.decline_reason.as_deref(),
+        Some("Superseded by partitioning")
+    );
+    assert_eq!(row.notes, None);
+
+    run_rec(
+        &server,
+        PlanRecCommands::Remove {
+            plan_id: plan_id.to_string(),
+            title: "Batch The Writes".to_string(),
+            edit: PlanEditReasonArgs::default(),
+        },
+    )
+    .await;
+    assert!(
+        list_recommendations(&folder).unwrap().is_empty(),
+        "the recommendation must be gone from plan.yaml"
+    );
+    assert!(
+        db_rec(&server.tendril_home, plan_id, "Batch The Writes").is_none(),
+        "removing a recommendation must unproject it too"
+    );
+}
+
+/// `rec decline` spells the decline reason `--reason`, so its notification reason is `--edit-reason`.
+/// The two must reach different places: one into `plan.yaml`, one into the watching chat sessions.
+#[tokio::test]
+async fn test_plan_rec_decline_separates_the_decline_reason_from_the_edit_reason() {
+    let server = start_test_server().await;
+    let session = server
+        .state
+        .chat_manager
+        .create_session(
+            Some("Rec Review Chat".to_string()),
+            Some("claude".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let mut opts = rec_plan_opts("Recommendation Reason Plan", "test-proj");
+    opts.chat_session_id = Some(session.id.clone());
+    let pf = create_plan(&server.state.plans_dir, opts).unwrap();
+    let folder = PathBuf::from(&pf.folder_path);
+
+    run_rec(
+        &server,
+        PlanRecCommands::Add {
+            plan_id: pf.id().to_string(),
+            title: "Rewrite The Poller".to_string(),
+            description: "Replace polling with a watch".to_string(),
+            impact: Some("Medium".to_string()),
+            edit: PlanEditReasonArgs {
+                reason: Some("Found while reading the scheduler".to_string()),
+                chat_session: Some("some-other-session".to_string()),
+            },
+        },
+    )
+    .await;
+
+    run_rec(
+        &server,
+        PlanRecCommands::Decline {
+            plan_id: pf.id().to_string(),
+            title: "Rewrite The Poller".to_string(),
+            reason: Some("The watch API is not stable yet".to_string()),
+            edit_reason: Some("Operator decision on the review call".to_string()),
+            chat_session: Some("some-other-session".to_string()),
+        },
+    )
+    .await;
+
+    let rec = yaml_rec(&folder);
+    assert_eq!(
+        rec.decline_reason.as_deref(),
+        Some("The watch API is not stable yet"),
+        "--reason is the decline reason and belongs in plan.yaml"
+    );
+
+    let sess_after = server
+        .state
+        .chat_manager
+        .get_session(&session.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        sess_after.messages.len(),
+        2,
+        "both the add and the decline must report themselves"
+    );
+    assert!(
+        sess_after.messages[0]
+            .content
+            .contains("recommendation 'Rewrite The Poller' added"),
+        "got: {}",
+        sess_after.messages[0].content
+    );
+    assert!(
+        sess_after.messages[0]
+            .content
+            .contains("Reason: Found while reading the scheduler."),
+        "got: {}",
+        sess_after.messages[0].content
+    );
+    let declined = &sess_after.messages[1].content;
+    assert!(
+        declined.contains("recommendation 'Rewrite The Poller' declined"),
+        "got: {}",
+        declined
+    );
+    assert!(
+        declined.contains("Reason: Operator decision on the review call."),
+        "--edit-reason is the notification reason, got: {}",
+        declined
+    );
+    assert!(
+        !declined.contains("The watch API is not stable yet"),
+        "the decline reason must not be reported as the edit reason, got: {}",
+        declined
+    );
+}
+
+/// A `Parser` over the plan subcommand tree, so the flag spellings can be checked as an operator
+/// types them rather than as a struct literal.
+#[derive(Parser)]
+struct PlanCli {
+    #[command(subcommand)]
+    command: PlanCommands,
+}
+
+fn parse_rec(args: &[&str]) -> PlanRecCommands {
+    let mut argv = vec!["tendril", "rec"];
+    argv.extend_from_slice(args);
+    match PlanCli::try_parse_from(argv)
+        .expect("parse rec command")
+        .command
+    {
+        PlanCommands::Rec(cmd) => cmd,
+        _ => panic!("expected a rec subcommand"),
+    }
+}
+
+/// Every mutating recommendation subcommand takes the same `--reason` / `--chat-session` pair as the
+/// rest of `tendril plan`, so an edit can explain itself. `decline` is the exception by necessity:
+/// there `--reason` is the decline reason it has always been.
+#[test]
+fn plan_rec_subcommands_take_reason_and_chat_session() {
+    match parse_rec(&[
+        "add",
+        "00588",
+        "Add Jobs Index",
+        "--description",
+        "Index the jobs table",
+        "--impact",
+        "High",
+        "--reason",
+        "Spotted during execution",
+        "--chat-session",
+        "sess-1",
+    ]) {
+        PlanRecCommands::Add {
+            plan_id,
+            title,
+            description,
+            impact,
+            edit,
+        } => {
+            assert_eq!(plan_id, "00588");
+            assert_eq!(title, "Add Jobs Index");
+            assert_eq!(description, "Index the jobs table");
+            assert_eq!(impact.as_deref(), Some("High"));
+            assert_eq!(edit.reason.as_deref(), Some("Spotted during execution"));
+            assert_eq!(edit.chat_session.as_deref(), Some("sess-1"));
+        }
+        _ => panic!("expected Add"),
+    }
+
+    match parse_rec(&[
+        "set",
+        "00588",
+        "Add Jobs Index",
+        "description",
+        "Index Jobs(Status)",
+        "--reason",
+        "Sharpened the wording",
+        "--chat-session",
+        "sess-2",
+    ]) {
+        PlanRecCommands::Set {
+            plan_id,
+            title,
+            field,
+            value,
+            edit,
+        } => {
+            assert_eq!(plan_id, "00588");
+            assert_eq!(title, "Add Jobs Index");
+            assert_eq!(field, "description");
+            assert_eq!(value, "Index Jobs(Status)");
+            assert_eq!(edit.reason.as_deref(), Some("Sharpened the wording"));
+            assert_eq!(edit.chat_session.as_deref(), Some("sess-2"));
+        }
+        _ => panic!("expected Set"),
+    }
+
+    match parse_rec(&[
+        "accept",
+        "00588",
+        "Add Jobs Index",
+        "--notes",
+        "After the 0.2 migration",
+        "--reason",
+        "Agreed on the review call",
+        "--chat-session",
+        "sess-3",
+    ]) {
+        PlanRecCommands::Accept {
+            title, notes, edit, ..
+        } => {
+            assert_eq!(title, "Add Jobs Index");
+            assert_eq!(notes.as_deref(), Some("After the 0.2 migration"));
+            assert_eq!(edit.reason.as_deref(), Some("Agreed on the review call"));
+            assert_eq!(edit.chat_session.as_deref(), Some("sess-3"));
+        }
+        _ => panic!("expected Accept"),
+    }
+
+    match parse_rec(&[
+        "decline",
+        "00588",
+        "Add Jobs Index",
+        "--reason",
+        "Out of scope",
+        "--edit-reason",
+        "Operator decision",
+        "--chat-session",
+        "sess-4",
+    ]) {
+        PlanRecCommands::Decline {
+            reason,
+            edit_reason,
+            chat_session,
+            ..
+        } => {
+            assert_eq!(reason.as_deref(), Some("Out of scope"));
+            assert_eq!(edit_reason.as_deref(), Some("Operator decision"));
+            assert_eq!(chat_session.as_deref(), Some("sess-4"));
+        }
+        _ => panic!("expected Decline"),
+    }
+
+    match parse_rec(&[
+        "remove",
+        "00588",
+        "Add Jobs Index",
+        "--reason",
+        "Duplicated 00590's",
+        "--chat-session",
+        "sess-5",
+    ]) {
+        PlanRecCommands::Remove { title, edit, .. } => {
+            assert_eq!(title, "Add Jobs Index");
+            assert_eq!(edit.reason.as_deref(), Some("Duplicated 00590's"));
+            assert_eq!(edit.chat_session.as_deref(), Some("sess-5"));
+        }
+        _ => panic!("expected Remove"),
+    }
+
+    // The read commands take filters instead, and `rebuild` takes nothing at all.
+    match parse_rec(&["list", "00588", "--state", "AcceptedWithNotes"]) {
+        PlanRecCommands::List { plan_id, state } => {
+            assert_eq!(plan_id, "00588");
+            assert_eq!(state.as_deref(), Some("AcceptedWithNotes"));
+        }
+        _ => panic!("expected List"),
+    }
+    match parse_rec(&["all", "--project", "TendrilService", "--state", "Pending"]) {
+        PlanRecCommands::All { project, state } => {
+            assert_eq!(project.as_deref(), Some("TendrilService"));
+            assert_eq!(state.as_deref(), Some("Pending"));
+        }
+        _ => panic!("expected All"),
+    }
+    assert!(matches!(parse_rec(&["rebuild"]), PlanRecCommands::Rebuild));
+
+    // `rec accept --notes` without a value is a mistake, not an empty note.
+    assert!(
+        PlanCli::try_parse_from(["tendril", "rec", "accept", "00588", "Title", "--notes"]).is_err(),
+        "--notes must require a value"
+    );
+}
+
+// The recommendation *reads* are stdout too — `rec list`, `rec all` and `rec rebuild` return nothing
+// a caller can inspect — so they run the real binary through `CliHome` like the worktree tests above.
+
+/// The per-plan listing is what an operator reads after execution, so the state filter has to narrow
+/// it and the notes have to be visible rather than implied by the state name.
+#[test]
+fn plan_rec_list_filters_by_state_and_shows_notes() {
+    let home = CliHome::new("rec-list");
+    let pf = create_plan(
+        &home.plans_dir(),
+        rec_plan_opts("Rec Listing Plan", "ProjA"),
+    )
+    .unwrap();
+    let id = pf.id().to_string();
+
+    for (title, description) in [
+        ("Add Jobs Index", "Index the jobs table"),
+        ("Cache Results", "Memoize the hot query"),
+        ("Rewrite The Poller", "Watch instead of poll"),
+    ] {
+        home.run_ok(&[
+            "plan",
+            "rec",
+            "add",
+            &id,
+            title,
+            "--description",
+            description,
+        ]);
+    }
+    home.run_ok(&[
+        "plan",
+        "rec",
+        "accept",
+        &id,
+        "Cache Results",
+        "--notes",
+        "After the 0.2 migration",
+    ]);
+    home.run_ok(&[
+        "plan",
+        "rec",
+        "decline",
+        &id,
+        "Rewrite The Poller",
+        "--reason",
+        "Watch API is unstable",
+    ]);
+
+    let all = home.run_ok(&["plan", "rec", "list", &id]);
+    assert!(all.contains("Add Jobs Index"), "got: {}", all);
+    assert!(all.contains("Cache Results"), "got: {}", all);
+    assert!(all.contains("Rewrite The Poller"), "got: {}", all);
+    assert!(
+        all.contains("notes: After the 0.2 migration"),
+        "got: {}",
+        all
+    );
+    assert!(
+        all.contains("declineReason: Watch API is unstable"),
+        "got: {}",
+        all
+    );
+
+    let with_notes = home.run_ok(&["plan", "rec", "list", &id, "--state=AcceptedWithNotes"]);
+    assert!(with_notes.contains("Cache Results"), "got: {}", with_notes);
+    assert!(
+        !with_notes.contains("Add Jobs Index") && !with_notes.contains("Rewrite The Poller"),
+        "the filter must exclude the other states, got: {}",
+        with_notes
+    );
+
+    let pending = home.run_ok(&["plan", "rec", "list", &id, "--state=pending"]);
+    assert!(pending.contains("Add Jobs Index"), "got: {}", pending);
+    assert!(!pending.contains("Cache Results"), "got: {}", pending);
+
+    // A state nobody has is a typo, not an empty list.
+    let out = home.run(&["plan", "rec", "list", &id, "--state=Maybe"]);
+    assert!(!out.status.success(), "an invalid state must fail");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("Invalid recommendation state"),
+        "got: {}",
+        stderr
+    );
+}
+
+/// `rec all` is the read no single `plan.yaml` can answer, so it is what proves the projection is
+/// being written at all — and `rec rebuild` proves it can be reconstructed from the folders on disk.
+#[test]
+fn plan_rec_all_spans_plans_and_rebuild_reports_what_it_wrote() {
+    let home = CliHome::new("rec-all");
+    let first = create_plan(&home.plans_dir(), rec_plan_opts("Scheduler Plan", "ProjA")).unwrap();
+    let second = create_plan(&home.plans_dir(), rec_plan_opts("Inbox Plan", "ProjB")).unwrap();
+    let first_id = first.id().to_string();
+    let second_id = second.id().to_string();
+
+    home.run_ok(&[
+        "plan",
+        "rec",
+        "add",
+        &first_id,
+        "Add Jobs Index",
+        "--description",
+        "Index the jobs table",
+        "--impact",
+        "High",
+    ]);
+    home.run_ok(&[
+        "plan",
+        "rec",
+        "add",
+        &second_id,
+        "Batch The Writes",
+        "--description",
+        "Coalesce inbox writes",
+        "--impact",
+        "Small",
+    ]);
+    home.run_ok(&[
+        "plan",
+        "rec",
+        "accept",
+        &second_id,
+        "Batch The Writes",
+        "--notes",
+        "With the queue rewrite",
+    ]);
+
+    let all = home.run_ok(&["plan", "rec", "all"]);
+    assert!(all.contains("Add Jobs Index"), "got: {}", all);
+    assert!(all.contains("Batch The Writes"), "got: {}", all);
+    assert!(all.contains(&first.folder_name), "got: {}", all);
+    assert!(all.contains(&second.folder_name), "got: {}", all);
+    assert!(
+        all.contains("High"),
+        "the impact belongs in the line, got: {}",
+        all
+    );
+
+    let proj_b = home.run_ok(&["plan", "rec", "all", "--project", "ProjB"]);
+    assert!(proj_b.contains("Batch The Writes"), "got: {}", proj_b);
+    assert!(!proj_b.contains("Add Jobs Index"), "got: {}", proj_b);
+
+    let accepted = home.run_ok(&["plan", "rec", "all", "--state", "AcceptedWithNotes"]);
+    assert!(accepted.contains("Batch The Writes"), "got: {}", accepted);
+    assert!(!accepted.contains("Add Jobs Index"), "got: {}", accepted);
+
+    let none = home.run_ok(&["plan", "rec", "all", "--project", "ProjC"]);
+    assert!(none.contains("No recommendations."), "got: {}", none);
+
+    let rebuilt = home.run_ok(&["plan", "rec", "rebuild"]);
+    assert!(
+        rebuilt.contains("Rebuilt 2 recommendation rows from 2 plans."),
+        "rebuild must report what it wrote, got: {}",
+        rebuilt
+    );
+    // Rebuilding changes nothing that was already correct.
+    let after = home.run_ok(&["plan", "rec", "all"]);
+    assert_eq!(after.lines().count(), 2, "got: {}", after);
 }

@@ -1,8 +1,9 @@
 use crate::error::BridgeError;
 use crate::models::{
-    AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, EnqueueItemDto,
-    ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto, PlanDetailDto, PlanQueryDto,
-    PlanSummaryDto, PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
+    AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateProjectDto, CreateSessionDto,
+    DoctorCheckDto, DraftCommentDto, EnqueueItemDto, ExecuteTurnDto, JobDetailDto, JobDto,
+    ModelCatalogStatusDto, OnboardingStatusDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto,
+    PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
     ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
@@ -302,12 +303,17 @@ impl TendrilClient {
     /// The route is live in `tendril-server` (shipped in Plan 00068 via
     /// `PUT /api/plans/:id/recommendations/:title`). The desktop app delegates
     /// mutation to the daemon rather than writing `plan.yaml` behind its back.
+    ///
+    /// `notes` and `decline_reason` are distinct fields: the app used to smuggle
+    /// accept notes through `declineReason` because the recommendation model had
+    /// nowhere else to put them.
     pub async fn update_recommendation(
         &self,
         plan_id: &str,
         title: &str,
         state: &str,
         decline_reason: Option<&str>,
+        notes: Option<&str>,
     ) -> Result<(), BridgeError> {
         let url = format!(
             "{}/api/plans/{}/recommendations/{}",
@@ -315,7 +321,7 @@ impl TendrilClient {
             path_segment(plan_id),
             path_segment(title)
         );
-        let body = json!({ "state": state, "declineReason": decline_reason });
+        let body = json!({ "state": state, "declineReason": decline_reason, "notes": notes });
 
         let resp = self
             .client
@@ -994,13 +1000,17 @@ impl TendrilClient {
         })
     }
 
+    /// Merges a single top-level key into `config.yaml`. `PUT /api/config` takes the patch as a JSON
+    /// *object* and rejects anything else, so the value is wrapped here — an earlier version sent the
+    /// bare value with the key as a query parameter, which the server never read.
     pub async fn put_config(&self, key: &str, value: serde_json::Value) -> Result<(), BridgeError> {
-        let url = format!("{}/api/config?key={}", self.base_url, urlencoding(key));
+        let url = format!("{}/api/config", self.base_url);
+        let patch = json!({ key: value });
         let resp = self
             .client
             .put(&url)
             .headers(self.headers())
-            .json(&value)
+            .json(&patch)
             .send()
             .await?;
 
@@ -1014,6 +1024,97 @@ impl TendrilClient {
         }
 
         Ok(())
+    }
+
+    pub async fn get_onboarding_status(&self) -> Result<OnboardingStatusDto, BridgeError> {
+        let url = format!("{}/api/onboarding", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_ONBOARDING_STATUS_FAILED",
+                format!("Failed to get onboarding status ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn complete_onboarding(&self) -> Result<(), BridgeError> {
+        self.post_onboarding("complete", "COMPLETE_ONBOARDING_FAILED")
+            .await
+    }
+
+    pub async fn dismiss_onboarding(&self) -> Result<(), BridgeError> {
+        self.post_onboarding("dismiss", "DISMISS_ONBOARDING_FAILED")
+            .await
+    }
+
+    async fn post_onboarding(&self, action: &str, code: &str) -> Result<(), BridgeError> {
+        let url = format!("{}/api/onboarding/{}", self.base_url, action);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&json!({}))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                code,
+                format!("Failed to {action} onboarding ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn run_doctor(&self) -> Result<Vec<DoctorCheckDto>, BridgeError> {
+        let url = format!("{}/api/doctor", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "RUN_DOCTOR_FAILED",
+                format!("Failed to run health checks ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Creates a project. A duplicate name comes back as 409, which surfaces here as a
+    /// `CREATE_PROJECT_FAILED` error carrying the server's message.
+    pub async fn create_project(
+        &self,
+        request: CreateProjectDto,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/projects", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&request)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CREATE_PROJECT_FAILED",
+                format!("Failed to create project ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     pub async fn get_models_status(&self) -> Result<ModelCatalogStatusDto, BridgeError> {
@@ -1080,6 +1181,99 @@ impl TendrilClient {
             return Err(BridgeError::new(
                 "POST_INBOX_FAILED",
                 format!("Failed to post to inbox ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Forces an assigned-issue sweep. The sweep report is returned for any status the service treats
+    /// as success, so the caller can distinguish `Ran` from `AlreadyRunning`; only `NotMaster`
+    /// (a `409`) surfaces as an error.
+    pub async fn check_inbox(&self) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/inbox/check", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CHECK_INBOX_FAILED",
+                format!("Failed to check for assigned issues ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Swept issues awaiting a decision. `state` of `None` uses the service default (`Pending`).
+    pub async fn list_inbox_proposals(
+        &self,
+        state: Option<&str>,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = match state {
+            Some(s) if !s.trim().is_empty() => format!(
+                "{}/api/inbox/proposals?state={}",
+                self.base_url,
+                path_segment(s)
+            ),
+            _ => format!("{}/api/inbox/proposals", self.base_url),
+        };
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_INBOX_PROPOSALS_FAILED",
+                format!("Failed to list inbox proposals ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn accept_inbox_proposal(&self, id: i64) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/inbox/proposals/{}/accept", self.base_url, id);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "ACCEPT_INBOX_PROPOSAL_FAILED",
+                format!("Failed to accept inbox proposal {id} ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn dismiss_inbox_proposal(&self, id: i64) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/inbox/proposals/{}/dismiss", self.base_url, id);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "DISMISS_INBOX_PROPOSAL_FAILED",
+                format!("Failed to dismiss inbox proposal {id} ({status}): {text}"),
             ));
         }
 
@@ -1387,6 +1581,141 @@ impl TendrilClient {
                 format!("Failed to delete queued chat item ({status}): {text}"),
             ));
         }
+        Ok(())
+    }
+
+    // --- Draft diff comments ---
+    //
+    // Every mutation returns the plan's new list, so the caller never has to re-fetch and stays
+    // correct even when the WebSocket bridge is down.
+
+    fn diff_comments_url(&self, id: &str) -> String {
+        format!(
+            "{}/api/plans/{}/diff-comments",
+            self.base_url,
+            path_segment(id)
+        )
+    }
+
+    pub async fn list_diff_comments(&self, id: &str) -> Result<Vec<DraftCommentDto>, BridgeError> {
+        let resp = self
+            .client
+            .get(self.diff_comments_url(id))
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_DIFF_COMMENTS_FAILED",
+                format!("Failed to list diff comments for plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn upsert_diff_comment(
+        &self,
+        id: &str,
+        comment: &DraftCommentDto,
+    ) -> Result<Vec<DraftCommentDto>, BridgeError> {
+        let resp = self
+            .client
+            .post(self.diff_comments_url(id))
+            .headers(self.headers())
+            .json(comment)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "UPSERT_DIFF_COMMENT_FAILED",
+                format!("Failed to save diff comment on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn replace_diff_comments(
+        &self,
+        id: &str,
+        comments: &[DraftCommentDto],
+    ) -> Result<Vec<DraftCommentDto>, BridgeError> {
+        let resp = self
+            .client
+            .put(self.diff_comments_url(id))
+            .headers(self.headers())
+            .json(&json!({ "comments": comments }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "REPLACE_DIFF_COMMENTS_FAILED",
+                format!("Failed to replace diff comments on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn delete_diff_comment(
+        &self,
+        id: &str,
+        file_path: &str,
+        change_key: &str,
+    ) -> Result<Vec<DraftCommentDto>, BridgeError> {
+        let url = format!(
+            "{}?filePath={}&changeKey={}",
+            self.diff_comments_url(id),
+            urlencoding(file_path),
+            urlencoding(change_key)
+        );
+        let resp = self
+            .client
+            .delete(url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "DELETE_DIFF_COMMENT_FAILED",
+                format!("Failed to delete diff comment on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Drop a plan's whole review — no query string means clear-all.
+    pub async fn clear_diff_comments(&self, id: &str) -> Result<(), BridgeError> {
+        let resp = self
+            .client
+            .delete(self.diff_comments_url(id))
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CLEAR_DIFF_COMMENTS_FAILED",
+                format!("Failed to clear diff comments on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
         Ok(())
     }
 

@@ -9,11 +9,14 @@ pub use commands::agents::*;
 pub use commands::chat::*;
 pub use commands::config::*;
 pub use commands::github::*;
+pub use commands::inbox::*;
 pub use commands::jobs::*;
 pub use commands::plans::*;
 pub use commands::pull_requests::*;
 pub use commands::state::*;
 pub use commands::*;
+
+use service::{MasterDiscovery, WsBridge};
 
 pub fn run() {
     use tauri::Manager;
@@ -25,6 +28,31 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(ui_store)
         .setup(|app| {
+            // Connect the WebSocket bridge, which re-emits daemon events to the frontend as
+            // `plan-event` / `job-event` / `chat-event`. Without this the UI only ever sees state it
+            // fetched itself.
+            //
+            // The bearer secret is read here and stays in the native side; it is never handed to the
+            // webview. `WsBridge` reconnects with backoff on its own, so a daemon that is not up yet
+            // is fine. A missing `.master` at startup is not: discovery happens once, so the app has
+            // to be restarted after the daemon first writes it. Live re-discovery would need a
+            // watcher on the file, which is out of scope here.
+            match MasterDiscovery::new().read_master() {
+                Ok(master) => {
+                    let ws_scheme = if master.scheme == "https" {
+                        "wss"
+                    } else {
+                        "ws"
+                    };
+                    let ws_url = format!("{}://{}:{}/api/ws", ws_scheme, master.host, master.port);
+                    let bridge = WsBridge::new(app.handle().clone(), ws_url, Some(master.secret));
+                    app.manage(bridge);
+                }
+                Err(err) => {
+                    eprintln!("WebSocket bridge not started: {err}");
+                }
+            }
+
             // The daemon origin comes from `.master`, which may not exist yet: the app can easily
             // start before the daemon. The bridge spawns either way and re-reads `.master` on each
             // attempt, so an absent daemon costs nothing but a retry.
@@ -65,12 +93,22 @@ pub fn run() {
             cmd_list_recommendations,
             cmd_set_recommendation_state,
             cmd_set_verification_status,
+            cmd_list_diff_comments,
+            cmd_upsert_diff_comment,
+            cmd_delete_diff_comment,
+            cmd_clear_diff_comments,
             cmd_list_jobs,
             cmd_get_job,
             cmd_start_job,
             cmd_cancel_job,
             cmd_list_projects,
+            cmd_create_project,
             cmd_get_config,
+            cmd_put_config,
+            cmd_get_onboarding_status,
+            cmd_complete_onboarding,
+            cmd_dismiss_onboarding,
+            cmd_run_doctor,
             cmd_get_models_status,
             cmd_refresh_models,
             cmd_execute_review_action,
@@ -96,6 +134,10 @@ pub fn run() {
             cmd_update_queued_chat_item,
             cmd_list_agents,
             cmd_list_github_issues,
+            cmd_check_inbox,
+            cmd_list_inbox_proposals,
+            cmd_accept_inbox_proposal,
+            cmd_dismiss_inbox_proposal,
             cmd_list_pull_requests,
             cmd_sync_pull_requests,
         ])
