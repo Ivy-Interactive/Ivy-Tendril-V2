@@ -3,9 +3,13 @@ use std::collections::HashSet;
 use std::path::Path;
 use tendril_core::config::{
     expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
+    TendrilSettings,
 };
 use tendril_core::db::{
     check_plan_search, get_last_sync_time, open_database, rebuild_search_index, PlanSearchHealth,
+};
+use tendril_core::promptware::{
+    configured_overlay_root, overlay_promptware_names, read_provenance, resolve_overlay,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -99,6 +103,72 @@ pub(crate) fn plan_search_lines(
     match last_sync {
         Some(time) => lines.push(format!("[OK] Last plan sync: {}", time.to_rfc3339())),
         None => lines.push("[WARN] Plans have never been synced".to_string()),
+    }
+
+    lines
+}
+
+/// Reports where the promptware overlay is, whether it resolves, and whether what is deployed still
+/// matches it. Split out from [`handle_doctor`] so the wording is unit-testable, the way
+/// [`repo_path_warning`] and [`plan_search_lines`] already are.
+///
+/// A configured-but-missing overlay is the failure mode the original mechanism could not report at
+/// all: it had no notion of an overlay path, only a git-tracked deploy target.
+pub(crate) fn overlay_doctor_lines(
+    tendril_home: &Path,
+    settings: &TendrilSettings,
+) -> Vec<String> {
+    let Some(configured) = configured_overlay_root(tendril_home, settings) else {
+        return vec!["[OK] Promptware overlay: not configured".to_string()];
+    };
+
+    let Some(overlay) = resolve_overlay(tendril_home, settings) else {
+        return vec![format!(
+            "[WARN] Promptware overlay configured but not found: {}",
+            configured.display()
+        )];
+    };
+
+    let overridden = overlay_promptware_names(&overlay.root).len();
+    let mut detail = Vec::new();
+    if let Some(version) = &overlay.version {
+        detail.push(format!(".version {}", version));
+    }
+    detail.push(format!(
+        "{} promptware{} overridden",
+        overridden,
+        if overridden == 1 { "" } else { "s" }
+    ));
+
+    let mut lines = vec![format!(
+        "[OK] Promptware overlay: {} ({})",
+        overlay.root.display(),
+        detail.join(", ")
+    )];
+
+    match read_provenance(&tendril_home.join("Promptwares")) {
+        None => lines.push(
+            "[WARN] Promptware overlay has not been deployed yet — run 'tendril promptware deploy'"
+                .to_string(),
+        ),
+        Some(deployed) if deployed.overlay_root.as_deref() != Some(overlay.root.as_path()) => {
+            lines.push(format!(
+                "[WARN] Promptware overlay root changed (deployed {}, configured {}) — run 'tendril promptware deploy'",
+                deployed
+                    .overlay_root
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                overlay.root.display()
+            ));
+        }
+        Some(deployed) if deployed.overlay_version != overlay.version => {
+            lines.push(format!(
+                "[WARN] Promptware overlay is stale (deployed .version {}, overlay .version {}) — run 'tendril promptware deploy'",
+                deployed.overlay_version.as_deref().unwrap_or("none"),
+                overlay.version.as_deref().unwrap_or("none")
+            ));
+        }
+        Some(_) => {}
     }
 
     lines
@@ -198,6 +268,10 @@ pub fn handle_doctor(tendril_home: &Path, rebuild_search_index_flag: bool) -> an
         println!("[OK] Plans directory: {}", plans_dir.display());
     } else {
         println!("[WARN] Plans directory not found: {}", plans_dir.display());
+    }
+
+    for line in overlay_doctor_lines(tendril_home, &load_config(&cfg_path).unwrap_or_default()) {
+        println!("{}", line);
     }
 
     // Git check
@@ -421,6 +495,152 @@ mod tests {
         assert!(lines
             .iter()
             .any(|l| l.starts_with("[WARN] Plan search index corrupt")));
+    }
+
+    /// A `TENDRIL_HOME` plus an overlay root beside it, so overlay wording can be asserted without a
+    /// live installation.
+    struct OverlayFixture {
+        root: std::path::PathBuf,
+        home: std::path::PathBuf,
+        overlay: std::path::PathBuf,
+    }
+
+    impl OverlayFixture {
+        fn new() -> Self {
+            let root = scratch_dir("tendril-doctor-overlay");
+            let home = root.join("home");
+            let overlay = root.join("team").join("Promptwares");
+            std::fs::create_dir_all(&home).unwrap();
+            std::fs::create_dir_all(overlay.join("CreatePlan")).unwrap();
+            std::fs::write(overlay.join("CreatePlan").join("Program.md"), "team plan").unwrap();
+            OverlayFixture {
+                root,
+                home,
+                overlay,
+            }
+        }
+
+        fn settings(&self, overlay: Option<&std::path::Path>) -> TendrilSettings {
+            TendrilSettings {
+                promptware_overlay: overlay.map(|p| p.to_string_lossy().to_string()),
+                ..Default::default()
+            }
+        }
+
+        /// Deploys into the fixture's home so `read_provenance` has something to compare against.
+        fn deploy(&self, overlay: Option<&tendril_core::promptware::OverlayLayer>) {
+            let shipped = self.root.join("shipped");
+            std::fs::create_dir_all(shipped.join("CreatePlan")).unwrap();
+            std::fs::write(shipped.join("CreatePlan").join("Program.md"), "shipped").unwrap();
+            tendril_core::promptware::deploy_promptwares(
+                &self.home.join("Promptwares"),
+                tendril_core::promptware::DeployOptions {
+                    shipped_root: Some(&shipped),
+                    overlay,
+                },
+            )
+            .unwrap();
+        }
+    }
+
+    impl Drop for OverlayFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn overlay_doctor_lines_report_not_configured() {
+        let fx = OverlayFixture::new();
+
+        let lines = overlay_doctor_lines(&fx.home, &fx.settings(None));
+
+        assert_eq!(lines, vec!["[OK] Promptware overlay: not configured"]);
+    }
+
+    #[test]
+    fn overlay_doctor_lines_warn_when_configured_but_missing() {
+        let fx = OverlayFixture::new();
+        let missing = fx.root.join("does-not-exist");
+
+        let lines = overlay_doctor_lines(&fx.home, &fx.settings(Some(&missing)));
+
+        assert_eq!(
+            lines,
+            vec![format!(
+                "[WARN] Promptware overlay configured but not found: {}",
+                missing.display()
+            )]
+        );
+    }
+
+    #[test]
+    fn overlay_doctor_lines_report_a_healthy_overlay() {
+        let fx = OverlayFixture::new();
+        std::fs::write(fx.overlay.join(".version"), "1.0.45\n").unwrap();
+        let settings = fx.settings(Some(&fx.overlay));
+        let overlay = resolve_overlay(&fx.home, &settings).unwrap();
+        fx.deploy(Some(&overlay));
+
+        let lines = overlay_doctor_lines(&fx.home, &settings);
+
+        assert_eq!(
+            lines,
+            vec![format!(
+                "[OK] Promptware overlay: {} (.version 1.0.45, 1 promptware overridden)",
+                fx.overlay.display()
+            )]
+        );
+    }
+
+    #[test]
+    fn overlay_doctor_lines_warn_when_never_deployed() {
+        let fx = OverlayFixture::new();
+        let settings = fx.settings(Some(&fx.overlay));
+
+        let lines = overlay_doctor_lines(&fx.home, &settings);
+
+        assert!(lines[0].starts_with("[OK] Promptware overlay:"));
+        assert_eq!(
+            lines[1],
+            "[WARN] Promptware overlay has not been deployed yet — run 'tendril promptware deploy'"
+        );
+    }
+
+    #[test]
+    fn overlay_doctor_lines_warn_when_stale() {
+        let fx = OverlayFixture::new();
+        std::fs::write(fx.overlay.join(".version"), "1.0.44").unwrap();
+        let settings = fx.settings(Some(&fx.overlay));
+        fx.deploy(Some(&resolve_overlay(&fx.home, &settings).unwrap()));
+
+        // The team bumps its revision; nothing has re-deployed yet.
+        std::fs::write(fx.overlay.join(".version"), "1.0.45").unwrap();
+
+        let lines = overlay_doctor_lines(&fx.home, &settings);
+
+        assert_eq!(
+            lines[1],
+            "[WARN] Promptware overlay is stale (deployed .version 1.0.44, overlay .version 1.0.45) — run 'tendril promptware deploy'"
+        );
+    }
+
+    #[test]
+    fn overlay_doctor_lines_warn_when_the_root_changed() {
+        let fx = OverlayFixture::new();
+        let settings = fx.settings(Some(&fx.overlay));
+        // Deployed shipped-only, then an overlay was configured.
+        fx.deploy(None);
+
+        let lines = overlay_doctor_lines(&fx.home, &settings);
+
+        assert_eq!(
+            lines[1],
+            format!(
+                "[WARN] Promptware overlay root changed (deployed none, configured {}) — run 'tendril promptware deploy'",
+                fx.overlay.display()
+            )
+        );
     }
 
     #[test]
