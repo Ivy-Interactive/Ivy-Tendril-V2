@@ -33,6 +33,9 @@ enum Commands {
     #[command(subcommand, about = "Manage projects")]
     Project(commands::project::ProjectCommands),
 
+    #[command(subcommand, about = "Manage team configuration vaults")]
+    Vault(commands::vault::VaultCommands),
+
     // Top-level rather than `project analyzer`, because the promptwares call
     // `tendril project-analyzer <path>`.
     #[command(
@@ -105,6 +108,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Project(cmd) => {
             commands::project::handle_project_command(cmd, &tendril_home).await?
         }
+        Commands::Vault(cmd) => commands::vault::handle_vault_command(cmd, &tendril_home).await?,
         Commands::ProjectAnalyzer { folder } => {
             commands::project_analyzer::handle_project_analyzer(&folder)?
         }

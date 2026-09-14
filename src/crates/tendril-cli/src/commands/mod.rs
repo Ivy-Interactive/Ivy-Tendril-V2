@@ -15,4 +15,5 @@ pub mod reset;
 pub mod serve;
 pub mod update;
 pub mod update_promptwares;
+pub mod vault;
 pub mod verification;
