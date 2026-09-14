@@ -1,4 +1,5 @@
 use clap::{Args, Subcommand};
+use std::io::{IsTerminal, Write};
 use std::path::Path;
 use tendril_core::config::{get_plans_dir, read_master, MasterInfo};
 use tendril_core::jobs::logger::append_agent_log;
@@ -28,6 +29,24 @@ pub enum JobCommands {
 
     #[command(about = "Append a narrative log entry to this job's log")]
     AddLog(JobAddLogArgs),
+
+    #[command(about = "Remove a job from the job list and the database (log artifacts are kept)")]
+    Delete(JobDeleteArgs),
+
+    #[command(about = "Promote a blocked or queued job past its gates and run it next")]
+    ForceStart(JobForceStartArgs),
+
+    #[command(about = "Stop every running, queued, pending or blocked job")]
+    StopAll,
+
+    #[command(about = "Bulk-delete jobs by status")]
+    Clear(JobClearArgs),
+
+    #[command(about = "Show queued jobs in dispatch order")]
+    Queue(JobQueueArgs),
+
+    #[command(about = "Run one job maintenance pass now instead of waiting for the timer")]
+    Maintenance,
 }
 
 #[derive(Args)]
@@ -56,8 +75,17 @@ pub struct JobStartArgs {
     #[arg(long, help = "Target project (for CreatePlan)")]
     pub project: Option<String>,
 
-    #[arg(long, help = "Priority for CreatePlan")]
+    #[arg(
+        long,
+        help = "Priority (higher runs first) — applies to every job type"
+    )]
     pub priority: Option<i32>,
+
+    #[arg(
+        long = "wait-for",
+        help = "Job id this job must wait for before it is queued (repeatable)"
+    )]
+    pub wait_for: Vec<String>,
 
     #[arg(long, help = "Force CreatePlan without duplicate check")]
     pub force: bool,
@@ -145,6 +173,34 @@ pub struct JobAddLogArgs {
     pub action: String,
     #[arg(long)]
     pub summary: Option<String>,
+}
+
+#[derive(Args)]
+pub struct JobDeleteArgs {
+    pub job_id: String,
+}
+
+#[derive(Args)]
+pub struct JobForceStartArgs {
+    pub job_id: String,
+}
+
+#[derive(Args)]
+pub struct JobClearArgs {
+    #[arg(long, help = "Clear completed jobs (the default)")]
+    pub completed: bool,
+    #[arg(long, help = "Clear failed, timed-out and stopped jobs")]
+    pub failed: bool,
+    #[arg(long, help = "Clear every job except running, queued and blocked ones")]
+    pub all: bool,
+    #[arg(short = 'y', long, help = "Skip the confirmation prompt for --all")]
+    pub yes: bool,
+}
+
+#[derive(Args)]
+pub struct JobQueueArgs {
+    #[arg(long, help = "Output the queue as JSON")]
+    pub json: bool,
 }
 
 pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow::Result<()> {
@@ -362,12 +418,25 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                 _ => anyhow::bail!("Unsupported job type: {}", args.job_type),
             };
 
+            // `JobArgs` is internally tagged, so it serializes as a flat object the server reads
+            // back through `#[serde(flatten)]`. The start options ride alongside those keys.
+            let mut body = serde_json::to_value(&job_args)?;
+            let map = body
+                .as_object_mut()
+                .ok_or_else(|| anyhow::anyhow!("Job args did not serialize to an object"))?;
+            if !args.wait_for.is_empty() {
+                map.insert("waitForJobs".to_string(), serde_json::json!(args.wait_for));
+            }
+            if let Some(priority) = args.priority {
+                map.insert("priority".to_string(), serde_json::json!(priority));
+            }
+
             let client = reqwest::Client::new();
             let url = format!("http://{}:{}/api/jobs", master.host, master.port);
             let resp = client
                 .post(&url)
                 .bearer_auth(&master.secret)
-                .json(&job_args)
+                .json(&body)
                 .send()
                 .await?;
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
@@ -375,6 +444,17 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                     "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
                     master.host,
                     master.port
+                );
+            }
+            // A conflict names the job already working on this plan, which is more useful than
+            // reqwest's generic status message.
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                let res: serde_json::Value = resp.json().await.unwrap_or_default();
+                anyhow::bail!(
+                    "{}",
+                    res["error"]
+                        .as_str()
+                        .unwrap_or("Another job is already in progress for this plan")
                 );
             }
             let resp = resp.error_for_status()?;
@@ -458,9 +538,168 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             resp.error_for_status()?;
             println!("Job {} cancelled.", args.job_id);
         }
+        JobCommands::Delete(args) => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!(
+                "http://{}:{}/api/jobs/{}",
+                master.host, master.port, args.job_id
+            );
+            let resp = send(reqwest::Client::new().delete(&url), &master).await?;
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Job {} not found", args.job_id);
+            }
+            resp.error_for_status()?;
+            println!("Job {} deleted.", args.job_id);
+        }
+        JobCommands::ForceStart(args) => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!(
+                "http://{}:{}/api/jobs/{}/force-start",
+                master.host, master.port, args.job_id
+            );
+            let resp = send(reqwest::Client::new().post(&url), &master).await?;
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Job {} not found", args.job_id);
+            }
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                let res: serde_json::Value = resp.json().await.unwrap_or_default();
+                anyhow::bail!(
+                    "{}",
+                    res["error"]
+                        .as_str()
+                        .unwrap_or("Job cannot be force-started")
+                );
+            }
+            resp.error_for_status()?;
+            println!("Job {} force-started.", args.job_id);
+        }
+        JobCommands::StopAll => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!("http://{}:{}/api/jobs/stop-all", master.host, master.port);
+            let resp = send(reqwest::Client::new().post(&url), &master).await?;
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+            let stopped: Vec<&str> = res["stopped"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                .unwrap_or_default();
+            if stopped.is_empty() {
+                println!("No jobs to stop.");
+            } else {
+                println!("Stopped {} job(s): {}", stopped.len(), stopped.join(", "));
+            }
+        }
+        JobCommands::Clear(args) => {
+            if args.failed as u8 + args.all as u8 + args.completed as u8 > 1 {
+                anyhow::bail!("Pass only one of --completed, --failed or --all");
+            }
+            let scope = if args.all {
+                "all"
+            } else if args.failed {
+                "failed"
+            } else {
+                "completed"
+            };
+
+            // `--all` can wipe a long history in one keystroke, so it is the one scope that asks.
+            if scope == "all" && !args.yes && !confirm("Clear all jobs?")? {
+                println!("Cancelled.");
+                return Ok(());
+            }
+
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!("http://{}:{}/api/jobs/clear", master.host, master.port);
+            let resp = send(
+                reqwest::Client::new()
+                    .post(&url)
+                    .json(&serde_json::json!({ "status": scope })),
+                &master,
+            )
+            .await?;
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+            println!(
+                "Cleared {} {} job(s).",
+                res["cleared"].as_u64().unwrap_or(0),
+                scope
+            );
+        }
+        JobCommands::Queue(args) => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!("http://{}:{}/api/jobs/queue", master.host, master.port);
+            let resp = send(reqwest::Client::new().get(&url), &master).await?;
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+
+            if args.json {
+                println!("{}", serde_json::to_string_pretty(&res)?);
+                return Ok(());
+            }
+
+            let queued = res["queued"].as_array().cloned().unwrap_or_default();
+            println!(
+                "{} job(s) queued, {} concurrent slot(s).",
+                queued.len(),
+                res["maxConcurrent"].as_u64().unwrap_or(0)
+            );
+            if !queued.is_empty() {
+                println!("{:<8} PRIORITY", "ID");
+                println!("{}", "-".repeat(20));
+                for entry in queued {
+                    println!(
+                        "{:<8} {}",
+                        entry["id"].as_str().unwrap_or(""),
+                        entry["priority"].as_i64().unwrap_or(0)
+                    );
+                }
+            }
+        }
+        JobCommands::Maintenance => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!(
+                "http://{}:{}/api/jobs/maintenance",
+                master.host, master.port
+            );
+            let resp = send(reqwest::Client::new().post(&url), &master).await?;
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+            println!("{}", serde_json::to_string_pretty(&res)?);
+        }
     }
 
     Ok(())
+}
+
+/// Sends an authenticated request and turns the daemon's 401 into an explicit message, since
+/// `error_for_status` alone reports it as an opaque status code.
+async fn send(
+    request: reqwest::RequestBuilder,
+    master: &MasterInfo,
+) -> anyhow::Result<reqwest::Response> {
+    let resp = request.bearer_auth(&master.secret).send().await?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        anyhow::bail!(
+            "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
+            master.host,
+            master.port
+        );
+    }
+    Ok(resp)
+}
+
+/// Asks for a y/N confirmation. Without a terminal there is nobody to ask, so the answer is no and
+/// the caller is told to pass `--yes`.
+fn confirm(prompt: &str) -> anyhow::Result<bool> {
+    if !std::io::stdin().is_terminal() {
+        anyhow::bail!(
+            "{} Refusing without a terminal; pass --yes to confirm.",
+            prompt
+        );
+    }
+    print!("{} [y/N] ", prompt);
+    std::io::stdout().flush()?;
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    Ok(matches!(
+        answer.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 fn get_master_or_err(tendril_home: &Path) -> anyhow::Result<MasterInfo> {
