@@ -15,9 +15,6 @@ exclude = [
   # Documentation host is not published yet (DNS NXDOMAIN);
   # re-enable this check once tendril.ivy.app resolves.
   "^https://tendril\\.ivy\\.app",
-  # The VS Code extension is not published to the Marketplace yet (404);
-  # re-enable this check once release-extension.yml has published it.
-  "^https://marketplace\\.visualstudio\\.com/items\\?itemName=ivy-interactive\\.",
   # GitHub gates the stargazers list behind sign-in, so it 404s for any
   # unauthenticated checker on every public repo. Not a broken link.
   "^https://github\\.com/[^/]+/[^/]+/stargazers$",

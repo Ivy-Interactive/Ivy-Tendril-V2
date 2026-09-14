@@ -84,6 +84,7 @@ pub fn plan_with(state: PlanStatus, verifications: &[(&str, VerificationStatus)]
         updated: chrono::Utc::now(),
         prs: vec![],
         commits: vec![],
+        worktrees: None,
         verifications: verifications
             .iter()
             .map(|(name, status)| PlanVerificationEntry {
@@ -102,6 +103,118 @@ pub fn plan_with(state: PlanStatus, verifications: &[(&str, VerificationStatus)]
         chat_session_id: None,
         extra: std::collections::BTreeMap::new(),
     }
+}
+
+/// A disposable git repository with a bare `origin` beside it, removed on drop.
+///
+/// The worktree tests need a real repository: `git worktree add` cannot be faked, and the reaper's
+/// branch-safety decisions are answers `git` gives about actual refs. Everything is local — no
+/// network, no operator repo, no global git config — and identity plus signing are set per repo so
+/// the commits work on a machine whose global config demands a GPG key.
+pub struct GitRepoFixture {
+    pub root: PathBuf,
+    pub repo: PathBuf,
+    pub origin: PathBuf,
+}
+
+impl GitRepoFixture {
+    pub fn new(label: &str) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "tendril-repo-{}-{}",
+            label,
+            uuid::Uuid::new_v4().simple()
+        ));
+        assert_under_temp_dir(&root);
+        // Named after the label, not "repo": a worktree path is derived from the repo's directory
+        // name, so two fixtures in one test must not share it.
+        let repo = root.join(label);
+        let origin = root.join("origin.git");
+        std::fs::create_dir_all(&repo).expect("create fixture repo dir");
+        std::fs::create_dir_all(&origin).expect("create fixture origin dir");
+
+        let fixture = Self { root, repo, origin };
+
+        fixture.git_in(&fixture.origin, &["init", "--bare", "-b", "main"]);
+
+        fixture.git(&["init", "-b", "main"]);
+        fixture.git(&["config", "user.email", "fixture@tendril.test"]);
+        fixture.git(&["config", "user.name", "Tendril Fixture"]);
+        fixture.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(fixture.repo.join("README.md"), "fixture\n").expect("write README");
+        fixture.git(&["add", "."]);
+        fixture.git(&["commit", "-m", "Initial commit"]);
+
+        let origin_url = fixture.origin.to_string_lossy().to_string();
+        fixture.git(&["remote", "add", "origin", &origin_url]);
+        fixture.git(&["push", "-u", "origin", "main"]);
+
+        fixture
+    }
+
+    /// Runs git in the working repo, asserting success.
+    pub fn git(&self, args: &[&str]) -> String {
+        self.git_in(&self.repo, args)
+    }
+
+    /// Runs git in an arbitrary directory of the fixture, asserting success.
+    pub fn git_in(&self, dir: &Path, args: &[&str]) -> String {
+        assert_under_temp_dir(dir);
+        let (code, stdout, stderr) =
+            tendril_core::git::service::run_git(args, dir).expect("run git");
+        assert_eq!(code, 0, "git {:?} failed: {}{}", args, stdout, stderr);
+        stdout
+    }
+
+    /// Commits a file on `branch`, creating the branch from the current HEAD if it is new.
+    pub fn commit_on(&self, branch: &str, file: &str, content: &str) {
+        if self.branch_exists(branch) {
+            self.git(&["checkout", branch]);
+        } else {
+            self.git(&["checkout", "-b", branch]);
+        }
+        std::fs::write(self.repo.join(file), content).expect("write fixture file");
+        self.git(&["add", file]);
+        self.git(&["commit", "-m", &format!("Add {}", file)]);
+    }
+
+    /// Pushes `branch` to the bare origin.
+    pub fn push(&self, branch: &str) {
+        self.git(&["push", "origin", branch]);
+    }
+
+    pub fn branch_exists(&self, branch: &str) -> bool {
+        let (code, _, _) = tendril_core::git::service::run_git(
+            &[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                &format!("refs/heads/{}", branch),
+            ],
+            &self.repo,
+        )
+        .expect("run git rev-parse");
+        code == 0
+    }
+}
+
+impl Drop for GitRepoFixture {
+    fn drop(&mut self) {
+        assert_under_temp_dir(&self.root);
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+/// Whether a plan's `worktrees` registry records the given path.
+pub fn worktree_registered(plan_folder: &Path, worktree_path: &Path) -> bool {
+    let Ok((plan, _)) = tendril_core::plans::reader::read_plan_yaml(plan_folder) else {
+        return false;
+    };
+    let target =
+        std::fs::canonicalize(worktree_path).unwrap_or_else(|_| worktree_path.to_path_buf());
+    plan.worktrees.unwrap_or_default().iter().any(|e| {
+        let recorded = PathBuf::from(&e.path);
+        std::fs::canonicalize(&recorded).unwrap_or(recorded) == target
+    })
 }
 
 /// Writes a `Verification/<name>.md` report with YAML frontmatter.

@@ -9,9 +9,15 @@ export { ShellSidebarSection } from "./ShellSidebarSection.tsx";
 export { ShellContext, useShell } from "./ShellContext.tsx";
 export type { ShellContextValue } from "./ShellContext.tsx";
 export { BrandIcon, brandIcons } from "./brandIcons.tsx";
+export { ShellRailFlyout } from "./ShellRailFlyout.tsx";
+export type { RailFlyoutTrigger } from "./ShellRailFlyout.tsx";
+export { ShellSectionItems, sectionItemIcons } from "./ShellSectionItems.tsx";
+export { ShellTooltip, formatShortcut } from "./ShellTooltip.tsx";
+export type { ShellTooltipProps } from "./ShellTooltip.tsx";
 export type {
   IvyEventHandler,
   ShellBadgeDto,
+  ShellItemState,
   ShellNavItemDto,
   ShellSectionItemDto,
   ShellTabDto,

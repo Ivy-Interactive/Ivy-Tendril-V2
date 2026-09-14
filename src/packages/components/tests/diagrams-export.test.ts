@@ -27,6 +27,11 @@ describe("diagrams export", () => {
     expect(Renderers.HtmlRenderer).toBeDefined();
   });
 
+  it("should NOT export GraphvizRenderer or MermaidRenderer from tendril entrypoint", () => {
+    expect("GraphvizRenderer" in Tendril).toBe(false);
+    expect("MermaidRenderer" in Tendril).toBe(false);
+  });
+
   it("should keep PlanMarkdown on the main entrypoint and its sub-components on ./tendril", () => {
     expect(UI.PlanMarkdown).toBeDefined();
     expect(Tendril.DraftMarkdown).toBeDefined();

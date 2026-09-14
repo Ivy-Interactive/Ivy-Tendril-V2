@@ -37,4 +37,10 @@ describe("Bundle Exports and Code-Splitting", () => {
     const content = readFileSync(tendrilMjsPath, "utf-8");
     expect(content).toContain('from "refractor/core"');
   });
+
+  it("does not statically import the diagram renderer chunk", () => {
+    const content = readFileSync(tendrilMjsPath, "utf-8");
+    const staticDiagramRenderer = /from\s+["']\.\/(?:Mermaid|Graphviz)Renderer-[\w-]+\.mjs["']/;
+    expect(content).not.toMatch(staticDiagramRenderer);
+  });
 });
