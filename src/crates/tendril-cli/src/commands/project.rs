@@ -1,7 +1,10 @@
 use clap::Subcommand;
 use std::path::Path;
 use tendril_core::config::{get_config_path, load_config, read_master, save_config, MasterInfo};
-use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
+use tendril_core::models::{
+    ProjectConfig, ProjectEnvFileConfig, ProjectPortConfig, ProjectVerificationRef, RepoRef,
+    ReviewActionConfig,
+};
 
 #[derive(Subcommand)]
 pub enum ProjectCommands {
@@ -60,6 +63,74 @@ pub enum ProjectCommands {
         field: String,
         #[arg(value_name = "VALUE")]
         value: String,
+    },
+
+    #[command(subcommand, about = "Manage a project's named service ports")]
+    Port(ProjectPortCommands),
+
+    #[command(subcommand, about = "Manage a project's environment files")]
+    EnvFile(ProjectEnvFileCommands),
+}
+
+#[derive(Subcommand)]
+pub enum ProjectPortCommands {
+    #[command(about = "List a project's named service ports")]
+    List {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+    },
+
+    #[command(about = "Add or update a named service port")]
+    Add {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "NAME")]
+        port_name: String,
+        #[arg(long)]
+        default_port: u16,
+        #[arg(long, default_value = "")]
+        description: String,
+    },
+
+    #[command(about = "Remove a named service port")]
+    Remove {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "NAME")]
+        port_name: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ProjectEnvFileCommands {
+    #[command(about = "List a project's environment files")]
+    List {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+    },
+
+    #[command(about = "Add or update an environment file")]
+    Add {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "PATH")]
+        path: String,
+        #[arg(long, help = "Source file, relative to the worktree root")]
+        template: Option<String>,
+        #[arg(
+            long = "override",
+            value_name = "KEY=VALUE",
+            help = "Key written on top of the template (repeatable)"
+        )]
+        overrides: Vec<String>,
+    },
+
+    #[command(about = "Remove an environment file")]
+    Remove {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "PATH")]
+        path: String,
     },
 }
 
@@ -435,6 +506,10 @@ async fn handle_project_command_daemon(
 
             println!("Project '{}' field '{}' set to '{}'.", name, field, value);
         }
+        // The daemon has no endpoints for ports or env files, so these always write config directly.
+        ProjectCommands::Port(_) | ProjectCommands::EnvFile(_) => {
+            return Ok(DaemonOutcome::Fallback)
+        }
     }
 
     Ok(DaemonOutcome::Handled)
@@ -490,12 +565,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             settings.projects.push(ProjectConfig {
                 name: name.clone(),
                 color: "Blue".to_string(),
-                repos: Vec::new(),
-                verifications: Vec::new(),
-                context: String::new(),
-                stack_hash: None,
-                review_actions: Vec::new(),
-                build_dependencies: Vec::new(),
+                ..Default::default()
             });
             save_config(&cfg_path, &settings)?;
             println!("Project '{}' added.", name);
@@ -686,7 +756,146 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             save_config(&cfg_path, &settings)?;
             println!("Project '{}' field '{}' set to '{}'.", name, field, value);
         }
+        ProjectCommands::Port(port_cmd) => match port_cmd {
+            ProjectPortCommands::List { name } => {
+                let proj = find_project(&settings, &name)?;
+                if proj.ports.is_empty() {
+                    println!("No ports configured for this project.");
+                } else {
+                    println!("Name\tDefault Port\tDescription");
+                    for (port_name, config) in &proj.ports {
+                        println!(
+                            "{}\t{}\t{}",
+                            port_name, config.default_port, config.description
+                        );
+                    }
+                }
+            }
+            ProjectPortCommands::Add {
+                name,
+                port_name,
+                default_port,
+                description,
+            } => {
+                let proj = find_project_mut(&mut settings, &name)?;
+                let updated = proj
+                    .ports
+                    .insert(
+                        port_name.clone(),
+                        ProjectPortConfig {
+                            default_port,
+                            description: description.clone(),
+                        },
+                    )
+                    .is_some();
+                save_config(&cfg_path, &settings)?;
+                println!(
+                    "{} port: {} -> {}",
+                    if updated { "Updated" } else { "Added" },
+                    port_name,
+                    default_port
+                );
+            }
+            ProjectPortCommands::Remove { name, port_name } => {
+                let proj = find_project_mut(&mut settings, &name)?;
+                if proj.ports.remove(&port_name).is_none() {
+                    anyhow::bail!("Port not found: {}", port_name);
+                }
+                save_config(&cfg_path, &settings)?;
+                println!("Removed port: {}", port_name);
+            }
+        },
+        ProjectCommands::EnvFile(env_cmd) => match env_cmd {
+            ProjectEnvFileCommands::List { name } => {
+                let proj = find_project(&settings, &name)?;
+                if proj.env_files.is_empty() {
+                    println!("No environment files configured for this project.");
+                } else {
+                    println!("Path\tTemplate\tOverrides");
+                    for file in &proj.env_files {
+                        println!(
+                            "{}\t{}\t{}",
+                            file.path,
+                            file.template.clone().unwrap_or_default(),
+                            file.overrides
+                                .keys()
+                                .cloned()
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        );
+                    }
+                }
+            }
+            ProjectEnvFileCommands::Add {
+                name,
+                path,
+                template,
+                overrides,
+            } => {
+                // Split on the first '=' only, so a value may itself contain '='.
+                let mut parsed = std::collections::BTreeMap::new();
+                for entry in &overrides {
+                    let (key, value) = entry.split_once('=').ok_or_else(|| {
+                        anyhow::anyhow!("Invalid override (expected KEY=VALUE): {}", entry)
+                    })?;
+                    parsed.insert(key.trim().to_string(), value.to_string());
+                }
+
+                let proj = find_project_mut(&mut settings, &name)?;
+                // Re-adding the same path replaces the entry rather than appending a duplicate: two
+                // configs for one file would race, with the last one written winning silently.
+                let before = proj.env_files.len();
+                proj.env_files
+                    .retain(|f| !f.path.eq_ignore_ascii_case(&path));
+                let updated = proj.env_files.len() != before;
+
+                proj.env_files.push(ProjectEnvFileConfig {
+                    path: path.clone(),
+                    template: template.filter(|t| !t.trim().is_empty()),
+                    overrides: parsed,
+                });
+                save_config(&cfg_path, &settings)?;
+                println!(
+                    "{} environment file: {}",
+                    if updated { "Updated" } else { "Added" },
+                    path
+                );
+            }
+            ProjectEnvFileCommands::Remove { name, path } => {
+                let proj = find_project_mut(&mut settings, &name)?;
+                let before = proj.env_files.len();
+                proj.env_files
+                    .retain(|f| !f.path.eq_ignore_ascii_case(&path));
+                if proj.env_files.len() == before {
+                    anyhow::bail!("Environment file not found: {}", path);
+                }
+                save_config(&cfg_path, &settings)?;
+                println!("Removed environment file: {}", path);
+            }
+        },
     }
 
     Ok(())
+}
+
+fn find_project<'a>(
+    settings: &'a tendril_core::config::TendrilSettings,
+    name: &str,
+) -> anyhow::Result<&'a ProjectConfig> {
+    settings
+        .projects
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))
+}
+
+fn find_project_mut<'a>(
+    settings: &'a mut tendril_core::config::TendrilSettings,
+    name: &str,
+) -> anyhow::Result<&'a mut ProjectConfig> {
+    settings
+        .projects
+        .iter_mut()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))
 }
