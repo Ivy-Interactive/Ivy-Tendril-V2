@@ -97,6 +97,15 @@ pub struct JobStartArgs {
     )]
     pub force: bool,
 
+    /// Explicit only, never derived: a fresh key per invocation would be inert, since a key only
+    /// helps when a *retry* reuses it. A script that retries passes the same key; an interactive
+    /// `tendril job start` behaves exactly as it did before.
+    #[arg(
+        long,
+        help = "Idempotency key: resubmitting the same key returns the original job"
+    )]
+    pub idempotency_key: Option<String>,
+
     #[arg(long, help = "Source path (for CreatePlan)")]
     pub source_path: Option<String>,
 
@@ -538,6 +547,7 @@ pub async fn start_job_via_daemon(
         no_delete_branch: args.no_delete_branch,
         no_artifacts: args.no_artifacts,
         draft: args.draft,
+        idempotency_key: args.idempotency_key.clone(),
     };
     let job_args = build_job_args(&request, &plans_dir).map_err(anyhow::Error::msg)?;
 
@@ -553,13 +563,20 @@ pub async fn start_job_via_daemon(
     if let Some(priority) = priority {
         map.insert("priority".to_string(), serde_json::json!(priority));
     }
-    // Forward-compatible with the idempotency key Plan 00620 adds to `StartJobRequest`. Nothing
-    // reads it yet — the flattened body ignores an unknown key — but sending it now means that
-    // once it lands, a replay of this POST returns the original job id instead of creating a
-    // second job, which is exact where the job-list scan below is only a heuristic.
+    // The server now reads this key: a submission carrying one already recorded returns the job it
+    // created instead of making a second one, which is exact where the job-list scan below is only a
+    // heuristic.
+    //
+    // `--idempotency-key` wins when it is given, because only the caller can make a *retry* reuse a
+    // key — a fresh one per invocation is inert across processes. Absent a flag a fresh key is still
+    // worth sending: it makes this single POST safe to replay, which is what the reconciliation path
+    // below would otherwise have to guess at.
     map.insert(
         "idempotencyKey".to_string(),
-        serde_json::json!(uuid::Uuid::new_v4().to_string()),
+        serde_json::json!(args
+            .idempotency_key
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())),
     );
 
     let mut url = format!("{}/api/jobs", master.base_url());
