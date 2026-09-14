@@ -65,12 +65,17 @@ impl Drop for HomeFixture {
 /// A `GhRunner` that fails the test if it is called. Passed on every path where `gh` must not be
 /// reached, so a test can never silently shell out to the real CLI.
 fn never_called_runner(args: Vec<String>, _working_dir: Option<PathBuf>) -> GhFuture {
-    panic!("gh must not be invoked in this test, but was called as: gh {}", args.join(" "));
+    panic!(
+        "gh must not be invoked in this test, but was called as: gh {}",
+        args.join(" ")
+    );
 }
 
 /// Builds a stub `GhRunner` from a list of `(argv-substring, exit code, stdout)` rules, matching the
 /// first rule whose substring appears in the joined argv.
-fn stub_gh(rules: Vec<(&'static str, i32, &'static str)>) -> impl Fn(Vec<String>, Option<PathBuf>) -> GhFuture + Send + Sync {
+fn stub_gh(
+    rules: Vec<(&'static str, i32, &'static str)>,
+) -> impl Fn(Vec<String>, Option<PathBuf>) -> GhFuture + Send + Sync {
     move |args: Vec<String>, _working_dir: Option<PathBuf>| {
         let joined = args.join(" ");
         let matched = rules
@@ -423,7 +428,11 @@ fn resolve_vault_matches_by_id_name_or_url_then_falls_back() {
 
     let by = |id: &str| vault::resolve_vault(&state, Some(id)).map(|vault| vault.id);
     assert_eq!(by("aaaa1111").as_deref(), Some("aaaa1111"));
-    assert_eq!(by("ACME/FIRST").as_deref(), Some("aaaa1111"), "by name, case-insensitively");
+    assert_eq!(
+        by("ACME/FIRST").as_deref(),
+        Some("aaaa1111"),
+        "by name, case-insensitively"
+    );
     assert_eq!(
         by("https://github.com/acme/first.git").as_deref(),
         Some("aaaa1111"),
@@ -435,7 +444,9 @@ fn resolve_vault_matches_by_id_name_or_url_then_falls_back() {
         "'default' skips the lookup and takes the first enabled vault"
     );
     assert_eq!(
-        vault::resolve_vault(&state, None).map(|vault| vault.id).as_deref(),
+        vault::resolve_vault(&state, None)
+            .map(|vault| vault.id)
+            .as_deref(),
         Some("bbbb2222"),
         "no id falls back to the first enabled vault, not the first vault"
     );

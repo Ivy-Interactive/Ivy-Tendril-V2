@@ -34,7 +34,12 @@ fn parse_bool_accepts_the_documented_spellings() {
         assert_eq!(parse_bool(value), Some(true), "{:?} should be true", value);
     }
     for value in ["false", "FALSE", "0", "no", "N"] {
-        assert_eq!(parse_bool(value), Some(false), "{:?} should be false", value);
+        assert_eq!(
+            parse_bool(value),
+            Some(false),
+            "{:?} should be false",
+            value
+        );
     }
 }
 
@@ -53,7 +58,8 @@ fn set_auto_sync_reports_the_valid_values_on_a_bad_argument() {
         panic!("expected set-auto-sync");
     };
     assert_eq!(
-        parse_bool(&enabled), None,
+        parse_bool(&enabled),
+        None,
         "clap accepts the string; the command rejects it"
     );
 }

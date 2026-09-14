@@ -12,8 +12,7 @@ use std::time::Duration;
 use tendril_core::config::TendrilSettings;
 use tendril_core::error::Result;
 use tendril_core::git::worktree::{
-    add_worktree, register_worktree, remove_worktree, RemoveOutcome, WorktreeCreation,
-    WorktreeMode,
+    add_worktree, register_worktree, remove_worktree, RemoveOutcome, WorktreeCreation, WorktreeMode,
 };
 use tendril_core::git::worktree_log::WorktreeLifecycleLog;
 use tendril_core::git::worktree_reaper::{
@@ -262,7 +261,10 @@ fn remove_worktree_removes_exactly_one() {
         outcome
     );
     assert!(!worktree_a.path.exists(), "removed worktree should be gone");
-    assert!(worktree_b.path.exists(), "the other worktree must be untouched");
+    assert!(
+        worktree_b.path.exists(),
+        "the other worktree must be untouched"
+    );
 
     assert!(
         !repo_a.branch_exists(&worktree_a.branch),
