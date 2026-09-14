@@ -867,25 +867,50 @@ impl JobManager {
     /// Drops long-finished jobs from the in-memory map, keeping the most recent regardless of age.
     async fn evict_stale_jobs(&self) -> Vec<String> {
         let mut jobs = self.jobs.write().await;
-        let mut terminal: Vec<(String, chrono::DateTime<Utc>)> = jobs
-            .values()
-            .filter(|j| is_terminal(j.status))
-            .filter_map(|j| j.completed_at.map(|at| (j.id.clone(), at)))
-            .collect();
-        // Newest first, so the keep-window is the head of the list.
-        terminal.sort_by_key(|(_, completed_at)| std::cmp::Reverse(*completed_at));
-
-        let cutoff = Utc::now() - chrono::Duration::from_std(STALE_JOB_EVICTION_AGE).unwrap();
-        let mut evicted = Vec::new();
-        for (id, completed_at) in terminal.into_iter().skip(STALE_JOB_KEEP_RECENT) {
-            if completed_at < cutoff {
-                jobs.remove(&id);
-                evicted.push(id);
-            }
+        let candidates: Vec<JobItem> = jobs.values().cloned().collect();
+        let evicted = stale_eviction_candidates(
+            &candidates,
+            Utc::now(),
+            STALE_JOB_EVICTION_AGE,
+            STALE_JOB_KEEP_RECENT,
+        );
+        for id in &evicted {
+            jobs.remove(id);
         }
-        evicted.sort();
         evicted
     }
+}
+
+/// Which jobs the stale-eviction step would drop from the in-memory map: terminal, finished longer
+/// than `max_age` ago, and outside the `keep_recent` most recently finished.
+///
+/// Pure and `now`-parameterised so the policy can be exercised without waiting an hour or launching
+/// enough real jobs to fill the keep-window. Only memory is bounded — the caller leaves the SQLite
+/// rows alone, and `get_job` falls back to them.
+pub fn stale_eviction_candidates(
+    jobs: &[JobItem],
+    now: chrono::DateTime<Utc>,
+    max_age: Duration,
+    keep_recent: usize,
+) -> Vec<String> {
+    let mut terminal: Vec<(String, chrono::DateTime<Utc>)> = jobs
+        .iter()
+        .filter(|j| is_terminal(j.status))
+        .filter_map(|j| j.completed_at.map(|at| (j.id.clone(), at)))
+        .collect();
+    // Newest first, so the keep-window is the head of the list. Ties break on id, so a batch that
+    // finished within the same timestamp resolution still evicts deterministically.
+    terminal.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| b.0.cmp(&a.0)));
+
+    let cutoff = now - chrono::Duration::from_std(max_age).unwrap_or_default();
+    let mut evicted: Vec<String> = terminal
+        .into_iter()
+        .skip(keep_recent)
+        .filter(|(_, completed_at)| *completed_at < cutoff)
+        .map(|(id, _)| id)
+        .collect();
+    evicted.sort();
+    evicted
 }
 
 /// What one [`JobManager::run_maintenance_pass`] changed.
