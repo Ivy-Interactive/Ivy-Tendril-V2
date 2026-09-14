@@ -1,0 +1,26 @@
+# Lychee configuration for markdown link validation
+
+# Cache settings
+cache = true
+max_cache_age = "1d"
+
+# Accepted HTTP status codes (ignore rate limits)
+accept = [200, 204, 429]
+
+# Excluded link patterns (regexes)
+exclude = [
+  "^https://youtu\\.be/",
+  "^https://www\\.youtube\\.com/",
+  "^https://discord\\.gg/",
+]
+
+# Excluded file paths
+exclude_path = [
+  "node_modules",
+  "target",
+  "dist",
+]
+
+# Request timeout and retries
+timeout = 15
+max_retries = 2
