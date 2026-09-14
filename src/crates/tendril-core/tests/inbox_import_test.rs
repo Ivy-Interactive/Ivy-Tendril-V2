@@ -1,15 +1,20 @@
 //! The assigned-issue sweep's decisions: what an issue becomes, and the three ways it gets skipped.
 //!
-//! Everything here drives `plan_sweep_actions` with fixture data, so `gh` is never invoked and no
-//! database or job manager is needed. That is the reason the decision was factored out of
-//! `run_assigned_issues_sweep` in the first place.
+//! Almost everything here drives `plan_sweep_actions` with fixture data, so `gh` is never invoked and
+//! no database is needed. That is the reason the decision was factored out of
+//! `run_assigned_issues_sweep` in the first place. The exceptions are the last two tests, which drive
+//! the whole sweep to prove its two guards refuse the work before any of that machinery is reached.
 
 use chrono::Utc;
+use std::path::PathBuf;
+use tendril_core::config::TendrilSettings;
 use tendril_core::git::issues::GitHubIssue;
 use tendril_core::inbox::{
-    build_proposal_description, plan_sweep_actions, resolve_issue_url, try_acquire_sweep_permit,
-    InboxProposal, ProposalState, SkipReason, SweepAction, SweptIssue,
+    build_proposal_description, plan_sweep_actions, resolve_issue_url, run_assigned_issues_sweep,
+    try_acquire_sweep_permit, InboxProposal, ProposalState, SkipReason, SweepAction, SweepOutcome,
+    SweptIssue,
 };
+use tendril_core::jobs::JobManager;
 use tendril_core::models::{
     CreatePlanArgs, JobArgs, JobItem, JobStatus, PlanFile, PlanMetadata, PlanStatus,
 };
@@ -451,8 +456,52 @@ fn accepting_a_proposal_later_builds_the_same_description_as_auto_accepting_now(
     assert_eq!(proposal.description(), at_sweep_time);
 }
 
-#[test]
-fn the_overlap_guard_admits_one_holder_at_a_time() {
+/// A scratch `TENDRIL_HOME` whose `.master` names `pid`. Passing our own pid makes this process the
+/// master; passing anything else makes it a daemon that lost the election.
+fn home_owned_by(pid: u32) -> PathBuf {
+    let home = std::env::temp_dir().join(format!(
+        "tendril-inbox-home-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&home).expect("create scratch home");
+    std::fs::write(
+        home.join(".master"),
+        format!(
+            r#"{{"port":7777,"pid":{pid},"secret":"scratch","startedAt":"{NOW}","host":"127.0.0.1"}}"#
+        ),
+    )
+    .expect("write .master");
+    home
+}
+
+#[tokio::test]
+async fn a_sweep_on_a_daemon_that_is_not_the_master_does_nothing_at_all() {
+    // Two daemons sweeping would double-import, so the guard lives inside the sweep and therefore
+    // covers the manual-trigger route as well as the timer.
+    let home = home_owned_by(std::process::id().wrapping_add(1));
+    let settings = TendrilSettings::default();
+    let job_manager = JobManager::new(home.clone(), settings.clone()).share();
+
+    let report = run_assigned_issues_sweep(&home, &settings, &job_manager).await;
+
+    assert_eq!(report.outcome, SweepOutcome::NotMaster);
+    assert!(report.imported.is_empty());
+    assert_eq!(report.accepted, 0);
+    assert_eq!(report.skipped, 0);
+    assert!(report.errors.is_empty(), "a skipped sweep is not an error");
+    assert!(
+        !home.join("tendril.db").exists(),
+        "the guard must bite before the database is opened"
+    );
+
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+// Holds the process-wide permit, so it must be the only test in this binary that does: any other
+// holder would make the first `try_acquire_sweep_permit` here fail. Hence the overlap guard's two
+// claims — exclusivity, and what the sweep does when it loses the race — are asserted together.
+#[tokio::test]
+async fn the_overlap_guard_admits_one_holder_and_turns_the_next_sweep_away() {
     let first =
         try_acquire_sweep_permit().expect("the guard must be free at the start of this test");
     assert!(
@@ -460,9 +509,22 @@ fn the_overlap_guard_admits_one_holder_at_a_time() {
         "a second sweep must be turned away rather than run concurrently"
     );
 
+    let home = home_owned_by(std::process::id());
+    let settings = TendrilSettings::default();
+    let job_manager = JobManager::new(home.clone(), settings.clone()).share();
+    let report = run_assigned_issues_sweep(&home, &settings, &job_manager).await;
+    assert_eq!(
+        report.outcome,
+        SweepOutcome::AlreadyRunning,
+        "the master itself must stand down while a pass is in flight"
+    );
+    assert!(report.imported.is_empty());
+
     drop(first);
     assert!(
         try_acquire_sweep_permit().is_some(),
         "the permit must come back once the first holder is done"
     );
+
+    let _ = std::fs::remove_dir_all(&home);
 }
