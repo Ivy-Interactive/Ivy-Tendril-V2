@@ -8,6 +8,7 @@ pub mod models;
 pub mod ping;
 pub mod plans;
 pub mod projects;
+pub mod recommendations;
 pub mod verifications;
 pub mod ws;
 
@@ -66,6 +67,23 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/plans/:id/recommendations/:title",
             put(plans::update_recommendation_handler).delete(plans::delete_recommendation_handler),
+        )
+        .route(
+            "/api/plans/:id/recommendations/:title/accept",
+            put(plans::accept_recommendation_handler),
+        )
+        .route(
+            "/api/plans/:id/recommendations/:title/decline",
+            put(plans::decline_recommendation_handler),
+        )
+        // Recommendations across every plan, read from the denormalised projection
+        .route(
+            "/api/recommendations",
+            get(recommendations::list_recommendations),
+        )
+        .route(
+            "/api/recommendations/rebuild",
+            post(recommendations::rebuild_recommendations),
         )
         .route(
             "/api/plans/:id/verifications",

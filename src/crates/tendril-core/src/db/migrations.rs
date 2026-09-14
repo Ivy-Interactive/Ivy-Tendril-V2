@@ -125,6 +125,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             PlanTitle TEXT NOT NULL DEFAULT '',
             PlanFolderName TEXT NOT NULL DEFAULT '',
             Project TEXT NOT NULL DEFAULT '',
+            Notes TEXT,
             Date TEXT NOT NULL,
             SourcePlanStatus TEXT NOT NULL DEFAULT 'Draft',
             Impact TEXT,
@@ -132,6 +133,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_recommendations_plan ON Recommendations(PlanId);
         CREATE INDEX IF NOT EXISTS idx_recommendations_state ON Recommendations(State);
+        CREATE INDEX IF NOT EXISTS idx_recommendations_project ON Recommendations(Project);
 
         CREATE TABLE IF NOT EXISTS SyncMetadata (
             Key TEXT PRIMARY KEY,
@@ -215,6 +217,10 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         "Costs",
         &[("Model", "TEXT"), ("CostSource", "TEXT"), ("Agent", "TEXT")],
     )?;
+    // `Notes` carries why a recommendation was accepted, which used to be smuggled through
+    // `DeclineReason`. It is nullable and additive, so it needs no `user_version` bump: bumping past
+    // 25 would make the original app refuse to open the shared database (see `SCHEMA_VERSION`).
+    ensure_columns(conn, "Recommendations", &[("Notes", "TEXT")])?;
     ensure_costs_cost_nullable(conn)?;
     ensure_plan_search(conn)?;
 

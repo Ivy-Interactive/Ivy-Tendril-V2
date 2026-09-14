@@ -176,6 +176,39 @@ async fn reconcile_after_restart(tendril_home: &std::path::Path) {
         }
         Err(e) => tracing::warn!("Plan migration failed: {}", e),
     }
+
+    rebuild_recommendations(tendril_home, &plans_dir).await;
+}
+
+/// Rebuilds the `Recommendations` projection from the plan folders on disk, once per daemon start.
+///
+/// `sync_plan` keeps the projection current from here on, but every database that predates it holds
+/// rows no write path has touched since the original app wrote them — including rows for plans that
+/// no longer exist. Repairing on startup is what fixes those without waiting for someone to run
+/// `tendril plan rec rebuild`. Runs after plan migration so it projects the migrated YAML, blocks
+/// off-reactor, and logs rather than fails: one unparseable plan folder must not stop the daemon
+/// booting.
+async fn rebuild_recommendations(tendril_home: &std::path::Path, plans_dir: &std::path::Path) {
+    let db_path = tendril_core::config::get_database_path(tendril_home);
+    let plans_dir = plans_dir.to_path_buf();
+
+    let outcome = tokio::task::spawn_blocking(move || {
+        let conn = tendril_core::db::open_database(&db_path)
+            .map_err(|e| format!("could not open the database: {e}"))?;
+        tendril_core::db::rebuild_recommendations_projection(&conn, &plans_dir)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    match outcome {
+        Ok(Ok((rows, plans))) => tracing::info!(
+            "Rebuilt recommendations projection: {} row(s) from {} plan(s)",
+            rows,
+            plans
+        ),
+        Ok(Err(e)) => tracing::warn!("Recommendations projection rebuild failed: {}", e),
+        Err(e) => tracing::warn!("Recommendations projection rebuild panicked: {}", e),
+    }
 }
 
 async fn shutdown_signal() {
