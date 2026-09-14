@@ -1,5 +1,6 @@
 pub mod costs_csv;
 pub mod dependencies;
+pub mod diff_comments;
 pub mod doctor;
 pub mod duplicates;
 pub mod env;
@@ -15,6 +16,7 @@ pub mod verifications;
 pub mod writer;
 
 pub use dependencies::*;
+pub use diff_comments::*;
 pub use doctor::*;
 pub use duplicates::*;
 pub use env::*;
