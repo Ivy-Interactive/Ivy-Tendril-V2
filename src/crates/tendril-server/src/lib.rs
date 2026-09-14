@@ -3,6 +3,7 @@ pub mod master;
 pub mod pr_sync;
 pub mod routes;
 pub mod state;
+pub mod tasks;
 pub mod watch;
 mod webviewer;
 
@@ -82,6 +83,7 @@ pub async fn run_server(
     });
 
     spawn_worktree_reaper(tendril_home.clone());
+    tasks::spawn_version_check(state.clone());
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
@@ -100,61 +102,66 @@ fn spawn_worktree_reaper(tendril_home: PathBuf) {
     use tendril_core::git::worktree_reaper::{reap_worktrees, BranchDeleteMode, ReaperConfig};
     use tendril_core::git::WorktreeLifecycleLog;
 
-    // The reaper never competes with startup for disk: every pass sleeps before it runs.
-    const DISABLED_RECHECK: Duration = Duration::from_secs(30 * 60);
+    let interval_home = tendril_home.clone();
+    let body_home = tendril_home;
 
-    tokio::spawn(async move {
-        loop {
-            let config_path = tendril_core::config::get_config_path(&tendril_home);
+    tasks::spawn_recurring(
+        "worktree reaper",
+        move || {
+            let config_path = tendril_core::config::get_config_path(&interval_home);
             let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
-
             if settings.worktree_reaper_interval <= 0 {
-                tokio::time::sleep(DISABLED_RECHECK).await;
-                continue;
+                None
+            } else {
+                Some(Duration::from_secs(
+                    settings.worktree_reaper_interval as u64 * 60,
+                ))
             }
+        },
+        move || {
+            let tendril_home = body_home.clone();
+            async move {
+                let config_path = tendril_core::config::get_config_path(&tendril_home);
+                let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
 
-            tokio::time::sleep(Duration::from_secs(
-                settings.worktree_reaper_interval as u64 * 60,
-            ))
-            .await;
-
-            let mode = BranchDeleteMode::from_str_loose(&settings.worktree_branch_delete_mode)
-                .unwrap_or_else(|| {
-                    tracing::warn!(
-                        "Unrecognised worktreeBranchDeleteMode '{}'; using PreserveUnpushed",
-                        settings.worktree_branch_delete_mode
-                    );
-                    BranchDeleteMode::PreserveUnpushed
-                });
-            let grace = Duration::from_secs(settings.worktree_reaper_grace.max(0) as u64 * 60);
-            let plans_dir = tendril_core::config::get_plans_dir(&tendril_home);
-            let log = WorktreeLifecycleLog::new(&tendril_home);
-
-            // A panic inside a pass must not take the reaper down with it.
-            let pass = tokio::task::spawn_blocking(move || {
-                let cfg = ReaperConfig {
-                    grace,
-                    mode,
-                    log: Some(log),
-                };
-                reap_worktrees(&plans_dir, &cfg)
-            })
-            .await;
-
-            match pass {
-                Ok(report) => {
-                    if !report.reclaimed.is_empty() || !report.skipped.is_empty() {
-                        tracing::info!(
-                            "Worktree reaper: {} reclaimed, {} skipped",
-                            report.reclaimed.len(),
-                            report.skipped.len()
+                let mode = BranchDeleteMode::from_str_loose(&settings.worktree_branch_delete_mode)
+                    .unwrap_or_else(|| {
+                        tracing::warn!(
+                            "Unrecognised worktreeBranchDeleteMode '{}'; using PreserveUnpushed",
+                            settings.worktree_branch_delete_mode
                         );
+                        BranchDeleteMode::PreserveUnpushed
+                    });
+                let grace = Duration::from_secs(settings.worktree_reaper_grace.max(0) as u64 * 60);
+                let plans_dir = tendril_core::config::get_plans_dir(&tendril_home);
+                let log = WorktreeLifecycleLog::new(&tendril_home);
+
+                // A panic inside a pass must not take the reaper down with it.
+                let pass = tokio::task::spawn_blocking(move || {
+                    let cfg = ReaperConfig {
+                        grace,
+                        mode,
+                        log: Some(log),
+                    };
+                    reap_worktrees(&plans_dir, &cfg)
+                })
+                .await;
+
+                match pass {
+                    Ok(report) => {
+                        if !report.reclaimed.is_empty() || !report.skipped.is_empty() {
+                            tracing::info!(
+                                "Worktree reaper: {} reclaimed, {} skipped",
+                                report.reclaimed.len(),
+                                report.skipped.len()
+                            );
+                        }
                     }
+                    Err(e) => tracing::warn!("Worktree reaper pass failed: {}", e),
                 }
-                Err(e) => tracing::warn!("Worktree reaper pass failed: {}", e),
             }
-        }
-    });
+        },
+    );
 }
 
 /// Realigns persisted job and plan state with reality. A failure here is logged rather than fatal:
