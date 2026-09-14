@@ -36,7 +36,10 @@ impl Fixture {
         };
 
         for name in ["CreatePlan", "ExecutePlan"] {
-            fx.write_shipped(&format!("{}/Program.md", name), &format!("shipped {}", name));
+            fx.write_shipped(
+                &format!("{}/Program.md", name),
+                &format!("shipped {}", name),
+            );
             fx.write_shipped(&format!("{}/Memory/.gitkeep", name), "");
         }
         std::fs::create_dir_all(&fx.overlay).unwrap();
@@ -151,7 +154,10 @@ fn shipped_program_md_used_when_overlay_lacks_it() {
 fn overlay_only_promptware_is_deployed() {
     let fx = Fixture::new();
     // Absent from the shipped root and from STANDARD_PROMPTWARES: the name union is what picks it up.
-    fx.write_overlay("IvyFrameworkVerification/Program.md", "verify the framework");
+    fx.write_overlay(
+        "IvyFrameworkVerification/Program.md",
+        "verify the framework",
+    );
     fx.write_overlay(
         "IvyFrameworkVerification/Tools/Test-SampleBuild.ps1",
         "Write-Host 'building'",
@@ -218,7 +224,13 @@ fn runtime_written_tool_survives_deploy() {
 
     // A tool an agent wrote itself. No layer supplies it and no manifest records it, so the prune
     // pass must leave it alone.
-    write_tool(&fx.target, "CreatePlan", "Invoke-Learned.ps1", "learned tool").unwrap();
+    write_tool(
+        &fx.target,
+        "CreatePlan",
+        "Invoke-Learned.ps1",
+        "learned tool",
+    )
+    .unwrap();
 
     fx.write_overlay("CreatePlan/Program.md", "team CreatePlan");
     fx.deploy_with_overlay();
@@ -243,7 +255,10 @@ fn memory_preserved_across_overlay_refresh() {
     fx.write_overlay("CreatePlan/Program.md", "team v2");
     let report = fx.deploy_with_overlay();
 
-    assert_eq!(fx.read_target("CreatePlan/Memory/learned.md"), "hard-won lesson");
+    assert_eq!(
+        fx.read_target("CreatePlan/Memory/learned.md"),
+        "hard-won lesson"
+    );
     assert_eq!(fx.read_target("CreatePlan/Program.md"), "team v2");
     assert_eq!(report.overlay_version.as_deref(), Some("1.0.45"));
 }
@@ -256,7 +271,10 @@ fn memory_preserved_when_overlay_supplies_memory_file() {
 
     let report = fx.deploy_with_overlay();
 
-    assert_eq!(fx.read_target("CreatePlan/Memory/learned.md"), "learned memory");
+    assert_eq!(
+        fx.read_target("CreatePlan/Memory/learned.md"),
+        "learned memory"
+    );
     // Skipped at the layer root in *both* layers, so it cannot even be recorded.
     let files = files_of(&report, "CreatePlan");
     assert!(
@@ -280,7 +298,10 @@ fn memory_never_pruned() {
     std::fs::remove_file(fx.overlay.join("CreatePlan/Memory/learned.md")).unwrap();
     fx.deploy_with_overlay();
 
-    assert_eq!(fx.read_target("CreatePlan/Memory/learned.md"), "learned memory");
+    assert_eq!(
+        fx.read_target("CreatePlan/Memory/learned.md"),
+        "learned memory"
+    );
 }
 
 #[test]
@@ -290,7 +311,10 @@ fn no_overlay_configured_is_a_noop() {
 
     let report = fx.deploy_shipped_only();
 
-    assert_eq!(fx.read_target("CreatePlan/Program.md"), "shipped CreatePlan");
+    assert_eq!(
+        fx.read_target("CreatePlan/Program.md"),
+        "shipped CreatePlan"
+    );
     assert_eq!(fx.read_target("CreatePlan/Tools/a.ps1"), "shipped a");
     assert_eq!(report.overlay_root, None);
     assert_eq!(report.overlay_version, None);
@@ -340,7 +364,10 @@ fn overlay_version_recorded_and_stale_detected() {
 
     fx.deploy_with_overlay();
     let redeployed = fx.overlay_layer();
-    assert!(!needs_refresh(&fx.target, fx.opts_with_overlay(&redeployed)));
+    assert!(!needs_refresh(
+        &fx.target,
+        fx.opts_with_overlay(&redeployed)
+    ));
 }
 
 #[test]
@@ -426,8 +453,14 @@ fn removed_overlay_file_is_pruned() {
         "a file no layer supplies any more must be pruned"
     );
     // Unrecorded files are untouched, whether memory or a runtime-authored tool.
-    assert_eq!(fx.read_target("CreatePlan/Memory/learned.md"), "hard-won lesson");
-    assert_eq!(fx.read_target("CreatePlan/Tools/runtime.ps1"), "runtime tool");
+    assert_eq!(
+        fx.read_target("CreatePlan/Memory/learned.md"),
+        "hard-won lesson"
+    );
+    assert_eq!(
+        fx.read_target("CreatePlan/Tools/runtime.ps1"),
+        "runtime tool"
+    );
 }
 
 #[test]
@@ -442,7 +475,10 @@ fn removed_overlay_program_falls_back_to_the_shipped_one() {
     std::fs::remove_dir_all(fx.overlay.join("CreatePlan")).unwrap();
     let report = fx.deploy_with_overlay();
 
-    assert_eq!(fx.read_target("CreatePlan/Program.md"), "shipped CreatePlan");
+    assert_eq!(
+        fx.read_target("CreatePlan/Program.md"),
+        "shipped CreatePlan"
+    );
     assert_eq!(
         report.promptware("CreatePlan").unwrap().program,
         Some(Layer::Shipped)
@@ -453,7 +489,10 @@ fn removed_overlay_program_falls_back_to_the_shipped_one() {
 fn removed_overlay_only_promptware_is_pruned() {
     let fx = Fixture::new();
     fx.write_overlay("IvyFrameworkVerification/Program.md", "verify");
-    fx.write_overlay("IvyFrameworkVerification/Tools/Test-SampleBuild.ps1", "build");
+    fx.write_overlay(
+        "IvyFrameworkVerification/Tools/Test-SampleBuild.ps1",
+        "build",
+    );
     fx.deploy_with_overlay();
 
     std::fs::remove_dir_all(fx.overlay.join("IvyFrameworkVerification")).unwrap();

@@ -114,10 +114,7 @@ pub(crate) fn plan_search_lines(
 ///
 /// A configured-but-missing overlay is the failure mode the original mechanism could not report at
 /// all: it had no notion of an overlay path, only a git-tracked deploy target.
-pub(crate) fn overlay_doctor_lines(
-    tendril_home: &Path,
-    settings: &TendrilSettings,
-) -> Vec<String> {
+pub(crate) fn overlay_doctor_lines(tendril_home: &Path, settings: &TendrilSettings) -> Vec<String> {
     let Some(configured) = configured_overlay_root(tendril_home, settings) else {
         return vec!["[OK] Promptware overlay: not configured".to_string()];
     };

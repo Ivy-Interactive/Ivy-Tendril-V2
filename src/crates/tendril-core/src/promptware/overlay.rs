@@ -182,7 +182,10 @@ mod tests {
             configured_overlay_root_with_env(&fx.home, &settings, &env(&[])),
             None
         );
-        assert_eq!(resolve_overlay_with_env(&fx.home, &settings, &env(&[])), None);
+        assert_eq!(
+            resolve_overlay_with_env(&fx.home, &settings, &env(&[])),
+            None
+        );
     }
 
     #[test]
@@ -196,11 +199,8 @@ mod tests {
         );
         // A blank env value must not shadow a real config value either.
         let configured = fx.settings(Some(&fx.overlay.to_string_lossy()));
-        let resolved = resolve_overlay_with_env(
-            &fx.home,
-            &configured,
-            &env(&[(OVERLAY_ENV_VAR, "  ")]),
-        );
+        let resolved =
+            resolve_overlay_with_env(&fx.home, &configured, &env(&[(OVERLAY_ENV_VAR, "  ")]));
         assert_eq!(resolved.map(|o| o.root), Some(fx.overlay.clone()));
     }
 
@@ -256,7 +256,10 @@ mod tests {
             configured_overlay_root_with_env(&fx.home, &settings, &env(&[])),
             Some(missing)
         );
-        assert_eq!(resolve_overlay_with_env(&fx.home, &settings, &env(&[])), None);
+        assert_eq!(
+            resolve_overlay_with_env(&fx.home, &settings, &env(&[])),
+            None
+        );
     }
 
     #[test]
@@ -284,7 +287,9 @@ mod tests {
         let fx = Fixture::new();
         std::fs::create_dir_all(fx.overlay.join("IvyFrameworkVerification")).unwrap();
         std::fs::write(
-            fx.overlay.join("IvyFrameworkVerification").join("Program.md"),
+            fx.overlay
+                .join("IvyFrameworkVerification")
+                .join("Program.md"),
             "verify",
         )
         .unwrap();

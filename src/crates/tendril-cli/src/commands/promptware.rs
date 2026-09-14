@@ -91,9 +91,11 @@ fn layer_lines(report: &DeployReport, filter: Option<&str>) -> Vec<String> {
     let mut lines = Vec::new();
 
     match (&report.overlay_root, &report.overlay_version) {
-        (Some(root), Some(version)) => {
-            lines.push(format!("Overlay: {} (.version {})", root.display(), version))
-        }
+        (Some(root), Some(version)) => lines.push(format!(
+            "Overlay: {} (.version {})",
+            root.display(),
+            version
+        )),
         (Some(root), None) => lines.push(format!("Overlay: {}", root.display())),
         (None, _) => lines.push("Overlay: (none configured)".to_string()),
     }
