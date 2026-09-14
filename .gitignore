@@ -1,6 +1,43 @@
+# Rust / Cargo
 /target
 **/*.rs.bk
 *.pdb
+
+# Node / Frontend
+node_modules/
+dist/
+dist-storybook/
+storybook-static/
+dist-ssr/
+.pnpm-store/
+*.local
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# OS / Editor
 .DS_Store
 Thumbs.db
-*.log
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Visual regression failure diffs
+.storybook/__image_snapshots__/__diff_output__/
+
+# Env files
+.env
+.env.*
+!.env.example

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ChatInput, ChatMessageList } from "@spacecorps/components-storybook/renderers";
+import { ChatInput, ChatMessageList } from "@ivy-interactive/components/renderers";
 import { chatStore, type ChatState } from "../state/chatStore";
 import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
 import { useChatAutoScroll } from "../hooks/useChatAutoScroll";

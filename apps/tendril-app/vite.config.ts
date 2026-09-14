@@ -2,7 +2,6 @@ import { defineConfig } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
-import { resolveStorybookRoot } from "./scripts/storybook-path.mjs";
 
 export default defineConfig({
   fmt: {
@@ -28,7 +27,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     fs: {
-      allow: [path.resolve(__dirname), resolveStorybookRoot()],
+      allow: [path.resolve(__dirname), path.resolve(__dirname, "../../packages/components")],
     },
   },
   build: {

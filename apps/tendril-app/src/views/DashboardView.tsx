@@ -4,7 +4,7 @@ import {
   TendrilProcessViewer,
   type DashboardKpiDto,
   type DashboardJobDto,
-} from "@spacecorps/components-storybook/tendril";
+} from "@ivy-interactive/components/tendril";
 import type { PlanSummary, Job, JobStatus } from "../types/api";
 import { firstStringArg } from "../utils/eventArgs";
 

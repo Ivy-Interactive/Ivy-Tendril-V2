@@ -1,96 +1,81 @@
-# Tendril-Service
+# Ivy-Tendril-V2
 
-**Tendril-Service** is a headless, high-performance implementation of the **Ivy Tendril** plan management and autonomous AI coding agent orchestration system, written in **Rust**.
+**Ivy-Tendril-V2** is the unified monorepo for the **Ivy Tendril** plan management and autonomous AI coding agent orchestration system.
 
-It provides the complete backend service, REST and WebSocket APIs, SQLite database persistence with full-text search, Git worktree lifecycle management, and full CLI functionality — with **no UI**, designed to be consumed by developer IDEs (such as Tendril-IDE), autonomous agents, and command-line operators.
+It brings together the complete Tendril ecosystem into a single repository:
+- **`apps/tendril-app`**: Tauri desktop application and React 19 frontend UI
+- **`packages/components`**: UI component library, renderers, widgets, and Storybook (`@ivy-interactive/components`)
+- **`crates/`**: Headless backend service (`tendril-server`), core engine (`tendril-core`), and CLI (`tendril-cli`)
+- **`promptwares/`**: Deployed promptware agent programs (CreatePlan, ExecutePlan, etc.)
 
 ---
 
-## 🏛 Architecture
-
-The repository is organized as a Cargo workspace with three primary crates:
+## 🏛 Directory Layout
 
 ```
-Tendril-Service/
+Ivy-Tendril-V2/
+├── apps/
+│   └── tendril-app/            # Tauri desktop app + React frontend
+├── packages/
+│   └── components/             # @ivy-interactive/components + Storybook
 ├── crates/
-│   ├── tendril-core/       # Core domain models, SQLite database, Git & worktree engine, promptware compiler, agent runtime
-│   ├── tendril-server/     # Axum REST & WebSocket HTTP server daemon with .master file discovery
-│   └── tendril-cli/        # Complete command-line interface ("tendril") matching all Tendril operations
-├── promptwares/            # Deployed promptware agent programs (CreatePlan, ExecutePlan, etc.)
-├── Cargo.toml
-└── README.md
+│   ├── tendril-core/           # Core domain models, SQLite database, worktree engine
+│   ├── tendril-server/         # Axum REST & WebSocket HTTP server daemon
+│   └── tendril-cli/            # Command-line interface ("tendril")
+├── promptwares/                # Promptware agent definitions & firmware
+├── Cargo.toml                  # Unified Cargo workspace
+├── pnpm-workspace.yaml         # Unified pnpm workspace
+└── package.json                # Workspace root scripts
 ```
-
-### 1. `tendril-core`
-- **Domain Models**: Plans (`PlanYaml`, `PlanFile`, `PlanMetadata`), Statuses (`Draft`, `Creating`, `Updating`, `Executing`, `Review`, `Failed`, `Completed`, `Skipped`, `Icebox`, `Blocked`), Verifications (`Pending`, `Pass`, `Fail`, `Skipped`), Recommendations, Jobs (`JobItem`, `JobArgsBase`), and Projects (`ProjectConfig`, `RepoRef`).
-- **Database (`rusqlite`)**: Embedded SQLite (`tendril.db`) with schema migrations (1 through 21), WAL mode, busy timeout, cascade foreign keys, and FTS5 search.
-- **Plans Engine**: Safe title formatting, 5-digit ID allocation (`00042`), YAML reader/writer, numbered revision tracking (`Revisions/001.md`), dependency checker with GitHub PR verification, and completion guards (`PlanCompletionGuard`).
-- **Git & Worktree Management**: Isolated worktrees (`Worktrees/{repo}`), branch derivation (`tendril/{folder}`), commit log/diff/file analysis, and PR creation via `gh`.
-- **Promptwares & Firmware**: Compiles agent firmware prompts from `Program.md`, tools, and persistent memory files (`Memory/`).
-- **Agent Runtime**: Launching agent CLI tools (`claude`, `antigravity`, `gemini`, `opencode`, `codex`, `copilot`, `ivy`), event parsing, and token/cost tracking from model pricing catalogs.
-- **Jobs Engine**: Background async queue with concurrency limits (`max_concurrent_jobs`), cancellation, disk logging (`.raw.jsonl`, `.eventwire.jsonl`, `## Agent Log`), and stale output watchdogs.
-
-### 2. `tendril-server`
-- **Axum Web Server**: High-throughput asynchronous REST API:
-  - `/api/ping`, `/api/health`
-  - `/api/plans` (list, get, create, update fields, revisions, recommendations)
-  - `/api/jobs` (start, list, status, fail, cancel, add-log)
-  - `/api/inbox` (direct plan creation intake)
-  - `/api/projects`, `/api/verifications`, `/api/config`
-  - `/api/ws` (WebSocket connection for live streaming of events, simulation steps, and plan approvals)
-- **Master Instance**: Manages the `.master` file lifecycle for zero-config CLI discovery and cleanup on shutdown.
-
-### 3. `tendril-cli`
-The `tendril` executable matches the full Tendril CLI surface:
-- `tendril plan <list|create|update|get|set|validate|doctor|cleanup|write-revision|get-revision|rec|...>`
-- `tendril job <list|start|status|cancel|add-log>`
-- `tendril project <list|get|add|remove|set|add-repo|remove-repo|add-verification|remove-verification>`
-- `tendril verification <list|get|add|remove|set>`
-- `tendril promptware <list-memory|read-memory|write-memory|delete-memory|write-tool|deploy>`
-- `tendril config <get|set>`
-- `tendril doctor`
-- `tendril version`
-- `tendril models`
-- `tendril serve [--port <PORT>]`
-- `tendril mcp` (stdio Model Context Protocol server)
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [Rust](https://rustup.rs/) — the pinned toolchain in `rust-toolchain.toml` is installed automatically by `rustup` on first build
-- `git`
-- GitHub CLI (`gh`) for PR tracking
+- [Rust](https://rustup.rs/) (edition 2021)
+- [Node.js](https://nodejs.org/) (v22+) & [pnpm](https://pnpm.io/) (v11+)
+- [Vite+](https://viteplus.dev/) (`vp`)
+- GitHub CLI (`gh`)
 
-### Building
+### Quick Start
 
-```bash
-cargo build --release
-```
+1. **Install dependencies**:
+   ```bash
+   pnpm install
+   ```
 
-The compiled `tendril` CLI binary will be located at `target/release/tendril` (or `target/release/tendril.exe` on Windows).
+2. **Build components & UI library**:
+   ```bash
+   pnpm --filter @ivy-interactive/components build
+   ```
 
-### Checking System Health
+3. **Run Storybook**:
+   ```bash
+   pnpm dev:storybook
+   ```
 
-```bash
-cargo run --bin tendril -- doctor
-```
+4. **Build & run desktop app**:
+   ```bash
+   pnpm dev:app
+   ```
 
-### Listing Plans
+5. **Build backend crates**:
+   ```bash
+   cargo build --workspace
+   ```
 
-```bash
-cargo run --bin tendril -- plan list
-```
+6. **Run tests**:
+   ```bash
+   # Web & component tests
+   pnpm test
 
-### Running the API Daemon
-
-```bash
-cargo run --bin tendril -- serve --port 5010
-```
+   # Rust tests
+   cargo test --workspace
+   ```
 
 ---
 
 ## 📄 License
 
-Apache-2.0 © SpaceCorps Technology
+Apache-2.0 © Ivy Interactive

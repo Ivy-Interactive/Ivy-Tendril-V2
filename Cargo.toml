@@ -3,15 +3,16 @@ members = [
     "crates/tendril-core",
     "crates/tendril-server",
     "crates/tendril-cli",
+    "apps/tendril-app/src-tauri",
 ]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["SpaceCorps Technology"]
+authors = ["Ivy Interactive"]
 license = "Apache-2.0"
-repository = "https://github.com/SpaceCorps/Tendril-Service"
+repository = "https://github.com/Ivy-Interactive/Ivy-Tendril-V2"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

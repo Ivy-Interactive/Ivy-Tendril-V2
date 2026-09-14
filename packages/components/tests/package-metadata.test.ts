@@ -9,16 +9,16 @@ describe("Package Metadata", () => {
   const packageJsonPath = join(repoRoot, "package.json");
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
 
-  it("has correct SpaceCorps repository, homepage, and bugs metadata", () => {
-    expect(packageJson.name).toBe("@spacecorps/components-storybook");
-    expect(packageJson.author).toBe("SpaceCorps");
-    expect(packageJson.homepage).toBe("https://github.com/SpaceCorps/components-storybook#readme");
+  it("has correct Ivy-Interactive repository, homepage, and bugs metadata", () => {
+    expect(packageJson.name).toBe("@ivy-interactive/components");
+    expect(packageJson.author).toBe("Ivy Interactive");
+    expect(packageJson.homepage).toBe("https://github.com/Ivy-Interactive/Ivy-Tendril-V2#readme");
     expect(packageJson.bugs).toEqual({
-      url: "https://github.com/SpaceCorps/components-storybook/issues",
+      url: "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues",
     });
     expect(packageJson.repository).toEqual({
       type: "git",
-      url: "git+https://github.com/SpaceCorps/components-storybook.git",
+      url: "git+https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git",
     });
   });
 

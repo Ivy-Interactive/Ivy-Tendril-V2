@@ -1,4 +1,4 @@
-import { parseQuestions, type PlanQuestion } from "@spacecorps/components-storybook/tendril";
+import { parseQuestions, type PlanQuestion } from "@ivy-interactive/components/tendril";
 import type { InProgressQuestionAnswers } from "../types/chat";
 
 export interface QuestionsFence {

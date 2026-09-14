@@ -18,7 +18,7 @@ const { planMarkdownMountCounts } = vi.hoisted(() => ({
   planMarkdownMountCounts: new Map<string, number>(),
 }));
 
-vi.mock("@spacecorps/components-storybook/tendril", async (importOriginal) => {
+vi.mock("@ivy-interactive/components/tendril", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,

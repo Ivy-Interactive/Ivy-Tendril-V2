@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import { BadgeSelect, type BadgeSelectOption } from "@spacecorps/components-storybook/tendril";
+import { BadgeSelect, type BadgeSelectOption } from "@ivy-interactive/components/tendril";
 import type { PlanSummary } from "../types/api";
 import { EmptyState } from "../components/EmptyState";
 

@@ -1,16 +1,16 @@
 {
-  "name": "@spacecorps/components-storybook",
+  "name": "@ivy-interactive/components",
   "version": "0.1.0",
   "description": "Comprehensive UI component library, renderers, and Tendril widgets showcase with Storybook.",
-  "homepage": "https://github.com/SpaceCorps/components-storybook#readme",
+  "homepage": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2#readme",
   "bugs": {
-    "url": "https://github.com/SpaceCorps/components-storybook/issues"
+    "url": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues"
   },
   "license": "MIT",
-  "author": "SpaceCorps",
+  "author": "Ivy Interactive",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SpaceCorps/components-storybook.git"
+    "url": "git+https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git"
   },
   "files": [
     "dist",

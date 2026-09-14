@@ -1,0 +1,16 @@
+{
+  "name": "ivy-tendril-v2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:app": "pnpm --filter @ivy-interactive/tendril-app dev",
+    "dev:storybook": "pnpm --filter @ivy-interactive/components storybook",
+    "build": "pnpm --filter @ivy-interactive/components build && pnpm --filter @ivy-interactive/tendril-app build",
+    "test": "pnpm -r test",
+    "check": "pnpm -r check",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format"
+  },
+  "packageManager": "pnpm@11.25.0"
+}

@@ -1,5 +1,5 @@
 {
-  "name": "tendril-app",
+  "name": "@ivy-interactive/tendril-app",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -13,11 +13,10 @@
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",
     "format": "vp fmt",
-    "format:check": "vp fmt --check",
-    "postinstall": "node scripts/link-storybook.mjs"
+    "format:check": "vp fmt --check"
   },
   "dependencies": {
-    "@spacecorps/components-storybook": "link:../components-storybook",
+    "@ivy-interactive/components": "workspace:*",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-opener": "^2.2.5",
@@ -40,12 +39,8 @@
     "jsdom": "^26.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.8.2",
-    "vite": "^6.2.0",
-    "vite-plus": "^0.3.0",
-    "vitest": "4.1.11"
-  },
-  "overrides": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
     "vitest": "4.1.11"
   },
   "packageManager": "pnpm@11.25.0"

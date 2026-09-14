@@ -4,7 +4,7 @@ import { NewPlanModal } from "../src/views/NewPlanModal";
 import { jobsStore } from "../src/state/jobsStore";
 import type { ProjectSummary } from "../src/types/api";
 
-vi.mock("@spacecorps/components-storybook/tendril", async (importOriginal) => {
+vi.mock("@ivy-interactive/components/tendril", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
   return {
     ...actual,

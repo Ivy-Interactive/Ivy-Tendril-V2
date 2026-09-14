@@ -1,7 +1,6 @@
 import { defineConfig } from "vite-plus/test/config";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
-import { resolveStorybookRoot } from "./scripts/storybook-path.mjs";
 
 export default defineConfig({
   plugins: [react()],
@@ -13,13 +12,13 @@ export default defineConfig({
     execArgv: ["--no-experimental-webstorage"],
     server: {
       deps: {
-        inline: [/components-storybook/, /@dnd-kit/],
+        inline: [/@ivy-interactive\/components/, /@dnd-kit/],
       },
     },
   },
   server: {
     fs: {
-      allow: [path.resolve(__dirname), resolveStorybookRoot()],
+      allow: [path.resolve(__dirname), path.resolve(__dirname, "../../packages/components")],
     },
   },
   resolve: {

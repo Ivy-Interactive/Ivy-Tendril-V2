@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
-import { resolveStorybookRoot } from "../scripts/storybook-path.mjs";
 
 const repoRoot = path.resolve(__dirname, "..");
 const readFile = (relativePath: string) =>
@@ -32,7 +31,7 @@ describe("Dependency portability", () => {
     },
   );
 
-  it("imports components-storybook only via the scoped @spacecorps package", () => {
+  it("imports components only via the scoped @ivy-interactive/components package", () => {
     const files = [
       ...walkFiles(path.resolve(repoRoot, "src")),
       ...walkFiles(path.resolve(repoRoot, "tests")),
@@ -41,9 +40,9 @@ describe("Dependency portability", () => {
     const unscopedImports: string[] = [];
     for (const file of files) {
       const content = fs.readFileSync(file, "utf-8");
-      const matches = content.match(/["']components-storybook[^"']*["']/g) ?? [];
+      const matches = content.match(/["']components[^"']*["']/g) ?? [];
       for (const match of matches) {
-        if (!match.includes("@spacecorps/components-storybook")) {
+        if (!match.includes("@ivy-interactive/components")) {
           unscopedImports.push(`${path.relative(repoRoot, file)}: ${match}`);
         }
       }
@@ -57,27 +56,31 @@ describe("Dependency portability", () => {
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
     const missing = Object.entries(deps)
-      .filter(([, specifier]) => !String(specifier).startsWith("link:"))
+      .filter(
+        ([, specifier]) =>
+          !String(specifier).startsWith("workspace:") && !String(specifier).startsWith("link:"),
+      )
       .map(([name]) => name)
       .filter(
-        (name) => !fs.existsSync(path.resolve(repoRoot, "node_modules", name, "package.json")),
+        (name) =>
+          !fs.existsSync(path.resolve(repoRoot, "node_modules", name, "package.json")) &&
+          !fs.existsSync(path.resolve(repoRoot, "../../node_modules", name, "package.json")),
       );
 
     expect(missing, `missing packages: ${missing.join(", ")} — run pnpm install`).toEqual([]);
   });
 
   it.each(["vite.config.ts", "vitest.config.ts"])(
-    "does not hardcode the components-storybook dist path in %s",
+    "does not hardcode the components dist path in %s",
     (relativePath) => {
       const content = readFile(relativePath);
-      expect(content).not.toMatch(/components-storybook\/dist/);
+      expect(content).not.toMatch(/components\/dist/);
     },
   );
 
-  it("resolves a built components-storybook checkout", () => {
-    const root = resolveStorybookRoot();
-    expect(fs.existsSync(path.join(root, "dist", "tendril.mjs"))).toBe(true);
-    expect(fs.existsSync(path.join(root, "dist", "style.css"))).toBe(true);
+  it("resolves the workspace components package", () => {
+    const componentsRoot = path.resolve(repoRoot, "../../packages/components");
+    expect(fs.existsSync(path.join(componentsRoot, "package.json"))).toBe(true);
   });
 
   it("pins the components-storybook checkout in CI to a full commit SHA", () => {

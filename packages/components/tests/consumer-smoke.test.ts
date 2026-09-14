@@ -29,7 +29,7 @@ describe("Consumer Smoke Verification", () => {
       cwd: repoRoot,
       encoding: "utf-8",
     });
-    expect(packOutput).toContain("@spacecorps/components-storybook");
+    expect(packOutput).toContain("@ivy-interactive/components");
     expect(packOutput).toContain("dist/style.css");
     expect(packOutput).toContain("dist/tendril.mjs");
     expect(packOutput).toContain("dist/tendril.d.mts");

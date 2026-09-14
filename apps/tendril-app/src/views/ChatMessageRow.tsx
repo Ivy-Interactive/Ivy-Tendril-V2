@@ -4,8 +4,8 @@ import {
   ChatBubbleMessage,
   ChatBubbleAction,
   ChatBubbleActionWrapper,
-} from "@spacecorps/components-storybook/renderers";
-import { PlanMarkdown } from "@spacecorps/components-storybook/tendril";
+} from "@ivy-interactive/components/renderers";
+import { PlanMarkdown } from "@ivy-interactive/components/tendril";
 import { Copy, FilePlus, Paperclip } from "lucide-react";
 import { chatStore } from "../state/chatStore";
 import type { ChatMessage, InProgressQuestionAnswers } from "../types/chat";
