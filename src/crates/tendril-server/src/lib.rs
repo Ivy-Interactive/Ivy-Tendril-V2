@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod master;
+pub mod pr_sync;
 pub mod routes;
 pub mod state;
 pub mod watch;

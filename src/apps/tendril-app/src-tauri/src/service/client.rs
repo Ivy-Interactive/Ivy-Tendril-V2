@@ -2,8 +2,8 @@ use crate::error::BridgeError;
 use crate::models::{
     AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, EnqueueItemDto,
     ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto, PlanDetailDto, PlanQueryDto,
-    PlanSummaryDto, PostMessageDto, ProjectSummaryDto, RepoStatusDto, ReviewActionDto,
-    RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
+    PlanSummaryDto, PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
+    ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -193,8 +193,18 @@ impl TendrilClient {
             self.base_url,
             path_segment(plan_id)
         );
-        let resp = self.client.post(&url).headers(self.headers()).send().await?;
-        Self::expect_success(resp, "RESET_PLAN_FAILED", &format!("reset plan '{plan_id}'")).await
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+        Self::expect_success(
+            resp,
+            "RESET_PLAN_FAILED",
+            &format!("reset plan '{plan_id}'"),
+        )
+        .await
     }
 
     /// Permanently delete a plan folder (`DELETE /api/plans/:id`).
@@ -776,6 +786,52 @@ impl TendrilClient {
             .unwrap_or("Log added")
             .to_string();
         Ok(msg)
+    }
+
+    pub async fn list_pull_requests(&self) -> Result<Vec<PrStatusDto>, BridgeError> {
+        let url = format!("{}/api/pull-requests", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_PULL_REQUESTS_FAILED",
+                format!("Failed to list pull requests ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn sync_pull_requests(&self) -> Result<PrSyncReportDto, BridgeError> {
+        let url = format!("{}/api/pull-requests/sync", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        // A pass already in flight is not a failure — the caller just re-reads the list when the
+        // running pass broadcasts its result.
+        if resp.status() == reqwest::StatusCode::CONFLICT {
+            return Err(BridgeError::new(
+                "PR_SYNC_IN_PROGRESS",
+                "A pull request sync is already running",
+            ));
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "SYNC_PULL_REQUESTS_FAILED",
+                format!("Failed to sync pull requests ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     pub async fn list_projects(&self) -> Result<Vec<ProjectSummaryDto>, BridgeError> {
