@@ -13,7 +13,7 @@ use std::time::Duration;
 use tendril_cli::commands::project::{handle_project_command, ProjectCommands};
 use tendril_cli::commands::verification::{handle_verification_command, VerificationCommands};
 use tendril_core::config::{get_config_path, load_config, save_config, write_master};
-use tendril_core::models::VerificationConfig;
+use tendril_core::models::{ProjectConfig, VerificationConfig};
 
 /// Longer than the 1s budget the fixtures configure, short enough to fail rather than hang.
 const STALL: Duration = Duration::from_secs(20);
@@ -47,6 +47,11 @@ fn temp_home(label: &str) -> PathBuf {
     // A seeded config, so "the fallback wrote to it" and "the fallback did not" are both observable.
     let settings = tendril_core::config::TendrilSettings {
         daemon_request_timeout: 1,
+        projects: vec![ProjectConfig {
+            name: "Seeded".to_string(),
+            color: "Blue".to_string(),
+            ..Default::default()
+        }],
         verifications: vec![VerificationConfig {
             name: "RustBuild".to_string(),
             prompt: "Original prompt".to_string(),
@@ -184,6 +189,42 @@ async fn timed_out_mutation_does_not_fall_back() {
         before,
         config_bytes(&fixture.tendril_home),
         "config.yaml must be byte-identical: the fallback must not have run"
+    );
+}
+
+#[tokio::test]
+async fn timed_out_project_set_does_not_fall_back() {
+    // `project set` is the `PUT /api/projects/:name` arm — an in-place edit rather than an insert, so
+    // a double apply here overwrites whatever the daemon wrote instead of merely duplicating it.
+    let fixture = stalled_daemon("timeout-project-set").await;
+    let before = config_bytes(&fixture.tendril_home);
+
+    let err = handle_project_command(
+        ProjectCommands::Set {
+            name: "Seeded".to_string(),
+            field: "color".to_string(),
+            value: "Red".to_string(),
+        },
+        &fixture.tendril_home,
+    )
+    .await
+    .expect_err("a timed-out mutation must be reported, not silently retried locally");
+
+    assert!(
+        err.to_string().contains("did not respond within 1s"),
+        "the error should say the daemon did not answer: {}",
+        err
+    );
+    assert_eq!(
+        before,
+        config_bytes(&fixture.tendril_home),
+        "config.yaml must be byte-identical: the fallback must not have run"
+    );
+
+    let cfg = load_config(&get_config_path(&fixture.tendril_home)).unwrap();
+    assert_eq!(
+        cfg.projects[0].color, "Blue",
+        "the local copy must be untouched"
     );
 }
 
