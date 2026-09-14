@@ -151,7 +151,8 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             PreviousPlanState TEXT,
             Priority INTEGER NOT NULL DEFAULT 0,
             LastOutputAt TEXT,
-            WaitForJobIds TEXT
+            WaitForJobIds TEXT,
+            PermissionDenials TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
         CREATE INDEX IF NOT EXISTS idx_jobs_completed ON Jobs(CompletedAt DESC);
@@ -168,7 +169,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_owner_repo ON PrStatuses(Owner, Repo);
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_status ON PrStatuses(Status);
 
-        PRAGMA user_version = 25;
+        PRAGMA user_version = 26;
         "#,
     )?;
 
@@ -183,6 +184,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             ("Priority", "INTEGER NOT NULL DEFAULT 0"),
             ("LastOutputAt", "TEXT"),
             ("WaitForJobIds", "TEXT"),
+            ("PermissionDenials", "TEXT"),
         ],
     )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;

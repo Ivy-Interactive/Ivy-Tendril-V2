@@ -58,6 +58,9 @@ pub struct CreatePlanArgs {
     pub force: bool,
     #[serde(rename = "sourcePath", skip_serializing_if = "Option::is_none")]
     pub source_path: Option<String>,
+    /// Upload session whose attachments move into the plan folder once the plan exists.
+    #[serde(rename = "uploadSessionId", skip_serializing_if = "Option::is_none")]
+    pub upload_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +91,9 @@ pub struct UpdatePlanArgs {
     pub folder_path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
+    /// Upload session whose attachments move into the plan folder when the update succeeds.
+    #[serde(rename = "uploadSessionId", skip_serializing_if = "Option::is_none")]
+    pub upload_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -276,6 +282,10 @@ pub struct JobItem {
         skip_serializing_if = "Option::is_none"
     )]
     pub reported_failure_reason: Option<String>,
+    /// Tool calls the agent was refused, one summary line each. Explains a job that failed or did
+    /// nothing; never a reason to fail one on its own.
+    #[serde(rename = "permissionDenials", skip_serializing_if = "Option::is_none")]
+    pub permission_denials: Option<Vec<String>>,
     #[serde(default)]
     pub cleared: bool,
     /// Higher runs first. Taken from `CreatePlanArgs.priority`, else the plan's `plan.yaml` priority.
@@ -331,6 +341,7 @@ impl JobItem {
             reported_plan_id: None,
             reported_plan_title: None,
             reported_failure_reason: None,
+            permission_denials: None,
             cleared: false,
             priority: 0,
             last_output_at: None,

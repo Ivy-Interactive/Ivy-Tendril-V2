@@ -1,13 +1,13 @@
 mod common;
 
-use common::HomeFixture;
+use common::{plan_with, HomeFixture};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tendril_core::config::get_database_path;
 use tendril_core::db::{list_costs_by_plan, open_database};
 use tendril_core::jobs::manager::finish_job;
-use tendril_core::models::{JobItem, JobStatus};
+use tendril_core::models::{JobItem, JobStatus, PlanStatus, VerificationStatus};
 use tokio::sync::RwLock;
 
 #[tokio::test]
@@ -37,8 +37,14 @@ async fn test_job_completion_cost_extraction() {
     std::fs::write(&eventwire_path, format!("{}\n", event_json)).expect("write eventwire log");
 
     let job_id = "00100".to_string();
-    let plan_file_path = home.plans_dir().join("00042-CostPlan");
-    std::fs::create_dir_all(&plan_file_path).unwrap();
+    // A plan with a real deliverable: usage recording is what this test is about, and a plan with no
+    // commits would be failed by the deliverable check before it got that far.
+    let mut plan = plan_with(
+        PlanStatus::Executing,
+        &[("RustTest", VerificationStatus::Pass)],
+    );
+    plan.commits = vec!["deadbee".to_string()];
+    let plan_file_path = home.write_plan("00042-CostPlan", &plan);
 
     let job = JobItem {
         id: job_id.clone(),
@@ -71,6 +77,7 @@ async fn test_job_completion_cost_extraction() {
         reported_plan_id: Some("00042".to_string()),
         reported_plan_title: Some("Cost Test Plan".to_string()),
         reported_failure_reason: None,
+        permission_denials: None,
         cleared: false,
         priority: 0,
         last_output_at: None,
@@ -83,6 +90,7 @@ async fn test_job_completion_cost_extraction() {
 
     finish_job(
         &home.path,
+        &home.plans_dir(),
         &jobs_map,
         &handles,
         &completion_claimed,

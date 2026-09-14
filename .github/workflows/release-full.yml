@@ -412,9 +412,9 @@ jobs:
 
       - name: Run checks and tests
         run: |
-          pnpm --filter tendril-extension typecheck
-          pnpm --filter tendril-extension build
-          pnpm --filter tendril-extension test
+          pnpm --filter ivy-tendril typecheck
+          pnpm --filter ivy-tendril build
+          pnpm --filter ivy-tendril test
 
       - name: Determine version
         run: |
@@ -436,7 +436,7 @@ jobs:
       - name: Generate SHA256 checksum
         run: |
           cd extensions/vscode
-          VSIX_FILE=$(ls tendril-extension-*.vsix)
+          VSIX_FILE=$(ls ivy-tendril-*.vsix)
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "$VSIX_FILE" > "${VSIX_FILE}.sha256"
           else

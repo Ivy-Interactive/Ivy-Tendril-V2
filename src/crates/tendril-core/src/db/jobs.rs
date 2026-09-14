@@ -9,7 +9,7 @@ const JOB_COLUMNS: &str = "Id, Type, PlanFile, Project, Status, Provider, Starte
      CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, \
      Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, \
      ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState, \
-     Priority, LastOutputAt, WaitForJobIds";
+     Priority, LastOutputAt, WaitForJobIds, PermissionDenials";
 
 const INSERT_SQL: &str = r#"
     INSERT INTO Jobs (
@@ -18,11 +18,11 @@ const INSERT_SQL: &str = r#"
         CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
         Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
         ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState,
-        Priority, LastOutputAt, WaitForJobIds
+        Priority, LastOutputAt, WaitForJobIds, PermissionDenials
     ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
         ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
-        ?31, ?32, ?33
+        ?31, ?32, ?33, ?34
     )
 "#;
 
@@ -50,7 +50,8 @@ const UPSERT_TAIL: &str = r#"
         PreviousPlanState = excluded.PreviousPlanState,
         Priority = excluded.Priority,
         LastOutputAt = excluded.LastOutputAt,
-        WaitForJobIds = excluded.WaitForJobIds;
+        WaitForJobIds = excluded.WaitForJobIds,
+        PermissionDenials = excluded.PermissionDenials;
 "#;
 
 fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
@@ -64,6 +65,12 @@ fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
     } else {
         serde_json::to_string(&job.wait_for_job_ids).ok()
     };
+    // Stored as a JSON array so the column stays one value per job, like Args.
+    let permission_denials_json = job
+        .permission_denials
+        .as_ref()
+        .filter(|d| !d.is_empty())
+        .and_then(|d| serde_json::to_string(d).ok());
 
     conn.execute(
         sql,
@@ -101,6 +108,7 @@ fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
             job.priority,
             last_output_at_str,
             wait_for_json,
+            permission_denials_json,
         ],
     )?;
 
@@ -174,6 +182,11 @@ fn row_to_job(row: &Row<'_>) -> Result<JobItem> {
         .get::<_, Option<String>>(32)?
         .and_then(|json| serde_json::from_str(&json).ok())
         .unwrap_or_default();
+    let permission_denials_json: Option<String> = row.get(33)?;
+    item.permission_denials = permission_denials_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<Vec<String>>(json).ok())
+        .filter(|d| !d.is_empty());
 
     // `typed_args` has no column of its own; it is rehydrated from the Args JSON so a job loaded
     // after a daemon restart still knows what it was launched with.

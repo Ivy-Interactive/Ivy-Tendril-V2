@@ -227,10 +227,9 @@ async fn the_watchdog_fails_a_stalled_job_well_before_the_job_timeout() {
 async fn the_watchdog_tolerates_a_slow_but_talking_job() {
     let home = HomeFixture::new("queue-watchdog-alive");
     home.write_promptware("ExecutePlan");
-    let folder = home.write_plan(
-        "00001-Talking",
-        &plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]),
-    );
+    let mut plan = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
+    plan.commits = vec!["abc1234".to_string()];
+    let folder = home.write_plan("00001-Talking", &plan);
     let script = write_script(
         &home,
         "agent.sh",
@@ -257,10 +256,9 @@ async fn the_watchdog_tolerates_a_slow_but_talking_job() {
 async fn the_watchdog_stands_down_after_the_result_event() {
     let home = HomeFixture::new("queue-watchdog-result");
     home.write_promptware("ExecutePlan");
-    let folder = home.write_plan(
-        "00001-Result",
-        &plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]),
-    );
+    let mut plan = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
+    plan.commits = vec!["abc1234".to_string()];
+    let folder = home.write_plan("00001-Result", &plan);
     let script = write_script(
         &home,
         "agent.sh",
@@ -524,14 +522,12 @@ async fn an_idle_plan_and_a_planless_job_never_conflict() {
 async fn a_job_waiting_on_another_is_blocked_then_released() {
     let home = HomeFixture::new("queue-waitfor-release");
     home.write_promptware("ExecutePlan");
-    let first_folder = home.write_plan(
-        "00001-First",
-        &plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]),
-    );
-    let second_folder = home.write_plan(
-        "00002-Second",
-        &plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]),
-    );
+    let mut first_plan = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
+    first_plan.commits = vec!["abc1234".to_string()];
+    let first_folder = home.write_plan("00001-First", &first_plan);
+    let mut second_plan = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
+    second_plan.commits = vec!["abc1234".to_string()];
+    let second_folder = home.write_plan("00002-Second", &second_plan);
 
     // The first job finishes only when the test opens the gate, so the wait is observable.
     let gate = home.path.join("gate");
@@ -640,10 +636,9 @@ async fn a_job_waiting_on_a_failed_job_fails_immediately() {
 async fn a_job_waiting_on_an_unknown_id_is_not_stranded() {
     let home = HomeFixture::new("queue-waitfor-unknown");
     home.write_promptware("ExecutePlan");
-    let folder = home.write_plan(
-        "00001-Only",
-        &plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]),
-    );
+    let mut plan = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
+    plan.commits = vec!["abc1234".to_string()];
+    let folder = home.write_plan("00001-Only", &plan);
     let script = write_script(&home, "agent.sh", "echo working\nexit 0\n");
 
     let manager = manager_for(&home, 2, Some(script));
@@ -731,6 +726,7 @@ async fn maintenance_releases_a_job_blocked_on_a_plan_dependency() {
 
     let mut dependent = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
     dependent.depends_on = vec!["00002-Upstream".to_string()];
+    dependent.commits = vec!["abc1234".to_string()];
     let folder = home.write_plan("00001-Dependent", &dependent);
 
     let script = write_script(&home, "agent.sh", "echo working\nexit 0\n");
@@ -940,6 +936,7 @@ async fn force_start_promotes_a_blocked_job_and_keeps_its_id() {
     home.write_promptware("ExecutePlan");
     let mut plan = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
     plan.depends_on = vec!["00099-DoesNotExist".to_string()];
+    plan.commits = vec!["abc1234".to_string()];
     let folder = home.write_plan("00001-Blocked", &plan);
     let script = write_script(&home, "agent.sh", "echo working\nexit 0\n");
 

@@ -11,7 +11,7 @@ import {
 import "react-diff-view/style/index.css";
 import "./plan-diff.css";
 import Markdown from "react-markdown";
-type IvyEventHandler = (eventName: string, widgetId: string, args: any[]) => void;
+export type IvyEventHandler = (eventName: string, widgetId: string, args: any[]) => void;
 import { getWidth, getHeight } from "@/lib/styles";
 import { getMarkdownPlugins } from "@/lib/math";
 import { MessageSquare } from "lucide-react";
@@ -508,7 +508,7 @@ function getLineNumber(change: ChangeData | null): number {
   return change.lineNumber;
 }
 
-function getBasename(path: string): string {
+export function getBasename(path: string): string {
   const parts = path.split("/");
   return parts[parts.length - 1] || path;
 }
