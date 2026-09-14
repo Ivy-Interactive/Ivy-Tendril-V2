@@ -475,7 +475,7 @@ Error running tsgolint: "exit status: exit code: 1"
 The system cannot find the path specified.
 ```
 
-`scripts/patch-tsgolint-win.mjs` fixes this by placing the native `tsgolint.exe` where Vite+ looks
+`scripts/patch-tsgolint-win.ts` fixes this by placing the native `tsgolint.exe` where Vite+ looks
 for it before falling back to the shim, so `cmd.exe` is never involved. It is a no-op on non-Windows
 platforms.
 
@@ -484,18 +484,18 @@ Every `pnpm install` deletes that binary again while relinking bins, so the scri
 You should never need to invoke it, but to re-apply the repair by hand:
 
 ```bash
-node scripts/patch-tsgolint-win.mjs
+tsx scripts/patch-tsgolint-win.ts
 ```
 
-Add `--json` to see what it resolved — the source binary, the target path and its length — without
+Add `--json` to see what it resolved - the source binary, the target path and its length - without
 writing anything.
 
 **Retiring this repair:** The canary in `tests/tsgolintWinPatch.test.ts` fails when `oxlint-tsgolint` declares an `.exe` bin, or when pnpm's shim stops passing an unnormalized path. When that happens, the patch is obsolete and can be removed. Delete:
 
-1. `scripts/patch-tsgolint-win.mjs`
+1. `scripts/patch-tsgolint-win.ts`
 2. `tests/tsgolintWinPatch.test.ts`
-3. The `node scripts/patch-tsgolint-win.mjs && ` prefix on both `lint` and `check` in `package.json`
-4. The ` && node scripts/patch-tsgolint-win.mjs` suffix on `prepare` (leave `vp config`)
+3. The `tsx scripts/patch-tsgolint-win.ts && ` prefix on both `lint` and `check` in `package.json`
+4. The ` && tsx scripts/patch-tsgolint-win.ts` suffix on `prepare` (leave `vp config`)
 5. This README subsection
 
 To confirm manually: run `pnpm install --ignore-scripts`, then check if `node_modules/.pnpm/vite-plus@*/node_modules/.bin/tsgolint.exe` exists.
@@ -538,7 +538,7 @@ Tendril's worst-case worktree path for this repo is 126 characters (`D:\.tendril
 To measure your current path length, run the diagnostic command (reports `targetLength` without modifying anything):
 
 ```bash
-node scripts/patch-tsgolint-win.mjs --json
+tsx scripts/patch-tsgolint-win.ts --json
 ```
 
 ### Testing

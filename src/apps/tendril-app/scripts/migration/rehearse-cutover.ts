@@ -20,7 +20,23 @@ import { execSync } from "node:child_process";
 
 const REAL_HOME = path.resolve(os.homedir(), ".tendril");
 
-export function validateSandbox(sandboxEnv, homeEnv) {
+export interface SandboxValidationResult {
+  valid: boolean;
+  error?: string;
+  sandbox?: string;
+  home?: string;
+}
+
+interface StepRecord {
+  step: string;
+  passed: boolean;
+  note: string;
+}
+
+export function validateSandbox(
+  sandboxEnv: string | undefined,
+  homeEnv: string | undefined,
+): SandboxValidationResult {
   if (!sandboxEnv || sandboxEnv.trim() === "") {
     return { valid: false, error: "TENDRIL_SANDBOX environment variable is not set." };
   }
@@ -62,7 +78,7 @@ export function validateSandbox(sandboxEnv, homeEnv) {
   return { valid: true, sandbox: resolvedSandbox, home: resolvedHome };
 }
 
-function runSelfCheck() {
+function runSelfCheck(): void {
   console.log("Running rehearsal guardrail self-check...");
 
   const tmpDir = os.tmpdir();
@@ -98,16 +114,16 @@ function runSelfCheck() {
   process.exit(0);
 }
 
-function sha256(filePath) {
+function sha256(filePath: string): string | null {
   if (!fs.existsSync(filePath)) return null;
   const buffer = fs.readFileSync(filePath);
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
-function collectManifest(baseDir) {
-  const manifest = new Map();
+function collectManifest(baseDir: string): Map<string, string | null> {
+  const manifest = new Map<string, string | null>();
 
-  const addFile = (relPath) => {
+  const addFile = (relPath: string): void => {
     const fullPath = path.join(baseDir, relPath);
     if (fs.existsSync(fullPath)) {
       manifest.set(relPath, sha256(fullPath));
@@ -141,10 +157,10 @@ function collectManifest(baseDir) {
   return manifest;
 }
 
-function copySourceToSandbox(source, target) {
+function copySourceToSandbox(source: string, target: string): void {
   fs.mkdirSync(target, { recursive: true });
 
-  const copyRecursive = (src, dst) => {
+  const copyRecursive = (src: string, dst: string): void => {
     const entries = fs.readdirSync(src, { withFileTypes: true });
     for (const entry of entries) {
       const srcPath = path.join(src, entry.name);
@@ -167,7 +183,7 @@ function copySourceToSandbox(source, target) {
   copyRecursive(source, target);
 }
 
-async function main() {
+async function main(): Promise<void> {
   if (process.argv.includes("--self-check")) {
     runSelfCheck();
     return;
@@ -182,35 +198,35 @@ async function main() {
   const { sandbox } = check;
   console.log(`Starting cutover rehearsal on sandbox: ${sandbox}`);
 
-  const results = [];
-  const record = (step, passed, note = "") => {
+  const results: StepRecord[] = [];
+  const record = (step: string, passed: boolean, note = ""): void => {
     results.push({ step, passed, note });
     console.log(`[${passed ? "PASS" : "FAIL"}] Step ${step}: ${note}`);
   };
 
   try {
     // Step 1: Initialize sandbox directory
-    if (fs.existsSync(sandbox)) {
-      fs.rmSync(sandbox, { recursive: true, force: true });
+    if (fs.existsSync(sandbox!)) {
+      fs.rmSync(sandbox!, { recursive: true, force: true });
     }
-    fs.mkdirSync(sandbox, { recursive: true });
+    fs.mkdirSync(sandbox!, { recursive: true });
     record("1. Resolve sandbox", true, `Sandbox at ${sandbox}`);
 
-    // Step 2: Copy source to sandbox (skip Worktrees/target)
-    copySourceToSandbox(REAL_HOME, sandbox);
+    // Step 2: Copy source data to sandbox (skip Worktrees/target)
+    copySourceToSandbox(REAL_HOME, sandbox!);
     record("2. Copy source data", true, "Copied config, db, plans, chats");
 
     // Step 3: Backup sandbox and record pre-run SHA manifest
     const backupArchive = path.join(os.tmpdir(), `tendril-sandbox-backup-${Date.now()}.tar`);
     execSync(`tar -cf "${backupArchive}" -C "${sandbox}" .`);
-    const preManifest = collectManifest(sandbox);
+    const preManifest = collectManifest(sandbox!);
     record("3. Backup and manifest", true, `Hashed ${preManifest.size} critical files`);
 
     // Step 4: Verify Ivy CLI reads sandbox
     let ivyReadOk = false;
     try {
       const ivyOut = execSync("tendril plan list", {
-        env: { ...process.env, TENDRIL_HOME: sandbox, TENDRIL_PLANS: path.join(sandbox, "Plans") },
+        env: { ...process.env, TENDRIL_HOME: sandbox, TENDRIL_PLANS: path.join(sandbox!, "Plans") },
         encoding: "utf-8",
       });
       ivyReadOk = ivyOut.length > 0;
@@ -220,10 +236,10 @@ async function main() {
     record("4. Pre-migration Ivy CLI read", ivyReadOk, "Ivy CLI reads sandbox plans");
 
     // Step 5: Restore from backup proof
-    fs.rmSync(sandbox, { recursive: true, force: true });
-    fs.mkdirSync(sandbox, { recursive: true });
+    fs.rmSync(sandbox!, { recursive: true, force: true });
+    fs.mkdirSync(sandbox!, { recursive: true });
     execSync(`tar -xf "${backupArchive}" -C "${sandbox}"`);
-    const postRestoreManifest = collectManifest(sandbox);
+    const postRestoreManifest = collectManifest(sandbox!);
 
     let digestsMatch = preManifest.size === postRestoreManifest.size;
     for (const [file, hash] of preManifest) {
@@ -238,7 +254,7 @@ async function main() {
     let rollbackOk = false;
     try {
       const rollbackOut = execSync("tendril plan list", {
-        env: { ...process.env, TENDRIL_HOME: sandbox, TENDRIL_PLANS: path.join(sandbox, "Plans") },
+        env: { ...process.env, TENDRIL_HOME: sandbox, TENDRIL_PLANS: path.join(sandbox!, "Plans") },
         encoding: "utf-8",
       });
       rollbackOk = rollbackOut.length > 0;
@@ -259,8 +275,9 @@ async function main() {
     if (!allPassed) {
       process.exit(1);
     }
-  } catch (err) {
-    console.error(`Rehearsal error: ${err.message}`);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Rehearsal error: ${message}`);
     process.exit(1);
   }
 }
