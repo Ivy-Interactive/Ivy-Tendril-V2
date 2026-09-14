@@ -47,13 +47,23 @@ pub struct StartJobRequest {
     pub priority: Option<i32>,
 }
 
+/// `?force=true` is the operator's override of the duplicate gates, for the job types that carry no
+/// force flag of their own. Only `CreatePlan` has one in its args.
+#[derive(Debug, Deserialize)]
+pub struct StartJobQuery {
+    #[serde(default)]
+    pub force: bool,
+}
+
 pub async fn start_job(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<StartJobQuery>,
     Json(req): Json<StartJobRequest>,
 ) -> impl IntoResponse {
     let opts = StartOptions {
         wait_for_jobs: req.wait_for_jobs,
         priority: req.priority,
+        force: query.force || req.args.force_flag(),
     };
 
     match state.job_manager.start_job_with(req.args, opts).await {
@@ -64,6 +74,12 @@ pub async fn start_job(
             .into_response(),
         // A rejected conflict is not a malformed request: it names the job that holds the plan.
         Err(TendrilError::Conflict(msg)) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": msg, "status": "Conflict" })),
+        )
+            .into_response(),
+        // The same work already in flight, named by job id so the caller can watch it instead.
+        Err(TendrilError::DuplicateJob(msg)) => (
             StatusCode::CONFLICT,
             Json(json!({ "error": msg, "status": "Conflict" })),
         )
@@ -545,10 +561,12 @@ pub struct JobEventsQuery {
     pub since_line: Option<usize>,
 }
 
-fn parse_allowed_kinds(kinds_str: Option<&str>) -> std::collections::HashSet<String> {
+fn parse_allowed_kinds<'a, I: IntoIterator<Item = &'a str>>(
+    kinds_values: I,
+) -> std::collections::HashSet<String> {
     let mut set = std::collections::HashSet::new();
-    if let Some(s) = kinds_str {
-        for part in s.split(',') {
+    for value in kinds_values {
+        for part in value.split(',') {
             let trimmed = part.trim().to_ascii_lowercase();
             if !trimmed.is_empty() {
                 if trimmed == "tool_use" {
@@ -587,6 +605,7 @@ pub async fn stream_job_events(
     State(state): State<Arc<AppState>>,
     Path(job_id): Path<String>,
     Query(query): Query<JobEventsQuery>,
+    Query(pairs): Query<Vec<(String, String)>>,
 ) -> impl IntoResponse {
     let job_exists = match state.job_manager.get_job(&job_id).await {
         Ok(Some(_)) => true,
@@ -605,7 +624,13 @@ pub async fn stream_job_events(
             .into_response();
     }
 
-    let allowed_kinds = parse_allowed_kinds(query.kinds.as_deref());
+    let kind_values = query.kinds.as_deref().into_iter().chain(
+        pairs
+            .iter()
+            .filter(|(k, _)| k == "kind")
+            .map(|(_, v)| v.as_str()),
+    );
+    let allowed_kinds = parse_allowed_kinds(kind_values);
     let tendril_home = state.tendril_home.clone();
     let job_manager = state.job_manager.clone();
     let since_line = query.since_line.unwrap_or(0);

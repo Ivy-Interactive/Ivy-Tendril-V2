@@ -84,12 +84,66 @@ pub async fn run_server(
 
     spawn_worktree_reaper(tendril_home.clone());
     tasks::spawn_version_check(state.clone());
+    spawn_assigned_issues_importer(tendril_home.clone(), state.clone());
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
     Ok(())
+}
+
+/// Periodic import of the GitHub issues assigned to the user, following `spawn_worktree_reaper`'s
+/// shape: sleep first, re-read the config each pass, and treat a non-positive interval as "disabled,
+/// recheck occasionally" rather than "never look again".
+///
+/// The master check lives inside the sweep rather than here, so a daemon that loses the election
+/// while running stops importing on the next pass instead of racing the winner. That is also why the
+/// pass takes the config from disk each time: an operator can enable the importer, or change its
+/// cadence, without restarting the daemon.
+fn spawn_assigned_issues_importer(tendril_home: PathBuf, state: Arc<AppState>) {
+    /// Startup is busy enough without a `gh` call; the first sweep waits.
+    const SEED_DELAY: Duration = Duration::from_secs(90);
+    /// How long a disabled importer waits before re-reading the config.
+    const DISABLED_RECHECK: Duration = Duration::from_secs(30 * 60);
+
+    tokio::spawn(async move {
+        tokio::time::sleep(SEED_DELAY).await;
+
+        loop {
+            let config_path = tendril_core::config::get_config_path(&tendril_home);
+            let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
+
+            let interval = settings.inbox.check_interval_minutes;
+            if interval <= 0 {
+                tokio::time::sleep(DISABLED_RECHECK).await;
+                continue;
+            }
+
+            let report = tendril_core::inbox::run_assigned_issues_sweep(
+                &tendril_home,
+                &settings,
+                &state.job_manager,
+            )
+            .await;
+
+            if !report.imported.is_empty() {
+                tracing::info!(
+                    "Assigned issue import: {} imported ({} auto-accepted), {} already known",
+                    report.imported.len(),
+                    report.accepted,
+                    report.skipped,
+                );
+            }
+            for error in &report.errors {
+                tracing::warn!("Assigned issue import: {}", error);
+            }
+
+            // `max(1)`: a fractional-minute interval is not expressible, and a zero-length sleep would
+            // spin on `gh`.
+            tokio::time::sleep(Duration::from_secs((interval as u64).max(1) * 60)).await;
+        }
+    });
 }
 
 /// Periodic worktree reclamation. Started only by the master — the `MasterGuard` has already been
@@ -217,6 +271,39 @@ async fn reconcile_after_restart(tendril_home: &std::path::Path) {
             }
         }
         Err(e) => tracing::warn!("Plan disk sync skipped, database unavailable: {}", e),
+    }
+
+    rebuild_recommendations(tendril_home, &plans_dir).await;
+}
+
+/// Rebuilds the `Recommendations` projection from the plan folders on disk, once per daemon start.
+///
+/// `sync_plan` keeps the projection current from here on, but every database that predates it holds
+/// rows no write path has touched since the original app wrote them — including rows for plans that
+/// no longer exist. Repairing on startup is what fixes those without waiting for someone to run
+/// `tendril plan rec rebuild`. Runs after plan migration so it projects the migrated YAML, blocks
+/// off-reactor, and logs rather than fails: one unparseable plan folder must not stop the daemon
+/// booting.
+async fn rebuild_recommendations(tendril_home: &std::path::Path, plans_dir: &std::path::Path) {
+    let db_path = tendril_core::config::get_database_path(tendril_home);
+    let plans_dir = plans_dir.to_path_buf();
+
+    let outcome = tokio::task::spawn_blocking(move || {
+        let conn = tendril_core::db::open_database(&db_path)
+            .map_err(|e| format!("could not open the database: {e}"))?;
+        tendril_core::db::rebuild_recommendations_projection(&conn, &plans_dir)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    match outcome {
+        Ok(Ok((rows, plans))) => tracing::info!(
+            "Rebuilt recommendations projection: {} row(s) from {} plan(s)",
+            rows,
+            plans
+        ),
+        Ok(Err(e)) => tracing::warn!("Recommendations projection rebuild failed: {}", e),
+        Err(e) => tracing::warn!("Recommendations projection rebuild panicked: {}", e),
     }
 }
 

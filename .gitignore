@@ -39,6 +39,9 @@ Thumbs.db
 # Visual regression failure diffs
 .storybook/__image_snapshots__/__diff_output__/
 
+# Lychee's response cache, written by `pnpm run check:links`
+.lycheecache
+
 # Env files
 .env
 .env.*

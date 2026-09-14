@@ -8,8 +8,8 @@ use tendril_core::config::{
 use tendril_core::git::service::run_git;
 use tendril_core::git::worktree::derive_worktree_relative_path;
 use tendril_core::models::{
-    ProjectConfig, ProjectEnvFileConfig, ProjectPortConfig, ProjectVerificationRef, RepoRef,
-    ReviewActionConfig,
+    ProjectConfig, ProjectEnvFileConfig, ProjectPortConfig, ProjectVerificationRef,
+    PromptwareHookConfig, RepoRef, ReviewActionConfig,
 };
 use tendril_core::plans::{read_plan_yaml, resolve_plan_folder};
 
@@ -92,6 +92,31 @@ pub enum ProjectCommands {
         name: String,
         #[arg(value_name = "NAME")]
         action: String,
+    },
+
+    #[command(about = "Add a promptware hook to a project")]
+    AddHook {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "NAME")]
+        hook: String,
+        #[arg(long, value_parser = ["before", "after"], default_value = "before")]
+        when: String,
+        /// Promptwares the hook fires for. Omit to fire for every promptware.
+        #[arg(long, value_delimiter = ',')]
+        promptwares: Vec<String>,
+        #[arg(long)]
+        action: String,
+        #[arg(long, default_value = "")]
+        condition: String,
+    },
+
+    #[command(about = "Remove a promptware hook from a project")]
+    RemoveHook {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "NAME")]
+        hook: String,
     },
 
     #[command(about = "Rank a project's review actions against a plan's changed files")]
@@ -291,6 +316,7 @@ async fn handle_project_command_daemon(
                     );
                 }
             }
+            print_hooks(&p);
         }
         ProjectCommands::Add { name } => {
             let resp = match client
@@ -604,6 +630,66 @@ async fn handle_project_command_daemon(
                 action, name
             );
         }
+        ProjectCommands::AddHook {
+            name,
+            hook,
+            when,
+            promptwares,
+            action,
+            condition,
+        } => {
+            let resp = match client
+                .post(format!("{}/api/projects/{}/hooks", base_url, name))
+                .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "name": hook,
+                    "when": when,
+                    "promptwares": promptwares,
+                    "action": action,
+                    "condition": condition,
+                }))
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to add hook to project '{}': {}", name, err);
+            }
+
+            println!("Hook '{}' added to project '{}'.", hook, name);
+        }
+        ProjectCommands::RemoveHook { name, hook } => {
+            let resp = match client
+                .delete(format!("{}/api/projects/{}/hooks/{}", base_url, name, hook))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            // The server answers 404 for an unknown project and for an unknown hook alike, so its
+            // message is passed through rather than guessed at.
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!(
+                    "Failed to remove hook '{}' from project '{}': {}",
+                    hook,
+                    name,
+                    err
+                );
+            }
+
+            println!("Hook '{}' removed from project '{}'.", hook, name);
+        }
         ProjectCommands::ReviewActions { .. } => {
             // Read-only ranking over the config file — no daemon round-trip needed.
             return Ok(DaemonOutcome::Fallback);
@@ -692,6 +778,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                         );
                     }
                 }
+                print_hooks(p);
             } else {
                 anyhow::bail!("Project '{}' not found", name);
             }
@@ -922,6 +1009,48 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 action, name
             );
         }
+        ProjectCommands::AddHook {
+            name,
+            hook,
+            when,
+            promptwares,
+            action,
+            condition,
+        } => {
+            let proj = settings
+                .projects
+                .iter_mut()
+                .find(|p| p.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
+
+            // Upsert by name, as review actions do: re-running the command edits the hook rather
+            // than leaving two entries with the same name, only one of which anyone would find.
+            proj.hooks.retain(|h| !h.name.eq_ignore_ascii_case(&hook));
+            proj.hooks.push(PromptwareHookConfig {
+                name: hook.clone(),
+                when: when.clone(),
+                promptwares: promptwares.clone(),
+                condition: condition.clone(),
+                action: action.clone(),
+            });
+            save_config(&cfg_path, &settings)?;
+            println!("Hook '{}' added to project '{}'.", hook, name);
+        }
+        ProjectCommands::RemoveHook { name, hook } => {
+            let proj = settings
+                .projects
+                .iter_mut()
+                .find(|p| p.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
+
+            let before = proj.hooks.len();
+            proj.hooks.retain(|h| !h.name.eq_ignore_ascii_case(&hook));
+            if proj.hooks.len() == before {
+                anyhow::bail!("Hook '{}' not found in project '{}'", hook, name);
+            }
+            save_config(&cfg_path, &settings)?;
+            println!("Hook '{}' removed from project '{}'.", hook, name);
+        }
         ProjectCommands::ReviewActions {
             name,
             changed_files,
@@ -1101,6 +1230,29 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
     }
 
     Ok(())
+}
+
+/// Prints a project's hooks, or nothing at all when it has none — the same shape as the review
+/// actions block above it, so `project get` stays readable for the projects that use neither.
+///
+/// Shared by the daemon and filesystem arms: two copies of a printer is two copies to drift.
+fn print_hooks(project: &ProjectConfig) {
+    if project.hooks.is_empty() {
+        return;
+    }
+
+    println!("Hooks:");
+    for h in &project.hooks {
+        let promptwares = if h.promptwares.is_empty() {
+            "all".to_string()
+        } else {
+            h.promptwares.join(", ")
+        };
+        println!(
+            "  - {} (when: {}, promptwares: {}, action: {}, condition: {})",
+            h.name, h.when, promptwares, h.action, h.condition
+        );
+    }
 }
 
 /// Where a new/re-scoped review action should be inserted: `before`/`after` name an existing

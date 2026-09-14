@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { CONFIG_KEYS } from '../constants';
+import { assertIsolatedTendrilHome } from '../server/homeGuard';
 import { discoverMaster, resolveTendrilHome } from '../server/masterDiscovery';
 import { ServerManager } from '../server/serverManager';
 
@@ -69,6 +70,8 @@ export class JobRunner implements IJobRunner {
     const tendrilHome = this.serverManager
       ? this.serverManager.tendrilHome
       : resolveTendrilHome(config.get<string>(CONFIG_KEYS.homeDirectory));
+
+    assertIsolatedTendrilHome(tendrilHome, `run 'tendril ${args.join(' ')}'`);
 
     return new Promise((resolve, reject) => {
       cp.execFile(
