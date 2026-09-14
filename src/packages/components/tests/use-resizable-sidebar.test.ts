@@ -396,14 +396,283 @@ describe("useResizableSidebar Hook", () => {
     expect(hookResult.width).toBe(320);
   });
 
-  it("provides correct separator props for accessibility", () => {
+  it("provides correct separator props for accessibility including ARIA value attributes", () => {
     act(() => {
-      root.render(React.createElement(TestComponent));
+      root.render(
+        React.createElement(TestComponent, {
+          options: {
+            defaultWidth: 320,
+            minWidth: 200,
+            maxWidth: 640,
+          },
+        }),
+      );
     });
 
     const resizer = container.querySelector('[data-testid="resizer"]') as HTMLElement;
     expect(resizer.getAttribute("role")).toBe("separator");
     expect(resizer.getAttribute("aria-orientation")).toBe("vertical");
     expect(resizer.getAttribute("tabindex")).toBe("0");
+    expect(resizer.getAttribute("aria-valuenow")).toBe("320");
+    expect(resizer.getAttribute("aria-valuemin")).toBe("200");
+    expect(resizer.getAttribute("aria-valuemax")).toBe("640");
+
+    expect(hookResult.separatorProps["aria-valuenow"]).toBe(320);
+    expect(hookResult.separatorProps["aria-valuemin"]).toBe(200);
+    expect(hookResult.separatorProps["aria-valuemax"]).toBe(640);
+    expect(hookResult.onKeyDown).toBeDefined();
+    expect(hookResult.separatorProps.onKeyDown).toBe(hookResult.onKeyDown);
+  });
+
+  it("handles keyboard navigation with ArrowRight and ArrowLeft when side is left", () => {
+    act(() => {
+      root.render(
+        React.createElement(TestComponent, {
+          options: {
+            defaultWidth: 320,
+            minWidth: 200,
+            maxWidth: 640,
+          },
+        }),
+      );
+    });
+
+    const resizer = container.querySelector('[data-testid="resizer"]') as HTMLElement;
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(hookResult.width).toBe(330);
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(hookResult.width).toBe(320);
+  });
+
+  it("handles Shift + Arrow keys with larger shiftStep increments", () => {
+    act(() => {
+      root.render(
+        React.createElement(TestComponent, {
+          options: {
+            defaultWidth: 320,
+            minWidth: 200,
+            maxWidth: 640,
+          },
+        }),
+      );
+    });
+
+    const resizer = container.querySelector('[data-testid="resizer"]') as HTMLElement;
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(hookResult.width).toBe(370);
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowLeft",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(hookResult.width).toBe(320);
+  });
+
+  it("handles inverted keyboard navigation direction when side is right", () => {
+    act(() => {
+      root.render(
+        React.createElement(TestComponent, {
+          options: {
+            side: "right",
+            defaultWidth: 320,
+            minWidth: 200,
+            maxWidth: 640,
+          },
+        }),
+      );
+    });
+
+    const resizer = container.querySelector('[data-testid="resizer"]') as HTMLElement;
+
+    // ArrowLeft expands sidebar when anchored to the right
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(hookResult.width).toBe(330);
+
+    // ArrowRight shrinks sidebar when anchored to the right
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(hookResult.width).toBe(320);
+
+    // Shift + ArrowLeft expands by shiftStep
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowLeft",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(hookResult.width).toBe(370);
+
+    // Shift + ArrowRight shrinks by shiftStep
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(hookResult.width).toBe(320);
+  });
+
+  it("handles Home and End keys to snap to minWidth and maxWidth with persistence", () => {
+    act(() => {
+      root.render(
+        React.createElement(TestComponent, {
+          options: {
+            storageKey: "test-home-end-key",
+            defaultWidth: 350,
+            minWidth: 200,
+            maxWidth: 600,
+          },
+        }),
+      );
+    });
+
+    const resizer = container.querySelector('[data-testid="resizer"]') as HTMLElement;
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Home", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(hookResult.width).toBe(200);
+    expect(localStorage.getItem("test-home-end-key")).toBe("200");
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "End", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(hookResult.width).toBe(600);
+    expect(localStorage.getItem("test-home-end-key")).toBe("600");
+  });
+
+  it("calls preventDefault on handled navigation keys and ignores unrelated keys", () => {
+    act(() => {
+      root.render(
+        React.createElement(TestComponent, {
+          options: {
+            defaultWidth: 320,
+            minWidth: 200,
+            maxWidth: 640,
+          },
+        }),
+      );
+    });
+
+    const resizer = container.querySelector('[data-testid="resizer"]') as HTMLElement;
+
+    const handledKeys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    for (const key of handledKeys) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      act(() => {
+        resizer.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented).toBe(true);
+    }
+
+    const unhandledKeys = ["Tab", "Enter", "KeyA", "Escape", "Space"];
+    for (const key of unhandledKeys) {
+      const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+      act(() => {
+        resizer.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented).toBe(false);
+    }
+  });
+
+  it("supports custom step and shiftStep option overrides", () => {
+    act(() => {
+      root.render(
+        React.createElement(TestComponent, {
+          options: {
+            defaultWidth: 300,
+            minWidth: 200,
+            maxWidth: 640,
+            step: 15,
+            shiftStep: 75,
+          },
+        }),
+      );
+    });
+
+    const resizer = container.querySelector('[data-testid="resizer"]') as HTMLElement;
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(hookResult.width).toBe(315);
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(hookResult.width).toBe(390);
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(hookResult.width).toBe(375);
+
+    act(() => {
+      resizer.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowLeft",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(hookResult.width).toBe(300);
   });
 });

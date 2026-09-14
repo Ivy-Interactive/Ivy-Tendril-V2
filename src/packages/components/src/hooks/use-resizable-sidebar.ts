@@ -28,6 +28,16 @@ export interface UseResizableSidebarOptions {
    */
   side?: "left" | "right";
   /**
+   * Step increment in pixels when navigating with arrow keys.
+   * Defaults to 10.
+   */
+  step?: number;
+  /**
+   * Larger step increment in pixels when navigating with Shift + arrow keys.
+   * Defaults to 50.
+   */
+  shiftStep?: number;
+  /**
    * Optional callback when width changes.
    */
   onWidthChange?: (width: number) => void;
@@ -42,15 +52,20 @@ export interface UseResizableSidebarReturn {
   onPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
   onPointerUp: (e: React.PointerEvent<HTMLElement>) => void;
   onDoubleClick: (e?: React.MouseEvent<HTMLElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
   separatorProps: {
     role: "separator";
     "aria-orientation": "vertical";
+    "aria-valuenow": number;
+    "aria-valuemin": number;
+    "aria-valuemax": number;
     tabIndex: 0;
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
     onPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
     onPointerUp: (e: React.PointerEvent<HTMLElement>) => void;
     onPointerCancel: (e: React.PointerEvent<HTMLElement>) => void;
     onDoubleClick: (e?: React.MouseEvent<HTMLElement>) => void;
+    onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => void;
   };
 }
 
@@ -106,6 +121,8 @@ export function useResizableSidebar(
     minWidth = 200,
     maxWidth = 640,
     side = "left",
+    step = 10,
+    shiftStep = 50,
     onWidthChange,
   } = options;
 
@@ -130,6 +147,8 @@ export function useResizableSidebar(
     minWidth,
     maxWidth,
     side,
+    step,
+    shiftStep,
     onWidthChange,
   });
 
@@ -139,6 +158,8 @@ export function useResizableSidebar(
     minWidth,
     maxWidth,
     side,
+    step,
+    shiftStep,
     onWidthChange,
   };
 
@@ -168,6 +189,40 @@ export function useResizableSidebar(
     }
     cb?.(def);
   }, []);
+
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLElement>) => {
+      const {
+        side: currentSide,
+        minWidth: min,
+        maxWidth: max,
+        step: currentStep,
+        shiftStep: currentShiftStep,
+      } = optionsRef.current;
+
+      const delta = e.shiftKey ? currentShiftStep : currentStep;
+
+      switch (e.key) {
+        case "ArrowLeft":
+          e.preventDefault();
+          setWidth((prev) => (currentSide === "left" ? prev - delta : prev + delta));
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          setWidth((prev) => (currentSide === "left" ? prev + delta : prev - delta));
+          break;
+        case "Home":
+          e.preventDefault();
+          setWidth(min);
+          break;
+        case "End":
+          e.preventDefault();
+          setWidth(max);
+          break;
+      }
+    },
+    [setWidth],
+  );
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
@@ -227,15 +282,20 @@ export function useResizableSidebar(
     onPointerMove,
     onPointerUp,
     onDoubleClick,
+    onKeyDown,
     separatorProps: {
       role: "separator",
       "aria-orientation": "vertical",
+      "aria-valuenow": width,
+      "aria-valuemin": minWidth,
+      "aria-valuemax": maxWidth,
       tabIndex: 0,
       onPointerDown,
       onPointerMove,
       onPointerUp,
       onPointerCancel: onPointerUp,
       onDoubleClick,
+      onKeyDown,
     },
   };
 }
