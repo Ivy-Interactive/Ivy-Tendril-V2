@@ -118,6 +118,9 @@ function LightAndDarkShowcase() {
 const meta: Meta = {
   title: "Foundation/Colors",
   component: ColorShowcase,
+  // `NAMED_COLORS` is exported for `tests/design-tokens.test.ts`, not as a story. Without this, CSF
+  // reads it as one and it shows up in the sidebar and in the visual snapshot run.
+  excludeStories: ["NAMED_COLORS"],
   parameters: {
     layout: "fullscreen",
   },
