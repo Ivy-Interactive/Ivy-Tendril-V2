@@ -12,6 +12,7 @@ pub mod plans;
 pub mod promptware;
 pub mod questions;
 pub mod stack;
+pub mod telemetry;
 pub mod vault;
 pub mod watcher;
 
