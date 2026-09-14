@@ -29,6 +29,78 @@
   --purple: #7e22ce;
   --pink: #be185d;
   --violet: #6d28d9;
+
+  /* Named palette colors */
+  --ivy-green: #00cc92;
+  --ivy-green-foreground: #000000;
+  --slate: #334155;
+  --slate-foreground: #ffffff;
+  --gray: #374151;
+  --gray-foreground: #ffffff;
+  --zinc: #3f3f46;
+  --zinc-foreground: #ffffff;
+  --neutral: #404040;
+  --neutral-foreground: #ffffff;
+  --stone: #44403c;
+  --stone-foreground: #ffffff;
+  --black: #000000;
+  --black-foreground: #ffffff;
+  --white: #ffffff;
+  --white-foreground: #000000;
+  --red: #b91c1c;
+  --red-foreground: #ffffff;
+  --orange: #c2410c;
+  --orange-foreground: #ffffff;
+  --amber: #b45309;
+  --amber-foreground: #ffffff;
+  --yellow: #a16207;
+  --yellow-foreground: #ffffff;
+  --lime: #4d7c0f;
+  --lime-foreground: #ffffff;
+  --green: #15803d;
+  --green-foreground: #ffffff;
+  --emerald: #047857;
+  --emerald-foreground: #ffffff;
+  --teal: #0f766e;
+  --teal-foreground: #ffffff;
+  --sky: #0369a1;
+  --sky-foreground: #ffffff;
+  --blue: #1d4ed8;
+  --blue-foreground: #ffffff;
+  --indigo: #4338ca;
+  --indigo-foreground: #ffffff;
+  --fuchsia: #a21caf;
+  --fuchsia-foreground: #ffffff;
+  --rose: #be123c;
+  --rose-foreground: #ffffff;
+  --cyan-foreground: #ffffff;
+  --purple-foreground: #ffffff;
+  --pink-foreground: #ffffff;
+  --violet-foreground: #ffffff;
+
+  /* Badge tint defaults (overridden inline per element by consumers) */
+  --badge-tint-bg-light: var(--muted);
+  --badge-tint-fg-light: var(--foreground);
+  --badge-tint-bg-dark: var(--muted);
+  --badge-tint-fg-dark: var(--foreground);
+
+  /* Letter spacing base */
+  --tracking-normal: 0em;
+
+  /* Shadow ramp */
+  --shadow-2xs: 0 1px 2px 0 hsl(0 0% 0% / 0.03);
+  --shadow-xs: 0 1px 2px 0 hsl(0 0% 0% / 0.03);
+  --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
+  --shadow: 0 1px 3px 0 hsl(0 0% 0% / 0.05);
+  --shadow-md: 0 4px 6px -1px hsl(0 0% 0% / 0.05);
+  --shadow-lg: 0 10px 15px -3px hsl(0 0% 0% / 0.05);
+  --shadow-xl: 0 6px 10px 0 hsl(0 0% 0% / 0.05);
+  --shadow-2xl: 0 8px 14px 0 hsl(0 0% 0% / 0.08);
+
+  /* Misc framework tokens */
+  --font-serif: "Geist Variable", "Geist", serif;
+  --spacing: 0.27rem;
+  --toolbox: #38363a;
   --border: #e4e4e7;
   --input: #e4e4e7;
   --ring: #18181b;
@@ -80,6 +152,67 @@
   --purple: #c084fc;
   --pink: #f472b6;
   --violet: #a78bfa;
+
+  /* Named palette colors */
+  --ivy-green: #00cc92;
+  --ivy-green-foreground: #000000;
+  --slate: #94a3b8;
+  --slate-foreground: #000000;
+  --gray: #9ca3af;
+  --gray-foreground: #000000;
+  --zinc: #a1a1aa;
+  --zinc-foreground: #000000;
+  --neutral: #a3a3a3;
+  --neutral-foreground: #000000;
+  --stone: #a8a29e;
+  --stone-foreground: #000000;
+  --black: #000000;
+  --black-foreground: #ffffff;
+  --white: #ffffff;
+  --white-foreground: #000000;
+  --red: #f87171;
+  --red-foreground: #000000;
+  --orange: #fb923c;
+  --orange-foreground: #000000;
+  --amber: #fbbf24;
+  --amber-foreground: #000000;
+  --yellow: #facc15;
+  --yellow-foreground: #000000;
+  --lime: #a3e635;
+  --lime-foreground: #000000;
+  --green: #4ade80;
+  --green-foreground: #000000;
+  --emerald: #34d399;
+  --emerald-foreground: #000000;
+  --teal: #2dd4bf;
+  --teal-foreground: #000000;
+  --sky: #38bdf8;
+  --sky-foreground: #000000;
+  --blue: #60a5fa;
+  --blue-foreground: #000000;
+  --indigo: #818cf8;
+  --indigo-foreground: #000000;
+  --fuchsia: #e879f9;
+  --fuchsia-foreground: #000000;
+  --rose: #fb7185;
+  --rose-foreground: #000000;
+  --cyan-foreground: #000000;
+  --purple-foreground: #000000;
+  --pink-foreground: #000000;
+  --violet-foreground: #000000;
+
+  /* Shadow ramp — flat in dark mode */
+  --shadow-2xs: none;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-2xl: none;
+
+  /* Misc framework tokens */
+  --toolbox: #edeaf1;
   --border: #27272a;
   --input: #27272a;
   --ring: #d4d4d8;
@@ -134,6 +267,87 @@
   --radius-selectors: var(--radius-selectors);
   --font-family-sans: var(--font-sans);
   --font-family-mono: var(--font-mono);
+  --font-family-serif: var(--font-serif);
+
+  --animate-indeterminate: indeterminate 1.5s ease-in-out infinite;
+
+  /* Neutral colors */
+  --color-ivy-green: var(--ivy-green);
+  --color-ivy-green-foreground: var(--ivy-green-foreground);
+  --color-slate: var(--slate);
+  --color-slate-foreground: var(--slate-foreground);
+  --color-gray: var(--gray);
+  --color-gray-foreground: var(--gray-foreground);
+  --color-zinc: var(--zinc);
+  --color-zinc-foreground: var(--zinc-foreground);
+  --color-neutral: var(--neutral);
+  --color-neutral-foreground: var(--neutral-foreground);
+  --color-stone: var(--stone);
+  --color-stone-foreground: var(--stone-foreground);
+  --color-black: var(--black);
+  --color-black-foreground: var(--black-foreground);
+  --color-white: var(--white);
+  --color-white-foreground: var(--white-foreground);
+
+  /* Chromatic colors */
+  --color-red: var(--red);
+  --color-red-foreground: var(--red-foreground);
+  --color-orange: var(--orange);
+  --color-orange-foreground: var(--orange-foreground);
+  --color-amber: var(--amber);
+  --color-amber-foreground: var(--amber-foreground);
+  --color-yellow: var(--yellow);
+  --color-yellow-foreground: var(--yellow-foreground);
+  --color-lime: var(--lime);
+  --color-lime-foreground: var(--lime-foreground);
+  --color-green: var(--green);
+  --color-green-foreground: var(--green-foreground);
+  --color-emerald: var(--emerald);
+  --color-emerald-foreground: var(--emerald-foreground);
+  --color-teal: var(--teal);
+  --color-teal-foreground: var(--teal-foreground);
+  --color-cyan: var(--cyan);
+  --color-cyan-foreground: var(--cyan-foreground);
+  --color-sky: var(--sky);
+  --color-sky-foreground: var(--sky-foreground);
+  --color-blue: var(--blue);
+  --color-blue-foreground: var(--blue-foreground);
+  --color-indigo: var(--indigo);
+  --color-indigo-foreground: var(--indigo-foreground);
+  --color-violet: var(--violet);
+  --color-violet-foreground: var(--violet-foreground);
+  --color-purple: var(--purple);
+  --color-purple-foreground: var(--purple-foreground);
+  --color-fuchsia: var(--fuchsia);
+  --color-fuchsia-foreground: var(--fuchsia-foreground);
+  --color-pink: var(--pink);
+  --color-pink-foreground: var(--pink-foreground);
+  --color-rose: var(--rose);
+  --color-rose-foreground: var(--rose-foreground);
+
+  /* Typography */
+  --text-body: 14px;
+  --text-large-body: 14px;
+  --text-large-label: 14px;
+  --text-small-label: 12px;
+
+  /* Letter spacing */
+  --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-normal: var(--tracking-normal);
+  --tracking-wide: calc(var(--tracking-normal) + 0.025em);
+  --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+  --tracking-widest: calc(var(--tracking-normal) + 0.1em);
+
+  /* Shadow ramp */
+  --shadow-2xs: var(--shadow-2xs);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow: var(--shadow);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
 }
 
 @keyframes accordion-down {
@@ -180,6 +394,22 @@
   }
 }
 
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-indeterminate {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 @layer base {
   * {
     border-color: var(--border);
@@ -218,6 +448,14 @@
   }
   .toast-animate-enter {
     animation: toastSlideIn 300ms ease-out;
+  }
+  .badge-tinted {
+    background-color: var(--badge-tint-bg-light);
+    color: var(--badge-tint-fg-light);
+  }
+  .dark .badge-tinted {
+    background-color: var(--badge-tint-bg-dark);
+    color: var(--badge-tint-fg-dark);
   }
   :where(
       .bg-primary,

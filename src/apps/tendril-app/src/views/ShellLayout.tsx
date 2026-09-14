@@ -108,7 +108,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   const noop = () => {};
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-950 font-sans text-slate-100">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground">
       {/* Top Offline / Reconnection Banner */}
       <OfflineBanner
         status={connectionStatus}
@@ -153,11 +153,11 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                     if (navId) onSelectNav(navId);
                   }}
                 />
-                <div className="px-4 py-2 border-t border-slate-800/80">
+                <div className="px-4 py-2 border-t border-border/80">
                   <button
                     type="button"
                     onClick={onOpenShortcuts}
-                    className="text-xs text-slate-500 hover:text-slate-300 flex items-center space-x-1.5"
+                    className="text-xs text-muted-foreground/70 hover:text-muted-foreground flex items-center space-x-1.5"
                   >
                     <span>⌨️</span>
                     <span>Shortcuts (?)</span>
@@ -168,7 +168,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
             Content: (
               <div className="flex h-full flex-col overflow-hidden">
                 {shellTabs.length > 0 && (
-                  <div className="border-b border-slate-800 bg-slate-900/50">
+                  <div className="border-b border-border bg-card/50">
                     <ShellTabs
                       id="shell-tabs"
                       tabs={shellTabs}

@@ -9,10 +9,10 @@ export interface RecommendationCardProps {
 }
 
 export const REC_STATUS_CLASS: Record<string, string> = {
-  Accepted: "bg-emerald-950 text-emerald-300 border border-emerald-800",
-  AcceptedWithNotes: "bg-emerald-950 text-emerald-300 border border-emerald-800",
-  Declined: "bg-slate-800 text-slate-400 border border-slate-700",
-  Pending: "bg-amber-950 text-amber-300 border border-amber-800",
+  Accepted: "bg-success/10 text-success border border-success/40",
+  AcceptedWithNotes: "bg-success/10 text-success border border-success/40",
+  Declined: "bg-muted text-muted-foreground border border-border",
+  Pending: "bg-warning/10 text-warning border border-warning/40",
 };
 
 export const RecommendationCard: React.FC<RecommendationCardProps> = ({
@@ -27,13 +27,13 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
   return (
     <div
       data-testid={`recommendation-card-${recommendation.title}`}
-      className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4 sm:flex-row sm:items-start sm:justify-between"
+      className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4 sm:flex-row sm:items-start sm:justify-between"
     >
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h4 className="text-sm font-medium text-slate-200">{recommendation.title}</h4>
+          <h4 className="text-sm font-medium text-foreground">{recommendation.title}</h4>
           {recommendation.impact && (
-            <span className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
+            <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
               {recommendation.impact} impact
             </span>
           )}
@@ -41,9 +41,9 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
             {statusKey}
           </span>
         </div>
-        <p className="text-xs text-slate-300">{recommendation.description}</p>
+        <p className="text-xs text-muted-foreground">{recommendation.description}</p>
         {recommendation.declineReason && (
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted-foreground">
             {recommendation.state === "Declined" ? "Decline reason: " : "Notes: "}
             {recommendation.declineReason}
           </p>
@@ -56,7 +56,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => onAccept(recommendation.title)}
-            className="rounded bg-emerald-600/80 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+            className="rounded bg-primary/80 px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             Accept
           </button>
@@ -64,7 +64,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => onDecline(recommendation.title)}
-            className="rounded bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+            className="rounded bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
           >
             Decline
           </button>

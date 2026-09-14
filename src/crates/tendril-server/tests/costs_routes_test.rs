@@ -91,9 +91,25 @@ async fn test_costs_routes_contract() {
     let two_days_ago = (now - Duration::days(2)).to_rfc3339();
     let ten_days_ago = (now - Duration::days(10)).to_rfc3339();
 
-    insert_cost(&conn, 10, "CreatePlan", 1000, 5.0, Some(&today)).unwrap();
-    insert_cost(&conn, 10, "ExecutePlan", 2000, 15.0, Some(&two_days_ago)).unwrap();
-    insert_cost(&conn, 10, "UpdatePlan", 3000, 20.0, Some(&ten_days_ago)).unwrap();
+    insert_cost(&conn, 10, "CreatePlan", 1000, Some(5.0), Some(&today)).unwrap();
+    insert_cost(
+        &conn,
+        10,
+        "ExecutePlan",
+        2000,
+        Some(15.0),
+        Some(&two_days_ago),
+    )
+    .unwrap();
+    insert_cost(
+        &conn,
+        10,
+        "UpdatePlan",
+        3000,
+        Some(20.0),
+        Some(&ten_days_ago),
+    )
+    .unwrap();
 
     // 1. GET /api/costs/summary
     let summary_resp = client
@@ -214,16 +230,40 @@ async fn test_costs_routes_filtering() {
     // Plan 10 (AlphaProject):
     // - CreatePlan: 10.0 (today)
     // - ExecutePlan: 20.0 (two days ago)
-    insert_cost(&conn, 10, "CreatePlan", 1000, 10.0, Some(&today)).unwrap();
-    insert_cost(&conn, 10, "ExecutePlan", 2000, 20.0, Some(&two_days_ago)).unwrap();
+    insert_cost(&conn, 10, "CreatePlan", 1000, Some(10.0), Some(&today)).unwrap();
+    insert_cost(
+        &conn,
+        10,
+        "ExecutePlan",
+        2000,
+        Some(20.0),
+        Some(&two_days_ago),
+    )
+    .unwrap();
 
     // Plan 20 (BetaProject):
     // - CreatePlan: 30.0 (today)
     // - ExecutePlan: 40.0 (two days ago)
     // - UpdatePlan: 50.0 (ten days ago)
-    insert_cost(&conn, 20, "CreatePlan", 3000, 30.0, Some(&today)).unwrap();
-    insert_cost(&conn, 20, "ExecutePlan", 4000, 40.0, Some(&two_days_ago)).unwrap();
-    insert_cost(&conn, 20, "UpdatePlan", 5000, 50.0, Some(&ten_days_ago)).unwrap();
+    insert_cost(&conn, 20, "CreatePlan", 3000, Some(30.0), Some(&today)).unwrap();
+    insert_cost(
+        &conn,
+        20,
+        "ExecutePlan",
+        4000,
+        Some(40.0),
+        Some(&two_days_ago),
+    )
+    .unwrap();
+    insert_cost(
+        &conn,
+        20,
+        "UpdatePlan",
+        5000,
+        Some(50.0),
+        Some(&ten_days_ago),
+    )
+    .unwrap();
 
     // 1. GET /api/costs/summary?project=AlphaProject
     let resp = client
