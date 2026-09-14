@@ -230,6 +230,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/vaults/discover", get(vault::discover_vaults))
         .route("/api/vaults/accounts", get(vault::github_accounts))
         .route(
+            "/api/vaults/project-assets/:name",
+            get(vault::project_assets),
+        )
+        .route(
             "/api/vaults/:id",
             get(vault::get_vault_status)
                 .put(vault::set_always_up_to_date)
