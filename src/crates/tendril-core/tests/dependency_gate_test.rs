@@ -239,3 +239,45 @@ fn unblocking_an_empty_or_missing_plans_dir_is_a_no_op() {
             .is_empty()
     );
 }
+
+/// Unblocking writes through the same guard the job engine uses, so a terminal plan is never revived
+/// — not even one whose dependencies are all satisfied.
+#[test]
+fn unblock_refuses_to_touch_a_completed_plan() {
+    let home = HomeFixture::new("dep-unblock-terminal");
+    home.write_plan("00002-Done", &plan_with(PlanStatus::Completed, &[]));
+
+    let mut completed = plan_with(PlanStatus::Completed, &[]);
+    completed.depends_on = vec!["00002-Done".to_string()];
+    let completed_folder = home.write_plan("00010-AlreadyCompleted", &completed);
+
+    let mut skipped = plan_with(PlanStatus::Skipped, &[]);
+    skipped.depends_on = vec!["00002-Done".to_string()];
+    let skipped_folder = home.write_plan("00011-Skipped", &skipped);
+
+    let unblocked =
+        unblock_satisfied_plans_with(&home.plans_dir(), &never_called_resolver).unwrap();
+
+    assert!(unblocked.is_empty(), "{:?}", unblocked);
+    assert_eq!(plan_state(&completed_folder), "Completed");
+    assert_eq!(plan_state(&skipped_folder), "Skipped");
+}
+
+/// A satisfied plan is only reported as unblocked when the write actually landed, since
+/// `apply_plan_state` refuses rather than errors.
+#[test]
+fn unblocking_reports_only_the_writes_that_landed() {
+    let home = HomeFixture::new("dep-unblock-landed");
+    home.write_plan("00002-Done", &plan_with(PlanStatus::Completed, &[]));
+
+    // A failed verification does not stand in the way of Draft, only of Completed.
+    let mut blocked = plan_with(PlanStatus::Blocked, &[("Build", VerificationStatus::Fail)]);
+    blocked.depends_on = vec!["00002-Done".to_string()];
+    let folder = home.write_plan("00010-Satisfied", &blocked);
+
+    let unblocked =
+        unblock_satisfied_plans_with(&home.plans_dir(), &never_called_resolver).unwrap();
+
+    assert_eq!(unblocked, vec!["00010-Satisfied".to_string()]);
+    assert_eq!(plan_state(&folder), "Draft");
+}

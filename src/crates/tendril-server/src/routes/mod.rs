@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod changes;
 pub mod chat;
 pub mod config;
 pub mod costs;
@@ -10,6 +11,8 @@ pub mod onboarding;
 pub mod ping;
 pub mod plans;
 pub mod projects;
+pub mod pull_requests;
+pub mod recommendations;
 pub mod vault;
 pub mod verifications;
 pub mod ws;
@@ -70,12 +73,36 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(plans::get_revision_handler).post(plans::write_revision_handler),
         )
         .route(
+            "/api/plans/:id/diff-comments",
+            get(plans::list_diff_comments_handler)
+                .post(plans::upsert_diff_comment_handler)
+                .put(plans::replace_diff_comments_handler)
+                .delete(plans::delete_diff_comments_handler),
+        )
+        .route(
             "/api/plans/:id/recommendations",
             get(plans::list_recommendations_handler).post(plans::add_recommendation_handler),
         )
         .route(
             "/api/plans/:id/recommendations/:title",
             put(plans::update_recommendation_handler).delete(plans::delete_recommendation_handler),
+        )
+        .route(
+            "/api/plans/:id/recommendations/:title/accept",
+            put(plans::accept_recommendation_handler),
+        )
+        .route(
+            "/api/plans/:id/recommendations/:title/decline",
+            put(plans::decline_recommendation_handler),
+        )
+        // Recommendations across every plan, read from the denormalised projection
+        .route(
+            "/api/recommendations",
+            get(recommendations::list_recommendations),
+        )
+        .route(
+            "/api/recommendations/rebuild",
+            post(recommendations::rebuild_recommendations),
         )
         .route(
             "/api/plans/:id/verifications",
@@ -129,6 +156,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/jobs/:id/logs/stream", get(jobs::stream_job_logs))
         .route("/api/jobs/:id/events", get(jobs::stream_job_events))
+        // Filesystem changes
+        .route("/api/changes/events", get(changes::stream_changes))
         // Projects & Verifications
         .route(
             "/api/projects",
@@ -171,6 +200,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
+        )
+        .route(
+            "/api/projects/:name/hooks",
+            post(projects::add_project_hook),
+        )
+        .route(
+            "/api/projects/:name/hooks/:hook",
+            delete(projects::remove_project_hook),
         )
         // Vaults. `:id` accepts the literal `default` for the primary vault, so the static
         // `discover` and `accounts` segments are declared alongside it rather than under it.
@@ -220,6 +257,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/onboarding/dismiss", post(onboarding::dismiss_handler))
         .route("/api/doctor", get(health::doctor_handler))
+        // Pull requests
+        .route("/api/pull-requests", get(pull_requests::list_pull_requests))
+        .route(
+            "/api/pull-requests/sync",
+            post(pull_requests::sync_pull_requests),
+        )
         // Costs
         .route("/api/costs/summary", get(costs::get_costs_summary))
         .route("/api/costs/series", get(costs::get_costs_series))
@@ -275,6 +318,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
+        // Alias for the original Tendril's GET /api/jobs/health, same handler/payload. Kept
+        // unauthenticated to match /api/health (the original guards it, but a peer that hasn't
+        // read the secret yet still needs to probe it) and registered on this router so the
+        // static segment wins over the protected router's /api/jobs/:id.
+        .route("/api/jobs/health", get(health::health_handler))
         // WebViewer proxy. Outside /api and outside auth_middleware on purpose: an <iframe src>
         // navigation carries no Authorization header, and neither do the subresource requests the
         // service worker reissues from inside the proxied page. A loopback-only target allow-list is

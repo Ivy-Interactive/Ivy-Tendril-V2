@@ -23,6 +23,10 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
 }) => {
   const statusKey = recommendation.state || "Pending";
   const badgeClass = REC_STATUS_CLASS[statusKey] ?? REC_STATUS_CLASS.Pending;
+  // A decline reason and an accept note live in separate fields, so which one is
+  // shown follows the state rather than one field being relabelled for both.
+  const rationaleLabel = statusKey === "Declined" ? "Decline reason: " : "Notes: ";
+  const rationale = statusKey === "Declined" ? recommendation.declineReason : recommendation.notes;
 
   return (
     <div
@@ -42,10 +46,10 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
           </span>
         </div>
         <p className="text-xs text-muted-foreground">{recommendation.description}</p>
-        {recommendation.declineReason && (
+        {rationale && (
           <p className="text-xs text-muted-foreground">
-            {recommendation.state === "Declined" ? "Decline reason: " : "Notes: "}
-            {recommendation.declineReason}
+            {rationaleLabel}
+            {rationale}
           </p>
         )}
       </div>

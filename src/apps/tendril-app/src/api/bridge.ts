@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   CreateProjectRequest,
   DoctorCheck,
+  DraftComment,
   GitHubIssuesPage,
   Job,
   JobDetail,
@@ -10,6 +11,8 @@ import type {
   PlanDetail,
   PlanQuery,
   PlanSummary,
+  PrStatus,
+  PrSyncReport,
   ProjectSummary,
   RecommendationItem,
   RecommendationState,
@@ -102,6 +105,37 @@ export const bridge = {
     return invoke<RevisionResult>("cmd_write_revision", { id, content });
   },
 
+  /**
+   * Every inline diff comment drafted against a plan, across all revision pairs.
+   *
+   * The mutations below all return the plan's new full list, so a caller replaces its state from
+   * the response instead of guessing at the outcome.
+   */
+  async listDiffComments(this: void, planId: string): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_list_diff_comments", { planId });
+  },
+
+  async upsertDiffComment(
+    this: void,
+    planId: string,
+    comment: DraftComment,
+  ): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_upsert_diff_comment", { planId, comment });
+  },
+
+  async deleteDiffComment(
+    this: void,
+    planId: string,
+    filePath: string,
+    changeKey: string,
+  ): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_delete_diff_comment", { planId, filePath, changeKey });
+  },
+
+  async clearDiffComments(this: void, planId: string): Promise<void> {
+    return invoke<void>("cmd_clear_diff_comments", { planId });
+  },
+
   /** Markdown of one `<planFolder>/Verification/<name>.md` report. */
   async getVerificationReport(
     this: void,
@@ -138,18 +172,26 @@ export const bridge = {
     return invoke<RecommendationItem[]>("cmd_list_recommendations", { planId });
   },
 
+  /**
+   * `declineReason` and `notes` are separate fields, not one field reused: a
+   * decline reason is why the recommendation was rejected, a note is why it was
+   * accepted. Pass `notes` with `AcceptedWithNotes` and `declineReason` with
+   * `Declined`.
+   */
   async setRecommendationState(
     this: void,
     planId: string,
     title: string,
     state: RecommendationState,
     declineReason?: string,
+    notes?: string,
   ): Promise<void> {
     return invoke<void>("cmd_set_recommendation_state", {
       planId,
       title,
       state,
       declineReason,
+      notes,
     });
   },
 
@@ -171,6 +213,15 @@ export const bridge = {
 
   async listProjects(this: void): Promise<ProjectSummary[]> {
     return invoke<ProjectSummary[]>("cmd_list_projects");
+  },
+
+  async listPullRequests(this: void): Promise<PrStatus[]> {
+    return invoke<PrStatus[]>("cmd_list_pull_requests");
+  },
+
+  /** Rejects with code `PR_SYNC_IN_PROGRESS` when the daemon is already reconciling. */
+  async syncPullRequests(this: void): Promise<PrSyncReport> {
+    return invoke<PrSyncReport>("cmd_sync_pull_requests");
   },
 
   async getProjectReviewActions(this: void, projectName: string): Promise<ReviewActionConfig[]> {

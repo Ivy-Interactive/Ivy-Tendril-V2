@@ -1,10 +1,10 @@
 use crate::error::BridgeError;
 use crate::models::{
     AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateProjectDto, CreateSessionDto,
-    DoctorCheckDto, EnqueueItemDto, ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto,
-    OnboardingStatusDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, PostMessageDto,
-    ProjectSummaryDto, RepoStatusDto, ReviewActionDto, RevisionResultDto, StartJobResponseDto,
-    TendrilConfigDto,
+    DoctorCheckDto, DraftCommentDto, EnqueueItemDto, ExecuteTurnDto, JobDetailDto, JobDto,
+    ModelCatalogStatusDto, OnboardingStatusDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto,
+    PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
+    ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -303,12 +303,17 @@ impl TendrilClient {
     /// The route is live in `tendril-server` (shipped in Plan 00068 via
     /// `PUT /api/plans/:id/recommendations/:title`). The desktop app delegates
     /// mutation to the daemon rather than writing `plan.yaml` behind its back.
+    ///
+    /// `notes` and `decline_reason` are distinct fields: the app used to smuggle
+    /// accept notes through `declineReason` because the recommendation model had
+    /// nowhere else to put them.
     pub async fn update_recommendation(
         &self,
         plan_id: &str,
         title: &str,
         state: &str,
         decline_reason: Option<&str>,
+        notes: Option<&str>,
     ) -> Result<(), BridgeError> {
         let url = format!(
             "{}/api/plans/{}/recommendations/{}",
@@ -316,7 +321,7 @@ impl TendrilClient {
             path_segment(plan_id),
             path_segment(title)
         );
-        let body = json!({ "state": state, "declineReason": decline_reason });
+        let body = json!({ "state": state, "declineReason": decline_reason, "notes": notes });
 
         let resp = self
             .client
@@ -787,6 +792,52 @@ impl TendrilClient {
             .unwrap_or("Log added")
             .to_string();
         Ok(msg)
+    }
+
+    pub async fn list_pull_requests(&self) -> Result<Vec<PrStatusDto>, BridgeError> {
+        let url = format!("{}/api/pull-requests", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_PULL_REQUESTS_FAILED",
+                format!("Failed to list pull requests ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn sync_pull_requests(&self) -> Result<PrSyncReportDto, BridgeError> {
+        let url = format!("{}/api/pull-requests/sync", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        // A pass already in flight is not a failure — the caller just re-reads the list when the
+        // running pass broadcasts its result.
+        if resp.status() == reqwest::StatusCode::CONFLICT {
+            return Err(BridgeError::new(
+                "PR_SYNC_IN_PROGRESS",
+                "A pull request sync is already running",
+            ));
+        }
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "SYNC_PULL_REQUESTS_FAILED",
+                format!("Failed to sync pull requests ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     pub async fn list_projects(&self) -> Result<Vec<ProjectSummaryDto>, BridgeError> {
@@ -1437,6 +1488,141 @@ impl TendrilClient {
                 format!("Failed to delete queued chat item ({status}): {text}"),
             ));
         }
+        Ok(())
+    }
+
+    // --- Draft diff comments ---
+    //
+    // Every mutation returns the plan's new list, so the caller never has to re-fetch and stays
+    // correct even when the WebSocket bridge is down.
+
+    fn diff_comments_url(&self, id: &str) -> String {
+        format!(
+            "{}/api/plans/{}/diff-comments",
+            self.base_url,
+            path_segment(id)
+        )
+    }
+
+    pub async fn list_diff_comments(&self, id: &str) -> Result<Vec<DraftCommentDto>, BridgeError> {
+        let resp = self
+            .client
+            .get(self.diff_comments_url(id))
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_DIFF_COMMENTS_FAILED",
+                format!("Failed to list diff comments for plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn upsert_diff_comment(
+        &self,
+        id: &str,
+        comment: &DraftCommentDto,
+    ) -> Result<Vec<DraftCommentDto>, BridgeError> {
+        let resp = self
+            .client
+            .post(self.diff_comments_url(id))
+            .headers(self.headers())
+            .json(comment)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "UPSERT_DIFF_COMMENT_FAILED",
+                format!("Failed to save diff comment on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn replace_diff_comments(
+        &self,
+        id: &str,
+        comments: &[DraftCommentDto],
+    ) -> Result<Vec<DraftCommentDto>, BridgeError> {
+        let resp = self
+            .client
+            .put(self.diff_comments_url(id))
+            .headers(self.headers())
+            .json(&json!({ "comments": comments }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "REPLACE_DIFF_COMMENTS_FAILED",
+                format!("Failed to replace diff comments on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn delete_diff_comment(
+        &self,
+        id: &str,
+        file_path: &str,
+        change_key: &str,
+    ) -> Result<Vec<DraftCommentDto>, BridgeError> {
+        let url = format!(
+            "{}?filePath={}&changeKey={}",
+            self.diff_comments_url(id),
+            urlencoding(file_path),
+            urlencoding(change_key)
+        );
+        let resp = self
+            .client
+            .delete(url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "DELETE_DIFF_COMMENT_FAILED",
+                format!("Failed to delete diff comment on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Drop a plan's whole review — no query string means clear-all.
+    pub async fn clear_diff_comments(&self, id: &str) -> Result<(), BridgeError> {
+        let resp = self
+            .client
+            .delete(self.diff_comments_url(id))
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CLEAR_DIFF_COMMENTS_FAILED",
+                format!("Failed to clear diff comments on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
         Ok(())
     }
 

@@ -242,3 +242,76 @@ projects:
     assert!(!project.mcp_servers[0].disabled);
     assert!(project.mcp_servers[1].disabled);
 }
+
+#[test]
+fn project_skills_parse() {
+    let settings = parse(
+        r#"
+projects:
+- name: Widgets
+  repos: []
+  skills:
+  - name: docs
+    description: Docs helper
+    path: "%TENDRIL_HOME%/mcp/docs-skill"
+  - name: inline
+    instructions: Read the docs first.
+  - name: off
+    disabled: true
+"#,
+    );
+
+    let project = &settings.projects[0];
+    assert_eq!(project.skills.len(), 3);
+    assert_eq!(project.skills[0].name, "docs");
+    assert_eq!(project.skills[0].description, "Docs helper");
+    assert_eq!(
+        project.skills[0].path,
+        Some("%TENDRIL_HOME%/mcp/docs-skill".to_string())
+    );
+    assert!(!project.skills[0].disabled);
+    assert_eq!(
+        project.skills[1].instructions,
+        Some("Read the docs first.".to_string())
+    );
+    assert!(project.skills[2].disabled);
+}
+
+#[test]
+fn project_skills_survive_a_save_and_load_round_trip() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "tendril-test-project-skills-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let config_path = temp_dir.join("config.yaml");
+
+    std::fs::write(
+        &config_path,
+        r#"
+projects:
+- name: Widgets
+  repos: []
+  skills:
+  - name: docs
+    description: Docs helper
+    instructions: Read the docs first.
+"#,
+    )
+    .unwrap();
+
+    let settings = load_config(&config_path).expect("load_config should succeed");
+    assert_eq!(settings.projects[0].skills.len(), 1);
+
+    save_config(&config_path, &settings).expect("save_config should succeed");
+    let reloaded = load_config(&config_path).expect("reload should succeed");
+
+    assert_eq!(reloaded.projects[0].skills.len(), 1);
+    assert_eq!(reloaded.projects[0].skills[0].name, "docs");
+    assert_eq!(
+        reloaded.projects[0].skills[0].instructions,
+        Some("Read the docs first.".to_string())
+    );
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

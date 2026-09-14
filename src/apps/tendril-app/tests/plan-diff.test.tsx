@@ -52,6 +52,13 @@ describe("buildRevisionPatch", () => {
     expect(patch).not.toContain("@@");
   });
 
+  it("carries the git header PlanDiffView's parser needs to see a file at all", () => {
+    // `parseDiff` is `gitdiff-parser`, which recognises no file without this line and then renders
+    // "No diff to display" rather than erroring. `plan-diff-renders.test.tsx` asserts the rendered
+    // consequence; this pins the cause.
+    expect(buildRevisionPatch(1, 2, REV_1, REV_2)).toMatch(/^diff --git a\/plan\.md b\/plan\.md\n/);
+  });
+
   it("reports added lines rather than a fixed one-line change", () => {
     const patch = buildRevisionPatch(
       1,
@@ -69,6 +76,8 @@ describe("buildRevisionPatch", () => {
 describe("PlanRevisionDiff", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // The tab loads its draft comments on mount; these cases are about the patch, not the review.
+    vi.spyOn(bridge, "listDiffComments").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -90,7 +99,8 @@ describe("PlanRevisionDiff", () => {
     const view = screen.getByTestId("plan-diff-view");
     expect(view.textContent).toContain("-The diff tab lies.");
     expect(view.textContent).toContain("+The diff tab shows real revisions.");
-    expect(view.getAttribute("data-file-path")).toBe("plan.md");
+    // The path is scoped to the revision pair, so comments cannot drift between diffs.
+    expect(view.getAttribute("data-file-path")).toBe("plan.md@1-2");
     expect(view.getAttribute("data-old-revision")).toBe("1");
     expect(view.getAttribute("data-new-revision")).toBe("2");
   });

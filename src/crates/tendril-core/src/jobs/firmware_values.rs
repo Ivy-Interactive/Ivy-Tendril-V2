@@ -3,8 +3,9 @@ use crate::config::{
     expand_variables, get_plans_dir_with_env, get_plans_dir_with_settings, EnvSource, SystemEnv,
     TendrilSettings,
 };
-use crate::models::{JobArgs, JobItem, PlanYaml, ProjectConfig};
+use crate::models::{JobArgs, JobItem, PlanYaml, ProjectConfig, ProjectSkillInfo};
 use crate::plans::reader::read_plan_yaml;
+use crate::skills::project_skills_dir;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -527,6 +528,103 @@ pub fn resolve_mcp_servers(
     }
 
     servers
+}
+
+/// The project skills a job's agent gets: the project's configured skills (instructions read off
+/// disk when `path` resolves), then any additional skills auto-discovered from
+/// `<tendril_home>/Projects/<project>/Skills/`.
+///
+/// Config wins over disk on a name collision (case-insensitive), and a broken skill (unreadable
+/// `path`) falls back to its inline `instructions` rather than being dropped — a broken skill must
+/// never stop a job from launching, mirroring [`resolve_mcp_servers`].
+pub fn resolve_project_skills(
+    settings: &TendrilSettings,
+    project_name: &str,
+    tendril_home: &Path,
+) -> Vec<ProjectSkillInfo> {
+    let mut skills: Vec<ProjectSkillInfo> = Vec::new();
+    let home = tendril_home.to_string_lossy().to_string();
+
+    if let Some(project) = find_project(settings, project_name) {
+        for skill in project.skills.iter().filter(|s| !s.disabled) {
+            let mut instructions = skill.instructions.clone().unwrap_or_default();
+            if let Some(path) = skill.path.as_ref().filter(|p| !p.trim().is_empty()) {
+                let expanded = expand_variables(path, &home);
+                let expanded_path = Path::new(&expanded);
+                let resolved = if expanded_path.is_file() {
+                    std::fs::read_to_string(expanded_path).ok()
+                } else if expanded_path.is_dir() {
+                    let skill_md = expanded_path.join("SKILL.md");
+                    if skill_md.is_file() {
+                        std::fs::read_to_string(&skill_md).ok()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                match resolved {
+                    Some(text) => instructions = text,
+                    None => {
+                        tracing::warn!(
+                            "Failed to read skill path for '{}': {}",
+                            skill.name,
+                            expanded
+                        );
+                    }
+                }
+            }
+            skills.push(ProjectSkillInfo {
+                name: skill.name.clone(),
+                description: skill.description.clone(),
+                instructions,
+            });
+        }
+    }
+
+    if project_name.is_empty() {
+        return skills;
+    }
+
+    let skills_dir = project_skills_dir(tendril_home, project_name);
+    if !skills_dir.is_dir() {
+        return skills;
+    }
+
+    let mut disk_entries: Vec<(String, PathBuf)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&skills_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                let skill_md = path.join("SKILL.md");
+                if skill_md.is_file() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    disk_entries.push((name, skill_md));
+                }
+            } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    disk_entries.push((stem.to_string(), path.clone()));
+                }
+            }
+        }
+    }
+    disk_entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (name, skill_md) in disk_entries {
+        if skills.iter().any(|s| s.name.eq_ignore_ascii_case(&name)) {
+            continue;
+        }
+        let Ok(instructions) = std::fs::read_to_string(&skill_md) else {
+            continue;
+        };
+        skills.push(ProjectSkillInfo {
+            name,
+            description: "Disk skill".to_string(),
+            instructions,
+        });
+    }
+
+    skills
 }
 
 /// The plan's recommended execution profile, for the job types that honour one.

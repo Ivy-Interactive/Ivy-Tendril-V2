@@ -177,7 +177,7 @@ describe("RecommendationCard", () => {
     const rec: RecommendationItem = {
       ...baseRec,
       state: "AcceptedWithNotes",
-      declineReason: "Targeting v1.2 release",
+      notes: "Targeting v1.2 release",
     };
 
     render(<RecommendationCard recommendation={rec} onAccept={() => {}} onDecline={() => {}} />);
@@ -203,5 +203,34 @@ describe("RecommendationCard", () => {
     expect(screen.getByText("Decline reason: Not aligned with roadmap")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
+  });
+
+  // The card used to relabel `declineReason` as "Notes" for accepted entries, so
+  // a stale decline reason on an accepted recommendation showed up as its note.
+  it("does not show a decline reason as the note of an accepted recommendation", () => {
+    const rec: RecommendationItem = {
+      ...baseRec,
+      state: "AcceptedWithNotes",
+      declineReason: "A reason left over from an earlier decline",
+    };
+
+    render(<RecommendationCard recommendation={rec} onAccept={() => {}} onDecline={() => {}} />);
+
+    expect(screen.queryByText(/A reason left over/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Notes: /)).not.toBeInTheDocument();
+  });
+
+  it("does not show an accept note as the decline reason of a declined recommendation", () => {
+    const rec: RecommendationItem = {
+      ...baseRec,
+      state: "Declined",
+      declineReason: "Not aligned with roadmap",
+      notes: "A note left over from an earlier accept",
+    };
+
+    render(<RecommendationCard recommendation={rec} onAccept={() => {}} onDecline={() => {}} />);
+
+    expect(screen.getByText("Decline reason: Not aligned with roadmap")).toBeInTheDocument();
+    expect(screen.queryByText(/A note left over/)).not.toBeInTheDocument();
   });
 });

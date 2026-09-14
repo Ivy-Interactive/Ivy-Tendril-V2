@@ -142,9 +142,17 @@ async fn restart_unblocked_jobs(
         };
 
         if let Ok(conn) = open_database(&db_path) {
-            if let Err(e) = delete_job(&conn, &row.id) {
-                tracing::warn!("Failed to delete blocked job row {}: {}", row.id, e);
-                continue;
+            match delete_job(&conn, &row.id) {
+                // The delete is the claim. SQLite serialises the `DELETE`, so exactly one caller can
+                // see `true` for a given row. `false` means a concurrent release pass already took
+                // this row and is starting its replacement, so this pass must not start a second
+                // copy on the same worktree.
+                Ok(false) => continue,
+                Ok(true) => {}
+                Err(e) => {
+                    tracing::warn!("Failed to delete blocked job row {}: {}", row.id, e);
+                    continue;
+                }
             }
         } else {
             continue;

@@ -1,13 +1,16 @@
 pub mod auth;
 pub mod master;
+pub mod pr_sync;
 pub mod routes;
 pub mod state;
+pub mod watch;
 mod webviewer;
 
 pub use auth::*;
 pub use master::*;
 pub use routes::*;
 pub use state::*;
+pub use watch::spawn_change_watcher;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -40,6 +43,18 @@ pub async fn run_server(
     println!(">>> Tendril Server running on http://{}:{}", host, port);
 
     let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host)?;
+
+    // Master-only, for the same reason as the reconcile below: two daemons mirroring the same Plans
+    // folder into the same database would fight. Held for the process lifetime — dropping the handle
+    // stops watching. A daemon up without realtime push is more useful than one refusing to boot, so
+    // a failure here is a warning and clients fall back to polling.
+    let _watcher = match spawn_change_watcher(state.clone()) {
+        Ok(watcher) => Some(watcher),
+        Err(e) => {
+            tracing::warn!("Filesystem watcher unavailable; clients must poll: {}", e);
+            None
+        }
+    };
 
     // Only the master reconciles: a daemon that lost the race must never reap the winner's jobs.
     reconcile_after_restart(&tendril_home).await;
@@ -195,6 +210,39 @@ async fn reconcile_after_restart(tendril_home: &std::path::Path) {
             }
         }
         Err(e) => tracing::warn!("Plan disk sync skipped, database unavailable: {}", e),
+    }
+
+    rebuild_recommendations(tendril_home, &plans_dir).await;
+}
+
+/// Rebuilds the `Recommendations` projection from the plan folders on disk, once per daemon start.
+///
+/// `sync_plan` keeps the projection current from here on, but every database that predates it holds
+/// rows no write path has touched since the original app wrote them — including rows for plans that
+/// no longer exist. Repairing on startup is what fixes those without waiting for someone to run
+/// `tendril plan rec rebuild`. Runs after plan migration so it projects the migrated YAML, blocks
+/// off-reactor, and logs rather than fails: one unparseable plan folder must not stop the daemon
+/// booting.
+async fn rebuild_recommendations(tendril_home: &std::path::Path, plans_dir: &std::path::Path) {
+    let db_path = tendril_core::config::get_database_path(tendril_home);
+    let plans_dir = plans_dir.to_path_buf();
+
+    let outcome = tokio::task::spawn_blocking(move || {
+        let conn = tendril_core::db::open_database(&db_path)
+            .map_err(|e| format!("could not open the database: {e}"))?;
+        tendril_core::db::rebuild_recommendations_projection(&conn, &plans_dir)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    match outcome {
+        Ok(Ok((rows, plans))) => tracing::info!(
+            "Rebuilt recommendations projection: {} row(s) from {} plan(s)",
+            rows,
+            plans
+        ),
+        Ok(Err(e)) => tracing::warn!("Recommendations projection rebuild failed: {}", e),
+        Err(e) => tracing::warn!("Recommendations projection rebuild panicked: {}", e),
     }
 }
 
