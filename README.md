@@ -473,4 +473,4 @@ codex plugin add tendril-skills@tendril-skills
 
 ## License
 
-Apache-2.0 © Ivy Interactive
+Tendril is source-available and licensed under the [Functional Source License (FSL-1.1-ALv2)](LICENSE).

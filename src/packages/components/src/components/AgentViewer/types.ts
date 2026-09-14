@@ -114,6 +114,13 @@ export interface UserQuestionWire {
   timeout_ms?: number;
 }
 
+export interface StatusWire {
+  kind: "status";
+  timestamp?: string;
+  message?: string;
+  text?: string;
+}
+
 export type EventWire =
   | SessionInitWire
   | TextWire
@@ -125,7 +132,8 @@ export type EventWire =
   | FileChangeWire
   | PermissionRequestWire
   | PermissionDenialWire
-  | UserQuestionWire;
+  | UserQuestionWire
+  | StatusWire;
 
 // ─── Presentation model (what components render) ──────────────────────────────
 

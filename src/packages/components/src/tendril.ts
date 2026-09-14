@@ -23,6 +23,12 @@ export {
   type ShellWidgetProps,
 } from "./components/Shell/index.ts";
 
+export {
+  useResizableSidebar,
+  type UseResizableSidebarOptions,
+  type UseResizableSidebarReturn,
+} from "./hooks/use-resizable-sidebar";
+
 // Agent & Execution Visualizers
 export {
   AgentViewer,

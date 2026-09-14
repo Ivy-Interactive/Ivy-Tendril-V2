@@ -51,6 +51,7 @@
     "build": "vp pack",
     "bump": "bumpp package.json",
     "dev": "vp pack --watch",
+    "pretest": "vp pack",
     "test": "vp test",
     "lint": "tsx scripts/patch-tsgolint-win.ts && vp check",
     "check": "tsx scripts/patch-tsgolint-win.ts && vp check",

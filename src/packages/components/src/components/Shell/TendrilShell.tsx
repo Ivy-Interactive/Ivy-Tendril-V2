@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ShellContext } from "./ShellContext.tsx";
 import { type ShellWidgetProps, isModKey } from "./types.ts";
+import {
+  useResizableSidebar,
+  readStoredWidth as readStoredWidthHelper,
+  writeStoredWidth as writeStoredWidthHelper,
+} from "../../hooks/use-resizable-sidebar";
 import "./shell.css";
 
 interface TendrilShellProps extends ShellWidgetProps {
@@ -24,46 +29,11 @@ export const MIN_SIDEBAR_WIDTH = 200;
 export const MAX_SIDEBAR_WIDTH = 640;
 
 export function readStoredWidth(): number | null {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      const raw = storage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
-      if (raw != null) {
-        const parsed = Number.parseInt(raw, 10);
-        if (!Number.isNaN(parsed)) {
-          return Math.min(Math.max(parsed, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
-        }
-      }
-    }
-  } catch {
-    // Ignore storage quota or access errors
-  }
-  return null;
+  return readStoredWidthHelper(SIDEBAR_WIDTH_STORAGE_KEY, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
 }
 
 export function writeStoredWidth(width: number | null): void {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      if (width == null) {
-        storage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY);
-      } else {
-        storage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
-      }
-    }
-  } catch {
-    // Ignore storage quota or access errors
-  }
+  writeStoredWidthHelper(SIDEBAR_WIDTH_STORAGE_KEY, width);
 }
 
 /**
@@ -86,11 +56,16 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
   slots,
 }) => {
   const [collapsed, setCollapsed] = useState(collapsedProp);
-  const [sidebarWidth, setSidebarWidth] = useState<number>(
-    () => readStoredWidth() ?? DEFAULT_SIDEBAR_WIDTH,
-  );
-  const isDraggingRef = useRef(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const {
+    width: sidebarWidth,
+    isDragging,
+    separatorProps,
+  } = useResizableSidebar({
+    storageKey: SIDEBAR_WIDTH_STORAGE_KEY,
+    defaultWidth: DEFAULT_SIDEBAR_WIDTH,
+    minWidth: MIN_SIDEBAR_WIDTH,
+    maxWidth: MAX_SIDEBAR_WIDTH,
+  });
   const prevPropRef = useRef(collapsedProp);
   if (collapsedProp !== prevPropRef.current) {
     prevPropRef.current = collapsedProp;
@@ -106,37 +81,6 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
       return next;
     });
   }, [events, eventHandler, id]);
-
-  const onResizerPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    isDraggingRef.current = true;
-    setIsDragging(true);
-  }, []);
-
-  const onResizerPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingRef.current) return;
-    const newWidth = Math.min(Math.max(e.clientX, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
-    setSidebarWidth(newWidth);
-    writeStoredWidth(newWidth);
-  }, []);
-
-  const onResizerPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDraggingRef.current) return;
-    isDraggingRef.current = false;
-    setIsDragging(false);
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    } catch {
-      // Ignore
-    }
-  }, []);
-
-  const onResizerDoubleClick = useCallback(() => {
-    setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
-    writeStoredWidth(DEFAULT_SIDEBAR_WIDTH);
-  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -175,14 +119,7 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
         {!collapsed && (
           <div
             className="tsh-sidebar-resizer"
-            role="separator"
-            aria-orientation="vertical"
-            tabIndex={0}
-            onPointerDown={onResizerPointerDown}
-            onPointerMove={onResizerPointerMove}
-            onPointerUp={onResizerPointerUp}
-            onPointerCancel={onResizerPointerUp}
-            onDoubleClick={onResizerDoubleClick}
+            {...separatorProps}
             title="Drag to resize sidebar, double-click to reset"
           />
         )}

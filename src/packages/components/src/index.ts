@@ -23,6 +23,11 @@ export { widgetCallSiteRegistry, type CallSite } from "./types/widgets";
 export * from "./hooks/use-mobile";
 export * from "./hooks/use-toast";
 export { useErrorSheet, showError, type ErrorItem } from "./hooks/use-error-sheet";
+export {
+  useResizableSidebar,
+  type UseResizableSidebarOptions,
+  type UseResizableSidebarReturn,
+} from "./hooks/use-resizable-sidebar";
 
 // Theme
 export {

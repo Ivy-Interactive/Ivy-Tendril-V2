@@ -1,7 +1,13 @@
 import { bridge } from "../api/bridge";
-import { subscribeJobEvents, type EventUnsubscribe } from "../api/events";
+import { subscribeJobEvents, type EventUnsubscribe, type JobStreamEvent } from "../api/events";
 import { serviceStore } from "./serviceStore";
-import type { Job, JobDetail, StartJobArgs, StartJobResponse } from "../types/api";
+import type { Job, JobDetail, JobStatus, StartJobArgs, StartJobResponse } from "../types/api";
+
+export interface JobSubscriptionCallbacks {
+  onEvent?: (event: JobStreamEvent) => void;
+  onEnd?: (status: string) => void;
+  onError?: (err: unknown) => void;
+}
 
 export interface StreamEventItem {
   id: string;
@@ -130,18 +136,20 @@ class JobsStore {
 
   public clearSession(jobOrPlanId: string): void {
     delete this.state.activeSessions[jobOrPlanId];
+    delete this.state.jobDetails[jobOrPlanId];
     this.processedEventIds.clear();
     this.notify();
   }
 
   /**
-   * Subscribe to structured job events via SSE and add them to stream sessions
+   * Subscribe to structured job events via SSE, updating stream sessions and job lifecycle status
    */
   public subscribeToJob(
     jobId: string,
     kinds?: string[],
     baseUrl?: string,
     token?: string,
+    options?: JobSubscriptionCallbacks,
   ): EventUnsubscribe {
     const info = serviceStore.getState().info;
     const resolvedBaseUrl =
@@ -154,6 +162,112 @@ class JobsStore {
       kinds,
       onEvent: (event) => {
         this.addStreamEvent(jobId, event);
+
+        const item =
+          typeof event === "string" ? { message: event } : (event as Record<string, unknown>);
+        const type = (item.type as string) || (item.kind as string);
+
+        if (type === "status" || item.status || item.statusMessage) {
+          const payload =
+            typeof item.payload === "object" && item.payload !== null
+              ? (item.payload as Record<string, unknown>)
+              : {};
+          const newStatus = (item.status || payload.status) as JobStatus | undefined;
+          const statusMsg = (item.statusMessage ||
+            item.message ||
+            payload.statusMessage ||
+            payload.message) as string | undefined;
+
+          let changed = false;
+
+          if (this.state.jobs.some((j) => j.id === jobId)) {
+            this.state.jobs = this.state.jobs.map((j) => {
+              if (j.id !== jobId) return j;
+              return {
+                ...j,
+                ...(newStatus ? { status: newStatus } : {}),
+                ...(statusMsg !== undefined ? { statusMessage: statusMsg } : {}),
+              };
+            });
+            changed = true;
+          }
+
+          if (this.state.jobDetails[jobId]) {
+            this.state.jobDetails = {
+              ...this.state.jobDetails,
+              [jobId]: {
+                ...this.state.jobDetails[jobId],
+                ...(newStatus ? { status: newStatus } : {}),
+                ...(statusMsg !== undefined ? { statusMessage: statusMsg } : {}),
+              },
+            };
+            changed = true;
+          } else if (newStatus) {
+            this.state.jobDetails = {
+              ...this.state.jobDetails,
+              [jobId]: {
+                id: jobId,
+                type: "Promptware Job",
+                project: "Tendril",
+                status: newStatus,
+                statusMessage: statusMsg,
+              } as JobDetail,
+            };
+            changed = true;
+          }
+
+          if (changed) {
+            this.notify();
+          }
+        }
+
+        options?.onEvent?.(event);
+      },
+      onEnd: (status) => {
+        const terminalStatus = status as JobStatus;
+        let changed = false;
+
+        if (this.state.jobs.some((j) => j.id === jobId)) {
+          this.state.jobs = this.state.jobs.map((j) =>
+            j.id === jobId ? { ...j, status: terminalStatus } : j,
+          );
+          changed = true;
+        }
+
+        if (this.state.jobDetails[jobId]) {
+          this.state.jobDetails = {
+            ...this.state.jobDetails,
+            [jobId]: {
+              ...this.state.jobDetails[jobId],
+              status: terminalStatus,
+            },
+          };
+          changed = true;
+        } else {
+          this.state.jobDetails = {
+            ...this.state.jobDetails,
+            [jobId]: {
+              id: jobId,
+              type: "Promptware Job",
+              project: "Tendril",
+              status: terminalStatus,
+            } as JobDetail,
+          };
+          changed = true;
+        }
+
+        if (changed) {
+          this.notify();
+        }
+
+        this.fetchJobDetail(jobId).catch(() => {});
+        this.fetchJobs().catch(() => {});
+
+        options?.onEnd?.(status);
+      },
+      onError: (err) => {
+        console.warn(`Job event stream error for job ${jobId}:`, err);
+        options?.onError?.(err);
       },
     });
   }

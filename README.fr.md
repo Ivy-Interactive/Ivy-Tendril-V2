@@ -362,4 +362,4 @@ Ivy-Tendril-V2/
 
 ## Licence
 
-Apache-2.0 © Ivy Interactive
+Tendril est disponible en code source accessible sous la licence [Functional Source License (FSL-1.1-ALv2)](LICENSE).

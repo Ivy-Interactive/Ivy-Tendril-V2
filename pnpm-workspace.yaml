@@ -5,7 +5,9 @@ packages:
 
 allowBuilds:
   "@swc/core": false
+  '@vscode/vsce-sign': false
   esbuild: false
+  keytar: false
 
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@0.3.0
