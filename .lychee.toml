@@ -12,6 +12,12 @@ exclude = [
   "^https://youtu\\.be/",
   "^https://www\\.youtube\\.com/",
   "^https://discord\\.gg/",
+  # Documentation host is not published yet (DNS NXDOMAIN);
+  # re-enable this check once tendril.ivy.app resolves.
+  "^https://tendril\\.ivy\\.app",
+  # GitHub gates the stargazers list behind sign-in, so it 404s for any
+  # unauthenticated checker on every public repo. Not a broken link.
+  "^https://github\\.com/[^/]+/[^/]+/stargazers$",
 ]
 
 # Excluded file paths

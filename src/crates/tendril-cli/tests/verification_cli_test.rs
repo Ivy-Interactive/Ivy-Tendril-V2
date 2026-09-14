@@ -473,6 +473,7 @@ async fn test_verification_cli_remove_referenced_blocked_and_force_cleans_fs() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
+        mcp_servers: Vec::new(),
     });
     save_config(&cfg_path, &settings).unwrap();
 
@@ -536,6 +537,7 @@ async fn test_verification_cli_remove_referenced_blocked_and_force_cleans_daemon
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
+        mcp_servers: Vec::new(),
     });
     save_config(&cfg_path, &settings).unwrap();
 
@@ -597,6 +599,7 @@ fn test_doctor_warns_on_non_existent_verification() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
+        mcp_servers: Vec::new(),
     });
     save_config(&cfg_path, &settings).unwrap();
 
@@ -641,6 +644,7 @@ fn test_doctor_warns_on_non_existent_repository_path() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
+        mcp_servers: Vec::new(),
     });
     save_config(&cfg_path, &settings).unwrap();
 
@@ -684,6 +688,7 @@ fn test_doctor_warns_on_non_git_repository_path() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
+        mcp_servers: Vec::new(),
     });
     save_config(&cfg_path, &settings).unwrap();
 
@@ -712,6 +717,7 @@ fn test_doctor_warns_on_bad_build_dependency_path() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec!["/non/existent/build-dependency".to_string()],
+        mcp_servers: Vec::new(),
     });
     save_config(&cfg_path, &settings).unwrap();
 

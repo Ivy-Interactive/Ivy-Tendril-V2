@@ -132,22 +132,23 @@ async fn a_blocked_execute_plan_records_blocked_and_spawns_nothing() {
     );
 }
 
-/// (2) A clean agent exit is not enough: a `Pending` verification row still fails the plan.
+/// (2) A clean agent exit is not enough: a `Pending` verification row fails both the plan and the
+/// job that left it behind.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_successful_run_with_a_pending_verification_ends_failed() {
     let home = HomeFixture::new("life-pending");
     home.write_promptware("ExecutePlan");
-    let folder = home.write_plan(
-        "00001-Pending",
-        &plan_with(
-            PlanStatus::Draft,
-            &[
-                ("Build", VerificationStatus::Pass),
-                ("Test", VerificationStatus::Pending),
-            ],
-        ),
+    // A recorded commit, so the unsettled verification row is the only shortfall in play.
+    let mut plan = plan_with(
+        PlanStatus::Draft,
+        &[
+            ("Build", VerificationStatus::Pass),
+            ("Test", VerificationStatus::Pending),
+        ],
     );
+    plan.commits = vec!["abc1234".to_string()];
+    let folder = home.write_plan("00001-Pending", &plan);
     let script = write_script(&home, "agent.sh", "echo working\nexit 0\n");
 
     let manager = JobManager::new(home.path.clone(), settings())
@@ -163,8 +164,8 @@ async fn a_successful_run_with_a_pending_verification_ends_failed() {
 
     assert_eq!(
         wait_for_status(&manager, &job_id, Duration::from_secs(15)).await,
-        JobStatus::Completed,
-        "the agent itself succeeded"
+        JobStatus::Failed,
+        "the agent exited 0, but leaving a verification Pending is not a delivered plan"
     );
     assert_eq!(
         plan_state(&folder),
@@ -173,22 +174,23 @@ async fn a_successful_run_with_a_pending_verification_ends_failed() {
     );
 }
 
-/// (3) The same run reaches `Review` once every row has passed.
+/// (3) The same run reaches `Review` once every row has passed and a commit is recorded.
 #[cfg(unix)]
 #[tokio::test]
 async fn a_successful_run_with_all_verifications_passing_reaches_review() {
     let home = HomeFixture::new("life-review");
     home.write_promptware("ExecutePlan");
-    let folder = home.write_plan(
-        "00001-Passing",
-        &plan_with(
-            PlanStatus::Draft,
-            &[
-                ("Build", VerificationStatus::Pass),
-                ("Test", VerificationStatus::Pass),
-            ],
-        ),
+    // Passing rows alone are not a deliverable: an ExecutePlan run also has to have committed
+    // something.
+    let mut plan = plan_with(
+        PlanStatus::Draft,
+        &[
+            ("Build", VerificationStatus::Pass),
+            ("Test", VerificationStatus::Pass),
+        ],
     );
+    plan.commits = vec!["abc1234".to_string()];
+    let folder = home.write_plan("00001-Passing", &plan);
     let script = write_script(&home, "agent.sh", "echo working\nexit 0\n");
 
     let manager = JobManager::new(home.path.clone(), settings())
@@ -735,10 +737,11 @@ async fn cancelling_an_unknown_or_finished_job_reports_false() {
 async fn a_finished_job_is_readable_from_the_database() {
     let home = HomeFixture::new("life-persist");
     home.write_promptware("ExecutePlan");
-    let folder = home.write_plan(
-        "00007-Persist",
-        &plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]),
-    );
+    // A recorded commit, so this test stays on its own subject: an ExecutePlan job that produced
+    // nothing is failed by the deliverable check before it ever reaches SQLite as `Completed`.
+    let mut plan = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
+    plan.commits = vec!["abc1234".to_string()];
+    let folder = home.write_plan("00007-Persist", &plan);
     let script = write_script(&home, "agent.sh", "exit 0\n");
 
     let manager = JobManager::new(home.path.clone(), settings())

@@ -32,7 +32,43 @@ impl AppState {
         let db_path = get_database_path(&tendril_home);
 
         let settings = load_config(&config_path).unwrap_or_default();
-        let job_manager = Arc::new(JobManager::new(tendril_home.clone(), settings));
+        let enrich_models = settings.enrich_models;
+
+        // Make any cached models.dev enrichment immediately available, then optionally
+        // refresh it in the background so startup never blocks on network access.
+        if let Ok(cached_specs) = tendril_core::agents::model_cache::load_disk_cache(&tendril_home)
+        {
+            if !cached_specs.is_empty() {
+                tendril_core::agents::model_specs::register_dynamic_specs(cached_specs);
+            }
+        }
+        if enrich_models {
+            let enrich_home = tendril_home.clone();
+            tokio::spawn(async move {
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .unwrap_or_default();
+                match tendril_core::agents::model_cache::fetch_live_models(&client, &enrich_home)
+                    .await
+                {
+                    Ok(count) => {
+                        tracing::info!(
+                            "Enriched model specs cache from models.dev ({count} models)"
+                        )
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            "models.dev live enrichment skipped (offline or network error): {err}"
+                        )
+                    }
+                }
+            });
+        }
+
+        // `share` rather than `Arc::new`: a finished job needs a handle back to the manager to start
+        // the jobs that were waiting on it.
+        let job_manager = JobManager::new(tendril_home.clone(), settings).share();
         let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
 
