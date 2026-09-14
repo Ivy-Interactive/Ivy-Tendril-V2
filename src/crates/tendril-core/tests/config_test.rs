@@ -659,6 +659,85 @@ fn test_get_default_tendril_home_fallback_with_env() {
     let _ = std::fs::remove_dir_all(test_dir);
 }
 
+#[test]
+fn daemon_request_timeout_round_trips_and_defaults() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-daemon-timeout-config-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+    let config_file = test_dir.join("config.yaml");
+
+    // A config written before this setting existed must load with the default, not with 0 — which
+    // would silently mean "no timeout" and restore the hang.
+    std::fs::write(&config_file, "codingAgent: claude\njobTimeout: 30\n").unwrap();
+    let legacy = load_config(&config_file).expect("Failed to load legacy config");
+    assert_eq!(legacy.daemon_request_timeout, 30);
+
+    let settings = TendrilSettings {
+        daemon_request_timeout: 12,
+        ..TendrilSettings::default()
+    };
+    save_config(&config_file, &settings).expect("Failed to save config");
+
+    let raw = std::fs::read_to_string(&config_file).unwrap();
+    assert!(
+        raw.contains("daemonRequestTimeout: 12"),
+        "the setting must serialize under its camelCase name: {}",
+        raw
+    );
+
+    let loaded = load_config(&config_file).expect("Failed to reload config");
+    assert_eq!(loaded.daemon_request_timeout, 12);
+    // If the rename and the field ever disagree, the value lands in the flattened `extra` map and
+    // the modeled field silently keeps its default. Assert it does not.
+    assert!(
+        !loaded.extra.contains_key("daemonRequestTimeout"),
+        "daemonRequestTimeout must be a modeled field, not an unknown passthrough key"
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn public_config_keys_advertise_only_real_settings() {
+    use tendril_core::mcp::dispatch::PUBLIC_CONFIG_KEYS;
+
+    assert!(
+        PUBLIC_CONFIG_KEYS.contains(&"daemonRequestTimeout"),
+        "the new setting must be readable through the MCP config tool"
+    );
+    // `chatTimeout` was advertised with no field behind it, so reading it always returned null.
+    assert!(
+        !PUBLIC_CONFIG_KEYS.contains(&"chatTimeout"),
+        "chatTimeout has no field behind it and must not be advertised"
+    );
+
+    // `planFolder` is `skip_serializing_if = "Option::is_none"`, so it only appears once populated;
+    // populate it rather than carve it out.
+    let settings = TendrilSettings {
+        plan_folder: Some("Plans".to_string()),
+        ..TendrilSettings::default()
+    };
+    let serialized = serde_json::to_value(&settings).expect("settings must serialize");
+    let object = serialized.as_object().expect("settings serialize to a map");
+
+    // `themeMode` is a V1 desktop key with no Rust field: it round-trips through the flattened
+    // `extra` map (asserted by config_unknown_keys_test) and is deliberately still advertised.
+    const EXTRA_BACKED_KEYS: &[&str] = &["themeMode"];
+
+    for key in PUBLIC_CONFIG_KEYS {
+        if EXTRA_BACKED_KEYS.contains(key) {
+            continue;
+        }
+        assert!(
+            object.contains_key(*key),
+            "advertised config key '{}' does not resolve to a serialized field, so reading it \
+             would always return null",
+            key
+        );
+    }
+}
 fn write_config(body: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "tendril-inbox-cfg-{}",

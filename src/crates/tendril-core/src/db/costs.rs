@@ -1,6 +1,7 @@
 use crate::error::Result;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -250,6 +251,28 @@ pub fn get_costs_series(
         results.push(r?);
     }
     Ok(results)
+}
+
+/// `SUM(Cost)` and `SUM(Tokens)` per plan, keyed by `Costs.PlanId`. One query for the whole table:
+/// the Pull Requests view needs a total for every plan it lists, and a per-plan query would be N
+/// round trips. A plan with no `Costs` rows is absent from the map rather than present as a zero.
+///
+/// `Cost` is nullable — a subscription run reports tokens and no charge — so the `COALESCE` is over
+/// the sum, not each row: a plan whose every row is NULL totals `0.0` with its tokens intact.
+pub fn get_plan_cost_totals(conn: &Connection) -> Result<HashMap<i32, (f64, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT PlanId, COALESCE(SUM(Cost), 0.0), COALESCE(SUM(Tokens), 0) FROM Costs GROUP BY PlanId",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, i32>(0)?, (row.get(1)?, row.get(2)?)))
+    })?;
+
+    let mut totals = HashMap::new();
+    for r in rows {
+        let (plan_id, total) = r?;
+        totals.insert(plan_id, total);
+    }
+    Ok(totals)
 }
 
 pub fn list_costs_by_plan(conn: &Connection, plan_id: i32) -> Result<Vec<CostRecord>> {

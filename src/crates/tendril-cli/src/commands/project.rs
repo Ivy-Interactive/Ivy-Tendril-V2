@@ -1,5 +1,6 @@
 use clap::Subcommand;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tendril_core::config::{
     expand_variables, get_config_path, get_plans_dir_with_settings, insert_project_verification,
     load_config, move_project_verification, read_master, sanitize_project_name, save_config,
@@ -8,6 +9,10 @@ use tendril_core::config::{
 use tendril_core::git::service::run_git;
 use tendril_core::git::sync::{diagnostic_prompt, sync_project, ProjectSyncResult};
 use tendril_core::git::worktree::derive_worktree_relative_path;
+use tendril_core::http::{
+    classify_transport_error, daemon_client_with_timeout, daemon_request_timeout_for,
+    describe_transport_error, DaemonTransportFailure,
+};
 use tendril_core::mcp::discovery::{scan_repo_mcp_servers, to_project_ref};
 use tendril_core::models::{
     ProjectConfig, ProjectEnvFileConfig, ProjectMcpServerRef, ProjectPortConfig, ProjectSkillRef,
@@ -334,6 +339,23 @@ pub enum ProjectEnvFileCommands {
 enum DaemonOutcome {
     Handled,
     Fallback,
+}
+
+/// A daemon call that failed at the transport level.
+///
+/// Only an unreachable daemon may fall back to `config.yaml`: a timed-out mutation may already have
+/// been applied by the daemon, and applying it locally too would apply it twice.
+fn fallback_or_fail(
+    err: reqwest::Error,
+    master: &MasterInfo,
+    timeout: Option<Duration>,
+) -> anyhow::Result<DaemonOutcome> {
+    match classify_transport_error(&err) {
+        DaemonTransportFailure::Unreachable => Ok(DaemonOutcome::Fallback),
+        _ => Err(anyhow::anyhow!(describe_transport_error(
+            &err, master, timeout
+        ))),
+    }
 }
 
 /// Both the daemon and filesystem paths need the same "exactly one placement" rule, so they share
@@ -683,7 +705,7 @@ pub async fn handle_project_command(
     tendril_home: &Path,
 ) -> anyhow::Result<()> {
     if let Some(master) = read_master(tendril_home) {
-        match handle_project_command_daemon(&cmd, &master).await {
+        match handle_project_command_daemon(tendril_home, &cmd, &master).await {
             Ok(DaemonOutcome::Handled) => return Ok(()),
             Ok(DaemonOutcome::Fallback) => {
                 tracing::debug!("Failed to reach master daemon, falling back to filesystem");
@@ -704,6 +726,7 @@ async fn get_project_via_daemon(
     base_url: &str,
     master: &MasterInfo,
     name: &str,
+    timeout: Option<Duration>,
 ) -> anyhow::Result<Option<ProjectConfig>> {
     let resp = match client
         .get(format!("{}/api/projects/{}", base_url, name))
@@ -712,7 +735,7 @@ async fn get_project_via_daemon(
         .await
     {
         Ok(r) => r,
-        Err(_) => return Ok(None),
+        Err(e) => return option_or_fail(e, master, timeout),
     };
 
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -736,6 +759,7 @@ async fn put_project_via_daemon(
     name: &str,
     body: serde_json::Value,
     action: &str,
+    timeout: Option<Duration>,
 ) -> anyhow::Result<Option<()>> {
     let resp = match client
         .put(format!("{}/api/projects/{}", base_url, name))
@@ -745,7 +769,7 @@ async fn put_project_via_daemon(
         .await
     {
         Ok(r) => r,
-        Err(_) => return Ok(None),
+        Err(e) => return option_or_fail(e, master, timeout),
     };
 
     if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -759,11 +783,28 @@ async fn put_project_via_daemon(
     Ok(Some(()))
 }
 
+/// Same "unreachable falls back, anything else fails" rule as `fallback_or_fail`, for helpers that
+/// report absence with `Option` rather than `DaemonOutcome`.
+fn option_or_fail<T>(
+    err: reqwest::Error,
+    master: &MasterInfo,
+    timeout: Option<Duration>,
+) -> anyhow::Result<Option<T>> {
+    match classify_transport_error(&err) {
+        DaemonTransportFailure::Unreachable => Ok(None),
+        _ => Err(anyhow::anyhow!(describe_transport_error(
+            &err, master, timeout
+        ))),
+    }
+}
+
 async fn handle_project_command_daemon(
+    tendril_home: &Path,
     cmd: &ProjectCommands,
     master: &MasterInfo,
 ) -> anyhow::Result<DaemonOutcome> {
-    let client = reqwest::Client::new();
+    let timeout = daemon_request_timeout_for(tendril_home);
+    let client = daemon_client_with_timeout(timeout);
     let base_url = format!("http://{}:{}", master.host, master.port);
 
     match cmd {
@@ -775,7 +816,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if !resp.status().is_success() {
@@ -788,7 +829,8 @@ async fn handle_project_command_daemon(
             }
         }
         ProjectCommands::Get { name } => {
-            let Some(p) = get_project_via_daemon(&client, &base_url, master, name).await? else {
+            let Some(p) = get_project_via_daemon(&client, &base_url, master, name, timeout).await?
+            else {
                 return Ok(DaemonOutcome::Fallback);
             };
             print_project(&p);
@@ -808,7 +850,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::CONFLICT {
@@ -829,7 +871,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -853,7 +895,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -880,7 +922,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -902,7 +944,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -939,7 +981,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -986,7 +1028,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -1018,7 +1060,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -1062,7 +1104,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -1086,7 +1128,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -1107,7 +1149,8 @@ async fn handle_project_command_daemon(
             );
         }
         ProjectCommands::AddBuildDep { name, dependency } => {
-            let Some(mut proj) = get_project_via_daemon(&client, &base_url, master, name).await?
+            let Some(mut proj) =
+                get_project_via_daemon(&client, &base_url, master, name, timeout).await?
             else {
                 return Ok(DaemonOutcome::Fallback);
             };
@@ -1119,6 +1162,7 @@ async fn handle_project_command_daemon(
                 name,
                 serde_json::json!({ "buildDependencies": proj.build_dependencies }),
                 "add build dependency",
+                timeout,
             )
             .await?
             .is_none()
@@ -1128,7 +1172,8 @@ async fn handle_project_command_daemon(
             println!("Added build dependency: {}", dependency);
         }
         ProjectCommands::RemoveBuildDep { name, dependency } => {
-            let Some(mut proj) = get_project_via_daemon(&client, &base_url, master, name).await?
+            let Some(mut proj) =
+                get_project_via_daemon(&client, &base_url, master, name, timeout).await?
             else {
                 return Ok(DaemonOutcome::Fallback);
             };
@@ -1140,6 +1185,7 @@ async fn handle_project_command_daemon(
                 name,
                 serde_json::json!({ "buildDependencies": proj.build_dependencies }),
                 "remove build dependency",
+                timeout,
             )
             .await?
             .is_none()
@@ -1149,7 +1195,9 @@ async fn handle_project_command_daemon(
             println!("Removed build dependency: {}", dependency);
         }
         ProjectCommands::ListMcp { name } => {
-            let Some(proj) = get_project_via_daemon(&client, &base_url, master, name).await? else {
+            let Some(proj) =
+                get_project_via_daemon(&client, &base_url, master, name, timeout).await?
+            else {
                 return Ok(DaemonOutcome::Fallback);
             };
             print_mcp_servers(&proj);
@@ -1161,7 +1209,8 @@ async fn handle_project_command_daemon(
             arguments,
             environment,
         } => {
-            let Some(mut proj) = get_project_via_daemon(&client, &base_url, master, name).await?
+            let Some(mut proj) =
+                get_project_via_daemon(&client, &base_url, master, name, timeout).await?
             else {
                 return Ok(DaemonOutcome::Fallback);
             };
@@ -1173,6 +1222,7 @@ async fn handle_project_command_daemon(
                 name,
                 serde_json::json!({ "mcpServers": proj.mcp_servers }),
                 "add MCP server",
+                timeout,
             )
             .await?
             .is_none()
@@ -1182,7 +1232,8 @@ async fn handle_project_command_daemon(
             println!("Added MCP server: {}", server);
         }
         ProjectCommands::RemoveMcp { name, server } => {
-            let Some(mut proj) = get_project_via_daemon(&client, &base_url, master, name).await?
+            let Some(mut proj) =
+                get_project_via_daemon(&client, &base_url, master, name, timeout).await?
             else {
                 return Ok(DaemonOutcome::Fallback);
             };
@@ -1194,6 +1245,7 @@ async fn handle_project_command_daemon(
                 name,
                 serde_json::json!({ "mcpServers": proj.mcp_servers }),
                 "remove MCP server",
+                timeout,
             )
             .await?
             .is_none()
@@ -1203,7 +1255,9 @@ async fn handle_project_command_daemon(
             println!("Removed MCP server: {}", server);
         }
         ProjectCommands::ListSkills { name } => {
-            let Some(proj) = get_project_via_daemon(&client, &base_url, master, name).await? else {
+            let Some(proj) =
+                get_project_via_daemon(&client, &base_url, master, name, timeout).await?
+            else {
                 return Ok(DaemonOutcome::Fallback);
             };
             print_project_skills(&proj);
@@ -1215,7 +1269,8 @@ async fn handle_project_command_daemon(
             path,
             instructions,
         } => {
-            let Some(mut proj) = get_project_via_daemon(&client, &base_url, master, name).await?
+            let Some(mut proj) =
+                get_project_via_daemon(&client, &base_url, master, name, timeout).await?
             else {
                 return Ok(DaemonOutcome::Fallback);
             };
@@ -1233,6 +1288,7 @@ async fn handle_project_command_daemon(
                 name,
                 serde_json::json!({ "skills": proj.skills }),
                 "add custom skill",
+                timeout,
             )
             .await?
             .is_none()
@@ -1242,7 +1298,8 @@ async fn handle_project_command_daemon(
             println!("Added custom skill: {}", skill);
         }
         ProjectCommands::RemoveSkill { name, skill } => {
-            let Some(mut proj) = get_project_via_daemon(&client, &base_url, master, name).await?
+            let Some(mut proj) =
+                get_project_via_daemon(&client, &base_url, master, name, timeout).await?
             else {
                 return Ok(DaemonOutcome::Fallback);
             };
@@ -1254,6 +1311,7 @@ async fn handle_project_command_daemon(
                 name,
                 serde_json::json!({ "skills": proj.skills }),
                 "remove custom skill",
+                timeout,
             )
             .await?
             .is_none()
@@ -1284,7 +1342,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -1305,7 +1363,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             // The server answers 404 for an unknown project and for an unknown hook alike, so its
@@ -1353,7 +1411,7 @@ async fn handle_project_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
