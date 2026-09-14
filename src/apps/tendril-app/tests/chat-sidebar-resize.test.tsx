@@ -182,6 +182,6 @@ describe("ChatView Sidebar Resize Interaction Tests", () => {
     const resizer = container!.querySelector('[role="separator"]') as HTMLElement;
     expect(resizer).not.toBeNull();
     expect(resizer.className).toContain("focus-visible:ring-2");
-    expect(resizer.className).toContain("focus-visible:ring-emerald-500");
+    expect(resizer.className).toContain("focus-visible:ring-ring");
   });
 });

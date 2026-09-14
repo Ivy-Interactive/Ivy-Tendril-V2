@@ -93,13 +93,13 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
             placeholder="Search plans by title, ID, or project... (Press / to focus)"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-slate-800 bg-slate-900 px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-200"
+              className="absolute right-3 top-2.5 text-xs text-muted-foreground hover:text-foreground"
             >
               Clear
             </button>
@@ -126,7 +126,7 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
               type="button"
               onClick={onNewPlan}
               aria-label="New Plan"
-              className="flex items-center space-x-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
+              className="flex items-center space-x-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
             >
               <span>+</span>
               <span>New Plan</span>
@@ -163,35 +163,37 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
                 onClick={() => onSelectPlan(p.id)}
                 className={`cursor-pointer rounded-xl border p-4 transition ${
                   isHighlighted
-                    ? "border-emerald-500 bg-slate-900 shadow-md ring-1 ring-emerald-500"
-                    : "border-slate-800 bg-slate-900/60 hover:border-slate-700 hover:bg-slate-900"
+                    ? "border-ring bg-card shadow-md ring-1 ring-ring"
+                    : "border-border bg-card/60 hover:border-ring hover:bg-card"
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-semibold text-slate-400">{p.id}</span>
+                  <span className="font-mono text-xs font-semibold text-muted-foreground">
+                    {p.id}
+                  </span>
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       p.state === "Completed"
-                        ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                        ? "bg-success/10 text-success border border-success/40"
                         : p.state === "Review"
-                          ? "bg-amber-950 text-amber-300 border border-amber-800"
+                          ? "bg-warning/10 text-warning border border-warning/40"
                           : p.state === "Executing"
-                            ? "bg-blue-950 text-blue-300 border border-blue-800"
+                            ? "bg-info/10 text-info border border-info/40"
                             : p.state === "Failed"
-                              ? "bg-red-950 text-red-300 border border-red-800"
-                              : "bg-slate-800 text-slate-300"
+                              ? "bg-destructive/10 text-destructive border border-destructive/40"
+                              : "bg-muted text-muted-foreground"
                     }`}
                   >
                     {p.state}
                   </span>
                 </div>
 
-                <h3 className="mt-2 text-sm font-semibold text-slate-100 line-clamp-2">
+                <h3 className="mt-2 text-sm font-semibold text-foreground line-clamp-2">
                   {p.title}
                 </h3>
 
-                <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                  <span className="rounded bg-slate-800/80 px-2 py-0.5 font-medium text-slate-300">
+                <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="rounded bg-muted/80 px-2 py-0.5 font-medium text-muted-foreground">
                     {p.project}
                   </span>
                   {p.verifications && p.verifications.length > 0 && (
@@ -202,12 +204,12 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
                           title={`${v.name}: ${v.status}`}
                           className={`h-2 w-2 rounded-full ${
                             v.status === "Pass"
-                              ? "bg-emerald-400"
+                              ? "bg-success"
                               : v.status === "Fail"
-                                ? "bg-red-400"
+                                ? "bg-destructive"
                                 : v.status === "Skipped"
-                                  ? "bg-slate-600"
-                                  : "bg-amber-400"
+                                  ? "bg-muted-foreground"
+                                  : "bg-warning"
                           }`}
                         />
                       ))}

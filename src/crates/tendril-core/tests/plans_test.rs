@@ -286,6 +286,7 @@ fn test_plan_completion_guard() {
         source_url: None,
         recommendations: None,
         chat_session_id: None,
+        allocated_ports: None,
         extra: std::collections::BTreeMap::new(),
     };
 
@@ -338,6 +339,7 @@ fn test_plan_completion_guard_refuses_completed_from_review_while_a_row_failed()
         source_url: None,
         recommendations: None,
         chat_session_id: None,
+        allocated_ports: None,
         extra: std::collections::BTreeMap::new(),
     };
 

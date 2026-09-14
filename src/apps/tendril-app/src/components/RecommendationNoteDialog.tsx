@@ -42,15 +42,15 @@ export const RecommendationNoteDialog: React.FC<RecommendationNoteDialogProps> =
       data-testid="recommendation-note-dialog"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
     >
-      <div className="w-full max-w-md rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
-        <h3 className="text-sm font-semibold text-slate-100">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl">
+        <h3 className="text-sm font-semibold text-foreground">
           {action === "Accept" ? "Accept Recommendation" : "Decline Recommendation"}
         </h3>
-        <p className="mt-1 text-xs text-slate-400">{title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{title}</p>
         <div className="mt-4">
           <label
             htmlFor="rec-dialog-note"
-            className="block text-xs font-medium text-slate-300 mb-1"
+            className="block text-xs font-medium text-muted-foreground mb-1"
           >
             {action === "Accept" ? "Optional Operator Note:" : "Decline Reason:"}
           </label>
@@ -63,14 +63,14 @@ export const RecommendationNoteDialog: React.FC<RecommendationNoteDialogProps> =
             placeholder={
               action === "Accept" ? "Enter optional notes..." : "Enter reason for declining..."
             }
-            className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+            className="w-full rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none"
           />
         </div>
         <div className="mt-4 flex justify-end space-x-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded px-3 py-1.5 text-xs text-slate-400 hover:text-slate-200"
+            className="rounded px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
             Cancel
           </button>
@@ -79,8 +79,8 @@ export const RecommendationNoteDialog: React.FC<RecommendationNoteDialogProps> =
             onClick={handleSubmit}
             className={`rounded px-4 py-1.5 text-xs font-medium text-white transition ${
               action === "Accept"
-                ? "bg-emerald-600 hover:bg-emerald-500"
-                : "bg-red-600 hover:bg-red-500"
+                ? "bg-primary hover:bg-primary/90"
+                : "bg-destructive hover:bg-destructive/90"
             }`}
           >
             Submit
