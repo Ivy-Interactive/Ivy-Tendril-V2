@@ -966,7 +966,7 @@ pub async fn handle_plan_command(
                         .max()
                         .unwrap_or(4)
                         .max(4);
-                    println!("{:<width$}  {}", "Name", "Status", width = width);
+                    println!("{:<width$}  Status", "Name", width = width);
                     for e in &entries {
                         println!("{:<width$}  {}", e.name, e.status.as_str(), width = width);
                     }
