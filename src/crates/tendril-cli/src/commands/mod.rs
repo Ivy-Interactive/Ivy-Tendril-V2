@@ -9,4 +9,5 @@ pub mod project;
 pub mod project_analyzer;
 pub mod promptware;
 pub mod serve;
+pub mod vault;
 pub mod verification;
