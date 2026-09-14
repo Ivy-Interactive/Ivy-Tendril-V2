@@ -17,6 +17,7 @@ pub mod questions;
 pub mod skills;
 pub mod stack;
 pub mod vault;
+pub mod version_check;
 pub mod watcher;
 
 pub use agents::model_specs;

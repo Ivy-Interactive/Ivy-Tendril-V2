@@ -112,6 +112,8 @@ pub fn run() {
             cmd_run_doctor,
             cmd_get_models_status,
             cmd_refresh_models,
+            cmd_get_version_info,
+            cmd_check_version_now,
             cmd_execute_review_action,
             cmd_save_ui_state,
             cmd_load_ui_state,

@@ -8,6 +8,7 @@ export interface UiState {
   searchFilter: string;
   selectedStateFilter: string | null;
   selectedProjectFilter: string | null;
+  dismissedUpdateVersion: string | null;
 }
 
 const UI_STATE_KEY = "tendril_ui_preferences";
@@ -21,6 +22,7 @@ class UiStore {
     searchFilter: "",
     selectedStateFilter: null,
     selectedProjectFilter: null,
+    dismissedUpdateVersion: null,
   };
 
   private listeners: Set<() => void> = new Set();
@@ -65,6 +67,7 @@ class UiStore {
         sidebarCollapsed: this.state.sidebarCollapsed,
         selectedStateFilter: this.state.selectedStateFilter,
         selectedProjectFilter: this.state.selectedProjectFilter,
+        dismissedUpdateVersion: this.state.dismissedUpdateVersion,
       });
       await bridge.saveUiState(UI_STATE_KEY, json);
     } catch {
@@ -120,6 +123,11 @@ class UiStore {
 
   public setProjectFilter(projectFilter: string | null): void {
     this.state.selectedProjectFilter = projectFilter;
+    this.notify();
+  }
+
+  public setDismissedUpdateVersion(version: string | null): void {
+    this.state.dismissedUpdateVersion = version;
     this.notify();
   }
 }

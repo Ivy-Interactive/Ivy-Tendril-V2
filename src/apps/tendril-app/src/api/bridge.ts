@@ -37,6 +37,7 @@ import type {
   VaultStatus,
   VerificationReport,
   VerificationStatus,
+  VersionInfo,
 } from "../types/api";
 
 /**
@@ -339,6 +340,14 @@ export const bridge = {
 
   async refreshModels(this: void): Promise<ModelCatalogStatus> {
     return invoke<ModelCatalogStatus>("cmd_refresh_models");
+  },
+
+  async getVersionInfo(this: void): Promise<VersionInfo> {
+    return invoke<VersionInfo>("cmd_get_version_info");
+  },
+
+  async checkVersionNow(this: void): Promise<VersionInfo> {
+    return invoke<VersionInfo>("cmd_check_version_now");
   },
 
   async saveUiState(this: void, key: string, value: string): Promise<void> {
