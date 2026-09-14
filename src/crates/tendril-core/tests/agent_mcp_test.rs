@@ -20,6 +20,7 @@ fn project(name: &str, servers: Vec<ProjectMcpServerRef>) -> ProjectConfig {
         review_actions: vec![],
         build_dependencies: vec![],
         mcp_servers: servers,
+        ..Default::default()
     }
 }
 
