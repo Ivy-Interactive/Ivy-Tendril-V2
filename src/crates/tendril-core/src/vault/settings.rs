@@ -10,9 +10,7 @@
 //! kept in step, because the shipped C# app reads whichever one it happens to reach first.
 
 use crate::config::TendrilSettings;
-use crate::vault::compat::{
-    deserialize_optional_timestamp, serialize_optional_timestamp,
-};
+use crate::vault::compat::{deserialize_optional_timestamp, serialize_optional_timestamp};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -111,13 +109,15 @@ pub fn load_vaults(settings: &TendrilSettings) -> VaultState {
         .extra
         .get(VAULT_KEY)
         .filter(|value| !value.is_null())
-        .and_then(|value| match serde_json::from_value::<VaultSettings>(value.clone()) {
-            Ok(vault) => Some(vault),
-            Err(e) => {
-                tracing::warn!("Ignoring unreadable '{}' in config.yaml: {}", VAULT_KEY, e);
-                None
-            }
-        });
+        .and_then(
+            |value| match serde_json::from_value::<VaultSettings>(value.clone()) {
+                Ok(vault) => Some(vault),
+                Err(e) => {
+                    tracing::warn!("Ignoring unreadable '{}' in config.yaml: {}", VAULT_KEY, e);
+                    None
+                }
+            },
+        );
 
     let vaults = settings
         .extra
@@ -339,11 +339,7 @@ pub fn extract_repo_name(url: &str) -> String {
     }
 
     if parts.len() >= 2 && !parts[parts.len() - 2].contains(':') {
-        return format!(
-            "{}/{}",
-            parts[parts.len() - 2],
-            parts[parts.len() - 1]
-        );
+        return format!("{}/{}", parts[parts.len() - 2], parts[parts.len() - 1]);
     }
     if let Some(last) = parts.last() {
         return last.to_string();

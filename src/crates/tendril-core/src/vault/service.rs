@@ -213,7 +213,9 @@ fn build_status(
                 })
                 .unwrap_or_default(),
             is_configured: false,
-            repo_url: vault.map(|vault| vault.repo_url.clone()).unwrap_or_default(),
+            repo_url: vault
+                .map(|vault| vault.repo_url.clone())
+                .unwrap_or_default(),
             local_path: dir.to_string_lossy().to_string(),
             always_up_to_date: vault.map(|vault| vault.always_up_to_date).unwrap_or(false),
             last_synced_at: vault.and_then(|vault| vault.last_synced_at),
@@ -416,7 +418,9 @@ fn build_catalog(
                 .as_ref()
                 .map(|manifest| manifest.color.clone())
                 .unwrap_or_else(default_color),
-            stack_hash: manifest.as_ref().and_then(|manifest| manifest.stack_hash.clone()),
+            stack_hash: manifest
+                .as_ref()
+                .and_then(|manifest| manifest.stack_hash.clone()),
             local_version,
             remote_version,
             latest_changelog: manifest
@@ -427,7 +431,9 @@ fn build_catalog(
                 .as_ref()
                 .map(|manifest| manifest.updated_at)
                 .unwrap_or_else(Utc::now),
-            updated_by: manifest.as_ref().and_then(|manifest| manifest.updated_by.clone()),
+            updated_by: manifest
+                .as_ref()
+                .and_then(|manifest| manifest.updated_by.clone()),
             repos_count: manifest
                 .as_ref()
                 .map(|manifest| manifest.repos.len() as i32)
@@ -581,8 +587,10 @@ fn derive_sync_status(
             .map(|name| name.to_lowercase())
             .collect();
 
-    let vault_memories: BTreeSet<String> =
-        memory_names.iter().map(|name| name.to_lowercase()).collect();
+    let vault_memories: BTreeSet<String> = memory_names
+        .iter()
+        .map(|name| name.to_lowercase())
+        .collect();
     let vault_skills: BTreeSet<String> =
         skill_names.iter().map(|name| name.to_lowercase()).collect();
 
@@ -610,10 +618,9 @@ fn derive_sync_status(
             .review_actions
             .iter()
             .any(|action| !vault_actions.contains(&action.name.to_lowercase()))
-            || project
-                .verifications
-                .iter()
-                .any(|verification| !vault_verifications.contains(&verification.name.to_lowercase()));
+            || project.verifications.iter().any(|verification| {
+                !vault_verifications.contains(&verification.name.to_lowercase())
+            });
     }
 
     let version_differs = match (local_version, remote_version) {
@@ -761,7 +768,10 @@ pub async fn discover_existing_vaults_with(
         match serde_json::from_str::<serde_json::Value>(stdout.trim()) {
             Ok(serde_json::Value::Array(items)) => {
                 for item in items {
-                    let name = item.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+                    let name = item
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
                     let full_name = item
                         .get("nameWithOwner")
                         .and_then(|v| v.as_str())
@@ -827,13 +837,13 @@ pub async fn create_vault_repo_with(
     let repo_name = repo_name.trim();
 
     // The UI offers organizations as `login (Organization)`; keep only the login.
-    let org = org
-        .map(str::trim)
-        .filter(|org| !org.is_empty())
-        .map(|org| match org.split_once(' ') {
-            Some((login, _)) if !login.is_empty() => login,
-            _ => org,
-        });
+    let org =
+        org.map(str::trim)
+            .filter(|org| !org.is_empty())
+            .map(|org| match org.split_once(' ') {
+                Some((login, _)) if !login.is_empty() => login,
+                _ => org,
+            });
 
     let target_repo = match org {
         Some(org) => format!("{}/{}", org, repo_name),
@@ -1116,8 +1126,7 @@ pub async fn push_and_create_pr_with(
     gh: GhRunner<'_>,
 ) -> Result<VaultPrResult> {
     let (mut settings, mut state) = load_state(tendril_home)?;
-    let Some(mut target) =
-        resolve_vault(&state, request.target_vault_id.as_deref().or(vault_id))
+    let Some(mut target) = resolve_vault(&state, request.target_vault_id.as_deref().or(vault_id))
     else {
         return Ok(VaultPrResult::failure(
             "No vault configured to push updates.",
@@ -2088,7 +2097,8 @@ pub async fn pull_latest_with(
 ) -> Result<VaultSyncResult> {
     let (mut settings, mut state) = load_state(tendril_home)?;
 
-    let mut to_sync: Vec<VaultSettings> = match vault_id.map(str::trim).filter(|id| !id.is_empty()) {
+    let mut to_sync: Vec<VaultSettings> = match vault_id.map(str::trim).filter(|id| !id.is_empty())
+    {
         Some(id) if !id.eq_ignore_ascii_case("default") => state
             .vaults
             .iter()
