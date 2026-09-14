@@ -7,31 +7,56 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
-use tendril_core::db::{get_plans, open_database, sync_plan};
+use tendril_core::db::{get_plans_limited, open_database, sync_plan};
 use tendril_core::error::TendrilError;
 use tendril_core::models::{PlanStatus, PlanVerificationEntry, PlanYaml, VerificationStatus};
 use tendril_core::plans::{
-    add_plan_verification, add_recommendation, check_plan_health, create_plan, get_revision,
-    list_plan_verifications, list_recommendations, read_plan_file, read_plan_yaml,
+    add_plan_verification, add_recommendation, check_plan_health, create_plan, get_plan_field,
+    get_revision, list_plan_verifications, list_recommendations, read_plan_file, read_plan_yaml,
     remove_plan_verification, remove_recommendation, resolve_plan_folder, resolve_plan_folder_name,
     set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
-    CreatePlanOptions, PlanCompletionGuard,
+    CreatePlanOptions, PlanCompletionGuard, SUPPORTED_PLAN_FIELDS,
 };
 
 #[derive(Debug, Deserialize)]
 pub struct PlanQuery {
     pub status: Option<String>,
+    /// Alias for `status`, matching the original Tendril's `?state=` query parameter.
+    /// `status` wins when both are present.
+    pub state: Option<String>,
     pub project: Option<String>,
     pub level: Option<String>,
     pub q: Option<String>,
     pub field: Option<String>,
+    /// Unlike the original Tendril (which defaults to 50), V2 defaults to unbounded: the
+    /// desktop app's plan list depends on receiving all plans unless a caller opts in.
+    pub limit: Option<usize>,
 }
 
 pub async fn list_plans(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PlanQuery>,
 ) -> impl IntoResponse {
-    let status_filter = query.status.as_deref().and_then(PlanStatus::from_str_loose);
+    let status_value = query.status.as_deref().or(query.state.as_deref());
+    let status_filter = match status_value {
+        Some(v) => match PlanStatus::from_str_loose(v) {
+            Some(s) => Some(s),
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": format!("Unknown plan state '{}'", v),
+                        "supportedStates": [
+                            "Draft", "Creating", "Updating", "Executing", "Completed",
+                            "Failed", "Review", "Skipped", "Icebox", "Blocked",
+                        ],
+                    })),
+                )
+                    .into_response()
+            }
+        },
+        None => None,
+    };
     let project_filter = query.project.as_deref();
     let text_filter = query.q.as_deref();
 
@@ -46,7 +71,7 @@ pub async fn list_plans(
         }
     };
 
-    match get_plans(&conn, status_filter, project_filter, text_filter) {
+    match get_plans_limited(&conn, status_filter, project_filter, text_filter, query.limit) {
         Ok(plans) => Json(json!(plans)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -84,17 +109,32 @@ pub async fn get_plan(
     };
 
     if let Some(field) = query.field {
-        let val = match field.to_ascii_lowercase().as_str() {
-            "title" => plan_file.metadata.title,
-            "state" => plan_file.metadata.state.to_string(),
-            "project" => plan_file.metadata.project,
-            "level" => plan_file.metadata.level,
-            "id" => plan_file.metadata.id.to_string(),
-            "initialprompt" => plan_file.metadata.initial_prompt.unwrap_or_default(),
-            "sourceurl" => plan_file.metadata.source_url.unwrap_or_default(),
-            _ => String::new(),
+        if field.eq_ignore_ascii_case("id") {
+            return plan_file.metadata.id.to_string().into_response();
+        }
+
+        let (plan_yaml, _) = match read_plan_yaml(&folder) {
+            Ok(y) => y,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": format!("Failed to read plan: {}", e) })),
+                )
+                    .into_response()
+            }
         };
-        return val.into_response();
+
+        return match get_plan_field(&plan_yaml, &field) {
+            Some(val) => val.into_response(),
+            None => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("Unknown field '{}'", field),
+                    "supportedFields": SUPPORTED_PLAN_FIELDS,
+                })),
+            )
+                .into_response(),
+        };
     }
 
     Json(json!(plan_file)).into_response()

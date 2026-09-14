@@ -128,6 +128,16 @@ pub fn get_plans(
     project_filter: Option<&str>,
     text_filter: Option<&str>,
 ) -> Result<Vec<PlanFile>> {
+    get_plans_limited(conn, status_filter, project_filter, text_filter, None)
+}
+
+pub fn get_plans_limited(
+    conn: &Connection,
+    status_filter: Option<PlanStatus>,
+    project_filter: Option<&str>,
+    text_filter: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<PlanFile>> {
     let mut sql = "SELECT Id, Title, Project, Level, State, FolderPath, FolderName, YamlRaw, RevisionCount, LatestRevisionContent, Created, Updated, InitialPrompt, SourceUrl, ChatSessionId FROM Plans WHERE 1=1".to_string();
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -155,6 +165,11 @@ pub fn get_plans(
     }
 
     sql.push_str(" ORDER BY Id DESC");
+
+    if let Some(limit) = limit {
+        sql.push_str(" LIMIT ?");
+        params_vec.push(Box::new(limit as i64));
+    }
 
     let params_slice: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
