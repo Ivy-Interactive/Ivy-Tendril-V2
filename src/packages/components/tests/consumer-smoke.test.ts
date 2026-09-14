@@ -25,8 +25,8 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 describe("Consumer Smoke Verification", () => {
   const packageJson = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf-8"));
 
-  // Shelling out to pnpm can take well over the 5s default when the machine is busy, so this case
-  // carries its own generous timeout rather than flaking under load.
+  // `pnpm pack` runs this package's `prepare` script (`vp config` + the tsgolint patch), so the
+  // subprocess routinely takes longer than the 5s default timeout. Give it a generous budget.
   it("verifies package packing succeeds with pnpm pack", () => {
     const packOutput = execSync("pnpm pack --dry-run", {
       cwd: repoRoot,

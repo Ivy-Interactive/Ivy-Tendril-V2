@@ -70,6 +70,7 @@ export * from "./components/ui/button";
 export * from "./components/ui/input.tsx";
 export * from "./components/ui/card";
 export * from "./components/ui/badge";
+export * from "./components/ui/data-table";
 export * from "./components/ui/dialog";
 export * from "./components/ui/tabs";
 
