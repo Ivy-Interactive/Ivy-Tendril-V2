@@ -67,7 +67,10 @@ mod tests {
     #[test]
     fn renders_partial_delivery_and_priority_on_default_plan() {
         let plan = PlanYaml::default();
-        assert_eq!(get_plan_field(&plan, "partialDelivery"), Some("false".to_string()));
+        assert_eq!(
+            get_plan_field(&plan, "partialDelivery"),
+            Some("false".to_string())
+        );
         assert_eq!(get_plan_field(&plan, "priority"), Some("0".to_string()));
     }
 

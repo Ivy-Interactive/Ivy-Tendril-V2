@@ -624,16 +624,12 @@ pub async fn stream_job_events(
             .into_response();
     }
 
-    let kind_values = query
-        .kinds
-        .as_deref()
-        .into_iter()
-        .chain(
-            pairs
-                .iter()
-                .filter(|(k, _)| k == "kind")
-                .map(|(_, v)| v.as_str()),
-        );
+    let kind_values = query.kinds.as_deref().into_iter().chain(
+        pairs
+            .iter()
+            .filter(|(k, _)| k == "kind")
+            .map(|(_, v)| v.as_str()),
+    );
     let allowed_kinds = parse_allowed_kinds(kind_values);
     let tendril_home = state.tendril_home.clone();
     let job_manager = state.job_manager.clone();

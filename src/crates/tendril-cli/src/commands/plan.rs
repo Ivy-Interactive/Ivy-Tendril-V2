@@ -18,10 +18,9 @@ use tendril_core::plans::{
     create_plan, get_plan_field, get_revision, list_recommendations, materialize_plan_env,
     order_by_project_config, read_plan_file, read_plan_yaml, remove_recommendation,
     render_env_file, resolve_plan_folder, resolve_plan_folder_name, resolve_plan_project,
-    resolve_pr_head_via_gh, resolve_worktrees,
-    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
-    CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard,
-    RenderedEnvFile,
+    resolve_pr_head_via_gh, resolve_worktrees, set_plan_verification_status,
+    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
+    DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard, RenderedEnvFile,
 };
 
 #[derive(Subcommand)]
