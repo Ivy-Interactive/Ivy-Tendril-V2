@@ -453,6 +453,72 @@ pub fn get_tendril_home() -> PathBuf {
     get_default_tendril_home()
 }
 
+/// The operator's real Tendril home, resolved as if `TENDRIL_HOME` were not set.
+///
+/// A test that pins `TENDRIL_HOME` to a temp directory still needs to know which path it must never
+/// touch, so this deliberately ignores the variable that isolates it.
+pub fn real_user_tendril_home() -> PathBuf {
+    get_default_tendril_home_with_env(&|key: &str| {
+        if key == "TENDRIL_HOME" {
+            None
+        } else {
+            std::env::var(key).ok()
+        }
+    })
+}
+
+/// True when the current process looks like a test binary.
+///
+/// `TENDRIL_TEST_ISOLATION=1` is the explicit opt-in (the VS Code extension harness sets it for its
+/// children); the `target/*/deps/` check covers cargo test binaries, so a harness added later cannot
+/// silently opt out of [`ensure_not_real_home`].
+pub fn in_test_context() -> bool {
+    if std::env::var("TENDRIL_TEST_ISOLATION").as_deref() == Ok("1") {
+        return true;
+    }
+
+    std::env::current_exe()
+        .map(|p| p.components().any(|c| c.as_os_str() == "deps"))
+        .unwrap_or(false)
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| -> String {
+        let resolved = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let s = normalize_slashes(&resolved)
+            .trim_end_matches('/')
+            .to_string();
+        if cfg!(windows) || cfg!(target_os = "macos") {
+            s.to_lowercase()
+        } else {
+            s
+        }
+    };
+
+    norm(a) == norm(b)
+}
+
+/// Refuses to claim the operator's real Tendril home from a test process.
+///
+/// Outside a test context this is a no-op, so production behaviour is unchanged.
+pub fn ensure_not_real_home(home: &Path) -> Result<()> {
+    if !in_test_context() {
+        return Ok(());
+    }
+
+    let real = real_user_tendril_home();
+    if paths_equal(home, &real) {
+        return Err(TendrilError::Other(format!(
+            "Refusing to use the real Tendril home {} from a test process: claiming mastership \
+             there hijacks the operator's running daemon. Set TENDRIL_HOME to a temp directory for \
+             this test.",
+            real.display()
+        )));
+    }
+
+    Ok(())
+}
+
 pub fn normalize_slashes(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -882,21 +948,64 @@ pub struct MasterGuard {
     pid: u32,
 }
 
+/// Number of `/api/ping` attempts before a running master is declared unresponsive.
+pub const HEALTH_PROBE_ATTEMPTS: u32 = 3;
+const HEALTH_PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// Probes `/api/ping` repeatedly, so one dropped probe on a loaded machine cannot decide mastership.
+pub fn probe_health_with_retries(host: &str, port: u16, attempts: u32) -> bool {
+    for attempt in 0..attempts.max(1) {
+        if probe_health(host, port) {
+            return true;
+        }
+        if attempt + 1 < attempts {
+            std::thread::sleep(HEALTH_PROBE_INTERVAL);
+        }
+    }
+    false
+}
+
+fn master_takeover_allowed() -> bool {
+    std::env::var("TENDRIL_ALLOW_MASTER_TAKEOVER").as_deref() == Ok("1")
+}
+
 impl MasterGuard {
     pub fn acquire(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<Self> {
-        if let Some(existing) = read_master(tendril_home) {
-            let running = is_process_running(existing.pid);
-            let responding = probe_health(&existing.host, existing.port);
+        ensure_not_real_home(tendril_home)?;
 
-            if running && responding {
-                return Err(TendrilError::Other(format!(
-                    "Another Tendril instance is running with PID {} on port {}",
-                    existing.pid, existing.port
-                )));
+        if let Some(existing) = read_master(tendril_home) {
+            if is_process_running(existing.pid) {
+                if probe_health_with_retries(&existing.host, existing.port, HEALTH_PROBE_ATTEMPTS) {
+                    return Err(TendrilError::Other(format!(
+                        "Another Tendril instance is running with PID {} on port {}",
+                        existing.pid, existing.port
+                    )));
+                }
+
+                if !master_takeover_allowed() {
+                    return Err(TendrilError::Other(format!(
+                        "Refusing to take mastership from live PID {} on port {} recorded in \
+                         {}/.master: the process is alive but did not answer /api/ping after {} \
+                         probes. Stop that instance, or start this one with a different \
+                         TENDRIL_HOME.",
+                        existing.pid,
+                        existing.port,
+                        tendril_home.display(),
+                        HEALTH_PROBE_ATTEMPTS
+                    )));
+                }
+
+                tracing::warn!(
+                    "TENDRIL_ALLOW_MASTER_TAKEOVER=1: evicting live but unresponsive master PID {} on port {}",
+                    existing.pid,
+                    existing.port
+                );
+                delete_master(tendril_home);
             } else {
                 tracing::warn!(
-                    "Cleaning up stale .master file from PID {} on port {} (running: {}, responding: {})",
-                    existing.pid, existing.port, running, responding
+                    "Cleaning up stale .master file from PID {} on port {} (process is not running)",
+                    existing.pid,
+                    existing.port
                 );
                 delete_master(tendril_home);
             }
