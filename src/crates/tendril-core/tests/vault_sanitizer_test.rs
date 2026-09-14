@@ -96,7 +96,10 @@ fn a_blank_key_is_not_treated_as_sensitive() {
 #[test]
 fn sanitize_environment_covers_both_map_types() {
     let mut ordered = BTreeMap::new();
-    ordered.insert("API_KEY".to_string(), "sk-1234567890abcdef1234567890".to_string());
+    ordered.insert(
+        "API_KEY".to_string(),
+        "sk-1234567890abcdef1234567890".to_string(),
+    );
     ordered.insert("PORT".to_string(), "3000".to_string());
     let sanitized = sanitize_environment(&ordered);
     assert_eq!(sanitized["API_KEY"], "${API_KEY}");
