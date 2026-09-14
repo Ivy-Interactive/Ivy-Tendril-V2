@@ -145,7 +145,10 @@ async fn test_protected_routes_require_auth() {
         );
         let body: serde_json::Value = resp.json().await.unwrap();
         assert_eq!(body["error"], "Unauthorized");
-        assert_eq!(body["message"], "Missing or invalid bearer token");
+        assert_eq!(
+            body["message"],
+            "Missing or invalid credentials. Send Authorization: Bearer <secret> or X-Api-Key: <secret>"
+        );
 
         let bad_auth_resp = client
             .get(format!("http://127.0.0.1:{}{}", server.port, endpoint))
@@ -1906,4 +1909,394 @@ async fn test_models_api_route() {
     let first = &specs[0];
     assert!(first.get("model_id").is_some());
     assert!(first.get("input_per_million").is_some());
+}
+
+#[tokio::test]
+async fn test_get_job_events_repeated_kind_param() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let job_id = "00883";
+    let logs_dir = server.tendril_home.join("Logs").join("Jobs");
+    std::fs::create_dir_all(&logs_dir).unwrap();
+
+    let eventwire_content = [
+        "{\"type\":\"tool_call\",\"tool_name\":\"bash\"}",
+        "{\"kind\":\"tool_result\",\"output\":\"success\"}",
+        "{\"kind\":\"assistant\",\"text\":\"hello\"}",
+        "{\"kind\":\"status\",\"text\":\"running\"}",
+        "{\"type\":\"log\",\"text\":\"internal detail\"}",
+    ]
+    .join("\n");
+    std::fs::write(
+        logs_dir.join(format!("{}.eventwire.jsonl", job_id)),
+        format!("{}\n", eventwire_content),
+    )
+    .unwrap();
+
+    // Repeated kind= params, same expectation as the existing ?kinds=tool_use,assistant test.
+    let stream_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/{}/events?kind=tool_use&kind=assistant",
+            server.port, job_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stream_resp.status(), reqwest::StatusCode::OK);
+    let stream_text = stream_resp.text().await.unwrap();
+    assert!(stream_text.contains("tool_call"));
+    assert!(stream_text.contains("tool_result"));
+    assert!(stream_text.contains("assistant"));
+    assert!(!stream_text.contains("\"running\""));
+    assert!(!stream_text.contains("internal detail"));
+    assert!(stream_text.contains("event: end"));
+
+    // A single repeated-form value with a comma behaves the same as the plain form.
+    let comma_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/{}/events?kind=tool_use,assistant",
+            server.port, job_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(comma_resp.status(), reqwest::StatusCode::OK);
+    let comma_text = comma_resp.text().await.unwrap();
+    assert!(comma_text.contains("tool_call"));
+    assert!(comma_text.contains("tool_result"));
+    assert!(comma_text.contains("assistant"));
+    assert!(!comma_text.contains("\"running\""));
+    assert!(!comma_text.contains("internal detail"));
+    assert!(comma_text.contains("event: end"));
+}
+
+#[tokio::test]
+async fn test_get_job_events_explicit_filter_does_not_fail_open() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let job_id = "00884";
+    let logs_dir = server.tendril_home.join("Logs").join("Jobs");
+    std::fs::create_dir_all(&logs_dir).unwrap();
+
+    let eventwire_content = [
+        "{\"type\":\"tool_call\",\"tool_name\":\"bash\"}",
+        "{\"kind\":\"tool_result\",\"output\":\"success\"}",
+        "{\"kind\":\"assistant\",\"text\":\"hello\"}",
+        "{\"kind\":\"status\",\"text\":\"running\"}",
+        "{\"type\":\"log\",\"text\":\"internal detail\"}",
+    ]
+    .join("\n");
+    std::fs::write(
+        logs_dir.join(format!("{}.eventwire.jsonl", job_id)),
+        format!("{}\n", eventwire_content),
+    )
+    .unwrap();
+
+    for query in ["kind=no_such_kind", "kinds=no_such_kind"] {
+        let resp = client
+            .get(format!(
+                "http://127.0.0.1:{}/api/jobs/{}/events?{}",
+                server.port, job_id, query
+            ))
+            .bearer_auth(&server.secret)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK);
+        let text = resp.text().await.unwrap();
+        assert!(
+            !text.contains("event: event"),
+            "query '{}' should not emit any event lines, got: {}",
+            query,
+            text
+        );
+        assert!(text.contains("event: end"));
+    }
+}
+
+#[tokio::test]
+async fn test_list_plans_state_alias_and_limit() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let mut created_ids = Vec::new();
+    for i in 0..3 {
+        let create_resp = client
+            .post(format!("http://127.0.0.1:{}/api/plans", server.port))
+            .bearer_auth(&server.secret)
+            .json(&serde_json::json!({
+                "title": format!("State Alias Test Plan {}", i),
+                "project": "StateAliasTestProject",
+                "level": "Feature",
+                "verifications": []
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+        let plan_data: serde_json::Value = create_resp.json().await.unwrap();
+        created_ids.push(plan_data["metadata"]["id"].as_i64().unwrap());
+    }
+    let highest_id = *created_ids.iter().max().unwrap();
+
+    let state_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?state=Draft&project=StateAliasTestProject",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(state_resp.status(), reqwest::StatusCode::OK);
+    let state_body = state_resp.bytes().await.unwrap();
+
+    let status_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?status=Draft&project=StateAliasTestProject",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(status_resp.status(), reqwest::StatusCode::OK);
+    let status_body = status_resp.bytes().await.unwrap();
+    assert_eq!(state_body, status_body);
+
+    let limited_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?state=Draft&project=StateAliasTestProject&limit=1",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(limited_resp.status(), reqwest::StatusCode::OK);
+    let limited: Vec<serde_json::Value> = limited_resp.json().await.unwrap();
+    assert_eq!(limited.len(), 1);
+    assert_eq!(limited[0]["metadata"]["id"].as_i64().unwrap(), highest_id);
+
+    let zero_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?project=StateAliasTestProject&limit=0",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(zero_resp.status(), reqwest::StatusCode::OK);
+    let zero: Vec<serde_json::Value> = zero_resp.json().await.unwrap();
+    assert!(zero.is_empty());
+
+    let bogus_resp = client
+        .get(format!("http://127.0.0.1:{}/api/plans?state=Bogus", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bogus_resp.status(), reqwest::StatusCode::BAD_REQUEST);
+    let bogus_body: serde_json::Value = bogus_resp.json().await.unwrap();
+    assert!(bogus_body["supportedStates"].is_array());
+}
+
+#[tokio::test]
+async fn test_get_plan_field_surface() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let create_resp = client
+        .post(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .bearer_auth(&server.secret)
+        .json(&serde_json::json!({
+            "title": "Field Surface Test Plan",
+            "project": "FieldSurfaceTestProject",
+            "level": "Feature",
+            "verifications": []
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_resp.status(), reqwest::StatusCode::CREATED);
+    let plan_data: serde_json::Value = create_resp.json().await.unwrap();
+    let plan_id = format!("{:05}", plan_data["metadata"]["id"].as_i64().unwrap());
+
+    // Give priority and executionProfile non-default values so a "field present but empty"
+    // false negative can't hide behind their zero-values.
+    for (field, value) in [("priority", "7"), ("executionProfile", "deep")] {
+        let put_resp = client
+            .put(format!(
+                "http://127.0.0.1:{}/api/plans/{}",
+                server.port, plan_id
+            ))
+            .bearer_auth(&server.secret)
+            .json(&serde_json::json!({ "field": field, "value": value }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(put_resp.status(), reqwest::StatusCode::OK);
+    }
+
+    for field in [
+        "created",
+        "updated",
+        "priority",
+        "partialDelivery",
+        "executionProfile",
+        "level",
+        "state",
+        "project",
+        "title",
+        "id",
+    ] {
+        let resp = client
+            .get(format!(
+                "http://127.0.0.1:{}/api/plans/{}?field={}",
+                server.port, plan_id, field
+            ))
+            .bearer_auth(&server.secret)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::OK, "field '{}'", field);
+        let text = resp.text().await.unwrap();
+        assert!(!text.is_empty(), "field '{}' returned an empty body", field);
+    }
+
+    let lower_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}?field=partialdelivery",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    let upper_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}?field=partialDelivery",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        lower_resp.text().await.unwrap(),
+        upper_resp.text().await.unwrap()
+    );
+
+    let unknown_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans/{}?field=nonsense",
+            server.port, plan_id
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown_resp.status(), reqwest::StatusCode::BAD_REQUEST);
+    let unknown_body: serde_json::Value = unknown_resp.json().await.unwrap();
+    assert!(unknown_body["supportedFields"].is_array());
+}
+
+#[tokio::test]
+async fn test_api_key_header_authenticates() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let api_key_ok = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .header("X-Api-Key", &server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(api_key_ok.status(), reqwest::StatusCode::OK);
+
+    let bearer_ok = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bearer_ok.status(), reqwest::StatusCode::OK);
+
+    let api_key_wrong = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .header("X-Api-Key", "wrong-key")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(api_key_wrong.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let bearer_wrong = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .bearer_auth("wrong-token")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bearer_wrong.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let no_creds = client
+        .get(format!("http://127.0.0.1:{}/api/plans", server.port))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(no_creds.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let health_resp = client
+        .get(format!("http://127.0.0.1:{}/api/health", server.port))
+        .send()
+        .await
+        .unwrap();
+    let health_body: serde_json::Value = health_resp.json().await.unwrap();
+    let capabilities = health_body["capabilities"]
+        .as_array()
+        .expect("capabilities array");
+    assert!(capabilities.iter().any(|c| c == "auth_api_key"));
+}
+
+#[tokio::test]
+async fn test_jobs_health_alias() {
+    let server = start_test_server(None).await;
+    let client = reqwest::Client::new();
+
+    let alias_resp = client
+        .get(format!("http://127.0.0.1:{}/api/jobs/health", server.port))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(alias_resp.status(), reqwest::StatusCode::OK);
+    let alias_body: serde_json::Value = alias_resp.json().await.unwrap();
+    assert_eq!(alias_body["status"], "ok");
+    assert!(alias_body["pid"].as_u64().unwrap_or(0) > 0);
+
+    let health_resp = client
+        .get(format!("http://127.0.0.1:{}/api/health", server.port))
+        .send()
+        .await
+        .unwrap();
+    let health_body: serde_json::Value = health_resp.json().await.unwrap();
+    for key in ["version", "apiVersion", "capabilities"] {
+        assert_eq!(alias_body[key], health_body[key], "key '{}'", key);
+    }
+
+    // Static /api/jobs/health must not shadow the parameterised /api/jobs/:id route: a
+    // non-existent job id must still 404 via get_job, not 200 via health_handler.
+    let missing_job_resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/jobs/no-such-job-id",
+            server.port
+        ))
+        .bearer_auth(&server.secret)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing_job_resp.status(), reqwest::StatusCode::NOT_FOUND);
 }
