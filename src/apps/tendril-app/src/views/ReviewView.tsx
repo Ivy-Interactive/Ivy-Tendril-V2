@@ -182,7 +182,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   if (reviewPlans.length === 0) {
     return (
       <div data-testid="review-view" className="space-y-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-100">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Review & Recommendations
         </h1>
         <EmptyState
@@ -210,10 +210,10 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     <div className="space-y-6" data-testid="review-view">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-100">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Review & Recommendations
           </h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted-foreground">
             Inspect completed implementations, triage recommendations, and approve or retry.
           </p>
         </div>
@@ -222,7 +222,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Plans list */}
         <div className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Plans Awaiting Review ({reviewPlans.length})
           </h3>
           {reviewPlans.map((p) => (
@@ -231,18 +231,18 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               onClick={() => setSelectedPlanId(p.id)}
               className={`cursor-pointer rounded-xl border p-4 transition ${
                 selectedPlanId === p.id
-                  ? "border-amber-500 bg-slate-900 ring-1 ring-amber-500"
-                  : "border-slate-800 bg-slate-900/60 hover:border-slate-700"
+                  ? "border-warning bg-card ring-1 ring-warning"
+                  : "border-border bg-card/60 hover:border-ring"
               }`}
             >
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-bold text-slate-400">{p.id}</span>
-                <span className="rounded-full bg-amber-950 px-2 py-0.5 text-xs text-amber-300 border border-amber-800">
+                <span className="font-mono text-xs font-bold text-muted-foreground">{p.id}</span>
+                <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning border border-warning/40">
                   Review
                 </span>
               </div>
-              <h4 className="mt-2 text-sm font-semibold text-slate-100 line-clamp-1">{p.title}</h4>
-              <p className="mt-1 text-xs text-slate-400">{p.project}</p>
+              <h4 className="mt-2 text-sm font-semibold text-foreground line-clamp-1">{p.title}</h4>
+              <p className="mt-1 text-xs text-muted-foreground">{p.project}</p>
             </div>
           ))}
         </div>
@@ -250,19 +250,19 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
         {/* Plan Review Details & Recommendations */}
         {selectedPlan && (
           <div className="space-y-6 lg:col-span-2">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+            <div className="rounded-xl border border-border bg-card/60 p-6">
               <div className="flex items-start justify-between">
                 <div>
-                  <span className="font-mono text-xs font-bold text-slate-400">
+                  <span className="font-mono text-xs font-bold text-muted-foreground">
                     {selectedPlan.id}
                   </span>
-                  <h2 className="mt-1 text-xl font-bold text-slate-100">{selectedPlan.title}</h2>
-                  <p className="text-xs text-slate-400">Project: {selectedPlan.project}</p>
+                  <h2 className="mt-1 text-xl font-bold text-foreground">{selectedPlan.title}</h2>
+                  <p className="text-xs text-muted-foreground">Project: {selectedPlan.project}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => onSelectPlan(selectedPlan.id)}
-                  className="rounded bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700"
+                  className="rounded bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent"
                 >
                   View Full Spec & Diff →
                 </button>
@@ -271,10 +271,10 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               {/* Review Actions Bar */}
               {reviewActions.length > 0 && (
                 <div
-                  className="mt-6 border-t border-slate-800 pt-4"
+                  className="mt-6 border-t border-border pt-4"
                   data-testid="review-actions-bar-container"
                 >
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Review Actions
                   </div>
                   <ReviewActionsBarView
@@ -288,7 +288,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               )}
 
               {/* Triage Actions */}
-              <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-800 pt-4">
+              <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">
                 <button
                   type="button"
                   disabled={!canPr.allowed}
@@ -296,8 +296,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   onClick={() => setActiveDialog("createPr")}
                   className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
                     canPr.allowed
-                      ? "bg-emerald-600 text-white hover:bg-emerald-500"
-                      : "cursor-not-allowed bg-slate-800 text-slate-500"
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "cursor-not-allowed bg-muted text-muted-foreground/70"
                   }`}
                 >
                   Approve & Create PR
@@ -305,7 +305,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveDialog("suggestChanges")}
-                  className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-amber-500"
+                  className="rounded-lg bg-warning px-4 py-2 text-xs font-medium text-warning-foreground transition hover:bg-warning/90"
                 >
                   Request Changes (Retry)
                 </button>
@@ -313,7 +313,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setActiveDialog("partialDelivery")}
-                    className="rounded-lg bg-amber-900/60 px-4 py-2 text-xs font-medium text-amber-200 transition hover:bg-amber-900"
+                    className="rounded-lg bg-warning/20 px-4 py-2 text-xs font-medium text-warning transition hover:bg-warning/30"
                   >
                     Accept Partial Delivery
                   </button>
@@ -322,7 +322,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setActiveDialog("reset")}
-                    className="rounded-lg bg-slate-800 px-4 py-2 text-xs font-medium text-slate-300 transition hover:bg-slate-700"
+                    className="rounded-lg bg-muted px-4 py-2 text-xs font-medium text-muted-foreground transition hover:bg-accent"
                   >
                     Reset to Draft…
                   </button>
@@ -331,7 +331,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setActiveDialog("discard")}
-                    className="rounded-lg bg-red-900/60 px-4 py-2 text-xs font-medium text-red-200 transition hover:bg-red-900"
+                    className="rounded-lg bg-destructive/20 px-4 py-2 text-xs font-medium text-destructive transition hover:bg-destructive/30"
                   >
                     Discard Plan…
                   </button>
@@ -342,7 +342,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 <div
                   role="alert"
                   data-testid="review-action-error"
-                  className="mt-4 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+                  className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
                 >
                   {actionError}
                 </div>
@@ -350,9 +350,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             </div>
 
             {/* Recommendations List */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-              <h3 className="text-sm font-semibold text-slate-100">Plan Recommendations</h3>
-              <p className="text-xs text-slate-400">
+            <div className="rounded-xl border border-border bg-card/60 p-6">
+              <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
+              <p className="text-xs text-muted-foreground">
                 Out-of-scope follow-ups and improvements discovered during execution.
               </p>
 
@@ -360,14 +360,17 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 <div
                   role="alert"
                   data-testid="recommendations-error"
-                  className="mt-4 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+                  className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
                 >
                   {recsError}
                 </div>
               )}
 
               {!recsError && recommendations.length === 0 && (
-                <p data-testid="no-recommendations" className="mt-4 text-xs text-slate-500">
+                <p
+                  data-testid="no-recommendations"
+                  className="mt-4 text-xs text-muted-foreground/70"
+                >
                   ExecutePlan registered no recommendations for this plan.
                 </p>
               )}

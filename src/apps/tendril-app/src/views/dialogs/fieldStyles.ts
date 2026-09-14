@@ -1,9 +1,9 @@
 /**
  * Field styling shared by the lifecycle dialogs.
  *
- * Semantic design tokens only — the surrounding views still use `slate-*`
- * palette classes, and copying them into new files would spread a theme the
- * tokens exist to replace.
+ * Semantic design tokens only, which is now the whole app's convention: the
+ * surrounding views carried `slate-*` palette classes when these dialogs were
+ * written, and have since been converted to the same tokens.
  */
 export const FIELD_CLASS =
   "w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";

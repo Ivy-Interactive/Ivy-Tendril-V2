@@ -70,6 +70,7 @@ pub fn create_plan(plans_dir: &Path, opts: CreatePlanOptions) -> Result<PlanFile
         source_url: opts.source_url,
         recommendations: None,
         chat_session_id: opts.chat_session_id,
+        allocated_ports: None,
         extra: std::collections::BTreeMap::new(),
     };
 

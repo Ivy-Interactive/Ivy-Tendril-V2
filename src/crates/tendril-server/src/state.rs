@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use tendril_core::agents::model_cache::{self, CacheFreshness};
 use tendril_core::chat::execution::ChatExecutionManager;
 use tendril_core::config::{
     get_config_path, get_database_path, get_plans_dir_with_settings, load_config,
@@ -33,13 +34,38 @@ impl AppState {
 
         let settings = load_config(&config_path).unwrap_or_default();
         let enrich_models = settings.enrich_models;
+        let warn_age_days = settings.model_cache_warn_age_days;
+        let max_age_days = settings.model_cache_max_age_days;
 
-        // Make any cached models.dev enrichment immediately available, then optionally
-        // refresh it in the background so startup never blocks on network access.
-        if let Ok(cached_specs) = tendril_core::agents::model_cache::load_disk_cache(&tendril_home)
-        {
-            if !cached_specs.is_empty() {
-                tendril_core::agents::model_specs::register_dynamic_specs(cached_specs);
+        // Make any cached models.dev enrichment immediately available (unless it has expired),
+        // then optionally refresh it in the background so startup never blocks on network access.
+        if let Ok(catalog) = model_cache::load_disk_cache(&tendril_home) {
+            if !catalog.is_empty() {
+                match model_cache::classify(&catalog, warn_age_days, max_age_days) {
+                    CacheFreshness::Fresh { age_days } => {
+                        tracing::debug!(
+                            "Using models.dev disk cache ({} models, age: {})",
+                            catalog.specs.len(),
+                            age_days.map_or("unknown".to_string(), |d| format!("{d} days"))
+                        );
+                        tendril_core::agents::model_specs::register_dynamic_specs(catalog.specs);
+                    }
+                    CacheFreshness::Stale { age_days } => {
+                        let age = age_days.map_or("unknown".to_string(), |d| format!("{d} days"));
+                        tracing::warn!(
+                            "Model cache from models.dev is {age} old; pricing may be out of date. Run `tendril models --refresh` or check network access."
+                        );
+                        tendril_core::agents::model_specs::register_dynamic_specs(catalog.specs);
+                    }
+                    CacheFreshness::Expired { age_days } => {
+                        let age = age_days.map_or("no recorded fetch time".to_string(), |d| {
+                            format!("{d} days old")
+                        });
+                        tracing::warn!(
+                            "Ignoring models.dev cache ({age}); falling back to built-in model specs"
+                        );
+                    }
+                }
             }
         }
         if enrich_models {
