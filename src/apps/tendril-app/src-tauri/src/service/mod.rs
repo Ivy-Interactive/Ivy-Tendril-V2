@@ -1,3 +1,4 @@
+pub mod changes_bridge;
 pub mod client;
 pub mod compatibility;
 pub mod master;
@@ -6,6 +7,7 @@ pub mod platform;
 pub mod supervisor;
 pub mod ws_bridge;
 
+pub use changes_bridge::ChangeBridge;
 pub use client::TendrilClient;
 pub use compatibility::{SemVer, ServiceCompatibilityManager, VersionCheckResult};
 pub use master::MasterDiscovery;

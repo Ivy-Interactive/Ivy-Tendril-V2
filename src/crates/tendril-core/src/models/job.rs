@@ -216,6 +216,48 @@ impl JobArgs {
             _ => None,
         }
     }
+
+    /// Canonical identity of the *work* this submission asks for, or `None` for a job type that is
+    /// not deduplicated. Two submissions with equal keys are the same work, so the second one is a
+    /// conflict rather than a second job, worktree and agent.
+    ///
+    /// This is narrower than [`crate::jobs::manager::conflict_group`], which asks whether two job
+    /// types would *fight* over one plan. Both gates run: the group check catches an `ExecutePlan`
+    /// launched while a `CreatePr` holds the same plan, and this key catches the same work submitted
+    /// twice — including `CreatePlan`, which has no plan folder to group on at all.
+    pub fn dedupe_key(&self) -> Option<String> {
+        match self {
+            // A plan does not exist yet, so the work is identified by what was asked for.
+            Self::CreatePlan(a) => Some(format!(
+                "CreatePlan|{}|{}",
+                a.project.trim().to_lowercase(),
+                normalize_description(&a.description)
+            )),
+            // Every plan-scoped type keys on its folder: one plan, one in-flight job of that type.
+            // The type is part of the key, so an ExpandPlan and an ExecutePlan on the same plan do
+            // not collide here. The folder is *not* lowercased — Linux paths are case-sensitive, and
+            // two genuinely different plans could differ only in case.
+            _ => self.plan_folder().and_then(|f| {
+                let folder = f.trim_end_matches(['/', '\\']).trim();
+                (!folder.is_empty()).then(|| format!("{}|{}", self.job_type(), folder))
+            }),
+        }
+    }
+
+    /// The operator's explicit "yes, again" for this submission. Only `CreatePlan` carries it in its
+    /// own args; every other type is forced through [`crate::jobs::StartOptions::force`].
+    pub fn force_flag(&self) -> bool {
+        matches!(self, Self::CreatePlan(a) if a.force)
+    }
+}
+
+/// Trim, collapse internal whitespace runs to one space, lowercase. Two descriptions that differ
+/// only in how they were typed are the same request.
+fn normalize_description(s: &str) -> String {
+    s.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -302,6 +344,10 @@ pub struct JobItem {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub wait_for_job_ids: Vec<String>,
+    /// Identity of the work this job does, from [`JobArgs::dedupe_key`]. `None` for a job type that
+    /// is not deduplicated and for a forced submission, which opts out of dedupe entirely.
+    #[serde(rename = "dedupeKey", skip_serializing_if = "Option::is_none")]
+    pub dedupe_key: Option<String>,
 }
 
 fn default_provider() -> String {
@@ -346,6 +392,7 @@ impl JobItem {
             priority: 0,
             last_output_at: None,
             wait_for_job_ids: Vec::new(),
+            dedupe_key: None,
         }
     }
 

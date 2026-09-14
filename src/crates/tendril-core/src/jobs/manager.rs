@@ -2,8 +2,9 @@ use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcess
 use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
-    delete_job as delete_job_row, get_job, insert_job, insert_new_job, list_job_ids_by_status,
-    list_jobs, list_non_terminal_jobs, max_numeric_job_id, touch_job_last_output,
+    delete_job as delete_job_row, find_inflight_job_by_dedupe_key, get_job, insert_job,
+    insert_new_job, list_job_ids_by_status, list_jobs, list_non_terminal_jobs, max_numeric_job_id,
+    touch_job_last_output,
 };
 use crate::db::open_database;
 use crate::error::{Result, TendrilError};
@@ -19,7 +20,7 @@ use crate::jobs::dependents::release_dependents;
 use crate::jobs::failure_analysis::extract_failure_reason;
 use crate::jobs::firmware_values::{
     build_firmware_values, execution_profile_override, find_project, find_repo_ref, repo_name,
-    resolve_project, resolve_working_directory,
+    resolve_project, resolve_project_skills, resolve_working_directory,
 };
 use crate::jobs::logger::{
     append_agent_log, append_to_eventwire, append_to_raw_log, find_log_file, read_eventwire_log,
@@ -36,7 +37,7 @@ use crate::plans::guards::PlanCompletionGuard;
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::verification_gate::resolve_post_execution_state;
 use crate::plans::writer::write_plan_yaml;
-use crate::promptware::compiler::compile_firmware;
+use crate::promptware::compiler::compile_firmware_with_skills;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -105,6 +106,9 @@ pub struct StartOptions {
     pub wait_for_jobs: Vec<String>,
     /// Overrides the priority derived from args/`plan.yaml`.
     pub priority: Option<i32>,
+    /// The operator's deliberate "yes, again": skips both duplicate gates. It never bypasses the
+    /// dependency gate — only the "is this already in flight" question.
+    pub force: bool,
 }
 
 /// Why a job may not be queued yet.
@@ -274,14 +278,37 @@ impl JobManager {
     }
 
     pub async fn start_job(&self, args: JobArgs) -> Result<String> {
-        self.start_job_with(args, StartOptions::default()).await
+        // `CreatePlan` carries its own force flag, which is the only way an operator could express
+        // "again" before `StartOptions` existed.
+        let force = args.force_flag();
+        self.start_job_with(
+            args,
+            StartOptions {
+                force,
+                ..Default::default()
+            },
+        )
+        .await
+    }
+
+    /// Starts a job, overriding the duplicate gates when `force` is set. See
+    /// [`StartOptions::force`] — it is not a licence to skip the dependency gate.
+    pub async fn start_job_forced(&self, args: JobArgs, force: bool) -> Result<String> {
+        self.start_job_with(
+            args,
+            StartOptions {
+                force,
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     /// Starts a job, honouring the per-start options that do not belong to any job type's own args.
     ///
-    /// Gates run in this order: conflict rejection, the plan dependency gate, the wait-for-jobs gate,
-    /// the plan state transition, then the enqueue. A rejected conflict is the only one that returns
-    /// `Err`: it writes no job row and touches no plan state.
+    /// Gates run in this order: conflict rejection, the duplicate-work rejection, the plan dependency
+    /// gate, the wait-for-jobs gate, the plan state transition, then the enqueue. The two rejections
+    /// are the only ones that return `Err`: they write no job row and touch no plan state.
     pub async fn start_job_with(&self, args: JobArgs, opts: StartOptions) -> Result<String> {
         let job_type = args.job_type().to_string();
         let plan_folder_str = args.plan_folder().unwrap_or("").to_string();
@@ -296,14 +323,26 @@ impl JobManager {
 
         let settings = self.settings.read().await.clone();
 
+        // A forced submission is the operator saying "yes, again": it opts out of both duplicate
+        // gates, and stores no dedupe key so it cannot block the next submission either.
+        let force = opts.force || args.force_flag();
+
         // Before anything is allocated or written: another job of the same group must not already be
         // working on this plan.
-        if let Some(existing_id) = self.find_conflicting_job(&job_type, &plan_folder_str).await {
-            return Err(TendrilError::Conflict(format!(
-                "{} already in progress for this plan (job {})",
-                job_type, existing_id
-            )));
+        if !force {
+            if let Some(existing_id) = self.find_conflicting_job(&job_type, &plan_folder_str).await
+            {
+                return Err(TendrilError::Conflict(format!(
+                    "{} already in progress for this plan (job {}). Use force to submit it again.",
+                    job_type, existing_id
+                )));
+            }
         }
+
+        // The key for the *work*, checked under `alloc_lock` further down so two concurrent
+        // submissions cannot both pass. `None` for a forced submission and for a job type that is
+        // not deduplicated.
+        let dedupe_key = if force { None } else { args.dedupe_key() };
 
         // Snapshot the plan state before anything mutates it, so a failure, timeout or cancel can
         // put the plan back where it was.
@@ -372,9 +411,9 @@ impl JobManager {
             job.completed_at = Some(Utc::now());
         }
 
-        // Move the plan to its in-flight (or Blocked) state. A job waiting on another *job* leaves
-        // the plan alone: nothing about the plan itself is blocked, so the gate must not be re-run
-        // against a `Blocked` state it never earned.
+        // The plan's in-flight (or Blocked) state. A job waiting on another *job* leaves the plan
+        // alone: nothing about the plan itself is blocked, so the gate must not be re-run against a
+        // `Blocked` state it never earned.
         let target_plan_state = if block_reason.is_some() {
             Some(PlanStatus::Blocked)
         } else if wait_outcome.is_none() {
@@ -382,25 +421,41 @@ impl JobManager {
         } else {
             None
         };
-        if let Some(state) = target_plan_state {
-            self.set_plan_state(&plan_folder, state);
-        }
 
         // Allocate the ID and insert the row under one lock, so a concurrent start cannot reuse it.
         let job_id = {
             let _guard = self.alloc_lock.lock().await;
-            let job_id = self.allocate_job_id().await?;
-            job.id = job_id.clone();
 
             let db_path = crate::config::get_database_path(&self.tendril_home);
             let conn = open_database(&db_path)?;
-            insert_new_job(&conn, &job).map_err(|e| {
-                TendrilError::Other(format!("Failed to persist job {}: {}", job_id, e))
-            })?;
+
+            // Idempotency at the door: the same work already in flight is a conflict, not a second
+            // job, worktree and agent. Checked under `alloc_lock` and before the insert, so two
+            // concurrent submissions cannot both pass.
+            if let Some(key) = &dedupe_key {
+                if let Some(existing) = find_inflight_job_by_dedupe_key(&conn, key)? {
+                    return Err(TendrilError::DuplicateJob(format!(
+                        "{} is already in flight as job {} ({}). Use force to submit it again.",
+                        job_type, existing.id, existing.status
+                    )));
+                }
+            }
+
+            let job_id = self.allocate_job_id().await?;
+            job.id = job_id.clone();
+            job.dedupe_key = dedupe_key.clone();
+
+            insert_new_job(&conn, &job).map_err(|e| duplicate_or_other(e, &job_id, &dedupe_key))?;
 
             self.jobs.write().await.insert(job_id.clone(), job.clone());
             job_id
         };
+
+        // Only now, with a row actually written, is the plan moved: a rejected duplicate leaves the
+        // plan exactly as it found it rather than flipping it to `Executing` with no job behind it.
+        if let Some(state) = target_plan_state {
+            self.set_plan_state(&plan_folder, state);
+        }
 
         if job.status != JobStatus::Queued {
             // Blocked or failed at a gate: no slot is claimed and no runner is armed.
@@ -1003,6 +1058,31 @@ pub fn conflict_group(job_type: &str) -> Option<&'static str> {
     }
 }
 
+/// Translates a failed `insert_new_job` into the right error.
+///
+/// A unique-index violation on `DedupeKey` is the cross-process arm of the duplicate check: another
+/// writer inserted the same work between our query and our insert. It deserves the same
+/// [`TendrilError::DuplicateJob`] as the in-process rejection, so the operator sees a 409 either way.
+/// The winning row's id is not in hand here, so the message reports the key instead. Every other
+/// failure — including a primary-key collision on `Id`, which is also a constraint violation — stays
+/// a generic persist failure.
+fn duplicate_or_other(
+    e: rusqlite::Error,
+    job_id: &str,
+    dedupe_key: &Option<String>,
+) -> TendrilError {
+    if let rusqlite::Error::SqliteFailure(err, Some(msg)) = &e {
+        if err.code == rusqlite::ErrorCode::ConstraintViolation && msg.contains("DedupeKey") {
+            return TendrilError::DuplicateJob(format!(
+                "This work is already in flight in another writer (dedupe key {}). Use force to \
+                 submit it again.",
+                dedupe_key.as_deref().unwrap_or("unknown")
+            ));
+        }
+    }
+    TendrilError::Other(format!("Failed to persist job {}: {}", job_id, e))
+}
+
 /// The priority a job launches with: an explicit override, else `CreatePlanArgs.priority`, else the
 /// plan's own `plan.yaml` priority, else `0`.
 fn resolve_job_priority(args: &JobArgs, plan_folder: &Path, override_priority: Option<i32>) -> i32 {
@@ -1424,32 +1504,34 @@ fn spawn_runner(
         }
 
         let values = build_firmware_values(&job, &tendril_home, &settings);
-        let compiled_prompt = match compile_firmware(&promptware_folder, &values) {
-            Ok(p) => p,
-            Err(e) => {
-                let msg = format!(
-                    "Failed to compile firmware from {}: {}",
-                    promptware_folder.display(),
-                    e
-                );
-                finish_job(
-                    &tendril_home,
-                    &plans_dir,
-                    &jobs_map,
-                    &handles,
-                    &completion_claimed,
-                    job,
-                    JobStatus::Failed,
-                    msg,
-                    None,
-                )
-                .await;
-                release_wait_dependents(&ctx, &job_id).await;
-                drop(permit);
-                dispatch_notify.notify_one();
-                return;
-            }
-        };
+        let skills = resolve_project_skills(&settings, &job.project, &tendril_home);
+        let compiled_prompt =
+            match compile_firmware_with_skills(&promptware_folder, &values, &skills) {
+                Ok(p) => p,
+                Err(e) => {
+                    let msg = format!(
+                        "Failed to compile firmware from {}: {}",
+                        promptware_folder.display(),
+                        e
+                    );
+                    finish_job(
+                        &tendril_home,
+                        &plans_dir,
+                        &jobs_map,
+                        &handles,
+                        &completion_claimed,
+                        job,
+                        JobStatus::Failed,
+                        msg,
+                        None,
+                    )
+                    .await;
+                    release_wait_dependents(&ctx, &job_id).await;
+                    drop(permit);
+                    dispatch_notify.notify_one();
+                    return;
+                }
+            };
 
         if let Err(e) = write_prompt(&tendril_home, &job_id, &compiled_prompt) {
             tracing::warn!("Failed to persist prompt for job {}: {}", job_id, e);

@@ -25,6 +25,41 @@ export async function onPlanEvent(handler: (payload: unknown) => void): Promise<
   return () => unlisten();
 }
 
+/** What changed on disk. `folder: null` on a plans change means "rescan everything". */
+export type ChangeTarget =
+  | { kind: "plans"; folder: string | null }
+  | { kind: "config" }
+  | { kind: "inbox" };
+
+export interface ChangeEvent {
+  type: "fs.change";
+  target: ChangeTarget;
+}
+
+/**
+ * Filesystem changes, bridged from the daemon's `/api/changes/events` SSE stream by
+ * `service/changes_bridge.rs`. That stream is bearer-authenticated and the secret is native-only, so
+ * the webview receives the frames as Tauri events rather than reading the stream itself.
+ */
+export async function onChangeEvent(
+  handler: (event: ChangeEvent) => void,
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<ChangeEvent>("change-event", (event) => {
+    handler(event.payload);
+  });
+  return () => unlisten();
+}
+
+/** Connection transitions of the change stream, which decide whether polling is needed at all. */
+export async function onChangeStreamStatus(
+  handler: (status: "connected" | "disconnected") => void,
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<string>("change-stream-status", (event) => {
+    handler(event.payload as "connected" | "disconnected");
+  });
+  return () => unlisten();
+}
+
 export async function onChatEvent(
   handler: (event: import("../types/chat").ChatEvent) => void,
 ): Promise<EventUnsubscribe> {

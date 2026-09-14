@@ -39,7 +39,7 @@ describe("ChatView Keyboard Shortcuts", () => {
   });
 
   it("submits message with Ctrl+Enter", async () => {
-    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+    const executeSpy = vi.spyOn(chatApi, "executeTurn").mockResolvedValue();
     render(<ChatView />);
 
     await waitFor(() => {
@@ -52,16 +52,17 @@ describe("ChatView Keyboard Shortcuts", () => {
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
 
     await waitFor(() => {
-      expect(postSpy).toHaveBeenCalledWith(
-        "session-shortcuts",
-        "Sending via Ctrl+Enter",
-        undefined,
-      );
+      expect(executeSpy).toHaveBeenCalledWith("session-shortcuts", {
+        prompt: "Sending via Ctrl+Enter",
+        agentId: "claude",
+        modelId: undefined,
+        effort: undefined,
+      });
     });
   });
 
   it("submits message with Cmd+Enter (metaKey)", async () => {
-    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+    const executeSpy = vi.spyOn(chatApi, "executeTurn").mockResolvedValue();
     render(<ChatView />);
 
     await waitFor(() => {
@@ -74,12 +75,17 @@ describe("ChatView Keyboard Shortcuts", () => {
     fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
 
     await waitFor(() => {
-      expect(postSpy).toHaveBeenCalledWith("session-shortcuts", "Sending via Cmd+Enter", undefined);
+      expect(executeSpy).toHaveBeenCalledWith("session-shortcuts", {
+        prompt: "Sending via Cmd+Enter",
+        agentId: "claude",
+        modelId: undefined,
+        effort: undefined,
+      });
     });
   });
 
   it("submits message with plain Enter and preserves newline on Shift+Enter", async () => {
-    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+    const executeSpy = vi.spyOn(chatApi, "executeTurn").mockResolvedValue();
     render(<ChatView />);
 
     await waitFor(() => {
@@ -91,12 +97,17 @@ describe("ChatView Keyboard Shortcuts", () => {
     // Shift+Enter should NOT submit
     fireEvent.change(textarea, { target: { value: "Line one\n" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
-    expect(postSpy).not.toHaveBeenCalled();
+    expect(executeSpy).not.toHaveBeenCalled();
 
     // Plain Enter should submit
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
     await waitFor(() => {
-      expect(postSpy).toHaveBeenCalledWith("session-shortcuts", "Line one", undefined);
+      expect(executeSpy).toHaveBeenCalledWith("session-shortcuts", {
+        prompt: "Line one",
+        agentId: "claude",
+        modelId: undefined,
+        effort: undefined,
+      });
     });
   });
 });

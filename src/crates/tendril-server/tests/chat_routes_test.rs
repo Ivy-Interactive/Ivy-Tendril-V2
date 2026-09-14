@@ -205,7 +205,35 @@ async fn test_chat_routes_crud_and_queue() {
     assert_eq!(queue_list.len(), 1);
     assert_eq!(queue_list[0]["id"], item_id);
 
-    // 7. Delete queued item
+    // 7. Edit the queued item in place
+    let queue_put = client
+        .put(format!(
+            "{}/api/chat/sessions/{}/queue/{}",
+            base_url, session_id, item_id
+        ))
+        .header(AUTHORIZATION, format!("Bearer {}", server.secret))
+        .json(&json!({ "prompt": "Queued prompt 1 (edited)" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(queue_put.status(), reqwest::StatusCode::OK);
+    let edited: serde_json::Value = queue_put.json().await.unwrap();
+    assert_eq!(edited["id"], item_id);
+    assert_eq!(edited["prompt"], "Queued prompt 1 (edited)");
+
+    let missing_put = client
+        .put(format!(
+            "{}/api/chat/sessions/{}/queue/does-not-exist",
+            base_url, session_id
+        ))
+        .header(AUTHORIZATION, format!("Bearer {}", server.secret))
+        .json(&json!({ "prompt": "nope" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing_put.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // 8. Delete queued item
     let queue_del = client
         .delete(format!(
             "{}/api/chat/sessions/{}/queue/{}",
@@ -217,7 +245,7 @@ async fn test_chat_routes_crud_and_queue() {
         .unwrap();
     assert_eq!(queue_del.status(), reqwest::StatusCode::OK);
 
-    // 8. Delete session
+    // 9. Delete session
     let del_resp = client
         .delete(format!("{}/api/chat/sessions/{}", base_url, session_id))
         .header(AUTHORIZATION, format!("Bearer {}", server.secret))

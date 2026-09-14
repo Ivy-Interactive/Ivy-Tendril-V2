@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PlanDetailView } from "../src/views/PlanDetailView";
 import { PlanVerifications } from "../src/views/PlanVerifications";
 import { bridge } from "../src/api/bridge";
-import { planDetail, verification } from "./fixtures/plan.fixture";
+import { planDetail, prStatus, verification } from "./fixtures/plan.fixture";
 import { recommendation, bridgeError } from "./fixtures/recommendation.fixture";
 
 describe("PlanDetailView and PlanVerifications interactive controls", () => {
@@ -29,6 +29,7 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
   beforeEach(() => {
     vi.spyOn(bridge, "listVerificationReports").mockResolvedValue([]);
     vi.spyOn(bridge, "listRecommendations").mockResolvedValue(testPlan.recommendations);
+    vi.spyOn(bridge, "listPullRequests").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -193,5 +194,24 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
 
     // Rolled back to Pending
     expect(select).toHaveValue("Pending");
+  });
+  it("shows PR status in the metadata tab's Pull Requests card", async () => {
+    vi.spyOn(bridge, "listPullRequests").mockResolvedValue([
+      prStatus({
+        prUrl: "https://github.com/SpaceCorps/Tendril-App/pull/2",
+        planId: "00021",
+        status: "Merged",
+        branch: "tendril/00021-BuildDesktopOperator",
+      }),
+    ]);
+
+    render(<PlanDetailView plan={testPlan} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /metadata & history/i }));
+
+    expect(screen.getByText("Pull Requests")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Merged")).toBeInTheDocument());
+    expect(screen.getByText("tendril/00021-BuildDesktopOperator")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
   });
 });

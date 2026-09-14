@@ -1,8 +1,8 @@
 use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
-    PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto, RevisionResultDto,
-    VerificationReportDto,
+    DraftCommentDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto,
+    RepoStatusDto, RevisionResultDto, VerificationReportDto,
 };
 
 #[tauri::command]
@@ -42,6 +42,29 @@ pub async fn cmd_write_revision(
     get_client_from_master()?
         .write_revision(&id, &content)
         .await
+}
+
+/// Permanently delete a plan: its folder on disk and its database row.
+///
+/// Irreversible, and the service refuses it while a job still holds the plan, so
+/// the caller is expected to have confirmed with the operator first.
+#[tauri::command]
+pub async fn cmd_delete_plan(id: String) -> Result<(), BridgeError> {
+    get_client_from_master()?.delete_plan(&id).await
+}
+
+/// Send a plan back to Draft, removing its worktrees. Refused for Completed or
+/// Skipped plans and for plans a job is still running.
+#[tauri::command]
+pub async fn cmd_reset_plan(id: String) -> Result<(), BridgeError> {
+    get_client_from_master()?.reset_plan(&id).await
+}
+
+/// Uncommitted-change status of each repo a plan targets, for the dirty-repo
+/// pre-execution guard.
+#[tauri::command]
+pub async fn cmd_get_repo_status(id: String) -> Result<Vec<RepoStatusDto>, BridgeError> {
+    get_client_from_master()?.get_repo_status(&id).await
 }
 
 /// Read one verification report for a plan.
@@ -143,6 +166,42 @@ pub async fn cmd_set_verification_status(
 
     get_client_from_master()?
         .update_verification(&plan_id, &name, &status)
+        .await
+}
+
+/// Every inline diff comment drafted against a plan.
+#[tauri::command]
+pub async fn cmd_list_diff_comments(plan_id: String) -> Result<Vec<DraftCommentDto>, BridgeError> {
+    get_client_from_master()?.list_diff_comments(&plan_id).await
+}
+
+/// Add or edit one comment. Returns the plan's whole list, so the caller can replace its state
+/// wholesale instead of reconciling.
+#[tauri::command]
+pub async fn cmd_upsert_diff_comment(
+    plan_id: String,
+    comment: DraftCommentDto,
+) -> Result<Vec<DraftCommentDto>, BridgeError> {
+    get_client_from_master()?
+        .upsert_diff_comment(&plan_id, &comment)
+        .await
+}
+
+#[tauri::command]
+pub async fn cmd_delete_diff_comment(
+    plan_id: String,
+    file_path: String,
+    change_key: String,
+) -> Result<Vec<DraftCommentDto>, BridgeError> {
+    get_client_from_master()?
+        .delete_diff_comment(&plan_id, &file_path, &change_key)
+        .await
+}
+
+#[tauri::command]
+pub async fn cmd_clear_diff_comments(plan_id: String) -> Result<(), BridgeError> {
+    get_client_from_master()?
+        .clear_diff_comments(&plan_id)
         .await
 }
 

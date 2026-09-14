@@ -1,14 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  DraftComment,
   GitHubIssuesPage,
   Job,
   JobDetail,
+  ModelCatalogStatus,
   PlanDetail,
   PlanQuery,
   PlanSummary,
+  PrStatus,
+  PrSyncReport,
   ProjectSummary,
   RecommendationItem,
   RecommendationState,
+  RepoStatus,
   ReviewActionConfig,
   RevisionResult,
   ServiceHealth,
@@ -68,12 +73,64 @@ export const bridge = {
     });
   },
 
+  /**
+   * Permanently delete a plan folder and its database row. Rejects with a
+   * `CONFLICT` bridge error while a job still holds the plan.
+   */
+  async deletePlan(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_delete_plan", { id });
+  },
+
+  /**
+   * Send a plan back to Draft and remove its worktrees. Rejects with a
+   * `CONFLICT` bridge error for Completed/Skipped plans and for running ones.
+   */
+  async resetPlan(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_reset_plan", { id });
+  },
+
+  /** Uncommitted-change status of each repo the plan targets. */
+  async getRepoStatus(this: void, id: string): Promise<RepoStatus[]> {
+    return invoke<RepoStatus[]>("cmd_get_repo_status", { id });
+  },
+
   async getRevision(this: void, id: string, number?: number): Promise<string> {
     return invoke<string>("cmd_get_revision", { id, number });
   },
 
   async writeRevision(this: void, id: string, content: string): Promise<RevisionResult> {
     return invoke<RevisionResult>("cmd_write_revision", { id, content });
+  },
+
+  /**
+   * Every inline diff comment drafted against a plan, across all revision pairs.
+   *
+   * The mutations below all return the plan's new full list, so a caller replaces its state from
+   * the response instead of guessing at the outcome.
+   */
+  async listDiffComments(this: void, planId: string): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_list_diff_comments", { planId });
+  },
+
+  async upsertDiffComment(
+    this: void,
+    planId: string,
+    comment: DraftComment,
+  ): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_upsert_diff_comment", { planId, comment });
+  },
+
+  async deleteDiffComment(
+    this: void,
+    planId: string,
+    filePath: string,
+    changeKey: string,
+  ): Promise<DraftComment[]> {
+    return invoke<DraftComment[]>("cmd_delete_diff_comment", { planId, filePath, changeKey });
+  },
+
+  async clearDiffComments(this: void, planId: string): Promise<void> {
+    return invoke<void>("cmd_clear_diff_comments", { planId });
   },
 
   /** Markdown of one `<planFolder>/Verification/<name>.md` report. */
@@ -155,6 +212,15 @@ export const bridge = {
     return invoke<ProjectSummary[]>("cmd_list_projects");
   },
 
+  async listPullRequests(this: void): Promise<PrStatus[]> {
+    return invoke<PrStatus[]>("cmd_list_pull_requests");
+  },
+
+  /** Rejects with code `PR_SYNC_IN_PROGRESS` when the daemon is already reconciling. */
+  async syncPullRequests(this: void): Promise<PrSyncReport> {
+    return invoke<PrSyncReport>("cmd_sync_pull_requests");
+  },
+
   async getProjectReviewActions(this: void, projectName: string): Promise<ReviewActionConfig[]> {
     try {
       const projects = await bridge.listProjects();
@@ -202,6 +268,14 @@ export const bridge = {
 
   async getConfig(this: void): Promise<TendrilConfig> {
     return invoke<TendrilConfig>("cmd_get_config");
+  },
+
+  async getModelsStatus(this: void): Promise<ModelCatalogStatus> {
+    return invoke<ModelCatalogStatus>("cmd_get_models_status");
+  },
+
+  async refreshModels(this: void): Promise<ModelCatalogStatus> {
+    return invoke<ModelCatalogStatus>("cmd_refresh_models");
   },
 
   async saveUiState(this: void, key: string, value: string): Promise<void> {

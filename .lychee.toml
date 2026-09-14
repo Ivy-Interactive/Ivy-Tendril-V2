@@ -1,0 +1,38 @@
+# Lychee configuration for markdown link validation
+
+# Cache settings
+cache = true
+max_cache_age = "1d"
+
+# Accepted HTTP status codes (ignore rate limits)
+accept = [200, 204, 429]
+
+# Excluded link patterns (regexes)
+exclude = [
+  "^https://youtu\\.be/",
+  "^https://www\\.youtube\\.com/",
+  "^https://discord\\.gg/",
+  # Documentation host is not published yet (DNS NXDOMAIN);
+  # re-enable this check once tendril.ivy.app resolves.
+  "^https://tendril\\.ivy\\.app",
+  # GitHub gates the stargazers list behind sign-in, so it 404s for any
+  # unauthenticated checker on every public repo. Not a broken link.
+  "^https://github\\.com/[^/]+/[^/]+/stargazers$",
+  # This repository is private, so GitHub answers 404 to an unauthenticated
+  # checker for it and every path under it. Drop this once it is public.
+  "^https://github\\.com/Ivy-Interactive/Ivy-Tendril-V2",
+  # The VS Code extension is not published to the marketplace yet, so its
+  # listing 404s for every README that links to it. Drop this once it ships.
+  "^https://marketplace\\.visualstudio\\.com/items\\?itemName=ivy-interactive\\.ivy-tendril",
+]
+
+# Excluded file paths
+exclude_path = [
+  "node_modules",
+  "target",
+  "dist",
+]
+
+# Request timeout and retries
+timeout = 15
+max_retries = 2

@@ -1,4 +1,18 @@
-import { useState, useEffect, useRef, useCallback, type RefObject } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, type RefObject } from "react";
+
+/**
+ * Breathing room above a pinned message. The thread supplies the same value as its top padding,
+ * so a pinned row lands flush with the top of the viewport.
+ */
+export const PIN_TOP_PADDING = 10;
+
+interface Pin {
+  messageId: string;
+  /** The one-off scroll that brings the pinned row to the top has already happened. */
+  scrolled: boolean;
+}
+
+const escapeAttribute = (value: string): string => value.replace(/["\\]/g, "\\$&");
 
 export interface UseChatAutoScrollOptions {
   threshold?: number;
@@ -6,11 +20,14 @@ export interface UseChatAutoScrollOptions {
   isGenerating?: boolean;
   scrollContainerRef?: RefObject<HTMLDivElement | null>;
   anchorRef?: RefObject<HTMLDivElement | null>;
+  spacerRef?: RefObject<HTMLDivElement | null>;
 }
 
 export interface UseChatAutoScrollReturn {
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   anchorRef: RefObject<HTMLDivElement | null>;
+  /** Sized by the pin so a just-sent message can sit at the top of the viewport. */
+  spacerRef: RefObject<HTMLDivElement | null>;
   autoScrollEnabled: boolean;
   isLockedToTail: boolean;
   isAtBottom: boolean;
@@ -19,6 +36,9 @@ export interface UseChatAutoScrollReturn {
   resetToTail: () => void;
   notifyContentUpdate: () => void;
   handleScroll: () => void;
+  pinMessage: (messageId: string) => void;
+  retargetPin: (fromMessageId: string, toMessageId: string) => void;
+  clearPin: () => void;
 }
 
 export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseChatAutoScrollReturn {
@@ -28,6 +48,7 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     isGenerating,
     scrollContainerRef: externalContainerRef,
     anchorRef: externalAnchorRef,
+    spacerRef: externalSpacerRef,
   } = options;
 
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
@@ -36,9 +57,12 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
 
   const internalContainerRef = useRef<HTMLDivElement | null>(null);
   const internalAnchorRef = useRef<HTMLDivElement | null>(null);
+  const internalSpacerRef = useRef<HTMLDivElement | null>(null);
 
   const scrollContainerRef = externalContainerRef ?? internalContainerRef;
   const anchorRef = externalAnchorRef ?? internalAnchorRef;
+  const spacerRef = externalSpacerRef ?? internalSpacerRef;
+  const pinRef = useRef<Pin | null>(null);
 
   const autoScrollEnabledRef = useRef(autoScrollEnabled);
   autoScrollEnabledRef.current = autoScrollEnabled;
@@ -147,9 +171,62 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     notifyContentUpdate();
   }, [content, isGenerating, notifyContentUpdate]);
 
+  /**
+   * Pins a message to the top of the viewport. The spacer below the thread is sized so that the
+   * bottom of the scroll range *is* the pinned position, which is why following the stream and
+   * holding the pin are the same scroll — the spacer shrinks as the reply grows, and once the
+   * reply is taller than the viewport the usual follow-the-tail behaviour takes over on its own.
+   */
+  const pinMessage = useCallback((messageId: string) => {
+    pinRef.current = { messageId, scrolled: false };
+    setIsLockedToTail(true);
+    setIsAtBottom(true);
+  }, []);
+
+  /** The pinned message was replaced by its server-side copy; keep the pin on the new row. */
+  const retargetPin = useCallback((fromMessageId: string, toMessageId: string) => {
+    const pin = pinRef.current;
+    if (pin && pin.messageId === fromMessageId) {
+      pinRef.current = { ...pin, messageId: toMessageId };
+    }
+  }, []);
+
+  const clearPin = useCallback(() => {
+    pinRef.current = null;
+    const spacer = spacerRef.current;
+    if (spacer) spacer.style.height = "0px";
+  }, [spacerRef]);
+
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    const spacer = spacerRef.current;
+    const pin = pinRef.current;
+    if (!container || !spacer || !pin) return;
+
+    const target = container.querySelector<HTMLElement>(
+      `[data-message-id="${escapeAttribute(pin.messageId)}"]`,
+    );
+    if (!target) return;
+
+    // Offsets are measured against the container rather than read from `offsetTop`, because a
+    // virtualized row is absolutely positioned and would report an offset relative to itself.
+    const containerTop = container.getBoundingClientRect().top - container.scrollTop;
+    const targetTop = target.getBoundingClientRect().top - containerTop;
+    const contentEnd = spacer.getBoundingClientRect().top - containerTop;
+
+    const needed = container.clientHeight - (contentEnd - targetTop) - PIN_TOP_PADDING;
+    spacer.style.height = `${Math.max(0, Math.round(needed))}px`;
+
+    if (!pin.scrolled) {
+      pin.scrolled = true;
+      container.scrollTop = Math.max(0, Math.round(targetTop - PIN_TOP_PADDING));
+    }
+  });
+
   return {
     scrollContainerRef,
     anchorRef,
+    spacerRef,
     autoScrollEnabled,
     isLockedToTail,
     isAtBottom,
@@ -158,6 +235,9 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     resetToTail,
     notifyContentUpdate,
     handleScroll,
+    pinMessage,
+    retargetPin,
+    clearPin,
   };
 }
 

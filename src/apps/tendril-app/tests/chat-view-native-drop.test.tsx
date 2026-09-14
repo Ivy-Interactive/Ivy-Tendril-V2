@@ -132,7 +132,7 @@ describe("ChatView native webview drag-drop", () => {
   });
 
   it("forwards the absolute native-drop path when sending a message", async () => {
-    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ started: true });
+    const executeSpy = vi.spyOn(chatApi, "executeTurn").mockResolvedValue();
     await renderChatView();
 
     emit({ type: "drop", paths: ["/Users/me/notes.md"] });
@@ -145,9 +145,18 @@ describe("ChatView native webview drag-drop", () => {
     fireEvent.click(screen.getByTitle("Send message"));
 
     await waitFor(() => {
-      expect(postSpy).toHaveBeenCalledWith("session-native-drop", "Look at this", {
-        attachments: [{ name: "notes.md", path: "/Users/me/notes.md" }],
+      expect(executeSpy).toHaveBeenCalledWith("session-native-drop", {
+        prompt: "Look at this",
+        agentId: "claude",
+        modelId: undefined,
+        effort: undefined,
       });
+    });
+
+    // The absolute path travels on the message the thread renders, not on the turn itself.
+    expect(chatStore.getState().activeSession?.messages.at(-1)).toMatchObject({
+      role: "user",
+      attachments: [{ name: "notes.md", path: "/Users/me/notes.md" }],
     });
   });
 

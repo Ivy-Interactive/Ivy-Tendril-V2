@@ -103,3 +103,14 @@ pub async fn cmd_delete_queued_chat_item(
         .delete_queued_chat_item(&session_id, &item_id)
         .await
 }
+
+#[tauri::command]
+pub async fn cmd_update_queued_chat_item(
+    session_id: String,
+    item_id: String,
+    prompt: String,
+) -> Result<ChatQueuedItemDto, BridgeError> {
+    get_client_from_master()?
+        .update_queued_chat_item(&session_id, &item_id, &prompt)
+        .await
+}

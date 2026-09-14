@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { PlanMarkdown as DraftMarkdown } from "./PlanMarkdown";
 
 const renderContent = (content: string) => {
@@ -58,5 +58,27 @@ describe("DraftMarkdown code block rendering and width constraints", () => {
     expect(codeBlockNoLang).not.toBeNull();
     expect(containerNoLang.querySelectorAll("pre").length).toBe(1);
     expect(codeBlockNoLang?.textContent).toContain("plain text content");
+  });
+
+  // The Prism highlighter is behind a lazy import, so a fence with a language first
+  // renders the unhighlighted fallback. The code has to be readable throughout -
+  // that is the whole reason the fallback is the same <pre> the no-language branch
+  // renders, rather than a spinner or nothing.
+  it("shows the code before the lazy highlighter resolves and keeps it after", async () => {
+    const source = "const answer = 42;";
+    const container = renderContent("```typescript\n" + source + "\n```");
+
+    const codeBlock = container.querySelector(".pmv-code-block");
+    expect(codeBlock).not.toBeNull();
+    expect(codeBlock?.textContent).toContain(source);
+    expect(container.querySelectorAll("pre").length).toBe(1);
+
+    // Once the chunk arrives, Prism splits the source across highlighted <span>s,
+    // so the token count rises while the text content stays the same.
+    await waitFor(() => {
+      expect(container.querySelectorAll("pre span").length).toBeGreaterThan(0);
+    });
+    expect(container.querySelector(".pmv-code-block")?.textContent).toContain(source);
+    expect(container.querySelectorAll("pre").length).toBe(1);
   });
 });

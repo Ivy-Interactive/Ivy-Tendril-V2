@@ -12,6 +12,15 @@ import { DashboardPanel } from './webview/dashboardPanel';
 
 let serverManager: ServerManager | undefined;
 let pollTimer: NodeJS.Timeout | undefined;
+let backgroundInit: Promise<void> = Promise.resolve();
+
+/**
+ * Test-only accessor for the fire-and-forget initialization `activate` kicks off. Awaiting it keeps
+ * a spawned server from outliving the test that triggered it.
+ */
+export function awaitBackgroundInit(): Promise<void> {
+  return backgroundInit;
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   serverManager = new ServerManager();
@@ -204,7 +213,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // Background initialization & auto-start check
-  void (async () => {
+  backgroundInit = (async () => {
     const health = await serverManager!.getHealthInfo();
     statusBar.update(health);
 
@@ -221,6 +230,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     await checkAndPromptUnmanagedWorkspace();
   })();
+  void backgroundInit;
 
   // Periodic polling for health status (every 10s)
   pollTimer = setInterval(() => {

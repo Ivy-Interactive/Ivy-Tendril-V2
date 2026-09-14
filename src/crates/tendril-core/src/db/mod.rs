@@ -2,11 +2,13 @@ pub mod costs;
 pub mod jobs;
 pub mod migrations;
 pub mod plans;
+pub mod pr_status;
 
 pub use costs::*;
 pub use jobs::*;
 pub use migrations::*;
 pub use plans::*;
+pub use pr_status::*;
 
 use crate::error::Result;
 use rusqlite::Connection;
