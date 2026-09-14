@@ -1,8 +1,13 @@
 use clap::Subcommand;
 use std::path::Path;
+use std::time::Duration;
 use tendril_core::config::{
     find_projects_referencing_verification, get_config_path, load_config, read_master,
     remove_verification_from_projects, save_config, MasterInfo,
+};
+use tendril_core::http::{
+    classify_transport_error, daemon_client_with_timeout, daemon_request_timeout_for,
+    describe_transport_error, DaemonTransportFailure,
 };
 use tendril_core::models::VerificationConfig;
 
@@ -46,12 +51,29 @@ enum DaemonOutcome {
     Fallback,
 }
 
+/// A daemon call that failed at the transport level.
+///
+/// Only an unreachable daemon may fall back to `config.json`: a timed-out mutation may already have
+/// been applied by the daemon, and applying it locally too would apply it twice.
+fn fallback_or_fail(
+    err: reqwest::Error,
+    master: &MasterInfo,
+    timeout: Option<Duration>,
+) -> anyhow::Result<DaemonOutcome> {
+    match classify_transport_error(&err) {
+        DaemonTransportFailure::Unreachable => Ok(DaemonOutcome::Fallback),
+        _ => Err(anyhow::anyhow!(describe_transport_error(
+            &err, master, timeout
+        ))),
+    }
+}
+
 pub async fn handle_verification_command(
     cmd: VerificationCommands,
     tendril_home: &Path,
 ) -> anyhow::Result<()> {
     if let Some(master) = read_master(tendril_home) {
-        match handle_verification_command_daemon(&cmd, &master).await {
+        match handle_verification_command_daemon(tendril_home, &cmd, &master).await {
             Ok(DaemonOutcome::Handled) => return Ok(()),
             Ok(DaemonOutcome::Fallback) => {
                 tracing::debug!("Failed to reach master daemon, falling back to filesystem");
@@ -64,10 +86,12 @@ pub async fn handle_verification_command(
 }
 
 async fn handle_verification_command_daemon(
+    tendril_home: &Path,
     cmd: &VerificationCommands,
     master: &MasterInfo,
 ) -> anyhow::Result<DaemonOutcome> {
-    let client = reqwest::Client::new();
+    let timeout = daemon_request_timeout_for(tendril_home);
+    let client = daemon_client_with_timeout(timeout);
     let base_url = format!("http://{}:{}", master.host, master.port);
 
     match cmd {
@@ -79,7 +103,7 @@ async fn handle_verification_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if !resp.status().is_success() {
@@ -103,7 +127,7 @@ async fn handle_verification_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -130,7 +154,7 @@ async fn handle_verification_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::CONFLICT {
@@ -164,7 +188,7 @@ async fn handle_verification_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
@@ -195,7 +219,7 @@ async fn handle_verification_command_daemon(
                 .await
             {
                 Ok(r) => r,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             };
 
             if resp.status() == reqwest::StatusCode::NOT_FOUND {

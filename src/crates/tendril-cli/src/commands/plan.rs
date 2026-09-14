@@ -10,6 +10,7 @@ use tendril_core::git::worktree::{
     add_worktree, cleanup_worktrees, register_worktree, remove_worktree, RemoveOutcome,
     WorktreeMode,
 };
+use tendril_core::http::daemon_client;
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanWorktreeEntry, VerificationStatus,
 };
@@ -18,10 +19,9 @@ use tendril_core::plans::{
     create_plan, get_plan_field, get_revision, list_recommendations, materialize_plan_env,
     order_by_project_config, read_plan_file, read_plan_yaml, remove_recommendation,
     render_env_file, resolve_plan_folder, resolve_plan_folder_name, resolve_plan_project,
-    resolve_pr_head_via_gh, resolve_worktrees,
-    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
-    CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard,
-    RenderedEnvFile,
+    resolve_pr_head_via_gh, resolve_worktrees, set_plan_verification_status,
+    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
+    DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard, RenderedEnvFile,
 };
 
 #[derive(Subcommand)]
@@ -495,7 +495,7 @@ async fn report_plan_edit_event(
         }
     };
 
-    let client = reqwest::Client::new();
+    let client = daemon_client(tendril_home);
     let url = format!(
         "http://{}:{}/api/plans/{}/events",
         master.host, master.port, plan_id
