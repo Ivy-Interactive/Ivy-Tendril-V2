@@ -115,6 +115,15 @@ SECRET to reuse an existing pepper; omit it to generate a new 32-byte one."
         #[arg(value_name = "SECRET")]
         secret: Option<String>,
     },
+
+    #[command(
+        name = "agent-instructions",
+        about = "Print the instructions for a coding agent in a chat session",
+        long_about = "Prints the instructions given to a coding agent running in an interactive \
+chat session, with this installation's paths substituted in.\n\nThe output is the compiled template \
+only, with no trailing newline, so it can be piped straight into an agent's system prompt."
+    )]
+    AgentInstructions,
 }
 
 #[tokio::main]
@@ -160,7 +169,90 @@ async fn main() -> anyhow::Result<()> {
         Commands::HashPassword { password, secret } => {
             commands::hash_password::handle_hash_password(&password, secret.as_deref())?
         }
+        Commands::AgentInstructions => {
+            commands::agent_instructions::handle_agent_instructions(&tendril_home)?
+        }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::CommandFactory;
+    use tendril_core::agents::instructions;
+
+    /// Every `tendril ...` invocation the agent instructions document must name a command that
+    /// actually exists. The asset is the only description of the CLI the chat agent gets, so a
+    /// renamed or dropped subcommand has to fail here rather than in a chat session.
+    #[test]
+    fn every_command_the_instructions_document_exists() {
+        let root = Cli::command();
+        let mut checked = 0usize;
+
+        for snippet in code_snippets(instructions::TEMPLATE) {
+            for invocation in snippet.split("tendril ").skip(1) {
+                let mut node = &root;
+                for token in invocation.split_whitespace() {
+                    // Placeholders (`<plan-id>`), flags, literal job types (`CreatePlan`) and
+                    // ordinary prose all end the command path.
+                    if !token
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                    {
+                        break;
+                    }
+                    // A leaf command's arguments can look like subcommand names — `tendril config
+                    // get planTemplate` — so stop as soon as there is nothing left to descend into.
+                    if node.get_subcommands().next().is_none() {
+                        break;
+                    }
+                    let found = node.get_subcommands().find(|c| c.get_name() == token);
+                    node = found.unwrap_or_else(|| {
+                        panic!(
+                            "the agent instructions name `{}`, but `{}` has no `{}` subcommand",
+                            invocation.trim(),
+                            node.get_name(),
+                            token
+                        )
+                    });
+                    checked += 1;
+                }
+            }
+        }
+
+        assert!(
+            checked > 100,
+            "only {checked} command tokens were checked — the snippet extraction is broken"
+        );
+    }
+
+    /// The contents of every inline code span and fenced code block, which is where the document
+    /// spells out commands. Prose is skipped: `` `tendril plan` CLI commands `` would otherwise look
+    /// like a `plan commands` invocation.
+    fn code_snippets(markdown: &str) -> Vec<String> {
+        let mut snippets = Vec::new();
+        let mut in_fence = false;
+
+        for line in markdown.lines() {
+            if line.trim_start().starts_with("```") {
+                in_fence = !in_fence;
+                continue;
+            }
+            if in_fence {
+                snippets.push(line.to_string());
+                continue;
+            }
+            // Inline spans, taken in pairs of backticks.
+            let mut parts = line.split('`');
+            parts.next();
+            while let Some(span) = parts.next() {
+                snippets.push(span.to_string());
+                parts.next();
+            }
+        }
+
+        snippets
+    }
 }
