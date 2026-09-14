@@ -84,9 +84,14 @@ mod tests {
 
     #[test]
     fn test_deployer_finds_src_promptwares() {
-        let temp_target = std::env::temp_dir().join(format!("tendril_test_{}", uuid::Uuid::new_v4()));
+        let temp_target =
+            std::env::temp_dir().join(format!("tendril_test_{}", uuid::Uuid::new_v4()));
         let result = deploy_standard_promptwares(&temp_target);
-        assert!(result.is_ok(), "deploy_standard_promptwares should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "deploy_standard_promptwares should succeed: {:?}",
+            result.err()
+        );
 
         for name in STANDARD_PROMPTWARES {
             let prog = temp_target.join(name).join("Program.md");
