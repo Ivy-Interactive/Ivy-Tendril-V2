@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { setThemeGlobal, type Theme } from "@ivy-interactive/components/theme";
 import { bridge } from "../api/bridge";
 import type { ServiceInfo, TendrilConfig } from "../types/api";
 import { ServiceSettingsView } from "../components/service";
@@ -36,6 +37,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
     }
     void loadConfig();
   }, []);
+
+  const handleThemeChange = (value: string) => {
+    setTheme(value);
+    // Apply the choice immediately; the form's Save still persists it to config.
+    setThemeGlobal(value as Theme);
+  };
 
   const handlePing = async () => {
     setIsPinging(true);
@@ -231,7 +238,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
                 id="theme-select"
                 aria-label="Theme"
                 value={theme}
-                onChange={(e) => setTheme(e.target.value)}
+                onChange={(e) => handleThemeChange(e.target.value)}
                 className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
               >
                 <option value="dark">Dark</option>
