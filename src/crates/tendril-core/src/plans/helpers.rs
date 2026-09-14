@@ -77,6 +77,23 @@ pub fn resolve_plan_folder(plan_id_or_path: &str, plans_dir: &Path) -> Result<Pa
     )))
 }
 
+/// Resolves any accepted plan reference to its canonical folder name, e.g. `42`, `00042`,
+/// `00042-FixLoginBug` and `/abs/path/00042-FixLoginBug` all -> `00042-FixLoginBug`.
+pub fn resolve_plan_folder_name(plan_ref: &str, plans_dir: &Path) -> Result<String> {
+    let folder = resolve_plan_folder(plan_ref, plans_dir)?;
+    folder
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n.to_string())
+        .ok_or_else(|| {
+            TendrilError::PlanNotFound(format!(
+                "Could not resolve a folder name for '{}' in {}",
+                plan_ref,
+                plans_dir.display()
+            ))
+        })
+}
+
 pub fn rename_project_in_plans(plans_dir: &Path, old_name: &str, new_name: &str) -> Result<usize> {
     if !plans_dir.exists() {
         return Ok(0);

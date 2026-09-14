@@ -1,11 +1,12 @@
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 use tendril_cli::commands::plan::{
-    handle_plan_command, PlanCommands, PlanSetArgs, PlanSetVerificationArgs, PlanWriteRevisionArgs,
+    handle_plan_command, PlanAddDependsOnArgs, PlanCommands, PlanRemoveRepoArgs, PlanSetArgs,
+    PlanSetVerificationArgs, PlanWriteRevisionArgs,
 };
 use tendril_core::config::{generate_bearer_secret, MasterGuard};
 use tendril_core::models::{PlanVerificationEntry, VerificationStatus};
-use tendril_core::plans::{create_plan, read_plan_file, CreatePlanOptions};
+use tendril_core::plans::{create_plan, read_plan_file, read_plan_yaml, CreatePlanOptions};
 use tendril_server::{create_router, AppState};
 
 static ENV_LOCK: LazyLock<Arc<tokio::sync::Mutex<()>>> =
@@ -357,4 +358,109 @@ async fn test_plan_write_revision_reports_event() {
     assert!(msg
         .content
         .contains("Reason: Added database migration step."));
+}
+
+/// A bare plan number is stored as the canonical folder name, so `42` and `00042-Foo` cannot end up
+/// on the same plan as two different dependencies.
+#[tokio::test]
+async fn test_plan_add_depends_on_stores_canonical_folder_name() {
+    let server = start_test_server().await;
+
+    let target = create_plan(
+        &server.state.plans_dir,
+        CreatePlanOptions {
+            title: "Dependency Target".to_string(),
+            project: "test-proj".to_string(),
+            level: Some("Feature".to_string()),
+            initial_prompt: None,
+            source_url: None,
+            execution_profile: None,
+            priority: Some(0),
+            repos: vec![],
+            verifications: vec![],
+            depends_on: vec![],
+            related_plans: vec![],
+            chat_session_id: None,
+        },
+    )
+    .unwrap();
+
+    let pf = create_plan(
+        &server.state.plans_dir,
+        CreatePlanOptions {
+            title: "Dependent Plan".to_string(),
+            project: "test-proj".to_string(),
+            level: Some("Feature".to_string()),
+            initial_prompt: None,
+            source_url: None,
+            execution_profile: None,
+            priority: Some(0),
+            repos: vec![],
+            verifications: vec![],
+            depends_on: vec![],
+            related_plans: vec![],
+            chat_session_id: None,
+        },
+    )
+    .unwrap();
+
+    let args = PlanAddDependsOnArgs {
+        plan_id: pf.id().to_string(),
+        folder: target.id().to_string(),
+        reason: None,
+        chat_session: None,
+    };
+
+    handle_plan_command(PlanCommands::AddDependsOn(args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command AddDependsOn");
+
+    let (plan, _) = read_plan_yaml(std::path::Path::new(&pf.folder_path)).unwrap();
+    assert_eq!(plan.depends_on, vec![target.folder_name.clone()]);
+}
+
+/// Removing a repo that was never attached has to fail: reporting success would let a caller believe
+/// the plan no longer covers that repo.
+#[tokio::test]
+async fn test_plan_remove_repo_fails_when_not_attached() {
+    let server = start_test_server().await;
+
+    let pf = create_plan(
+        &server.state.plans_dir,
+        CreatePlanOptions {
+            title: "Repo Removal Plan".to_string(),
+            project: "test-proj".to_string(),
+            level: Some("Feature".to_string()),
+            initial_prompt: None,
+            source_url: None,
+            execution_profile: None,
+            priority: Some(0),
+            repos: vec!["/tmp/attached-repo".to_string()],
+            verifications: vec![],
+            depends_on: vec![],
+            related_plans: vec![],
+            chat_session_id: None,
+        },
+    )
+    .unwrap();
+
+    let args = PlanRemoveRepoArgs {
+        plan_id: pf.id().to_string(),
+        path: "/tmp/never-attached".to_string(),
+        reason: None,
+        chat_session: None,
+    };
+
+    let err = handle_plan_command(PlanCommands::RemoveRepo(args), &server.tendril_home)
+        .await
+        .expect_err("removing an unattached repo must not report success");
+    assert!(
+        err.to_string()
+            .contains("Repository not found in plan: /tmp/never-attached"),
+        "got: {}",
+        err
+    );
+
+    let (plan, _) = read_plan_yaml(std::path::Path::new(&pf.folder_path)).unwrap();
+    assert_eq!(plan.repos, vec!["/tmp/attached-repo".to_string()]);
 }

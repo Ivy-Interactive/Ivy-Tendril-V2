@@ -80,6 +80,24 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/plans/:id/events",
             post(plans::post_plan_event_handler),
         )
+        .route(
+            "/api/plans/:id/repos",
+            post(plans::add_plan_repo).delete(plans::remove_plan_repo),
+        )
+        .route("/api/plans/:id/prs", post(plans::add_plan_pr))
+        .route("/api/plans/:id/commits", post(plans::add_plan_commit))
+        .route(
+            "/api/plans/:id/depends-on",
+            post(plans::add_plan_depends_on).delete(plans::remove_plan_depends_on),
+        )
+        .route(
+            "/api/plans/:id/related-plans",
+            post(plans::add_plan_related).delete(plans::remove_plan_related),
+        )
+        .route(
+            "/api/plans/:id/validate",
+            post(plans::validate_plan_handler),
+        )
         // Inbox
         .route("/api/inbox", post(inbox::post_inbox))
         // Jobs
