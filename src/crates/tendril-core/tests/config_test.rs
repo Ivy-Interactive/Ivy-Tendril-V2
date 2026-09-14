@@ -89,6 +89,54 @@ fn test_config_load_and_save() {
 }
 
 #[test]
+fn promptware_overlay_config_round_trips() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-config-overlay-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+    let config_file = test_dir.join("config.yaml");
+
+    let settings = TendrilSettings {
+        promptware_overlay: Some("%TENDRIL_HOME%/Overlay".to_string()),
+        ..Default::default()
+    };
+    save_config(&config_file, &settings).expect("Failed to save config");
+
+    let raw = std::fs::read_to_string(&config_file).expect("read config");
+    assert!(
+        raw.contains("promptwareOverlay: '%TENDRIL_HOME%/Overlay'")
+            || raw.contains("promptwareOverlay: \"%TENDRIL_HOME%/Overlay\"")
+            || raw.contains("promptwareOverlay: %TENDRIL_HOME%/Overlay"),
+        "expected the key in {}",
+        raw
+    );
+
+    let loaded = load_config(&config_file).expect("Failed to load config");
+    assert_eq!(
+        loaded.promptware_overlay.as_deref(),
+        Some("%TENDRIL_HOME%/Overlay")
+    );
+    // Now modelled rather than swept into `extra`, so it must not appear twice.
+    assert!(!loaded.extra.contains_key("promptwareOverlay"));
+
+    // A config without the key still round-trips, and the key is omitted when unset.
+    let plain = TendrilSettings::default();
+    let plain_file = test_dir.join("plain.yaml");
+    save_config(&plain_file, &plain).expect("Failed to save plain config");
+    let plain_raw = std::fs::read_to_string(&plain_file).expect("read plain config");
+    assert!(!plain_raw.contains("promptwareOverlay"));
+    assert_eq!(
+        load_config(&plain_file)
+            .expect("Failed to load plain config")
+            .promptware_overlay,
+        None
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
 fn test_review_action_paths_round_trip_and_omitted_when_empty() {
     let test_dir = std::env::temp_dir().join(format!(
         "tendril-config-paths-test-{}",

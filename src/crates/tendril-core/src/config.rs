@@ -40,6 +40,16 @@ pub struct TendrilSettings {
     )]
     pub plan_folder: Option<String>,
 
+    /// Root of the team promptware overlay layer, applied on top of the shipped `src/promptwares`
+    /// tree at deploy time. `TENDRIL_PROMPTWARE_OVERLAY` overrides it. See
+    /// [`crate::promptware::overlay`].
+    #[serde(
+        rename = "promptwareOverlay",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub promptware_overlay: Option<String>,
+
     #[serde(default = "default_levels")]
     pub levels: Vec<LevelConfig>,
 
@@ -353,6 +363,7 @@ impl Default for TendrilSettings {
             verifications: Vec::new(),
             plan_template: String::new(),
             plan_folder: None,
+            promptware_overlay: None,
             levels: default_levels(),
             telemetry: true,
             theme: default_theme(),
