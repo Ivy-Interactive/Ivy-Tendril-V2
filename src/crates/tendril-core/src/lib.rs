@@ -10,6 +10,7 @@ pub mod models;
 pub mod plans;
 pub mod promptware;
 pub mod questions;
+pub mod vault;
 
 pub use agents::model_specs;
 pub use agents::truncation;
