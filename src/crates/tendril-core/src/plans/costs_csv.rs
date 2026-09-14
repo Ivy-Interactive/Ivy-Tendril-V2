@@ -35,7 +35,7 @@ pub fn append_cost(plan_folder: &Path, entry: &CostEntry) -> std::io::Result<()>
     let cost_field = entry
         .cost
         .map(|c| format!("{:.4}", c))
-        .unwrap_or_else(String::new);
+        .unwrap_or_default();
     let line = format!(
         "{},{},{},{},{},{}\n",
         entry.promptware,
