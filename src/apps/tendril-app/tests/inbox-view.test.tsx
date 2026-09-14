@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } fr
 import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import { InboxView } from "../src/views/InboxView";
 import { bridge } from "../src/api/bridge";
-import type { GitHubIssue, GitHubIssuesPage, ProjectSummary } from "../src/types/api";
+import type {
+  GitHubIssue,
+  GitHubIssuesPage,
+  InboxProposal,
+  ProjectSummary,
+  SweepReport,
+} from "../src/types/api";
 
 const makePage = (
   issues: GitHubIssue[],
@@ -18,6 +24,7 @@ const makePage = (
 
 describe("InboxView Component & Triage Tests", () => {
   let listGitHubIssuesSpy: MockInstance;
+  let listInboxProposalsSpy: MockInstance;
 
   const mockProjects: ProjectSummary[] = [
     {
@@ -69,6 +76,9 @@ describe("InboxView Component & Triage Tests", () => {
       .mockResolvedValue(makePage(mockIssues, { hasMore: true, totalCount: 60 }));
     vi.spyOn(bridge, "loadUiState").mockResolvedValue(null);
     vi.spyOn(bridge, "saveUiState").mockResolvedValue(undefined);
+    // The view fetches pending proposals on mount independently of the issue list, so every test
+    // needs this stubbed even when it is not what is being asserted.
+    listInboxProposalsSpy = vi.spyOn(bridge, "listInboxProposals").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -345,6 +355,175 @@ describe("InboxView Component & Triage Tests", () => {
         await vi.advanceTimersByTimeAsync(60_000);
       });
       expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("imported proposals", () => {
+    const proposal = (id: number, number: number): InboxProposal => ({
+      id,
+      number,
+      repository: "SpaceCorps/Tendril-App",
+      title: `Swept issue ${number}`,
+      body: "Assigned to me by someone else.",
+      issueUrl: `https://github.com/SpaceCorps/Tendril-App/issues/${number}`,
+      project: "Tendril-App",
+      state: "Pending",
+      discovered: "2026-09-10T09:00:00Z",
+      updated: "2026-09-10T09:00:00Z",
+    });
+
+    const report = (overrides: Partial<SweepReport> = {}): SweepReport => ({
+      imported: [],
+      accepted: 0,
+      skipped: 0,
+      errors: [],
+      outcome: "Ran",
+      ...overrides,
+    });
+
+    it("hides the panel entirely when nothing has been imported", async () => {
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => {
+        expect(listInboxProposalsSpy).toHaveBeenCalled();
+      });
+      expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+      // The manual trigger is always available: it is how a user gets the first proposal.
+      expect(screen.getByTestId("inbox-check-now")).toBeInTheDocument();
+    });
+
+    it("renders a card per pending proposal with its repo and target project", async () => {
+      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101), proposal(2, 102)]);
+      render(<InboxView projects={mockProjects} />);
+
+      const card = await waitFor(() => screen.getByTestId("proposal-card-1"));
+      expect(within(card).getByText(/#101 Swept issue 101/)).toBeInTheDocument();
+      expect(within(card).getByText(/SpaceCorps\/Tendril-App/)).toBeInTheDocument();
+      expect(within(card).getByText(/Tendril-App/)).toBeInTheDocument();
+      expect(screen.getByTestId("proposal-card-2")).toBeInTheDocument();
+      expect(screen.getByTestId("accept-proposal-1")).toBeInTheDocument();
+      expect(screen.getByTestId("dismiss-proposal-1")).toBeInTheDocument();
+    });
+
+    it("runs a check and refetches proposals, reporting what the sweep did", async () => {
+      const checkInboxSpy = vi
+        .spyOn(bridge, "checkInbox")
+        .mockResolvedValue(report({ imported: [proposal(1, 101)], skipped: 3 }));
+      listInboxProposalsSpy.mockResolvedValueOnce([]).mockResolvedValueOnce([proposal(1, 101)]);
+
+      render(<InboxView projects={mockProjects} />);
+      await waitFor(() => {
+        expect(listInboxProposalsSpy).toHaveBeenCalledTimes(1);
+      });
+
+      fireEvent.click(screen.getByTestId("inbox-check-now"));
+
+      await waitFor(() => {
+        expect(checkInboxSpy).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId("proposal-card-1")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("inbox-check-summary")).toHaveTextContent("Imported 1, skipped 3.");
+    });
+
+    it("says so when a sweep is already in flight rather than reporting an empty import", async () => {
+      vi.spyOn(bridge, "checkInbox").mockResolvedValue(report({ outcome: "AlreadyRunning" }));
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("inbox-check-now")).toBeEnabled();
+      });
+      fireEvent.click(screen.getByTestId("inbox-check-now"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("inbox-check-summary")).toHaveTextContent(
+          "A check is already running.",
+        );
+      });
+    });
+
+    it("surfaces a failed check without blanking the issue list", async () => {
+      vi.spyOn(bridge, "checkInbox").mockRejectedValue({
+        code: "CONFLICT",
+        message: "This daemon is not the master",
+      });
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("issue-card-101")).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByTestId("inbox-check-now"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("inbox-proposal-error")).toHaveTextContent(/not the master/i);
+      });
+      // The GitHub issues below are unaffected: the two fetches are independent.
+      expect(screen.getByTestId("issue-card-101")).toBeInTheDocument();
+      expect(screen.queryByTestId("inbox-error")).not.toBeInTheDocument();
+    });
+
+    it("accepts a proposal and drops it from the panel once it is no longer pending", async () => {
+      const acceptSpy = vi
+        .spyOn(bridge, "acceptInboxProposal")
+        .mockResolvedValue({ jobId: "00042" });
+      listInboxProposalsSpy.mockResolvedValueOnce([proposal(1, 101)]).mockResolvedValueOnce([]);
+
+      render(<InboxView projects={mockProjects} />);
+      await waitFor(() => screen.getByTestId("accept-proposal-1"));
+
+      fireEvent.click(screen.getByTestId("accept-proposal-1"));
+
+      await waitFor(() => {
+        expect(acceptSpy).toHaveBeenCalledWith(1);
+        expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+      });
+    });
+
+    it("dismisses a proposal and refetches", async () => {
+      const dismissSpy = vi.spyOn(bridge, "dismissInboxProposal").mockResolvedValue(undefined);
+      listInboxProposalsSpy.mockResolvedValueOnce([proposal(1, 101)]).mockResolvedValueOnce([]);
+
+      render(<InboxView projects={mockProjects} />);
+      await waitFor(() => screen.getByTestId("dismiss-proposal-1"));
+
+      fireEvent.click(screen.getByTestId("dismiss-proposal-1"));
+
+      await waitFor(() => {
+        expect(dismissSpy).toHaveBeenCalledWith(1);
+        expect(listInboxProposalsSpy).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it("keeps the proposal on screen and shows why when a decision fails", async () => {
+      vi.spyOn(bridge, "acceptInboxProposal").mockRejectedValue({
+        code: "CONFLICT",
+        message: "Inbox proposal 1 is already Accepted",
+      });
+      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
+
+      render(<InboxView projects={mockProjects} />);
+      await waitFor(() => screen.getByTestId("accept-proposal-1"));
+
+      fireEvent.click(screen.getByTestId("accept-proposal-1"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("inbox-proposal-error")).toHaveTextContent(/already Accepted/);
+      });
+      expect(screen.getByTestId("proposal-card-1")).toBeInTheDocument();
+    });
+
+    it("does not blank the issue list when the proposals route is unavailable", async () => {
+      // An older daemon that has never heard of `/api/inbox/proposals`.
+      listInboxProposalsSpy.mockRejectedValue({
+        code: "LIST_INBOX_PROPOSALS_FAILED",
+        message: "404 Not Found",
+      });
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("inbox-proposal-error")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("issue-card-101")).toBeInTheDocument();
+      expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
     });
   });
 });

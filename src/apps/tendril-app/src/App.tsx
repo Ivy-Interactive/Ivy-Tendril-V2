@@ -53,6 +53,9 @@ const ChatView = React.lazy(() =>
 const InboxView = React.lazy(() =>
   import("./views/InboxView").then((m) => ({ default: m.InboxView })),
 );
+const PullRequestsView = React.lazy(() =>
+  import("./views/PullRequestsView").then((m) => ({ default: m.PullRequestsView })),
+);
 
 export const App: React.FC = () => {
   const [uiState, setUiState] = useState<UiState>(uiStore.getState());
@@ -377,6 +380,17 @@ export const App: React.FC = () => {
             onJobStarted={(res) => handleSelectJob(res.jobId)}
             onPlanChanged={() => {
               plansStore.fetchPlans().catch(() => {});
+            }}
+          />
+        );
+
+      case "pull-requests":
+        return (
+          <PullRequestsView
+            onSelectPlan={handleSelectPlan}
+            onOpenNewPlanModal={(prefill) => {
+              setNewPlanPrefill(prefill);
+              setIsNewPlanOpen(true);
             }}
           />
         );

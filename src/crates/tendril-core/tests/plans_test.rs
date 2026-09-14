@@ -114,6 +114,79 @@ fn test_create_plan_and_revisions_lifecycle() {
     let _ = std::fs::remove_dir_all(test_dir);
 }
 
+fn bare_create_plan_options(title: &str) -> CreatePlanOptions {
+    CreatePlanOptions {
+        title: title.to_string(),
+        project: "TendrilService".to_string(),
+        level: None,
+        initial_prompt: None,
+        source_url: None,
+        execution_profile: None,
+        priority: None,
+        repos: vec![],
+        verifications: vec![],
+        depends_on: vec![],
+        related_plans: vec![],
+        chat_session_id: None,
+    }
+}
+
+#[test]
+fn test_write_revision_polishes_plan_links() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plan-polish-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let sibling = create_plan(&test_dir, bare_create_plan_options("Sibling Plan"))
+        .expect("Failed to create sibling plan");
+    let sibling_id = format!("{:05}", sibling.metadata.id);
+
+    let main_plan = create_plan(&test_dir, bare_create_plan_options("Main Plan"))
+        .expect("Failed to create main plan");
+    let plan_folder = Path::new(&main_plan.folder_path);
+
+    let content = format!("See Plan {sibling_id} for details.");
+    write_revision(plan_folder, &content, true).expect("Failed to write revision");
+
+    let latest = get_revision(plan_folder, None).expect("Failed to get revision");
+    assert_eq!(
+        latest,
+        format!("See Plan [{sibling_id}](plan://{sibling_id}) for details.")
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_write_revision_polish_survives_no_question_check() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plan-polish-noqc-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let sibling = create_plan(&test_dir, bare_create_plan_options("Sibling Plan"))
+        .expect("Failed to create sibling plan");
+    let sibling_id = format!("{:05}", sibling.metadata.id);
+
+    let main_plan = create_plan(&test_dir, bare_create_plan_options("Main Plan"))
+        .expect("Failed to create main plan");
+    let plan_folder = Path::new(&main_plan.folder_path);
+
+    let fence = "```questions\nquestions:\n  - id: q1\n    title: Pick\n    options:\n      - title: A\n        value: a\n      - title: B\n        value: b\n```";
+    let content = format!("Plan {sibling_id}.\n{fence}\nDone.");
+    write_revision(plan_folder, &content, false)
+        .expect("Failed to write revision without question check");
+
+    let latest = get_revision(plan_folder, None).expect("Failed to get revision");
+    assert!(latest.contains(&format!("Plan [{sibling_id}](plan://{sibling_id}).")));
+    assert!(latest.contains(fence));
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
 #[test]
 fn test_plan_recommendations() {
     let test_dir = std::env::temp_dir().join(format!(
