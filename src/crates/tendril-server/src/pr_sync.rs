@@ -54,7 +54,7 @@ pub async fn run_pr_sync_pass(
     Some(result)
 }
 
-fn run_pass_blocking(db_path: &PathBuf, plans_dir: &PathBuf) -> Result<PrSyncReport> {
+fn run_pass_blocking(db_path: &Path, plans_dir: &Path) -> Result<PrSyncReport> {
     let conn = open_database(db_path)?;
     sync_pr_statuses(&conn, plans_dir)
 }
