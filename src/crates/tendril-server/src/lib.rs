@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod local_file_guard;
 pub mod master;
 pub mod routes;
 pub mod state;

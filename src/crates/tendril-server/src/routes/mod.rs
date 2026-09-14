@@ -6,6 +6,7 @@ pub mod costs;
 pub mod health;
 pub mod inbox;
 pub mod jobs;
+pub mod local_file;
 pub mod models;
 pub mod ping;
 pub mod plans;
@@ -280,11 +281,22 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             crate::auth::api_key_middleware,
         ));
 
+    // `GET /ivy/local-file`, outside the bearer layer because an `<img src>` navigation carries no
+    // `Authorization` header. Its own guard supplies the credential check (`?token=`) plus host,
+    // origin, extension and root-confinement enforcement — see crate::local_file_guard.
+    let local_file = Router::new()
+        .route("/ivy/local-file", get(local_file::get_local_file))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::local_file_guard::local_file_guard,
+        ));
+
     Router::new()
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
         .merge(password_auth)
+        .merge(local_file)
         // WebViewer proxy. Outside /api and outside auth_middleware on purpose: an <iframe src>
         // navigation carries no Authorization header, and neither do the subresource requests the
         // service worker reissues from inside the proxied page. A loopback-only target allow-list is
