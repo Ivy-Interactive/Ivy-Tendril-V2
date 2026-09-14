@@ -6,10 +6,22 @@ import {
   ChatBubbleActionWrapper,
 } from "@ivy-interactive/components/renderers";
 import { PlanMarkdown } from "@ivy-interactive/components/tendril";
-import { Copy, FilePlus, Loader2, Paperclip } from "lucide-react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import {
+  CheckCircle2,
+  Copy,
+  FilePlus,
+  Info,
+  Loader2,
+  Paperclip,
+  PlayCircle,
+  XCircle,
+} from "lucide-react";
 import { chatStore } from "../state/chatStore";
-import type { ChatMessage, InProgressQuestionAnswers } from "../types/chat";
+import type { ChatAttachment, ChatMessage, InProgressQuestionAnswers } from "../types/chat";
 import { isWriteInAnswer, patchQuestionsMarkdown } from "../utils/questionMarkdown";
+import { formatSystemEvent, type SystemEventKind } from "../utils/systemEvents";
+import type { LightboxImage } from "../components/chat/ImageLightbox";
 
 export interface ChatMessageRowProps {
   message: ChatMessage;
@@ -18,7 +30,33 @@ export interface ChatMessageRowProps {
   onCreatePlan: (content: string) => void;
   inProgressAnswers?: InProgressQuestionAnswers;
   isSubmittingAnswer?: boolean;
+  /** Opens the plan a system event refers to. */
+  onOpenPlan?: (planId: string) => void;
+  /** Opens an image attachment in the lightbox. */
+  onOpenImage?: (image: LightboxImage) => void;
 }
+
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
+
+/** An attachment worth showing as a thumbnail rather than as a paperclip chip. */
+export const isImageAttachment = (attachment: ChatAttachment): boolean =>
+  attachment.mimeType?.startsWith("image/") === true || IMAGE_EXTENSIONS.test(attachment.path);
+
+/** The webview cannot load a bare filesystem path; Tauri's asset protocol can. */
+const imageSrc = (path: string): string => {
+  try {
+    return convertFileSrc(path);
+  } catch {
+    return path;
+  }
+};
+
+const SYSTEM_EVENT_ICONS: Record<SystemEventKind, React.ReactNode> = {
+  completed: <CheckCircle2 className="size-3.5 text-emerald-400" aria-hidden="true" />,
+  failed: <XCircle className="size-3.5 text-rose-400" aria-hidden="true" />,
+  started: <PlayCircle className="size-3.5 text-sky-400" aria-hidden="true" />,
+  info: <Info className="size-3.5 text-slate-400" aria-hidden="true" />,
+};
 
 export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function ChatMessageRow({
   message,
@@ -27,8 +65,11 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   onCreatePlan,
   inProgressAnswers: propInProgressAnswers,
   isSubmittingAnswer: propIsSubmittingAnswer,
+  onOpenPlan,
+  onOpenImage,
 }) {
   const isUser = message.role === "user";
+  const isSystem = message.role === "system";
 
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -108,9 +149,51 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     return patchQuestionsMarkdown(currentMessage.content, inProgressAnswers);
   }, [isUser, currentMessage.content, inProgressAnswers]);
 
+  const systemEvent = useMemo(
+    () => (isSystem ? formatSystemEvent(currentMessage.content) : null),
+    [isSystem, currentMessage.content],
+  );
+
+  // A system event is a one-line timeline note, not a turn in the conversation: no bubble, no
+  // copy/create-plan actions, and the instructions the backend addressed to the agent are dropped.
+  if (systemEvent) {
+    return (
+      <div
+        data-message-id={message.id}
+        data-testid="chat-system-event"
+        data-kind={systemEvent.kind}
+        className="flex justify-center px-4 py-1.5"
+      >
+        <div className="flex max-w-3xl flex-wrap items-center gap-1.5 rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 text-xs text-slate-300">
+          {SYSTEM_EVENT_ICONS[systemEvent.kind]}
+          <span>{systemEvent.text}</span>
+          {systemEvent.plan &&
+            (onOpenPlan ? (
+              <button
+                type="button"
+                data-testid="chat-system-event-plan"
+                onClick={() => onOpenPlan(systemEvent.plan!.id)}
+                title="Open plan"
+                className="rounded px-1 font-medium text-emerald-400 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                {systemEvent.plan.label}
+              </button>
+            ) : (
+              <span className="font-medium text-slate-200">{systemEvent.plan.label}</span>
+            ))}
+          {systemEvent.detail && (
+            <span className="text-slate-500" title={systemEvent.detail}>
+              — {systemEvent.detail}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <ChatBubble variant={isUser ? "sent" : "received"} layout={isUser ? "default" : "ai"}>
-      <div className="flex flex-col max-w-3xl">
+      <div data-message-id={message.id} className="flex flex-col max-w-3xl">
         <ChatBubbleMessage
           variant={isUser ? "sent" : "received"}
           className={
@@ -148,18 +231,37 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                 isUser ? "border-emerald-500/40" : "border-slate-800"
               }`}
             >
-              {message.attachments.map((att, idx) => (
-                <div
-                  key={`${att.path}-${idx}`}
-                  className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
-                    isUser ? "bg-black/20 text-white/95" : "bg-slate-800 text-slate-300"
-                  }`}
-                  title={att.path}
-                >
-                  <Paperclip className="size-3 opacity-75 shrink-0" />
-                  <span className="max-w-[140px] truncate">{att.name}</span>
-                </div>
-              ))}
+              {message.attachments.map((att, idx) =>
+                onOpenImage && isImageAttachment(att) ? (
+                  <button
+                    key={`${att.path}-${idx}`}
+                    type="button"
+                    data-testid="attachment-thumbnail"
+                    onClick={() => onOpenImage({ url: imageSrc(att.path), title: att.name })}
+                    title={`Open ${att.name}`}
+                    aria-label={`Open ${att.name}`}
+                    className="overflow-hidden rounded border border-slate-700 hover:border-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                  >
+                    <img
+                      src={imageSrc(att.path)}
+                      alt={att.name}
+                      className="size-16 object-cover"
+                      loading="lazy"
+                    />
+                  </button>
+                ) : (
+                  <div
+                    key={`${att.path}-${idx}`}
+                    className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
+                      isUser ? "bg-black/20 text-white/95" : "bg-slate-800 text-slate-300"
+                    }`}
+                    title={att.path}
+                  >
+                    <Paperclip className="size-3 opacity-75 shrink-0" />
+                    <span className="max-w-[140px] truncate">{att.name}</span>
+                  </div>
+                ),
+              )}
             </div>
           )}
         </ChatBubbleMessage>
