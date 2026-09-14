@@ -8,11 +8,11 @@ Tendril provides an Antigravity plugin manifest at `.agents/plugins/marketplace.
 
 ### Install from Remote Git Repository
 ```bash
-agy plugin install https://github.com/ivy-interactive/ivy-tendril.git
+agy plugin install https://github.com/ivy-interactive/ivy-tendril-v2.git
 ```
 
 ### Install from Local Repository Checkout
-During local development or within an Ivy Tendril checkout:
+During local development or within an Ivy-Tendril-V2 checkout:
 ```bash
 agy plugin install ./
 ```
@@ -43,7 +43,7 @@ In any interactive Antigravity agent session or automated script:
 
 - Ask Antigravity to debug a plan:
   ```
-  Use tendril-debug-plan to investigate plan 00486
+  Use tendril-debug-plan to investigate plan 00516
   ```
 - Review pending worktree diffs:
   ```
@@ -51,7 +51,7 @@ In any interactive Antigravity agent session or automated script:
   ```
 - Triage candidate backlog issues:
   ```
-  Run tendrillable on https://github.com/ivy-interactive/ivy-tendril 5
+  Run tendrillable on https://github.com/ivy-interactive/ivy-tendril-v2 5
   ```
 
 ## 4. Antigravity IDE Integration

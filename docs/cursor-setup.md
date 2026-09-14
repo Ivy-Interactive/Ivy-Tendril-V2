@@ -8,10 +8,10 @@ Install Tendril skills into your Cursor project using the skills CLI:
 
 ```bash
 # Project-level installation (installs into .cursor/skills/)
-npx skills add ivy-interactive/ivy-tendril --agent cursor
+npx skills add ivy-interactive/ivy-tendril-v2 --agent cursor
 
 # Global installation (across all Cursor workspaces)
-npx skills add ivy-interactive/ivy-tendril --agent cursor -g
+npx skills add ivy-interactive/ivy-tendril-v2 --agent cursor -g
 ```
 
 ## 2. Directory Layout in Cursor

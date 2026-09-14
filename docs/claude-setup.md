@@ -6,16 +6,16 @@ This guide covers installing, configuring, and testing Tendril Agent Skills in C
 
 Tendril provides official plugin manifests at `.claude-plugin/marketplace.json` and `.claude-plugin/plugin.json`.
 
-In Claude Code, add the Ivy Tendril repository as a marketplace source:
+In Claude Code, add the Ivy-Tendril-V2 repository as a marketplace source:
 
 ```
-/plugin marketplace add ivy-interactive/ivy-tendril
+/plugin marketplace add ivy-interactive/ivy-tendril-v2
 ```
 
 Then install the `tendril-skills` plugin:
 
 ```
-/plugin install tendril-skills@ivy-tendril
+/plugin install tendril-skills@ivy-tendril-v2
 ```
 
 ## 2. Local Development and Testing
@@ -25,14 +25,14 @@ When developing skills locally or testing changes before pushing:
 Launch Claude Code with the plugin directory pointing to your local repository checkout:
 
 ```bash
-claude --plugin-dir /path/to/ivy-tendril
+claude --plugin-dir /path/to/ivy-tendril-v2
 ```
 
 Claude Code will read `.claude-plugin/plugin.json` and automatically mount all skills defined in `skills/`.
 
 ## 3. Backward Compatibility with .claude/skills
 
-For local repository workflows within Ivy Tendril:
+For local repository workflows within Ivy-Tendril-V2:
 - Symlinks in `.claude/skills/<skill-name>` point to `../../skills/<skill-name>`.
 - Any existing local Claude Code configuration referencing `.claude/skills/` continues to function seamlessly without manual reconfiguration.
 
@@ -44,4 +44,4 @@ Once installed, use slash commands directly in your Claude Code session:
 - `/tendril-debug-job <job-id>`: Inspect job artifacts and agent decision logs.
 - `/tendril-review`: Perform code quality and regression checks on current diffs.
 - `/tendrillable <url>`: Classify backlog issues according to autonomous agent rubrics.
-- `/tendril-release`: Automate version bumps, package updates, and release workflows.
+- `/tendril-release`: Automate version bumps, dependency updates, and release workflows.

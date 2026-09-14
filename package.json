@@ -11,6 +11,7 @@
     "test:extension": "pnpm --filter tendril-extension test",
     "typecheck:extension": "pnpm --filter tendril-extension typecheck",
     "test": "pnpm -r test",
+    "test-skills-manifests": "bash scripts/test-skills-manifests.sh",
     "check": "pnpm -r check",
     "lint": "pnpm -r lint",
     "format": "pnpm -r format"

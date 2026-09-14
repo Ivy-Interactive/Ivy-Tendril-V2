@@ -8,16 +8,16 @@ The easiest way to install Tendril skills for GitHub Copilot in VS Code is using
 
 ```bash
 # Project-level installation (installs into .agents/skills/ or .github/skills/)
-npx skills add ivy-interactive/ivy-tendril --agent github-copilot
+npx skills add ivy-interactive/ivy-tendril-v2 --agent github-copilot
 
 # Global installation (available across all VS Code workspaces)
-npx skills add ivy-interactive/ivy-tendril --agent github-copilot -g
+npx skills add ivy-interactive/ivy-tendril-v2 --agent github-copilot -g
 ```
 
 To install specific individual skills instead of the full package:
 
 ```bash
-npx skills add ivy-interactive/ivy-tendril --skill tendril-debug-plan --agent github-copilot
+npx skills add ivy-interactive/ivy-tendril-v2 --skill tendril-debug-plan --agent github-copilot
 ```
 
 ## 2. Manual Installation Paths
@@ -49,19 +49,19 @@ Tendril skills adhere to the open agent skills standard and work seamlessly with
 
 ### Cline
 ```bash
-npx skills add ivy-interactive/ivy-tendril --agent cline
+npx skills add ivy-interactive/ivy-tendril-v2 --agent cline
 ```
 Skills are written to `.cline/skills/` or the global Cline configuration directory.
 
 ### Continue
 ```bash
-npx skills add ivy-interactive/ivy-tendril --agent continue
+npx skills add ivy-interactive/ivy-tendril-v2 --agent continue
 ```
 Skills are installed into your `.continue/skills/` directory and can be referenced in prompt context.
 
 ### Roo Code (Roo Clinic)
 ```bash
-npx skills add ivy-interactive/ivy-tendril --agent roo
+npx skills add ivy-interactive/ivy-tendril-v2 --agent roo
 ```
 Installed into `.roo/skills/` for custom system modes and task execution.
 
