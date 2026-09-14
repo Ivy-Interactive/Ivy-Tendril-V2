@@ -13,6 +13,7 @@ pub mod promptware;
 pub mod questions;
 pub mod stack;
 pub mod vault;
+pub mod version_check;
 pub mod watcher;
 
 pub use agents::model_specs;
