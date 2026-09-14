@@ -138,9 +138,12 @@ function ProjectList({ log }: DemoContext) {
 function BladesDemo({
   collapseBreakpoint,
   className = "h-[520px] w-full",
+  startDrilled = false,
 }: {
   collapseBreakpoint?: number;
   className?: string;
+  /** Opens one level deep on mount, so a collapsed stack has a parent to go back to. */
+  startDrilled?: boolean;
 }) {
   const [lastAction, setLastAction] = React.useState("Nothing yet");
   const log = React.useCallback((action: string) => setLastAction(action), []);
@@ -152,9 +155,19 @@ function BladesDemo({
     content: <ProjectList log={log} />,
   };
 
+  // Read once on mount by the uncontrolled stack, so it is built outside the render-driven `root`.
+  const [initialBlades] = React.useState(() =>
+    startDrilled ? [projectBlade(projects[0], { log })] : undefined,
+  );
+
   return (
     <div className={`overflow-hidden rounded-box border border-border ${className}`}>
-      <BladeContainer root={root} collapseBreakpoint={collapseBreakpoint} aria-label="Projects" />
+      <BladeContainer
+        root={root}
+        initialBlades={initialBlades}
+        collapseBreakpoint={collapseBreakpoint}
+        aria-label="Projects"
+      />
     </div>
   );
 }
@@ -165,8 +178,12 @@ export const ThreeLevelDrillDown: StoryObj = {
 
 export const Collapsed: StoryObj = {
   // The collapse is driven by the viewport width, so the breakpoint is set above any canvas width
-  // to demonstrate the narrow layout without resizing the Storybook frame.
-  render: () => <BladesDemo collapseBreakpoint={4000} className="h-[520px] w-[380px]" />,
+  // to demonstrate the narrow layout without resizing the Storybook frame. Opening one level deep
+  // is what makes the collapsed affordance visible: at depth 1 the root is pinned and renders no
+  // back button, so a depth-1 collapsed stack looks the same as an uncollapsed one.
+  render: () => (
+    <BladesDemo collapseBreakpoint={4000} className="h-[520px] w-[380px]" startDrilled />
+  ),
 };
 
 export const WidthHints: StoryObj = {
