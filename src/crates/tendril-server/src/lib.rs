@@ -10,7 +10,11 @@ pub use state::*;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
+
+/// How often the master rechecks blocked plans, wait-for dependents, stuck jobs and stale entries.
+const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(60);
 
 pub async fn run_server(
     port: u16,
@@ -28,7 +32,7 @@ pub async fn run_server(
 
     let secret = tendril_core::config::generate_bearer_secret();
     let state = Arc::new(AppState::new(tendril_home.clone(), secret.clone()));
-    let app = create_router(state);
+    let app = create_router(state.clone());
 
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr).await?;
@@ -38,6 +42,28 @@ pub async fn run_server(
 
     // Only the master reconciles: a daemon that lost the race must never reap the winner's jobs.
     reconcile_after_restart(&tendril_home).await;
+
+    // Only the master runs maintenance: a daemon that lost the race must not reap the winner's jobs.
+    let maintenance_state = state.clone();
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(MAINTENANCE_INTERVAL);
+        // Delay rather than Burst: a pass that overran must not be followed by a flurry of catch-up
+        // passes fighting over the same jobs.
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            let report = maintenance_state.job_manager.run_maintenance_pass().await;
+            if !report.is_empty() {
+                tracing::info!(
+                    "Job maintenance: {} plans unblocked, {} jobs released, {} reaped, {} evicted",
+                    report.unblocked_plans.len(),
+                    report.released_jobs.len(),
+                    report.reaped_jobs.len(),
+                    report.evicted_jobs.len(),
+                );
+            }
+        }
+    });
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

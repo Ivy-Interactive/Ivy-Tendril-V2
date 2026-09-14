@@ -251,7 +251,7 @@ impl JobManager {
         // Before anything is allocated or written: another job of the same group must not already be
         // working on this plan.
         if let Some(existing_id) = self.find_conflicting_job(&job_type, &plan_folder_str).await {
-            return Err(TendrilError::Other(format!(
+            return Err(TendrilError::Conflict(format!(
                 "{} already in progress for this plan (job {})",
                 job_type, existing_id
             )));

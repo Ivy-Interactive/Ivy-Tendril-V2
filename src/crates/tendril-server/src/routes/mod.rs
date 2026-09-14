@@ -83,7 +83,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/inbox", post(inbox::post_inbox))
         // Jobs
         .route("/api/jobs", get(jobs::list_jobs).post(jobs::start_job))
-        .route("/api/jobs/:id", get(jobs::get_job))
+        // Static segments before `:id`, so a literal path can never be read as a job id. Axum
+        // matches static segments first; keeping them adjacent makes the intent obvious.
+        .route("/api/jobs/queue", get(jobs::job_queue))
+        .route("/api/jobs/stop-all", post(jobs::stop_all_jobs))
+        .route("/api/jobs/clear", post(jobs::clear_jobs))
+        .route("/api/jobs/maintenance", post(jobs::run_maintenance))
+        .route("/api/jobs/:id", get(jobs::get_job).delete(jobs::delete_job))
+        .route("/api/jobs/:id/force-start", post(jobs::force_start_job))
         .route("/api/jobs/:id/status", put(jobs::update_job_status))
         .route("/api/jobs/:id/fail", put(jobs::report_job_failure))
         .route("/api/jobs/:id/cancel", post(jobs::cancel_job))
