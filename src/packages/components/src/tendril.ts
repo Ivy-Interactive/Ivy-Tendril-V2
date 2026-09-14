@@ -177,5 +177,5 @@ export type {
 } from "./components/TendrilDashboard/index.ts";
 
 // Web Viewer Component
-export { WebViewer } from "./components/WebViewer/index.ts";
-export type { WebViewerProps } from "./components/WebViewer/index.ts";
+export { WebViewer, Toolbar } from "./components/WebViewer/index.ts";
+export type { WebViewerProps, ToolbarProps, ToolbarAction } from "./components/WebViewer/index.ts";
