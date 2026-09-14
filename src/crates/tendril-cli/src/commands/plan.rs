@@ -14,9 +14,9 @@ use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanWorktreeEntry, VerificationStatus,
 };
 use tendril_core::plans::{
-    add_recommendation, check_all_plans_health, check_plan_health, create_plan, get_revision,
-    list_recommendations, materialize_plan_env, order_by_project_config, read_plan_file,
-    read_plan_yaml, remove_recommendation, render_env_file, resolve_plan_folder,
+    add_recommendation, check_all_plans_health, check_plan_health, create_plan, get_plan_field,
+    get_revision, list_recommendations, materialize_plan_env, order_by_project_config,
+    read_plan_file, read_plan_yaml, remove_recommendation, render_env_file, resolve_plan_folder,
     resolve_plan_folder_name, resolve_plan_project, resolve_worktrees,
     set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
     CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard,
@@ -746,15 +746,11 @@ pub async fn handle_plan_command(
             let plan_file = read_plan_file(&folder)?;
 
             if let Some(f) = args.field {
-                let val = match f.to_ascii_lowercase().as_str() {
-                    "title" => plan_file.metadata.title,
-                    "state" => plan_file.metadata.state.to_string(),
-                    "project" => plan_file.metadata.project,
-                    "level" => plan_file.metadata.level,
-                    "id" => plan_file.metadata.id.to_string(),
-                    "initialprompt" => plan_file.metadata.initial_prompt.unwrap_or_default(),
-                    "sourceurl" => plan_file.metadata.source_url.unwrap_or_default(),
-                    _ => String::new(),
+                let val = if f.eq_ignore_ascii_case("id") {
+                    plan_file.metadata.id.to_string()
+                } else {
+                    let (plan_yaml, _) = read_plan_yaml(&folder)?;
+                    get_plan_field(&plan_yaml, &f).unwrap_or_default()
                 };
                 println!("{}", val);
             } else {
