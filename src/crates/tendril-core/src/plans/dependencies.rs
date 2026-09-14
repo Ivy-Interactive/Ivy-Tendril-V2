@@ -1,11 +1,10 @@
-use crate::error::{Result, TendrilError};
+use crate::error::Result;
+use crate::git::github::{block_on_gh, fetch_pr_status};
+use crate::jobs::manager::apply_plan_state;
 use crate::models::PlanStatus;
 use crate::plans::reader::read_plan_yaml;
-use crate::plans::writer::write_plan_yaml;
-use chrono::Utc;
 use std::collections::HashSet;
 use std::path::Path;
-use std::process::Command;
 
 pub struct DependencyCheckResult {
     pub ok: bool,
@@ -113,7 +112,7 @@ pub fn unblock_satisfied_plans_with(
             continue;
         }
 
-        let (mut plan, _) = match read_plan_yaml(&folder) {
+        let (plan, _) = match read_plan_yaml(&folder) {
             Ok(p) => p,
             Err(_) => continue,
         };
@@ -123,9 +122,12 @@ pub fn unblock_satisfied_plans_with(
 
         if let Ok(res) = check_dependencies_with(&folder, plans_dir, resolve_pr_state) {
             if res.ok {
-                plan.state = PlanStatus::Draft.to_string();
-                plan.updated = Utc::now();
-                if write_plan_yaml(&folder, &plan).is_ok() {
+                // Every state write in this pass goes through the same guard the job engine uses, so
+                // a terminal plan can never be moved and a refusal is reported rather than assumed.
+                apply_plan_state(&folder, PlanStatus::Draft);
+                let landed = read_plan_yaml(&folder)
+                    .is_ok_and(|(p, _)| p.state.eq_ignore_ascii_case(PlanStatus::Draft.as_str()));
+                if landed {
                     unblocked.push(folder_name(&folder));
                 }
             }
@@ -199,23 +201,11 @@ fn depends_on_of(plans_dir: &Path, folder_name: &str) -> Vec<String> {
 }
 
 /// Resolves a PR URL to its state with the `gh` CLI. This is the production [`PrStateResolver`].
+///
+/// A thin wrapper over the one single-PR fetch path in `git::github`, so the gate and the
+/// reconciliation pass share their `gh` invocation, timeout and error mapping. The returned string is
+/// uppercased (`"MERGED"`), which is the contract the gate compares case-insensitively above.
 pub fn get_gh_pr_state(pr_url: &str) -> Result<String> {
-    let output = Command::new("gh")
-        .args(["pr", "view", pr_url, "--json", "state", "-q", ".state"])
-        .output();
-
-    match output {
-        Ok(out) if out.status.success() => {
-            let state = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            Ok(state)
-        }
-        Ok(out) => {
-            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            Err(TendrilError::Git(format!(
-                "gh pr view failed for {}: {}",
-                pr_url, err
-            )))
-        }
-        Err(e) => Err(TendrilError::Git(format!("Failed to run gh CLI: {}", e))),
-    }
+    let info = block_on_gh(fetch_pr_status(pr_url))?;
+    Ok(info.status.as_str().to_uppercase())
 }

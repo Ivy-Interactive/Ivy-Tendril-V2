@@ -142,6 +142,8 @@ export class MockCancellationTokenSource {
 
 const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
 
+let configStore: Record<string, unknown> = {};
+
 export const vscodeMock = {
   Uri: MockUri,
   Position: MockPosition,
@@ -193,8 +195,18 @@ export const vscodeMock = {
   },
   workspace: {
     getConfiguration: () => ({
-      get: (_key: string, defaultVal: unknown) => defaultVal
+      get: (key: string, defaultVal: unknown) =>
+        Object.prototype.hasOwnProperty.call(configStore, key) ? configStore[key] : defaultVal
     }),
+    /** Test-only: seed or override configuration values the extension reads. */
+    __setConfig: (values: Record<string, unknown>) => {
+      configStore = { ...configStore, ...values };
+    },
+    /** Test-only: drop every override, returning `get` to declared defaults. */
+    __resetConfig: () => {
+      configStore = {};
+    },
+    __getConfig: () => ({ ...configStore }),
     openTextDocument: async (filePath: string) => ({ uri: MockUri.file(filePath) }),
     workspaceFolders: [],
     updateWorkspaceFolders: () => true,

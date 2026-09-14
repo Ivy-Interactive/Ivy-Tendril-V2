@@ -12,6 +12,7 @@ import {
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
+import { PlanPullRequests } from "./PlanPullRequests";
 import { draftActions, type DraftAction } from "../controllers/draft_actions";
 import { collectExecuteGuards, type ExecuteGuard } from "../controllers/execute_guards";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
@@ -245,9 +246,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     if (!activeNoteDialog) return;
     const { title, action } = activeNoteDialog;
     const trimmedNote = note?.trim();
-    const targetState: RecommendationState =
-      action === "Accept" ? (trimmedNote ? "AcceptedWithNotes" : "Accepted") : "Declined";
+    const accepting = action === "Accept";
+    const targetState: RecommendationState = accepting
+      ? trimmedNote
+        ? "AcceptedWithNotes"
+        : "Accepted"
+      : "Declined";
     const notePayload = trimmedNote || undefined;
+    // The same dialog text is a note on an accept and a reason on a decline, so
+    // it goes to a different field either way round.
+    const declineReason = accepting ? undefined : notePayload;
+    const notes = accepting ? notePayload : undefined;
 
     handleCloseDialog();
     setActionError(null);
@@ -255,13 +264,11 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     // Snapshot for rollback
     const previous = recommendations;
     setRecommendations((prev) =>
-      prev.map((r) =>
-        r.title === title ? { ...r, state: targetState, declineReason: notePayload } : r,
-      ),
+      prev.map((r) => (r.title === title ? { ...r, state: targetState, declineReason, notes } : r)),
     );
 
     try {
-      await bridge.setRecommendationState(plan.id, title, targetState, notePayload);
+      await bridge.setRecommendationState(plan.id, title, targetState, declineReason, notes);
     } catch (err) {
       setRecommendations(previous);
       setActionError(`Failed to update recommendation "${title}": ${describeBridgeError(err)}`);
@@ -545,29 +552,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               </ul>
             </div>
 
-            <div className="rounded-xl border border-border bg-card/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Pull Requests
-              </h4>
-              <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                {plan.prs && plan.prs.length > 0 ? (
-                  plan.prs.map((p, i) => (
-                    <li key={i}>
-                      <a
-                        href={p}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-success hover:underline font-mono text-xs"
-                      >
-                        {p}
-                      </a>
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-muted-foreground/70">No PRs created</li>
-                )}
-              </ul>
-            </div>
+            <PlanPullRequests planId={plan.id} prs={plan.prs ?? []} />
           </div>
         )}
       </div>

@@ -32,6 +32,30 @@ pub struct ReviewActionConfig {
     pub paths: Vec<String>,
 }
 
+/// A shell command a project runs around a promptware run.
+///
+/// `when` is `before` or `after` (compared case-insensitively; any other value never matches).
+/// An empty `promptwares` list matches every promptware. An empty `condition` always holds.
+///
+/// `when` stays a `String` rather than an enum on purpose: a typo in `config.yaml` must leave the
+/// hook inert, not fail the whole config load.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptwareHookConfig {
+    pub name: String,
+    #[serde(default = "default_hook_when")]
+    pub when: String,
+    #[serde(default)]
+    pub promptwares: Vec<String>,
+    #[serde(default)]
+    pub condition: String,
+    #[serde(default)]
+    pub action: String,
+}
+
+fn default_hook_when() -> String {
+    "before".to_string()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LevelConfig {
     pub name: String,
@@ -81,6 +105,11 @@ pub struct ProjectConfig {
     pub stack_hash: Option<String>,
     #[serde(rename = "reviewActions", default)]
     pub review_actions: Vec<ReviewActionConfig>,
+    /// Shell commands run before and after each of the project's promptware runs. `#[serde(default)]`
+    /// is what makes a `config.yaml` with no `hooks:` key load, and what stops `save_config` from
+    /// dropping the block it does not know about.
+    #[serde(default)]
+    pub hooks: Vec<PromptwareHookConfig>,
     #[serde(rename = "buildDependencies", default)]
     pub build_dependencies: Vec<String>,
     /// Named service ports, keyed by service name. A `BTreeMap` so iteration and printing are
@@ -91,6 +120,8 @@ pub struct ProjectConfig {
     pub env_files: Vec<ProjectEnvFileConfig>,
     #[serde(rename = "mcpServers", default)]
     pub mcp_servers: Vec<ProjectMcpServerRef>,
+    #[serde(default)]
+    pub skills: Vec<ProjectSkillRef>,
 }
 
 /// An MCP server every job of a project gets, declared under the project in `config.yaml`.
@@ -108,6 +139,31 @@ pub struct ProjectMcpServerRef {
     pub environment: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub disabled: bool,
+}
+
+/// A skill every job of a project gets, declared under the project in `config.yaml`.
+///
+/// `path` is expanded against `TENDRIL_HOME` and may name a markdown file or a folder holding
+/// `SKILL.md`; when it resolves, its contents replace `instructions`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProjectSkillRef {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub disabled: bool,
+}
+
+/// A project skill with its instructions already read off disk, ready to render into a firmware.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectSkillInfo {
+    pub name: String,
+    pub description: String,
+    pub instructions: String,
 }
 
 impl ProjectConfig {

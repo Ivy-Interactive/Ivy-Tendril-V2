@@ -40,6 +40,16 @@ pub struct TendrilSettings {
     )]
     pub plan_folder: Option<String>,
 
+    /// Root of the team promptware overlay layer, applied on top of the shipped `src/promptwares`
+    /// tree at deploy time. `TENDRIL_PROMPTWARE_OVERLAY` overrides it. See
+    /// [`crate::promptware::overlay`].
+    #[serde(
+        rename = "promptwareOverlay",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub promptware_overlay: Option<String>,
+
     #[serde(default = "default_levels")]
     pub levels: Vec<LevelConfig>,
 
@@ -90,6 +100,10 @@ pub struct TendrilSettings {
     #[serde(default)]
     pub beta: bool,
 
+    /// Whether the first-run wizard has been completed or dismissed. See [`OnboardingConfig`].
+    #[serde(default, skip_serializing_if = "OnboardingConfig::is_default")]
+    pub onboarding: OnboardingConfig,
+
     /// Per-coding-agent arguments, environment and named profiles. Tolerant of shape: see
     /// [`deserialize_coding_agents`].
     #[serde(
@@ -137,6 +151,10 @@ pub struct TendrilSettings {
     )]
     pub model_cache_max_age_days: i64,
 
+    /// Assigned-issue auto-import. Tolerant of shape: see [`deserialize_inbox`].
+    #[serde(default, deserialize_with = "deserialize_inbox")]
+    pub inbox: InboxConfig,
+
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -168,6 +186,77 @@ pub struct LlmConfig {
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
+/// Assigned-issue auto-import. `autoAcceptAssignedIssues` selects what a swept issue becomes: a
+/// `CreatePlan` job when true, a proposal awaiting a human when false. Either way the sweep still
+/// runs — the flag picks the landing mode, it does not disable the import.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InboxConfig {
+    #[serde(rename = "autoAcceptAssignedIssues", default)]
+    pub auto_accept_assigned_issues: bool,
+
+    /// Minutes between sweeps. `0` or negative disables the importer entirely, the way
+    /// `worktreeReaperInterval` disables the reaper.
+    #[serde(
+        rename = "checkIntervalMinutes",
+        default = "default_check_interval_minutes"
+    )]
+    pub check_interval_minutes: i32,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl Default for InboxConfig {
+    fn default() -> Self {
+        Self {
+            auto_accept_assigned_issues: false,
+            check_interval_minutes: default_check_interval_minutes(),
+            extra: BTreeMap::new(),
+        }
+    }
+}
+
+/// Reads `inbox`, degrading a non-mapping or unparseable body to defaults rather than failing the
+/// whole load, for the same reason as [`deserialize_coding_agents`]: a bad hand-edit to one section
+/// must not take Tendril down.
+fn deserialize_inbox<'de, D>(deserializer: D) -> std::result::Result<InboxConfig, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = serde_json::Value::deserialize(deserializer)?;
+    Ok(match raw {
+        serde_json::Value::Object(_) => {
+            serde_json::from_value::<InboxConfig>(raw).unwrap_or_default()
+        }
+        _ => InboxConfig::default(),
+    })
+}
+
+/// The persisted outcome of the first-run wizard. `crate::onboarding` owns the rules that read it;
+/// an all-default value is omitted from `config.yaml` entirely, so a config written before this key
+/// existed is untouched by a round-trip and deserializes as "neither completed nor dismissed".
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct OnboardingConfig {
+    #[serde(default)]
+    pub completed: bool,
+
+    #[serde(default)]
+    pub dismissed: bool,
+
+    #[serde(
+        rename = "completedAt",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub completed_at: Option<String>,
+}
+
+impl OnboardingConfig {
+    /// Untouched onboarding state, i.e. nothing worth writing to `config.yaml`.
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
 /// What a single promptware asks for: the profile it runs under and the tool rules it contributes.
 ///
 /// `allowed_tools` is purely additive on top of the base set; `denied_tools` is subtracted from the
@@ -305,6 +394,9 @@ fn default_true() -> bool {
 fn default_theme() -> String {
     "default".to_string()
 }
+fn default_check_interval_minutes() -> i32 {
+    15
+}
 fn default_model_enrichment_interval_hours() -> i32 {
     crate::agents::model_cache::DEFAULT_ENRICHMENT_INTERVAL_HOURS
 }
@@ -366,6 +458,7 @@ impl Default for TendrilSettings {
             verifications: Vec::new(),
             plan_template: String::new(),
             plan_folder: None,
+            promptware_overlay: None,
             levels: default_levels(),
             telemetry: None,
             llm: None,
@@ -375,12 +468,14 @@ impl Default for TendrilSettings {
             worktree_reaper_grace: default_worktree_reaper_grace(),
             worktree_branch_delete_mode: default_worktree_branch_delete_mode(),
             beta: false,
+            onboarding: OnboardingConfig::default(),
             coding_agents: Vec::new(),
             promptwares: BTreeMap::new(),
             enrich_models: true,
             model_enrichment_interval_hours: default_model_enrichment_interval_hours(),
             model_cache_warn_age_days: default_model_cache_warn_age_days(),
             model_cache_max_age_days: default_model_cache_max_age_days(),
+            inbox: InboxConfig::default(),
             extra: BTreeMap::new(),
         }
     }
@@ -498,6 +593,72 @@ pub fn get_tendril_home() -> PathBuf {
     get_default_tendril_home()
 }
 
+/// The operator's real Tendril home, resolved as if `TENDRIL_HOME` were not set.
+///
+/// A test that pins `TENDRIL_HOME` to a temp directory still needs to know which path it must never
+/// touch, so this deliberately ignores the variable that isolates it.
+pub fn real_user_tendril_home() -> PathBuf {
+    get_default_tendril_home_with_env(&|key: &str| {
+        if key == "TENDRIL_HOME" {
+            None
+        } else {
+            std::env::var(key).ok()
+        }
+    })
+}
+
+/// True when the current process looks like a test binary.
+///
+/// `TENDRIL_TEST_ISOLATION=1` is the explicit opt-in (the VS Code extension harness sets it for its
+/// children); the `target/*/deps/` check covers cargo test binaries, so a harness added later cannot
+/// silently opt out of [`ensure_not_real_home`].
+pub fn in_test_context() -> bool {
+    if std::env::var("TENDRIL_TEST_ISOLATION").as_deref() == Ok("1") {
+        return true;
+    }
+
+    std::env::current_exe()
+        .map(|p| p.components().any(|c| c.as_os_str() == "deps"))
+        .unwrap_or(false)
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| -> String {
+        let resolved = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let s = normalize_slashes(&resolved)
+            .trim_end_matches('/')
+            .to_string();
+        if cfg!(windows) || cfg!(target_os = "macos") {
+            s.to_lowercase()
+        } else {
+            s
+        }
+    };
+
+    norm(a) == norm(b)
+}
+
+/// Refuses to claim the operator's real Tendril home from a test process.
+///
+/// Outside a test context this is a no-op, so production behaviour is unchanged.
+pub fn ensure_not_real_home(home: &Path) -> Result<()> {
+    if !in_test_context() {
+        return Ok(());
+    }
+
+    let real = real_user_tendril_home();
+    if paths_equal(home, &real) {
+        return Err(TendrilError::Other(format!(
+            "Refusing to use the real Tendril home {} from a test process: claiming mastership \
+             there hijacks the operator's running daemon. Set TENDRIL_HOME to a temp directory for \
+             this test.",
+            real.display()
+        )));
+    }
+
+    Ok(())
+}
+
 pub fn normalize_slashes(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -507,6 +668,8 @@ pub fn expand_variables_with_env(input: &str, tendril_home: &str, env: &impl Env
         .replace("%TENDRIL_HOME%", tendril_home)
         .replace("${TENDRIL_HOME}", tendril_home)
         .replace("$TENDRIL_HOME", tendril_home);
+
+    res = expand_env_percent_vars(&res, env);
 
     if res.starts_with('~') {
         if let Some(home) = dirs_home_with_env(env) {
@@ -524,6 +687,69 @@ pub fn expand_variables_with_env(input: &str, tendril_home: &str, env: &impl Env
 
 pub fn expand_variables(input: &str, tendril_home: &str) -> String {
     expand_variables_with_env(input, tendril_home, &SystemEnv)
+}
+
+/// Replaces every `%NAME%` that names a set environment variable with its value.
+///
+/// `config.yaml` is documented to accept arbitrary `%ENV_VAR%` (the example config's repo paths use
+/// `%REPOS_HOME%`, and hook actions are written the same way), so this closes the gap between the
+/// documented syntax and the one variable the expander used to know.
+///
+/// An unset name is left exactly as written, which is what keeps this backwards compatible: a string
+/// that reached the shell literally before still does. Only `[A-Za-z_][A-Za-z0-9_]*` between two `%`
+/// is considered a name, so a bare `%` or a `50% faster` is never touched.
+fn expand_env_percent_vars(input: &str, env: &impl EnvSource) -> String {
+    if !input.contains('%') {
+        return input.to_string();
+    }
+
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] != b'%' {
+            // Push whole UTF-8 characters: indexing is byte-wise, so a multi-byte character must be
+            // copied in one piece.
+            let ch = input[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+            continue;
+        }
+
+        match bytes[i + 1..].iter().position(|b| *b == b'%') {
+            Some(offset) => {
+                let name = &input[i + 1..i + 1 + offset];
+                match (is_env_var_name(name), env.get_var(name)) {
+                    (true, Some(value)) => {
+                        out.push_str(&value);
+                        i += offset + 2;
+                    }
+                    // Not a name, or a name nothing is set for: emit the opening `%` and carry on
+                    // from the next character, so `%a% %HOME%` still resolves `HOME`.
+                    _ => {
+                        out.push('%');
+                        i += 1;
+                    }
+                }
+            }
+            None => {
+                out.push_str(&input[i..]);
+                break;
+            }
+        }
+    }
+
+    out
+}
+
+fn is_env_var_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 pub fn dirs_home_with_env(env: &impl EnvSource) -> Option<PathBuf> {
@@ -759,6 +985,7 @@ pub fn default_capabilities() -> Vec<String> {
         "projects".to_string(),
         "ws".to_string(),
         "auth_bearer".to_string(),
+        "auth_api_key".to_string(),
     ]
 }
 
@@ -871,6 +1098,17 @@ pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
     serde_json::from_str(&content).ok()
 }
 
+/// True when this process owns the `.master` file. [`MasterGuard::acquire`] wrote our pid there;
+/// anything else — a foreign pid, or no file at all — means we lost the race or were superseded, so
+/// we must not write to anything the master owns.
+///
+/// Checked per pass rather than once at spawn: a daemon can be superseded while running. Being a
+/// function of the file rather than of process-wide environment state, it is testable without the
+/// cross-thread interference an env-var seam would cause.
+pub fn is_master(tendril_home: &Path) -> bool {
+    read_master(tendril_home).is_some_and(|m| m.pid == std::process::id())
+}
+
 pub fn write_master_info(tendril_home: &Path, info: &MasterInfo) -> Result<()> {
     let tmp_file = tendril_home.join(format!(".master.tmp.{}", info.pid));
     let master_file = tendril_home.join(".master");
@@ -921,39 +1159,69 @@ pub fn delete_master(tendril_home: &Path) {
     }
 }
 
-/// True when this process owns the `.master` file. [`MasterGuard::acquire`] wrote our pid there;
-/// anything else — a foreign pid, or no file at all — means we lost the race or were superseded, so
-/// we must not write to anything the master owns.
-///
-/// Checked per pass rather than once at spawn: a daemon can be superseded while running. Being a
-/// function of the file rather than of process-wide environment state, it is testable without the
-/// cross-thread interference an env-var seam would cause.
-pub fn is_master(tendril_home: &Path) -> bool {
-    read_master(tendril_home)
-        .map(|m| m.pid == std::process::id())
-        .unwrap_or(false)
-}
-
 pub struct MasterGuard {
     tendril_home: PathBuf,
     pid: u32,
 }
 
+/// Number of `/api/ping` attempts before a running master is declared unresponsive.
+pub const HEALTH_PROBE_ATTEMPTS: u32 = 3;
+const HEALTH_PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// Probes `/api/ping` repeatedly, so one dropped probe on a loaded machine cannot decide mastership.
+pub fn probe_health_with_retries(host: &str, port: u16, attempts: u32) -> bool {
+    for attempt in 0..attempts.max(1) {
+        if probe_health(host, port) {
+            return true;
+        }
+        if attempt + 1 < attempts {
+            std::thread::sleep(HEALTH_PROBE_INTERVAL);
+        }
+    }
+    false
+}
+
+fn master_takeover_allowed() -> bool {
+    std::env::var("TENDRIL_ALLOW_MASTER_TAKEOVER").as_deref() == Ok("1")
+}
+
 impl MasterGuard {
     pub fn acquire(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<Self> {
-        if let Some(existing) = read_master(tendril_home) {
-            let running = is_process_running(existing.pid);
-            let responding = probe_health(&existing.host, existing.port);
+        ensure_not_real_home(tendril_home)?;
 
-            if running && responding {
-                return Err(TendrilError::Other(format!(
-                    "Another Tendril instance is running with PID {} on port {}",
-                    existing.pid, existing.port
-                )));
+        if let Some(existing) = read_master(tendril_home) {
+            if is_process_running(existing.pid) {
+                if probe_health_with_retries(&existing.host, existing.port, HEALTH_PROBE_ATTEMPTS) {
+                    return Err(TendrilError::Other(format!(
+                        "Another Tendril instance is running with PID {} on port {}",
+                        existing.pid, existing.port
+                    )));
+                }
+
+                if !master_takeover_allowed() {
+                    return Err(TendrilError::Other(format!(
+                        "Refusing to take mastership from live PID {} on port {} recorded in \
+                         {}/.master: the process is alive but did not answer /api/ping after {} \
+                         probes. Stop that instance, or start this one with a different \
+                         TENDRIL_HOME.",
+                        existing.pid,
+                        existing.port,
+                        tendril_home.display(),
+                        HEALTH_PROBE_ATTEMPTS
+                    )));
+                }
+
+                tracing::warn!(
+                    "TENDRIL_ALLOW_MASTER_TAKEOVER=1: evicting live but unresponsive master PID {} on port {}",
+                    existing.pid,
+                    existing.port
+                );
+                delete_master(tendril_home);
             } else {
                 tracing::warn!(
-                    "Cleaning up stale .master file from PID {} on port {} (running: {}, responding: {})",
-                    existing.pid, existing.port, running, responding
+                    "Cleaning up stale .master file from PID {} on port {} (process is not running)",
+                    existing.pid,
+                    existing.port
                 );
                 delete_master(tendril_home);
             }
