@@ -193,6 +193,29 @@ describe("TendrilShell", () => {
     expect(localStorage.getItem("tendril.shell.sidebarWidth")).toBe("320");
   });
 
+  it("makes the sidebar resizer keyboard-focusable", () => {
+    act(() => {
+      root.render(
+        <TendrilShell
+          id="test-shell"
+          eventHandler={vi.fn()}
+          slots={{
+            SidebarHeader: <div>Header</div>,
+            Content: <div>Content</div>,
+          }}
+        />,
+      );
+    });
+
+    const resizer = container.querySelector(".tsh-sidebar-resizer") as HTMLElement;
+    expect(resizer).not.toBeNull();
+
+    act(() => {
+      resizer.focus();
+    });
+    expect(document.activeElement).toBe(resizer);
+  });
+
   it("restores stored sidebar width from localStorage on mount", () => {
     localStorage.setItem("tendril.shell.sidebarWidth", "400");
     act(() => {
