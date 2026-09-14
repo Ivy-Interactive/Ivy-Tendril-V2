@@ -130,6 +130,15 @@ export interface ProjectSummary {
   reviewActions?: ReviewActionConfig[];
 }
 
+/**
+ * A **read-only projection** of the wire shape, deliberately narrower than it. The server returns the
+ * whole `ProjectConfig`, including the unmodeled keys it round-trips (the agent security block —
+ * `sandboxMode`, `securityPreset`, `filePermissions`, … — written by the .NET V1 app). Nothing in the
+ * app writes a project today, so dropping them here loses nothing.
+ *
+ * A future project-settings screen MUST PATCH only the fields it changed rather than PUT an object
+ * reconstructed from this type, or it will clear every key absent from it.
+ */
 export interface ProjectDetail extends ProjectSummary {
   color?: string;
   context?: string;
