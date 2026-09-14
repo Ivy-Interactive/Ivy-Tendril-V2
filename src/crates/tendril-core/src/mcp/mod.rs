@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod discovery;
 pub mod dispatch;
 pub mod protocol;
 pub mod redact;
