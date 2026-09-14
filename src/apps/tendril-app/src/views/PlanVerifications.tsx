@@ -14,10 +14,10 @@ interface PlanVerificationsProps {
 }
 
 const STATUS_CLASS: Record<VerificationStatus, string> = {
-  Pass: "bg-emerald-950 text-emerald-300 border-emerald-800",
-  Fail: "bg-red-950 text-red-300 border-red-800",
-  Skipped: "bg-slate-800 text-slate-400 border-slate-700",
-  Pending: "bg-slate-800 text-slate-300 border-slate-700",
+  Pass: "bg-success/10 text-success border-success/40",
+  Fail: "bg-destructive/10 text-destructive border-destructive/40",
+  Skipped: "bg-muted text-muted-foreground border-border",
+  Pending: "bg-muted text-muted-foreground border-border",
 };
 
 /**
@@ -84,7 +84,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
 
   if (verificationCount === 0) {
     return (
-      <p data-testid="no-verifications" className="text-sm text-slate-400">
+      <p data-testid="no-verifications" className="text-sm text-muted-foreground">
         This plan has no verifications configured.
       </p>
     );
@@ -96,7 +96,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
         <div
           role="alert"
           data-testid="verification-reports-error"
-          className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {error}
         </div>
@@ -107,10 +107,10 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
         const isOpen = expanded === v.name;
 
         return (
-          <div key={v.name} className="rounded-lg border border-slate-800 bg-slate-950">
+          <div key={v.name} className="rounded-lg border border-border bg-background">
             <div className="flex items-center justify-between gap-3 p-3">
               <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-slate-200">{v.name}</span>
+                <span className="text-sm font-medium text-foreground">{v.name}</span>
                 <select
                   aria-label={`Status for ${v.name}`}
                   data-testid={`verification-status-select-${v.name}`}
@@ -120,20 +120,22 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                     STATUS_CLASS[v.status] ?? STATUS_CLASS.Pending
                   }`}
                 >
-                  <option value="Pending" className="bg-slate-900 text-slate-300">
+                  <option value="Pending" className="bg-card text-muted-foreground">
                     Pending
                   </option>
-                  <option value="Pass" className="bg-slate-900 text-emerald-300">
+                  <option value="Pass" className="bg-card text-success">
                     Pass
                   </option>
-                  <option value="Fail" className="bg-slate-900 text-red-300">
+                  <option value="Fail" className="bg-card text-destructive">
                     Fail
                   </option>
-                  <option value="Skipped" className="bg-slate-900 text-slate-400">
+                  <option value="Skipped" className="bg-card text-muted-foreground">
                     Skipped
                   </option>
                 </select>
-                {report?.date && <span className="text-xs text-slate-500">{report.date}</span>}
+                {report?.date && (
+                  <span className="text-xs text-muted-foreground/70">{report.date}</span>
+                )}
               </div>
 
               {report ? (
@@ -141,19 +143,19 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                   type="button"
                   onClick={() => setExpanded(isOpen ? null : v.name)}
                   aria-expanded={isOpen}
-                  className="rounded bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-slate-700"
+                  className="rounded bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
                 >
                   {isOpen ? "Hide report" : "View report"}
                 </button>
               ) : (
-                <span className="text-xs text-slate-500">No report yet</span>
+                <span className="text-xs text-muted-foreground/70">No report yet</span>
               )}
             </div>
 
             {isOpen && report && (
               <pre
                 data-testid={`verification-report-${v.name}`}
-                className="max-h-96 overflow-auto border-t border-slate-800 p-3 text-xs whitespace-pre-wrap text-slate-300"
+                className="max-h-96 overflow-auto border-t border-border p-3 text-xs whitespace-pre-wrap text-muted-foreground"
               >
                 {report.content}
               </pre>

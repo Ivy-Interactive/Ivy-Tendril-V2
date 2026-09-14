@@ -54,7 +54,9 @@ function printPort(...forwarded: string[]): string {
   ).trim();
 }
 
-describe("Storybook dev server port selection", () => {
+// Each `printPort` call boots a tsx subprocess, which can take well over the 5s default when the
+// machine is busy, so the suite carries its own generous timeout rather than flaking under load.
+describe("Storybook dev server port selection", { timeout: 60_000 }, () => {
   it("picks the base port when nothing holds it", () => {
     expect(printPort()).toBe(String(PORT_BASE));
   });

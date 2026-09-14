@@ -346,6 +346,8 @@ async fn test_pr_notification_broadcast() {
         &pf.folder_name,
         Some(&general_session.id),
         pr_url,
+        None,
+        None,
     )
     .await
     .unwrap();
