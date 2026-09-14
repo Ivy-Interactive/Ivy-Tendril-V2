@@ -58,6 +58,7 @@ export {
   type PermissionRequestWire,
   type PermissionDenialWire,
   type UserQuestionWire,
+  type StatusWire,
 } from "./components/AgentViewer/index.ts";
 
 // Tendril Process Pipeline Viewer
