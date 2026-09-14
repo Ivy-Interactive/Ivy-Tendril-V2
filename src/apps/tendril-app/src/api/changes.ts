@@ -25,7 +25,10 @@ export function applyChangeEvent(event: ChangeEvent, deps: ChangeInvalidationDep
       // handler in App.tsx.
       deps.refreshJobs();
 
-      if (deps.selectedPlanFolder && shouldRefreshDetailFor(target.folder, deps.selectedPlanFolder)) {
+      if (
+        deps.selectedPlanFolder &&
+        shouldRefreshDetailFor(target.folder, deps.selectedPlanFolder)
+      ) {
         deps.refreshPlanDetail(target.folder ?? deps.selectedPlanFolder);
       }
       break;

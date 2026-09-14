@@ -4,7 +4,13 @@ import { plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
 import { serviceStore } from "./state/serviceStore";
 import { bridge } from "./api/bridge";
-import { onChangeEvent, onChangeStreamStatus, onJobEvent, onPlanEvent, onServiceStatus } from "./api/events";
+import {
+  onChangeEvent,
+  onChangeStreamStatus,
+  onJobEvent,
+  onPlanEvent,
+  onServiceStatus,
+} from "./api/events";
 import { applyChangeEvent } from "./api/changes";
 import { describeBridgeError, type ProjectSummary } from "./types/api";
 
