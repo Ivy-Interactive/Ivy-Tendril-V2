@@ -350,6 +350,15 @@ Ivy-Tendril-V2/
    cargo test --workspace
    ```
 
+### Visual & Screenshot Testing
+
+To run screenshot verifications and Storybook visual tests locally:
+
+```bash
+pnpm install
+pnpm run install:playwright:deps
+```
+
 ---
 
 ## 🤖 Agent Skills
