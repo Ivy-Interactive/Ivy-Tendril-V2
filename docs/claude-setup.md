@@ -45,3 +45,7 @@ Once installed, use slash commands directly in your Claude Code session:
 - `/tendril-review`: Perform code quality and regression checks on current diffs.
 - `/tendrillable <url>`: Classify backlog issues according to autonomous agent rubrics.
 - `/tendril-release`: Automate version bumps, dependency updates, and release workflows.
+
+## License
+
+Tendril skills and plugins are licensed under the repository root [Functional Source License (FSL-1.1-ALv2)](../LICENSE).

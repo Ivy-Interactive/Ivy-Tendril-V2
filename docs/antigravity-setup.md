@@ -63,3 +63,7 @@ When working inside Antigravity IDE:
    skills/tendril-extension/scripts/install-antigravity.sh
    ```
 3. Reload Antigravity IDE (`Cmd+Shift+P` -> `Developer: Reload Window`).
+
+## License
+
+Tendril skills and plugins are licensed under the repository root [Functional Source License (FSL-1.1-ALv2)](../LICENSE).
