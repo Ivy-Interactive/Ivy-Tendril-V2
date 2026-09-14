@@ -4,6 +4,7 @@ import { bridge } from "../api/bridge";
 import type { ServiceInfo, TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
 import { ServiceSettingsView } from "../components/service";
+import { VaultSettingsView } from "./VaultSettingsView";
 
 interface SettingsViewProps {
   serviceInfo: ServiceInfo | null;
@@ -261,6 +262,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
         </div>
 
         <ModelCatalogCard />
+      </div>
+
+      <div className="rounded-xl border border-border bg-card/60 p-6">
+        <div className="border-b border-border pb-4">
+          <h2 className="text-base font-semibold text-foreground">Team Vault</h2>
+          <p className="text-xs text-muted-foreground">
+            Share projects, skills, MCP servers and security policies with your team through a
+            versioned Git repository.
+          </p>
+        </div>
+        <div className="pt-4">
+          <VaultSettingsView tendrilHome={serviceInfo?.tendrilHome} />
+        </div>
       </div>
 
       <ServiceSettingsView serviceInfo={serviceInfo} onRefreshHealth={onRefreshHealth} />

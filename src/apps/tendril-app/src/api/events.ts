@@ -25,6 +25,29 @@ export async function onPlanEvent(handler: (payload: unknown) => void): Promise<
   return () => unlisten();
 }
 
+/**
+ * Fires when a PR sync pass reported a change. Listens on both channels because
+ * `route_ws_message` in `service/ws_bridge.rs` routes only `type: "state"` and `type: "status"` to
+ * `plan-event` and classifies every other message type — `pr_status_changed` included — as a job
+ * event. Filtering here rather than guessing a channel keeps the subscriber correct either way.
+ */
+export async function onPrStatusEvent(handler: () => void): Promise<EventUnsubscribe> {
+  const isPrStatusChange = (payload: unknown): boolean => {
+    if (typeof payload === "string") return payload === "pr_status_changed";
+    if (typeof payload !== "object" || payload === null) return false;
+    return (payload as { type?: unknown }).type === "pr_status_changed";
+  };
+
+  const unlistens = await Promise.all(
+    (["plan-event", "job-event"] as const).map((channel) =>
+      listen<unknown>(channel, (event) => {
+        if (isPrStatusChange(event.payload)) handler();
+      }),
+    ),
+  );
+  return () => unlistens.forEach((unlisten) => unlisten());
+}
+
 /** What changed on disk. `folder: null` on a plans change means "rescan everything". */
 export type ChangeTarget =
   | { kind: "plans"; folder: string | null }

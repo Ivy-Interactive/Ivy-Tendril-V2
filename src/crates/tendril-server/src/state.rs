@@ -7,8 +7,9 @@ use tendril_core::config::{
     get_config_path, get_database_path, get_plans_dir_with_settings, load_config,
 };
 use tendril_core::jobs::JobManager;
+use tendril_core::version_check::VersionInfo;
 use tendril_core::watcher::ChangeEvent;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, RwLock};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -27,6 +28,10 @@ pub struct AppState {
     /// Held for the duration of a PR reconciliation pass, so the periodic driver and a manual
     /// `POST /api/pull-requests/sync` can never run concurrently.
     pub pr_sync_running: Arc<AtomicBool>,
+    /// Last known release-check result, seeded from disk at startup and refreshed by
+    /// `spawn_version_check`/`POST /api/version/check`. `consecutive_failures` lives only here —
+    /// the disk cache is never written on a failed check.
+    pub version_info: Arc<RwLock<VersionInfo>>,
 }
 
 impl AppState {
@@ -118,6 +123,15 @@ impl AppState {
             ws_tx.clone(),
         );
 
+        // `current_version` is always known, cache or not — only `latest_version`/`has_update`
+        // depend on a check ever having succeeded.
+        let mut seeded_version_info = tendril_core::version_check::load_cache(&tendril_home);
+        if seeded_version_info.current_version.is_empty() {
+            seeded_version_info.current_version =
+                tendril_core::version_check::current_version().to_string();
+        }
+        let version_info = Arc::new(RwLock::new(seeded_version_info));
+
         Self {
             tendril_home,
             config_path,
@@ -129,6 +143,7 @@ impl AppState {
             change_tx,
             secret,
             pr_sync_running,
+            version_info,
         }
     }
 }
