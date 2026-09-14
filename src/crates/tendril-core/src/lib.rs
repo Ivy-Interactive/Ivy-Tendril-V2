@@ -6,6 +6,7 @@ pub mod error;
 pub mod fs_lock;
 pub mod git;
 pub mod health;
+pub mod http;
 pub mod inbox;
 pub mod jobs;
 pub mod mcp;

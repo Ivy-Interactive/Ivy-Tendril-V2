@@ -21,6 +21,14 @@ pub struct TendrilSettings {
     #[serde(rename = "gitTimeout", default = "default_git_timeout")]
     pub git_timeout: i32,
 
+    /// Seconds to wait for a reply from the local daemon. Note the unit: unlike `jobTimeout`,
+    /// which is minutes, this is seconds. `0` or negative disables the timeout entirely.
+    #[serde(
+        rename = "daemonRequestTimeout",
+        default = "default_daemon_request_timeout"
+    )]
+    pub daemon_request_timeout: i32,
+
     #[serde(rename = "maxConcurrentJobs", default = "default_max_concurrent_jobs")]
     pub max_concurrent_jobs: i32,
 
@@ -343,6 +351,9 @@ fn default_stale_output_timeout() -> i32 {
 fn default_git_timeout() -> i32 {
     10
 }
+fn default_daemon_request_timeout() -> i32 {
+    crate::http::DEFAULT_DAEMON_REQUEST_TIMEOUT_SECS as i32
+}
 fn default_max_concurrent_jobs() -> i32 {
     20
 }
@@ -411,6 +422,7 @@ impl Default for TendrilSettings {
             job_timeout: default_job_timeout(),
             stale_output_timeout: default_stale_output_timeout(),
             git_timeout: default_git_timeout(),
+            daemon_request_timeout: default_daemon_request_timeout(),
             max_concurrent_jobs: default_max_concurrent_jobs(),
             projects: Vec::new(),
             verifications: Vec::new(),
