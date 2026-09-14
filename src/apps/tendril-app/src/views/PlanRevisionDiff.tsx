@@ -11,14 +11,21 @@ interface PlanRevisionDiffProps {
   revisionCount: number;
 }
 
-/** Build a unified diff between two revisions of a plan's `plan.md`. */
+/**
+ * Build a unified diff between two revisions of a plan's `plan.md`.
+ *
+ * The `diff --git` line is required, not decorative: `PlanDiffView` parses with
+ * `react-diff-view`'s `parseDiff`, which is `gitdiff-parser` and recognises no file at all without
+ * it. A bare `createTwoFilesPatch` body parses to zero files, which is how this tab came to render
+ * "No diff to display" for every plan.
+ */
 export function buildRevisionPatch(
   oldRevision: number,
   newRevision: number,
   oldContent: string,
   newContent: string,
 ): string {
-  return createTwoFilesPatch(
+  const body = createTwoFilesPatch(
     `plan.md (revision ${oldRevision})`,
     `plan.md (revision ${newRevision})`,
     oldContent,
@@ -27,6 +34,7 @@ export function buildRevisionPatch(
     undefined,
     { context: 3 },
   );
+  return `diff --git a/plan.md b/plan.md\n${body}`;
 }
 
 /**

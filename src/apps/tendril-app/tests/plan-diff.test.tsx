@@ -52,6 +52,13 @@ describe("buildRevisionPatch", () => {
     expect(patch).not.toContain("@@");
   });
 
+  it("carries the git header PlanDiffView's parser needs to see a file at all", () => {
+    // `parseDiff` is `gitdiff-parser`, which recognises no file without this line and then renders
+    // "No diff to display" rather than erroring. `plan-diff-renders.test.tsx` asserts the rendered
+    // consequence; this pins the cause.
+    expect(buildRevisionPatch(1, 2, REV_1, REV_2)).toMatch(/^diff --git a\/plan\.md b\/plan\.md\n/);
+  });
+
   it("reports added lines rather than a fixed one-line change", () => {
     const patch = buildRevisionPatch(
       1,
