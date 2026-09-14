@@ -68,9 +68,14 @@ pub struct RecommendationDto {
     pub description: String,
     #[serde(default = "default_recommendation_state")]
     pub state: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Why the recommendation was declined. Distinct from `notes`: this one is
+    /// set only for `Declined`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decline_reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Why the recommendation was accepted. Set only for `AcceptedWithNotes`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub notes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub impact: Option<String>,
 }
 

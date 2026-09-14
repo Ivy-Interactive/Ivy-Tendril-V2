@@ -533,6 +533,7 @@ async fn the_real_service_updates_recommendation_state() {
         "Tauri WebDriver E2E Automation".to_string(),
         "Accepted".to_string(),
         None,
+        None,
     )
     .await
     .expect("update recommendation state");

@@ -164,6 +164,29 @@ describe("Service DTOs over the bridge", () => {
       title: "Deep Link Protocol Handler",
       state: "Declined",
       declineReason: "Not now",
+      notes: undefined,
+    });
+  });
+
+  // An accept note and a decline reason are different things. They used to share
+  // `declineReason`, which made an accepted recommendation read back as refused.
+  it("sends an accept note as notes rather than as declineReason", async () => {
+    invokeMock.mockResolvedValueOnce(undefined);
+
+    await bridge.setRecommendationState(
+      "00021",
+      "Tauri WebDriver E2E Automation",
+      "AcceptedWithNotes",
+      undefined,
+      "After the driver upgrade",
+    );
+
+    expect(invokeMock).toHaveBeenCalledWith("cmd_set_recommendation_state", {
+      planId: "00021",
+      title: "Tauri WebDriver E2E Automation",
+      state: "AcceptedWithNotes",
+      declineReason: undefined,
+      notes: "After the driver upgrade",
     });
   });
 });

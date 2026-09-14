@@ -188,12 +188,17 @@ impl TendrilClient {
     /// The route is live in `tendril-server` (shipped in Plan 00068 via
     /// `PUT /api/plans/:id/recommendations/:title`). The desktop app delegates
     /// mutation to the daemon rather than writing `plan.yaml` behind its back.
+    ///
+    /// `notes` and `decline_reason` are distinct fields: the app used to smuggle
+    /// accept notes through `declineReason` because the recommendation model had
+    /// nowhere else to put them.
     pub async fn update_recommendation(
         &self,
         plan_id: &str,
         title: &str,
         state: &str,
         decline_reason: Option<&str>,
+        notes: Option<&str>,
     ) -> Result<(), BridgeError> {
         let url = format!(
             "{}/api/plans/{}/recommendations/{}",
@@ -201,7 +206,7 @@ impl TendrilClient {
             path_segment(plan_id),
             path_segment(title)
         );
-        let body = json!({ "state": state, "declineReason": decline_reason });
+        let body = json!({ "state": state, "declineReason": decline_reason, "notes": notes });
 
         let resp = self
             .client

@@ -112,18 +112,26 @@ export const bridge = {
     return invoke<RecommendationItem[]>("cmd_list_recommendations", { planId });
   },
 
+  /**
+   * `declineReason` and `notes` are separate fields, not one field reused: a
+   * decline reason is why the recommendation was rejected, a note is why it was
+   * accepted. Pass `notes` with `AcceptedWithNotes` and `declineReason` with
+   * `Declined`.
+   */
   async setRecommendationState(
     this: void,
     planId: string,
     title: string,
     state: RecommendationState,
     declineReason?: string,
+    notes?: string,
   ): Promise<void> {
     return invoke<void>("cmd_set_recommendation_state", {
       planId,
       title,
       state,
       declineReason,
+      notes,
     });
   },
 

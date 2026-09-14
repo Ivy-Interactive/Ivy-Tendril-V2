@@ -109,9 +109,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     if (!activeNoteDialog) return;
     const { title, action } = activeNoteDialog;
     const trimmedNote = note?.trim();
-    const targetState: RecommendationState =
-      action === "Accept" ? (trimmedNote ? "AcceptedWithNotes" : "Accepted") : "Declined";
+    const accepting = action === "Accept";
+    const targetState: RecommendationState = accepting
+      ? trimmedNote
+        ? "AcceptedWithNotes"
+        : "Accepted"
+      : "Declined";
     const notePayload = trimmedNote || undefined;
+    // The same dialog text is a note on an accept and a reason on a decline, so
+    // it goes to a different field either way round.
+    const declineReason = accepting ? undefined : notePayload;
+    const notes = accepting ? notePayload : undefined;
 
     handleCloseDialog();
     setActionError(null);
@@ -120,12 +128,12 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     const previous = recommendations;
     setRecommendations((prev) =>
       prev.map((r) =>
-        r.title === title ? { ...r, state: targetState, declineReason: notePayload } : r,
+        r.title === title ? { ...r, state: targetState, declineReason, notes } : r,
       ),
     );
 
     try {
-      await bridge.setRecommendationState(plan.id, title, targetState, notePayload);
+      await bridge.setRecommendationState(plan.id, title, targetState, declineReason, notes);
     } catch (err) {
       setRecommendations(previous);
       setActionError(`Failed to update recommendation "${title}": ${describeBridgeError(err)}`);

@@ -120,17 +120,22 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
    * previous list is restored: the operator must not be left believing a
    * decision was recorded in plan.yaml when it was not.
    */
-  const setRecState = async (title: string, state: RecommendationState, declineReason?: string) => {
+  const setRecState = async (
+    title: string,
+    state: RecommendationState,
+    declineReason?: string,
+    notes?: string,
+  ) => {
     if (!selectedPlanId) return;
 
     const previous = recommendations;
     setRecommendations((prev) =>
-      prev.map((r) => (r.title === title ? { ...r, state, declineReason } : r)),
+      prev.map((r) => (r.title === title ? { ...r, state, declineReason, notes } : r)),
     );
     setActionError(null);
 
     try {
-      await bridge.setRecommendationState(selectedPlanId, title, state, declineReason);
+      await bridge.setRecommendationState(selectedPlanId, title, state, declineReason, notes);
     } catch (err) {
       setRecommendations(previous);
       setActionError(`Could not mark "${title}" as ${state}: ${describeBridgeError(err)}`);
@@ -141,12 +146,23 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     if (!activeNoteDialog) return;
     const { title, action } = activeNoteDialog;
     const trimmedNote = note?.trim();
-    const targetState: RecommendationState =
-      action === "Accept" ? (trimmedNote ? "AcceptedWithNotes" : "Accepted") : "Declined";
+    const accepting = action === "Accept";
+    const targetState: RecommendationState = accepting
+      ? trimmedNote
+        ? "AcceptedWithNotes"
+        : "Accepted"
+      : "Declined";
     const notePayload = trimmedNote || undefined;
 
     setActiveNoteDialog(null);
-    await setRecState(title, targetState, notePayload);
+    // The same dialog text means different things either way round: a note on an
+    // accept, a reason on a decline. They go to different fields.
+    await setRecState(
+      title,
+      targetState,
+      accepting ? undefined : notePayload,
+      accepting ? notePayload : undefined,
+    );
   };
 
   const handleRetrySubmit = async () => {

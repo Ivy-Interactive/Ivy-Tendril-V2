@@ -98,13 +98,14 @@ pub async fn cmd_list_recommendations(
 
 /// Accept or decline a recommendation. `state` must be one of `Accepted`,
 /// `AcceptedWithNotes`, `Declined` or `Pending`; `declineReason` is only
-/// meaningful for `Declined`.
+/// meaningful for `Declined` and `notes` only for `AcceptedWithNotes`.
 #[tauri::command]
 pub async fn cmd_set_recommendation_state(
     plan_id: String,
     title: String,
     state: String,
     decline_reason: Option<String>,
+    notes: Option<String>,
 ) -> Result<(), BridgeError> {
     const STATES: [&str; 4] = ["Pending", "Accepted", "AcceptedWithNotes", "Declined"];
     if !STATES.contains(&state.as_str()) {
@@ -115,7 +116,13 @@ pub async fn cmd_set_recommendation_state(
     }
 
     get_client_from_master()?
-        .update_recommendation(&plan_id, &title, &state, decline_reason.as_deref())
+        .update_recommendation(
+            &plan_id,
+            &title,
+            &state,
+            decline_reason.as_deref(),
+            notes.as_deref(),
+        )
         .await
 }
 

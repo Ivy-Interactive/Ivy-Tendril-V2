@@ -79,6 +79,7 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
         "00021",
         "Tauri WebDriver E2E Automation",
         "AcceptedWithNotes",
+        undefined,
         "Ready for next sprint",
       ),
     );
@@ -114,6 +115,7 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
         "Tauri WebDriver E2E Automation",
         "Declined",
         "Out of scope for now",
+        undefined,
       ),
     );
 

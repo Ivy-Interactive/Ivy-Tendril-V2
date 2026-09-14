@@ -106,6 +106,7 @@ describe("ReviewView recommendations", () => {
         "Tauri WebDriver E2E Automation",
         "Accepted",
         undefined,
+        undefined,
       ),
     );
     await waitFor(() => expect(screen.getByText("Accepted")).toBeInTheDocument());
@@ -154,6 +155,7 @@ describe("ReviewView recommendations", () => {
         "Tauri WebDriver E2E Automation",
         "Declined",
         undefined,
+        undefined,
       ),
     );
   });
@@ -180,6 +182,7 @@ describe("ReviewView recommendations", () => {
         "00021",
         "Tauri WebDriver E2E Automation",
         "AcceptedWithNotes",
+        undefined,
         "Ship in next release",
       ),
     );
@@ -214,6 +217,7 @@ describe("ReviewView recommendations", () => {
         "Tauri WebDriver E2E Automation",
         "Declined",
         "Out of scope for this milestone",
+        undefined,
       ),
     );
 
