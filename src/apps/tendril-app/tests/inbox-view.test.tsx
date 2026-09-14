@@ -75,6 +75,16 @@ describe("InboxView Component & Triage Tests", () => {
     vi.restoreAllMocks();
   });
 
+  // The pagination bar is unmounted while `isLoading` is true and its buttons are
+  // disabled during a refetch, so a spy assertion alone is not enough to know the
+  // controls are clickable — the spy fires before the fetch settles.
+  const waitForInboxIdle = async () => {
+    await waitFor(() => {
+      expect(screen.queryByTestId("inbox-loading")).not.toBeInTheDocument();
+      expect(screen.getByTestId("inbox-pagination")).toBeInTheDocument();
+    });
+  };
+
   it("renders category switcher and responds to category selection changes", async () => {
     render(<InboxView projects={mockProjects} />);
 
@@ -215,6 +225,7 @@ describe("InboxView Component & Triage Tests", () => {
     await waitFor(() => {
       expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
+    await waitForInboxIdle();
 
     expect(screen.getByRole("button", { name: /previous/i })).toBeDisabled();
 
@@ -223,12 +234,15 @@ describe("InboxView Component & Triage Tests", () => {
     await waitFor(() => {
       expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
     });
+    await waitForInboxIdle();
 
     fireEvent.click(screen.getByRole("button", { name: /previous/i }));
 
     await waitFor(() => {
-      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenLastCalledWith(undefined, "my-issues", 1, 25);
     });
+    await waitForInboxIdle();
+    expect(screen.getByRole("button", { name: /previous/i })).toBeDisabled();
   });
 
   it("resets to the first page and requests the new page size when the page size changes", async () => {
@@ -237,17 +251,19 @@ describe("InboxView Component & Triage Tests", () => {
     await waitFor(() => {
       expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
+    await waitForInboxIdle();
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
     await waitFor(() => {
       expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
     });
+    await waitForInboxIdle();
 
     fireEvent.change(screen.getByLabelText(/page size/i), { target: { value: "50" } });
 
     await waitFor(() => {
-      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 50);
+      expect(listGitHubIssuesSpy).toHaveBeenLastCalledWith(undefined, "my-issues", 1, 50);
     });
   });
 
@@ -257,19 +273,21 @@ describe("InboxView Component & Triage Tests", () => {
     await waitFor(() => {
       expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
     });
+    await waitForInboxIdle();
 
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
     await waitFor(() => {
       expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 2, 25);
     });
+    await waitForInboxIdle();
 
     fireEvent.change(screen.getByRole("searchbox", { name: /search issues/i }), {
       target: { value: "bug" },
     });
 
     await waitFor(() => {
-      expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, 25);
+      expect(listGitHubIssuesSpy).toHaveBeenLastCalledWith(undefined, "my-issues", 1, 25);
     });
   });
 
