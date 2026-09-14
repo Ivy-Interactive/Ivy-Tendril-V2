@@ -22,6 +22,14 @@ export function awaitBackgroundInit(): Promise<void> {
   return backgroundInit;
 }
 
+/**
+ * Test-only accessor for the `ServerManager` the current activation created, so a test can inspect
+ * diagnostics like `lastStartupError` without threading them through every command path.
+ */
+export function getActiveServerManager(): ServerManager | undefined {
+  return serverManager;
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   serverManager = new ServerManager();
   context.subscriptions.push(serverManager);
@@ -240,14 +248,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }, 10000);
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = undefined;
   }
 
+  // Let any in-flight background init settle first, so a startServer() call it kicked off cannot
+  // spawn (or keep spawning) a server that outlives this deactivation as an orphan.
+  await backgroundInit.catch(() => {});
+
   if (serverManager) {
-    serverManager.dispose();
+    await serverManager.shutdown();
     serverManager = undefined;
   }
 }

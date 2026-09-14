@@ -21,10 +21,25 @@ use tokio::net::TcpListener;
 /// How often the master rechecks blocked plans, wait-for dependents, stuck jobs and stale entries.
 const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(60);
 
+/// How long in-flight requests get to finish once a TLS server has been asked to shut down.
+const TLS_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
+
+/// PEM certificate and key for a TLS listener — what `tendril generate-certs` writes.
+#[derive(Debug, Clone)]
+pub struct TlsOptions {
+    pub cert: PathBuf,
+    pub key: PathBuf,
+}
+
+/// How often queued telemetry events are posted. Long enough that a busy daemon batches, short enough
+/// that a daemon killed without a clean shutdown loses little.
+const TELEMETRY_FLUSH_INTERVAL: Duration = Duration::from_secs(30);
+
 pub async fn run_server(
     port: u16,
     tendril_home: PathBuf,
     host: Option<String>,
+    tls: Option<TlsOptions>,
 ) -> anyhow::Result<()> {
     let host = host.unwrap_or_else(|| "127.0.0.1".to_string());
     let is_loopback = host == "127.0.0.1" || host == "::1" || host == "localhost";
@@ -43,15 +58,35 @@ pub async fn run_server(
         );
     }
 
+    // Loaded before anything claims the port or writes `.master`: an unreadable certificate should
+    // stop the daemon, not leave a half-announced server behind.
+    let tls_config = match &tls {
+        Some(opts) => Some(load_tls_config(opts).await?),
+        None => None,
+    };
+    let scheme = if tls_config.is_some() {
+        "https"
+    } else {
+        "http"
+    };
+
     let secret = tendril_core::config::generate_bearer_secret();
     let state = Arc::new(AppState::new(tendril_home.clone(), secret.clone()));
     let app = create_router(state.clone());
 
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr).await?;
-    println!(">>> Tendril Server running on http://{}:{}", host, port);
+    println!(
+        ">>> Tendril Server running on {}://{}:{}",
+        scheme, host, port
+    );
 
-    let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host)?;
+    let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host, scheme)?;
+
+    // Master-only, like everything below: two daemons would double-count every event. Strictly
+    // opt-in — `init` returns `None` unless `config.yaml` says `telemetry: true`, and nothing is
+    // installed, queued or sent in that case.
+    let telemetry = init_telemetry(&tendril_home);
 
     // Master-only, for the same reason as the reconcile below: two daemons mirroring the same Plans
     // folder into the same database would fight. Held for the process lifetime — dropping the handle
@@ -91,14 +126,136 @@ pub async fn run_server(
     });
 
     spawn_worktree_reaper(tendril_home.clone());
+    spawn_cost_backfill(tendril_home.clone());
     tasks::spawn_version_check(state.clone());
     spawn_assigned_issues_importer(tendril_home.clone(), state.clone());
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    match tls_config {
+        None => {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(shutdown_signal())
+                .await?;
+        }
+        Some(config) => {
+            // `axum::serve` has no TLS, and `axum_server` drives shutdown through a handle rather
+            // than a future, so this branch wires the same signal up the other way round.
+            let handle = axum_server::Handle::new();
+            let signalled = handle.clone();
+            tokio::spawn(async move {
+                shutdown_signal().await;
+                signalled.graceful_shutdown(Some(TLS_SHUTDOWN_GRACE));
+            });
+
+            axum_server::from_tcp_rustls(listener.into_std()?, config)
+                .handle(handle)
+                .serve(app.into_make_service())
+                .await?;
+        }
+    }
+
+    // Whatever is still queued, posted once on the way out. A best-effort call on a client that may
+    // not exist: no client means nothing was ever queued.
+    if let Some(telemetry) = &telemetry {
+        telemetry.flush().await;
+    }
 
     Ok(())
+}
+
+/// Reads the PEM pair `serve --tls-cert/--tls-key` was given.
+async fn load_tls_config(
+    opts: &TlsOptions,
+) -> anyhow::Result<axum_server::tls_rustls::RustlsConfig> {
+    // `rustls` here is built with the ring provider only, but it still installs no process-wide
+    // default on its own, and `RustlsConfig` panics rather than errors without one. An `Err` means
+    // some other component installed a provider first, which is just as good.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
+    axum_server::tls_rustls::RustlsConfig::from_pem_file(&opts.cert, &opts.key)
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "could not load TLS certificate {} and key {}: {}. `tendril generate-certs <dir>` \
+                 writes a matching pair.",
+                opts.cert.display(),
+                opts.key.display(),
+                e
+            )
+        })
+}
+
+/// Builds and publishes the process-wide telemetry client, and emits `app_started`.
+///
+/// Returns the handle so `run_server` can flush on shutdown. `None` whenever telemetry is off, which
+/// is the default: see `docs/TELEMETRY.md`.
+fn init_telemetry(
+    tendril_home: &std::path::Path,
+) -> Option<Arc<tendril_core::telemetry::Telemetry>> {
+    use tendril_core::telemetry::{self, AppStartContext};
+
+    let config_path = tendril_core::config::get_config_path(tendril_home);
+    let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
+
+    let telemetry = telemetry::init(tendril_home, &settings)?;
+    telemetry::install(telemetry.clone());
+    telemetry::spawn_flusher(telemetry.clone(), TELEMETRY_FLUSH_INTERVAL);
+
+    telemetry.track_app_started(&AppStartContext {
+        version: tendril_core::version().to_string(),
+        project_count: settings.projects.len() as i64,
+        llm_configured: settings.llm.is_some(),
+    });
+
+    Some(telemetry)
+}
+
+/// Periodic cost backfill. Started only by the master — the `MasterGuard` has already been acquired by
+/// the time this is called — and re-checked per pass, because a daemon can be superseded while
+/// running and a demoted one must not write cost rows to the shared database.
+///
+/// Shaped like [`spawn_worktree_reaper`] on purpose: this is the same recurring-task pattern, not a
+/// second scheduling mechanism.
+fn spawn_cost_backfill(tendril_home: PathBuf) {
+    // Comfortably after the models.dev enrichment that `AppState` kicks off at startup, so the first
+    // pass prices against live data rather than the static fallback table.
+    const INITIAL_DELAY: Duration = Duration::from_secs(60);
+    // The pass is self-limiting: it goes quiet once every row is either filled or unfillable, which is
+    // why it needs no config key of its own.
+    const INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+
+    tokio::spawn(async move {
+        let mut delay = INITIAL_DELAY;
+        loop {
+            // Every pass sleeps before it runs, so backfill never competes with startup for disk.
+            tokio::time::sleep(delay).await;
+            delay = INTERVAL;
+
+            if !tendril_core::config::is_master(&tendril_home) {
+                continue;
+            }
+
+            let home = tendril_home.clone();
+            // A panic inside a pass must not take the loop down with it.
+            let pass = tokio::task::spawn_blocking(move || {
+                tendril_core::jobs::cost_backfill::run_pass(&home)
+            })
+            .await;
+
+            match pass {
+                Ok(report) => {
+                    if !report.is_empty() {
+                        tracing::info!(
+                            "Cost backfill: {} estimated, {} unpriced, {} failed",
+                            report.filled,
+                            report.unpriced,
+                            report.failed,
+                        );
+                    }
+                }
+                Err(e) => tracing::warn!("Cost backfill pass failed: {}", e),
+            }
+        }
+    });
 }
 
 /// Periodic import of the GitHub issues assigned to the user, following `spawn_worktree_reaper`'s

@@ -1,4 +1,5 @@
 pub mod attachments;
+pub mod cost_backfill;
 pub mod deliverable;
 pub mod denials;
 pub mod dependents;
@@ -14,6 +15,8 @@ pub mod queue;
 pub mod recovery;
 
 pub use attachments::*;
+// `cost_backfill` is deliberately not glob re-exported: at `jobs::run_pass` its entry point reads as
+// any one of the several periodic passes this module has. Call it as `cost_backfill::run_pass`.
 pub use deliverable::*;
 pub use denials::*;
 pub use dependents::*;
