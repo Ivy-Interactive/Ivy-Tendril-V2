@@ -17,6 +17,13 @@ export interface StubInvocation {
   pid: number;
 }
 
+export interface MasterInfo {
+  pid: number;
+  port: number;
+  scheme?: string;
+  heartbeat?: string;
+}
+
 function realPath(p: string): string {
   try {
     return fs.realpathSync(p);
@@ -220,6 +227,57 @@ export function stubTendrilExecutablePath(home: string): string {
   );
   fs.chmodSync(shPath, 0o755);
   return shPath;
+}
+
+/**
+ * Polls for a `.master` file under `home` until it exists, parses, and carries a numeric `pid` and
+ * `port`. A missing file, a torn write, or a parse error is treated as "not ready yet" and retried
+ * rather than as a failure — the stub writes `.master` in one `writeFileSync`, but a read can still
+ * race an in-progress write on some filesystems.
+ *
+ * On timeout, throws a diagnostic error naming the home, the deadline, the reason the last attempt
+ * did not resolve, a directory listing of `home`, and the tail of the stub invocation log — so a
+ * genuine readiness failure is debuggable instead of surfacing as a bare assertion mismatch.
+ */
+export async function waitForMaster(home: string, timeoutMs = 10000): Promise<MasterInfo> {
+  const masterFile = path.join(home, '.master');
+  const startTime = Date.now();
+  let lastReason = 'not attempted yet';
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const raw = fs.readFileSync(masterFile, 'utf-8');
+      const parsed = JSON.parse(raw) as Partial<MasterInfo>;
+      if (typeof parsed.pid === 'number' && typeof parsed.port === 'number') {
+        return parsed as MasterInfo;
+      }
+      lastReason = `parsed but missing numeric pid/port: ${raw}`;
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      lastReason = code === 'ENOENT' ? 'ENOENT (file does not exist yet)' : `parse error: ${String(err)}`;
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+
+  const listing = (() => {
+    try {
+      return fs.readdirSync(home).join(', ');
+    } catch (err: unknown) {
+      return `<failed to list ${home}: ${String(err)}>`;
+    }
+  })();
+
+  const invocationTail = readStubInvocations(home)
+    .slice(-5)
+    .map(i => JSON.stringify(i))
+    .join('\n');
+
+  throw new Error(
+    `Timed out waiting for a ready .master under ${home} after ${timeoutMs}ms (last attempt: ${lastReason}).\n` +
+      `Directory listing: ${listing}\n` +
+      `Last stub invocations:\n${invocationTail || '<none>'}`
+  );
 }
 
 export function readStubInvocations(home: string): StubInvocation[] {

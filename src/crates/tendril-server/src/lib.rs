@@ -21,6 +21,16 @@ use tokio::net::TcpListener;
 /// How often the master rechecks blocked plans, wait-for dependents, stuck jobs and stale entries.
 const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(60);
 
+/// How long in-flight requests get to finish once a TLS server has been asked to shut down.
+const TLS_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
+
+/// PEM certificate and key for a TLS listener — what `tendril generate-certs` writes.
+#[derive(Debug, Clone)]
+pub struct TlsOptions {
+    pub cert: PathBuf,
+    pub key: PathBuf,
+}
+
 /// How often queued telemetry events are posted. Long enough that a busy daemon batches, short enough
 /// that a daemon killed without a clean shutdown loses little.
 const TELEMETRY_FLUSH_INTERVAL: Duration = Duration::from_secs(30);
@@ -29,6 +39,7 @@ pub async fn run_server(
     port: u16,
     tendril_home: PathBuf,
     host: Option<String>,
+    tls: Option<TlsOptions>,
 ) -> anyhow::Result<()> {
     let host = host.unwrap_or_else(|| "127.0.0.1".to_string());
     let is_loopback = host == "127.0.0.1" || host == "::1" || host == "localhost";
@@ -39,15 +50,30 @@ pub async fn run_server(
         );
     }
 
+    // Loaded before anything claims the port or writes `.master`: an unreadable certificate should
+    // stop the daemon, not leave a half-announced server behind.
+    let tls_config = match &tls {
+        Some(opts) => Some(load_tls_config(opts).await?),
+        None => None,
+    };
+    let scheme = if tls_config.is_some() {
+        "https"
+    } else {
+        "http"
+    };
+
     let secret = tendril_core::config::generate_bearer_secret();
     let state = Arc::new(AppState::new(tendril_home.clone(), secret.clone()));
     let app = create_router(state.clone());
 
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr).await?;
-    println!(">>> Tendril Server running on http://{}:{}", host, port);
+    println!(
+        ">>> Tendril Server running on {}://{}:{}",
+        scheme, host, port
+    );
 
-    let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host)?;
+    let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host, scheme)?;
 
     // Master-only, like everything below: two daemons would double-count every event. Strictly
     // opt-in — `init` returns `None` unless `config.yaml` says `telemetry: true`, and nothing is
@@ -96,9 +122,28 @@ pub async fn run_server(
     tasks::spawn_version_check(state.clone());
     spawn_assigned_issues_importer(tendril_home.clone(), state.clone());
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    match tls_config {
+        None => {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(shutdown_signal())
+                .await?;
+        }
+        Some(config) => {
+            // `axum::serve` has no TLS, and `axum_server` drives shutdown through a handle rather
+            // than a future, so this branch wires the same signal up the other way round.
+            let handle = axum_server::Handle::new();
+            let signalled = handle.clone();
+            tokio::spawn(async move {
+                shutdown_signal().await;
+                signalled.graceful_shutdown(Some(TLS_SHUTDOWN_GRACE));
+            });
+
+            axum_server::from_tcp_rustls(listener.into_std()?, config)
+                .handle(handle)
+                .serve(app.into_make_service())
+                .await?;
+        }
+    }
 
     // Whatever is still queued, posted once on the way out. A best-effort call on a client that may
     // not exist: no client means nothing was ever queued.
@@ -107,6 +152,28 @@ pub async fn run_server(
     }
 
     Ok(())
+}
+
+/// Reads the PEM pair `serve --tls-cert/--tls-key` was given.
+async fn load_tls_config(
+    opts: &TlsOptions,
+) -> anyhow::Result<axum_server::tls_rustls::RustlsConfig> {
+    // `rustls` here is built with the ring provider only, but it still installs no process-wide
+    // default on its own, and `RustlsConfig` panics rather than errors without one. An `Err` means
+    // some other component installed a provider first, which is just as good.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
+    axum_server::tls_rustls::RustlsConfig::from_pem_file(&opts.cert, &opts.key)
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "could not load TLS certificate {} and key {}: {}. `tendril generate-certs <dir>` \
+                 writes a matching pair.",
+                opts.cert.display(),
+                opts.key.display(),
+                e
+            )
+        })
 }
 
 /// Builds and publishes the process-wide telemetry client, and emits `app_started`.

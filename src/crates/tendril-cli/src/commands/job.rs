@@ -228,10 +228,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         }
         JobCommands::List(args) => {
             let master = get_master_or_err(tendril_home)?;
-            let mut url = format!(
-                "http://{}:{}/api/jobs?limit={}",
-                master.host, master.port, args.limit
-            );
+            let mut url = format!("{}/api/jobs?limit={}", master.base_url(), args.limit);
             if let Some(st) = args.status {
                 url.push_str(&format!("&status={}", st));
             }
@@ -239,9 +236,8 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             let resp = client.get(&url).bearer_auth(&master.secret).send().await?;
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
                 anyhow::bail!(
-                    "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
-                    master.host,
-                    master.port
+                    "Authentication failed: unauthorized request to Tendril daemon at {}",
+                    master.base_url()
                 );
             }
             let resp = resp.error_for_status()?;
@@ -285,10 +281,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         }
         JobCommands::Status(args) => {
             let master = get_master_or_err(tendril_home)?;
-            let url = format!(
-                "http://{}:{}/api/jobs/{}/status",
-                master.host, master.port, args.job_id
-            );
+            let url = format!("{}/api/jobs/{}/status", master.base_url(), args.job_id);
             let body = serde_json::json!({
                 "message": args.message,
                 "planId": args.plan_id,
@@ -302,9 +295,8 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                 .await?;
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
                 anyhow::bail!(
-                    "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
-                    master.host,
-                    master.port
+                    "Authentication failed: unauthorized request to Tendril daemon at {}",
+                    master.base_url()
                 );
             }
             resp.error_for_status()?;
@@ -312,10 +304,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         }
         JobCommands::Fail(args) => {
             let master = get_master_or_err(tendril_home)?;
-            let url = format!(
-                "http://{}:{}/api/jobs/{}/fail",
-                master.host, master.port, args.job_id
-            );
+            let url = format!("{}/api/jobs/{}/fail", master.base_url(), args.job_id);
             let body = serde_json::json!({ "message": args.message });
             let resp = client
                 .put(&url)
@@ -325,9 +314,8 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                 .await?;
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
                 anyhow::bail!(
-                    "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
-                    master.host,
-                    master.port
+                    "Authentication failed: unauthorized request to Tendril daemon at {}",
+                    master.base_url()
                 );
             }
             resp.error_for_status()?;
@@ -335,10 +323,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         }
         JobCommands::Cancel(args) => {
             let master = get_master_or_err(tendril_home)?;
-            let url = format!(
-                "http://{}:{}/api/jobs/{}/cancel",
-                master.host, master.port, args.job_id
-            );
+            let url = format!("{}/api/jobs/{}/cancel", master.base_url(), args.job_id);
             let body = serde_json::json!({ "message": args.message });
             let resp = client
                 .post(&url)
@@ -348,9 +333,8 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                 .await?;
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
                 anyhow::bail!(
-                    "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
-                    master.host,
-                    master.port
+                    "Authentication failed: unauthorized request to Tendril daemon at {}",
+                    master.base_url()
                 );
             }
             resp.error_for_status()?;
@@ -358,10 +342,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         }
         JobCommands::Delete(args) => {
             let master = get_master_or_err(tendril_home)?;
-            let url = format!(
-                "http://{}:{}/api/jobs/{}",
-                master.host, master.port, args.job_id
-            );
+            let url = format!("{}/api/jobs/{}", master.base_url(), args.job_id);
             let resp = send(client.delete(&url), &master).await?;
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
                 anyhow::bail!("Job {} not found", args.job_id);
@@ -371,10 +352,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         }
         JobCommands::ForceStart(args) => {
             let master = get_master_or_err(tendril_home)?;
-            let url = format!(
-                "http://{}:{}/api/jobs/{}/force-start",
-                master.host, master.port, args.job_id
-            );
+            let url = format!("{}/api/jobs/{}/force-start", master.base_url(), args.job_id);
             let resp = send(client.post(&url), &master).await?;
             if resp.status() == reqwest::StatusCode::NOT_FOUND {
                 anyhow::bail!("Job {} not found", args.job_id);
@@ -393,7 +371,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         }
         JobCommands::StopAll => {
             let master = get_master_or_err(tendril_home)?;
-            let url = format!("http://{}:{}/api/jobs/stop-all", master.host, master.port);
+            let url = format!("{}/api/jobs/stop-all", master.base_url());
             let resp = send(client.post(&url), &master).await?;
             let res: serde_json::Value = resp.error_for_status()?.json().await?;
             let stopped: Vec<&str> = res["stopped"]
@@ -425,7 +403,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             }
 
             let master = get_master_or_err(tendril_home)?;
-            let url = format!("http://{}:{}/api/jobs/clear", master.host, master.port);
+            let url = format!("{}/api/jobs/clear", master.base_url());
             let resp = send(
                 client
                     .post(&url)
@@ -442,7 +420,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         }
         JobCommands::Queue(args) => {
             let master = get_master_or_err(tendril_home)?;
-            let url = format!("http://{}:{}/api/jobs/queue", master.host, master.port);
+            let url = format!("{}/api/jobs/queue", master.base_url());
             let resp = send(client.get(&url), &master).await?;
             let res: serde_json::Value = resp.error_for_status()?.json().await?;
 
@@ -471,10 +449,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
         }
         JobCommands::Maintenance => {
             let master = get_master_or_err(tendril_home)?;
-            let url = format!(
-                "http://{}:{}/api/jobs/maintenance",
-                master.host, master.port
-            );
+            let url = format!("{}/api/jobs/maintenance", master.base_url());
             let resp = send(client.post(&url), &master).await?;
             let res: serde_json::Value = resp.error_for_status()?.json().await?;
             println!("{}", serde_json::to_string_pretty(&res)?);
@@ -587,7 +562,7 @@ pub async fn start_job_via_daemon(
         serde_json::json!(uuid::Uuid::new_v4().to_string()),
     );
 
-    let mut url = format!("http://{}:{}/api/jobs", master.host, master.port);
+    let mut url = format!("{}/api/jobs", master.base_url());
     // `CreatePlanArgs` carries `force` in the body; every other job type needs the query
     // parameter, so `--force` works for ExecutePlan and friends too.
     if args.force {
@@ -685,7 +660,7 @@ pub async fn reconcile_lost_job_start(
         .map(|configured| configured.min(RECONCILE_BUDGET))
         .unwrap_or(RECONCILE_BUDGET);
     let client = daemon_client_with_timeout(Some(budget));
-    let url = format!("http://{}:{}/api/jobs?limit=50", master.host, master.port);
+    let url = format!("{}/api/jobs?limit=50", master.base_url());
 
     let resp = client
         .get(&url)
@@ -752,9 +727,8 @@ async fn send(
     let resp = request.bearer_auth(&master.secret).send().await?;
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         anyhow::bail!(
-            "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
-            master.host,
-            master.port
+            "Authentication failed: unauthorized request to Tendril daemon at {}",
+            master.base_url()
         );
     }
     Ok(resp)
