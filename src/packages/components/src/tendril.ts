@@ -110,11 +110,16 @@ export type {
   MarkdownAnnotation,
   AnswerCallback,
   QuestionsAnswerContextType,
+  QuestionSubmitCallback,
+  QuestionsDraftState,
+  QuestionsDraftStore,
   PlanQuestion,
   QuestionOption,
   QuestionsBlock,
   ParsedQuestions,
 } from "./components/PlanMarkdown";
+
+export { QuestionsSubmitContext, QuestionsDraftContext } from "./components/PlanMarkdown";
 
 export { prismTheme } from "./lib/prismTheme";
 export { parseQuestions, tagQuestionBlocks } from "./components/PlanMarkdown";
@@ -123,6 +128,29 @@ export { normalizeLanguage, codeBlockPreStyle } from "./components/PlanMarkdown"
 export { getMarkdownPlugins, hasMath } from "./lib/math";
 export { rawHtmlSchema, hasRawHtml } from "./lib/rawHtml";
 export { getWidth, getHeight } from "./lib/styles";
+
+// Tendril Questions Widgets
+export {
+  TendrilQuestions,
+  QuestionsForm,
+  ChatQuestionsBlock,
+  DescriptionMarkdown,
+  buildAnswersSummary,
+  canSubmitAnswers,
+  documentAnswers,
+  documentOtherOpen,
+  entryTitle,
+  hasEntries,
+  submitNote,
+  unansweredRequired,
+} from "./components/TendrilQuestions";
+
+export type {
+  TendrilQuestionsProps,
+  QuestionsFormProps,
+  QuestionsSubmitAction,
+  AnswerMap,
+} from "./components/TendrilQuestions";
 
 // Plan Diff Components
 export {

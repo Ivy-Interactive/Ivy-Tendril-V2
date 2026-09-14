@@ -34,6 +34,7 @@ describe("Package Exports", () => {
       expect(root.AgentViewer).toBeDefined();
       expect(root.PlanMarkdown).toBeDefined();
       expect(root.TendrilDashboard).toBeDefined();
+      expect(root.TendrilQuestions).toBeDefined();
     });
 
     it("should export density context and scale", () => {
@@ -185,6 +186,21 @@ describe("Package Exports", () => {
 
     it("should export web viewer", () => {
       expect(tendril.WebViewer).toBeDefined();
+    });
+
+    it("should export tendril questions widgets and helpers", () => {
+      expect(tendril.TendrilQuestions).toBeDefined();
+      expect(tendril.QuestionsForm).toBeDefined();
+      expect(tendril.ChatQuestionsBlock).toBeDefined();
+      expect(tendril.DescriptionMarkdown).toBeDefined();
+      expect(tendril.buildAnswersSummary).toBeDefined();
+      expect(tendril.canSubmitAnswers).toBeDefined();
+      expect(tendril.documentAnswers).toBeDefined();
+      expect(tendril.documentOtherOpen).toBeDefined();
+      expect(tendril.entryTitle).toBeDefined();
+      expect(tendril.hasEntries).toBeDefined();
+      expect(tendril.submitNote).toBeDefined();
+      expect(tendril.unansweredRequired).toBeDefined();
     });
   });
 });

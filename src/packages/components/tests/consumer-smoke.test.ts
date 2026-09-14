@@ -17,6 +17,7 @@ import {
   BadgeSelect,
   SortableVerificationList,
   TendrilDashboard,
+  TendrilQuestions,
 } from "../dist/tendril.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -172,6 +173,18 @@ describe("Consumer Smoke Verification", () => {
       );
       expect(container.querySelector(".tdb-dashboard, [class*='tdb-']")).not.toBeNull();
       expect(container.textContent).toContain("Hello SpaceCorps");
+    });
+
+    it("renders TendrilQuestions", () => {
+      const { container } = render(
+        React.createElement(TendrilQuestions, {
+          id: "smoke-questions",
+          eventHandler: noopHandler,
+          content: "- id: q1\n  title: Proceed?\n  options:\n    - title: Yes\n      value: yes",
+        }),
+      );
+      expect(container.querySelector(".tq-root, [class*='tq-']")).not.toBeNull();
+      expect(container.textContent).toContain("Proceed?");
     });
   });
 });

@@ -85,6 +85,7 @@ export { TendrilShell } from "./components/Shell/index.ts";
 export { AgentViewer } from "./components/AgentViewer/index.ts";
 export { PlanMarkdown } from "./components/PlanMarkdown";
 export { TendrilDashboard } from "./components/TendrilDashboard/index.ts";
+export { TendrilQuestions, type TendrilQuestionsProps } from "./components/TendrilQuestions";
 
 export function fn() {
   return "Hello, tsdown!";
