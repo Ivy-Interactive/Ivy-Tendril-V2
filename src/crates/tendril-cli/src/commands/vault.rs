@@ -257,19 +257,37 @@ pub fn resolve_project_names(
     Ok(resolved)
 }
 
+/// The `vault push` flags that shape the pull request rather than its contents.
+///
+/// Grouped into a struct because both the daemon and the filesystem path forward the same six flags,
+/// and a positional list of five `Option<&str>` is easy to transpose at a call site.
+#[derive(Default)]
+pub struct PushOptions<'a> {
+    pub vault_id: Option<&'a str>,
+    pub version: Option<&'a str>,
+    pub changelog: Option<&'a str>,
+    pub title: Option<&'a str>,
+    pub body: Option<&'a str>,
+    pub reviewers: Vec<String>,
+}
+
 /// Builds the export request for `vault push`, filling in the reference's defaults for version, PR
 /// title and PR body, and selecting every asset each project currently has.
 pub fn build_export_request(
     tendril_home: &Path,
     settings: &tendril_core::config::TendrilSettings,
     projects: &[String],
-    vault_id: Option<&str>,
-    version: Option<&str>,
-    changelog: Option<&str>,
-    title: Option<&str>,
-    body: Option<&str>,
-    reviewers: Vec<String>,
+    options: PushOptions<'_>,
 ) -> VaultExportRequest {
+    let PushOptions {
+        vault_id,
+        version,
+        changelog,
+        title,
+        body,
+        reviewers,
+    } = options;
+
     let version = version
         .map(str::trim)
         .filter(|version| !version.is_empty())
@@ -705,12 +723,14 @@ async fn handle_vault_command_fs(
                 tendril_home,
                 &settings,
                 &projects,
-                vault_id.as_deref(),
-                version.as_deref(),
-                changelog.as_deref(),
-                title.as_deref(),
-                body.as_deref(),
-                parse_reviewers(&reviewer),
+                PushOptions {
+                    vault_id: vault_id.as_deref(),
+                    version: version.as_deref(),
+                    changelog: changelog.as_deref(),
+                    title: title.as_deref(),
+                    body: body.as_deref(),
+                    reviewers: parse_reviewers(&reviewer),
+                },
             );
 
             let result =
@@ -945,12 +965,14 @@ async fn handle_vault_command_daemon(
                 &tendril_home,
                 &settings,
                 &projects,
-                vault_id.as_deref(),
-                version.as_deref(),
-                changelog.as_deref(),
-                title.as_deref(),
-                body.as_deref(),
-                parse_reviewers(reviewer),
+                PushOptions {
+                    vault_id: vault_id.as_deref(),
+                    version: version.as_deref(),
+                    changelog: changelog.as_deref(),
+                    title: title.as_deref(),
+                    body: body.as_deref(),
+                    reviewers: parse_reviewers(reviewer),
+                },
             );
 
             let response = send!(client

@@ -998,7 +998,7 @@ pub async fn connect_vault_with(
 
     let (_, _, clone_stderr) = git_run(
         &parent,
-        &["clone", repo_url, &dir.to_string_lossy().to_string()],
+        &["clone", repo_url, dir.to_string_lossy().as_ref()],
     );
     if !dir.join(".git").exists() {
         return Ok(VaultResult::failure_with_message(
@@ -1939,7 +1939,7 @@ async fn clone_repo_if_missing(path: &Path, repo: &VaultRepoRef, gh: GhRunner<'_
     );
     git_run(
         parent,
-        &["clone", remote_url, &path.to_string_lossy().to_string()],
+        &["clone", remote_url, path.to_string_lossy().as_ref()],
     );
 
     if path.join(".git").exists() {
@@ -1951,7 +1951,7 @@ async fn clone_repo_if_missing(path: &Path, repo: &VaultRepoRef, gh: GhRunner<'_
             "repo",
             "clone",
             &format!("{}/{}", repo.owner, repo.name),
-            &path.to_string_lossy().to_string(),
+            path.to_string_lossy().as_ref(),
         ]),
         None,
     )

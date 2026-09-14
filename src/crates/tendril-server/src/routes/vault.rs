@@ -65,38 +65,39 @@ fn requested_id(id: &str) -> Option<&str> {
     (!id.is_empty() && !id.eq_ignore_ascii_case("default")).then_some(id)
 }
 
-/// Rejects an id that names no vault, so a typo does not get answered as if it were `default`.
-fn ensure_vault_exists(state: &Arc<AppState>, id: &str) -> Result<(), axum::response::Response> {
-    let Some(id) = requested_id(id) else {
-        return Ok(());
-    };
+/// The 404 for an id that names no vault, so a typo does not get answered as if it were `default`.
+///
+/// `None` means "carry on". The guards return the rejection rather than a `Result` because a
+/// `Response` is a large `Err` variant, and no caller propagates it with `?` anyway.
+fn reject_unknown_vault(state: &Arc<AppState>, id: &str) -> Option<axum::response::Response> {
+    let id = requested_id(id)?;
 
     let settings = load_config(&state.config_path).unwrap_or_default();
     if vault::find_vault(&vault::load_vaults(&settings), id).is_some() {
-        return Ok(());
+        return None;
     }
 
-    Err(not_found(format!("Vault '{}' not found", id)))
+    Some(not_found(format!("Vault '{}' not found", id)))
 }
 
-/// Rejects a project the vault does not contain, so the UI can tell "no such project" apart from a
-/// git or GitHub failure, which the service reports the same way.
-fn ensure_vault_project_exists(
+/// The 404 for a project the vault does not contain, so the UI can tell "no such project" apart from
+/// a git or GitHub failure, which the service reports the same way.
+fn reject_missing_vault_project(
     state: &Arc<AppState>,
     id: &str,
     project: &str,
-) -> Result<(), axum::response::Response> {
+) -> Option<axum::response::Response> {
     let settings = load_config(&state.config_path).unwrap_or_default();
     let vaults = vault::load_vaults(&settings);
     let Some(resolved) = vault::resolve_vault(&vaults, requested_id(id)) else {
-        return Err(not_found("No vault is configured"));
+        return Some(not_found("No vault is configured"));
     };
 
     if vault::vault_project_dir(&state.tendril_home, &resolved, project).exists() {
-        return Ok(());
+        return None;
     }
 
-    Err(not_found(format!(
+    Some(not_found(format!(
         "Project '{}' was not found in vault '{}'",
         project, resolved.id
     )))
@@ -139,7 +140,7 @@ pub async fn get_vault_status(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    if let Err(response) = ensure_vault_exists(&state, &id) {
+    if let Some(response) = reject_unknown_vault(&state, &id) {
         return response;
     }
 
@@ -194,7 +195,7 @@ pub async fn disconnect_vault(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    if let Err(response) = ensure_vault_exists(&state, &id) {
+    if let Some(response) = reject_unknown_vault(&state, &id) {
         return response;
     }
 
@@ -209,7 +210,7 @@ pub async fn set_always_up_to_date(
     Path(id): Path<String>,
     Json(body): Json<SetAlwaysUpToDateRequest>,
 ) -> impl IntoResponse {
-    if let Err(response) = ensure_vault_exists(&state, &id) {
+    if let Some(response) = reject_unknown_vault(&state, &id) {
         return response;
     }
 
@@ -227,7 +228,7 @@ pub async fn get_catalog(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    if let Err(response) = ensure_vault_exists(&state, &id) {
+    if let Some(response) = reject_unknown_vault(&state, &id) {
         return response;
     }
 
@@ -241,7 +242,7 @@ pub async fn pull_latest(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    if let Err(response) = ensure_vault_exists(&state, &id) {
+    if let Some(response) = reject_unknown_vault(&state, &id) {
         return response;
     }
 
@@ -256,7 +257,7 @@ pub async fn push_and_create_pr(
     Path(id): Path<String>,
     Json(body): Json<VaultExportRequest>,
 ) -> impl IntoResponse {
-    if let Err(response) = ensure_vault_exists(&state, &id) {
+    if let Some(response) = reject_unknown_vault(&state, &id) {
         return response;
     }
 
@@ -271,10 +272,10 @@ pub async fn import_project(
     Path(id): Path<String>,
     Json(body): Json<ImportProjectRequest>,
 ) -> impl IntoResponse {
-    if let Err(response) = ensure_vault_exists(&state, &id) {
+    if let Some(response) = reject_unknown_vault(&state, &id) {
         return response;
     }
-    if let Err(response) = ensure_vault_project_exists(&state, &id, &body.request.project_name) {
+    if let Some(response) = reject_missing_vault_project(&state, &id, &body.request.project_name) {
         return response;
     }
 
@@ -295,10 +296,10 @@ pub async fn delete_project_from_vault(
     State(state): State<Arc<AppState>>,
     Path((id, project)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    if let Err(response) = ensure_vault_exists(&state, &id) {
+    if let Some(response) = reject_unknown_vault(&state, &id) {
         return response;
     }
-    if let Err(response) = ensure_vault_project_exists(&state, &id, &project) {
+    if let Some(response) = reject_missing_vault_project(&state, &id, &project) {
         return response;
     }
 

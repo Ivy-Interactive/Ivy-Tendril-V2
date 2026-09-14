@@ -6,7 +6,7 @@
 use clap::{CommandFactory, Parser};
 use tendril_cli::commands::vault::{
     build_export_request, confirm, parse_bool, parse_repo_mappings, parse_reviewers,
-    resolve_project_names, VaultCommands,
+    resolve_project_names, PushOptions, VaultCommands,
 };
 
 /// A minimal parser so `try_parse_from` can exercise the real derive output.
@@ -248,12 +248,11 @@ fn push_defaults_the_version_title_and_body() {
         &home,
         &settings,
         &["Alpha".to_string()],
-        None,
-        None,
-        Some("Added the rust skill"),
-        None,
-        None,
-        vec!["reviewer".to_string()],
+        PushOptions {
+            changelog: Some("Added the rust skill"),
+            reviewers: vec!["reviewer".to_string()],
+            ..Default::default()
+        },
     );
 
     // `<year>.<month>.<day>.<HHMMSS>`, generated when no --version is given.
@@ -268,7 +267,10 @@ fn push_defaults_the_version_title_and_body() {
     );
     assert!(request.pr_body.contains("Added the rust skill"));
     assert!(request.pr_body.contains("- Alpha"));
-    assert_eq!(request.sync_permissions["Alpha"], true);
+    assert!(
+        request.sync_permissions["Alpha"],
+        "permissions.yaml is synced unless --no-permissions is given"
+    );
     assert!(
         request.selected_skills.contains_key("Alpha"),
         "every asset kind gets a selection entry, even an empty one"
@@ -288,12 +290,14 @@ fn push_keeps_an_explicit_version_title_and_body() {
         &home,
         &settings,
         &["Alpha".to_string()],
-        Some("abc12345"),
-        Some("9.9.9"),
-        Some("changelog"),
-        Some("custom title"),
-        Some("custom body"),
-        Vec::new(),
+        PushOptions {
+            vault_id: Some("abc12345"),
+            version: Some("9.9.9"),
+            changelog: Some("changelog"),
+            title: Some("custom title"),
+            body: Some("custom body"),
+            reviewers: Vec::new(),
+        },
     );
 
     assert_eq!(request.target_vault_id.as_deref(), Some("abc12345"));
