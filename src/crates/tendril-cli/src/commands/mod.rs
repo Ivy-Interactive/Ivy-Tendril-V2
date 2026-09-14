@@ -14,6 +14,7 @@ pub mod plan;
 pub mod project;
 pub mod project_analyzer;
 pub mod promptware;
+pub mod report_bug;
 pub mod reset;
 pub mod serve;
 pub mod update;

@@ -153,6 +153,17 @@ certificate is self-signed, so clients have to be told to trust it."
         #[arg(value_name = "OUTPUT_DIR")]
         output_dir: PathBuf,
     },
+
+    #[command(
+        name = "report-bug",
+        about = "Bundle a plan or job's diagnostics into a zip",
+        long_about = "Collects a plan's files and its jobs' artifacts, plus a health report, a \
+sanitized copy of config.yaml and a manifest of the plan's worktrees, and writes them to a zip.\n\n\
+The report is written locally and goes nowhere else unless both --submit and --yes are given, \
+because submitting attaches the bundle to a public GitHub issue. Secrets are stripped from the \
+config, the health report and every job artifact; plan files are included as they are."
+    )]
+    ReportBug(commands::report_bug::ReportBugArgs),
 }
 
 #[tokio::main]
@@ -209,6 +220,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::GenerateCerts { output_dir } => {
             commands::generate_certs::handle_generate_certs(&output_dir)?
+        }
+        Commands::ReportBug(args) => {
+            commands::report_bug::handle_report_bug(args, &tendril_home).await?
         }
     }
 

@@ -106,8 +106,6 @@ pub(crate) fn plan_search_lines(
 
 /// The health report `tendril doctor` prints, as lines. Split from [`handle_doctor`] so `report-bug`
 /// can put the same text in its bundle without shelling out to the CLI or capturing stdout.
-// `report-bug`, the only caller, lands in a later commit.
-#[allow(dead_code)]
 pub(crate) fn collect_doctor_report(tendril_home: &Path) -> Vec<String> {
     doctor_report(tendril_home, false)
 }
