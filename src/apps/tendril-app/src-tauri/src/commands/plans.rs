@@ -1,8 +1,8 @@
 use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
-    DraftCommentDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto, RepoStatusDto,
-    RevisionResultDto, VerificationReportDto,
+    AnnotationDto, DraftCommentDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto,
+    RepoStatusDto, RevisionResultDto, VerificationReportDto,
 };
 
 #[tauri::command]
@@ -203,6 +203,39 @@ pub async fn cmd_clear_diff_comments(plan_id: String) -> Result<(), BridgeError>
     get_client_from_master()?
         .clear_diff_comments(&plan_id)
         .await
+}
+
+/// Every draft annotation left on a plan's revision markdown.
+#[tauri::command]
+pub async fn cmd_list_annotations(plan_id: String) -> Result<Vec<AnnotationDto>, BridgeError> {
+    get_client_from_master()?.list_annotations(&plan_id).await
+}
+
+/// Add or edit one annotation, keyed on its `id`. Returns the plan's whole list, like the diff
+/// comment commands above.
+#[tauri::command]
+pub async fn cmd_upsert_annotation(
+    plan_id: String,
+    annotation: AnnotationDto,
+) -> Result<Vec<AnnotationDto>, BridgeError> {
+    get_client_from_master()?
+        .upsert_annotation(&plan_id, &annotation)
+        .await
+}
+
+#[tauri::command]
+pub async fn cmd_delete_annotation(
+    plan_id: String,
+    annotation_id: String,
+) -> Result<Vec<AnnotationDto>, BridgeError> {
+    get_client_from_master()?
+        .delete_annotation(&plan_id, &annotation_id)
+        .await
+}
+
+#[tauri::command]
+pub async fn cmd_clear_annotations(plan_id: String) -> Result<(), BridgeError> {
+    get_client_from_master()?.clear_annotations(&plan_id).await
 }
 
 async fn plan_folder(plan_id: &str) -> Result<String, BridgeError> {

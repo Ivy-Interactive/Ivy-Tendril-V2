@@ -205,6 +205,12 @@ mod tests {
         assert_eq!(payload["planId"], "00609");
         assert_eq!(payload["count"], 2);
 
+        let annotations_json = r#"{"type":"plan.annotations_changed","planId":"00645","folderName":"00645-PortPlanDraftAnnotationS","count":1}"#;
+        let (channel, payload) = route_ws_message(annotations_json);
+        assert_eq!(channel, "plan-event");
+        assert_eq!(payload["planId"], "00645");
+        assert_eq!(payload["count"], 1);
+
         // Any future `plan.*` type routes the same way without another code change.
         let (channel, _) = route_ws_message(r#"{"type":"plan.something_new","planId":"00610"}"#);
         assert_eq!(channel, "plan-event");

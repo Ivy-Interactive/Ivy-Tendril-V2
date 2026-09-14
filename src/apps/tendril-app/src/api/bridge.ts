@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  Annotation,
   CreateProjectRequest,
   DiscoveredVaultRepo,
   DoctorCheck,
@@ -190,6 +191,31 @@ export const bridge = {
 
   async clearDiffComments(this: void, planId: string): Promise<void> {
     return invoke<void>("cmd_clear_diff_comments", { planId });
+  },
+
+  /**
+   * Every draft annotation left on a plan's revision markdown.
+   *
+   * Same contract as the diff comments above: the mutations return the plan's new full list.
+   */
+  async listAnnotations(this: void, planId: string): Promise<Annotation[]> {
+    return invoke<Annotation[]>("cmd_list_annotations", { planId });
+  },
+
+  async upsertAnnotation(
+    this: void,
+    planId: string,
+    annotation: Annotation,
+  ): Promise<Annotation[]> {
+    return invoke<Annotation[]>("cmd_upsert_annotation", { planId, annotation });
+  },
+
+  async deleteAnnotation(this: void, planId: string, annotationId: string): Promise<Annotation[]> {
+    return invoke<Annotation[]>("cmd_delete_annotation", { planId, annotationId });
+  },
+
+  async clearAnnotations(this: void, planId: string): Promise<void> {
+    return invoke<void>("cmd_clear_annotations", { planId });
   },
 
   /** Markdown of one `<planFolder>/Verification/<name>.md` report. */
