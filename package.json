@@ -8,6 +8,7 @@
     "dev:storybook": "pnpm --filter @ivy-interactive/components storybook",
     "build": "pnpm --filter @ivy-interactive/components build && pnpm --filter @ivy-interactive/tendril-app build",
     "test": "pnpm -r test",
+    "test-skills-manifests": "bash scripts/test-skills-manifests.sh",
     "check": "pnpm -r check",
     "lint": "pnpm -r lint",
     "format": "pnpm -r format"
