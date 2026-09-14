@@ -269,6 +269,21 @@ impl ChatExecutionManager {
         false
     }
 
+    /// Rewrites a queued item's prompt in place, keeping its position in the queue. Returns the
+    /// updated item, or `None` when the session has no item with that id.
+    pub async fn update_queued_message(
+        &self,
+        session_id: &str,
+        item_id: &str,
+        prompt: &str,
+    ) -> Option<ChatQueuedItem> {
+        let mut map = self.queued_messages.write().await;
+        let queue = map.get_mut(session_id)?;
+        let item = queue.iter_mut().find(|i| i.id == item_id)?;
+        item.prompt = prompt.to_string();
+        Some(item.clone())
+    }
+
     pub async fn clear_queued_messages(&self, session_id: &str) {
         let mut map = self.queued_messages.write().await;
         map.remove(session_id);

@@ -1,6 +1,6 @@
 use super::get_client_from_master;
 use crate::error::BridgeError;
-use crate::models::{ProjectSummaryDto, TendrilConfigDto};
+use crate::models::{ModelCatalogStatusDto, ProjectSummaryDto, TendrilConfigDto};
 
 #[tauri::command]
 pub async fn cmd_list_projects() -> Result<Vec<ProjectSummaryDto>, BridgeError> {
@@ -10,6 +10,16 @@ pub async fn cmd_list_projects() -> Result<Vec<ProjectSummaryDto>, BridgeError> 
 #[tauri::command]
 pub async fn cmd_get_config() -> Result<TendrilConfigDto, BridgeError> {
     get_client_from_master()?.get_config().await
+}
+
+#[tauri::command]
+pub async fn cmd_get_models_status() -> Result<ModelCatalogStatusDto, BridgeError> {
+    get_client_from_master()?.get_models_status().await
+}
+
+#[tauri::command]
+pub async fn cmd_refresh_models() -> Result<ModelCatalogStatusDto, BridgeError> {
+    get_client_from_master()?.refresh_models().await
 }
 
 #[tauri::command]

@@ -9,6 +9,12 @@ export interface ServiceState {
   health: ServiceHealth | null;
   reconnectCountdown: number;
   latencyMs: number | null;
+  /**
+   * Whether the daemon's filesystem change stream is connected. Distinct from `status`: the daemon
+   * can be reachable while realtime push is not (an older daemon, or a watcher that failed to
+   * start), in which case the view is honestly stale and polling has to cover it.
+   */
+  isChangeStreamConnected: boolean;
 }
 
 class ServiceStore {
@@ -18,6 +24,7 @@ class ServiceStore {
     health: null,
     reconnectCountdown: 0,
     latencyMs: null,
+    isChangeStreamConnected: false,
   };
 
   private listeners: Set<() => void> = new Set();
@@ -43,6 +50,14 @@ class ServiceStore {
     } else {
       this.clearCountdown();
     }
+    this.notify();
+  }
+
+  public setChangeStreamConnected(connected: boolean): void {
+    if (this.state.isChangeStreamConnected === connected) {
+      return;
+    }
+    this.state.isChangeStreamConnected = connected;
     this.notify();
   }
 

@@ -9,7 +9,7 @@ const JOB_COLUMNS: &str = "Id, Type, PlanFile, Project, Status, Provider, Starte
      CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, \
      Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, \
      ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState, \
-     PermissionDenials";
+     Priority, LastOutputAt, WaitForJobIds, PermissionDenials";
 
 const INSERT_SQL: &str = r#"
     INSERT INTO Jobs (
@@ -18,10 +18,11 @@ const INSERT_SQL: &str = r#"
         CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
         Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
         ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState,
-        PermissionDenials
+        Priority, LastOutputAt, WaitForJobIds, PermissionDenials
     ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-        ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31
+        ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
+        ?31, ?32, ?33, ?34
     )
 "#;
 
@@ -47,12 +48,23 @@ const UPSERT_TAIL: &str = r#"
         CliCommand = excluded.CliCommand,
         ProcessId = excluded.ProcessId,
         PreviousPlanState = excluded.PreviousPlanState,
+        Priority = excluded.Priority,
+        LastOutputAt = excluded.LastOutputAt,
+        WaitForJobIds = excluded.WaitForJobIds,
         PermissionDenials = excluded.PermissionDenials;
 "#;
 
 fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
     let started_at_str = job.started_at.map(|t| t.to_rfc3339());
     let completed_at_str = job.completed_at.map(|t| t.to_rfc3339());
+    let last_output_at_str = job.last_output_at.map(|t| t.to_rfc3339());
+    // Stored as a JSON array so the column stays a plain TEXT value; `None` for the common empty case
+    // keeps existing rows unchanged.
+    let wait_for_json = if job.wait_for_job_ids.is_empty() {
+        None
+    } else {
+        serde_json::to_string(&job.wait_for_job_ids).ok()
+    };
     // Stored as a JSON array so the column stays one value per job, like Args.
     let permission_denials_json = job
         .permission_denials
@@ -93,6 +105,9 @@ fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
             job.effort,
             job.process_id.map(|p| p as i64),
             job.previous_plan_state,
+            job.priority,
+            last_output_at_str,
+            wait_for_json,
             permission_denials_json,
         ],
     )?;
@@ -160,7 +175,14 @@ fn row_to_job(row: &Row<'_>) -> Result<JobItem> {
     item.effort = row.get(27)?;
     item.process_id = process_id.and_then(|p| u32::try_from(p).ok());
     item.previous_plan_state = row.get(29)?;
-    let permission_denials_json: Option<String> = row.get(30)?;
+    // Rows written before the Priority column existed read back as NULL, not as its default.
+    item.priority = row.get::<_, Option<i32>>(30)?.unwrap_or(0);
+    item.last_output_at = parse_ts(row.get(31)?);
+    item.wait_for_job_ids = row
+        .get::<_, Option<String>>(32)?
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default();
+    let permission_denials_json: Option<String> = row.get(33)?;
     item.permission_denials = permission_denials_json
         .as_deref()
         .and_then(|json| serde_json::from_str::<Vec<String>>(json).ok())
@@ -226,13 +248,40 @@ pub fn list_non_terminal_jobs(conn: &Connection) -> Result<Vec<JobItem>> {
     Ok(jobs)
 }
 
-/// Removes a job row outright.
-///
-/// Used when a `Blocked` row is replaced by a fresh job: the stale row was never spawned, so leaving
-/// it behind would show the same queued work twice.
-pub fn delete_job(conn: &Connection, id: &str) -> Result<()> {
-    conn.execute("DELETE FROM Jobs WHERE Id = ?1", params![id])?;
-    Ok(())
+/// Removes a job row. Returns whether a row existed.
+pub fn delete_job(conn: &Connection, id: &str) -> Result<bool> {
+    let affected = conn.execute("DELETE FROM Jobs WHERE Id = ?1", params![id])?;
+    Ok(affected > 0)
+}
+
+/// Ids of jobs matching `statuses`, newest first. Used by the bulk clear paths.
+pub fn list_job_ids_by_status(conn: &Connection, statuses: &[JobStatus]) -> Result<Vec<String>> {
+    if statuses.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = vec!["?"; statuses.len()].join(", ");
+    let sql = format!(
+        "SELECT Id FROM Jobs WHERE Status IN ({}) ORDER BY Id DESC",
+        placeholders
+    );
+    let params: Vec<&str> = statuses.iter().map(|s| s.as_str()).collect();
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(params))?;
+    let mut ids = Vec::new();
+    while let Some(row) = rows.next()? {
+        ids.push(row.get(0)?);
+    }
+    Ok(ids)
+}
+
+/// Stamps a job's last-output time without rewriting the rest of the row, so the liveness heartbeat
+/// cannot clobber fields a concurrent writer owns.
+pub fn touch_job_last_output(conn: &Connection, id: &str, at: DateTime<Utc>) -> Result<bool> {
+    let affected = conn.execute(
+        "UPDATE Jobs SET LastOutputAt = ?2 WHERE Id = ?1",
+        params![id, at.to_rfc3339()],
+    )?;
+    Ok(affected > 0)
 }
 
 /// Highest allocated 5-digit job ID, or 0 when the table holds none.

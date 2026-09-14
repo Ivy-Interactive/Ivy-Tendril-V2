@@ -50,8 +50,9 @@ tendril project move-verification <project-name> <verification-name> --position=
 
 ### Review actions
 ```bash
-tendril project add-review-action <project-name> <name> --command="<cmd>" --condition="<condition>"
+tendril project add-review-action <project-name> <name> --command="<cmd>" --condition="<condition>" [--paths=<prefix>]... [--before=<other>|--after=<other>]
 tendril project remove-review-action <project-name> <name>
+tendril project review-actions <project-name> --plan=<plan-id>   # rank review actions against a plan's changed files
 ```
 
 ### Stack hash
@@ -183,6 +184,23 @@ For each review action:
 tendril project add-review-action <project-name> "<name>" \
   --command="<launch command>" \
   --condition="Test-Path \"Worktrees/<owner>/<repo>/<path>\""
+```
+
+**Scope each action with `--paths`.** Give an action one or more repo-relative path prefixes describing what it renders, so a plan that only touches one surface of the repo gets a review action (and screenshot) for that surface instead of always landing on the first configured action. Unscoped actions (no `--paths`) remain the fallback and behave exactly as before. Examples, stack-agnostic:
+- An app action scoped to the app it runs: `--paths="src/<AppProject>"`
+- A component-library/Storybook action scoped to the package it renders: `--paths="src/<PackageProject>"`
+- A backend/API action scoped to its crate or service: `--paths="src/<ServiceProject>"`
+
+```bash
+tendril project add-review-action <project-name> "Storybook" \
+  --command="<launch command>" \
+  --condition="Test-Path \"Worktrees/<owner>/<repo>/src/<Project>\"" \
+  --paths="src/<Project>" --before=App
+```
+
+Use `--before=<other>` / `--after=<other>` to insert a newly scoped action ahead of (or behind) an existing one instead of always appending — this controls the fallback order used when no action's `paths` covers every changed file. To see which action a plan should actually use, rank them against that plan's changed files and take the first one whose condition holds:
+```bash
+tendril project review-actions <project-name> --plan=<plan-id>
 ```
 
 ### 3.5. Setup Artifact Production

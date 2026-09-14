@@ -1,10 +1,17 @@
 use clap::Subcommand;
 use std::path::Path;
-use tendril_core::config::{get_config_path, load_config, read_master, save_config, MasterInfo};
+use tendril_core::config::{
+    get_config_path, get_plans_dir_with_settings, insert_project_verification, load_config,
+    move_project_verification, read_master, save_config, MasterInfo, TendrilSettings,
+    VerificationPlacement,
+};
+use tendril_core::git::service::run_git;
+use tendril_core::git::worktree::derive_worktree_relative_path;
 use tendril_core::models::{
     ProjectConfig, ProjectEnvFileConfig, ProjectPortConfig, ProjectVerificationRef, RepoRef,
     ReviewActionConfig,
 };
+use tendril_core::plans::{read_plan_yaml, resolve_plan_folder};
 
 #[derive(Subcommand)]
 pub enum ProjectCommands {
@@ -30,10 +37,33 @@ pub enum ProjectCommands {
     RemoveRepo { name: String, path: String },
 
     #[command(about = "Add a verification to a project")]
-    AddVerification { name: String, verification: String },
+    AddVerification {
+        name: String,
+        verification: String,
+        #[arg(long, conflicts_with = "optional", help = "Mark as required (default)")]
+        required: bool,
+        #[arg(long, help = "Mark as optional")]
+        optional: bool,
+        #[arg(long, help = "Insert directly after this verification")]
+        after: Option<String>,
+    },
 
     #[command(about = "Remove a verification from a project")]
     RemoveVerification { name: String, verification: String },
+
+    #[command(about = "Move a verification within a project's run order")]
+    MoveVerification {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "VERIFICATION")]
+        verification: String,
+        #[arg(long, help = "Move directly before this verification")]
+        before: Option<String>,
+        #[arg(long, help = "Move directly after this verification")]
+        after: Option<String>,
+        #[arg(long, help = "Move to this zero-based position")]
+        position: Option<usize>,
+    },
 
     #[command(about = "Add a review action to a project")]
     AddReviewAction {
@@ -45,6 +75,15 @@ pub enum ProjectCommands {
         command: String,
         #[arg(long, default_value = "")]
         condition: String,
+        /// Repo-relative path prefix this action renders (repeatable).
+        #[arg(long = "paths")]
+        paths: Vec<String>,
+        /// Insert before this existing action instead of appending to the end.
+        #[arg(long)]
+        before: Option<String>,
+        /// Insert after this existing action instead of appending to the end.
+        #[arg(long)]
+        after: Option<String>,
     },
 
     #[command(about = "Remove a review action from a project")]
@@ -53,6 +92,20 @@ pub enum ProjectCommands {
         name: String,
         #[arg(value_name = "NAME")]
         action: String,
+    },
+
+    #[command(about = "Rank a project's review actions against a plan's changed files")]
+    ReviewActions {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        /// A changed file to rank against (repeatable). Combined with --plan if both are given.
+        #[arg(long = "changed-file")]
+        changed_files: Vec<String>,
+        /// Derive changed files from this plan's worktree(s).
+        #[arg(long)]
+        plan: Option<String>,
+        #[arg(long, default_value = "table")]
+        format: String,
     },
 
     #[command(about = "Set a project field")]
@@ -137,6 +190,21 @@ pub enum ProjectEnvFileCommands {
 enum DaemonOutcome {
     Handled,
     Fallback,
+}
+
+/// Both the daemon and filesystem paths need the same "exactly one placement" rule, so they share
+/// this resolution rather than each deciding for itself.
+fn resolve_placement(
+    before: Option<String>,
+    after: Option<String>,
+    position: Option<usize>,
+) -> anyhow::Result<VerificationPlacement> {
+    match (before, after, position) {
+        (Some(target), None, None) => Ok(VerificationPlacement::Before(target)),
+        (None, Some(target), None) => Ok(VerificationPlacement::After(target)),
+        (None, None, Some(pos)) => Ok(VerificationPlacement::Position(pos)),
+        _ => anyhow::bail!("Specify exactly one of --before, --after, or --position"),
+    }
 }
 
 pub async fn handle_project_command(
@@ -345,14 +413,26 @@ async fn handle_project_command_daemon(
 
             println!("Repo '{}' removed from project '{}'.", path, name);
         }
-        ProjectCommands::AddVerification { name, verification } => {
+        ProjectCommands::AddVerification {
+            name,
+            verification,
+            // `--required` restates the default, so only `--optional` changes the outcome.
+            required: _,
+            optional,
+            after,
+        } => {
+            let mut body = serde_json::json!({
+                "name": verification,
+                "required": !optional,
+            });
+            if let Some(after) = after {
+                body["after"] = serde_json::json!(after);
+            }
+
             let resp = match client
                 .post(format!("{}/api/projects/{}/verifications", base_url, name))
                 .bearer_auth(&master.secret)
-                .json(&serde_json::json!({
-                    "name": verification,
-                    "required": true,
-                }))
+                .json(&body)
                 .send()
                 .await
             {
@@ -371,6 +451,58 @@ async fn handle_project_command_daemon(
             println!(
                 "Verification '{}' added to project '{}'.",
                 verification, name
+            );
+        }
+        ProjectCommands::MoveVerification {
+            name,
+            verification,
+            before,
+            after,
+            position,
+        } => {
+            // Resolve the placement before the request so an invalid combination fails the same
+            // way whether or not a daemon is up.
+            let placement = resolve_placement(before.clone(), after.clone(), *position)?;
+            let mut body = serde_json::json!({ "name": verification });
+            match &placement {
+                VerificationPlacement::Before(target) => {
+                    body["before"] = serde_json::json!(target);
+                }
+                VerificationPlacement::After(target) => {
+                    body["after"] = serde_json::json!(target);
+                }
+                VerificationPlacement::Position(pos) => {
+                    body["position"] = serde_json::json!(pos);
+                }
+            }
+
+            let resp = match client
+                .put(format!("{}/api/projects/{}/verifications", base_url, name))
+                .bearer_auth(&master.secret)
+                .json(&body)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to move verification in project '{}': {}", name, err);
+            }
+
+            let payload: serde_json::Value = resp.json().await.unwrap_or_default();
+            let index = payload
+                .get("position")
+                .and_then(|v| v.as_u64())
+                .unwrap_or_default();
+            println!(
+                "Moved verification '{}' to position {}",
+                verification, index
             );
         }
         ProjectCommands::RemoveVerification { name, verification } => {
@@ -409,6 +541,9 @@ async fn handle_project_command_daemon(
             action,
             command,
             condition,
+            paths,
+            before,
+            after,
         } => {
             let resp = match client
                 .post(format!("{}/api/projects/{}/review-actions", base_url, name))
@@ -417,6 +552,9 @@ async fn handle_project_command_daemon(
                     "name": action,
                     "command": command,
                     "condition": condition,
+                    "paths": paths,
+                    "before": before,
+                    "after": after,
                 }))
                 .send()
                 .await
@@ -465,6 +603,10 @@ async fn handle_project_command_daemon(
                 "Review action '{}' removed from project '{}'.",
                 action, name
             );
+        }
+        ProjectCommands::ReviewActions { .. } => {
+            // Read-only ranking over the config file — no daemon round-trip needed.
+            return Ok(DaemonOutcome::Fallback);
         }
         ProjectCommands::Set { name, field, value } => {
             let body = match field.as_str() {
@@ -646,7 +788,14 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             save_config(&cfg_path, &settings)?;
             println!("Repo '{}' removed from project '{}'.", path, name);
         }
-        ProjectCommands::AddVerification { name, verification } => {
+        ProjectCommands::AddVerification {
+            name,
+            verification,
+            // `--required` restates the default, so only `--optional` changes the outcome.
+            required: _,
+            optional,
+            after,
+        } => {
             let proj = settings
                 .projects
                 .iter_mut()
@@ -658,15 +807,48 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 .iter()
                 .any(|v| v.name.eq_ignore_ascii_case(&verification))
             {
-                proj.verifications.push(ProjectVerificationRef {
-                    name: verification.clone(),
-                    required: true,
-                });
+                insert_project_verification(
+                    proj,
+                    ProjectVerificationRef {
+                        name: verification.clone(),
+                        required: !optional,
+                    },
+                    after.as_deref(),
+                )?;
                 save_config(&cfg_path, &settings)?;
             }
             println!(
                 "Verification '{}' added to project '{}'.",
                 verification, name
+            );
+        }
+        ProjectCommands::MoveVerification {
+            name,
+            verification,
+            before,
+            after,
+            position,
+        } => {
+            let placement = resolve_placement(before, after, position)?;
+            let available = settings
+                .projects
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let proj = settings
+                .projects
+                .iter_mut()
+                .find(|p| p.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Project '{}' not found. Available: {}", name, available)
+                })?;
+
+            let index = move_project_verification(proj, &verification, &placement)?;
+            save_config(&cfg_path, &settings)?;
+            println!(
+                "Moved verification '{}' to position {}",
+                verification, index
             );
         }
         ProjectCommands::RemoveVerification { name, verification } => {
@@ -689,6 +871,9 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             action,
             command,
             condition,
+            paths,
+            before,
+            after,
         } => {
             let proj = settings
                 .projects
@@ -698,11 +883,23 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
 
             proj.review_actions
                 .retain(|a| !a.name.eq_ignore_ascii_case(&action));
-            proj.review_actions.push(ReviewActionConfig {
-                name: action.clone(),
-                condition: condition.clone(),
-                command: command.clone(),
-            });
+
+            let insert_idx = resolve_review_action_insert_index(
+                &proj.review_actions,
+                before.as_deref(),
+                after.as_deref(),
+                &name,
+            )?;
+
+            proj.review_actions.insert(
+                insert_idx,
+                ReviewActionConfig {
+                    name: action.clone(),
+                    condition: condition.clone(),
+                    command: command.clone(),
+                    paths: paths.clone(),
+                },
+            );
             save_config(&cfg_path, &settings)?;
             println!("Review action '{}' added to project '{}'.", action, name);
         }
@@ -724,6 +921,34 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 "Review action '{}' removed from project '{}'.",
                 action, name
             );
+        }
+        ProjectCommands::ReviewActions {
+            name,
+            changed_files,
+            plan,
+            format,
+        } => {
+            let proj = settings
+                .projects
+                .iter()
+                .find(|p| p.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
+
+            let mut all_changed = changed_files.clone();
+            if let Some(plan_id) = plan.as_deref() {
+                match changed_files_for_plan(tendril_home, &settings, plan_id) {
+                    Ok(mut files) => all_changed.append(&mut files),
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: could not derive changed files for plan '{}': {}. Falling back to configured order.",
+                            plan_id, e
+                        );
+                    }
+                }
+            }
+
+            let ranked = proj.rank_review_actions(&all_changed);
+            print_ranked_review_actions(&ranked, &format)?;
         }
         ProjectCommands::Set { name, field, value } => {
             let proj = settings
@@ -875,6 +1100,139 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
         },
     }
 
+    Ok(())
+}
+
+/// Where a new/re-scoped review action should be inserted: `before`/`after` name an existing
+/// action, otherwise it goes at the end (today's behaviour).
+fn resolve_review_action_insert_index(
+    review_actions: &[ReviewActionConfig],
+    before: Option<&str>,
+    after: Option<&str>,
+    project_name: &str,
+) -> anyhow::Result<usize> {
+    let available = || {
+        review_actions
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    if let Some(target) = before {
+        return review_actions
+            .iter()
+            .position(|a| a.name.eq_ignore_ascii_case(target))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Review action '{}' not found in project '{}'. Available: {}",
+                    target,
+                    project_name,
+                    available()
+                )
+            });
+    }
+
+    if let Some(target) = after {
+        return review_actions
+            .iter()
+            .position(|a| a.name.eq_ignore_ascii_case(target))
+            .map(|idx| idx + 1)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Review action '{}' not found in project '{}'. Available: {}",
+                    target,
+                    project_name,
+                    available()
+                )
+            });
+    }
+
+    Ok(review_actions.len())
+}
+
+/// Derives the changed files for `plan_id` by diffing each of the plan's repo worktrees against
+/// its base branch. Never fails hard on a per-repo diff error — callers treat an empty result (or
+/// this function returning `Err`) as "fall back to configured order".
+fn changed_files_for_plan(
+    tendril_home: &Path,
+    settings: &TendrilSettings,
+    plan_id: &str,
+) -> anyhow::Result<Vec<String>> {
+    let plans_dir = get_plans_dir_with_settings(tendril_home, Some(settings));
+    let plan_folder = resolve_plan_folder(plan_id, &plans_dir)?;
+    let (plan, _) = read_plan_yaml(&plan_folder)?;
+
+    let project_repos = settings
+        .projects
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(&plan.project))
+        .map(|p| p.repos.as_slice())
+        .unwrap_or(&[]);
+
+    let mut all_files = Vec::new();
+    for repo in &plan.repos {
+        let repo_path = Path::new(repo);
+        let worktree_path = plan_folder
+            .join("Worktrees")
+            .join(derive_worktree_relative_path(repo_path));
+        if !worktree_path.exists() {
+            continue;
+        }
+
+        let base_branch = project_repos
+            .iter()
+            .find(|r| r.path.eq_ignore_ascii_case(repo))
+            .and_then(|r| r.base_branch.as_deref())
+            .unwrap_or("main");
+
+        let base_ref = format!("origin/{}", base_branch);
+        let diff_ref = if run_git(&["rev-parse", "--verify", &base_ref], &worktree_path)
+            .map(|(code, _, _)| code == 0)
+            .unwrap_or(false)
+        {
+            base_ref
+        } else {
+            base_branch.to_string()
+        };
+
+        let (code, stdout, stderr) = run_git(
+            &["diff", "--name-only", &format!("{}...HEAD", diff_ref)],
+            &worktree_path,
+        )?;
+        if code != 0 {
+            anyhow::bail!("git diff failed in {}: {}", worktree_path.display(), stderr);
+        }
+
+        all_files.extend(
+            stdout
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty()),
+        );
+    }
+
+    Ok(all_files)
+}
+
+fn print_ranked_review_actions(ranked: &[&ReviewActionConfig], format: &str) -> anyhow::Result<()> {
+    match format {
+        "json" => {
+            let json = serde_json::to_string_pretty(ranked)?;
+            println!("{}", json);
+        }
+        "table" | "" => {
+            for a in ranked {
+                println!("{}\t{}\t{}", a.name, a.condition, a.command);
+            }
+        }
+        other => {
+            anyhow::bail!(
+                "Unsupported format '{}'. Supported formats: table, json",
+                other
+            );
+        }
+    }
     Ok(())
 }
 

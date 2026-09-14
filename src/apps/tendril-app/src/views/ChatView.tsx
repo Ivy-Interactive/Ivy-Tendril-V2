@@ -1,17 +1,26 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useResizableSidebar } from "@ivy-interactive/components";
-import { ChatInput, ChatMessageList } from "@ivy-interactive/components/renderers";
+import { ChatMessageList } from "@ivy-interactive/components/renderers";
+import { ContentInput } from "@ivy-interactive/components/tendril";
+import { Input } from "@ivy-interactive/components/ui";
 import { chatStore, type ChatState } from "../state/chatStore";
+import { jobsStore } from "../state/jobsStore";
 import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
-import { useChatAutoScroll } from "../hooks/useChatAutoScroll";
+import type { Job } from "../types/api";
+import { PIN_TOP_PADDING, useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import {
   useChatMessageWindow,
   CHAT_VIRTUALIZATION_MIN_MESSAGES,
   estimateChatMessageHeight,
 } from "../hooks/useChatMessageWindow";
 import { ChatMessageRow } from "./ChatMessageRow";
+import { ChatHeader } from "./ChatHeader";
+import { AgentPicker } from "../components/chat/AgentPicker";
+import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
 import { useWebviewFileDrop } from "../hooks/useWebviewFileDrop";
+import { firstStringArg, submitValueArg } from "../utils/eventArgs";
+import { resolveJobState } from "../utils/jobStatus";
 import {
   Plus,
   Edit2,
@@ -33,6 +42,8 @@ import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 
 interface ChatViewProps {
   onCreatePlan?: (initialDescription: string) => void;
+  /** Opens the plan a system event or a spawned job refers to. */
+  onOpenPlan?: (planId: string) => void;
 }
 
 const CHAT_SIDEBAR_WIDTH_STORAGE_KEY = "tendril:chat:sidebar_width";
@@ -62,17 +73,38 @@ function formatRelativeTime(dateString: string): string {
   return `${diffDays}d ago`;
 }
 
-export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
+export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) => {
   const [storeState, setStoreState] = useState<ChatState>(chatStore.getState());
   const [inputPrompt, setInputPrompt] = useState("");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [isQueueExpanded, setIsQueueExpanded] = useState(false);
+  const [editingQueuedId, setEditingQueuedId] = useState<string | null>(null);
+  const [editingQueuedText, setEditingQueuedText] = useState("");
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [activeLightboxImage, setActiveLightboxImage] = useState<LightboxImage | null>(null);
+  const [jobs, setJobs] = useState<Job[]>(jobsStore.getState().jobs);
+  const composerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const queuedEditFocusedIdRef = useRef<string | null>(null);
+  const pinnedMessageRef = useRef<{ id: string; content: string } | null>(null);
+
+  const [focusRequest, setFocusRequest] = useState(0);
+
+  /**
+   * Focus is requested rather than taken: ContentInput refuses to adopt a new `value` while its
+   * textarea has focus, so prefilling the composer has to land before the focus does.
+   */
+  const requestComposerFocus = useCallback(() => {
+    setFocusRequest((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (focusRequest === 0) return;
+    composerRef.current?.querySelector("textarea")?.focus();
+  }, [focusRequest]);
 
   const {
     width: sidebarWidth,
@@ -96,7 +128,53 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     };
   }, []);
 
-  const { sessions, activeSessionId, activeSession, queuedItems, isGenerating, error } = storeState;
+  // The spawned jobs pill reads its statuses from the live job list.
+  useEffect(() => {
+    const unsub = jobsStore.subscribe(() => {
+      setJobs([...jobsStore.getState().jobs]);
+    });
+    return unsub;
+  }, []);
+
+  const {
+    sessions,
+    activeSessionId,
+    activeSession,
+    queuedItems,
+    isGenerating,
+    error,
+    agents,
+    selectedAgentId,
+    selectedModelId,
+    selectedEffort,
+  } = storeState;
+
+  /**
+   * The jobs this conversation started. A job that has aged out of the live list keeps its place,
+   * with the outcome recovered from the transcript — a conversation's own jobs disappearing from
+   * the header is worse than showing one with a thinner label.
+   */
+  const spawnedJobs = useMemo(() => {
+    const ids = activeSession?.spawnedJobIds ?? [];
+    if (ids.length === 0) return [];
+    const history = activeSession?.messages ?? [];
+
+    return ids
+      .map((id): Job | undefined => {
+        const live = jobs.find((job) => job.id === id);
+        if (live) return live;
+
+        const state = resolveJobState(id, jobs, history);
+        if (state === "unknown") return undefined;
+        return {
+          id,
+          type: "Job",
+          project: "",
+          status: state === "completed" ? "Completed" : "Failed",
+        };
+      })
+      .filter((job): job is Job => job !== undefined);
+  }, [activeSession?.spawnedJobIds, activeSession?.messages, jobs]);
 
   const latestMessage = activeSession?.messages[activeSession.messages.length - 1];
   const streamContentKey = `${activeSession?.id ?? ""}-${activeSession?.messages.length ?? 0}-${latestMessage?.id ?? ""}-${latestMessage?.content.length ?? 0}-${isGenerating}`;
@@ -104,11 +182,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
   const {
     scrollContainerRef,
     anchorRef,
+    spacerRef,
     autoScrollEnabled,
     isAtBottom,
     toggleAutoScroll,
     scrollToTail,
     resetToTail,
+    pinMessage,
+    retargetPin,
+    clearPin,
   } = useChatAutoScroll({
     content: streamContentKey,
     isGenerating,
@@ -197,9 +279,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
   const handleCreateSession = async () => {
     try {
       await chatStore.createSession("New Chat");
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-      }
+      requestComposerFocus();
     } catch {
       // Handled in store
     }
@@ -233,28 +313,87 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
     }
   };
 
-  const handleSendMessage = async () => {
-    const text = inputPrompt.trim();
+  const handleSendMessage = async (overrideText?: string) => {
+    const text = (overrideText ?? inputPrompt).trim();
     if ((!text && attachments.length === 0) || isGenerating) return;
     const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
     setInputPrompt("");
     setAttachments([]);
     resetToTail();
     try {
-      await chatStore.sendMessage(text, {
+      // The store appends its optimistic user message synchronously, so the row to pin exists by
+      // the time this returns to us — pin it so the question sits at the top while the reply grows.
+      const pending = chatStore.sendMessage(text, {
         attachments: currentAttachments,
       });
+      const optimistic = chatStore.getState().activeSession?.messages.at(-1);
+      if (optimistic?.role === "user") {
+        pinnedMessageRef.current = { id: optimistic.id, content: optimistic.content };
+        pinMessage(optimistic.id);
+      }
+      await pending;
     } catch {
       // Handled in store
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const isModEnter = (e.ctrlKey || e.metaKey) && e.key === "Enter";
-    const isPlainEnter = e.key === "Enter" && !e.shiftKey;
-    if (isModEnter || isPlainEnter) {
-      e.preventDefault();
-      void handleSendMessage();
+  /**
+   * Plain Enter sends. ContentInput submits on ⌘/Ctrl+Enter itself, so this handler deliberately
+   * ignores the modifier combination rather than sending the same prompt twice.
+   */
+  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    void handleSendMessage();
+  };
+
+  const handleComposerEvent = (eventName: string, _id: string, args: unknown[]) => {
+    if (eventName === "OnChange") {
+      setInputPrompt(firstStringArg(args) ?? "");
+      return;
+    }
+    if (eventName === "OnSubmit") {
+      // ⌘/Ctrl+Enter: the payload is the authority on what was typed, because the last OnChange
+      // may not have been applied to our state yet.
+      void handleSendMessage(submitValueArg(args));
+    }
+  };
+
+  /**
+   * Drafts the follow-up rather than sending it: the outcomes are the agent's to summarise, but
+   * what to ask about them is still the user's call, so the prompt lands in the composer.
+   */
+  const handleReviewJobs = () => {
+    const summary = spawnedJobs
+      .map((job) => `- ${job.type} ${job.id}${job.planTitle ? ` (${job.planTitle})` : ""}`)
+      .join("\n");
+    setInputPrompt(
+      `Review the outcomes of the jobs this conversation started and tell me what changed:\n${summary}`,
+    );
+    requestComposerFocus();
+  };
+
+  const handleStartEditQueued = (itemId: string, prompt: string) => {
+    setEditingQueuedId(itemId);
+    setEditingQueuedText(prompt);
+  };
+
+  const handleCancelEditQueued = () => {
+    setEditingQueuedId(null);
+    setEditingQueuedText("");
+    queuedEditFocusedIdRef.current = null;
+  };
+
+  const handleSaveEditQueued = async (itemId: string) => {
+    const next = editingQueuedText;
+    setEditingQueuedId(null);
+    setEditingQueuedText("");
+    queuedEditFocusedIdRef.current = null;
+    try {
+      // An empty commit drops the item, which is how a queued prompt is cleared.
+      await chatStore.updateQueuedMessage(itemId, next);
+    } catch {
+      // Handled in store
     }
   };
 
@@ -276,6 +415,28 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
   );
 
   const messages = activeSession?.messages ?? [];
+
+  // The optimistic user message is superseded by the server's copy, which arrives under a
+  // different id, so the pin has to follow the content across the swap or it loses its target.
+  useEffect(() => {
+    const pinned = pinnedMessageRef.current;
+    if (!pinned) return;
+    if (messages.some((m) => m.id === pinned.id)) return;
+    const replacement = messages.find((m) => m.role === "user" && m.content === pinned.content);
+    if (replacement) {
+      retargetPin(pinned.id, replacement.id);
+      pinnedMessageRef.current = { ...pinned, id: replacement.id };
+    } else {
+      pinnedMessageRef.current = null;
+      clearPin();
+    }
+  }, [messages, retargetPin, clearPin]);
+
+  // A different conversation has nothing pinned, and a stale spacer would leave dead space.
+  useEffect(() => {
+    pinnedMessageRef.current = null;
+    clearPin();
+  }, [activeSessionId, clearPin]);
 
   const getMessageKey = useCallback((index: number) => messages[index].id, [messages]);
 
@@ -313,6 +474,22 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
       scrollToIndex(index, { smooth: true, align: "center" });
     },
     [scrollToIndex],
+  );
+
+  /** The picker appears twice — icon-only in the header, labelled in the composer. */
+  const renderAgentPicker = (compact: boolean) => (
+    <AgentPicker
+      instanceId={compact ? "agent-picker-header" : "agent-picker"}
+      compact={compact}
+      agents={agents}
+      selectedAgentId={selectedAgentId}
+      selectedModelId={selectedModelId}
+      selectedEffort={selectedEffort}
+      onAgentChange={(agentId) => chatStore.setAgent(agentId)}
+      onModelChange={(agentId, modelId) => chatStore.setModelForAgent(agentId, modelId)}
+      onEffortChange={(agentId, effort) => chatStore.setEffortForAgent(agentId, effort)}
+      rememberedFor={(agentId) => chatStore.getAgentPreference(agentId)}
+    />
   );
 
   const pinnedSessionsList = sessions.filter((s) => s.isPinned);
@@ -472,44 +649,17 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
         )}
 
         {/* Header Toolbar */}
-        <div className="flex items-center justify-between border-b border-border bg-card/40 px-4 py-2.5">
-          <div className="flex items-center gap-3 min-w-0">
-            <h2 className="text-sm font-medium text-foreground truncate">
-              {activeSession ? activeSession.title : "No Active Chat"}
-            </h2>
-            {activeSession && (
-              <span className="text-xs text-muted-foreground/70">
-                {activeSession.messages.length} message
-                {activeSession.messages.length === 1 ? "" : "s"}
-              </span>
-            )}
-            {isGenerating && (
-              <div className="flex items-center gap-1.5 rounded-full bg-success/10 border border-success/60 px-2 py-0.5 text-[11px] font-medium text-success">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
-                </span>
-                <span>Streaming...</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              data-testid="chat-autoscroll-toggle"
-              onClick={toggleAutoScroll}
-              className={`rounded px-2 py-1 text-xs font-medium transition ${
-                autoScrollEnabled
-                  ? "bg-muted text-success border border-border"
-                  : "bg-card text-muted-foreground border border-border"
-              }`}
-              title="Toggle auto-scrolling to streaming deltas"
-            >
-              Auto-scroll: {autoScrollEnabled ? "ON" : "OFF"}
-            </button>
-          </div>
-        </div>
+        <ChatHeader
+          title={activeSession ? activeSession.title : "No Active Chat"}
+          messageCount={activeSession ? activeSession.messages.length : undefined}
+          isGenerating={isGenerating}
+          autoScrollEnabled={autoScrollEnabled}
+          onToggleAutoScroll={toggleAutoScroll}
+          jobs={spawnedJobs}
+          onOpenPlan={onOpenPlan}
+          onReviewJobs={handleReviewJobs}
+          agentPicker={renderAgentPicker(true)}
+        />
 
         {/* Message Thread List */}
         <div className="flex-1 overflow-hidden relative">
@@ -537,7 +687,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                         type="button"
                         onClick={() => {
                           setInputPrompt(item.prompt);
-                          textareaRef.current?.focus();
+                          requestComposerFocus();
                         }}
                         className="rounded-lg border border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground hover:border-ring hover:bg-muted hover:text-foreground transition-colors shadow-xs"
                       >
@@ -552,6 +702,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
             <ChatMessageList
               ref={scrollContainerRef}
               className="h-full"
+              style={{ paddingTop: PIN_TOP_PADDING }}
               enableAutoScroll={false}
               showScrollButton={false}
             >
@@ -583,6 +734,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                           onCreatePlan={handleCreatePlanFromMessage}
                           inProgressAnswers={storeState.inProgressAnswers[msg.id]}
                           isSubmittingAnswer={chatStore.isSubmittingAnswer(msg.id)}
+                          onOpenPlan={onOpenPlan}
+                          onOpenImage={setActiveLightboxImage}
                         />
                       </div>
                     );
@@ -598,6 +751,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                       onCreatePlan={handleCreatePlanFromMessage}
                       inProgressAnswers={storeState.inProgressAnswers[msg.id]}
                       isSubmittingAnswer={chatStore.isSubmittingAnswer(msg.id)}
+                      onOpenPlan={onOpenPlan}
+                      onOpenImage={setActiveLightboxImage}
                     />
                   </div>
                 ))
@@ -609,6 +764,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                   <span>Generating response...</span>
                 </div>
               )}
+
+              {/* Sized by the pin so the pinned row can sit at the top of the viewport. */}
+              <div
+                ref={spacerRef}
+                data-testid="chat-pin-spacer"
+                aria-hidden="true"
+                className="w-full shrink-0 pointer-events-none"
+                style={{ height: 0 }}
+              />
 
               <div
                 ref={anchorRef}
@@ -677,17 +841,80 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
                 {queuedItems.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between rounded bg-background px-2 py-1 text-xs border border-border"
+                    data-testid="queued-item"
+                    className="flex items-center justify-between gap-2 rounded bg-background px-2 py-1 text-xs border border-border"
                   >
-                    <span className="truncate pr-2 text-muted-foreground">{item.prompt}</span>
-                    <button
-                      type="button"
-                      onClick={() => chatStore.deleteQueuedMessage(item.id)}
-                      className="text-muted-foreground/70 hover:text-destructive"
-                      title="Remove from queue"
-                    >
-                      <Trash2 className="size-3" />
-                    </button>
+                    {editingQueuedId === item.id ? (
+                      <>
+                        <Input
+                          data-testid="queued-item-input"
+                          aria-label="Edit queued prompt"
+                          value={editingQueuedText}
+                          ref={(node) => {
+                            // Focus once per edit: re-focusing on every keystroke would fight the
+                            // caret the user is moving.
+                            if (node && queuedEditFocusedIdRef.current !== item.id) {
+                              queuedEditFocusedIdRef.current = item.id;
+                              node.focus();
+                              node.select();
+                            }
+                          }}
+                          onChange={(e) => setEditingQueuedText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void handleSaveEditQueued(item.id);
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              handleCancelEditQueued();
+                            }
+                          }}
+                          className="h-6 flex-1 border-border bg-card px-1.5 py-0.5 text-xs text-foreground"
+                        />
+                        <button
+                          type="button"
+                          data-testid="queued-item-save"
+                          onClick={() => void handleSaveEditQueued(item.id)}
+                          className="text-muted-foreground/70 hover:text-success"
+                          title="Save queued prompt"
+                        >
+                          <Check className="size-3" />
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="queued-item-cancel"
+                          onClick={handleCancelEditQueued}
+                          className="text-muted-foreground/70 hover:text-foreground"
+                          title="Cancel edit"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="truncate pr-2 text-muted-foreground">{item.prompt}</span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            data-testid="queued-item-edit"
+                            onClick={() => handleStartEditQueued(item.id, item.prompt)}
+                            className="text-muted-foreground/70 hover:text-success"
+                            title="Edit queued prompt"
+                          >
+                            <Edit2 className="size-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => chatStore.deleteQueuedMessage(item.id)}
+                            className="text-muted-foreground/70 hover:text-destructive"
+                            title="Remove from queue"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -764,25 +991,24 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
               />
               <button
                 type="button"
+                data-testid="composer-attach-button"
                 onClick={handleAttachClick}
                 disabled={isGenerating}
                 className="flex items-center justify-center rounded-lg border border-border bg-muted p-3 text-muted-foreground shadow hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title="Attach files"
+                title="Attach files from disk"
               >
                 <Paperclip className="size-5" />
               </button>
 
-              <div className="flex-1 relative">
-                <ChatInput
-                  ref={textareaRef}
+              {/* ContentInput sends on ⌘/Ctrl+Enter itself; plain Enter is handled here. */}
+              <div ref={composerRef} onKeyDown={handleComposerKeyDown} className="flex-1 relative">
+                <ContentInput
+                  id="chat-composer"
                   value={inputPrompt}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                    setInputPrompt(e.target.value)
-                  }
-                  onKeyDown={handleKeyDown}
                   placeholder="Ask Tendril or discuss plans (Enter or ⌘/Ctrl+Enter to send, Shift+Enter for newline)..."
-                  disabled={isGenerating}
-                  className="w-full min-h-[48px] max-h-32 bg-background text-foreground border-border focus-visible:ring-ring"
+                  events={["OnChange", "OnSubmit"]}
+                  eventHandler={handleComposerEvent}
+                  slots={{ LeftActions: renderAgentPicker(false) }}
                 />
               </div>
 
@@ -798,7 +1024,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
               ) : (
                 <button
                   type="button"
-                  onClick={handleSendMessage}
+                  onClick={() => void handleSendMessage()}
                   disabled={!inputPrompt.trim() && attachments.length === 0}
                   className="flex items-center justify-center rounded-lg bg-primary p-3 text-primary-foreground shadow hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   title="Send message"
@@ -809,6 +1035,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan }) => {
             </div>
           </div>
         </div>
+
+        <ImageLightbox image={activeLightboxImage} onClose={() => setActiveLightboxImage(null)} />
       </main>
     </div>
   );
