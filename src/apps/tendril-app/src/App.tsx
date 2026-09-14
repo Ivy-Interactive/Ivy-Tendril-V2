@@ -12,7 +12,8 @@ import {
   onServiceStatus,
 } from "./api/events";
 import { applyChangeEvent } from "./api/changes";
-import { describeBridgeError, type ProjectSummary } from "./types/api";
+import { describeBridgeError, type ProjectSummary, type VersionInfo } from "./types/api";
+import { getUpdateCommand } from "./utils/updateCommand";
 
 import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
@@ -73,6 +74,7 @@ export const App: React.FC = () => {
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   // Failures from actions the shell itself owns (service restart/repair).
   const [shellError, setShellError] = useState<string | null>(null);
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
 
   // Subscribe to stores
   useEffect(() => {
@@ -96,11 +98,28 @@ export const App: React.FC = () => {
       })
       .catch(() => {});
 
+    // The app only ever reads the daemon's cached release-check result, never the release feed
+    // itself — a 6-hour poll matches the daemon's own success-path interval.
+    bridge
+      .getVersionInfo()
+      .then(setVersionInfo)
+      .catch(() => {});
+    const versionInterval = setInterval(
+      () => {
+        bridge
+          .getVersionInfo()
+          .then(setVersionInfo)
+          .catch(() => {});
+      },
+      6 * 60 * 60 * 1000,
+    );
+
     return () => {
       unsubUi();
       unsubPlans();
       unsubJobs();
       unsubService();
+      clearInterval(versionInterval);
     };
   }, []);
 
@@ -457,6 +476,10 @@ export const App: React.FC = () => {
         onViewDiagnostics={() => {
           uiStore.setActiveNav("settings");
         }}
+        versionInfo={versionInfo}
+        dismissedUpdateVersion={uiState.dismissedUpdateVersion}
+        onDismissUpdate={(version) => uiStore.setDismissedUpdateVersion(version)}
+        onCopyUpdateCommand={() => void navigator.clipboard.writeText(getUpdateCommand())}
       >
         {shellError && (
           <div

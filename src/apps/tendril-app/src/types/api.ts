@@ -155,6 +155,13 @@ export interface ModelCatalogStatus {
   cachePath: string;
 }
 
+export interface VersionInfo {
+  currentVersion: string;
+  latestVersion: string | null;
+  hasUpdate: boolean;
+  lastChecked: string | null;
+}
+
 export interface StartJobArgs {
   type: string;
   project?: string;
