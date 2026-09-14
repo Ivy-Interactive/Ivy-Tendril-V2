@@ -222,6 +222,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                         priority: args.priority.unwrap_or(0),
                         force: args.force,
                         source_path: args.source_path,
+                        upload_session_id: None,
                     })
                 }
                 "executeplan" => {
@@ -267,6 +268,7 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                     JobArgs::UpdatePlan(UpdatePlanArgs {
                         folder_path: folder.to_string_lossy().to_string(),
                         instructions: Some(inst),
+                        upload_session_id: None,
                     })
                 }
                 "splitplan" => {

@@ -496,6 +496,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 stack_hash: None,
                 review_actions: Vec::new(),
                 build_dependencies: Vec::new(),
+                mcp_servers: Vec::new(),
             });
             save_config(&cfg_path, &settings)?;
             println!("Project '{}' added.", name);

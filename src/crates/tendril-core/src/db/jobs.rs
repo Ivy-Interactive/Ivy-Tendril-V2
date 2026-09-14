@@ -8,7 +8,8 @@ const JOB_COLUMNS: &str = "Id, Type, PlanFile, Project, Status, Provider, Starte
      DurationSeconds, Cost, Tokens, StatusMessage, Args, WorkingDirectory, \
      CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, \
      Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, \
-     ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState";
+     ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState, \
+     PermissionDenials";
 
 const INSERT_SQL: &str = r#"
     INSERT INTO Jobs (
@@ -16,10 +17,11 @@ const INSERT_SQL: &str = r#"
         DurationSeconds, Cost, Tokens, StatusMessage, Args, WorkingDirectory,
         CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
         Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
-        ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState
+        ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState,
+        PermissionDenials
     ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
-        ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30
+        ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31
     )
 "#;
 
@@ -44,12 +46,19 @@ const UPSERT_TAIL: &str = r#"
         WorkingDirectory = excluded.WorkingDirectory,
         CliCommand = excluded.CliCommand,
         ProcessId = excluded.ProcessId,
-        PreviousPlanState = excluded.PreviousPlanState;
+        PreviousPlanState = excluded.PreviousPlanState,
+        PermissionDenials = excluded.PermissionDenials;
 "#;
 
 fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
     let started_at_str = job.started_at.map(|t| t.to_rfc3339());
     let completed_at_str = job.completed_at.map(|t| t.to_rfc3339());
+    // Stored as a JSON array so the column stays one value per job, like Args.
+    let permission_denials_json = job
+        .permission_denials
+        .as_ref()
+        .filter(|d| !d.is_empty())
+        .and_then(|d| serde_json::to_string(d).ok());
 
     conn.execute(
         sql,
@@ -84,6 +93,7 @@ fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
             job.effort,
             job.process_id.map(|p| p as i64),
             job.previous_plan_state,
+            permission_denials_json,
         ],
     )?;
 
@@ -150,6 +160,11 @@ fn row_to_job(row: &Row<'_>) -> Result<JobItem> {
     item.effort = row.get(27)?;
     item.process_id = process_id.and_then(|p| u32::try_from(p).ok());
     item.previous_plan_state = row.get(29)?;
+    let permission_denials_json: Option<String> = row.get(30)?;
+    item.permission_denials = permission_denials_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<Vec<String>>(json).ok())
+        .filter(|d| !d.is_empty());
 
     // `typed_args` has no column of its own; it is rehydrated from the Args JSON so a job loaded
     // after a daemon restart still knows what it was launched with.
@@ -209,6 +224,15 @@ pub fn list_non_terminal_jobs(conn: &Connection) -> Result<Vec<JobItem>> {
     }
 
     Ok(jobs)
+}
+
+/// Removes a job row outright.
+///
+/// Used when a `Blocked` row is replaced by a fresh job: the stale row was never spawned, so leaving
+/// it behind would show the same queued work twice.
+pub fn delete_job(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM Jobs WHERE Id = ?1", params![id])?;
+    Ok(())
 }
 
 /// Highest allocated 5-digit job ID, or 0 when the table holds none.

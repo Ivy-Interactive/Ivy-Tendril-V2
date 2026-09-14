@@ -1,11 +1,23 @@
+pub mod attachments;
+pub mod deliverable;
+pub mod denials;
+pub mod dependents;
+pub mod failure_analysis;
 pub mod firmware_values;
 pub mod logger;
 pub mod manager;
+pub mod outcome;
 pub mod process_tree;
 pub mod recovery;
 
+pub use attachments::*;
+pub use deliverable::*;
+pub use denials::*;
+pub use dependents::*;
+pub use failure_analysis::*;
 pub use firmware_values::*;
 pub use logger::*;
 pub use manager::*;
+pub use outcome::*;
 pub use process_tree::*;
 pub use recovery::*;
