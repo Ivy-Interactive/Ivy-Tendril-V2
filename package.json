@@ -14,7 +14,13 @@
     "test-skills-manifests": "bash scripts/test-skills-manifests.sh",
     "check": "pnpm -r check",
     "lint": "pnpm -r lint",
-    "format": "pnpm -r format"
+    "format": "pnpm -r format",
+    "install:playwright": "playwright install chromium",
+    "install:playwright:deps": "playwright install --with-deps chromium",
+    "screenshot": "playwright screenshot"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
   },
   "packageManager": "pnpm@11.25.0"
 }
