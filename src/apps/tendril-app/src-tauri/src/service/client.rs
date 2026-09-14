@@ -3,7 +3,7 @@ use crate::models::{
     AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, EnqueueItemDto,
     ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto, PlanDetailDto, PlanQueryDto,
     PlanSummaryDto, PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
-    ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
+    ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto, VersionInfoDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -1047,6 +1047,43 @@ impl TendrilClient {
             return Err(BridgeError::new(
                 "REFRESH_MODELS_FAILED",
                 format!("Failed to refresh models ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn get_version_info(&self) -> Result<VersionInfoDto, BridgeError> {
+        let url = format!("{}/api/version", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_VERSION_INFO_FAILED",
+                format!("Failed to get version info ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn check_version_now(&self) -> Result<VersionInfoDto, BridgeError> {
+        let url = format!("{}/api/version/check", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CHECK_VERSION_NOW_FAILED",
+                format!("Failed to check version ({status}): {text}"),
             ));
         }
 
