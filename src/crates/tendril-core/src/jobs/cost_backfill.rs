@@ -14,8 +14,11 @@ use crate::db::{insert_job, jobs::list_jobs, open_database};
 use crate::models::JobItem;
 use std::path::Path;
 
-/// Matches the bound on how many job rows exist at all, so a pass sees every repairable row without
-/// walking history that has already been purged.
+/// The original's `JobLimit`, where it matched a `PurgeOldJobs` bound that kept the table near 500
+/// rows, making "newest 500" and "all of them" the same set. V2 has no such purge — job rows are only
+/// deleted one at a time — so here this is a real horizon: a NULL-cost row that falls out of the
+/// newest 500 is never revisited. Left at the ported value rather than widened on the way past; a
+/// recommendation on this plan covers the choice.
 pub const JOB_LIMIT: usize = 500;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
