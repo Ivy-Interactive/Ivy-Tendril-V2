@@ -1,12 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const wrapperPath = path.join(repoRoot, "scripts", "storybook-dev.mjs");
+const wrapperPath = path.join(repoRoot, "scripts", "storybook-dev.ts");
+const tsxCli = createRequire(import.meta.url).resolve("tsx/cli");
 
 /**
  * A probe base far outside 6006..6015, so these tests never depend on whether the developer's real
@@ -43,7 +45,7 @@ afterEach(async () => {
 function printPort(...forwarded: string[]): string {
   return execFileSync(
     process.execPath,
-    ["scripts/storybook-dev.mjs", "--print-port", ...forwarded],
+    [tsxCli, "scripts/storybook-dev.ts", "--print-port", ...forwarded],
     {
       cwd: repoRoot,
       encoding: "utf8",

@@ -18,5 +18,8 @@
     "lint": "pnpm -r lint",
     "format": "pnpm -r format"
   },
+  "devDependencies": {
+    "tsx": "^4.23.13"
+  },
   "packageManager": "pnpm@11.25.0"
 }

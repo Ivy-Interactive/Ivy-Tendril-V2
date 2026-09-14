@@ -50,7 +50,7 @@ When resolving conflicts in `package.json` or `pnpm-workspace.yaml`:
 3. **If a drop is deliberate,** pass `--allow <section>.<key>` to suppress the warning and document why in the commit message. For example:
 
    ```bash
-   node scripts/verify-merge-resolution.mjs --allow devDependencies.old-package
+   pnpm run verify:merge --allow devDependencies.old-package
    ```
 
 4. **After committing the resolution, run the full test suite** (`pnpm test`), not only your plan's tests. A lost change is detected by another plan's tests breaking, so a green suite on your subset proves nothing.

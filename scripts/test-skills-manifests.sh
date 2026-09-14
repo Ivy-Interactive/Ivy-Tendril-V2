@@ -147,8 +147,8 @@ done
 
 # Validate referenced helper scripts
 scripts_to_check=(
-    "skills/tendril-extension/scripts/package.mjs"
-    "skills/tendril-extension/scripts/verify.mjs"
+    "skills/tendril-extension/scripts/package.ts"
+    "skills/tendril-extension/scripts/verify.ts"
     "skills/tendril-extension/scripts/install-antigravity.sh"
     "skills/tendril-extension/scripts/package-vsix.sh"
     "skills/tendril-extension/scripts/uninstall-antigravity.sh"

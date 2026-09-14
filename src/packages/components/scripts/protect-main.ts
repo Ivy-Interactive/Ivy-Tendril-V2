@@ -3,12 +3,12 @@
  *
  * The ruleset requires green CI status checks (Lint & Types, Package Build, Unit Tests,
  * Merge Resolution Guard) plus a non-fast-forward rule. It cannot be activated on private repos
- * in free GitHub org plans — the API returns 403.
+ * in free GitHub org plans - the API returns 403.
  *
- * Node builtins and `gh` only, matching verify-merge-resolution.mjs's dependency-free style.
+ * Node builtins and `gh` only, matching verify-merge-resolution.ts's dependency-free style.
  *
  * Usage:
- *   node scripts/protect-main.mjs
+ *   tsx scripts/protect-main.ts
  */
 
 import { execFileSync } from "node:child_process";
@@ -19,7 +19,25 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const rulesetPath = join(repoRoot, ".github/rulesets/main-require-green-suite.json");
 
-function main() {
+interface StatusCheckRule {
+  type: string;
+  parameters?: {
+    required_status_checks: Array<{ context: string }>;
+  };
+}
+
+interface RulesetResponse {
+  id: number;
+  name: string;
+  rules: StatusCheckRule[];
+}
+
+interface ExecFileError extends Error {
+  status?: number;
+  stderr?: string | Buffer;
+}
+
+function main(): void {
   // First, try to GET existing rulesets to detect 403 early
   try {
     execFileSync("gh", ["api", "repos/SpaceCorps/components-storybook/rulesets", "--jq", "."], {
@@ -27,15 +45,17 @@ function main() {
       stdio: ["inherit", "pipe", "pipe"],
     });
   } catch (error) {
-    if (error.status === 1 && error.stderr?.includes("HTTP 403")) {
-      console.error("ERROR: Cannot activate ruleset — GitHub API returned 403 Forbidden.\n");
+    const err = error as ExecFileError;
+    const stderr = err.stderr ? String(err.stderr) : "";
+    if (err.status === 1 && stderr.includes("HTTP 403")) {
+      console.error("ERROR: Cannot activate ruleset - GitHub API returned 403 Forbidden.\n");
       console.error(
         "This repository is private and the SpaceCorps organization is on the GitHub Free plan.",
       );
       console.error("Rulesets and branch protection require GitHub Pro or higher.\n");
       console.error("To activate branch protection, either:");
       console.error(
-        "  1. Make this repository public (Settings → Danger Zone → Change visibility)",
+        "  1. Make this repository public (Settings -> Danger Zone -> Change visibility)",
       );
       console.error("  2. Upgrade the organization to GitHub Team or Enterprise\n");
       console.error(
@@ -57,20 +77,21 @@ function main() {
       ["api", "--method", "POST", "repos/SpaceCorps/components-storybook/rulesets", "--input", "-"],
       { encoding: "utf8", input: rulesetBody, stdio: ["pipe", "pipe", "pipe"] },
     );
-    const created = JSON.parse(output);
+    const created = JSON.parse(output) as RulesetResponse;
     console.log(
       `✓ Branch protection ruleset activated (ID: ${created.id}, name: "${created.name}")`,
     );
-    console.log(
-      `  Required status checks: ${created.rules
+    const requiredChecks =
+      created.rules
         .find((r) => r.type === "required_status_checks")
-        ?.parameters.required_status_checks.map((c) => c.context)
-        .join(", ")}`,
-    );
+        ?.parameters?.required_status_checks.map((c) => c.context)
+        .join(", ") ?? "";
+    console.log(`  Required status checks: ${requiredChecks}`);
   } catch (error) {
-    console.error(`ERROR: Failed to create ruleset: ${error.message}`);
-    if (error.stderr) {
-      console.error(error.stderr);
+    const err = error as ExecFileError;
+    console.error(`ERROR: Failed to create ruleset: ${err.message}`);
+    if (err.stderr) {
+      console.error(String(err.stderr));
     }
     process.exit(1);
   }
