@@ -122,6 +122,9 @@ async fn test_project_cli_filesystem_fallback() {
         ProjectCommands::AddVerification {
             name: "TestProj".to_string(),
             verification: "RustBuild".to_string(),
+            required: false,
+            optional: false,
+            after: None,
         },
         &tendril_home,
     )
@@ -231,6 +234,9 @@ async fn test_project_cli_routed_through_daemon() {
         ProjectCommands::AddVerification {
             name: "DaemonProj".to_string(),
             verification: "Clippy".to_string(),
+            required: false,
+            optional: false,
+            after: None,
         },
         &server.tendril_home,
     )
@@ -342,6 +348,9 @@ async fn test_project_cli_error_handling() {
         ProjectCommands::AddVerification {
             name: "NonExistent".to_string(),
             verification: "RustBuild".to_string(),
+            required: false,
+            optional: false,
+            after: None,
         },
         &server.tendril_home,
     )

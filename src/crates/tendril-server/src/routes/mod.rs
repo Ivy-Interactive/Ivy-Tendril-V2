@@ -118,7 +118,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route(
             "/api/projects/:name/verifications",
-            post(projects::add_project_verification),
+            post(projects::add_project_verification).put(projects::move_project_verification_route),
         )
         .route(
             "/api/projects/:name/verifications/:verification",
