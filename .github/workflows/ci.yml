@@ -46,6 +46,9 @@ jobs:
       - name: Frontend checks
         run: pnpm check
 
+      - name: Agent skills manifest check
+        run: pnpm run test-skills-manifests
+
       - name: Frontend tests
         run: pnpm test
 
