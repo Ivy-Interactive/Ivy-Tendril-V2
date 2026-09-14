@@ -144,8 +144,8 @@ export const ReviewActionsBarView: React.FC<ReviewActionsBarViewProps> = ({
             onClick={() => handleActionClick(action)}
             className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
               conditionMet && !disabled
-                ? "border-slate-700 bg-slate-900/80 text-slate-200 hover:border-slate-600 hover:bg-slate-800 hover:text-white"
-                : "cursor-not-allowed border-slate-800 bg-slate-950 text-slate-500 opacity-60"
+                ? "border-border bg-card/80 text-foreground hover:border-ring hover:bg-muted"
+                : "cursor-not-allowed border-border bg-background text-muted-foreground/70 opacity-60"
             }`}
           >
             <Play className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />

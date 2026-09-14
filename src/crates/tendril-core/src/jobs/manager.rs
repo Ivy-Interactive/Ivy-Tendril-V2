@@ -1100,34 +1100,62 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
         }
     }
 
+    // `job.cost` stays an Option all the way to the row: a subscription-plan run reports tokens and
+    // no charge, and writing 0.0 would make it read as free. Tokens is NOT NULL in both schemas, so
+    // that one does get a default.
     let tokens = job.tokens.unwrap_or(0);
-    let cost = job.cost.unwrap_or(0.0);
 
     if job.tokens.is_some() || job.cost.is_some() {
         if let Some(pid) = resolve_numerical_plan_id(job) {
             let db_path = crate::config::get_database_path(tendril_home);
             if let Ok(conn) = open_database(&db_path) {
-                let plan_exists: bool = conn
+                // One query gives both the plan's existence and its folder.
+                let folder_path: Option<String> = conn
                     .query_row(
-                        "SELECT EXISTS(SELECT 1 FROM Plans WHERE Id = ?1)",
+                        "SELECT FolderPath FROM Plans WHERE Id = ?1",
                         rusqlite::params![pid],
                         |row| row.get(0),
                     )
-                    .unwrap_or(false);
+                    .ok();
 
-                if plan_exists {
+                if let Some(folder_path) = folder_path {
                     let log_timestamp = extracted_timestamp
                         .or_else(|| job.completed_at.map(|dt| dt.to_rfc3339()))
                         .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
-                    if let Err(e) = crate::db::costs::insert_cost(
-                        &conn,
-                        pid,
-                        &job.job_type,
+                    let entry = crate::db::costs::CostEntry {
+                        promptware: job.job_type.clone(),
                         tokens,
-                        cost,
-                        Some(&log_timestamp),
-                    ) {
+                        cost: job.cost,
+                        model: job.model.clone(),
+                        cost_source: job.cost_source.clone(),
+                        agent: Some(job.provider.clone()),
+                        log_timestamp: Some(log_timestamp.clone()),
+                    };
+
+                    // costs.csv is the durable record shared with the original app; the table is a
+                    // projection of it. Appending and then reconciling is what keeps both apps
+                    // idempotent with respect to each other. A cost-recording failure must never
+                    // fail the job, hence warn-and-continue throughout.
+                    let folder = std::path::Path::new(&folder_path);
+                    if folder.is_dir() {
+                        if let Err(e) = crate::plans::costs_csv::append_cost(folder, &entry) {
+                            tracing::warn!(
+                                "Failed to append cost row to costs.csv for plan {}: {}",
+                                pid,
+                                e
+                            );
+                        }
+                        if let Err(e) = crate::plans::costs_csv::reconcile_plan_costs(
+                            &conn,
+                            folder,
+                            pid,
+                            Some(&log_timestamp),
+                        ) {
+                            tracing::warn!("Failed to reconcile costs for plan {}: {}", pid, e);
+                        }
+                    } else if let Err(e) = crate::db::costs::insert_cost_entry(&conn, pid, &entry) {
+                        // No plan folder on disk: record the row directly rather than losing it.
                         tracing::warn!("Failed to insert cost record for plan {}: {}", pid, e);
                     }
                 }
