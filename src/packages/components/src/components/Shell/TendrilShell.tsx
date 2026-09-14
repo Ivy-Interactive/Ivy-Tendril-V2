@@ -18,13 +18,61 @@ interface TendrilShellProps extends ShellWidgetProps {
   };
 }
 
+export const SIDEBAR_WIDTH_STORAGE_KEY = "tendril.shell.sidebarWidth";
+export const DEFAULT_SIDEBAR_WIDTH = 320;
+export const MIN_SIDEBAR_WIDTH = 200;
+export const MAX_SIDEBAR_WIDTH = 640;
+
+export function readStoredWidth(): number | null {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      const raw = storage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+      if (raw != null) {
+        const parsed = Number.parseInt(raw, 10);
+        if (!Number.isNaN(parsed)) {
+          return Math.min(Math.max(parsed, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
+        }
+      }
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
+  return null;
+}
+
+export function writeStoredWidth(width: number | null): void {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      if (width == null) {
+        storage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY);
+      } else {
+        storage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+      }
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
+}
+
 /**
  * The Tendril app chrome: sidebar (expanded / icon rail) and one rounded,
  * bordered container holding the white content surface with the session tab
  * strip inside its bottom edge. Collapse is client-side for a smooth
  * animation; the server is notified through OnCollapsedChanged so the state
- * can be persisted. Session panes all stay mounted — only the active one is
- * visible — so agent terminals keep their buffers when switching tabs. The
+ * can be persisted. Session panes all stay mounted: only the active one is
+ * visible, so agent terminals keep their buffers when switching tabs. The
  * Hidden slot hosts zero-size utility widgets (shortcut ghosts, chunk
  * warm-ups) without letting them paint.
  */
@@ -38,6 +86,11 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
   slots,
 }) => {
   const [collapsed, setCollapsed] = useState(collapsedProp);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    () => readStoredWidth() ?? DEFAULT_SIDEBAR_WIDTH,
+  );
+  const isDraggingRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
   const prevPropRef = useRef(collapsedProp);
   if (collapsedProp !== prevPropRef.current) {
     prevPropRef.current = collapsedProp;
@@ -53,6 +106,37 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
       return next;
     });
   }, [events, eventHandler, id]);
+
+  const onResizerPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    isDraggingRef.current = true;
+    setIsDragging(true);
+  }, []);
+
+  const onResizerPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    const newWidth = Math.min(Math.max(e.clientX, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
+    setSidebarWidth(newWidth);
+    writeStoredWidth(newWidth);
+  }, []);
+
+  const onResizerPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    setIsDragging(false);
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const onResizerDoubleClick = useCallback(() => {
+    setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+    writeStoredWidth(DEFAULT_SIDEBAR_WIDTH);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -73,12 +157,35 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
 
   return (
     <ShellContext.Provider value={{ collapsed, toggle }}>
-      <div className="tsh-root remove-parent-padding" data-collapsed={collapsed}>
+      <div
+        className="tsh-root remove-parent-padding"
+        data-collapsed={collapsed}
+        data-resizing={isDragging}
+        style={
+          {
+            "--tsh-sidebar-width": `${sidebarWidth}px`,
+          } as React.CSSProperties
+        }
+      >
         <div className="tsh-sidebar">
           <div className="tsh-sidebar-header">{slots?.SidebarHeader}</div>
           <div className="tsh-sidebar-body">{slots?.SidebarBody}</div>
           <div className="tsh-sidebar-footer">{slots?.SidebarFooter}</div>
         </div>
+        {!collapsed && (
+          <div
+            className="tsh-sidebar-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            tabIndex={0}
+            onPointerDown={onResizerPointerDown}
+            onPointerMove={onResizerPointerMove}
+            onPointerUp={onResizerPointerUp}
+            onPointerCancel={onResizerPointerUp}
+            onDoubleClick={onResizerDoubleClick}
+            title="Drag to resize sidebar, double-click to reset"
+          />
+        )}
         <div className="tsh-main">
           <div className="tsh-container">
             <div className="tsh-frame" data-has-tabs={hasTabs}>

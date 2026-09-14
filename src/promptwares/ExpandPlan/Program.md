@@ -50,14 +50,25 @@ Example:
 
 Report status: `tendril job status TendrilJobId --message="Writing expanded revision..."`
 
-- Write the new revision via CLI (number auto-incremented):
+- Write the new revision via CLI (number auto-incremented). To avoid truncation when writing large revisions, assemble the revision in chunks to a temporary file, then submit via `--file`:
+  ```bash
+  cat >> /tmp/revision-<plan-id>.md <<'EOF'
+  <first chunk of revision content>
+  EOF
+  cat >> /tmp/revision-<plan-id>.md <<'EOF'
+  <next chunk of revision content>
+  EOF
+  tendril plan write-revision <plan-id> --file=/tmp/revision-<plan-id>.md
+  ```
+
+  For small revisions, `--stdin` remains supported as an alternative:
   ```bash
   tendril plan write-revision <plan-id> --stdin <<'EOF'
   <expanded revision content here>
   EOF
   ```
 
-  The command reads from STDIN and auto-creates the next numbered revision file. Do NOT use the Write or Edit tools to create revision files directly in `Revisions/`.
+  Do NOT use the Write or Edit tools to create revision files directly in `Revisions/`.
 - Replace all investigative/exploratory language with specific actions
 - Include exact file paths for changes
 - Specify concrete code modifications or additions

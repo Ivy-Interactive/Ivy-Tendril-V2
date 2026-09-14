@@ -92,6 +92,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(jobs::get_job_logs).post(jobs::add_log),
         )
         .route("/api/jobs/:id/logs/stream", get(jobs::stream_job_logs))
+        .route("/api/jobs/:id/events", get(jobs::stream_job_events))
         // Projects & Verifications
         .route(
             "/api/projects",
@@ -122,6 +123,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/projects/:name/verifications/:verification",
             delete(projects::remove_project_verification),
+        )
+        .route(
+            "/api/projects/:name/review-actions",
+            post(projects::add_project_review_action),
+        )
+        .route(
+            "/api/projects/:name/review-actions/:action",
+            delete(projects::remove_project_review_action),
         )
         .route(
             "/api/projects/:name/review-actions/:action/execute",

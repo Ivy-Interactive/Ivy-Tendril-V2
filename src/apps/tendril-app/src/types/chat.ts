@@ -34,6 +34,8 @@ export interface ChatSession {
   effort?: string;
   spawnedJobIds: string[];
   planFolderName?: string;
+  isPinned?: boolean;
+  pinnedAt?: string;
 }
 
 export interface ChatMessageAddedEvent {
@@ -86,4 +88,5 @@ export interface ChatState {
   isLoading: boolean;
   error: string | null;
   inProgressAnswers: Record<string, InProgressQuestionAnswers>; // messageId -> { questionId: answer[] }
+  submittingAnswers: Record<string, Record<string, boolean>>; // messageId -> questionId -> boolean
 }

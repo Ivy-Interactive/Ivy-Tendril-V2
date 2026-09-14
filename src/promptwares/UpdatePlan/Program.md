@@ -52,14 +52,25 @@ This is where the user's answers land: the UI writes them back into the revision
 
 Report status: `tendril job status TendrilJobId --message="Applying changes..."`
 
-- Write the new revision via CLI (number auto-incremented):
+- Write the new revision via CLI (number auto-incremented). To avoid truncation when writing large revisions, assemble the revision in chunks to a temporary file, then submit via `--file`:
+  ```bash
+  cat >> /tmp/revision-<plan-id>.md <<'EOF'
+  <first chunk of revision content>
+  EOF
+  cat >> /tmp/revision-<plan-id>.md <<'EOF'
+  <next chunk of revision content>
+  EOF
+  tendril plan write-revision <plan-id> --file=/tmp/revision-<plan-id>.md
+  ```
+
+  For small revisions, `--stdin` remains supported as an alternative:
   ```bash
   tendril plan write-revision <plan-id> --stdin <<'EOF'
   <updated revision content here>
   EOF
   ```
 
-  The command reads from STDIN and auto-creates the next numbered revision file. Do NOT use the Write or Edit tools to create revision files directly in `Revisions/`.
+  Do NOT use the Write or Edit tools to create revision files directly in `Revisions/`.
 - Incorporate the intent of each instruction into the updated plan
 - Carry the `questions` blocks forward as decided in step 3.5. `write-revision` rejects a malformed block and writes nothing; fix the reported lines and retry.
 - Preserve the plan template structure

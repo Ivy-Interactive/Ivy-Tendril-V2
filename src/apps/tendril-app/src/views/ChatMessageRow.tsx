@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChatBubble,
   ChatBubbleMessage,
@@ -6,7 +6,7 @@ import {
   ChatBubbleActionWrapper,
 } from "@ivy-interactive/components/renderers";
 import { PlanMarkdown } from "@ivy-interactive/components/tendril";
-import { Copy, FilePlus, Paperclip } from "lucide-react";
+import { Copy, FilePlus, Loader2, Paperclip } from "lucide-react";
 import { chatStore } from "../state/chatStore";
 import type { ChatMessage, InProgressQuestionAnswers } from "../types/chat";
 import { isWriteInAnswer, patchQuestionsMarkdown } from "../utils/questionMarkdown";
@@ -17,6 +17,7 @@ export interface ChatMessageRowProps {
   onCopy: (message: ChatMessage) => void;
   onCreatePlan: (content: string) => void;
   inProgressAnswers?: InProgressQuestionAnswers;
+  isSubmittingAnswer?: boolean;
 }
 
 export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function ChatMessageRow({
@@ -25,8 +26,19 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   onCopy,
   onCreatePlan,
   inProgressAnswers: propInProgressAnswers,
+  isSubmittingAnswer: propIsSubmittingAnswer,
 }) {
   const isUser = message.role === "user";
+
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    // If not controlled by parent props, subscribe to chatStore for this message
+    if (propInProgressAnswers === undefined || propIsSubmittingAnswer === undefined) {
+      return chatStore.subscribe(() => {
+        setTick((t) => t + 1);
+      });
+    }
+  }, [propInProgressAnswers, propIsSubmittingAnswer, message.id]);
 
   const pendingDebounceTimersRef = useRef<
     Map<string, { timer: ReturnType<typeof setTimeout>; commit: () => void }>
@@ -83,13 +95,18 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     [message.id, message.content],
   );
 
+  const currentMessage =
+    chatStore.getState().activeSession?.messages.find((m) => m.id === message.id) ?? message;
   const inProgressAnswers = isUser
     ? undefined
     : (propInProgressAnswers ?? chatStore.getInProgressAnswers(message.id));
+  const isSubmitting = isUser
+    ? false
+    : (propIsSubmittingAnswer ?? chatStore.isSubmittingAnswer(message.id));
   const content = useMemo(() => {
-    if (isUser || !inProgressAnswers) return message.content;
-    return patchQuestionsMarkdown(message.content, inProgressAnswers);
-  }, [isUser, message.content, inProgressAnswers]);
+    if (isUser || !inProgressAnswers) return currentMessage.content;
+    return patchQuestionsMarkdown(currentMessage.content, inProgressAnswers);
+  }, [isUser, currentMessage.content, inProgressAnswers]);
 
   return (
     <ChatBubble variant={isUser ? "sent" : "received"} layout={isUser ? "default" : "ai"}>
@@ -112,6 +129,15 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                 events={["OnAnswersChange"]}
                 eventHandler={handleAnswersChange}
               />
+              {isSubmitting && (
+                <div
+                  data-testid="submitting-answer-indicator"
+                  className="flex items-center gap-1.5 text-xs text-emerald-400 mt-2 font-medium"
+                >
+                  <Loader2 className="size-3.5 animate-spin" />
+                  <span>Submitting answer...</span>
+                </div>
+              )}
             </div>
           )}
 

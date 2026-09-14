@@ -8,12 +8,57 @@ import type {
   ChatState,
   InProgressQuestionAnswers,
 } from "../types/chat";
-import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
+import {
+  extractPlanQuestions,
+  mergeConfirmedQuestionsBlock,
+  patchQuestionsMarkdown,
+} from "../utils/questionMarkdown";
 
 export type { ChatState, InProgressQuestionAnswers } from "../types/chat";
 
 const IN_PROGRESS_ANSWERS_STORAGE_KEY = "tendril:chat:in_progress_answers";
 const DRAFT_OWNERS_STORAGE_KEY = "tendril:chat:draft_session_owners";
+export const PINNED_SESSIONS_STORAGE_KEY = "tendril:chat:pinned_sessions";
+
+function loadStoredPinnedSessions(): Record<string, string> {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      const raw = storage.getItem(PINNED_SESSIONS_STORAGE_KEY);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    }
+  } catch {
+    // Fallback to empty map if storage is restricted or throws
+  }
+  return {};
+}
+
+function saveStoredPinnedSessions(data: Record<string, string>): void {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      if (Object.keys(data).length === 0) {
+        storage.removeItem(PINNED_SESSIONS_STORAGE_KEY);
+      } else {
+        storage.setItem(PINNED_SESSIONS_STORAGE_KEY, JSON.stringify(data));
+      }
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
+}
 
 function loadStoredInProgressAnswers(): Record<string, InProgressQuestionAnswers> {
   try {
@@ -124,12 +169,14 @@ class ChatStore {
     isLoading: false,
     error: null,
     inProgressAnswers: loadStoredInProgressAnswers(),
+    submittingAnswers: {},
   };
 
   private listeners: Set<() => void> = new Set();
   private eventUnsubscribe: EventUnsubscribe | null = null;
   private storageListenerAttached = false;
   private draftOwners: Record<string, string> = loadStoredDraftOwners();
+  private pinnedSessions: Record<string, string> = loadStoredPinnedSessions();
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -149,6 +196,21 @@ class ChatStore {
     } else if (event.key === DRAFT_OWNERS_STORAGE_KEY) {
       try {
         this.draftOwners = event.newValue ? JSON.parse(event.newValue) : {};
+      } catch {
+        // Ignore malformed external writes
+      }
+    } else if (event.key === PINNED_SESSIONS_STORAGE_KEY) {
+      try {
+        this.pinnedSessions = event.newValue ? JSON.parse(event.newValue) : {};
+        this.state.sessions = this.sortSessions(this.enrichSessionsWithPins(this.state.sessions));
+        if (this.state.activeSession) {
+          const isPinned = Boolean(this.pinnedSessions[this.state.activeSession.id]);
+          this.state.activeSession.isPinned = isPinned;
+          this.state.activeSession.pinnedAt = isPinned
+            ? this.pinnedSessions[this.state.activeSession.id]
+            : undefined;
+        }
+        this.notify();
       } catch {
         // Ignore malformed external writes
       }
@@ -185,6 +247,7 @@ class ChatStore {
   public async init(): Promise<void> {
     this.state.inProgressAnswers = loadStoredInProgressAnswers();
     this.draftOwners = loadStoredDraftOwners();
+    this.pinnedSessions = loadStoredPinnedSessions();
     this.attachStorageListener();
     if (!this.eventUnsubscribe) {
       try {
@@ -216,10 +279,13 @@ class ChatStore {
       isLoading: false,
       error: null,
       inProgressAnswers: {},
+      submittingAnswers: {},
     };
     saveStoredInProgressAnswers({});
     this.draftOwners = {};
     saveStoredDraftOwners({});
+    this.pinnedSessions = {};
+    saveStoredPinnedSessions({});
     try {
       const legacyStorage =
         typeof sessionStorage !== "undefined"
@@ -232,6 +298,87 @@ class ChatStore {
       // Ignore
     }
     this.notify();
+  }
+
+  private enrichSessionsWithPins(sessions: ChatSession[]): ChatSession[] {
+    return sessions.map((s) => {
+      const pinnedAt = this.pinnedSessions[s.id];
+      return {
+        ...s,
+        isPinned: Boolean(pinnedAt),
+        pinnedAt: pinnedAt ?? undefined,
+      };
+    });
+  }
+
+  private sortSessions(sessions: ChatSession[]): ChatSession[] {
+    return [...sessions].sort((a, b) => {
+      const aPinned = Boolean(a.isPinned);
+      const bPinned = Boolean(b.isPinned);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      if (aPinned && bPinned) {
+        const aTime = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+        const bTime = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+        return bTime - aTime;
+      }
+      const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+      const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+      return bTime - aTime;
+    });
+  }
+
+  public togglePinSession(sessionId: string): void {
+    const isCurrentlyPinned = Boolean(this.pinnedSessions[sessionId]);
+    if (isCurrentlyPinned) {
+      delete this.pinnedSessions[sessionId];
+    } else {
+      this.pinnedSessions[sessionId] = new Date().toISOString();
+    }
+    saveStoredPinnedSessions(this.pinnedSessions);
+
+    if (this.state.activeSession && this.state.activeSession.id === sessionId) {
+      this.state.activeSession.isPinned = !isCurrentlyPinned;
+      this.state.activeSession.pinnedAt = !isCurrentlyPinned
+        ? this.pinnedSessions[sessionId]
+        : undefined;
+    }
+
+    this.state.sessions = this.sortSessions(this.enrichSessionsWithPins(this.state.sessions));
+    this.notify();
+  }
+
+  public async pruneEmptySessions(keepSessionId?: string | null): Promise<void> {
+    const toDelete = this.state.sessions.filter((s) => {
+      if (keepSessionId && s.id === keepSessionId) return false;
+      if (this.state.isGenerating && this.state.activeSessionId === s.id) return false;
+      return !s.messages || s.messages.length === 0;
+    });
+
+    if (toDelete.length === 0) return;
+
+    const toDeleteIds = new Set(toDelete.map((s) => s.id));
+    this.state.sessions = this.state.sessions.filter((s) => !toDeleteIds.has(s.id));
+    if (this.state.activeSessionId && toDeleteIds.has(this.state.activeSessionId)) {
+      this.state.activeSessionId = null;
+      this.state.activeSession = null;
+      this.state.queuedItems = [];
+    }
+
+    let pinnedChanged = false;
+    for (const s of toDelete) {
+      if (this.pinnedSessions[s.id]) {
+        delete this.pinnedSessions[s.id];
+        pinnedChanged = true;
+      }
+    }
+    if (pinnedChanged) {
+      saveStoredPinnedSessions(this.pinnedSessions);
+    }
+
+    this.notify();
+
+    await Promise.allSettled(toDelete.map((s) => chatApi.deleteSession(s.id).catch(() => {})));
   }
 
   public handleChatEvent(event: ChatEvent): void {
@@ -289,15 +436,29 @@ class ChatStore {
 
       case "chat.question_answered": {
         if (this.state.activeSessionId === event.sessionId && this.state.activeSession) {
-          if (event.answers) {
-            for (const qId of Object.keys(event.answers)) {
-              this.clearInProgressAnswers(event.messageId, qId);
+          void (async () => {
+            await this.refreshActiveSession().catch(() => {});
+            if (this.state.activeSession) {
+              const msg = this.state.activeSession.messages.find((m) => m.id === event.messageId);
+              if (msg) {
+                const confirmedQuestions = extractPlanQuestions(msg.content);
+                if (event.answers) {
+                  for (const qId of Object.keys(event.answers)) {
+                    const q = confirmedQuestions.find((item) => item.id === qId);
+                    if (q?.answerPresent) {
+                      this.clearInProgressAnswers(event.messageId, qId);
+                    }
+                  }
+                } else {
+                  for (const q of confirmedQuestions) {
+                    if (q.answerPresent) {
+                      this.clearInProgressAnswers(event.messageId, q.id);
+                    }
+                  }
+                }
+              }
             }
-          } else {
-            this.clearInProgressAnswers(event.messageId);
-          }
-          // Refresh session to get server-rendered answered state
-          this.refreshActiveSession().catch(() => {});
+          })();
         }
         break;
       }
@@ -381,19 +542,21 @@ class ChatStore {
 
     try {
       const sessions = await chatApi.listSessions();
-      this.state.sessions = sessions;
+      const enriched = this.enrichSessionsWithPins(sessions);
+      const sorted = this.sortSessions(enriched);
+      this.state.sessions = sorted;
       this.state.isLoading = false;
-      this.backfillDraftOwners(sessions);
-      this.sweepDraftsForMissingSessions(sessions);
+      this.backfillDraftOwners(sorted);
+      this.sweepDraftsForMissingSessions(sorted);
 
       // Select first session if none active
-      if (!this.state.activeSessionId && sessions.length > 0) {
-        await this.selectSession(sessions[0].id);
+      if (!this.state.activeSessionId && sorted.length > 0) {
+        await this.selectSession(sorted[0].id);
       } else if (this.state.activeSessionId) {
         // Re-verify current active session still exists
-        const exists = sessions.some((s) => s.id === this.state.activeSessionId);
-        if (!exists && sessions.length > 0) {
-          await this.selectSession(sessions[0].id);
+        const exists = sorted.some((s) => s.id === this.state.activeSessionId);
+        if (!exists && sorted.length > 0) {
+          await this.selectSession(sorted[0].id);
         } else if (!exists) {
           this.state.activeSessionId = null;
           this.state.activeSession = null;
@@ -402,7 +565,7 @@ class ChatStore {
       }
 
       this.notify();
-      return sessions;
+      return sorted;
     } catch (err) {
       this.state.isLoading = false;
       this.state.error = err instanceof Error ? err.message : String(err);
@@ -412,6 +575,19 @@ class ChatStore {
   }
 
   public async selectSession(id: string): Promise<void> {
+    const prevId = this.state.activeSessionId;
+    const prevSession = this.state.activeSession;
+    if (
+      prevId &&
+      prevId !== id &&
+      prevSession &&
+      prevSession.id === prevId &&
+      (!prevSession.messages || prevSession.messages.length === 0) &&
+      !this.state.isGenerating
+    ) {
+      await this.pruneEmptySessions(id);
+    }
+
     this.state.activeSessionId = id;
     this.state.error = null;
     this.notify();
@@ -421,9 +597,21 @@ class ChatStore {
         chatApi.getSession(id),
         chatApi.getQueue(id).catch(() => []),
       ]);
+      const isPinned = Boolean(this.pinnedSessions[id]);
+      session.isPinned = isPinned;
+      session.pinnedAt = isPinned ? this.pinnedSessions[id] : undefined;
+
       this.state.activeSession = session;
       this.state.queuedItems = queue;
       this.backfillDraftOwners([session]);
+
+      // Also update in sessions list
+      const idx = this.state.sessions.findIndex((s) => s.id === session.id);
+      if (idx >= 0) {
+        this.state.sessions[idx] = session;
+        this.state.sessions = this.sortSessions(this.state.sessions);
+      }
+
       this.notify();
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);
@@ -438,14 +626,36 @@ class ChatStore {
         chatApi.getSession(this.state.activeSessionId),
         chatApi.getQueue(this.state.activeSessionId).catch(() => []),
       ]);
-      this.state.activeSession = session;
+      const isPinned = Boolean(this.pinnedSessions[session.id]);
+      session.isPinned = isPinned;
+      session.pinnedAt = isPinned ? this.pinnedSessions[session.id] : undefined;
+
+      if (this.state.isGenerating && this.state.activeSession) {
+        const mergedMessages = session.messages.map((serverMsg) => {
+          const localMsg = this.state.activeSession?.messages.find((m) => m.id === serverMsg.id);
+          if (localMsg && localMsg.content.length > serverMsg.content.length) {
+            return {
+              ...localMsg,
+              content: mergeConfirmedQuestionsBlock(localMsg.content, serverMsg.content),
+            };
+          }
+          return serverMsg;
+        });
+        this.state.activeSession = {
+          ...session,
+          messages: mergedMessages,
+        };
+      } else {
+        this.state.activeSession = session;
+      }
       this.state.queuedItems = queue;
       this.backfillDraftOwners([session]);
 
       // Also update in sessions list
       const idx = this.state.sessions.findIndex((s) => s.id === session.id);
       if (idx >= 0) {
-        this.state.sessions[idx] = session;
+        this.state.sessions[idx] = this.state.activeSession ?? session;
+        this.state.sessions = this.sortSessions(this.state.sessions);
       }
 
       this.notify();
@@ -459,11 +669,22 @@ class ChatStore {
     args?: { agentId?: string; modelId?: string; effort?: string },
   ): Promise<ChatSession> {
     try {
+      const prevSession = this.state.activeSession;
+      if (
+        prevSession &&
+        (!prevSession.messages || prevSession.messages.length === 0) &&
+        !this.state.isGenerating
+      ) {
+        await this.pruneEmptySessions();
+      }
+
       const newSession = await chatApi.createSession({
         title,
         ...args,
       });
-      this.state.sessions = [newSession, ...this.state.sessions];
+      newSession.isPinned = false;
+      newSession.pinnedAt = undefined;
+      this.state.sessions = this.sortSessions([newSession, ...this.state.sessions]);
       this.state.activeSessionId = newSession.id;
       this.state.activeSession = newSession;
       this.state.queuedItems = [];
@@ -490,14 +711,23 @@ class ChatStore {
 
     try {
       const updated = await chatApi.updateSession(id, title);
+      const isPinned = Boolean(this.pinnedSessions[id]);
+      updated.isPinned = isPinned;
+      updated.pinnedAt = isPinned ? this.pinnedSessions[id] : undefined;
+
       if (sessionInList) {
         sessionInList.title = updated.title;
         sessionInList.updatedAt = updated.updatedAt;
+        sessionInList.isPinned = updated.isPinned;
+        sessionInList.pinnedAt = updated.pinnedAt;
       }
       if (this.state.activeSession && this.state.activeSession.id === id) {
         this.state.activeSession.title = updated.title;
         this.state.activeSession.updatedAt = updated.updatedAt;
+        this.state.activeSession.isPinned = updated.isPinned;
+        this.state.activeSession.pinnedAt = updated.pinnedAt;
       }
+      this.state.sessions = this.sortSessions(this.state.sessions);
       this.notify();
       return updated;
     } catch (err) {
@@ -524,6 +754,10 @@ class ChatStore {
 
       await chatApi.deleteSession(id);
       this.state.sessions = this.state.sessions.filter((s) => s.id !== id);
+      if (this.pinnedSessions[id]) {
+        delete this.pinnedSessions[id];
+        saveStoredPinnedSessions(this.pinnedSessions);
+      }
 
       if (this.state.activeSessionId === id) {
         if (this.state.sessions.length > 0) {
@@ -688,6 +922,36 @@ class ChatStore {
     this.notify();
   }
 
+  public isSubmittingAnswer(messageId: string, questionId?: string): boolean {
+    const msgSubmitting = this.state.submittingAnswers[messageId];
+    if (!msgSubmitting) return false;
+    if (questionId) {
+      return msgSubmitting[questionId] === true;
+    }
+    return Object.values(msgSubmitting).some((v) => v === true);
+  }
+
+  private setSubmitting(messageId: string, questionId: string, isSubmitting: boolean): void {
+    const nextSubmitting = { ...this.state.submittingAnswers };
+    if (isSubmitting) {
+      nextSubmitting[messageId] = {
+        ...nextSubmitting[messageId],
+        [questionId]: true,
+      };
+    } else {
+      if (nextSubmitting[messageId]) {
+        const nextMsg = { ...nextSubmitting[messageId] };
+        delete nextMsg[questionId];
+        if (Object.keys(nextMsg).length === 0) {
+          delete nextSubmitting[messageId];
+        } else {
+          nextSubmitting[messageId] = nextMsg;
+        }
+      }
+    }
+    this.state.submittingAnswers = nextSubmitting;
+  }
+
   public async submitAnswer(
     messageId: string,
     questionId: string,
@@ -695,8 +959,9 @@ class ChatStore {
   ): Promise<void> {
     if (!this.state.activeSessionId) return;
 
-    // Immediately record into inProgressAnswers
+    // Immediately record into inProgressAnswers and track submitting state
     this.setInProgressAnswer(messageId, questionId, answer);
+    this.setSubmitting(messageId, questionId, true);
 
     const values =
       answer === undefined || answer === null
@@ -734,19 +999,54 @@ class ChatStore {
       );
 
       if (this.state.activeSessionId === updatedSession.id) {
-        this.state.activeSession = updatedSession;
+        if (this.state.isGenerating && this.state.activeSession) {
+          const mergedMessages = this.state.activeSession.messages.map((localMsg) => {
+            const serverMsg = updatedSession.messages.find((m) => m.id === localMsg.id);
+            if (!serverMsg) return localMsg;
+            if (localMsg.content.length > serverMsg.content.length) {
+              return {
+                ...localMsg,
+                content: mergeConfirmedQuestionsBlock(localMsg.content, serverMsg.content),
+              };
+            }
+            return serverMsg;
+          });
+          for (const serverMsg of updatedSession.messages) {
+            if (!mergedMessages.some((m) => m.id === serverMsg.id)) {
+              mergedMessages.push(serverMsg);
+            }
+          }
+          this.state.activeSession = {
+            ...updatedSession,
+            messages: mergedMessages,
+          };
+        } else {
+          this.state.activeSession = updatedSession;
+        }
       }
       const idx = this.state.sessions.findIndex((s) => s.id === updatedSession.id);
       if (idx >= 0) {
-        this.state.sessions[idx] = updatedSession;
+        this.state.sessions[idx] =
+          this.state.activeSessionId === updatedSession.id && this.state.activeSession
+            ? this.state.activeSession
+            : updatedSession;
       }
 
-      this.clearInProgressAnswers(messageId, questionId);
-      this.notify();
+      // Only clear inProgressAnswers once confirmed message content in activeSession actually contains the parsed answer
+      const targetMsg = this.state.activeSession?.messages.find((m) => m.id === messageId);
+      if (targetMsg) {
+        const questions = extractPlanQuestions(targetMsg.content);
+        const q = questions.find((item) => item.id === questionId);
+        if (q && q.answerPresent) {
+          this.clearInProgressAnswers(messageId, questionId);
+        }
+      }
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);
-      this.notify();
       throw err;
+    } finally {
+      this.setSubmitting(messageId, questionId, false);
+      this.notify();
     }
   }
 

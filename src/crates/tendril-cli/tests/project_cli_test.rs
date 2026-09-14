@@ -495,3 +495,234 @@ async fn test_project_cli_rename_routed_through_daemon() {
     assert_eq!(cfg.projects.len(), 1);
     assert_eq!(cfg.projects[0].name, "DaemonProjRenamed");
 }
+
+#[tokio::test]
+async fn test_project_cli_review_actions_filesystem() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-fs-review-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "ReviewProj".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add project");
+
+    handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "ReviewProj".to_string(),
+            action: "App".to_string(),
+            command: "pnpm dev:app".to_string(),
+            condition: "Test-Path src/apps/tendril-app".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add review action App");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].review_actions.len(), 1);
+    assert_eq!(cfg.projects[0].review_actions[0].name, "App");
+    assert_eq!(cfg.projects[0].review_actions[0].command, "pnpm dev:app");
+    assert_eq!(
+        cfg.projects[0].review_actions[0].condition,
+        "Test-Path src/apps/tendril-app"
+    );
+
+    handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "ReviewProj".to_string(),
+            action: "Server".to_string(),
+            command: "cargo run".to_string(),
+            condition: "".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add review action Server");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].review_actions.len(), 2);
+
+    handle_project_command(
+        ProjectCommands::RemoveReviewAction {
+            name: "ReviewProj".to_string(),
+            action: "App".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Remove review action App");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].review_actions.len(), 1);
+    assert_eq!(cfg.projects[0].review_actions[0].name, "Server");
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+#[tokio::test]
+async fn test_project_cli_set_field_filesystem() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-cli-fs-set-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).unwrap();
+    let cfg_path = get_config_path(&tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "SetProj".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Add project");
+
+    handle_project_command(
+        ProjectCommands::Set {
+            name: "SetProj".to_string(),
+            field: "color".to_string(),
+            value: "Purple".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Set color");
+
+    handle_project_command(
+        ProjectCommands::Set {
+            name: "SetProj".to_string(),
+            field: "context".to_string(),
+            value: "Monorepo context".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Set context");
+
+    handle_project_command(
+        ProjectCommands::Set {
+            name: "SetProj".to_string(),
+            field: "stackHash".to_string(),
+            value: "fe.ts:react/be.rs:axum".to_string(),
+        },
+        &tendril_home,
+    )
+    .await
+    .expect("Set stackHash");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].color, "Purple");
+    assert_eq!(cfg.projects[0].context, "Monorepo context");
+    assert_eq!(
+        cfg.projects[0].stack_hash,
+        Some("fe.ts:react/be.rs:axum".to_string())
+    );
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+#[tokio::test]
+async fn test_project_cli_review_actions_daemon() {
+    let server = start_test_server().await;
+    let cfg_path = get_config_path(&server.tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "DaemonReviewProj".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Add project via daemon");
+
+    handle_project_command(
+        ProjectCommands::AddReviewAction {
+            name: "DaemonReviewProj".to_string(),
+            action: "App".to_string(),
+            command: "pnpm dev:app".to_string(),
+            condition: "Test-Path src/apps/tendril-app".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Add review action via daemon");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].review_actions.len(), 1);
+    assert_eq!(cfg.projects[0].review_actions[0].name, "App");
+    assert_eq!(cfg.projects[0].review_actions[0].command, "pnpm dev:app");
+
+    handle_project_command(
+        ProjectCommands::RemoveReviewAction {
+            name: "DaemonReviewProj".to_string(),
+            action: "App".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Remove review action via daemon");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert!(cfg.projects[0].review_actions.is_empty());
+}
+
+#[tokio::test]
+async fn test_project_cli_set_field_daemon() {
+    let server = start_test_server().await;
+    let cfg_path = get_config_path(&server.tendril_home);
+
+    handle_project_command(
+        ProjectCommands::Add {
+            name: "DaemonSetProj".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Add project via daemon");
+
+    handle_project_command(
+        ProjectCommands::Set {
+            name: "DaemonSetProj".to_string(),
+            field: "color".to_string(),
+            value: "Green".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Set color via daemon");
+
+    handle_project_command(
+        ProjectCommands::Set {
+            name: "DaemonSetProj".to_string(),
+            field: "context".to_string(),
+            value: "Daemon test context".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Set context via daemon");
+
+    handle_project_command(
+        ProjectCommands::Set {
+            name: "DaemonSetProj".to_string(),
+            field: "stackHash".to_string(),
+            value: "fe.ts:react".to_string(),
+        },
+        &server.tendril_home,
+    )
+    .await
+    .expect("Set stackHash via daemon");
+
+    let cfg = load_config(&cfg_path).unwrap();
+    assert_eq!(cfg.projects[0].color, "Green");
+    assert_eq!(cfg.projects[0].context, "Daemon test context");
+    assert_eq!(cfg.projects[0].stack_hash, Some("fe.ts:react".to_string()));
+}

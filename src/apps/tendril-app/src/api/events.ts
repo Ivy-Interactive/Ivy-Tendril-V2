@@ -36,3 +36,145 @@ export async function onChatEvent(
   );
   return () => unlisten();
 }
+
+export interface JobStreamEvent {
+  kind?: string;
+  type?: string;
+  text?: string;
+  delta?: boolean;
+  tool_name?: string;
+  tool_use_id?: string;
+  input?: Record<string, unknown>;
+  output?: string;
+  is_error?: boolean;
+  status?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export interface JobEventSubscriptionOptions {
+  kinds?: string[];
+  onEvent: (event: JobStreamEvent) => void;
+  onEnd?: (status: string) => void;
+  onError?: (err: unknown) => void;
+}
+
+export function subscribeJobEvents(
+  baseUrl: string,
+  jobId: string,
+  token: string | undefined,
+  options: JobEventSubscriptionOptions,
+): EventUnsubscribe {
+  const controller = new AbortController();
+  const trimmedBase = baseUrl.replace(/\/+$/, "");
+  const url = new URL(`${trimmedBase}/api/jobs/${encodeURIComponent(jobId)}/events`);
+  if (options.kinds && options.kinds.length > 0) {
+    url.searchParams.set("kinds", options.kinds.join(","));
+  }
+
+  const headers: Record<string, string> = {
+    Accept: "text/event-stream",
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  let active = true;
+
+  void (async () => {
+    try {
+      const response = await fetch(url.toString(), {
+        headers,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to subscribe to job events: HTTP ${response.status}`);
+      }
+
+      const body = response.body;
+      if (!body) {
+        return;
+      }
+
+      const reader = body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let currentEvent = "";
+      let currentData: string[] = [];
+
+      const processLine = (line: string) => {
+        if (line.endsWith("\r")) {
+          line = line.slice(0, -1);
+        }
+
+        if (line === "") {
+          if (currentData.length > 0) {
+            const dataStr = currentData.join("\n");
+            if (currentEvent === "end") {
+              let status = "Completed";
+              try {
+                const parsed = JSON.parse(dataStr);
+                if (parsed && typeof parsed === "object" && typeof parsed.status === "string") {
+                  status = parsed.status;
+                }
+              } catch {
+                if (dataStr) {
+                  status = dataStr;
+                }
+              }
+              options.onEnd?.(status);
+              active = false;
+              controller.abort();
+            } else {
+              try {
+                const parsed = JSON.parse(dataStr);
+                options.onEvent(parsed);
+              } catch {
+                options.onEvent({ text: dataStr, message: dataStr });
+              }
+            }
+          }
+          currentEvent = "";
+          currentData = [];
+        } else if (line.startsWith("event:")) {
+          currentEvent = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          currentData.push(line.slice(5).trimStart());
+        }
+      };
+
+      while (active) {
+        const { value, done } = await reader.read();
+        if (done) {
+          if (buffer.length > 0) {
+            processLine(buffer);
+            processLine("");
+          }
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          processLine(line);
+          if (!active) {
+            break;
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      options.onError?.(err);
+    }
+  })();
+
+  return () => {
+    active = false;
+    controller.abort();
+  };
+}
