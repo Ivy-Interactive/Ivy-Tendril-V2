@@ -333,3 +333,77 @@ fn test_pricing_calculation_with_dynamic_model() {
 
     model_specs::register_dynamic_specs(Vec::new());
 }
+
+#[test]
+fn test_enrichment_interval_mapping() {
+    assert_eq!(
+        model_cache::enrichment_interval(12),
+        Some(std::time::Duration::from_secs(43_200))
+    );
+    assert_eq!(model_cache::enrichment_interval(0), None);
+    assert_eq!(model_cache::enrichment_interval(-1), None);
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_enrichment_loop_fires_immediately_then_on_period() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let count = Arc::new(AtomicUsize::new(0));
+    let count_clone = count.clone();
+    let handle = tokio::spawn(async move {
+        model_cache::run_enrichment_loop(std::time::Duration::from_secs(3600), move || {
+            let count = count_clone.clone();
+            async move {
+                count.fetch_add(1, Ordering::SeqCst);
+                Ok(1)
+            }
+        })
+        .await;
+    });
+
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+
+    tokio::time::advance(std::time::Duration::from_secs(3600)).await;
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+
+    handle.abort();
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_enrichment_loop_survives_a_failed_refresh() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let count = Arc::new(AtomicUsize::new(0));
+    let count_clone = count.clone();
+    let handle = tokio::spawn(async move {
+        model_cache::run_enrichment_loop(std::time::Duration::from_secs(3600), move || {
+            let count = count_clone.clone();
+            async move {
+                let call = count.fetch_add(1, Ordering::SeqCst);
+                if call == 0 {
+                    Err(anyhow::anyhow!("offline"))
+                } else {
+                    Ok(7)
+                }
+            }
+        })
+        .await;
+    });
+
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+    assert_eq!(count.load(Ordering::SeqCst), 1);
+
+    tokio::time::advance(std::time::Duration::from_secs(3600)).await;
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+    assert_eq!(count.load(Ordering::SeqCst), 2);
+
+    handle.abort();
+}

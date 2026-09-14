@@ -136,6 +136,20 @@ fn test_model_cache_age_thresholds_default() {
 }
 
 #[test]
+fn test_model_enrichment_interval_default() {
+    let defaults = TendrilSettings::default();
+    assert_eq!(defaults.model_enrichment_interval_hours, 12);
+
+    let loaded: TendrilSettings =
+        serde_yaml::from_str("modelEnrichmentIntervalHours: 6\n").expect("parse");
+    assert_eq!(loaded.model_enrichment_interval_hours, 6);
+
+    let yaml = serde_yaml::to_string(&loaded).expect("serialize settings");
+    let reloaded: TendrilSettings = serde_yaml::from_str(&yaml).expect("parse");
+    assert_eq!(reloaded.model_enrichment_interval_hours, 6);
+}
+
+#[test]
 fn test_plan_folder_serialization() {
     let mut settings = TendrilSettings::default();
     assert_eq!(settings.plan_folder, None);
