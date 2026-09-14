@@ -115,19 +115,199 @@ fn test_disk_cache_persistence() {
         cache_write_per_million: 0.15,
     }];
 
-    // No cache file yet: loading returns an empty vec rather than an error.
+    // No cache file yet: loading returns an empty catalog rather than an error.
     let loaded_before = model_cache::load_disk_cache(&tendril_home).expect("load should succeed");
     assert!(loaded_before.is_empty());
 
     model_cache::save_disk_cache(&tendril_home, &specs).expect("save should succeed");
 
     let loaded_after = model_cache::load_disk_cache(&tendril_home).expect("load should succeed");
-    assert_eq!(loaded_after.len(), 1);
-    assert_eq!(loaded_after[0].model_id, "cached-model");
-    assert_eq!(loaded_after[0].context_window, 128_000);
-    assert_eq!(loaded_after[0].input_per_million, 0.5);
+    assert_eq!(loaded_after.specs.len(), 1);
+    assert_eq!(loaded_after.specs[0].model_id, "cached-model");
+    assert_eq!(loaded_after.specs[0].context_window, 128_000);
+    assert_eq!(loaded_after.specs[0].input_per_million, 0.5);
 
     std::fs::remove_dir_all(&tendril_home).ok();
+}
+
+#[test]
+fn test_disk_cache_records_fetched_at() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-model-cache-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).expect("failed to create test dir");
+
+    let specs = vec![ModelSpec {
+        model_id: Cow::Borrowed("cached-model"),
+        display_name: Cow::Borrowed("Cached Model"),
+        context_window: 128_000,
+        max_output_tokens: 8_000,
+        input_per_million: 0.5,
+        output_per_million: 1.5,
+        cache_read_per_million: 0.05,
+        cache_write_per_million: 0.15,
+    }];
+
+    model_cache::save_disk_cache(&tendril_home, &specs).expect("save should succeed");
+
+    let loaded = model_cache::load_disk_cache(&tendril_home).expect("load should succeed");
+    assert_eq!(loaded.specs.len(), 1);
+    assert_eq!(loaded.specs[0].model_id, "cached-model");
+
+    let fetched_at = loaded.fetched_at.expect("fetched_at should be recorded");
+    let age = chrono::Utc::now() - fetched_at;
+    assert!(age.num_seconds() >= 0 && age.num_seconds() < 60);
+
+    std::fs::remove_dir_all(&tendril_home).ok();
+}
+
+#[test]
+fn test_legacy_cache_without_timestamp_loads() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-model-cache-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    let cache_dir = tendril_home.join("cache");
+    std::fs::create_dir_all(&cache_dir).expect("failed to create test dir");
+
+    let legacy_json = r#"[
+        {
+            "model_id": "legacy-model",
+            "display_name": "Legacy Model",
+            "context_window": 64000,
+            "max_output_tokens": 4000,
+            "input_per_million": 1.0,
+            "output_per_million": 2.0,
+            "cache_read_per_million": 0.1,
+            "cache_write_per_million": 0.2
+        }
+    ]"#;
+    std::fs::write(cache_dir.join("models_cache.json"), legacy_json)
+        .expect("failed to write legacy cache file");
+
+    let loaded = model_cache::load_disk_cache(&tendril_home).expect("load should succeed");
+    assert_eq!(loaded.specs.len(), 1);
+    assert_eq!(loaded.specs[0].model_id, "legacy-model");
+    assert!(loaded.fetched_at.is_none());
+
+    std::fs::remove_dir_all(&tendril_home).ok();
+}
+
+#[test]
+fn test_classify_fresh_stale_expired() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-model-cache-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).expect("failed to create test dir");
+
+    let specs = vec![ModelSpec {
+        model_id: Cow::Borrowed("aged-model"),
+        display_name: Cow::Borrowed("Aged Model"),
+        context_window: 1,
+        max_output_tokens: 1,
+        input_per_million: 0.0,
+        output_per_million: 0.0,
+        cache_read_per_million: 0.0,
+        cache_write_per_million: 0.0,
+    }];
+
+    let now = chrono::Utc::now();
+
+    model_cache::save_disk_cache_at(&tendril_home, &specs, now - chrono::Duration::days(1))
+        .expect("save should succeed");
+    let fresh = model_cache::load_disk_cache(&tendril_home).expect("load should succeed");
+    assert!(matches!(
+        model_cache::classify(&fresh, 7, 30),
+        model_cache::CacheFreshness::Fresh { .. }
+    ));
+
+    model_cache::save_disk_cache_at(&tendril_home, &specs, now - chrono::Duration::days(10))
+        .expect("save should succeed");
+    let stale = model_cache::load_disk_cache(&tendril_home).expect("load should succeed");
+    assert!(matches!(
+        model_cache::classify(&stale, 7, 30),
+        model_cache::CacheFreshness::Stale { .. }
+    ));
+
+    model_cache::save_disk_cache_at(&tendril_home, &specs, now - chrono::Duration::days(60))
+        .expect("save should succeed");
+    let expired = model_cache::load_disk_cache(&tendril_home).expect("load should succeed");
+    assert!(matches!(
+        model_cache::classify(&expired, 7, 30),
+        model_cache::CacheFreshness::Expired { .. }
+    ));
+
+    std::fs::remove_dir_all(&tendril_home).ok();
+}
+
+#[test]
+fn test_classify_missing_timestamp_is_expired() {
+    let catalog = model_cache::CachedCatalog {
+        specs: vec![ModelSpec {
+            model_id: Cow::Borrowed("legacy-model"),
+            display_name: Cow::Borrowed("Legacy Model"),
+            context_window: 1,
+            max_output_tokens: 1,
+            input_per_million: 0.0,
+            output_per_million: 0.0,
+            cache_read_per_million: 0.0,
+            cache_write_per_million: 0.0,
+        }],
+        fetched_at: None,
+    };
+
+    assert!(matches!(
+        model_cache::classify(&catalog, 7, 30),
+        model_cache::CacheFreshness::Expired { age_days: None }
+    ));
+}
+
+#[test]
+fn test_classify_thresholds_disabled() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-model-cache-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&tendril_home).expect("failed to create test dir");
+
+    let specs = vec![ModelSpec {
+        model_id: Cow::Borrowed("very-old-model"),
+        display_name: Cow::Borrowed("Very Old Model"),
+        context_window: 1,
+        max_output_tokens: 1,
+        input_per_million: 0.0,
+        output_per_million: 0.0,
+        cache_read_per_million: 0.0,
+        cache_write_per_million: 0.0,
+    }];
+
+    model_cache::save_disk_cache_at(
+        &tendril_home,
+        &specs,
+        chrono::Utc::now() - chrono::Duration::days(400),
+    )
+    .expect("save should succeed");
+    let catalog = model_cache::load_disk_cache(&tendril_home).expect("load should succeed");
+
+    assert!(matches!(
+        model_cache::classify(&catalog, 0, 0),
+        model_cache::CacheFreshness::Fresh { .. }
+    ));
+
+    std::fs::remove_dir_all(&tendril_home).ok();
+}
+
+#[test]
+fn test_expired_cache_falls_back_to_static_specs() {
+    let _guard = DYNAMIC_REGISTRY_LOCK.lock().unwrap();
+    model_specs::register_dynamic_specs(Vec::new());
+
+    // Simulate the load-time decision an Expired classification implies: never register.
+    let spec = model_specs::find("claude-3-7-sonnet").expect("static spec should be found");
+    assert_eq!(spec.context_window, 200_000);
+    assert_eq!(spec.input_per_million, 3.0);
 }
 
 #[test]

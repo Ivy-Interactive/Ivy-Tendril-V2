@@ -116,6 +116,25 @@ fn test_master_file_lifecycle() {
 }
 
 #[test]
+fn test_model_cache_age_thresholds_default() {
+    let defaults = TendrilSettings::default();
+    assert_eq!(defaults.model_cache_warn_age_days, 7);
+    assert_eq!(defaults.model_cache_max_age_days, 30);
+
+    // Absent from the raw YAML: both fields fall back to their defaults.
+    let loaded: TendrilSettings = serde_yaml::from_str("codingAgent: claude\n").expect("parse");
+    assert_eq!(loaded.model_cache_warn_age_days, 7);
+    assert_eq!(loaded.model_cache_max_age_days, 30);
+
+    // Explicit values in the raw YAML round-trip.
+    let loaded_custom: TendrilSettings =
+        serde_yaml::from_str("modelCacheWarnAgeDays: 3\nmodelCacheMaxAgeDays: 14\n")
+            .expect("parse");
+    assert_eq!(loaded_custom.model_cache_warn_age_days, 3);
+    assert_eq!(loaded_custom.model_cache_max_age_days, 14);
+}
+
+#[test]
 fn test_plan_folder_serialization() {
     let mut settings = TendrilSettings::default();
     assert_eq!(settings.plan_folder, None);
