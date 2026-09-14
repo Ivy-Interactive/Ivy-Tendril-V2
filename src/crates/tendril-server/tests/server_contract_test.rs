@@ -1886,4 +1886,3 @@ async fn test_get_job_events_not_found() {
         .unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
 }
-

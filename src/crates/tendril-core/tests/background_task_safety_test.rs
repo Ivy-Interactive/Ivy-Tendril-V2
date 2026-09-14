@@ -11,16 +11,12 @@ use tokio::sync::RwLock;
 #[test]
 fn test_find_abandoned_background_tasks_regex() {
     // 1. Single started task
-    let lines1 = vec![
-        "The command was moved to the background (ID: task-101)".to_string(),
-    ];
+    let lines1 = vec!["The command was moved to the background (ID: task-101)".to_string()];
     let abandoned1 = find_abandoned_background_tasks(&lines1);
     assert_eq!(abandoned1, vec!["task-101"]);
 
     // 2. Task with ID syntax variations
-    let lines2 = vec![
-        "Command running in background with ID: task202".to_string(),
-    ];
+    let lines2 = vec!["Command running in background with ID: task202".to_string()];
     let abandoned2 = find_abandoned_background_tasks(&lines2);
     assert_eq!(abandoned2, vec!["task202"]);
 
