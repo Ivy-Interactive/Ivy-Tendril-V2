@@ -5,6 +5,7 @@ import {
   type RecommendationItem,
   type RecommendationState,
   type ReviewActionConfig,
+  type StartJobResponse,
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
@@ -12,24 +13,33 @@ import { EmptyState } from "../components/EmptyState";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
+import { CreatePrDialog } from "./dialogs/CreatePrDialog";
+import { DiscardPlanDialog } from "./dialogs/DiscardPlanDialog";
+import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
+import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
+import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
+
+/** The triage dialogs this view owns, at most one open at a time. */
+type TriageDialog = "createPr" | "suggestChanges" | "discard" | "reset" | "partialDelivery";
 
 interface ReviewViewProps {
   plans: PlanSummary[];
   onSelectPlan: (planId: string) => void;
-  onCreatePr: (planId: string) => void | Promise<void>;
-  onRetry: (planId: string, feedback: string) => void | Promise<void>;
+  /** A job a triage dialog started, so the shell can open its session tab. */
+  onJobStarted?: (response: StartJobResponse) => void;
+  /** The plan's state changed on the service; the caller should re-fetch. */
+  onPlanChanged?: (planId: string) => void;
 }
 
 export const ReviewView: React.FC<ReviewViewProps> = ({
   plans,
   onSelectPlan,
-  onCreatePr,
-  onRetry,
+  onJobStarted,
+  onPlanChanged,
 }) => {
   const reviewPlans = plans.filter((p) => p.state === "Review");
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(reviewPlans[0]?.id || null);
-  const [retryFeedback, setRetryFeedback] = useState("");
-  const [isRetrying, setIsRetrying] = useState(false);
+  const [activeDialog, setActiveDialog] = useState<TriageDialog | null>(null);
 
   const selectedPlan = reviewPlans.find((p) => p.id === selectedPlanId);
 
@@ -149,26 +159,14 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     await setRecState(title, targetState, notePayload);
   };
 
-  const handleRetrySubmit = async () => {
-    if (!selectedPlan || !retryFeedback.trim()) return;
-    setActionError(null);
-    try {
-      await onRetry(selectedPlan.id, retryFeedback.trim());
-      setIsRetrying(false);
-      setRetryFeedback("");
-    } catch (err) {
-      setActionError(`Retry Plan failed: ${describeBridgeError(err)}`);
-    }
-  };
-
-  const handleCreatePr = async () => {
-    if (!selectedPlan) return;
-    setActionError(null);
-    try {
-      await onCreatePr(selectedPlan.id);
-    } catch (err) {
-      setActionError(`Create PR failed: ${describeBridgeError(err)}`);
-    }
+  /**
+   * A triage decision the service accepted: the plan leaves the Review filter, so
+   * the selection is re-pointed at whatever is left rather than rendering a pane
+   * for a plan that is no longer there.
+   */
+  const handlePlanLeftReview = (planId: string) => {
+    setSelectedPlanId(reviewPlans.find((p) => p.id !== planId)?.id ?? null);
+    onPlanChanged?.(planId);
   };
 
   const handleExecuteReviewAction = async (actionName: string) => {
@@ -195,7 +193,18 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     );
   }
 
-  const canPr = selectedPlan ? PlanActionsController.canCreatePr(selectedPlan) : { allowed: false };
+  const canPr = selectedPlan
+    ? PlanActionsController.canCreatePr(selectedPlan)
+    : { allowed: false, reason: undefined };
+  const canDiscard = selectedPlan
+    ? PlanActionsController.canDiscard(selectedPlan)
+    : { allowed: false, reason: undefined };
+  const canReset = selectedPlan
+    ? PlanActionsController.canReset(selectedPlan)
+    : { allowed: false, reason: undefined };
+  const canPartial = selectedPlan
+    ? PlanActionsController.canCompletePartial(selectedPlan)
+    : { allowed: false, reason: undefined };
 
   return (
     <div className="space-y-6" data-testid="review-view">
@@ -284,7 +293,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   type="button"
                   disabled={!canPr.allowed}
                   title={canPr.reason}
-                  onClick={handleCreatePr}
+                  onClick={() => setActiveDialog("createPr")}
                   className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
                     canPr.allowed
                       ? "bg-emerald-600 text-white hover:bg-emerald-500"
@@ -295,11 +304,38 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsRetrying(true)}
+                  onClick={() => setActiveDialog("suggestChanges")}
                   className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-medium text-white transition hover:bg-amber-500"
                 >
                   Request Changes (Retry)
                 </button>
+                {canPartial.allowed && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveDialog("partialDelivery")}
+                    className="rounded-lg bg-amber-900/60 px-4 py-2 text-xs font-medium text-amber-200 transition hover:bg-amber-900"
+                  >
+                    Accept Partial Delivery
+                  </button>
+                )}
+                {canReset.allowed && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveDialog("reset")}
+                    className="rounded-lg bg-slate-800 px-4 py-2 text-xs font-medium text-slate-300 transition hover:bg-slate-700"
+                  >
+                    Reset to Draft…
+                  </button>
+                )}
+                {canDiscard.allowed && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveDialog("discard")}
+                    className="rounded-lg bg-red-900/60 px-4 py-2 text-xs font-medium text-red-200 transition hover:bg-red-900"
+                  >
+                    Discard Plan…
+                  </button>
+                )}
               </div>
 
               {actionError && (
@@ -309,39 +345,6 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   className="mt-4 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
                 >
                   {actionError}
-                </div>
-              )}
-
-              {/* Retry feedback form */}
-              {isRetrying && (
-                <div className="mt-4 rounded-xl border border-amber-600/40 bg-amber-950/20 p-4">
-                  <label className="block text-xs font-medium text-amber-200 mb-1">
-                    Feedback / Change Request for RetryPlan Job:
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={retryFeedback}
-                    onChange={(e) => setRetryFeedback(e.target.value)}
-                    placeholder="Describe what needs to be changed, fixed, or rewritten in the worktree..."
-                    className="w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
-                  />
-                  <div className="mt-3 flex justify-end space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsRetrying(false)}
-                      className="rounded px-3 py-1 text-xs text-slate-400 hover:text-slate-200"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!retryFeedback.trim()}
-                      onClick={handleRetrySubmit}
-                      className="rounded bg-amber-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
-                    >
-                      Submit Change Request
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
@@ -391,6 +394,41 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
         onClose={() => setActiveNoteDialog(null)}
         onSubmit={handleDialogSubmit}
       />
+
+      {selectedPlan && (
+        <>
+          <CreatePrDialog
+            isOpen={activeDialog === "createPr"}
+            onClose={() => setActiveDialog(null)}
+            plan={selectedPlan}
+            onJobStarted={(response) => onJobStarted?.(response)}
+          />
+          <SuggestChangesDialog
+            isOpen={activeDialog === "suggestChanges"}
+            onClose={() => setActiveDialog(null)}
+            plan={selectedPlan}
+            onJobStarted={(response) => onJobStarted?.(response)}
+          />
+          <DiscardPlanDialog
+            isOpen={activeDialog === "discard"}
+            onClose={() => setActiveDialog(null)}
+            plan={selectedPlan}
+            onDiscarded={handlePlanLeftReview}
+          />
+          <ResetToDraftDialog
+            isOpen={activeDialog === "reset"}
+            onClose={() => setActiveDialog(null)}
+            plan={selectedPlan}
+            onReset={handlePlanLeftReview}
+          />
+          <PartialDeliveryDialog
+            isOpen={activeDialog === "partialDelivery"}
+            onClose={() => setActiveDialog(null)}
+            plan={selectedPlan}
+            onCompleted={handlePlanLeftReview}
+          />
+        </>
+      )}
     </div>
   );
 };

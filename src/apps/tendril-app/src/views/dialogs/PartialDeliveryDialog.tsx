@@ -1,12 +1,12 @@
 import * as React from "react";
 import { bridge } from "../../api/bridge";
-import { describeBridgeError, type PlanDetail } from "../../types/api";
+import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface PartialDeliveryDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  plan: PlanDetail;
+  plan: PlanDetail | PlanSummary;
   /** Called once the backend has confirmed the plan is Completed. */
   onCompleted?: (planId: string) => void;
 }
