@@ -4,6 +4,7 @@ pub mod chat;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod fs_lock;
 pub mod git;
 pub mod jobs;
 pub mod mcp;
@@ -12,8 +13,10 @@ pub mod plans;
 pub mod promptware;
 pub mod questions;
 pub mod security;
+pub mod skills;
 pub mod stack;
 pub mod vault;
+pub mod watcher;
 
 pub use agents::model_specs;
 pub use agents::truncation;

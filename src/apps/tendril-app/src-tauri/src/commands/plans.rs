@@ -1,7 +1,7 @@
 use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
-    PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto, RepoStatusDto,
+    DraftCommentDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, RecommendationDto, RepoStatusDto,
     RevisionResultDto, VerificationReportDto,
 };
 
@@ -159,6 +159,42 @@ pub async fn cmd_set_verification_status(
 
     get_client_from_master()?
         .update_verification(&plan_id, &name, &status)
+        .await
+}
+
+/// Every inline diff comment drafted against a plan.
+#[tauri::command]
+pub async fn cmd_list_diff_comments(plan_id: String) -> Result<Vec<DraftCommentDto>, BridgeError> {
+    get_client_from_master()?.list_diff_comments(&plan_id).await
+}
+
+/// Add or edit one comment. Returns the plan's whole list, so the caller can replace its state
+/// wholesale instead of reconciling.
+#[tauri::command]
+pub async fn cmd_upsert_diff_comment(
+    plan_id: String,
+    comment: DraftCommentDto,
+) -> Result<Vec<DraftCommentDto>, BridgeError> {
+    get_client_from_master()?
+        .upsert_diff_comment(&plan_id, &comment)
+        .await
+}
+
+#[tauri::command]
+pub async fn cmd_delete_diff_comment(
+    plan_id: String,
+    file_path: String,
+    change_key: String,
+) -> Result<Vec<DraftCommentDto>, BridgeError> {
+    get_client_from_master()?
+        .delete_diff_comment(&plan_id, &file_path, &change_key)
+        .await
+}
+
+#[tauri::command]
+pub async fn cmd_clear_diff_comments(plan_id: String) -> Result<(), BridgeError> {
+    get_client_from_master()?
+        .clear_diff_comments(&plan_id)
         .await
 }
 

@@ -211,6 +211,22 @@ export interface RevisionResult {
   message: string;
 }
 
+/**
+ * One inline diff comment, mirroring `DraftCommentDto` in `src-tauri/src/models.rs` and
+ * `PlanDiffView`'s own `DraftComment`, so a comment passes between them without translation.
+ *
+ * `filePath` is the anchor: `plan.md@<old>-<new>` scopes a comment to one revision pair, while a
+ * bare `plan.md` is what the original Tendril wrote and stays readable.
+ */
+export interface DraftComment {
+  filePath: string;
+  changeKey: string;
+  content: string;
+  lineNumber: number;
+  author?: string;
+  isResolved?: boolean;
+}
+
 export type RecommendationState = "Pending" | "Accepted" | "AcceptedWithNotes" | "Declined";
 
 export interface RecommendationItem {
@@ -235,6 +251,44 @@ export interface PlanQuery {
   status?: string;
   project?: string;
   q?: string;
+}
+
+/** `Unknown` means the daemon could not resolve the PR, never that it is open. */
+export type PrState = "Open" | "Closed" | "Merged" | "Unknown";
+
+/** One tracked pull request, as of the daemon's last reconciliation pass. */
+export interface PrStatus {
+  prUrl: string;
+  owner: string;
+  repo: string;
+  number: number;
+  status: PrState;
+  branch?: string | null;
+  /** `null` until the PR has been through one pass. */
+  lastChecked?: string | null;
+  planId: string;
+  planFolder: string;
+  planTitle: string;
+  project: string;
+}
+
+export interface PrTransition {
+  prUrl: string;
+  from?: PrState | null;
+  to: PrState;
+}
+
+export interface PrSyncReport {
+  tracked: number;
+  checked: number;
+  skippedMerged: number;
+  skippedFresh: number;
+  transitions: PrTransition[];
+  completedPlans: string[];
+  refusedCompletions: string[];
+  unblockedPlans: string[];
+  errors: string[];
+  changed: boolean;
 }
 
 /**

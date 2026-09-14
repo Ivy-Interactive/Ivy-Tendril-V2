@@ -2,6 +2,7 @@ import * as path from 'path';
 import Mocha from 'mocha';
 import { glob } from 'glob';
 import { vscodeMock } from '../vscodeMock';
+import { createIsolatedTendrilHome, stubTendrilExecutablePath } from '../testHome';
 
 // If running in standalone Node environment without VS Code Extension Host:
 try {
@@ -19,6 +20,16 @@ try {
 }
 
 export async function run(): Promise<void> {
+  // Isolate TENDRIL_HOME before any test file is loaded: module-level code must already see the
+  // temp home, and nothing in the suite may reach the developer's real ~/.tendril.
+  const home = createIsolatedTendrilHome();
+  const stubExecutable = stubTendrilExecutablePath(home.path);
+  vscodeMock.workspace.__setConfig({
+    'tendril.homeDirectory': home.path,
+    'tendril.executablePath': stubExecutable,
+    'tendril.server.stopOnExit': true
+  });
+
   const mocha = new Mocha({
     ui: 'bdd',
     color: true,
@@ -32,17 +43,21 @@ export async function run(): Promise<void> {
     mocha.addFile(path.resolve(testsRoot, file));
   }
 
-  return new Promise((resolve, reject) => {
-    try {
-      mocha.run(failures => {
-        if (failures > 0) {
-          reject(new Error(`${failures} tests failed.`));
-        } else {
-          resolve();
-        }
-      });
-    } catch (err) {
-      reject(err);
-    }
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      try {
+        mocha.run(failures => {
+          if (failures > 0) {
+            reject(new Error(`${failures} tests failed.`));
+          } else {
+            resolve();
+          }
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  } finally {
+    home.dispose();
+  }
 }

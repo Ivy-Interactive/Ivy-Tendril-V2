@@ -84,7 +84,9 @@ pub fn write_revision(plan_folder: &Path, content: &str, validate_questions: boo
 
     let next = highest + 1;
     let new_rev_file = rev_dir.join(format!("{:03}.md", next));
-    std::fs::write(&new_rev_file, content)?;
+    // Atomic but unlocked: each revision file has exactly one writer (the agent that allocated the
+    // number), so there is nothing to exclude — only a truncated read to prevent.
+    crate::fs_lock::write_atomic(&new_rev_file, content.as_bytes())?;
 
     Ok(next)
 }

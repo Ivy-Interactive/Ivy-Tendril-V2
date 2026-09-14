@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 use tendril_core::agents::model_cache::{self, CacheFreshness};
@@ -9,6 +10,7 @@ use tendril_core::config::{
 };
 use tendril_core::jobs::JobManager;
 use tendril_core::security::local_file_roots::compute_roots;
+use tendril_core::watcher::ChangeEvent;
 use tokio::sync::broadcast;
 
 /// `config.yaml` as of a given mtime, plus everything derived from it that a per-request check needs.
@@ -33,6 +35,10 @@ pub struct AppState {
     pub job_manager: Arc<JobManager>,
     pub chat_manager: Arc<ChatExecutionManager>,
     pub ws_tx: broadcast::Sender<String>,
+    /// Filesystem change notifications, fed by the watcher the master daemon starts and consumed by
+    /// `/api/changes/events`. The channel exists whether or not a watcher is running, so a test can
+    /// publish on it directly and a daemon that lost the master race still serves the route.
+    pub change_tx: broadcast::Sender<ChangeEvent>,
     pub secret: String,
     /// Exponential backoff for `POST /api/auth/login`, shared by every request so the backoff is not
     /// reset by anything short of a successful login or the cleanup sweep.
@@ -40,6 +46,9 @@ pub struct AppState {
     /// Settings snapshot behind an mtime check — the V2 equivalent of the original's
     /// `SettingsReloaded` event, and it also catches an edit made directly to `config.yaml`.
     pub settings_cache: Arc<RwLock<Option<Arc<CachedSettings>>>>,
+    /// Held for the duration of a PR reconciliation pass, so the periodic driver and a manual
+    /// `POST /api/pull-requests/sync` can never run concurrently.
+    pub pr_sync_running: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -110,6 +119,10 @@ impl AppState {
         let job_manager = JobManager::new(tendril_home.clone(), settings).share();
         let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
+        // Coalesced change events, so 256 is generous: a client would have to be a full burst-window
+        // behind to lag, and `stream_changes` degrades a lag to one full rescan anyway. Constructing
+        // state deliberately does not start a watcher — only the master daemon does that.
+        let (change_tx, _) = broadcast::channel(256);
 
         // Forward chat events to WebSocket clients
         let mut chat_rx = chat_manager.subscribe_events();
@@ -122,6 +135,16 @@ impl AppState {
             }
         });
 
+        // Reconcile tracked pull requests on a timer. The task captures clones rather than the
+        // `AppState` it is being constructed inside, so nothing here has to be `Arc`ed early.
+        let pr_sync_running = Arc::new(AtomicBool::new(false));
+        crate::pr_sync::spawn_pr_status_sync(
+            db_path.clone(),
+            plans_dir.clone(),
+            pr_sync_running.clone(),
+            ws_tx.clone(),
+        );
+
         Self {
             tendril_home,
             config_path,
@@ -130,9 +153,11 @@ impl AppState {
             job_manager,
             chat_manager,
             ws_tx,
+            change_tx,
             secret,
             login_rate_limiter: Arc::new(LoginRateLimiter::new(rate_limit)),
             settings_cache: Arc::new(RwLock::new(None)),
+            pr_sync_running,
         }
     }
 

@@ -135,6 +135,18 @@ pub async fn auth_middleware(
         }
     }
 
+    // The original Tendril authenticates with X-Api-Key; accept it as an alias for
+    // Authorization: Bearer so existing scripted callers don't all get a 401.
+    if !authenticated {
+        if let Some(api_key_val) = req.headers().get("x-api-key") {
+            if let Ok(api_key_str) = api_key_val.to_str() {
+                if api_key_str == state.secret {
+                    authenticated = true;
+                }
+            }
+        }
+    }
+
     // For WebSocket /api/ws, also support ?token=<secret> query parameter
     if !authenticated && req.uri().path() == "/api/ws" {
         if let Some(query) = req.uri().query() {
@@ -165,7 +177,7 @@ pub async fn auth_middleware(
             StatusCode::UNAUTHORIZED,
             Json(json!({
                 "error": "Unauthorized",
-                "message": "Missing or invalid bearer token"
+                "message": "Missing or invalid credentials. Send Authorization: Bearer <secret> or X-Api-Key: <secret>"
             })),
         )
             .into_response()

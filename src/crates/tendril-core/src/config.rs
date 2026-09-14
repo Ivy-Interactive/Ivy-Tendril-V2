@@ -575,6 +575,72 @@ pub fn get_tendril_home() -> PathBuf {
     get_default_tendril_home()
 }
 
+/// The operator's real Tendril home, resolved as if `TENDRIL_HOME` were not set.
+///
+/// A test that pins `TENDRIL_HOME` to a temp directory still needs to know which path it must never
+/// touch, so this deliberately ignores the variable that isolates it.
+pub fn real_user_tendril_home() -> PathBuf {
+    get_default_tendril_home_with_env(&|key: &str| {
+        if key == "TENDRIL_HOME" {
+            None
+        } else {
+            std::env::var(key).ok()
+        }
+    })
+}
+
+/// True when the current process looks like a test binary.
+///
+/// `TENDRIL_TEST_ISOLATION=1` is the explicit opt-in (the VS Code extension harness sets it for its
+/// children); the `target/*/deps/` check covers cargo test binaries, so a harness added later cannot
+/// silently opt out of [`ensure_not_real_home`].
+pub fn in_test_context() -> bool {
+    if std::env::var("TENDRIL_TEST_ISOLATION").as_deref() == Ok("1") {
+        return true;
+    }
+
+    std::env::current_exe()
+        .map(|p| p.components().any(|c| c.as_os_str() == "deps"))
+        .unwrap_or(false)
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| -> String {
+        let resolved = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let s = normalize_slashes(&resolved)
+            .trim_end_matches('/')
+            .to_string();
+        if cfg!(windows) || cfg!(target_os = "macos") {
+            s.to_lowercase()
+        } else {
+            s
+        }
+    };
+
+    norm(a) == norm(b)
+}
+
+/// Refuses to claim the operator's real Tendril home from a test process.
+///
+/// Outside a test context this is a no-op, so production behaviour is unchanged.
+pub fn ensure_not_real_home(home: &Path) -> Result<()> {
+    if !in_test_context() {
+        return Ok(());
+    }
+
+    let real = real_user_tendril_home();
+    if paths_equal(home, &real) {
+        return Err(TendrilError::Other(format!(
+            "Refusing to use the real Tendril home {} from a test process: claiming mastership \
+             there hijacks the operator's running daemon. Set TENDRIL_HOME to a temp directory for \
+             this test.",
+            real.display()
+        )));
+    }
+
+    Ok(())
+}
+
 pub fn normalize_slashes(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -584,6 +650,8 @@ pub fn expand_variables_with_env(input: &str, tendril_home: &str, env: &impl Env
         .replace("%TENDRIL_HOME%", tendril_home)
         .replace("${TENDRIL_HOME}", tendril_home)
         .replace("$TENDRIL_HOME", tendril_home);
+
+    res = expand_env_percent_vars(&res, env);
 
     if res.starts_with('~') {
         if let Some(home) = dirs_home_with_env(env) {
@@ -601,6 +669,69 @@ pub fn expand_variables_with_env(input: &str, tendril_home: &str, env: &impl Env
 
 pub fn expand_variables(input: &str, tendril_home: &str) -> String {
     expand_variables_with_env(input, tendril_home, &SystemEnv)
+}
+
+/// Replaces every `%NAME%` that names a set environment variable with its value.
+///
+/// `config.yaml` is documented to accept arbitrary `%ENV_VAR%` (the example config's repo paths use
+/// `%REPOS_HOME%`, and hook actions are written the same way), so this closes the gap between the
+/// documented syntax and the one variable the expander used to know.
+///
+/// An unset name is left exactly as written, which is what keeps this backwards compatible: a string
+/// that reached the shell literally before still does. Only `[A-Za-z_][A-Za-z0-9_]*` between two `%`
+/// is considered a name, so a bare `%` or a `50% faster` is never touched.
+fn expand_env_percent_vars(input: &str, env: &impl EnvSource) -> String {
+    if !input.contains('%') {
+        return input.to_string();
+    }
+
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] != b'%' {
+            // Push whole UTF-8 characters: indexing is byte-wise, so a multi-byte character must be
+            // copied in one piece.
+            let ch = input[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+            continue;
+        }
+
+        match bytes[i + 1..].iter().position(|b| *b == b'%') {
+            Some(offset) => {
+                let name = &input[i + 1..i + 1 + offset];
+                match (is_env_var_name(name), env.get_var(name)) {
+                    (true, Some(value)) => {
+                        out.push_str(&value);
+                        i += offset + 2;
+                    }
+                    // Not a name, or a name nothing is set for: emit the opening `%` and carry on
+                    // from the next character, so `%a% %HOME%` still resolves `HOME`.
+                    _ => {
+                        out.push('%');
+                        i += 1;
+                    }
+                }
+            }
+            None => {
+                out.push_str(&input[i..]);
+                break;
+            }
+        }
+    }
+
+    out
+}
+
+fn is_env_var_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 pub fn dirs_home_with_env(env: &impl EnvSource) -> Option<PathBuf> {
@@ -753,6 +884,10 @@ pub fn load_config(config_path: &Path) -> Result<TendrilSettings> {
     Ok(settings)
 }
 
+/// Replaces `config.yaml` atomically while holding its lock.
+///
+/// The caller must not already hold that lock — see
+/// [`FileLock::acquire`][crate::fs_lock::FileLock::acquire] on nesting.
 pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()> {
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -761,11 +896,16 @@ pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()>
     let yaml = serde_yaml::to_string(settings)
         .map_err(|e| TendrilError::Config(format!("Failed to serialize settings: {}", e)))?;
 
-    std::fs::write(config_path, yaml)?;
-    Ok(())
+    let _lock = crate::fs_lock::FileLock::acquire(config_path)?;
+    crate::fs_lock::write_atomic(config_path, yaml.as_bytes())
 }
 
+/// Merges `incoming` into `config.yaml` and writes the result.
+///
+/// This is a read-modify-write, so the lock is held across **both** halves: releasing it between the
+/// read and the write is exactly how two concurrent settings edits drop one another.
 pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Result<()> {
+    let _lock = crate::fs_lock::FileLock::acquire(config_path)?;
     let existing_raw = if config_path.exists() {
         std::fs::read_to_string(config_path).map_err(|e| {
             TendrilError::Config(format!("Failed to read {}: {}", config_path.display(), e))
@@ -808,8 +948,9 @@ pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Re
         std::fs::create_dir_all(parent)?;
     }
 
-    std::fs::write(config_path, yaml_str)?;
-    Ok(())
+    // `write_atomic` rather than `save_config`: the lock is already held here, and re-acquiring it
+    // would deadlock.
+    crate::fs_lock::write_atomic(config_path, yaml_str.as_bytes())
 }
 
 pub fn generate_bearer_secret() -> String {
@@ -826,6 +967,7 @@ pub fn default_capabilities() -> Vec<String> {
         "projects".to_string(),
         "ws".to_string(),
         "auth_bearer".to_string(),
+        "auth_api_key".to_string(),
     ]
 }
 
@@ -993,21 +1135,64 @@ pub struct MasterGuard {
     pid: u32,
 }
 
+/// Number of `/api/ping` attempts before a running master is declared unresponsive.
+pub const HEALTH_PROBE_ATTEMPTS: u32 = 3;
+const HEALTH_PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// Probes `/api/ping` repeatedly, so one dropped probe on a loaded machine cannot decide mastership.
+pub fn probe_health_with_retries(host: &str, port: u16, attempts: u32) -> bool {
+    for attempt in 0..attempts.max(1) {
+        if probe_health(host, port) {
+            return true;
+        }
+        if attempt + 1 < attempts {
+            std::thread::sleep(HEALTH_PROBE_INTERVAL);
+        }
+    }
+    false
+}
+
+fn master_takeover_allowed() -> bool {
+    std::env::var("TENDRIL_ALLOW_MASTER_TAKEOVER").as_deref() == Ok("1")
+}
+
 impl MasterGuard {
     pub fn acquire(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<Self> {
-        if let Some(existing) = read_master(tendril_home) {
-            let running = is_process_running(existing.pid);
-            let responding = probe_health(&existing.host, existing.port);
+        ensure_not_real_home(tendril_home)?;
 
-            if running && responding {
-                return Err(TendrilError::Other(format!(
-                    "Another Tendril instance is running with PID {} on port {}",
-                    existing.pid, existing.port
-                )));
+        if let Some(existing) = read_master(tendril_home) {
+            if is_process_running(existing.pid) {
+                if probe_health_with_retries(&existing.host, existing.port, HEALTH_PROBE_ATTEMPTS) {
+                    return Err(TendrilError::Other(format!(
+                        "Another Tendril instance is running with PID {} on port {}",
+                        existing.pid, existing.port
+                    )));
+                }
+
+                if !master_takeover_allowed() {
+                    return Err(TendrilError::Other(format!(
+                        "Refusing to take mastership from live PID {} on port {} recorded in \
+                         {}/.master: the process is alive but did not answer /api/ping after {} \
+                         probes. Stop that instance, or start this one with a different \
+                         TENDRIL_HOME.",
+                        existing.pid,
+                        existing.port,
+                        tendril_home.display(),
+                        HEALTH_PROBE_ATTEMPTS
+                    )));
+                }
+
+                tracing::warn!(
+                    "TENDRIL_ALLOW_MASTER_TAKEOVER=1: evicting live but unresponsive master PID {} on port {}",
+                    existing.pid,
+                    existing.port
+                );
+                delete_master(tendril_home);
             } else {
                 tracing::warn!(
-                    "Cleaning up stale .master file from PID {} on port {} (running: {}, responding: {})",
-                    existing.pid, existing.port, running, responding
+                    "Cleaning up stale .master file from PID {} on port {} (process is not running)",
+                    existing.pid,
+                    existing.port
                 );
                 delete_master(tendril_home);
             }

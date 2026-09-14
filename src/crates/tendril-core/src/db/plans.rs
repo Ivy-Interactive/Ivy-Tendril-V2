@@ -203,11 +203,28 @@ pub fn get_plans(
     project_filter: Option<&str>,
     text_filter: Option<&str>,
 ) -> Result<Vec<PlanFile>> {
+    get_plans_limited(conn, status_filter, project_filter, text_filter, None)
+}
+
+/// Same as [`get_plans`], but bounds the unfiltered/status-filtered listing with a SQL `LIMIT`
+/// rather than fetching everything and truncating in Rust. A text search additionally bounds its
+/// merged (id-hit + FTS/LIKE) result set, since that path already assembles the list in memory.
+pub fn get_plans_limited(
+    conn: &Connection,
+    status_filter: Option<PlanStatus>,
+    project_filter: Option<&str>,
+    text_filter: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<PlanFile>> {
     let Some(text) = text_filter.map(str::trim).filter(|t| !t.is_empty()) else {
         let mut sql = format!("{} FROM Plans p WHERE 1=1", PLAN_SELECT);
         let mut params_vec: BoxedParams = Vec::new();
         push_plan_filters(&mut sql, &mut params_vec, status_filter, project_filter);
         sql.push_str(" ORDER BY p.Id DESC");
+        if let Some(limit) = limit {
+            sql.push_str(" LIMIT ?");
+            params_vec.push(Box::new(limit as i64));
+        }
         return query_plans(conn, &sql, &params_vec);
     };
 
@@ -267,14 +284,24 @@ pub fn get_plans(
     }
 
     if id_hit.is_empty() {
-        return Ok(plans);
+        return Ok(apply_limit(plans, limit));
     }
 
     let hit_ids: Vec<i32> = id_hit.iter().map(|p| p.metadata.id).collect();
     plans.retain(|p| !hit_ids.contains(&p.metadata.id));
     let mut merged = id_hit;
     merged.append(&mut plans);
-    Ok(merged)
+    Ok(apply_limit(merged, limit))
+}
+
+/// Truncates a search result set that was already assembled in Rust (id-hit + FTS/LIKE merge),
+/// where pushing `LIMIT` into any one of the constituent SQL statements wouldn't bound the final
+/// merged length.
+fn apply_limit(mut plans: Vec<PlanFile>, limit: Option<usize>) -> Vec<PlanFile> {
+    if let Some(limit) = limit {
+        plans.truncate(limit);
+    }
+    plans
 }
 
 /// Runs a query whose projection is [`PLAN_SELECT`] and maps every row to a [`PlanFile`]. Child

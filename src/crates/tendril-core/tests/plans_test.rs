@@ -1,4 +1,5 @@
 use std::path::Path;
+use tendril_core::db::get_plans_limited;
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
 };
@@ -439,6 +440,45 @@ fn test_rename_project_in_plans() {
 }
 
 #[test]
+fn test_get_plans_limited_honours_limit() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plans-limited-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).unwrap();
+    let db_path = test_dir.join("tendril.db");
+    let conn = tendril_core::db::open_database(&db_path).unwrap();
+
+    for id in 1..=3 {
+        conn.execute(
+            "INSERT INTO Plans (Id, Title, Project, Level, State, FolderPath, FolderName, YamlRaw, Created, Updated) VALUES (?1, ?2, 'LimitProj', 'Feature', 'Draft', ?3, ?4, '', '2026-01-01', '2026-01-01')",
+            rusqlite::params![
+                id,
+                format!("Plan {}", id),
+                format!("/p{}", id),
+                format!("{:05}-Plan", id)
+            ],
+        )
+        .unwrap();
+    }
+
+    let unlimited = get_plans_limited(&conn, None, Some("LimitProj"), None, None).unwrap();
+    assert_eq!(unlimited.len(), 3);
+
+    let limited_one = get_plans_limited(&conn, None, Some("LimitProj"), None, Some(1)).unwrap();
+    assert_eq!(limited_one.len(), 1);
+    assert_eq!(
+        limited_one[0].metadata.id, 3,
+        "ORDER BY Id DESC then LIMIT 1 keeps the newest"
+    );
+
+    let limited_zero = get_plans_limited(&conn, None, Some("LimitProj"), None, Some(0)).unwrap();
+    assert!(limited_zero.is_empty());
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
 fn test_db_cascading_renames() {
     let test_dir = std::env::temp_dir().join(format!(
         "tendril-db-rename-test-{}",
@@ -495,4 +535,179 @@ fn test_db_cascading_renames() {
     assert_eq!(rec_proj, "NewProj");
 
     let _ = std::fs::remove_dir_all(test_dir);
+}
+
+// --- Doctor: PR health (`tendril plan doctor --prs`) -------------------------------------------
+//
+// The resolver is injected, so these cases never invoke `gh`. `check_all_plans_health` stays offline
+// and free; only this opt-in pass resolves anything.
+
+mod common;
+
+use common::{plan_with, HomeFixture};
+use tendril_core::error::{Result as CoreResult, TendrilError};
+use tendril_core::git::github::PrInfo;
+use tendril_core::models::PrState;
+use tendril_core::plans::doctor::check_pr_health_with;
+
+const DOCTOR_PR: &str = "https://github.com/acme/widgets/pull/7";
+
+fn resolver_for(status: PrState) -> impl Fn(&str) -> CoreResult<PrInfo> {
+    move |_url: &str| {
+        Ok(PrInfo {
+            status,
+            branch: Some("tendril/00010".to_string()),
+        })
+    }
+}
+
+fn resolver_failing_with(message: &'static str) -> impl Fn(&str) -> CoreResult<PrInfo> {
+    move |_url: &str| Err(TendrilError::Git(message.to_string()))
+}
+
+fn never_called_head_resolver(url: &str) -> CoreResult<PrInfo> {
+    panic!("the PR resolver must not be called, but was asked about {url}");
+}
+
+#[test]
+fn doctor_reports_a_merged_pr_on_an_unfinished_plan() {
+    let home = HomeFixture::new("doctor-merged");
+    let mut plan = plan_with(PlanStatus::Review, &[]);
+    plan.prs = vec![DOCTOR_PR.to_string()];
+    home.write_plan("00010-Unfinished", &plan);
+
+    let issues = check_pr_health_with(&home.plans_dir(), &resolver_for(PrState::Merged))
+        .expect("pr health check");
+
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].severity, "Warning");
+    assert!(
+        issues[0].message.contains("is merged but plan state is"),
+        "{}",
+        issues[0].message
+    );
+}
+
+#[test]
+fn doctor_is_quiet_about_a_merged_pr_on_a_completed_plan() {
+    let home = HomeFixture::new("doctor-merged-completed");
+    let mut plan = plan_with(PlanStatus::Completed, &[]);
+    plan.prs = vec![DOCTOR_PR.to_string()];
+    home.write_plan("00011-Done", &plan);
+
+    let issues =
+        check_pr_health_with(&home.plans_dir(), &resolver_for(PrState::Merged)).expect("check");
+
+    assert!(issues.is_empty(), "{:?}", issues);
+}
+
+#[test]
+fn doctor_flags_a_malformed_pr_url_without_resolving_it() {
+    let home = HomeFixture::new("doctor-malformed");
+    let mut plan = plan_with(PlanStatus::Review, &[]);
+    plan.prs = vec!["https://github.com/acme/widgets/issues/7".to_string()];
+    home.write_plan("00012-Malformed", &plan);
+
+    let issues = check_pr_health_with(&home.plans_dir(), &never_called_head_resolver)
+        .expect("a malformed URL is not a failure");
+
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].severity, "Warning");
+    assert!(
+        issues[0].message.contains("Malformed PR URL"),
+        "{:?}",
+        issues
+    );
+}
+
+#[test]
+fn doctor_flags_the_same_pr_recorded_on_two_plans() {
+    let home = HomeFixture::new("doctor-duplicate");
+    let mut first = plan_with(PlanStatus::Completed, &[]);
+    first.prs = vec![DOCTOR_PR.to_string()];
+    home.write_plan("00013-First", &first);
+
+    let mut second = plan_with(PlanStatus::Completed, &[]);
+    // A different spelling of the same PR still counts as a duplicate.
+    second.prs = vec![format!("{}/files", DOCTOR_PR)];
+    home.write_plan("00014-Second", &second);
+
+    let issues =
+        check_pr_health_with(&home.plans_dir(), &resolver_for(PrState::Merged)).expect("check");
+
+    let duplicates: Vec<_> = issues
+        .iter()
+        .filter(|i| i.message.contains("is also recorded on plan"))
+        .collect();
+    assert_eq!(duplicates.len(), 2, "each plan hears about the other");
+}
+
+#[test]
+fn doctor_calls_a_vanished_pr_an_error() {
+    let home = HomeFixture::new("doctor-vanished");
+    let mut plan = plan_with(PlanStatus::Review, &[]);
+    plan.prs = vec![DOCTOR_PR.to_string()];
+    home.write_plan("00015-Vanished", &plan);
+
+    let issues = check_pr_health_with(
+        &home.plans_dir(),
+        &resolver_failing_with("GraphQL: Could not resolve to a PullRequest with the number of 7."),
+    )
+    .expect("check");
+
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].severity, "Error");
+    assert!(
+        issues[0].message.contains("no longer resolvable"),
+        "{}",
+        issues[0].message
+    );
+}
+
+/// An offline run must not report every healthy PR as vanished.
+#[test]
+fn doctor_calls_an_unreachable_github_a_warning() {
+    let home = HomeFixture::new("doctor-offline");
+    let mut plan = plan_with(PlanStatus::Review, &[]);
+    plan.prs = vec![DOCTOR_PR.to_string()];
+    home.write_plan("00016-Offline", &plan);
+
+    let issues = check_pr_health_with(
+        &home.plans_dir(),
+        &resolver_failing_with("gh: could not resolve host github.com"),
+    )
+    .expect("check");
+
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].severity, "Warning");
+    assert!(
+        issues[0].message.contains("Could not verify PR"),
+        "{}",
+        issues[0].message
+    );
+}
+
+#[test]
+fn doctor_says_nothing_about_an_open_pr() {
+    let home = HomeFixture::new("doctor-open");
+    let mut plan = plan_with(PlanStatus::Review, &[]);
+    plan.prs = vec![DOCTOR_PR.to_string()];
+    home.write_plan("00017-Open", &plan);
+
+    let issues =
+        check_pr_health_with(&home.plans_dir(), &resolver_for(PrState::Open)).expect("check");
+
+    assert!(issues.is_empty(), "{:?}", issues);
+}
+
+/// A plan with no PRs must not cost a resolution.
+#[test]
+fn doctor_resolves_nothing_when_no_plan_records_a_pr() {
+    let home = HomeFixture::new("doctor-no-prs");
+    home.write_plan("00018-NoPrs", &plan_with(PlanStatus::Draft, &[]));
+
+    let issues =
+        check_pr_health_with(&home.plans_dir(), &never_called_head_resolver).expect("check");
+
+    assert!(issues.is_empty());
 }
