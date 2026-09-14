@@ -1913,7 +1913,6 @@ async fn test_models_api_route() {
     assert!(first.get("input_per_million").is_some());
 }
 
-
 // ---------------------------------------------------------------------------
 // Recommendation editing, accept/decline verbs and the cross-plan projection
 // ---------------------------------------------------------------------------
@@ -2692,7 +2691,10 @@ async fn test_list_plans_state_alias_and_limit() {
     assert!(zero.is_empty());
 
     let bogus_resp = client
-        .get(format!("http://127.0.0.1:{}/api/plans?state=Bogus", server.port))
+        .get(format!(
+            "http://127.0.0.1:{}/api/plans?state=Bogus",
+            server.port
+        ))
         .bearer_auth(&server.secret)
         .send()
         .await

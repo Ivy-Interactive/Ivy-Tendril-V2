@@ -28,12 +28,14 @@ fn check_program_md(dir: &Path, promptware: &str) {
     );
 
     assert!(
-        content.contains("#### Environment Template Bootstrapping") && content.contains(".env.example"),
+        content.contains("#### Environment Template Bootstrapping")
+            && content.contains(".env.example"),
         "{promptware}: missing 'Environment Template Bootstrapping' section"
     );
 
     assert!(
-        content.contains("#### Unified Monorepo Review Actions") && content.contains("isWorkspaceRoot"),
+        content.contains("#### Unified Monorepo Review Actions")
+            && content.contains("isWorkspaceRoot"),
         "{promptware}: missing 'Unified Monorepo Review Actions' section"
     );
 
