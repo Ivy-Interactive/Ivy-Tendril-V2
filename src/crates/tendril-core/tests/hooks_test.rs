@@ -4,7 +4,7 @@
 //! fake that stores each [`HookCommandSpec`] and answers with a canned [`HookCommandResult`].
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tendril_core::config::{expand_variables_with_env, load_config, save_config, TendrilSettings};
 use tendril_core::jobs::hooks::{
@@ -48,9 +48,9 @@ fn project_with_hooks(hooks: Vec<PromptwareHookConfig>) -> ProjectConfig {
     }
 }
 
-fn ctx(tendril_home: &PathBuf, project: ProjectConfig, job_type: &str) -> HookRunContext {
+fn ctx(tendril_home: &Path, project: ProjectConfig, job_type: &str) -> HookRunContext {
     HookRunContext {
-        tendril_home: tendril_home.clone(),
+        tendril_home: tendril_home.to_path_buf(),
         config_path: tendril_home.join("config.yaml"),
         project,
         job_id: "04242".to_string(),

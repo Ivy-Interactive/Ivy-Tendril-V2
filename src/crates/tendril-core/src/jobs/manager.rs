@@ -21,6 +21,7 @@ use crate::jobs::firmware_values::{
     build_firmware_values, execution_profile_override, find_project, find_repo_ref, repo_name,
     resolve_project, resolve_working_directory,
 };
+use crate::jobs::hooks::{run_hooks, shell_hook_executor, HookExecutor, HookPhase, HookRunContext};
 use crate::jobs::logger::{
     append_agent_log, append_to_eventwire, append_to_raw_log, find_log_file, read_eventwire_log,
     read_raw_log, write_prompt,
@@ -129,6 +130,7 @@ struct DispatchContext {
     dispatch_notify: Arc<Notify>,
     dispatcher_started: Arc<AtomicBool>,
     spec_builder: SpecBuilder,
+    hook_executor: HookExecutor,
     job_timeout_override: Option<Duration>,
     post_result_grace_override: Option<Duration>,
     stale_output_timeout_override: Option<Duration>,
@@ -152,6 +154,9 @@ pub struct JobManager {
     /// allocate the same ID.
     alloc_lock: Arc<Mutex<()>>,
     spec_builder: SpecBuilder,
+    /// Runs a project's hooks. Injectable for the same reason as `spec_builder`: a lifecycle test
+    /// must be able to see a hook fire without a shell running.
+    hook_executor: HookExecutor,
     /// Overrides the `jobTimeout` setting. Only used by tests, which need sub-minute timeouts.
     job_timeout_override: Option<Duration>,
     /// Overrides the post-result grace period. Only used by tests.
@@ -180,6 +185,7 @@ impl JobManager {
             dispatcher_started: Arc::new(AtomicBool::new(false)),
             alloc_lock: Arc::new(Mutex::new(())),
             spec_builder: Arc::new(build_agent_spec),
+            hook_executor: shell_hook_executor(),
             job_timeout_override: None,
             post_result_grace_override: None,
             stale_output_timeout_override: None,
@@ -202,6 +208,13 @@ impl JobManager {
     /// Replaces the agent spec builder. Intended for tests.
     pub fn with_spec_builder(mut self, builder: SpecBuilder) -> Self {
         self.spec_builder = builder;
+        self
+    }
+
+    /// Replaces the hook executor, which otherwise runs each hook through the platform shell.
+    /// Intended for tests.
+    pub fn with_hook_executor(mut self, executor: HookExecutor) -> Self {
+        self.hook_executor = executor;
         self
     }
 
@@ -252,6 +265,7 @@ impl JobManager {
             dispatch_notify: self.dispatch_notify.clone(),
             dispatcher_started: self.dispatcher_started.clone(),
             spec_builder: self.spec_builder.clone(),
+            hook_executor: self.hook_executor.clone(),
             job_timeout_override: self.job_timeout_override,
             post_result_grace_override: self.post_result_grace_override,
             stale_output_timeout_override: self.stale_output_timeout_override,
@@ -1371,6 +1385,7 @@ fn spawn_runner(
     let jobs_map = ctx.jobs.clone();
     let handles = ctx.handles.clone();
     let spec_builder = ctx.spec_builder.clone();
+    let hook_executor = ctx.hook_executor.clone();
     let dispatch_notify = ctx.dispatch_notify.clone();
     let timeout = ctx
         .job_timeout_override
@@ -1399,12 +1414,27 @@ fn spawn_runner(
         job.status = JobStatus::Running;
         persist(&tendril_home, &jobs_map, &job).await;
 
+        // `before` hooks fire once the job is genuinely starting: past the queue and the cancel
+        // check, ahead of everything that can still fail. A hook cannot stop the job — a failing one
+        // is logged and ignored, see `crate::jobs::hooks`.
+        if let Some(hook_ctx) = hook_context(
+            &tendril_home,
+            &settings,
+            &job,
+            JobStatus::Running,
+            HookPhase::Before,
+        ) {
+            run_hooks(&hook_ctx, HookPhase::Before, &hook_executor).await;
+        }
+
         let promptware_folder = tendril_home.join("Promptwares").join(&job.job_type);
         if !promptware_folder.is_dir() {
             let msg = format!(
                 "Promptware folder not found: {}",
                 promptware_folder.display()
             );
+            // No `after` hooks here, deliberately: a launch that never got as far as an agent has
+            // nothing for a hook to react to, and the same is true of the compile failure below.
             finish_job(
                 &tendril_home,
                 &plans_dir,
@@ -1542,7 +1572,7 @@ fn spawn_runner(
         );
 
         let finished = job.clone();
-        finish_job(
+        let completed = finish_job(
             &tendril_home,
             &plans_dir,
             &jobs_map,
@@ -1554,6 +1584,22 @@ fn spawn_runner(
             Some(duration),
         )
         .await;
+
+        // `after` hooks read the status `finish_job` settled on, not the one the process reported: a
+        // `Completed` that produced no deliverable is a `Failed`, and that is what a hook must see.
+        // `None` means a cancellation had already claimed completion and written the terminal state,
+        // so the job this task was running no longer owns the outcome.
+        if let Some(completed) = &completed {
+            if let Some(hook_ctx) = hook_context(
+                &tendril_home,
+                &settings,
+                completed,
+                completed.status,
+                HookPhase::After,
+            ) {
+                run_hooks(&hook_ctx, HookPhase::After, &hook_executor).await;
+            }
+        }
 
         // `finish_job`'s signature is public and depended on by tests, so the release step lives here
         // rather than inside it. The maintenance pass rechecks the same thing every 60s, which covers
@@ -2276,6 +2322,38 @@ fn check_job_truncation(tendril_home: &Path, job: &JobItem) -> bool {
     false
 }
 
+/// What a hook run needs from a job, or `None` when the job's project is unknown or configures no
+/// hooks — the common case, which is why it is the first thing checked.
+fn hook_context(
+    tendril_home: &Path,
+    settings: &TendrilSettings,
+    job: &JobItem,
+    job_status: JobStatus,
+    phase: HookPhase,
+) -> Option<HookRunContext> {
+    let project = find_project(settings, &job.project)?;
+    if project.hooks.is_empty() {
+        return None;
+    }
+
+    Some(HookRunContext {
+        tendril_home: tendril_home.to_path_buf(),
+        config_path: crate::config::get_config_path(tendril_home),
+        project: project.clone(),
+        job_id: job.id.clone(),
+        job_type: job.job_type.clone(),
+        job_status,
+        // A `CreatePlan` job has no plan folder until it has written one, so a `before` hook is told
+        // there is none rather than pointed at a path that does not exist yet. Its `after` hook gets
+        // the folder the run produced, which is the whole reason such a hook would be configured.
+        plan_folder: if phase == HookPhase::Before && job.job_type == "CreatePlan" {
+            String::new()
+        } else {
+            job.plan_file.clone()
+        },
+    })
+}
+
 /// Writes a job's terminal state and moves its plan, claiming completion first so a simultaneous
 /// cancellation cannot be overwritten.
 ///
@@ -2286,6 +2364,10 @@ fn check_job_truncation(tendril_home: &Path, job: &JobItem) -> bool {
 /// `plans_dir` is a parameter rather than an ambient lookup on purpose — this function deletes orphan
 /// plan folders, and `TENDRIL_PLANS` in the environment would otherwise aim that at the operator's
 /// real plans directory during a test run.
+///
+/// Returns the job as it was persisted, carrying the *effective* status — which is not always the
+/// `final_status` that was asked for. `None` means the completion claim had already been taken, so
+/// this call wrote nothing at all.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub async fn finish_job(
     tendril_home: &Path,
@@ -2297,10 +2379,10 @@ pub async fn finish_job(
     final_status: JobStatus,
     msg: String,
     duration_seconds: Option<i64>,
-) {
+) -> Option<JobItem> {
     if !claim(completion_claimed) {
         // Cancellation got there first and has already written the terminal state.
-        return;
+        return None;
     }
 
     // Read the output once. Denials, the abandoned-task guard, deliverable verification and failure
@@ -2440,6 +2522,8 @@ pub async fn finish_job(
 
     // Written last, so the record carries the final status, usage and plan outcome. Never fails a job.
     write_job_outcome_log(tendril_home, &job);
+
+    Some(job)
 }
 
 /// Replaces a bare `Process exited with code 1` with what the output actually says went wrong.
