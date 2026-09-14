@@ -398,3 +398,155 @@ pub async fn stream_job_logs(
     let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
     axum::response::sse::Sse::new(stream).into_response()
 }
+
+#[derive(Debug, Deserialize)]
+pub struct JobEventsQuery {
+    pub kinds: Option<String>,
+    #[serde(rename = "since_line")]
+    pub since_line: Option<usize>,
+}
+
+fn parse_allowed_kinds(kinds_str: Option<&str>) -> std::collections::HashSet<String> {
+    let mut set = std::collections::HashSet::new();
+    if let Some(s) = kinds_str {
+        for part in s.split(',') {
+            let trimmed = part.trim().to_ascii_lowercase();
+            if !trimmed.is_empty() {
+                if trimmed == "tool_use" {
+                    set.insert("tool_use".to_string());
+                    set.insert("tool_call".to_string());
+                    set.insert("tool_result".to_string());
+                } else {
+                    set.insert(trimmed);
+                }
+            }
+        }
+    }
+    set
+}
+
+fn matches_kinds(line: &str, allowed_kinds: &std::collections::HashSet<String>) -> bool {
+    if allowed_kinds.is_empty() {
+        return true;
+    }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+        if let Some(k) = v.get("kind").and_then(|k| k.as_str()) {
+            if allowed_kinds.contains(&k.to_ascii_lowercase()) {
+                return true;
+            }
+        }
+        if let Some(t) = v.get("type").and_then(|t| t.as_str()) {
+            if allowed_kinds.contains(&t.to_ascii_lowercase()) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub async fn stream_job_events(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+    Query(query): Query<JobEventsQuery>,
+) -> impl IntoResponse {
+    let job_exists = match state.job_manager.get_job(&job_id).await {
+        Ok(Some(_)) => true,
+        _ => {
+            find_log_file(&state.tendril_home, &job_id, ".eventwire.jsonl").is_some()
+                || find_log_file(&state.tendril_home, &job_id, ".raw.jsonl").is_some()
+                || find_log_file(&state.tendril_home, &job_id, ".md").is_some()
+        }
+    };
+
+    if !job_exists {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Job not found" })),
+        )
+            .into_response();
+    }
+
+    let allowed_kinds = parse_allowed_kinds(query.kinds.as_deref());
+    let tendril_home = state.tendril_home.clone();
+    let job_manager = state.job_manager.clone();
+    let since_line = query.since_line.unwrap_or(0);
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<
+        Result<axum::response::sse::Event, std::convert::Infallible>,
+    >(64);
+
+    tokio::spawn(async move {
+        let mut emitted_lines = 0usize;
+
+        loop {
+            let lines = read_eventwire_log(&tendril_home, &job_id, None)
+                .ok()
+                .flatten()
+                .or_else(|| read_raw_log(&tendril_home, &job_id, None).ok().flatten())
+                .unwrap_or_default();
+
+            while emitted_lines < lines.len() {
+                if emitted_lines >= since_line && matches_kinds(&lines[emitted_lines], &allowed_kinds) {
+                    let event = axum::response::sse::Event::default()
+                        .event("event")
+                        .data(&lines[emitted_lines]);
+                    if tx.send(Ok(event)).await.is_err() {
+                        return;
+                    }
+                }
+                emitted_lines += 1;
+            }
+
+            let terminal_status = match job_manager.get_job(&job_id).await {
+                Ok(Some(j)) => {
+                    if matches!(
+                        j.status,
+                        JobStatus::Completed
+                            | JobStatus::Failed
+                            | JobStatus::Stopped
+                            | JobStatus::Timeout
+                    ) {
+                        Some(j.status.to_string())
+                    } else {
+                        None
+                    }
+                }
+                _ => Some("Completed".to_string()),
+            };
+
+            if let Some(status_str) = terminal_status {
+                let final_lines = read_eventwire_log(&tendril_home, &job_id, None)
+                    .ok()
+                    .flatten()
+                    .or_else(|| read_raw_log(&tendril_home, &job_id, None).ok().flatten())
+                    .unwrap_or_default();
+                while emitted_lines < final_lines.len() {
+                    if emitted_lines >= since_line && matches_kinds(&final_lines[emitted_lines], &allowed_kinds) {
+                        let event = axum::response::sse::Event::default()
+                            .event("event")
+                            .data(&final_lines[emitted_lines]);
+                        if tx.send(Ok(event)).await.is_err() {
+                            return;
+                        }
+                    }
+                    emitted_lines += 1;
+                }
+
+                let end_data = serde_json::json!({ "status": status_str }).to_string();
+                let end_event = axum::response::sse::Event::default()
+                    .event("end")
+                    .data(end_data);
+                let _ = tx.send(Ok(end_event)).await;
+                break;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+        }
+    });
+
+    let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
+    axum::response::sse::Sse::new(stream)
+        .keep_alive(axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)))
+        .into_response()
+}
+

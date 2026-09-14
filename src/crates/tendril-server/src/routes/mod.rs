@@ -88,6 +88,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(jobs::get_job_logs).post(jobs::add_log),
         )
         .route("/api/jobs/:id/logs/stream", get(jobs::stream_job_logs))
+        .route("/api/jobs/:id/events", get(jobs::stream_job_events))
         // Projects & Verifications
         .route(
             "/api/projects",
