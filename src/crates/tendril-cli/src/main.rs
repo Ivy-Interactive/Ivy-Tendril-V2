@@ -57,7 +57,13 @@ enum Commands {
     Config(commands::config::ConfigCommands),
 
     #[command(about = "Check system health")]
-    Doctor,
+    Doctor {
+        #[arg(
+            long,
+            help = "Rebuild the plan full-text search index from the Plans table"
+        )]
+        rebuild_search_index: bool,
+    },
 
     #[command(about = "Show version")]
     Version,
@@ -119,7 +125,9 @@ async fn main() -> anyhow::Result<()> {
             commands::promptware::handle_promptware_command(cmd, &tendril_home).await?
         }
         Commands::Config(cmd) => commands::config::handle_config_command(cmd, &tendril_home)?,
-        Commands::Doctor => commands::doctor::handle_doctor(&tendril_home)?,
+        Commands::Doctor {
+            rebuild_search_index,
+        } => commands::doctor::handle_doctor(&tendril_home, rebuild_search_index)?,
         Commands::Version => println!("tendril v{}", env!("CARGO_PKG_VERSION")),
         Commands::Models { refresh } => {
             commands::models::handle_models(refresh, &tendril_home).await?
