@@ -13,6 +13,9 @@ pub use commands::plans::*;
 pub use commands::state::*;
 pub use commands::*;
 
+use service::{MasterDiscovery, WsBridge};
+use tauri::Manager;
+
 pub fn run() {
     let ui_store = commands::state::init_ui_state_store();
 
@@ -20,6 +23,33 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(ui_store)
+        .setup(|app| {
+            // Connect the WebSocket bridge, which re-emits daemon events to the frontend as
+            // `plan-event` / `job-event` / `chat-event`. Without this the UI only ever sees state it
+            // fetched itself.
+            //
+            // The bearer secret is read here and stays in the native side; it is never handed to the
+            // webview. `WsBridge` reconnects with backoff on its own, so a daemon that is not up yet
+            // is fine. A missing `.master` at startup is not: discovery happens once, so the app has
+            // to be restarted after the daemon first writes it. Live re-discovery would need a
+            // watcher on the file, which is out of scope here.
+            match MasterDiscovery::new().read_master() {
+                Ok(master) => {
+                    let ws_scheme = if master.scheme == "https" {
+                        "wss"
+                    } else {
+                        "ws"
+                    };
+                    let ws_url = format!("{}://{}:{}/api/ws", ws_scheme, master.host, master.port);
+                    let bridge = WsBridge::new(app.handle().clone(), ws_url, Some(master.secret));
+                    app.manage(bridge);
+                }
+                Err(err) => {
+                    eprintln!("WebSocket bridge not started: {err}");
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_daemon_status,
             get_tendril_home,
@@ -35,6 +65,10 @@ pub fn run() {
             cmd_list_recommendations,
             cmd_set_recommendation_state,
             cmd_set_verification_status,
+            cmd_list_diff_comments,
+            cmd_upsert_diff_comment,
+            cmd_delete_diff_comment,
+            cmd_clear_diff_comments,
             cmd_list_jobs,
             cmd_get_job,
             cmd_start_job,
