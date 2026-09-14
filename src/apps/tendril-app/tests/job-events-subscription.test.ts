@@ -175,4 +175,48 @@ describe("Job Events Subscription Utility", () => {
     expect(events.length).toBeGreaterThanOrEqual(1);
     expect(events[0].type).toBe("tool_call");
   });
+
+  it("updates job status and triggers detail refresh upon receiving onEnd", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'event: event\ndata: {"type":"status","status":"Running","message":"In progress..."}\n\n',
+          ),
+        );
+        controller.enqueue(encoder.encode('event: end\ndata: {"status":"Completed"}\n\n'));
+        controller.close();
+      },
+    });
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    ) as unknown as typeof fetch;
+
+    const fetchDetailSpy = vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue({
+      id: "job-end-test",
+      type: "Test",
+      project: "Tendril",
+      status: "Completed",
+    });
+    const fetchJobsSpy = vi.spyOn(jobsStore, "fetchJobs").mockResolvedValue([]);
+
+    let endStatus = "";
+    await new Promise<void>((resolve) => {
+      jobsStore.subscribeToJob("job-end-test", undefined, "http://localhost:3000", undefined, {
+        onEnd: (status) => {
+          endStatus = status;
+          resolve();
+        },
+      });
+    });
+
+    expect(endStatus).toBe("Completed");
+    expect(jobsStore.getJobDetail("job-end-test")?.status).toBe("Completed");
+    expect(fetchDetailSpy).toHaveBeenCalledWith("job-end-test");
+    expect(fetchJobsSpy).toHaveBeenCalled();
+  });
 });

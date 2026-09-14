@@ -362,4 +362,4 @@ Ivy-Tendril-V2/
 
 ## Lizenz
 
-Apache-2.0 © Ivy Interactive
+Tendril ist quelloffen verfügbar und lizenziert unter der [Functional Source License (FSL-1.1-ALv2)](LICENSE). Agent-Skills und Plugins (`skills/`, `.claude-plugin/`, `.codex-plugin/`, `.agents/`) sind ebenfalls unter den Bedingungen des Root-Repositorys ([Functional Source License (FSL-1.1-ALv2)](LICENSE)) lizenziert.

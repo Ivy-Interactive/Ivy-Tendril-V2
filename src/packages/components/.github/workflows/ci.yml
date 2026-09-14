@@ -29,7 +29,7 @@ jobs:
         run: git fetch --no-tags origin +refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}
 
       - name: Check merge resolutions
-        run: node scripts/verify-merge-resolution.mjs --range origin/${{ github.base_ref }}
+        run: npx tsx scripts/verify-merge-resolution.ts --range origin/${{ github.base_ref }}
 
   lint:
     name: Lint & Types

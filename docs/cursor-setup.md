@@ -41,3 +41,7 @@ In Cursor's agent chat window:
 - Type `@tendril-debug-plan` or ask the agent to inspect a plan using its instructions.
 - Ask Cursor to run `/tendril-review` on the active git diff.
 - Run `/tendrillable` to rank issues for agent suitability.
+
+## License
+
+Tendril skills and plugins are licensed under the repository root [Functional Source License (FSL-1.1-ALv2)](../LICENSE).

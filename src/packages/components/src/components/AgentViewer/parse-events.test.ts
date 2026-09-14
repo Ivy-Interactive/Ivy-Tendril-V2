@@ -95,4 +95,34 @@ describe("parseEventWireStream", () => {
       expect(events[0].text).toBe("Valid assistant message");
     }
   });
+
+  it("parses status event with message into assistant-text", () => {
+    const stream = '{"kind":"status","message":"Waiting for agent output..."}';
+    const events = parseEventWireStream(stream);
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("assistant-text");
+    if (events[0].kind === "assistant-text") {
+      expect(events[0].text).toBe("Waiting for agent output...");
+    }
+  });
+
+  it("parses status event with text property into assistant-text", () => {
+    const stream = '{"kind":"status","text":"Preparing execution..."}';
+    const events = parseEventWireStream(stream);
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("assistant-text");
+    if (events[0].kind === "assistant-text") {
+      expect(events[0].text).toBe("Preparing execution...");
+    }
+  });
+
+  it("parses text event into assistant-text", () => {
+    const stream = '{"kind":"text","text":"Waiting for agent output..."}';
+    const events = parseEventWireStream(stream);
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("assistant-text");
+    if (events[0].kind === "assistant-text") {
+      expect(events[0].text).toBe("Waiting for agent output...");
+    }
+  });
 });

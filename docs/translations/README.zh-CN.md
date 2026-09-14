@@ -362,4 +362,4 @@ Ivy-Tendril-V2/
 
 ## 许可证
 
-Apache-2.0 © Ivy Interactive
+Tendril 是源码可用的，并根据 [Functional Source License (FSL-1.1-ALv2)](LICENSE) 获得许可。智能体技能和插件（`skills/`、`.claude-plugin/`、`.codex-plugin/`、`.agents/`）同样遵循根仓库条款（[Functional Source License (FSL-1.1-ALv2)](LICENSE)）获得许可。

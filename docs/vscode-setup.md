@@ -74,3 +74,7 @@ For an integrated development workflow, install the official [Ivy Tendril VS Cod
 - **Server Control**: Start, stop, and inspect background Tendril server processes.
 
 Pairing Tendril skills with the VS Code extension gives you a complete control center for autonomous coding agent orchestration.
+
+## License
+
+Tendril skills and plugins are licensed under the repository root [Functional Source License (FSL-1.1-ALv2)](../LICENSE).

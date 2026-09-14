@@ -8,7 +8,8 @@ import { describe, expect, it } from "vite-plus/test";
 // Resolved in two steps rather than `new URL("../scripts/...", import.meta.url)`, which Vite
 // rewrites into an asset URL that `fileURLToPath` then rejects.
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const script = resolve(repoRoot, "scripts", "patch-tsgolint-win.mjs");
+const script = resolve(repoRoot, "scripts", "patch-tsgolint-win.ts");
+const tsxCli = createRequire(import.meta.url).resolve("tsx/cli");
 
 interface PatchReport {
   action: "skip" | "present" | "linked" | "copied";
@@ -20,7 +21,7 @@ interface PatchReport {
 
 /** Drives the script's dry-run mode: it reports what it would do without touching the tree. */
 function runJson(): PatchReport {
-  const stdout = execFileSync(process.execPath, [script, "--json"], { encoding: "utf8" });
+  const stdout = execFileSync(process.execPath, [tsxCli, script, "--json"], { encoding: "utf8" });
   return JSON.parse(stdout) as PatchReport;
 }
 

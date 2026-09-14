@@ -48,6 +48,8 @@ try:
             errors.append(".claude-plugin/marketplace.json missing name or plugins list")
         elif len(data["plugins"]) == 0 or "name" not in data["plugins"][0]:
             errors.append(".claude-plugin/marketplace.json plugins list is empty or malformed")
+        elif data["plugins"][0].get("license") != "FSL-1.1-ALv2":
+            errors.append(f".claude-plugin/marketplace.json plugin license must be 'FSL-1.1-ALv2', got '{data['plugins'][0].get('license')}'")
 except Exception as e:
     errors.append(f".claude-plugin/marketplace.json error: {e}")
 
@@ -57,6 +59,8 @@ try:
         data = json.load(f)
         if not all(k in data for k in ("name", "version", "description", "skills")):
             errors.append(".claude-plugin/plugin.json missing required keys (name, version, description, skills)")
+        elif data.get("license") != "FSL-1.1-ALv2":
+            errors.append(f".claude-plugin/plugin.json license must be 'FSL-1.1-ALv2', got '{data.get('license')}'")
 except Exception as e:
     errors.append(f".claude-plugin/plugin.json error: {e}")
 
@@ -75,6 +79,8 @@ try:
         data = json.load(f)
         if not all(k in data for k in ("name", "version", "skills")):
             errors.append(".codex-plugin/plugin.json missing required keys (name, version, skills)")
+        elif data.get("license") != "FSL-1.1-ALv2":
+            errors.append(f".codex-plugin/plugin.json license must be 'FSL-1.1-ALv2', got '{data.get('license')}'")
 except Exception as e:
     errors.append(f".codex-plugin/plugin.json error: {e}")
 
@@ -147,8 +153,8 @@ done
 
 # Validate referenced helper scripts
 scripts_to_check=(
-    "skills/tendril-extension/scripts/package.mjs"
-    "skills/tendril-extension/scripts/verify.mjs"
+    "skills/tendril-extension/scripts/package.ts"
+    "skills/tendril-extension/scripts/verify.ts"
     "skills/tendril-extension/scripts/install-antigravity.sh"
     "skills/tendril-extension/scripts/package-vsix.sh"
     "skills/tendril-extension/scripts/uninstall-antigravity.sh"

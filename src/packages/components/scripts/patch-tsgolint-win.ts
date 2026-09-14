@@ -4,7 +4,7 @@
  *
  * `resolveTsgolintExecutable` in vite-plus tries `<vite-plus>/node_modules/.bin/tsgolint.exe`
  * before `tsgolint.cmd`. pnpm only writes the `.CMD` shim, and that shim hands cmd.exe an
- * unnormalized `..`-laden path into the virtual store — which blows past the 260 character Windows
+ * unnormalized `..`-laden path into the virtual store - which blows past the 260 character Windows
  * MAX_PATH limit once the checkout itself sits deep in a Tendril worktree, and lint dies with
  * "The system cannot find the path specified.". Dropping the real binary next to the shim removes
  * cmd.exe, the shim and the double descent from the picture.
@@ -12,12 +12,12 @@
  * Every `pnpm install` deletes the binary again while relinking bins, so this runs from `prepare`
  * (after bin linking) as well as from `lint` and `check`.
  *
- * Node builtins only — this must run before any dependency is guaranteed importable. It never
+ * Node builtins only - this must run before any dependency is guaranteed importable. It never
  * fails the caller: anything unexpected becomes one warning on stderr and exit code 0.
  *
  * Usage:
- *   node scripts/patch-tsgolint-win.mjs            apply the repair
- *   node scripts/patch-tsgolint-win.mjs --json     report what it would do, write nothing
+ *   tsx scripts/patch-tsgolint-win.ts            apply the repair
+ *   tsx scripts/patch-tsgolint-win.ts --json     report what it would do, write nothing
  *
  * Retirement: See "Retiring this repair" in README.md (Windows: type-aware lint binary section).
  */
@@ -44,19 +44,32 @@ const COPY_FALLBACK_CODES = new Set(["EXDEV", "EPERM", "EACCES", "EMLINK", "ENOS
 const dryRun = process.argv.includes("--json");
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
-function warn(text) {
+function warn(text: string): void {
   process.stderr.write(`[tsgolint-win] ${text}\n`);
 }
 
-function messageOf(error) {
+function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+interface PatchPaths {
+  binDir: string;
+  source: string;
+  target: string;
+}
+
+interface PatchReport {
+  action: "skip" | "present" | "linked" | "copied";
+  reason?: string;
+  source?: string;
+  target?: string;
+  targetLength?: number;
 }
 
 /**
  * Walks the same resolution chain vite-plus uses, so no `.pnpm` path is ever hard-coded.
- * @returns {{ binDir: string, source: string, target: string }}
  */
-function resolvePaths() {
+function resolvePaths(): PatchPaths {
   const fromRepo = createRequire(join(repoRoot, "package.json"));
   const vitePlusPkgJson = fromRepo.resolve("vite-plus/package.json");
   const binDir = join(dirname(vitePlusPkgJson), "node_modules", ".bin");
@@ -72,9 +85,8 @@ function resolvePaths() {
 /**
  * Hard-links (or, failing that, copies) the binary in through a temp name, so a concurrent
  * `prepare`/`lint` pair never reads a half-written 22 MB executable.
- * @returns {"linked" | "copied"}
  */
-function install(binDir, source, target) {
+function install(binDir: string, source: string, target: string): "linked" | "copied" {
   mkdirSync(binDir, { recursive: true });
   const temp = join(binDir, `tsgolint.exe.tmp-${process.pid}`);
 
@@ -83,11 +95,12 @@ function install(binDir, source, target) {
       unlinkSync(temp);
     }
 
-    let action = "linked";
+    let action: "linked" | "copied" = "linked";
     try {
       linkSync(source, temp);
     } catch (error) {
-      if (!COPY_FALLBACK_CODES.has(error?.code)) {
+      const err = error as NodeJS.ErrnoException;
+      if (!err.code || !COPY_FALLBACK_CODES.has(err.code)) {
         throw error;
       }
       copyFileSync(source, temp);
@@ -106,8 +119,7 @@ function install(binDir, source, target) {
   }
 }
 
-/** @returns {{ action: string, reason?: string, source?: string, target?: string, targetLength?: number }} */
-function run() {
+function run(): PatchReport {
   if (process.platform !== "win32") {
     return { action: "skip", reason: "not-win32" };
   }
@@ -115,21 +127,21 @@ function run() {
     return { action: "skip", reason: `unsupported-arch:${process.arch}` };
   }
 
-  let paths;
+  let paths: PatchPaths;
   try {
     paths = resolvePaths();
   } catch (error) {
     warn(
-      `could not resolve tsgolint.exe from ${repoRoot} (${messageOf(error)}) — type-aware lint may fail`,
+      `could not resolve tsgolint.exe from ${repoRoot} (${messageOf(error)}) - type-aware lint may fail`,
     );
     return { action: "skip", reason: "unresolved" };
   }
 
   const { binDir, source, target } = paths;
-  const report = { source, target, targetLength: target.length };
+  const report: Omit<PatchReport, "action"> = { source, target, targetLength: target.length };
 
   if (target.length > MAX_PATH - 1) {
-    warn(`target path is ${target.length} chars, over MAX_PATH — type-aware lint may still fail`);
+    warn(`target path is ${target.length} chars, over MAX_PATH - type-aware lint may still fail`);
   }
 
   try {
@@ -138,7 +150,7 @@ function run() {
       return { action: "present", ...report };
     }
   } catch (error) {
-    warn(`could not stat ${source} (${messageOf(error)}) — type-aware lint may fail`);
+    warn(`could not stat ${source} (${messageOf(error)}) - type-aware lint may fail`);
     return { action: "skip", reason: "unreadable", ...report };
   }
 
@@ -149,7 +161,7 @@ function run() {
   try {
     return { action: install(binDir, source, target), ...report };
   } catch (error) {
-    warn(`could not place ${target} (${messageOf(error)}) — type-aware lint may fail`);
+    warn(`could not place ${target} (${messageOf(error)}) - type-aware lint may fail`);
     return { action: "skip", reason: "install-failed", ...report };
   }
 }
