@@ -63,6 +63,16 @@ export function DialogShell({
     >
       <DialogContent
         data-testid={testId}
+        // Radix gives `role="dialog"` and hides the rest of the tree with
+        // `aria-hidden`, but this version emits no `aria-modal`, so it is set
+        // here. A dialog with only one of the two reads as inert markup to some
+        // screen readers.
+        aria-modal="true"
+        // Radix points `aria-describedby` at a `DialogDescription` it assumes is
+        // there, and warns when it is not. A dialog with no `description` has
+        // nothing to describe it, so the attribute is dropped deliberately —
+        // which is also how Radix asks to be told the omission is intended.
+        {...(description === undefined ? { "aria-describedby": undefined } : {})}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           const target = initialFocusRef?.current ?? (event.currentTarget as HTMLElement | null);
