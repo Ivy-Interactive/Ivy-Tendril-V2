@@ -86,6 +86,7 @@ fn test_find_duplicate_candidates() {
             source_url: None,
             recommendations: None,
             chat_session_id: None,
+            allocated_ports: None,
             extra: std::collections::BTreeMap::new(),
         };
         write_plan_yaml(&p_folder, &plan_yaml).unwrap();

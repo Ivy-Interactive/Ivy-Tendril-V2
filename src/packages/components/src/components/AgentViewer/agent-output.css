@@ -344,6 +344,12 @@
   z-index: 2;
 }
 
+.aov-tool-header:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
 .aov-tool-chevron {
   display: inline-flex;
   align-items: center;
@@ -448,6 +454,12 @@
   position: sticky;
   top: 0;
   z-index: 3;
+}
+
+.aov-tool-group-header:focus-visible {
+  outline: 2px solid var(--ring, var(--primary));
+  outline-offset: 1px;
+  border-radius: 2px;
 }
 
 .aov-tool-group-body {

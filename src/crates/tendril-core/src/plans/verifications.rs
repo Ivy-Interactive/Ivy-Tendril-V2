@@ -1,5 +1,5 @@
 use crate::error::{Result, TendrilError};
-use crate::models::{PlanVerificationEntry, VerificationStatus};
+use crate::models::{PlanVerificationEntry, ProjectVerificationRef, VerificationStatus};
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::writer::write_plan_yaml;
 use chrono::Utc;
@@ -8,6 +8,26 @@ use std::path::Path;
 pub fn list_plan_verifications(plan_folder: &Path) -> Result<Vec<PlanVerificationEntry>> {
     let (plan, _) = read_plan_yaml(plan_folder)?;
     Ok(plan.verifications)
+}
+
+/// Orders a plan's verifications by the project's configured order, which is the order they
+/// run in (and the reason `CheckResult` ends up last). Entries the project config does not
+/// mention keep their relative order at the end — the sort is stable.
+pub fn order_by_project_config(
+    verifications: &[PlanVerificationEntry],
+    project_verifications: Option<&[ProjectVerificationRef]>,
+) -> Vec<PlanVerificationEntry> {
+    let mut ordered = verifications.to_vec();
+    let project = project_verifications.unwrap_or(&[]);
+
+    ordered.sort_by_key(|entry| {
+        project
+            .iter()
+            .position(|p| p.name.eq_ignore_ascii_case(&entry.name))
+            .unwrap_or(usize::MAX)
+    });
+
+    ordered
 }
 
 pub fn set_plan_verification_status(

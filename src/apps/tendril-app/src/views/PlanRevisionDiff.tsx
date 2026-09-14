@@ -77,7 +77,7 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
 
   if (revisionCount < 2) {
     return (
-      <p data-testid="diff-single-revision" className="text-sm text-slate-400">
+      <p data-testid="diff-single-revision" className="text-sm text-muted-foreground">
         This plan has only one revision, so there is nothing to compare yet. A diff appears once
         CreatePlan or RetryPlan writes a new revision.
       </p>
@@ -90,14 +90,14 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         <label className="flex items-center gap-2">
           <span>Compare revision</span>
           <select
             aria-label="Old revision"
             value={oldRevision}
             onChange={(e) => setOldRevision(Number(e.target.value))}
-            className="rounded border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200"
+            className="rounded border border-border bg-background px-2 py-1 text-foreground"
           >
             {revisions.map((n) => (
               <option key={n} value={n}>
@@ -112,7 +112,7 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
             aria-label="New revision"
             value={newRevision}
             onChange={(e) => setNewRevision(Number(e.target.value))}
-            className="rounded border border-slate-800 bg-slate-950 px-2 py-1 text-slate-200"
+            className="rounded border border-border bg-background px-2 py-1 text-foreground"
           >
             {revisions.map((n) => (
               <option key={n} value={n}>
@@ -121,13 +121,13 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
             ))}
           </select>
         </label>
-        <span className="text-slate-500">
+        <span className="text-muted-foreground/70">
           {revisionCount} revision{revisionCount === 1 ? "" : "s"} on disk
         </span>
       </div>
 
       {isLoading && (
-        <p data-testid="diff-loading" className="text-xs text-slate-500">
+        <p data-testid="diff-loading" className="text-xs text-muted-foreground/70">
           Loading revisions {oldRevision} and {newRevision}...
         </p>
       )}
@@ -135,7 +135,7 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
       {error && (
         <div
           data-testid="diff-error"
-          className="rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300"
+          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {error}
         </div>
@@ -144,7 +144,7 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
       {patch !== null &&
         !error &&
         (oldRevision === newRevision || contents?.old === contents?.new ? (
-          <p data-testid="diff-identical" className="text-sm text-slate-400">
+          <p data-testid="diff-identical" className="text-sm text-muted-foreground">
             Revisions {oldRevision} and {newRevision} are identical.
           </p>
         ) : (

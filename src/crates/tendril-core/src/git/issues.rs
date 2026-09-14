@@ -352,7 +352,16 @@ pub fn build_review_requests_args(filters: &IssueFilterParams, fetch_limit: usiz
     args
 }
 
-pub async fn run_gh_command(args: &[String], working_dir: Option<&Path>) -> Result<String> {
+/// Runs `gh` and returns `(exit_code, stdout, stderr)` without treating a non-zero exit as an error.
+///
+/// Callers that need to inspect a *failing* invocation — probing whether a repository exists, or
+/// deciding whether a failed `gh pr create` is recoverable — use this. Everyone else uses
+/// [`run_gh_command`], which is a thin wrapper over it. Keeping both here means `Command::new("gh")`
+/// stays in a single place.
+pub async fn run_gh_command_raw(
+    args: &[String],
+    working_dir: Option<&Path>,
+) -> Result<(i32, String, String)> {
     let mut cmd = tokio::process::Command::new("gh");
     cmd.args(args);
     if let Some(dir) = working_dir {
@@ -372,8 +381,18 @@ pub async fn run_gh_command(args: &[String], working_dir: Option<&Path>) -> Resu
             }
         })?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Ok((
+        output.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    ))
+}
+
+pub async fn run_gh_command(args: &[String], working_dir: Option<&Path>) -> Result<String> {
+    let (code, stdout, stderr) = run_gh_command_raw(args, working_dir).await?;
+
+    if code != 0 {
+        let stderr = stderr.trim().to_string();
         if stderr.contains("authentication")
             || stderr.contains("auth login")
             || stderr.contains("not logged in")
@@ -386,7 +405,7 @@ pub async fn run_gh_command(args: &[String], working_dir: Option<&Path>) -> Resu
         return Err(TendrilError::Git(format!("gh command failed: {}", stderr)));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    Ok(stdout)
 }
 
 pub fn paginate_issues(

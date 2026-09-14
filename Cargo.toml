@@ -38,3 +38,7 @@ libc = "0.2"
 tokio-tungstenite = "0.24"
 lol_html = "3.0"
 base64 = "0.22"
+flate2 = "1.0"
+tar = "0.4"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+sha2 = "0.10"

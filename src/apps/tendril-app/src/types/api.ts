@@ -142,6 +142,18 @@ export interface TendrilConfig {
   raw?: Record<string, unknown>;
 }
 
+export type ModelCatalogSource = "models.dev" | "static";
+
+export interface ModelCatalogStatus {
+  source: ModelCatalogSource;
+  totalModelCount: number;
+  dynamicModelCount: number;
+  staticModelCount: number;
+  enrichModels: boolean;
+  cachedAt: string | null;
+  cachePath: string;
+}
+
 export interface StartJobArgs {
   type: string;
   project?: string;

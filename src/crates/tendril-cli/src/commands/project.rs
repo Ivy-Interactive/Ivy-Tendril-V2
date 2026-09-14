@@ -1,7 +1,13 @@
 use clap::Subcommand;
 use std::path::Path;
-use tendril_core::config::{get_config_path, load_config, read_master, save_config, MasterInfo};
-use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
+use tendril_core::config::{
+    get_config_path, insert_project_verification, load_config, move_project_verification,
+    read_master, save_config, MasterInfo, VerificationPlacement,
+};
+use tendril_core::models::{
+    ProjectConfig, ProjectEnvFileConfig, ProjectPortConfig, ProjectVerificationRef, RepoRef,
+    ReviewActionConfig,
+};
 
 #[derive(Subcommand)]
 pub enum ProjectCommands {
@@ -27,10 +33,33 @@ pub enum ProjectCommands {
     RemoveRepo { name: String, path: String },
 
     #[command(about = "Add a verification to a project")]
-    AddVerification { name: String, verification: String },
+    AddVerification {
+        name: String,
+        verification: String,
+        #[arg(long, conflicts_with = "optional", help = "Mark as required (default)")]
+        required: bool,
+        #[arg(long, help = "Mark as optional")]
+        optional: bool,
+        #[arg(long, help = "Insert directly after this verification")]
+        after: Option<String>,
+    },
 
     #[command(about = "Remove a verification from a project")]
     RemoveVerification { name: String, verification: String },
+
+    #[command(about = "Move a verification within a project's run order")]
+    MoveVerification {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "VERIFICATION")]
+        verification: String,
+        #[arg(long, help = "Move directly before this verification")]
+        before: Option<String>,
+        #[arg(long, help = "Move directly after this verification")]
+        after: Option<String>,
+        #[arg(long, help = "Move to this zero-based position")]
+        position: Option<usize>,
+    },
 
     #[command(about = "Add a review action to a project")]
     AddReviewAction {
@@ -61,11 +90,94 @@ pub enum ProjectCommands {
         #[arg(value_name = "VALUE")]
         value: String,
     },
+
+    #[command(subcommand, about = "Manage a project's named service ports")]
+    Port(ProjectPortCommands),
+
+    #[command(subcommand, about = "Manage a project's environment files")]
+    EnvFile(ProjectEnvFileCommands),
+}
+
+#[derive(Subcommand)]
+pub enum ProjectPortCommands {
+    #[command(about = "List a project's named service ports")]
+    List {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+    },
+
+    #[command(about = "Add or update a named service port")]
+    Add {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "NAME")]
+        port_name: String,
+        #[arg(long)]
+        default_port: u16,
+        #[arg(long, default_value = "")]
+        description: String,
+    },
+
+    #[command(about = "Remove a named service port")]
+    Remove {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "NAME")]
+        port_name: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ProjectEnvFileCommands {
+    #[command(about = "List a project's environment files")]
+    List {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+    },
+
+    #[command(about = "Add or update an environment file")]
+    Add {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "PATH")]
+        path: String,
+        #[arg(long, help = "Source file, relative to the worktree root")]
+        template: Option<String>,
+        #[arg(
+            long = "override",
+            value_name = "KEY=VALUE",
+            help = "Key written on top of the template (repeatable)"
+        )]
+        overrides: Vec<String>,
+    },
+
+    #[command(about = "Remove an environment file")]
+    Remove {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "PATH")]
+        path: String,
+    },
 }
 
 enum DaemonOutcome {
     Handled,
     Fallback,
+}
+
+/// Both the daemon and filesystem paths need the same "exactly one placement" rule, so they share
+/// this resolution rather than each deciding for itself.
+fn resolve_placement(
+    before: Option<String>,
+    after: Option<String>,
+    position: Option<usize>,
+) -> anyhow::Result<VerificationPlacement> {
+    match (before, after, position) {
+        (Some(target), None, None) => Ok(VerificationPlacement::Before(target)),
+        (None, Some(target), None) => Ok(VerificationPlacement::After(target)),
+        (None, None, Some(pos)) => Ok(VerificationPlacement::Position(pos)),
+        _ => anyhow::bail!("Specify exactly one of --before, --after, or --position"),
+    }
 }
 
 pub async fn handle_project_command(
@@ -274,14 +386,26 @@ async fn handle_project_command_daemon(
 
             println!("Repo '{}' removed from project '{}'.", path, name);
         }
-        ProjectCommands::AddVerification { name, verification } => {
+        ProjectCommands::AddVerification {
+            name,
+            verification,
+            // `--required` restates the default, so only `--optional` changes the outcome.
+            required: _,
+            optional,
+            after,
+        } => {
+            let mut body = serde_json::json!({
+                "name": verification,
+                "required": !optional,
+            });
+            if let Some(after) = after {
+                body["after"] = serde_json::json!(after);
+            }
+
             let resp = match client
                 .post(format!("{}/api/projects/{}/verifications", base_url, name))
                 .bearer_auth(&master.secret)
-                .json(&serde_json::json!({
-                    "name": verification,
-                    "required": true,
-                }))
+                .json(&body)
                 .send()
                 .await
             {
@@ -300,6 +424,58 @@ async fn handle_project_command_daemon(
             println!(
                 "Verification '{}' added to project '{}'.",
                 verification, name
+            );
+        }
+        ProjectCommands::MoveVerification {
+            name,
+            verification,
+            before,
+            after,
+            position,
+        } => {
+            // Resolve the placement before the request so an invalid combination fails the same
+            // way whether or not a daemon is up.
+            let placement = resolve_placement(before.clone(), after.clone(), *position)?;
+            let mut body = serde_json::json!({ "name": verification });
+            match &placement {
+                VerificationPlacement::Before(target) => {
+                    body["before"] = serde_json::json!(target);
+                }
+                VerificationPlacement::After(target) => {
+                    body["after"] = serde_json::json!(target);
+                }
+                VerificationPlacement::Position(pos) => {
+                    body["position"] = serde_json::json!(pos);
+                }
+            }
+
+            let resp = match client
+                .put(format!("{}/api/projects/{}/verifications", base_url, name))
+                .bearer_auth(&master.secret)
+                .json(&body)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to move verification in project '{}': {}", name, err);
+            }
+
+            let payload: serde_json::Value = resp.json().await.unwrap_or_default();
+            let index = payload
+                .get("position")
+                .and_then(|v| v.as_u64())
+                .unwrap_or_default();
+            println!(
+                "Moved verification '{}' to position {}",
+                verification, index
             );
         }
         ProjectCommands::RemoveVerification { name, verification } => {
@@ -435,6 +611,10 @@ async fn handle_project_command_daemon(
 
             println!("Project '{}' field '{}' set to '{}'.", name, field, value);
         }
+        // The daemon has no endpoints for ports or env files, so these always write config directly.
+        ProjectCommands::Port(_) | ProjectCommands::EnvFile(_) => {
+            return Ok(DaemonOutcome::Fallback)
+        }
     }
 
     Ok(DaemonOutcome::Handled)
@@ -490,13 +670,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             settings.projects.push(ProjectConfig {
                 name: name.clone(),
                 color: "Blue".to_string(),
-                repos: Vec::new(),
-                verifications: Vec::new(),
-                context: String::new(),
-                stack_hash: None,
-                review_actions: Vec::new(),
-                build_dependencies: Vec::new(),
-                mcp_servers: Vec::new(),
+                ..Default::default()
             });
             save_config(&cfg_path, &settings)?;
             println!("Project '{}' added.", name);
@@ -577,7 +751,14 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             save_config(&cfg_path, &settings)?;
             println!("Repo '{}' removed from project '{}'.", path, name);
         }
-        ProjectCommands::AddVerification { name, verification } => {
+        ProjectCommands::AddVerification {
+            name,
+            verification,
+            // `--required` restates the default, so only `--optional` changes the outcome.
+            required: _,
+            optional,
+            after,
+        } => {
             let proj = settings
                 .projects
                 .iter_mut()
@@ -589,15 +770,48 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 .iter()
                 .any(|v| v.name.eq_ignore_ascii_case(&verification))
             {
-                proj.verifications.push(ProjectVerificationRef {
-                    name: verification.clone(),
-                    required: true,
-                });
+                insert_project_verification(
+                    proj,
+                    ProjectVerificationRef {
+                        name: verification.clone(),
+                        required: !optional,
+                    },
+                    after.as_deref(),
+                )?;
                 save_config(&cfg_path, &settings)?;
             }
             println!(
                 "Verification '{}' added to project '{}'.",
                 verification, name
+            );
+        }
+        ProjectCommands::MoveVerification {
+            name,
+            verification,
+            before,
+            after,
+            position,
+        } => {
+            let placement = resolve_placement(before, after, position)?;
+            let available = settings
+                .projects
+                .iter()
+                .map(|p| p.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let proj = settings
+                .projects
+                .iter_mut()
+                .find(|p| p.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Project '{}' not found. Available: {}", name, available)
+                })?;
+
+            let index = move_project_verification(proj, &verification, &placement)?;
+            save_config(&cfg_path, &settings)?;
+            println!(
+                "Moved verification '{}' to position {}",
+                verification, index
             );
         }
         ProjectCommands::RemoveVerification { name, verification } => {
@@ -687,7 +901,146 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             save_config(&cfg_path, &settings)?;
             println!("Project '{}' field '{}' set to '{}'.", name, field, value);
         }
+        ProjectCommands::Port(port_cmd) => match port_cmd {
+            ProjectPortCommands::List { name } => {
+                let proj = find_project(&settings, &name)?;
+                if proj.ports.is_empty() {
+                    println!("No ports configured for this project.");
+                } else {
+                    println!("Name\tDefault Port\tDescription");
+                    for (port_name, config) in &proj.ports {
+                        println!(
+                            "{}\t{}\t{}",
+                            port_name, config.default_port, config.description
+                        );
+                    }
+                }
+            }
+            ProjectPortCommands::Add {
+                name,
+                port_name,
+                default_port,
+                description,
+            } => {
+                let proj = find_project_mut(&mut settings, &name)?;
+                let updated = proj
+                    .ports
+                    .insert(
+                        port_name.clone(),
+                        ProjectPortConfig {
+                            default_port,
+                            description: description.clone(),
+                        },
+                    )
+                    .is_some();
+                save_config(&cfg_path, &settings)?;
+                println!(
+                    "{} port: {} -> {}",
+                    if updated { "Updated" } else { "Added" },
+                    port_name,
+                    default_port
+                );
+            }
+            ProjectPortCommands::Remove { name, port_name } => {
+                let proj = find_project_mut(&mut settings, &name)?;
+                if proj.ports.remove(&port_name).is_none() {
+                    anyhow::bail!("Port not found: {}", port_name);
+                }
+                save_config(&cfg_path, &settings)?;
+                println!("Removed port: {}", port_name);
+            }
+        },
+        ProjectCommands::EnvFile(env_cmd) => match env_cmd {
+            ProjectEnvFileCommands::List { name } => {
+                let proj = find_project(&settings, &name)?;
+                if proj.env_files.is_empty() {
+                    println!("No environment files configured for this project.");
+                } else {
+                    println!("Path\tTemplate\tOverrides");
+                    for file in &proj.env_files {
+                        println!(
+                            "{}\t{}\t{}",
+                            file.path,
+                            file.template.clone().unwrap_or_default(),
+                            file.overrides
+                                .keys()
+                                .cloned()
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        );
+                    }
+                }
+            }
+            ProjectEnvFileCommands::Add {
+                name,
+                path,
+                template,
+                overrides,
+            } => {
+                // Split on the first '=' only, so a value may itself contain '='.
+                let mut parsed = std::collections::BTreeMap::new();
+                for entry in &overrides {
+                    let (key, value) = entry.split_once('=').ok_or_else(|| {
+                        anyhow::anyhow!("Invalid override (expected KEY=VALUE): {}", entry)
+                    })?;
+                    parsed.insert(key.trim().to_string(), value.to_string());
+                }
+
+                let proj = find_project_mut(&mut settings, &name)?;
+                // Re-adding the same path replaces the entry rather than appending a duplicate: two
+                // configs for one file would race, with the last one written winning silently.
+                let before = proj.env_files.len();
+                proj.env_files
+                    .retain(|f| !f.path.eq_ignore_ascii_case(&path));
+                let updated = proj.env_files.len() != before;
+
+                proj.env_files.push(ProjectEnvFileConfig {
+                    path: path.clone(),
+                    template: template.filter(|t| !t.trim().is_empty()),
+                    overrides: parsed,
+                });
+                save_config(&cfg_path, &settings)?;
+                println!(
+                    "{} environment file: {}",
+                    if updated { "Updated" } else { "Added" },
+                    path
+                );
+            }
+            ProjectEnvFileCommands::Remove { name, path } => {
+                let proj = find_project_mut(&mut settings, &name)?;
+                let before = proj.env_files.len();
+                proj.env_files
+                    .retain(|f| !f.path.eq_ignore_ascii_case(&path));
+                if proj.env_files.len() == before {
+                    anyhow::bail!("Environment file not found: {}", path);
+                }
+                save_config(&cfg_path, &settings)?;
+                println!("Removed environment file: {}", path);
+            }
+        },
     }
 
     Ok(())
+}
+
+fn find_project<'a>(
+    settings: &'a tendril_core::config::TendrilSettings,
+    name: &str,
+) -> anyhow::Result<&'a ProjectConfig> {
+    settings
+        .projects
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))
+}
+
+fn find_project_mut<'a>(
+    settings: &'a mut tendril_core::config::TendrilSettings,
+    name: &str,
+) -> anyhow::Result<&'a mut ProjectConfig> {
+    settings
+        .projects
+        .iter_mut()
+        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))
 }
