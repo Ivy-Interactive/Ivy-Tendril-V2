@@ -193,8 +193,18 @@ impl TendrilClient {
             self.base_url,
             path_segment(plan_id)
         );
-        let resp = self.client.post(&url).headers(self.headers()).send().await?;
-        Self::expect_success(resp, "RESET_PLAN_FAILED", &format!("reset plan '{plan_id}'")).await
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+        Self::expect_success(
+            resp,
+            "RESET_PLAN_FAILED",
+            &format!("reset plan '{plan_id}'"),
+        )
+        .await
     }
 
     /// Permanently delete a plan folder (`DELETE /api/plans/:id`).
