@@ -1,8 +1,8 @@
 use chrono::{Duration, Utc};
 use std::path::PathBuf;
 use tendril_core::db::{
-    get_costs_series, get_costs_summary, insert_cost, list_costs_by_plan, open_database,
-    CostsFilter,
+    get_costs_series, get_costs_summary, insert_cost, insert_cost_entry, list_costs_by_plan,
+    open_database, CostEntry, CostsFilter,
 };
 
 struct TempDir(PathBuf);
@@ -544,4 +544,113 @@ fn test_costs_series_filtering() {
     )
     .unwrap();
     assert!(empty.is_empty());
+}
+
+#[test]
+fn none_cost_round_trips_as_null() {
+    let (_dir, conn) = setup_test_db();
+
+    insert_cost(&conn, 1, "ExecutePlan", 1500, None, None).expect("insert unpriced cost");
+
+    let records = list_costs_by_plan(&conn, 1).expect("list costs");
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        records[0].cost, None,
+        "an unpriceable run must read back as unknown, not as free"
+    );
+
+    // Proves the column holds NULL rather than 0.0, which is what makes SUM and COUNT(Cost) skip it.
+    let is_null: i64 = conn
+        .query_row("SELECT Cost IS NULL FROM Costs WHERE PlanId = 1", [], |r| {
+            r.get(0)
+        })
+        .expect("query Cost IS NULL");
+    assert_eq!(is_null, 1);
+}
+
+#[test]
+fn aggregates_skip_null_costs() {
+    let (_dir, conn) = setup_test_db();
+
+    let now = Utc::now().to_rfc3339();
+    insert_cost(&conn, 1, "ExecutePlan", 1000, Some(10.0), Some(&now)).unwrap();
+    insert_cost(&conn, 1, "ExecutePlan", 2000, None, Some(&now)).unwrap();
+    insert_cost(&conn, 1, "ExecutePlan", 3000, Some(20.0), Some(&now)).unwrap();
+
+    let summary = get_costs_summary(&conn, &CostsFilter::default()).expect("summary");
+    assert!(
+        (summary.total_spend - 30.0).abs() < 1e-6,
+        "SUM skips the NULL rather than treating it as zero"
+    );
+
+    let (priced, total): (i64, i64) = conn
+        .query_row(
+            "SELECT COUNT(Cost), COUNT(*) FROM Costs WHERE PlanId = 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .expect("count costs");
+    assert_eq!(priced, 2, "COUNT(Cost) counts only the rows we could price");
+    assert_eq!(total, 3);
+
+    let average: f64 = conn
+        .query_row("SELECT AVG(Cost) FROM Costs WHERE PlanId = 1", [], |r| {
+            r.get(0)
+        })
+        .expect("average cost");
+    assert!(
+        (average - 15.0).abs() < 1e-6,
+        "the average is over the runs we could price, not 10.0 with a zero dragging it down"
+    );
+}
+
+#[test]
+fn cost_source_agent_model_persist() {
+    let (_dir, conn) = setup_test_db();
+
+    insert_cost_entry(
+        &conn,
+        1,
+        &CostEntry {
+            promptware: "ExecutePlan".to_string(),
+            tokens: 4000,
+            cost: Some(1.25),
+            model: Some("claude-opus-5".to_string()),
+            cost_source: Some("agent".to_string()),
+            agent: Some("claude".to_string()),
+            log_timestamp: Some("2026-01-01T00:00:00Z".to_string()),
+        },
+    )
+    .expect("insert fully populated entry");
+
+    insert_cost_entry(
+        &conn,
+        1,
+        &CostEntry {
+            promptware: "CreatePlan".to_string(),
+            tokens: 500,
+            cost: None,
+            model: None,
+            cost_source: None,
+            agent: None,
+            log_timestamp: None,
+        },
+    )
+    .expect("insert bare entry");
+
+    let records = list_costs_by_plan(&conn, 1).expect("list costs");
+    assert_eq!(records.len(), 2);
+
+    assert_eq!(records[0].model.as_deref(), Some("claude-opus-5"));
+    assert_eq!(records[0].cost_source.as_deref(), Some("agent"));
+    assert_eq!(records[0].agent.as_deref(), Some("claude"));
+    assert_eq!(
+        records[0].log_timestamp.as_deref(),
+        Some("2026-01-01T00:00:00Z")
+    );
+
+    assert_eq!(records[1].model, None);
+    assert_eq!(records[1].cost_source, None);
+    assert_eq!(records[1].agent, None);
+    assert_eq!(records[1].log_timestamp, None);
 }
