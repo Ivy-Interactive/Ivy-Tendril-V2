@@ -1,9 +1,12 @@
+use chrono::{DateTime, Utc};
 use std::collections::HashSet;
 use std::path::Path;
 use tendril_core::config::{
     expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
 };
-use tendril_core::db::open_database;
+use tendril_core::db::{
+    check_plan_search, get_last_sync_time, open_database, rebuild_search_index, PlanSearchHealth,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum RepoPathStatus {
@@ -58,7 +61,50 @@ pub(crate) fn repo_path_warning(
     }
 }
 
-pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
+/// Formats the plan-search and sync-bookkeeping health lines. Split out from [`handle_doctor`] so it
+/// can be tested without a live `TendrilHome`, the way [`repo_path_warning`] already is.
+pub(crate) fn plan_search_lines(
+    health: &PlanSearchHealth,
+    last_sync: Option<DateTime<Utc>>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if health.index_present {
+        lines.push("[OK] Plan search index present".to_string());
+    } else {
+        lines.push(
+            "[WARN] Plan search index missing (run: tendril doctor --rebuild-search-index)"
+                .to_string(),
+        );
+    }
+
+    if !health.missing_triggers.is_empty() {
+        lines.push(format!(
+            "[WARN] Plan search triggers missing: {} (run: tendril doctor --rebuild-search-index)",
+            health.missing_triggers.join(", ")
+        ));
+    }
+
+    if health.index_present {
+        if health.integrity_ok {
+            lines.push("[OK] Plan search index integrity verified".to_string());
+        } else {
+            lines.push(
+                "[WARN] Plan search index corrupt (run: tendril doctor --rebuild-search-index)"
+                    .to_string(),
+            );
+        }
+    }
+
+    match last_sync {
+        Some(time) => lines.push(format!("[OK] Last plan sync: {}", time.to_rfc3339())),
+        None => lines.push("[WARN] Plans have never been synced".to_string()),
+    }
+
+    lines
+}
+
+pub fn handle_doctor(tendril_home: &Path, rebuild_search_index_flag: bool) -> anyhow::Result<()> {
     println!("Checking Tendril system health...");
 
     println!("[OK] Tendril Home: {}", tendril_home.display());
@@ -121,10 +167,29 @@ pub fn handle_doctor(tendril_home: &Path) -> anyhow::Result<()> {
 
     let db_path = get_database_path(tendril_home);
     match open_database(&db_path) {
-        Ok(_) => println!(
-            "[OK] Database accessible and migrated: {}",
-            db_path.display()
-        ),
+        Ok(conn) => {
+            println!(
+                "[OK] Database accessible and migrated: {}",
+                db_path.display()
+            );
+
+            if rebuild_search_index_flag {
+                match rebuild_search_index(&conn) {
+                    Ok(indexed) => println!("Rebuilt plan search index ({} plans).", indexed),
+                    Err(e) => println!("[FAIL] Could not rebuild plan search index: {}", e),
+                }
+            }
+
+            match check_plan_search(&conn) {
+                Ok(health) => {
+                    let last_sync = get_last_sync_time(&conn).unwrap_or(None);
+                    for line in plan_search_lines(&health, last_sync) {
+                        println!("{}", line);
+                    }
+                }
+                Err(e) => println!("[FAIL] Could not inspect plan search index: {}", e),
+            }
+        }
         Err(e) => println!("[FAIL] Database error: {}", e),
     }
 

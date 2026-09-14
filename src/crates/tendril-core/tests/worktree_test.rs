@@ -547,6 +547,7 @@ async fn prepare_plan_worktrees_creates_one_per_repo() {
             stack_hash: None,
             review_actions: vec![],
             build_dependencies: vec![],
+            mcp_servers: vec![],
         }],
         ..Default::default()
     };
