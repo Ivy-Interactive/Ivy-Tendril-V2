@@ -96,6 +96,23 @@ pub struct TendrilSettings {
     #[serde(rename = "enrichModels", default = "default_true")]
     pub enrich_models: bool,
 
+    /// Soft age threshold (in days) past which the models.dev disk cache is still used but
+    /// logged as a warning. `0` or negative disables this tier (never warn).
+    #[serde(
+        rename = "modelCacheWarnAgeDays",
+        default = "default_model_cache_warn_age_days"
+    )]
+    pub model_cache_warn_age_days: i64,
+
+    /// Hard age threshold (in days) past which the models.dev disk cache is ignored entirely
+    /// and the static `SPECS` table is used instead. `0` or negative disables this tier (never
+    /// expire).
+    #[serde(
+        rename = "modelCacheMaxAgeDays",
+        default = "default_model_cache_max_age_days"
+    )]
+    pub model_cache_max_age_days: i64,
+
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -237,6 +254,12 @@ fn default_true() -> bool {
 fn default_theme() -> String {
     "default".to_string()
 }
+fn default_model_cache_warn_age_days() -> i64 {
+    crate::agents::model_cache::DEFAULT_CACHE_WARN_AGE_DAYS
+}
+fn default_model_cache_max_age_days() -> i64 {
+    crate::agents::model_cache::DEFAULT_CACHE_MAX_AGE_DAYS
+}
 fn default_worktree_reaper_interval() -> i32 {
     30
 }
@@ -299,6 +322,8 @@ impl Default for TendrilSettings {
             coding_agents: Vec::new(),
             promptwares: BTreeMap::new(),
             enrich_models: true,
+            model_cache_warn_age_days: default_model_cache_warn_age_days(),
+            model_cache_max_age_days: default_model_cache_max_age_days(),
             extra: BTreeMap::new(),
         }
     }
