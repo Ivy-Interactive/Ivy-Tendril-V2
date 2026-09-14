@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  collectExecuteGuards,
-  pendingAnnotationCount,
-  unansweredQuestions,
-} from "../execute_guards";
+import { collectExecuteGuards, unansweredQuestions, unfoldedAnswerCount } from "../execute_guards";
 import type { RepoStatus } from "../../types/api";
 import { planDetail } from "../../../tests/fixtures/plan.fixture";
 
@@ -153,17 +149,43 @@ describe("collectExecuteGuards", () => {
     expect(guards[0].dirtyRepos?.map((r) => r.path)).toEqual(["/repos/Dirty"]);
   });
 
-  it("lets an explicit annotationCount override the derived one", () => {
+  it("fires on annotations from the store when no answer is unfolded", () => {
     const plan = planDetail({
       state: "Review",
       revisionCount: 4,
       latestRevisionContent: revisionWith(ANSWERED),
     });
 
-    expect(pendingAnnotationCount(plan)).toBe(0);
+    expect(unfoldedAnswerCount(plan)).toBe(0);
     expect(collectExecuteGuards({ plan, annotationCount: 3 })).toEqual([
       { kind: "PendingAnnotations", annotationCount: 3 },
     ]);
+  });
+
+  it("sums store annotations and unfolded answers, matching upstream's badge", () => {
+    // Draft at revision 1 with one answered question contributes the second term.
+    const plan = planDetail({
+      state: "Draft",
+      revisionCount: 1,
+      latestRevisionContent: revisionWith(ANSWERED),
+    });
+
+    expect(unfoldedAnswerCount(plan)).toBe(1);
+    expect(collectExecuteGuards({ plan, annotationCount: 2 })).toEqual([
+      { kind: "PendingAnnotations", annotationCount: 3 },
+    ]);
+  });
+
+  it("treats an unknown annotation count as zero rather than as a block", () => {
+    const plan = planDetail({
+      state: "Review",
+      revisionCount: 4,
+      latestRevisionContent: revisionWith(ANSWERED),
+    });
+
+    // `undefined` is what the view passes when `listAnnotations` failed.
+    expect(collectExecuteGuards({ plan, annotationCount: undefined })).toEqual([]);
+    expect(collectExecuteGuards({ plan, annotationCount: 0 })).toEqual([]);
   });
 
   it("does not derive annotations once UpdatePlan has written a second revision", () => {
@@ -173,7 +195,7 @@ describe("collectExecuteGuards", () => {
       latestRevisionContent: revisionWith(ANSWERED),
     });
 
-    expect(pendingAnnotationCount(plan)).toBe(0);
+    expect(unfoldedAnswerCount(plan)).toBe(0);
     expect(collectExecuteGuards({ plan })).toEqual([]);
   });
 

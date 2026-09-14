@@ -141,8 +141,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    *
    * Nothing is dispatched while a guard is open: `onExecute` is called either
    * because no guard fired, or because the operator proceeded through all of
-   * them. Repo status is best-effort — a status the service cannot report
-   * degrades to "no dirty repos known" rather than blocking execution forever.
+   * them. Repo status and the annotation count are both best-effort — what the
+   * service cannot report degrades to "nothing known" rather than blocking
+   * execution forever.
    */
   const handleExecute = async () => {
     setActionError(null);
@@ -154,9 +155,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       repoStatus = undefined;
     }
 
+    // Only unresolved annotations block: a resolved one needs no UpdatePlan run.
+    let annotationCount: number | undefined;
+    try {
+      annotationCount = (await bridge.listAnnotations(plan.id)).filter((a) => !a.isResolved).length;
+    } catch {
+      annotationCount = undefined;
+    }
+
     let collected: ExecuteGuard[] = [];
     try {
-      collected = collectExecuteGuards({ plan, repoStatus });
+      collected = collectExecuteGuards({ plan, repoStatus, annotationCount });
     } catch {
       // A guard that cannot be collected must not swallow the click.
       collected = [];
