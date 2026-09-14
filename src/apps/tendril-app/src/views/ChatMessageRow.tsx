@@ -115,8 +115,8 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
           variant={isUser ? "sent" : "received"}
           className={
             isUser
-              ? "bg-emerald-600 text-white"
-              : "bg-slate-900 border border-slate-800 text-slate-100"
+              ? "bg-primary text-primary-foreground"
+              : "bg-card border border-border text-foreground"
           }
         >
           {isUser ? (
@@ -132,7 +132,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
               {isSubmitting && (
                 <div
                   data-testid="submitting-answer-indicator"
-                  className="flex items-center gap-1.5 text-xs text-emerald-400 mt-2 font-medium"
+                  className="flex items-center gap-1.5 text-xs text-success mt-2 font-medium"
                 >
                   <Loader2 className="size-3.5 animate-spin" />
                   <span>Submitting answer...</span>
@@ -145,14 +145,14 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
             <div
               data-testid="message-attachments"
               className={`mt-2 flex flex-wrap gap-1.5 pt-1.5 border-t ${
-                isUser ? "border-emerald-500/40" : "border-slate-800"
+                isUser ? "border-success/40" : "border-border"
               }`}
             >
               {message.attachments.map((att, idx) => (
                 <div
                   key={`${att.path}-${idx}`}
                   className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
-                    isUser ? "bg-black/20 text-white/95" : "bg-slate-800 text-slate-300"
+                    isUser ? "bg-black/20 text-white/95" : "bg-muted text-muted-foreground"
                   }`}
                   title={att.path}
                 >
@@ -169,12 +169,12 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
           <ChatBubbleAction
             icon={<Copy className="size-3.5" />}
             onClick={() => onCopy(message)}
-            className={isCopied ? "text-emerald-400" : "text-slate-400"}
+            className={isCopied ? "text-success" : "text-muted-foreground"}
           />
           <button
             type="button"
             onClick={() => onCreatePlan(message.content)}
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 px-2 py-1 rounded transition-colors"
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-success px-2 py-1 rounded transition-colors"
             title="Create Plan from message"
           >
             <FilePlus className="size-3.5" />

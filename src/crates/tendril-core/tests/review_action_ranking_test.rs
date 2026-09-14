@@ -12,14 +12,8 @@ fn action(name: &str, paths: &[&str]) -> ReviewActionConfig {
 fn project(review_actions: Vec<ReviewActionConfig>) -> ProjectConfig {
     ProjectConfig {
         name: "Test".to_string(),
-        color: String::new(),
-        repos: vec![],
-        verifications: vec![],
-        context: String::new(),
-        stack_hash: None,
         review_actions,
-        build_dependencies: vec![],
-        mcp_servers: vec![],
+        ..Default::default()
     }
 }
 

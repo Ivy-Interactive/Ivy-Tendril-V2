@@ -68,7 +68,7 @@ fn test_config_load_and_save() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
-        mcp_servers: Vec::new(),
+        ..Default::default()
     });
 
     save_config(&config_file, &settings).expect("Failed to save config");
@@ -101,10 +101,6 @@ fn test_review_action_paths_round_trip_and_omitted_when_empty() {
     settings.projects.push(ProjectConfig {
         name: "TestProject".to_string(),
         color: "Blue".to_string(),
-        repos: vec![],
-        verifications: vec![],
-        context: String::new(),
-        stack_hash: None,
         review_actions: vec![
             ReviewActionConfig {
                 name: "Storybook".to_string(),
@@ -119,8 +115,7 @@ fn test_review_action_paths_round_trip_and_omitted_when_empty() {
                 paths: vec![],
             },
         ],
-        build_dependencies: vec![],
-        mcp_servers: vec![],
+        ..Default::default()
     });
 
     save_config(&config_file, &settings).expect("Failed to save config");
@@ -196,6 +191,25 @@ fn test_master_file_lifecycle() {
     assert!(read_master(&test_dir).is_none());
 
     let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn test_model_cache_age_thresholds_default() {
+    let defaults = TendrilSettings::default();
+    assert_eq!(defaults.model_cache_warn_age_days, 7);
+    assert_eq!(defaults.model_cache_max_age_days, 30);
+
+    // Absent from the raw YAML: both fields fall back to their defaults.
+    let loaded: TendrilSettings = serde_yaml::from_str("codingAgent: claude\n").expect("parse");
+    assert_eq!(loaded.model_cache_warn_age_days, 7);
+    assert_eq!(loaded.model_cache_max_age_days, 30);
+
+    // Explicit values in the raw YAML round-trip.
+    let loaded_custom: TendrilSettings =
+        serde_yaml::from_str("modelCacheWarnAgeDays: 3\nmodelCacheMaxAgeDays: 14\n")
+            .expect("parse");
+    assert_eq!(loaded_custom.model_cache_warn_age_days, 3);
+    assert_eq!(loaded_custom.model_cache_max_age_days, 14);
 }
 
 #[test]
@@ -446,7 +460,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
-        mcp_servers: Vec::new(),
+        ..Default::default()
     });
     settings.projects.push(ProjectConfig {
         name: "ProjectB".to_string(),
@@ -460,7 +474,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
-        mcp_servers: Vec::new(),
+        ..Default::default()
     });
     settings.projects.push(ProjectConfig {
         name: "ProjectC".to_string(),
@@ -474,7 +488,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         stack_hash: None,
         review_actions: vec![],
         build_dependencies: vec![],
-        mcp_servers: Vec::new(),
+        ..Default::default()
     });
 
     let referencing = find_projects_referencing_verification(&settings, "RustClippy");

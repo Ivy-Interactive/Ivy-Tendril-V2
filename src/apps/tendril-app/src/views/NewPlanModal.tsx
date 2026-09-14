@@ -102,19 +102,19 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
       aria-modal="true"
       aria-labelledby="new-plan-title"
       data-testid="new-plan-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl"
+        className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="flex items-center justify-between border-b border-border pb-4">
           <div>
-            <h2 id="new-plan-title" className="text-lg font-bold text-slate-100">
+            <h2 id="new-plan-title" className="text-lg font-bold text-foreground">
               Create New Plan (Intake)
             </h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted-foreground">
               Dispatches an autonomous CreatePlan job to research codebase and author plan.
             </p>
           </div>
@@ -122,14 +122,14 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="rounded p-1 text-slate-400 hover:text-slate-200"
+            className="rounded p-1 text-muted-foreground hover:text-foreground"
           >
             ✕
           </button>
         </div>
 
         {error && (
-          <div className="mt-4 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-300">
+          <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
             {error}
           </div>
         )}
@@ -139,7 +139,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
             <div className="flex-1">
               <label
                 htmlFor="project-select"
-                className="block text-xs font-medium text-slate-300 mb-1"
+                className="block text-xs font-medium text-muted-foreground mb-1"
               >
                 Target Project
               </label>
@@ -148,7 +148,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
                 aria-label="Target Project"
                 value={selectedProject}
                 onChange={(e) => setSelectedProject(e.target.value)}
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
               >
                 {projectNames.map((p) => (
                   <option key={p} value={p}>
@@ -161,7 +161,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
             <div className="w-32">
               <label
                 htmlFor="priority-input"
-                className="block text-xs font-medium text-slate-300 mb-1"
+                className="block text-xs font-medium text-muted-foreground mb-1"
               >
                 Priority
               </label>
@@ -171,13 +171,13 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
                 type="number"
                 value={priority}
                 onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
-                className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-slate-200 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
               Task Description & Objectives
             </label>
             <ContentInput
@@ -205,16 +205,16 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="What needs to be implemented or investigated?"
-              className="mt-2 w-full rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-100 placeholder-slate-500 focus:border-emerald-500 focus:outline-none"
+              className="mt-2 w-full rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none"
             />
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end space-x-3 border-t border-slate-800 pt-4">
+        <div className="mt-6 flex justify-end space-x-3 border-t border-border pt-4">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-800 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
           >
             Cancel
           </button>
@@ -224,8 +224,8 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
             onClick={() => void handleSubmit()}
             className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition ${
               isSubmitting || !description.trim()
-                ? "cursor-not-allowed bg-slate-800 text-slate-500"
-                : "bg-emerald-600 hover:bg-emerald-500"
+                ? "cursor-not-allowed bg-muted text-muted-foreground/70"
+                : "bg-primary hover:bg-primary/90"
             }`}
           >
             {isSubmitting ? "Dispatching..." : "Start CreatePlan"}

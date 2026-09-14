@@ -7,8 +7,7 @@ export const badgeVariant = cva(
       variant: {
         primary:
           "border-transparent bg-[var(--ivy-green-200)] text-[var(--ivy-green-800)] dark:bg-[var(--ivy-green-800)] dark:text-[var(--ivy-green-100)]",
-        secondary:
-          "border-transparent bg-[var(--slate-200)] text-[var(--slate-800)] dark:bg-[var(--slate-800)] dark:text-[var(--slate-100)]",
+        secondary: "border-transparent bg-secondary text-secondary-foreground",
         destructive:
           "border-transparent bg-[var(--destructive-200)] text-[var(--destructive-800)] dark:bg-[var(--destructive-800)] dark:text-[var(--destructive-100)]",
         outline: "text-foreground",
