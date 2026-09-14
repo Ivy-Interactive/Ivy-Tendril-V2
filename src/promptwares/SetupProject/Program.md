@@ -155,16 +155,22 @@ Inspect each repo to determine how to run the application. For website projects,
   (Adjust the `docs/index.html` sub-path to wherever the repo's entry HTML actually lives.)
 
 For each review action:
-- **name**: Short descriptive name (e.g. "App", "Docs", "Frontend", "API")
-- **condition**: A `Test-Path` expression that checks if the worktree path exists (e.g. `Test-Path "Worktrees/<owner>/<repo>/src/<Project>"` or `Test-Path "Worktrees/<repo>/src/<Project>"`).
+- **name**: Short descriptive name (e.g. "App", "Storybook", "Server", "Docs", "Frontend", "API")
+- **condition**: A `Test-Path` expression that checks if the worktree path exists targeting the `src/` layout:
+  - App: `Test-Path "Worktrees/<owner>/<repo>/src/apps/<app>"` (or `Test-Path "Worktrees/<repo>/src/apps/<app>"`)
+  - Packages/Components: `Test-Path "Worktrees/<owner>/<repo>/src/packages/<package>"` (or `Test-Path "Worktrees/<repo>/src/packages/<package>"`)
+  - Crates/Backend: `Test-Path "Worktrees/<owner>/<repo>/src/crates/<crate>"` (or `Test-Path "Worktrees/<repo>/src/crates/<crate>"`)
   - The repo path under `Worktrees/` preserves the repo origin structure (e.g. `<owner>/<repo>` such as `ivy-interactive/ivy-tendril` for repos under `Repos/<owner>/<repo>` or from GitHub).
   - **Do NOT use a leading slash or backslash** (e.g. use `Test-Path "Worktrees/..."`, NOT `Test-Path "\Worktrees/..."`), as leading slashes cause PowerShell to resolve relative to the drive root instead of the plan working directory.
-- **command**: The command to launch the application.
+- **command**: The command to launch the application. Examples using the `src/` layout:
+  - App: `cd Worktrees/<owner>/<repo>/src/apps/<app> && pnpm install && pnpm dev` (or from repo root `cd Worktrees/<owner>/<repo> && pnpm install && pnpm dev:app`)
+  - Packages/Components: `cd Worktrees/<owner>/<repo>/src/packages/<package> && pnpm install && pnpm dev` (or from repo root `cd Worktrees/<owner>/<repo> && pnpm install && pnpm dev:storybook`)
+  - Crates/Backend: `cargo run --manifest-path Worktrees/<owner>/<repo>/Cargo.toml --bin tendril -- serve` (or targeting `Worktrees/<owner>/<repo>/src/crates/<crate>`)
 
 ```bash
 tendril project add-review-action <project-name> "<name>" \
   --command="<launch command>" \
-  --condition="Test-Path \"Worktrees/<owner>/<repo>/<path>\""
+  --condition="Test-Path \"Worktrees/<owner>/<repo>/src/<apps|packages|crates>/<name>\""
 ```
 
 ### 4. Set the Stack Hash
