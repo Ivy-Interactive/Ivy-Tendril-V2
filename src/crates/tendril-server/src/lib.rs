@@ -35,6 +35,14 @@ pub async fn run_server(
         );
     }
 
+    if let Err(e) = tendril_core::config::ensure_home_directories(&tendril_home) {
+        tracing::warn!(
+            "Could not create Tendril home directories under {}: {}",
+            tendril_home.display(),
+            e
+        );
+    }
+
     let secret = tendril_core::config::generate_bearer_secret();
     let state = Arc::new(AppState::new(tendril_home.clone(), secret.clone()));
     let app = create_router(state.clone());
