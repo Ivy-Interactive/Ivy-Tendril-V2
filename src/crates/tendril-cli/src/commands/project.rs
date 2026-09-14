@@ -1,7 +1,7 @@
 use clap::Subcommand;
 use std::path::Path;
 use tendril_core::config::{get_config_path, load_config, read_master, save_config, MasterInfo};
-use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef};
+use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
 
 #[derive(Subcommand)]
 pub enum ProjectCommands {
@@ -31,6 +31,36 @@ pub enum ProjectCommands {
 
     #[command(about = "Remove a verification from a project")]
     RemoveVerification { name: String, verification: String },
+
+    #[command(about = "Add a review action to a project")]
+    AddReviewAction {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "NAME")]
+        action: String,
+        #[arg(long)]
+        command: String,
+        #[arg(long, default_value = "")]
+        condition: String,
+    },
+
+    #[command(about = "Remove a review action from a project")]
+    RemoveReviewAction {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "NAME")]
+        action: String,
+    },
+
+    #[command(about = "Set a project field")]
+    Set {
+        #[arg(value_name = "PROJECT")]
+        name: String,
+        #[arg(value_name = "FIELD")]
+        field: String,
+        #[arg(value_name = "VALUE")]
+        value: String,
+    },
 }
 
 enum DaemonOutcome {
@@ -112,6 +142,12 @@ async fn handle_project_command_daemon(
             println!("Verifications:");
             for v in &p.verifications {
                 println!("  - {} (required: {})", v.name, v.required);
+            }
+            if !p.review_actions.is_empty() {
+                println!("Review Actions:");
+                for a in &p.review_actions {
+                    println!("  - {} (command: {}, condition: {})", a.name, a.command, a.condition);
+                }
             }
         }
         ProjectCommands::Add { name } => {
@@ -294,6 +330,111 @@ async fn handle_project_command_daemon(
                 verification, name
             );
         }
+        ProjectCommands::AddReviewAction {
+            name,
+            action,
+            command,
+            condition,
+        } => {
+            let resp = match client
+                .post(format!("{}/api/projects/{}/review-actions", base_url, name))
+                .bearer_auth(&master.secret)
+                .json(&serde_json::json!({
+                    "name": action,
+                    "command": command,
+                    "condition": condition,
+                }))
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to add review action to project '{}': {}", name, err);
+            }
+
+            println!("Review action '{}' added to project '{}'.", action, name);
+        }
+        ProjectCommands::RemoveReviewAction { name, action } => {
+            let resp = match client
+                .delete(format!(
+                    "{}/api/projects/{}/review-actions/{}",
+                    base_url, name, action
+                ))
+                .bearer_auth(&master.secret)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!(
+                    "Failed to remove review action from project '{}': {}",
+                    name,
+                    err
+                );
+            }
+
+            println!(
+                "Review action '{}' removed from project '{}'.",
+                action, name
+            );
+        }
+        ProjectCommands::Set { name, field, value } => {
+            let body = match field.as_str() {
+                "color" => serde_json::json!({ "color": value }),
+                "context" => serde_json::json!({ "context": value }),
+                "stackHash" | "stack_hash" => {
+                    if value.trim().is_empty() {
+                        serde_json::json!({ "stackHash": null })
+                    } else {
+                        serde_json::json!({ "stackHash": value })
+                    }
+                }
+                _ => {
+                    anyhow::bail!(
+                        "Unsupported project field '{}'. Supported fields: color, context, stackHash",
+                        field
+                    );
+                }
+            };
+
+            let resp = match client
+                .put(format!("{}/api/projects/{}", base_url, name))
+                .bearer_auth(&master.secret)
+                .json(&body)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(_) => return Ok(DaemonOutcome::Fallback),
+            };
+
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Project '{}' not found", name);
+            }
+            if !resp.status().is_success() {
+                let err = resp.text().await.unwrap_or_default();
+                anyhow::bail!("Failed to set field on project '{}': {}", name, err);
+            }
+
+            println!(
+                "Project '{}' field '{}' set to '{}'.",
+                name, field, value
+            );
+        }
     }
 
     Ok(DaemonOutcome::Handled)
@@ -324,6 +465,12 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 println!("Verifications:");
                 for v in &p.verifications {
                     println!("  - {} (required: {})", v.name, v.required);
+                }
+                if !p.review_actions.is_empty() {
+                    println!("Review Actions:");
+                    for a in &p.review_actions {
+                        println!("  - {} (command: {}, condition: {})", a.name, a.command, a.condition);
+                    }
                 }
             } else {
                 anyhow::bail!("Project '{}' not found", name);
@@ -462,6 +609,81 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             println!(
                 "Verification '{}' removed from project '{}'.",
                 verification, name
+            );
+        }
+        ProjectCommands::AddReviewAction {
+            name,
+            action,
+            command,
+            condition,
+        } => {
+            let proj = settings
+                .projects
+                .iter_mut()
+                .find(|p| p.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
+
+            proj.review_actions
+                .retain(|a| !a.name.eq_ignore_ascii_case(&action));
+            proj.review_actions.push(ReviewActionConfig {
+                name: action.clone(),
+                condition: condition.clone(),
+                command: command.clone(),
+            });
+            save_config(&cfg_path, &settings)?;
+            println!("Review action '{}' added to project '{}'.", action, name);
+        }
+        ProjectCommands::RemoveReviewAction { name, action } => {
+            let proj = settings
+                .projects
+                .iter_mut()
+                .find(|p| p.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
+
+            let before = proj.review_actions.len();
+            proj.review_actions
+                .retain(|a| !a.name.eq_ignore_ascii_case(&action));
+            if proj.review_actions.len() == before {
+                anyhow::bail!("Review action '{}' not found in project '{}'", action, name);
+            }
+            save_config(&cfg_path, &settings)?;
+            println!(
+                "Review action '{}' removed from project '{}'.",
+                action, name
+            );
+        }
+        ProjectCommands::Set { name, field, value } => {
+            let proj = settings
+                .projects
+                .iter_mut()
+                .find(|p| p.name.eq_ignore_ascii_case(&name))
+                .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
+
+            match field.as_str() {
+                "color" => {
+                    proj.color = value.clone();
+                }
+                "context" => {
+                    proj.context = value.clone();
+                }
+                "stackHash" | "stack_hash" => {
+                    proj.stack_hash = if value.trim().is_empty() {
+                        None
+                    } else {
+                        Some(value.clone())
+                    };
+                }
+                _ => {
+                    anyhow::bail!(
+                        "Unsupported project field '{}'. Supported fields: color, context, stackHash",
+                        field
+                    );
+                }
+            }
+            save_config(&cfg_path, &settings)?;
+            println!(
+                "Project '{}' field '{}' set to '{}'.",
+                name, field, value
             );
         }
     }

@@ -688,6 +688,146 @@ pub async fn remove_project_verification(
         .into_response()
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AddReviewActionRequest {
+    pub name: String,
+    #[serde(default)]
+    pub condition: String,
+    #[serde(default)]
+    pub command: String,
+}
+
+pub async fn add_project_review_action(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Json(req): Json<AddReviewActionRequest>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let action_name = req.name.trim().to_string();
+    if action_name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Review action name cannot be empty" })),
+        )
+            .into_response();
+    }
+
+    settings.projects[proj_idx]
+        .review_actions
+        .retain(|a| !a.name.eq_ignore_ascii_case(&action_name));
+
+    settings.projects[proj_idx]
+        .review_actions
+        .push(ReviewActionConfig {
+            name: action_name.clone(),
+            condition: req.condition,
+            command: req.command,
+        });
+
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "message": format!("Review action '{}' added to project '{}'", action_name, name)
+        })),
+    )
+        .into_response()
+}
+
+pub async fn remove_project_review_action(
+    State(state): State<Arc<AppState>>,
+    Path((name, action)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    let before = settings.projects[proj_idx].review_actions.len();
+    settings.projects[proj_idx]
+        .review_actions
+        .retain(|a| !a.name.eq_ignore_ascii_case(&action));
+
+    if settings.projects[proj_idx].review_actions.len() == before {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": format!("Review action '{}' not found in project '{}'", action, name)
+            })),
+        )
+            .into_response();
+    }
+
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "message": format!("Review action '{}' removed from project '{}'", action, name)
+        })),
+    )
+        .into_response()
+}
+
 pub async fn execute_review_action(
     State(state): State<Arc<AppState>>,
     Path((project_name, action_name)): Path<(String, String)>,

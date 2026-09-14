@@ -41,6 +41,7 @@ pub fn run() {
             cmd_cancel_job,
             cmd_list_projects,
             cmd_get_config,
+            cmd_execute_review_action,
             cmd_save_ui_state,
             cmd_load_ui_state,
             cmd_get_service_logs,

@@ -4,12 +4,14 @@ import {
   type PlanSummary,
   type RecommendationItem,
   type RecommendationState,
+  type ReviewActionConfig,
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
 import { EmptyState } from "../components/EmptyState";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
+import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
 
 interface ReviewViewProps {
   plans: PlanSummary[];
@@ -65,9 +67,57 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     };
   }, [selectedPlanId]);
 
+  const [reviewActions, setReviewActions] = useState<ReviewActionConfig[]>([]);
+  const [allocatedPorts, setAllocatedPorts] = useState<Record<string, number> | undefined>(
+    selectedPlan?.allocatedPorts,
+  );
+
+  useEffect(() => {
+    setAllocatedPorts(selectedPlan?.allocatedPorts);
+    if (!selectedPlanId) {
+      setReviewActions([]);
+      return;
+    }
+
+    let cancelled = false;
+    bridge
+      .getPlan(selectedPlanId)
+      .then((plan) => {
+        if (!cancelled && plan?.allocatedPorts) {
+          setAllocatedPorts(plan.allocatedPorts);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlanId, selectedPlan?.allocatedPorts]);
+
+  useEffect(() => {
+    if (!selectedPlan?.project) {
+      setReviewActions([]);
+      return;
+    }
+
+    let cancelled = false;
+    bridge
+      .getProjectReviewActions(selectedPlan.project)
+      .then((actions) => {
+        if (!cancelled) setReviewActions(actions);
+      })
+      .catch(() => {
+        if (!cancelled) setReviewActions([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlan?.project]);
+
   /**
    * Apply a triage decision optimistically, then persist it. On failure the
-   * previous list is restored — the operator must not be left believing a
+   * previous list is restored: the operator must not be left believing a
    * decision was recorded in plan.yaml when it was not.
    */
   const setRecState = async (title: string, state: RecommendationState, declineReason?: string) => {
@@ -118,6 +168,16 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       await onCreatePr(selectedPlan.id);
     } catch (err) {
       setActionError(`Create PR failed: ${describeBridgeError(err)}`);
+    }
+  };
+
+  const handleExecuteReviewAction = async (actionName: string) => {
+    if (!selectedPlan) return;
+    setActionError(null);
+    try {
+      await bridge.executeReviewAction(selectedPlan.project, actionName, selectedPlan.id);
+    } catch (err) {
+      setActionError(`Review action "${actionName}" failed: ${describeBridgeError(err)}`);
     }
   };
 
@@ -199,7 +259,26 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 </button>
               </div>
 
-              {/* Review Actions */}
+              {/* Review Actions Bar */}
+              {reviewActions.length > 0 && (
+                <div
+                  className="mt-6 border-t border-slate-800 pt-4"
+                  data-testid="review-actions-bar-container"
+                >
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Review Actions
+                  </div>
+                  <ReviewActionsBarView
+                    project={selectedPlan.project}
+                    planId={selectedPlan.id}
+                    actions={reviewActions}
+                    allocatedPorts={allocatedPorts}
+                    onExecuteAction={handleExecuteReviewAction}
+                  />
+                </div>
+              )}
+
+              {/* Triage Actions */}
               <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-800 pt-4">
                 <button
                   type="button"

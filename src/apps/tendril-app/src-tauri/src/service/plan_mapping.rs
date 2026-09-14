@@ -36,6 +36,8 @@ struct PlanYamlExtras {
     verifications: Option<Vec<PlanVerificationDto>>,
     #[serde(default)]
     repos: Option<Vec<String>>,
+    #[serde(rename = "allocatedPorts", default)]
+    allocated_ports: Option<std::collections::HashMap<String, u16>>,
 }
 
 impl PlanYamlExtras {
@@ -137,6 +139,7 @@ pub fn map_plan_summary(value: &Value, fallback_id: &str) -> PlanSummaryDto {
         created: string_field(metadata, "created"),
         updated: string_field(metadata, "updated"),
         verifications: resolve_verifications(metadata, &extras),
+        allocated_ports: extras.allocated_ports,
     }
 }
 
@@ -172,6 +175,7 @@ pub fn map_plan_detail(value: &Value, fallback_id: &str) -> PlanDetailDto {
             .and_then(|v| v.as_i64())
             .unwrap_or(0) as i32,
         recommendations: extras.recommendations.unwrap_or_default(),
+        allocated_ports: extras.allocated_ports,
     }
 }
 
