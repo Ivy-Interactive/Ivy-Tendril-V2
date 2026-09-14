@@ -265,6 +265,7 @@ export const App: React.FC = () => {
               setNewPlanPrefill({ description: initialDesc });
               setIsNewPlanOpen(true);
             }}
+            onOpenPlan={handleSelectPlan}
           />
         );
 

@@ -29,6 +29,11 @@ export interface AgentPickerProps {
   compact?: boolean;
   /** The model and effort an agent is remembered with, for the rows that are not selected. */
   rememberedFor?: (agentId: string) => { modelId?: string; effort?: string };
+  /**
+   * Prefix for this instance's test ids and control ids. The composer and the header each show a
+   * picker, so the two cannot share one set of identifiers.
+   */
+  instanceId?: string;
 }
 
 const displayNameOf = (
@@ -91,6 +96,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
   onEffortChange,
   compact = false,
   rememberedFor,
+  instanceId = "agent-picker",
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -112,9 +118,8 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
   );
 
   const [focusedAgentId, setFocusedAgentId] = useState<string | null>(null);
-  const settingsAgentId = focusedAgentId && rows.some((a) => a.id === focusedAgentId)
-    ? focusedAgentId
-    : selectedAgentId;
+  const settingsAgentId =
+    focusedAgentId && rows.some((a) => a.id === focusedAgentId) ? focusedAgentId : selectedAgentId;
   const settingsAgent = rows.find((agent) => agent.id === settingsAgentId);
   const isSelectedAgent = settingsAgentId === selectedAgentId;
 
@@ -144,7 +149,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
     <PopoverTrigger asChild>
       <button
         type="button"
-        data-testid="agent-picker-trigger"
+        data-testid={`${instanceId}-trigger`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Agent: ${selectionSummary}`}
@@ -183,7 +188,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
         }}
       >
         <div
-          data-testid="agent-picker-status"
+          data-testid={`${instanceId}-status`}
           aria-live="polite"
           className="text-xs text-muted-foreground"
         >
@@ -218,7 +223,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
             <div className="text-xs font-medium text-popover-foreground">{settingsAgent.label}</div>
             {settingsAgent.models.length > 0 && (
               <PickerSelect
-                id="agent-picker-model"
+                id={`${instanceId}-model`}
                 label="Model"
                 value={modelValue}
                 options={settingsAgent.models}
@@ -227,7 +232,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
             )}
             {settingsAgent.supportsEffort && (
               <PickerSelect
-                id="agent-picker-effort"
+                id={`${instanceId}-effort`}
                 label="Reasoning effort"
                 value={effortValue}
                 options={settingsAgent.efforts}
