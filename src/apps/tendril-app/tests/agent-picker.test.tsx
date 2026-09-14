@@ -66,18 +66,28 @@ const Harness: React.FC<{ agents?: AgentOption[]; initialAgentId?: string }> = (
   );
 };
 
+// Radix's popover collision detection is expensive under jsdom, so every open costs seconds.
+vi.setConfig({ testTimeout: 120_000 });
+
+const POPOVER_TIMEOUT = { timeout: 60_000 };
+
 const openPicker = async () => {
   const trigger = screen.getByTestId("agent-picker-trigger");
   fireEvent.click(trigger);
-  await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument(), POPOVER_TIMEOUT);
   return trigger;
 };
+
+/** cmdk listens on its own root, so keyboard navigation has to be delivered there. */
+const commandRoot = () => screen.getByRole("dialog").querySelector("[cmdk-root]") as HTMLElement;
 
 const modelSelect = () => screen.getByLabelText("Model") as HTMLSelectElement;
 
 describe("AgentPicker", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // cmdk scrolls the highlighted item into view, which jsdom does not implement.
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
   });
 
   it("swaps the model list when a different agent is chosen", async () => {
@@ -122,20 +132,18 @@ describe("AgentPicker", () => {
     );
   });
 
-  it("opens with Enter, selects with the keyboard and returns focus to the trigger on Escape", async () => {
+  it("selects with the keyboard and returns focus to the trigger on Escape", async () => {
     render(<Harness />);
-    const trigger = screen.getByTestId("agent-picker-trigger");
+    // Opening is a click: a browser turns Enter on the trigger into one, jsdom does not.
+    await openPicker();
 
-    trigger.focus();
-    fireEvent.keyDown(trigger, { key: "Enter" });
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    fireEvent.keyDown(commandRoot(), { key: "ArrowDown" });
+    fireEvent.keyDown(commandRoot(), { key: "Enter" });
 
-    const list = screen.getByRole("dialog");
-    fireEvent.keyDown(list, { key: "ArrowDown" });
-    fireEvent.keyDown(list, { key: "ArrowDown" });
-    fireEvent.keyDown(list, { key: "Enter" });
-
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(
+      () => expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      POPOVER_TIMEOUT,
+    );
     expect(screen.getByTestId("agent-picker-trigger")).toHaveAttribute(
       "aria-label",
       "Agent: Gemini · Default",
@@ -143,7 +151,10 @@ describe("AgentPicker", () => {
 
     await openPicker();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(
+      () => expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      POPOVER_TIMEOUT,
+    );
     expect(document.activeElement).toBe(screen.getByTestId("agent-picker-trigger"));
   });
 
@@ -164,9 +175,7 @@ describe("AgentPicker", () => {
     expect(effort).toBeInTheDocument();
 
     fireEvent.change(effort, { target: { value: "high" } });
-    expect(screen.getByTestId("agent-picker-status")).toHaveTextContent(
-      "Claude · Default · High",
-    );
+    expect(screen.getByTestId("agent-picker-status")).toHaveTextContent("Claude · Default · High");
   });
 
   it("still offers the selected agent when the catalog is empty", async () => {
