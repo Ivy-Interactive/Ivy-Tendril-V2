@@ -1,8 +1,9 @@
 use crate::error::BridgeError;
 use crate::models::{
     ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, EnqueueItemDto, ExecuteTurnDto,
-    JobDetailDto, JobDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto, PostMessageDto,
-    ProjectSummaryDto, ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
+    JobDetailDto, JobDto, ModelCatalogStatusDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto,
+    PostMessageDto, ProjectSummaryDto, ReviewActionDto, RevisionResultDto, StartJobResponseDto,
+    TendrilConfigDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -854,6 +855,43 @@ impl TendrilClient {
         }
 
         Ok(())
+    }
+
+    pub async fn get_models_status(&self) -> Result<ModelCatalogStatusDto, BridgeError> {
+        let url = format!("{}/api/models/status", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_MODELS_STATUS_FAILED",
+                format!("Failed to get models status ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn refresh_models(&self) -> Result<ModelCatalogStatusDto, BridgeError> {
+        let url = format!("{}/api/models/refresh", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "REFRESH_MODELS_FAILED",
+                format!("Failed to refresh models ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     pub async fn post_inbox(
