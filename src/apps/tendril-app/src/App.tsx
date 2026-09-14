@@ -10,11 +10,16 @@ import { describeBridgeError, type ProjectSummary } from "./types/api";
 import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
 import { NewPlanModal } from "./views/NewPlanModal";
-// Deliberately the module, not the `./views/dialogs` barrel: every view below is
-// lazy, so a barrel import here would pull all fourteen dialogs — including the
-// ones only PlanDetailView and ReviewView open — into the eager entry chunk.
-import { NoProjectsDialog } from "./views/dialogs/NoProjectsDialog";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
+
+// Lazy, and by module rather than through the `./views/dialogs` barrel. App.tsx
+// is the one eager module in the shell — every view below it is lazy — and the
+// dialog family pulls in `@ivy-interactive/components/ui`, a ~190 kB entry point
+// nothing else here needs. Loading it eagerly for a dialog that only appears
+// when no project is configured put the entry chunk over its size budget.
+const NoProjectsDialog = React.lazy(() =>
+  import("./views/dialogs/NoProjectsDialog").then((m) => ({ default: m.NoProjectsDialog })),
+);
 
 const DashboardView = React.lazy(() =>
   import("./views/DashboardView").then((m) => ({ default: m.DashboardView })),
@@ -445,15 +450,20 @@ export const App: React.FC = () => {
       </ShellLayout>
 
       {/* A plan needs a project. With none configured the new-plan flow explains
-          that instead of offering an empty picker. */}
-      <NoProjectsDialog
-        isOpen={isNewPlanOpen && projectsLoaded && projects.length === 0}
-        onClose={() => setIsNewPlanOpen(false)}
-        onOpenSettings={() => {
-          setIsNewPlanOpen(false);
-          uiStore.setActiveNav("settings");
-        }}
-      />
+          that instead of offering an empty picker. Mounted only while it applies,
+          so the lazy chunk is fetched at that moment and not before. */}
+      {isNewPlanOpen && projectsLoaded && projects.length === 0 && (
+        <React.Suspense fallback={null}>
+          <NoProjectsDialog
+            isOpen
+            onClose={() => setIsNewPlanOpen(false)}
+            onOpenSettings={() => {
+              setIsNewPlanOpen(false);
+              uiStore.setActiveNav("settings");
+            }}
+          />
+        </React.Suspense>
+      )}
 
       <NewPlanModal
         isOpen={isNewPlanOpen && !(projectsLoaded && projects.length === 0)}
