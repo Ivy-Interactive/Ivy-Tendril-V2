@@ -117,6 +117,7 @@ export interface ReviewActionConfig {
   name: string;
   condition: string;
   command: string;
+  paths?: string[];
 }
 
 export interface ProjectSummary {

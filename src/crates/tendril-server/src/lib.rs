@@ -3,6 +3,7 @@ pub mod master;
 pub mod pr_sync;
 pub mod routes;
 pub mod state;
+mod webviewer;
 
 pub use auth::*;
 pub use master::*;

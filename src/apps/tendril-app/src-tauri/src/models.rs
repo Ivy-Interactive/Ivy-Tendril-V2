@@ -540,3 +540,36 @@ pub struct PrSyncReportDto {
     #[serde(default)]
     pub changed: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelOptionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "DisplayName")]
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct EffortOptionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "DisplayName")]
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentOptionDto {
+    #[serde(alias = "Id")]
+    pub id: String,
+    #[serde(alias = "Label")]
+    pub label: String,
+    #[serde(default, alias = "Models")]
+    pub models: Vec<ModelOptionDto>,
+    #[serde(default, alias = "SupportsEffort")]
+    pub supports_effort: bool,
+    #[serde(default, alias = "Efforts")]
+    pub efforts: Vec<EffortOptionDto>,
+}

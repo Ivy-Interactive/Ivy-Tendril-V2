@@ -1,8 +1,8 @@
 use crate::error::BridgeError;
 use crate::models::{
-    ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, EnqueueItemDto, ExecuteTurnDto,
-    JobDetailDto, JobDto, ModelCatalogStatusDto, PlanDetailDto, PlanQueryDto, PlanSummaryDto,
-    PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
+    AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateSessionDto, EnqueueItemDto,
+    ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto, PlanDetailDto, PlanQueryDto,
+    PlanSummaryDto, PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
     ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
@@ -1388,6 +1388,50 @@ impl TendrilClient {
             ));
         }
         Ok(())
+    }
+
+    pub async fn update_queued_chat_item(
+        &self,
+        session_id: &str,
+        item_id: &str,
+        prompt: &str,
+    ) -> Result<ChatQueuedItemDto, BridgeError> {
+        let url = format!(
+            "{}/api/chat/sessions/{}/queue/{}",
+            self.base_url,
+            path_segment(session_id),
+            path_segment(item_id)
+        );
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&serde_json::json!({ "prompt": prompt }))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "UPDATE_QUEUED_CHAT_ITEM_FAILED",
+                format!("Failed to update queued chat item ({status}): {text}"),
+            ));
+        }
+        Ok(resp.json().await?)
+    }
+
+    pub async fn list_agents(&self) -> Result<Vec<AgentOptionDto>, BridgeError> {
+        let url = format!("{}/api/agents", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_AGENTS_FAILED",
+                format!("Failed to list agents ({status}): {text}"),
+            ));
+        }
+        Ok(resp.json().await?)
     }
 }
 
