@@ -7,6 +7,13 @@ export interface DashboardKpiDto {
   value: string;
   delta?: string | null;
   direction?: "up" | "down" | null;
+  /**
+   * Stable identifier passed as the sole argument to `OnSelectKpi`. A KPI without one is not
+   * clickable, which is what keeps a purely informational tile from opening an empty drill-down.
+   */
+  id?: string;
+  /** Secondary line under the value — typically the basis a figure was computed from. */
+  hint?: string;
 }
 
 export interface DashboardMonthValueDto {
