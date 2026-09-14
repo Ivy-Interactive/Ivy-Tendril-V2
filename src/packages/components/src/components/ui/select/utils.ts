@@ -1,5 +1,49 @@
 import { defaultFilter } from "cmdk";
 
+export type SearchMode = "CaseInsensitive" | "CaseSensitive" | "Fuzzy";
+
+/** Filters options by search query supporting CaseInsensitive, CaseSensitive, and Fuzzy modes. */
+export function filterOptionsBySearch<T extends { label?: string; value?: string | number }>(
+  options: T[],
+  search: string,
+  mode: SearchMode = "CaseInsensitive",
+): T[] {
+  if (!search || search.trim() === "") {
+    return options;
+  }
+
+  if (mode === "CaseSensitive") {
+    return options.filter((option) => {
+      const label = option.label ?? "";
+      return label.includes(search);
+    });
+  }
+
+  const query = search.toLowerCase();
+
+  if (mode === "CaseInsensitive") {
+    return options.filter((option) => {
+      const label = (option.label ?? "").toLowerCase();
+      return label.includes(query);
+    });
+  }
+
+  if (mode === "Fuzzy") {
+    return options.filter((option) => {
+      const label = (option.label ?? "").toLowerCase();
+      let i = 0;
+      let j = 0;
+      while (i < query.length && j < label.length) {
+        if (query[i] === label[j]) i++;
+        j++;
+      }
+      return i === query.length;
+    });
+  }
+
+  return options;
+}
+
 /** Options that can be included in bulk select; matches cmdk's default filter when `search` is non-empty. */
 export function filterOptionsLikeCmdk<T extends { label: string; value: string | number }>(
   options: T[],
