@@ -180,6 +180,37 @@ fn cache_file_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("cache").join("models_cache.json")
 }
 
+/// Facts about the on-disk models.dev cache, for status reporting. `None` timestamps
+/// mean no fetch time could be determined (static fallback is in use, or a legacy
+/// cache file with no recorded fetch time).
+pub struct CacheStatus {
+    pub path: PathBuf,
+    pub exists: bool,
+    pub cached_at: Option<DateTime<Utc>>,
+    pub cached_model_count: usize,
+}
+
+/// Reports facts about the on-disk models.dev cache without erroring on a missing or
+/// unparseable cache file — those are reported as `exists: false` / count `0` instead.
+pub fn cache_status(tendril_home: &Path) -> CacheStatus {
+    let path = cache_file_path(tendril_home);
+    let exists = path.exists();
+    let catalog = load_disk_cache(tendril_home).unwrap_or_default();
+    let cached_at = catalog.fetched_at.or_else(|| {
+        std::fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .map(DateTime::<Utc>::from)
+    });
+
+    CacheStatus {
+        path,
+        exists,
+        cached_at,
+        cached_model_count: catalog.specs.len(),
+    }
+}
+
 /// Reads and deserializes the cached specs on startup without any network access.
 /// Returns an empty `CachedCatalog` (not an error) when no cache file exists yet.
 ///

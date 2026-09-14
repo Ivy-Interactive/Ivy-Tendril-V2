@@ -213,6 +213,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/costs/series", get(costs::get_costs_series))
         // Models
         .route("/api/models", get(models::list_models))
+        .route("/api/models/status", get(models::models_status))
         .route("/api/models/refresh", post(models::refresh_models))
         // Chat
         .route(

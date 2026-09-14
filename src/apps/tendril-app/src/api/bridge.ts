@@ -3,6 +3,7 @@ import type {
   GitHubIssuesPage,
   Job,
   JobDetail,
+  ModelCatalogStatus,
   PlanDetail,
   PlanQuery,
   PlanSummary,
@@ -216,6 +217,14 @@ export const bridge = {
 
   async getConfig(this: void): Promise<TendrilConfig> {
     return invoke<TendrilConfig>("cmd_get_config");
+  },
+
+  async getModelsStatus(this: void): Promise<ModelCatalogStatus> {
+    return invoke<ModelCatalogStatus>("cmd_get_models_status");
+  },
+
+  async refreshModels(this: void): Promise<ModelCatalogStatus> {
+    return invoke<ModelCatalogStatus>("cmd_refresh_models");
   },
 
   async saveUiState(this: void, key: string, value: string): Promise<void> {
