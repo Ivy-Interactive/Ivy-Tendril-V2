@@ -455,6 +455,8 @@ Get the run-set via `tendril plan verification list <plan-id> --json` — it emi
 
 **IMPORTANT — delegated invocation syntax:** The `tendril promptware run` CLI takes the plan folder as a **positional argument** (NOT a named flag like `--plan-folder`). You MUST also pass `--value` flags for each required firmware value. The exact command is in the verification's prompt (fetched via `tendril verification get <Name>`) — copy it character-for-character, only replacing angle-bracketed placeholders with actual paths. If the command is wrong, the child promptware receives no arguments and silently fails.
 
+**Run every verification synchronously.** Never spawn a verification as a background task and poll it. A turn that ends while a background task is still running fails the job outright, and a polled verification can be recorded `Pass` while its tests are still running. If a verification does not fit one tool call, narrow its scope per the plan's **Tests** section — do not background it.
+
 For each `Pending` verification (in listed order):
 
 1. Send a status message: `tendril job status TendrilJobId --message="Verifying: <Name>"`
