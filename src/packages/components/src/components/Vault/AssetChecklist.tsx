@@ -39,7 +39,7 @@ export const AssetChecklist: React.FC<AssetChecklistProps> = ({
   const toggle = (name: string, checked: boolean) => {
     onChange(
       checked
-        ? [...items.filter((item) => item === name || selectedSet.has(item))]
+        ? items.filter((item) => item === name || selectedSet.has(item))
         : selected.filter((item) => item !== name),
     );
   };

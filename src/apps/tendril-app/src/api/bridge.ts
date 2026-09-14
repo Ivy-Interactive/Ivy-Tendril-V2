@@ -52,10 +52,12 @@ async function invokeOrFetch<T>(
     // Fall back to direct fetch if Tauri invoke is not available
   }
 
-  const res = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  /* `Headers` rather than an object spread: `HeadersInit` also allows an array of pairs, and
+     spreading one of those would turn it into numeric keys. */
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+  const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
     /* A failed vault result answers 500 carrying the message the dialogs show, so it is a value
        rather than an error — see `vault_request` in src-tauri. */
