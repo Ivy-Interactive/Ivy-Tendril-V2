@@ -10,7 +10,10 @@ import { describeBridgeError, type ProjectSummary } from "./types/api";
 import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
 import { NewPlanModal } from "./views/NewPlanModal";
-import { NoProjectsDialog } from "./views/dialogs";
+// Deliberately the module, not the `./views/dialogs` barrel: every view below is
+// lazy, so a barrel import here would pull all fourteen dialogs — including the
+// ones only PlanDetailView and ReviewView open — into the eager entry chunk.
+import { NoProjectsDialog } from "./views/dialogs/NoProjectsDialog";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 
 const DashboardView = React.lazy(() =>
