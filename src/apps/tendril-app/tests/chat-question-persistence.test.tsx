@@ -7,6 +7,7 @@ import { chatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
 import { isWriteInAnswer } from "../src/utils/questionMarkdown";
 import type { ChatSession, ChatMessage } from "../src/types/chat";
+import { QuestionsCallout } from "@ivy-interactive/components/tendril";
 
 if (!window.HTMLElement.prototype.scrollTo) {
   window.HTMLElement.prototype.scrollTo = vi.fn();
@@ -453,5 +454,420 @@ questions:
     // When pending debounce was active, backspacing to empty is debounced
     expect(isWriteInAnswer(contentWithOptions, "q-db", "", true)).toBe(true);
     expect(isWriteInAnswer(contentWithOptions, "q-db", [], true)).toBe(true);
+  });
+});
+
+describe("Optimistic Question Answer State and Streaming Block Interactivity", () => {
+  beforeEach(() => {
+    chatStore.resetForTesting();
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  const questionMessage: ChatMessage = {
+    id: "msg-opt-1",
+    role: "assistant",
+    content: `Here is a question:
+
+\`\`\`questions
+questions:
+  - id: db-flavor
+    title: Which database should we use?
+    other: true
+    options:
+      - title: SQLite
+        value: sqlite
+      - title: Postgres
+        value: postgres
+\`\`\``,
+    timestamp: "2026-09-14T10:00:00Z",
+  };
+
+  it("optimistic answer display reflects selected state immediately upon option selection while answerQuestions API call is pending", async () => {
+    let resolveApi!: (val: ChatSession) => void;
+    const pendingPromise = new Promise<ChatSession>((resolve) => {
+      resolveApi = resolve;
+    });
+    vi.spyOn(chatApi, "answerQuestions").mockReturnValue(pendingPromise);
+
+    const session: ChatSession = {
+      id: "session-opt-1",
+      title: "Optimistic Session",
+      createdAt: "2026-09-14T10:00:00Z",
+      updatedAt: "2026-09-14T10:00:00Z",
+      spawnedJobIds: [],
+      messages: [questionMessage],
+    };
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([session]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(session);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    await chatStore.init();
+
+    render(
+      <ChatMessageRow
+        message={questionMessage}
+        isCopied={false}
+        onCopy={vi.fn()}
+        onCreatePlan={vi.fn()}
+      />,
+    );
+
+    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
+
+    // Click option
+    act(() => {
+      fireEvent.click(selectBtn);
+    });
+
+    // Content immediately reflects answer while answerQuestions is in flight
+    const contentEl = screen.getByTestId("plan-markdown-content-chat-msg-msg-opt-1");
+    expect(contentEl.textContent).toContain('answer: "sqlite"');
+
+    // Clean up
+    resolveApi({
+      ...session,
+      messages: [
+        {
+          ...questionMessage,
+          content: questionMessage.content.replace(
+            "title: Which database should we use?",
+            'title: Which database should we use?\n    answer: "sqlite"',
+          ),
+        },
+      ],
+    });
+  });
+
+  it("submitting indicator is active while submitAnswer is in flight and clears once confirmed", async () => {
+    let resolveApi!: (val: ChatSession) => void;
+    const pendingPromise = new Promise<ChatSession>((resolve) => {
+      resolveApi = resolve;
+    });
+    vi.spyOn(chatApi, "answerQuestions").mockReturnValue(pendingPromise);
+
+    const session: ChatSession = {
+      id: "session-opt-2",
+      title: "Submitting Indicator Session",
+      createdAt: "2026-09-14T10:00:00Z",
+      updatedAt: "2026-09-14T10:00:00Z",
+      spawnedJobIds: [],
+      messages: [questionMessage],
+    };
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([session]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(session);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    await chatStore.init();
+
+    render(
+      <ChatMessageRow
+        message={questionMessage}
+        isCopied={false}
+        onCopy={vi.fn()}
+        onCreatePlan={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("submitting-answer-indicator")).not.toBeInTheDocument();
+
+    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
+    act(() => {
+      fireEvent.click(selectBtn);
+    });
+
+    // Indicator is active while in flight
+    expect(screen.getByTestId("submitting-answer-indicator")).toBeInTheDocument();
+    expect(screen.getByTestId("submitting-answer-indicator").textContent).toContain(
+      "Submitting answer...",
+    );
+    expect(chatStore.isSubmittingAnswer("msg-opt-1", "db-flavor")).toBe(true);
+
+    // Resolve API
+    await act(async () => {
+      resolveApi({
+        ...session,
+        messages: [
+          {
+            ...questionMessage,
+            content: questionMessage.content.replace(
+              "title: Which database should we use?",
+              'title: Which database should we use?\n    answer: "sqlite"',
+            ),
+          },
+        ],
+      });
+    });
+
+    // Submitting indicator clears once confirmed
+    await waitFor(() => {
+      expect(screen.queryByTestId("submitting-answer-indicator")).not.toBeInTheDocument();
+      expect(chatStore.isSubmittingAnswer("msg-opt-1", "db-flavor")).toBe(false);
+    });
+  });
+
+  it("question block does not flicker or revert to unanswered during the submission-to-turn transition when API resolves or chat.question_answered event fires", async () => {
+    let resolveApi!: (val: ChatSession) => void;
+    const pendingPromise = new Promise<ChatSession>((resolve) => {
+      resolveApi = resolve;
+    });
+    vi.spyOn(chatApi, "answerQuestions").mockReturnValue(pendingPromise);
+
+    const session: ChatSession = {
+      id: "session-opt-3",
+      title: "No Flicker Session",
+      createdAt: "2026-09-14T10:00:00Z",
+      updatedAt: "2026-09-14T10:00:00Z",
+      spawnedJobIds: [],
+      messages: [questionMessage],
+    };
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([session]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(session);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    await chatStore.init();
+
+    render(
+      <ChatMessageRow
+        message={questionMessage}
+        isCopied={false}
+        onCopy={vi.fn()}
+        onCreatePlan={vi.fn()}
+      />,
+    );
+
+    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
+    act(() => {
+      fireEvent.click(selectBtn);
+    });
+
+    const contentEl = screen.getByTestId("plan-markdown-content-chat-msg-msg-opt-1");
+    expect(contentEl.textContent).toContain('answer: "sqlite"');
+
+    // Simulate chat.question_answered event firing before/during API transition
+    act(() => {
+      chatStore.handleChatEvent({
+        type: "chat.question_answered",
+        sessionId: session.id,
+        messageId: "msg-opt-1",
+        answers: { "db-flavor": ["sqlite"] },
+      });
+    });
+
+    // Content stays answered, zero flicker or reversion to unanswered
+    expect(screen.getByTestId("plan-markdown-content-chat-msg-msg-opt-1").textContent).toContain(
+      'answer: "sqlite"',
+    );
+
+    const confirmedSession: ChatSession = {
+      ...session,
+      messages: [
+        {
+          ...questionMessage,
+          content: questionMessage.content.replace(
+            "title: Which database should we use?",
+            'title: Which database should we use?\n    answer: "sqlite"',
+          ),
+        },
+      ],
+    };
+
+    await act(async () => {
+      resolveApi(confirmedSession);
+    });
+
+    expect(screen.getByTestId("plan-markdown-content-chat-msg-msg-opt-1").textContent).toContain(
+      'answer: "sqlite"',
+    );
+  });
+
+  it("streaming interactivity allows selecting an option and submitting a question block in an assistant message while chat.stream_delta events are actively arriving, without dropping subsequent stream deltas", async () => {
+    let resolveApi!: (val: ChatSession) => void;
+    const pendingPromise = new Promise<ChatSession>((resolve) => {
+      resolveApi = resolve;
+    });
+    vi.spyOn(chatApi, "answerQuestions").mockReturnValue(pendingPromise);
+
+    const streamingMsg: ChatMessage = {
+      id: "msg-stream-1",
+      role: "assistant",
+      content: `Here is a decision to make:
+
+\`\`\`questions
+questions:
+  - id: db-flavor
+    title: Which database should we use?
+    options:
+      - title: SQLite
+        value: sqlite
+      - title: Postgres
+        value: postgres
+\`\`\`
+`,
+      timestamp: "2026-09-14T10:00:00Z",
+    };
+
+    const session: ChatSession = {
+      id: "session-stream-1",
+      title: "Streaming Session",
+      createdAt: "2026-09-14T10:00:00Z",
+      updatedAt: "2026-09-14T10:00:00Z",
+      spawnedJobIds: [],
+      messages: [streamingMsg],
+    };
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([session]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(session);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    await chatStore.init();
+
+    // Mark as generating
+    chatStore.handleChatEvent({
+      type: "chat.generating_state",
+      sessionId: session.id,
+      isGenerating: true,
+    });
+
+    // Start submission of question answer while streaming is active
+    const submitPromise = chatStore.submitAnswer("msg-stream-1", "db-flavor", ["sqlite"]);
+
+    // Stream deltas arrive while answer is in flight
+    act(() => {
+      chatStore.handleChatEvent({
+        type: "chat.stream_delta",
+        sessionId: session.id,
+        messageId: "msg-stream-1",
+        delta: "\nNow beginning migration step 1...\n",
+      });
+      chatStore.handleChatEvent({
+        type: "chat.stream_delta",
+        sessionId: session.id,
+        messageId: "msg-stream-1",
+        delta: "Step 2: Table creation completed successfully.\n",
+      });
+    });
+
+    // Server responds with confirmed answered question block
+    const serverSession: ChatSession = {
+      ...session,
+      messages: [
+        {
+          id: "msg-stream-1",
+          role: "assistant",
+          content: streamingMsg.content.replace(
+            "title: Which database should we use?",
+            'title: Which database should we use?\n    answer: "sqlite"',
+          ),
+          timestamp: "2026-09-14T10:00:01Z",
+        },
+      ],
+    };
+
+    await act(async () => {
+      resolveApi(serverSession);
+      await submitPromise;
+    });
+
+    const activeMessages = chatStore.getState().activeSession?.messages ?? [];
+    const activeMsg = activeMessages.find((m) => m.id === "msg-stream-1");
+    expect(activeMsg).toBeDefined();
+
+    // Confirmed answer is present
+    expect(activeMsg!.content).toContain('answer: "sqlite"');
+
+    // And subsequent stream deltas that arrived while in flight are completely preserved!
+    expect(activeMsg!.content).toContain("Now beginning migration step 1...");
+    expect(activeMsg!.content).toContain("Step 2: Table creation completed successfully.");
+  });
+
+  it("typing in Other text is not wiped or reset by incoming stream deltas", () => {
+    const onAnswer = vi.fn();
+    const questionsBody = `questions:
+  - id: custom-feedback
+    title: Any feedback?
+    other: true
+    options:
+      - title: Looks good
+        value: looks-good`;
+
+    const { container, rerender } = render(
+      <QuestionsCallout content={questionsBody} onAnswer={onAnswer} />,
+    );
+
+    const otherRadio = container.querySelector(
+      ".pmv-question-other-label input",
+    ) as HTMLInputElement;
+    fireEvent.click(otherRadio);
+
+    const input = container.querySelector("input.pmv-question-other-input") as HTMLInputElement;
+    expect(input).toBeInTheDocument();
+
+    // User focuses the other input and types in-progress draft text
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "My custom write-in draft" } });
+    expect(input.value).toBe("My custom write-in draft");
+
+    // Incoming stream deltas modify the content prop of QuestionsCallout
+    rerender(
+      <QuestionsCallout
+        content={questionsBody + "\n# Streaming delta token token"}
+        onAnswer={onAnswer}
+      />,
+    );
+
+    // Active input text must NOT be wiped or reset
+    expect(input.value).toBe("My custom write-in draft");
+  });
+
+  it("answer selections and in-progress drafts persist across window resize events and component unmount/remount", () => {
+    vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
+
+    const { unmount } = render(
+      <ChatMessageRow
+        message={questionMessage}
+        isCopied={false}
+        onCopy={vi.fn()}
+        onCreatePlan={vi.fn()}
+      />,
+    );
+
+    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
+    act(() => {
+      fireEvent.click(selectBtn);
+    });
+
+    // Selection recorded in store
+    expect(chatStore.getInProgressAnswers("msg-opt-1")).toEqual({
+      "db-flavor": ["sqlite"],
+    });
+
+    // Window resize event occurs
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    // Selection persists in UI
+    expect(screen.getByTestId("plan-markdown-content-chat-msg-msg-opt-1").textContent).toContain(
+      'answer: "sqlite"',
+    );
+
+    // Unmount
+    unmount();
+
+    // Remount
+    render(
+      <ChatMessageRow
+        message={questionMessage}
+        isCopied={false}
+        onCopy={vi.fn()}
+        onCreatePlan={vi.fn()}
+      />,
+    );
+
+    // Remounted row immediately shows the in-progress answer
+    expect(screen.getByTestId("plan-markdown-content-chat-msg-msg-opt-1").textContent).toContain(
+      'answer: "sqlite"',
+    );
   });
 });
