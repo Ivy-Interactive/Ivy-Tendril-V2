@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod fs_lock;
 pub mod git;
+pub mod http;
 pub mod jobs;
 pub mod mcp;
 pub mod models;
