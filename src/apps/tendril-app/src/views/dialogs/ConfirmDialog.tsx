@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Button } from "@ivy-interactive/components/ui";
 import { DialogShell } from "./DialogShell";
+import { ALERT_CLASS } from "./fieldStyles";
 
 export type ConfirmVariant = "destructive" | "warning" | "primary";
 
@@ -91,10 +92,7 @@ export function ConfirmDialog({
       </div>
       {children}
       {error && (
-        <div
-          role="alert"
-          className="mt-4 rounded-box border border-destructive/50 bg-destructive/10 p-3 text-sm text-foreground"
-        >
+        <div role="alert" className={ALERT_CLASS}>
           {error}
         </div>
       )}
