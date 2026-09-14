@@ -1,4 +1,5 @@
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
+use crate::agents::reconcile::build_missing_result_lines;
 use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
@@ -1644,6 +1645,26 @@ fn spawn_runner(
 
         finished.store(true, Ordering::SeqCst);
         job.process_id = Some(pid.load(Ordering::SeqCst)).filter(|p| *p != 0);
+
+        // A tool_call that never received a tool_result leaves its card spinning forever in
+        // AgentViewer, since that's fed straight from this eventwire log. Close any out before
+        // classifying the outcome, using the same reason text the chat path uses.
+        let synthetic_output = match &run_res {
+            Ok(outcome) => match outcome.terminated {
+                TerminationReason::Cancelled => "[Cancelled]",
+                TerminationReason::TimedOut => "[Timed out]",
+                TerminationReason::Exited | TerminationReason::PostResultGraceExceeded => {
+                    "[No output received]"
+                }
+            },
+            Err(_) => "[No output received]",
+        };
+        if let Ok(Some(ev_lines)) = read_eventwire_log(&tendril_home, &job_id, None) {
+            for line in build_missing_result_lines(&ev_lines, synthetic_output, true) {
+                let _ = append_to_eventwire(&tendril_home, &job_id, &line);
+            }
+        }
+
         let duration = start_time.elapsed().as_secs() as i64;
         let (final_status, msg) = classify_outcome(
             run_res,
