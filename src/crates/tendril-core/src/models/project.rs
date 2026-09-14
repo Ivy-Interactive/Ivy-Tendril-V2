@@ -40,7 +40,7 @@ pub struct LevelConfig {
     pub badge: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProjectConfig {
     pub name: String,
     #[serde(default)]
