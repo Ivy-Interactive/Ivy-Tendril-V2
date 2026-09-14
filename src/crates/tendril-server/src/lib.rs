@@ -68,9 +68,15 @@ pub async fn run_server(
 
     spawn_worktree_reaper(tendril_home.clone());
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // `into_make_service_with_connect_info` is what makes the socket peer address available to
+    // `POST /api/auth/login`, which keys its rate limiter on it. Without it every login would share
+    // one key, so one client's failures would back off everybody else.
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
 }

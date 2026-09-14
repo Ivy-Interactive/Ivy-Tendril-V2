@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod auth;
 pub mod chat;
 pub mod config;
 pub mod costs;
@@ -260,12 +261,30 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             crate::auth::auth_middleware,
+        ))
+        // Outside `auth_middleware`, so a configured `api.apiKey` is checked *before* it and a request
+        // must clear both — the same order as `ApiKeyAuthMiddleware` ahead of session auth in the
+        // original. A no-op when no key is configured.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::api_key_middleware,
+        ));
+
+    // Password login: no bearer credential (that is what it issues), but a configured `api.apiKey`
+    // still applies, since it applies to every `/api` path in the original.
+    let password_auth = Router::new()
+        .route("/api/auth/login", post(auth::login_handler))
+        .route("/api/auth/status", get(auth::status_handler))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::api_key_middleware,
         ));
 
     Router::new()
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
+        .merge(password_auth)
         // WebViewer proxy. Outside /api and outside auth_middleware on purpose: an <iframe src>
         // navigation carries no Authorization header, and neither do the subresource requests the
         // service worker reissues from inside the proxied page. A loopback-only target allow-list is
