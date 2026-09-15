@@ -25,9 +25,10 @@ use crate::models::{
 };
 use crate::plans::{
     add_recommendation, check_plan_health, create_plan, get_revision, list_plan_verifications,
-    list_recommendations, read_plan_file, read_plan_yaml, remove_recommendation,
-    resolve_plan_folder, set_plan_verification_status, set_recommendation_state, write_plan_yaml,
-    write_revision, CreatePlanOptions, PlanCompletionGuard,
+    list_recommendations, read_plan_file, read_plan_yaml, remove_plan_verification,
+    remove_recommendation, resolve_plan_folder, set_plan_verification_status,
+    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
+    PlanCompletionGuard,
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Map, Value};
@@ -177,6 +178,7 @@ impl McpDispatcher {
             "tendril_plan_write_revision" => self.plan_write_revision(args),
             "tendril_plan_set" => self.plan_set(args),
             "tendril_plan_set_verification" => self.plan_set_verification(args),
+            "tendril_plan_verification_remove" => self.verification_remove(args),
             "tendril_plan_add_repo"
             | "tendril_plan_remove_repo"
             | "tendril_plan_add_pr"
@@ -517,6 +519,24 @@ impl McpDispatcher {
         })))
     }
 
+    fn verification_remove(&self, args: &Value) -> Exec {
+        let (folder, plan) = self.open_for_write(args, None)?;
+        let name = required_str(args, "name")?;
+        remove_plan_verification(&folder, name).map_err(|e| {
+            let current = plan
+                .verifications
+                .iter()
+                .map(|v| v.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}. Current verifications: {}", e, current)
+        })?;
+        self.sync(&folder);
+        Ok(ToolOutcome::structured(
+            json!({ "name": name, "state": "Removed" }),
+        ))
+    }
+
     /// The list-valued plan edits: repos, PRs, commits, related plans and dependencies.
     fn plan_list_edit(&self, tool: &str, args: &Value) -> Exec {
         let (folder, mut plan) = self.open_for_write(args, None)?;
@@ -640,10 +660,19 @@ impl McpDispatcher {
             no_delete_branch: bool_arg(args, "no_delete_branch"),
             no_artifacts: bool_arg(args, "no_artifacts"),
             draft: bool_arg(args, "draft"),
+            idempotency_key: str_arg(args, "idempotency_key").map(|s| s.to_string()),
         };
 
         let job_args = build_job_args(&request, &self.plans_dir)?;
-        let body = serde_json::to_value(&job_args).map_err(|e| e.to_string())?;
+        let mut body = serde_json::to_value(&job_args).map_err(|e| e.to_string())?;
+        // The key is not part of `JobArgs`, so it is inserted alongside the flattened args — the same
+        // shape the CLI posts. Only reached for a keyed submission, so the unkeyed path is untouched.
+        if let Some(key) = &request.idempotency_key {
+            let map = body
+                .as_object_mut()
+                .ok_or("Job args did not serialize to an object")?;
+            map.insert("idempotencyKey".to_string(), json!(key));
+        }
         let response = self.post("/api/jobs", &body).await?;
         Ok(ToolOutcome::structured(response))
     }
@@ -861,6 +890,10 @@ pub struct JobStartRequest {
     pub no_delete_branch: bool,
     pub no_artifacts: bool,
     pub draft: bool,
+    /// Client-supplied identity of this submission. Not part of any job type's args, so
+    /// [`build_job_args`] ignores it — the caller puts it on the request body alongside the flattened
+    /// `JobArgs`, the same way `waitForJobs` and `priority` ride along.
+    pub idempotency_key: Option<String>,
 }
 
 /// Builds the `JobArgs` for a job start request. The CLI and the MCP dispatcher both call this, so

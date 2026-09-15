@@ -300,3 +300,75 @@ async fn plan_set_refuses_a_field_that_is_not_settable() {
         .expect_err("an out-of-enum field is invalid params");
     assert!(matches!(error, ToolCallError::InvalidParams(_)));
 }
+
+/// `tendril_plan_verification_add` is deliberately not ported (see the catalog's header comment);
+/// `_remove` has no such problem and must be present.
+#[test]
+fn mcp_tool_list_contains_verification_remove() {
+    let tools = get_mcp_tool_definitions();
+    assert!(
+        tools
+            .iter()
+            .any(|t| t.name == "tendril_plan_verification_remove"),
+        "tendril_plan_verification_remove is missing from the catalog"
+    );
+    assert!(
+        !tools
+            .iter()
+            .any(|t| t.name == "tendril_plan_verification_add"),
+        "tendril_plan_verification_add is deliberately excluded"
+    );
+}
+
+/// A hardcoded count so an accidental extra (or missing) tool is caught here, not just noticed as a
+/// diff in review.
+#[test]
+fn mcp_tool_count_increments_by_one() {
+    assert_eq!(
+        get_mcp_tool_definitions().len(),
+        32,
+        "the catalog gained exactly one tool (tendril_plan_verification_remove) over the prior 31"
+    );
+}
+
+#[tokio::test]
+async fn mcp_verification_remove_deletes_and_matches_cli_error() {
+    let fixture = fixture_with_plan("mcp-verification-remove", PlanStatus::Draft);
+    let dispatcher = dispatcher(&fixture);
+    let folder = fixture.plans_dir().join(PLAN_FOLDER);
+
+    let outcome = dispatcher
+        .call(
+            "tendril_plan_verification_remove",
+            &json!({ "plan_id": "00042", "name": "RustBuild" }),
+        )
+        .await
+        .expect("known tool, valid params");
+    assert!(!outcome.is_error, "unexpected error: {}", outcome.text);
+
+    let (plan, _) = tendril_core::plans::read_plan_yaml(&folder).expect("read plan.yaml");
+    assert!(
+        !plan.verifications.iter().any(|v| v.name == "RustBuild"),
+        "RustBuild should have been removed"
+    );
+
+    // Removing it again hits the same "not found" path the CLI handler wraps in
+    // `commands/plan.rs`'s `PlanVerificationCommands::Remove` arm — same core error, same
+    // "Current verifications: ..." suffix built from the same list.
+    let core_error = tendril_core::plans::remove_plan_verification(&folder, "RustBuild")
+        .expect_err("already removed");
+    let expected_cli_style_message = format!("{}. Current verifications: {}", core_error, "");
+
+    let outcome = dispatcher
+        .call(
+            "tendril_plan_verification_remove",
+            &json!({ "plan_id": "00042", "name": "RustBuild" }),
+        )
+        .await
+        .expect("a refused removal is a tool error, not a protocol error");
+    assert!(
+        outcome.is_error,
+        "removing a missing verification must fail"
+    );
+    assert_eq!(outcome.text, expected_cli_style_message);
+}

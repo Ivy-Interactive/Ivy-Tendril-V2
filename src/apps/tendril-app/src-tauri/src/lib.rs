@@ -109,6 +109,7 @@ pub fn run() {
             cmd_get_onboarding_status,
             cmd_complete_onboarding,
             cmd_dismiss_onboarding,
+            cmd_subscribe_newsletter,
             cmd_run_doctor,
             cmd_get_models_status,
             cmd_refresh_models,

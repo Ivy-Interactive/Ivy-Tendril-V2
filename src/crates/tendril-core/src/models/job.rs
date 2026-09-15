@@ -348,6 +348,13 @@ pub struct JobItem {
     /// is not deduplicated and for a forced submission, which opts out of dedupe entirely.
     #[serde(rename = "dedupeKey", skip_serializing_if = "Option::is_none")]
     pub dedupe_key: Option<String>,
+    /// Client-supplied identity of the *submission* that created this job, from
+    /// [`crate::jobs::manager::StartOptions::idempotency_key`]. Unlike `dedupe_key`, which the server
+    /// derives from the work, this one is the caller's own handle on its request: a second start
+    /// carrying a key already recorded here is answered with this job instead of a new one. Written
+    /// once, at insert.
+    #[serde(rename = "idempotencyKey", skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
 }
 
 fn default_provider() -> String {
@@ -393,6 +400,7 @@ impl JobItem {
             last_output_at: None,
             wait_for_job_ids: Vec::new(),
             dedupe_key: None,
+            idempotency_key: None,
         }
     }
 

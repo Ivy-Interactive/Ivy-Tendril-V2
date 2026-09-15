@@ -66,3 +66,22 @@ rustls = { version = "0.23", default-features = false, features = [
     "tls12",
     "logging",
 ] }
+toml = "0.9"
+
+# CI runs `cargo test --workspace` on a ubuntu-latest runner with ~14 GB of free disk, and a full
+# debug build of this workspace is ~14 GB on its own — debug info is the bulk of it. Without this,
+# rustc hits "IO failure on output stream: No space left on device" and the linker then dies with
+# `collect2: fatal error: ld terminated with signal 7 [Bus error]` (SIGBUS on its mmap'd output).
+# See https://github.com/Ivy-Interactive/Ivy-Tendril-V2/actions/runs/34857841035
+#
+# Assertion failures still report file:line — that comes from `panic!`'s compile-time location, not
+# from debug info. Only RUST_BACKTRACE line numbers are lost. To get them back locally:
+#   CARGO_PROFILE_DEV_DEBUG=2 cargo build --workspace
+#   CARGO_PROFILE_TEST_DEBUG=2 cargo test -p tendril-core
+[profile.dev]
+debug = 0
+strip = "debuginfo"
+
+[profile.test]
+debug = 0
+strip = "debuginfo"
