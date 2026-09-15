@@ -990,6 +990,7 @@ impl TendrilClient {
             .get("theme")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+        let desktop_notifications = val.get("desktopNotifications").and_then(|v| v.as_bool());
 
         Ok(TendrilConfigDto {
             coding_agent,
@@ -997,6 +998,7 @@ impl TendrilClient {
             max_concurrent_jobs,
             plan_template,
             theme,
+            desktop_notifications,
             raw: val,
         })
     }

@@ -143,6 +143,8 @@ export interface TendrilConfig {
   maxConcurrentJobs?: number;
   planTemplate?: string;
   theme?: string;
+  /** Absent means "on": the setting is only written to `config.yaml` once the operator toggles it. */
+  desktopNotifications?: boolean;
   inbox?: InboxConfig;
   raw?: Record<string, unknown>;
 }

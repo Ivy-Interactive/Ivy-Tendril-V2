@@ -27,6 +27,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // Job-exit notifications route to the OS through this plugin when `desktopNotifications` is
+        // on. The matching `notification:default` entry in `capabilities/default.json` is what makes
+        // it reachable from the webview: without it `sendNotification` is refused at runtime, and
+        // nothing about that shows up at build time.
+        .plugin(tauri_plugin_notification::init())
         .manage(ui_store)
         .setup(|app| {
             // Connect the WebSocket bridge, which re-emits daemon events to the frontend as

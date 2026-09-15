@@ -152,11 +152,13 @@ fn test_ivy_config_yaml_preserves_unknown_keys_on_app_mapping() {
             .get("theme")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
+        desktop_notifications: json_val.get("desktopNotifications").and_then(|v| v.as_bool()),
         raw: json_val.clone(),
     };
 
     assert_eq!(config_dto.coding_agent.as_deref(), Some("antigravity"));
     assert_eq!(config_dto.job_timeout, Some(120));
+    assert_eq!(config_dto.desktop_notifications, Some(true));
 
     // Assert that raw contains every ivy key so nothing is dropped on app write/roundtrip
     for key in ivy_keys {
@@ -165,4 +167,31 @@ fn test_ivy_config_yaml_preserves_unknown_keys_on_app_mapping() {
             "TendrilConfigDto.raw must preserve key '{key}'"
         );
     }
+}
+
+/// `desktopNotifications` is a tri-state on the wire: present and true, present and false, or absent.
+/// The DTO must keep absent distinct from false — the frontend store defaults an absent key to *on*,
+/// matching the legacy shell's `DesktopNotifications != false`, so collapsing the two here would
+/// silently switch notifications off for every config that has never been toggled.
+#[test]
+fn test_desktop_notifications_absent_is_distinct_from_false() {
+    let enabled: TendrilConfigDto =
+        serde_json::from_str(r#"{"desktopNotifications":true}"#).expect("deserialize enabled");
+    assert_eq!(enabled.desktop_notifications, Some(true));
+
+    let disabled: TendrilConfigDto =
+        serde_json::from_str(r#"{"desktopNotifications":false}"#).expect("deserialize disabled");
+    assert_eq!(disabled.desktop_notifications, Some(false));
+
+    let absent: TendrilConfigDto =
+        serde_json::from_str(r#"{"theme":"dark"}"#).expect("deserialize absent");
+    assert_eq!(absent.desktop_notifications, None);
+
+    // Absent stays absent on the way back out, so a GET/PUT round trip never writes the key the
+    // operator has not set.
+    let round_tripped = serde_json::to_string(&absent).expect("serialize absent");
+    assert!(
+        !round_tripped.contains("desktopNotifications"),
+        "an unset desktopNotifications must not be serialized, got {round_tripped}"
+    );
 }
