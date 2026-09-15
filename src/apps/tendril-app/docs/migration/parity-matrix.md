@@ -1,5 +1,10 @@
 # Ivy Tendril to SpaceCorps Migration Parity Matrix
 
+> **Editing this file:** the parity table is very wide, so the formatter re-pads every row when any
+> one cell changes. The file is exempt from `vp fmt` via `fmt.ignorePatterns` in
+> `src/apps/tendril-app/vite.config.ts`; if that exemption is ever removed, run
+> `pnpm exec vp check --fix docs/migration/parity-matrix.md` from `src/apps/tendril-app` after editing.
+
 This document provides the authoritative feature-by-feature parity matrix comparing the reference **Ivy Tendril** implementation with the **Tendril-Service** (Rust) and **Tendril-App** (Tauri + React) rewrite.
 
 Every feature row contains:
