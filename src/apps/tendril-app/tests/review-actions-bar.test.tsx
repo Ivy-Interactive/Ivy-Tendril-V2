@@ -133,7 +133,9 @@ describe("ReviewActionsBarView component", () => {
   });
 
   it("calls bridge.executeReviewAction when onExecuteAction is not provided", async () => {
-    const executeSpy = vi.spyOn(bridge, "executeReviewAction").mockResolvedValue({ status: "ok" });
+    const executeSpy = vi
+      .spyOn(bridge, "executeReviewAction")
+      .mockResolvedValue({ sessionId: "s1", encoding: "base64", rows: 24, cols: 80 });
 
     render(<ReviewActionsBarView project="MyProject" planId="00123" actions={actions} />);
 
@@ -186,7 +188,9 @@ describe("ReviewView integration with ReviewActionsBarView", () => {
         command: "vp dev",
       },
     ]);
-    const executeSpy = vi.spyOn(bridge, "executeReviewAction").mockResolvedValue({ status: "ok" });
+    const executeSpy = vi
+      .spyOn(bridge, "executeReviewAction")
+      .mockResolvedValue({ sessionId: "s1", encoding: "base64", rows: 24, cols: 80 });
 
     render(<ReviewView plans={[samplePlan]} onSelectPlan={() => {}} />);
 

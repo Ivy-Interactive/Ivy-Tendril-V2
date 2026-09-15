@@ -4,6 +4,7 @@ pub mod compatibility;
 pub mod master;
 pub mod plan_mapping;
 pub mod platform;
+pub mod review_action_bridge;
 pub mod supervisor;
 pub mod ws_bridge;
 

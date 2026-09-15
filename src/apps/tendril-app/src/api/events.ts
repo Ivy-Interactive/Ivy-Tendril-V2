@@ -94,37 +94,56 @@ export interface JobEventSubscriptionOptions {
   onError?: (err: unknown) => void;
 }
 
-export function subscribeJobEvents(
-  baseUrl: string,
-  jobId: string,
-  token: string | undefined,
-  options: JobEventSubscriptionOptions,
-): EventUnsubscribe {
+export interface SseSubscriptionOptions {
+  /** `POST` for a stream that starts something, which is what a review action's `/execute` is. */
+  method?: "GET" | "POST";
+  /** JSON request body, sent with `Content-Type: application/json`. */
+  body?: string;
+  token?: string;
+  /** Every frame except `end`, with the payload exactly as it arrived — undecoded and unparsed. */
+  onEvent: (event: string, data: string) => void;
+  /** The `end` frame's raw payload. The stream is closed immediately afterwards. */
+  onEnd?: (data: string) => void;
+  onError?: (err: unknown) => void;
+}
+
+/**
+ * Reads one SSE stream over `fetch`, calling back per frame.
+ *
+ * `EventSource` is not usable here: it cannot send an `Authorization` header and cannot `POST`, and
+ * both are required — the daemon's stream routes are bearer-authenticated, and starting a review
+ * action is a POST.
+ *
+ * Frames are reassembled across chunk boundaries, which can fall anywhere including mid-`data:`. The
+ * payload is handed over untouched: this function has no way to know whether a given stream's frames
+ * are JSON, text, or base64, and guessing would corrupt one of them.
+ */
+export function subscribeSse(url: string, options: SseSubscriptionOptions): EventUnsubscribe {
   const controller = new AbortController();
-  const trimmedBase = baseUrl.replace(/\/+$/, "");
-  const url = new URL(`${trimmedBase}/api/jobs/${encodeURIComponent(jobId)}/events`);
-  if (options.kinds && options.kinds.length > 0) {
-    url.searchParams.set("kinds", options.kinds.join(","));
-  }
 
   const headers: Record<string, string> = {
     Accept: "text/event-stream",
   };
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+  if (options.token) {
+    headers["Authorization"] = `Bearer ${options.token}`;
+  }
+  if (options.body !== undefined) {
+    headers["Content-Type"] = "application/json";
   }
 
   let active = true;
 
   void (async () => {
     try {
-      const response = await fetch(url.toString(), {
+      const response = await fetch(url, {
+        method: options.method ?? "GET",
         headers,
+        body: options.body,
         signal: controller.signal,
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to subscribe to job events: HTTP ${response.status}`);
+        throw new Error(`Failed to subscribe to ${url}: HTTP ${response.status}`);
       }
 
       const body = response.body;
@@ -145,29 +164,14 @@ export function subscribeJobEvents(
 
         if (line === "") {
           if (currentData.length > 0) {
+            // Per the SSE spec, multiple data lines in one frame join with newlines.
             const dataStr = currentData.join("\n");
             if (currentEvent === "end") {
-              let status = "Completed";
-              try {
-                const parsed = JSON.parse(dataStr);
-                if (parsed && typeof parsed === "object" && typeof parsed.status === "string") {
-                  status = parsed.status;
-                }
-              } catch {
-                if (dataStr) {
-                  status = dataStr;
-                }
-              }
-              options.onEnd?.(status);
+              options.onEnd?.(dataStr);
               active = false;
               controller.abort();
             } else {
-              try {
-                const parsed = JSON.parse(dataStr);
-                options.onEvent(parsed);
-              } catch {
-                options.onEvent({ text: dataStr, message: dataStr });
-              }
+              options.onEvent(currentEvent, dataStr);
             }
           }
           currentEvent = "";
@@ -182,6 +186,8 @@ export function subscribeJobEvents(
       while (active) {
         const { value, done } = await reader.read();
         if (done) {
+          // A stream that ended without its blank-line terminator still holds a frame worth
+          // delivering — including, for a short-lived process, its `end`.
           if (buffer.length > 0) {
             processLine(buffer);
             processLine("");
@@ -212,4 +218,167 @@ export function subscribeJobEvents(
     active = false;
     controller.abort();
   };
+}
+
+export function subscribeJobEvents(
+  baseUrl: string,
+  jobId: string,
+  token: string | undefined,
+  options: JobEventSubscriptionOptions,
+): EventUnsubscribe {
+  const trimmedBase = baseUrl.replace(/\/+$/, "");
+  const url = new URL(`${trimmedBase}/api/jobs/${encodeURIComponent(jobId)}/events`);
+  if (options.kinds && options.kinds.length > 0) {
+    url.searchParams.set("kinds", options.kinds.join(","));
+  }
+
+  return subscribeSse(url.toString(), {
+    token,
+    onEvent: (_event, data) => {
+      try {
+        options.onEvent(JSON.parse(data));
+      } catch {
+        // A frame that is not JSON is still worth showing; both fields are populated because
+        // consumers read one or the other.
+        options.onEvent({ text: data, message: data });
+      }
+    },
+    onEnd: (data) => {
+      let status = "Completed";
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed && typeof parsed === "object" && typeof parsed.status === "string") {
+          status = parsed.status;
+        }
+      } catch {
+        if (data) {
+          status = data;
+        }
+      }
+      options.onEnd?.(status);
+    },
+    onError: options.onError,
+  });
+}
+
+/** The `meta` frame: what a client needs before it can decode output or address the session. */
+export interface ReviewActionSession {
+  sessionId: string;
+  encoding: string;
+  rows: number;
+  cols: number;
+}
+
+export interface ReviewActionSubscriptionOptions {
+  planId?: string;
+  worktree?: string;
+  token?: string;
+  /** The session, once announced. Arrives before any output. */
+  onSession?: (session: ReviewActionSession) => void;
+  /** One chunk of raw terminal output, decoded from the frame's base64. */
+  onChunk: (bytes: Uint8Array) => void;
+  /** The process's exit message. */
+  onEnd?: (message: string) => void;
+  onError?: (err: unknown) => void;
+}
+
+/** Decodes a base64 `log` payload back into the bytes the pty produced. */
+export function decodeBase64(data: string): Uint8Array {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Starts a review action and streams its terminal output.
+ *
+ * Used when the app runs in a browser rather than under Tauri; the desktop app cannot read this
+ * stream from the webview (the route is bearer-authenticated with a native-only secret and the
+ * webview's origin is `tauri://`), so it goes through `review_action_bridge.rs` and
+ * [`onReviewActionEvent`] instead.
+ *
+ * A `log` frame carries base64 of the raw pty bytes, escapes and bare carriage returns included —
+ * splitting that into lines is what a terminal view exists not to do.
+ */
+export function subscribeReviewAction(
+  baseUrl: string,
+  projectName: string,
+  actionName: string,
+  options: ReviewActionSubscriptionOptions,
+): EventUnsubscribe {
+  const trimmedBase = baseUrl.replace(/\/+$/, "");
+  const url =
+    `${trimmedBase}/api/projects/${encodeURIComponent(projectName)}` +
+    `/review-actions/${encodeURIComponent(actionName)}/execute`;
+
+  return subscribeSse(url, {
+    method: "POST",
+    body: JSON.stringify({
+      planId: options.planId ?? null,
+      worktree: options.worktree ?? null,
+    }),
+    token: options.token,
+    onEvent: (event, data) => {
+      if (event === "meta") {
+        try {
+          options.onSession?.(JSON.parse(data) as ReviewActionSession);
+        } catch (err) {
+          options.onError?.(err);
+        }
+        return;
+      }
+      if (event === "log") {
+        try {
+          options.onChunk(decodeBase64(data));
+        } catch (err) {
+          options.onError?.(err);
+        }
+      }
+    },
+    onEnd: (data) => options.onEnd?.(data),
+    onError: options.onError,
+  });
+}
+
+/** One frame of a review action's stream, as re-emitted by `review_action_bridge.rs`. */
+export interface ReviewActionEvent {
+  sessionId: string;
+  /** `log` or `end`; `meta` is returned by the invoke rather than emitted. */
+  event: string;
+  data: string;
+}
+
+/**
+ * Review-action frames bridged from the daemon's `/execute` SSE stream by
+ * `service/review_action_bridge.rs`, for the same reason [`onChangeEvent`] exists.
+ *
+ * Subscribe before starting the action: output can arrive before the invoke that started it has
+ * returned the session id, so a listener registered afterwards misses the first frames.
+ */
+export async function onReviewActionEvent(
+  handler: (event: ReviewActionEvent) => void,
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<ReviewActionEvent>("review-action-event", (event) => {
+    handler(event.payload);
+  });
+  return () => unlisten();
+}
+
+/**
+ * Connection transitions of a review action's stream. Unlike the change stream this never
+ * reconnects — re-issuing the request would start a second process — so `disconnected` is terminal.
+ */
+export async function onReviewActionStreamStatus(
+  handler: (status: { sessionId: string; status: "connected" | "disconnected" }) => void,
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<{
+    sessionId: string;
+    status: "connected" | "disconnected";
+  }>("review-action-stream-status", (event) => {
+    handler(event.payload);
+  });
+  return () => unlisten();
 }

@@ -44,3 +44,13 @@ if (typeof window !== "undefined") {
     window.scroll = vi.fn();
   }
 }
+
+// jsdom has no canvas, and xterm.js measures text on one as soon as it is imported. Any test that
+// imports the components barrel therefore logs a "Not implemented: getContext" error, even without
+// rendering a Terminal. jsdom's own getContext returns null after complaining, so this changes
+// nothing but the noise.
+if (typeof HTMLCanvasElement !== "undefined") {
+  HTMLCanvasElement.prototype.getContext = vi.fn(
+    () => null,
+  ) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+}

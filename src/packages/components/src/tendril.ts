@@ -218,6 +218,11 @@ export type {
 export { WebViewer, Toolbar } from "./components/WebViewer/index.ts";
 export type { WebViewerProps, ToolbarProps, ToolbarAction } from "./components/WebViewer/index.ts";
 
+// Terminal Component. Sits next to the WebViewer because they are the two halves of reviewing a
+// running app: the terminal is what the app boots in, the viewer is what it is then previewed in.
+export { Terminal } from "./components/Terminal/index.ts";
+export type { TerminalProps, TerminalHandle } from "./components/Terminal/index.ts";
+
 // Plan Workspace Split-Pane Layout
 export { PlanWorkspace } from "./components/PlanWorkspace/index.ts";
 export type {
