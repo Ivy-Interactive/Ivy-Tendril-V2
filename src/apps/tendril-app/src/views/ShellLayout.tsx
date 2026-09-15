@@ -99,6 +99,11 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
       title = "Review";
       icon = "ThumbsUp";
       isClosable = false;
+    } else if (tabId === "review-action") {
+      // Closable, unlike the other named tabs: it holds one run, and closing it is how the reviewer
+      // says they are done watching.
+      title = "Review Action";
+      icon = "Terminal";
     } else if (tabId === "pull-requests") {
       title = "Pull Requests";
       icon = "GitPullRequest";
