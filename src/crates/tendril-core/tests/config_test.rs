@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 use tendril_core::config::{
-    delete_master, dirs_home, dirs_home_with_env, expand_variables, expand_variables_with_env,
-    find_projects_referencing_verification, get_config_path, get_config_path_with_env,
-    get_default_tendril_home, get_default_tendril_home_with_env, get_plans_dir,
-    get_plans_dir_with_env, get_plans_dir_with_settings, get_tendril_home,
-    get_tendril_home_with_env, load_config, normalize_slashes, read_master,
+    delete_master, dirs_home, dirs_home_with_env, ensure_home_directories, expand_variables,
+    expand_variables_with_env, find_projects_referencing_verification, get_config_path,
+    get_config_path_with_env, get_default_tendril_home, get_default_tendril_home_with_env,
+    get_hooks_dir, get_plans_dir, get_plans_dir_with_env, get_plans_dir_with_settings,
+    get_tendril_home, get_tendril_home_with_env, load_config, normalize_slashes, read_master,
     remove_verification_from_projects, save_config, write_master, EnvSource, SystemEnv,
     TendrilSettings,
 };
@@ -83,6 +83,54 @@ fn test_config_load_and_save() {
     assert_eq!(
         loaded.projects[0].repos[0].base_branch.as_deref(),
         Some("main")
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn promptware_overlay_config_round_trips() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-config-overlay-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+    let config_file = test_dir.join("config.yaml");
+
+    let settings = TendrilSettings {
+        promptware_overlay: Some("%TENDRIL_HOME%/Overlay".to_string()),
+        ..Default::default()
+    };
+    save_config(&config_file, &settings).expect("Failed to save config");
+
+    let raw = std::fs::read_to_string(&config_file).expect("read config");
+    assert!(
+        raw.contains("promptwareOverlay: '%TENDRIL_HOME%/Overlay'")
+            || raw.contains("promptwareOverlay: \"%TENDRIL_HOME%/Overlay\"")
+            || raw.contains("promptwareOverlay: %TENDRIL_HOME%/Overlay"),
+        "expected the key in {}",
+        raw
+    );
+
+    let loaded = load_config(&config_file).expect("Failed to load config");
+    assert_eq!(
+        loaded.promptware_overlay.as_deref(),
+        Some("%TENDRIL_HOME%/Overlay")
+    );
+    // Now modelled rather than swept into `extra`, so it must not appear twice.
+    assert!(!loaded.extra.contains_key("promptwareOverlay"));
+
+    // A config without the key still round-trips, and the key is omitted when unset.
+    let plain = TendrilSettings::default();
+    let plain_file = test_dir.join("plain.yaml");
+    save_config(&plain_file, &plain).expect("Failed to save plain config");
+    let plain_raw = std::fs::read_to_string(&plain_file).expect("read plain config");
+    assert!(!plain_raw.contains("promptwareOverlay"));
+    assert_eq!(
+        load_config(&plain_file)
+            .expect("Failed to load plain config")
+            .promptware_overlay,
+        None
     );
 
     let _ = std::fs::remove_dir_all(test_dir);
@@ -175,7 +223,7 @@ fn test_master_file_lifecycle() {
 
     assert!(read_master(&test_dir).is_none());
 
-    write_master(&test_dir, 49200, "secret-token-xyz", "127.0.0.1")
+    write_master(&test_dir, 49200, "secret-token-xyz", "127.0.0.1", "http")
         .expect("Failed to write master");
 
     let master_info = read_master(&test_dir).expect("Master info not found");
@@ -609,4 +657,204 @@ fn test_get_default_tendril_home_fallback_with_env() {
     }
 
     let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn daemon_request_timeout_round_trips_and_defaults() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-daemon-timeout-config-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+    let config_file = test_dir.join("config.yaml");
+
+    // A config written before this setting existed must load with the default, not with 0 — which
+    // would silently mean "no timeout" and restore the hang.
+    std::fs::write(&config_file, "codingAgent: claude\njobTimeout: 30\n").unwrap();
+    let legacy = load_config(&config_file).expect("Failed to load legacy config");
+    assert_eq!(legacy.daemon_request_timeout, 30);
+
+    let settings = TendrilSettings {
+        daemon_request_timeout: 12,
+        ..TendrilSettings::default()
+    };
+    save_config(&config_file, &settings).expect("Failed to save config");
+
+    let raw = std::fs::read_to_string(&config_file).unwrap();
+    assert!(
+        raw.contains("daemonRequestTimeout: 12"),
+        "the setting must serialize under its camelCase name: {}",
+        raw
+    );
+
+    let loaded = load_config(&config_file).expect("Failed to reload config");
+    assert_eq!(loaded.daemon_request_timeout, 12);
+    // If the rename and the field ever disagree, the value lands in the flattened `extra` map and
+    // the modeled field silently keeps its default. Assert it does not.
+    assert!(
+        !loaded.extra.contains_key("daemonRequestTimeout"),
+        "daemonRequestTimeout must be a modeled field, not an unknown passthrough key"
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn public_config_keys_advertise_only_real_settings() {
+    use tendril_core::mcp::dispatch::PUBLIC_CONFIG_KEYS;
+
+    assert!(
+        PUBLIC_CONFIG_KEYS.contains(&"daemonRequestTimeout"),
+        "the new setting must be readable through the MCP config tool"
+    );
+    // `chatTimeout` was advertised with no field behind it, so reading it always returned null.
+    assert!(
+        !PUBLIC_CONFIG_KEYS.contains(&"chatTimeout"),
+        "chatTimeout has no field behind it and must not be advertised"
+    );
+
+    // `planFolder` and `telemetry` are both `skip_serializing_if = "Option::is_none"`, so they only
+    // appear once populated; populate them rather than carve them out.
+    let settings = TendrilSettings {
+        plan_folder: Some("Plans".to_string()),
+        telemetry: Some(false),
+        ..TendrilSettings::default()
+    };
+    let serialized = serde_json::to_value(&settings).expect("settings must serialize");
+    let object = serialized.as_object().expect("settings serialize to a map");
+
+    // `themeMode` is a V1 desktop key with no Rust field: it round-trips through the flattened
+    // `extra` map (asserted by config_unknown_keys_test) and is deliberately still advertised.
+    const EXTRA_BACKED_KEYS: &[&str] = &["themeMode"];
+
+    for key in PUBLIC_CONFIG_KEYS {
+        if EXTRA_BACKED_KEYS.contains(key) {
+            continue;
+        }
+        assert!(
+            object.contains_key(*key),
+            "advertised config key '{}' does not resolve to a serialized field, so reading it \
+             would always return null",
+            key
+        );
+    }
+}
+fn write_config(body: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "tendril-inbox-cfg-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&dir).expect("Failed to create scratch config dir");
+    let path = dir.join("config.yaml");
+    std::fs::write(&path, body).expect("Failed to write scratch config");
+    path
+}
+
+#[test]
+fn inbox_defaults_are_off_and_fifteen_minutes() {
+    let settings = TendrilSettings::default();
+    assert!(
+        !settings.inbox.auto_accept_assigned_issues,
+        "Auto-accept must default to off: a swept issue turning straight into a plan is not \
+         something a user should get without asking for it"
+    );
+    assert_eq!(settings.inbox.check_interval_minutes, 15);
+}
+
+#[test]
+fn an_absent_inbox_section_loads_as_defaults() {
+    let path = write_config("codingAgent: claude\n");
+    let settings = load_config(&path).expect("A config without an inbox section must still load");
+
+    assert!(!settings.inbox.auto_accept_assigned_issues);
+    assert_eq!(settings.inbox.check_interval_minutes, 15);
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn inbox_reads_camel_case_keys() {
+    let path =
+        write_config("inbox:\n  autoAcceptAssignedIssues: true\n  checkIntervalMinutes: 5\n");
+    let settings = load_config(&path).expect("Config with an inbox section must load");
+
+    assert!(settings.inbox.auto_accept_assigned_issues);
+    assert_eq!(settings.inbox.check_interval_minutes, 5);
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn a_partial_inbox_section_keeps_the_default_for_the_missing_key() {
+    let path = write_config("inbox:\n  autoAcceptAssignedIssues: true\n");
+    let settings = load_config(&path).expect("A partial inbox section must load");
+
+    assert!(settings.inbox.auto_accept_assigned_issues);
+    assert_eq!(
+        settings.inbox.check_interval_minutes, 15,
+        "Setting one inbox key must not zero the other, which would silently disable the importer"
+    );
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn a_malformed_inbox_section_degrades_to_defaults_instead_of_failing_the_load() {
+    // A bad hand-edit to one section must not take Tendril down, the same rule `codingAgents`
+    // follows.
+    for body in [
+        "inbox: not-a-mapping\n",
+        "inbox: []\n",
+        "inbox:\n  checkIntervalMinutes: \"every so often\"\n",
+    ] {
+        let path = write_config(body);
+        let settings =
+            load_config(&path).unwrap_or_else(|e| panic!("Config {body:?} must still load: {e}"));
+
+        assert!(!settings.inbox.auto_accept_assigned_issues);
+        assert_eq!(settings.inbox.check_interval_minutes, 15);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+}
+
+#[test]
+fn an_inbox_section_survives_a_save_load_round_trip() {
+    let mut settings = TendrilSettings::default();
+    settings.inbox.auto_accept_assigned_issues = true;
+    settings.inbox.check_interval_minutes = 30;
+
+    let path = write_config("");
+    save_config(&path, &settings).expect("Saving settings with an inbox section must succeed");
+    let reloaded = load_config(&path).expect("Reloading saved settings must succeed");
+
+    assert!(reloaded.inbox.auto_accept_assigned_issues);
+    assert_eq!(reloaded.inbox.check_interval_minutes, 30);
+
+    let raw = std::fs::read_to_string(&path).expect("Saved config must be readable");
+    assert!(
+        raw.contains("autoAcceptAssignedIssues"),
+        "The section must be written in the camelCase the original app reads, got:\n{raw}"
+    );
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn test_ensure_home_directories_creates_hooks_and_is_idempotent() {
+    let home = std::env::temp_dir().join(format!(
+        "tendril-ensure-home-dirs-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    ensure_home_directories(&home).expect("must create a fresh home's directories");
+    assert!(home.is_dir());
+    assert!(get_hooks_dir(&home).is_dir());
+
+    let sentinel = get_hooks_dir(&home).join("NotifySlack.ps1");
+    std::fs::write(&sentinel, "# sentinel").expect("must write into the created Hooks dir");
+
+    ensure_home_directories(&home).expect("must be idempotent on an existing home");
+    assert!(get_hooks_dir(&home).is_dir());
+    assert!(
+        sentinel.is_file(),
+        "a second call must not recreate or wipe an existing Hooks dir"
+    );
+
+    let _ = std::fs::remove_dir_all(home);
 }

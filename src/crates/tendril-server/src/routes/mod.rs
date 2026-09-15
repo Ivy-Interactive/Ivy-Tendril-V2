@@ -8,6 +8,7 @@ pub mod health;
 pub mod inbox;
 pub mod jobs;
 pub mod models;
+pub mod newsletter;
 pub mod onboarding;
 pub mod ping;
 pub mod plans;
@@ -136,8 +137,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/plans/:id/validate",
             post(plans::validate_plan_handler),
         )
-        // Inbox
+        // Inbox. Static segments before `:id`, so `check` and `proposals` can never be read as a
+        // proposal id.
         .route("/api/inbox", post(inbox::post_inbox))
+        .route("/api/inbox/check", post(inbox::post_inbox_check))
+        .route("/api/inbox/proposals", get(inbox::list_proposals_handler))
+        .route(
+            "/api/inbox/proposals/:id/accept",
+            post(inbox::accept_proposal_handler),
+        )
+        .route(
+            "/api/inbox/proposals/:id/dismiss",
+            post(inbox::dismiss_proposal_handler),
+        )
         // Jobs
         .route("/api/jobs", get(jobs::list_jobs).post(jobs::start_job))
         // Static segments before `:id`, so a literal path can never be read as a job id. Axum
@@ -220,6 +232,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/vaults/discover", get(vault::discover_vaults))
         .route("/api/vaults/accounts", get(vault::github_accounts))
         .route(
+            "/api/vaults/project-assets/:name",
+            get(vault::project_assets),
+        )
+        .route(
             "/api/vaults/:id",
             get(vault::get_vault_status)
                 .put(vault::set_always_up_to_date)
@@ -250,6 +266,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
         )
+        // Version check
+        .route("/api/version", get(health::get_version_handler))
+        .route(
+            "/api/version/check",
+            post(health::check_version_now_handler),
+        )
         // Onboarding
         .route("/api/onboarding", get(onboarding::get_status_handler))
         .route(
@@ -258,6 +280,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/onboarding/dismiss", post(onboarding::dismiss_handler))
         .route("/api/doctor", get(health::doctor_handler))
+        // Newsletter
+        .route(
+            "/api/newsletter/subscribe",
+            post(newsletter::subscribe_handler),
+        )
         // Pull requests
         .route("/api/pull-requests", get(pull_requests::list_pull_requests))
         .route(

@@ -191,6 +191,21 @@ pub async fn github_accounts() -> impl IntoResponse {
     }
 }
 
+/// What a *local* project could publish, for the export dialog's asset picker.
+///
+/// It lives under `/api/vaults` because the export flow is its only consumer: the lists are assembled
+/// the way an export reads a project off disk, which is not what `/api/projects/:name` reports. An
+/// unknown project answers 200 with empty lists, as [`vault::collect_project_assets`] does — the UI
+/// asks about a project the user is still choosing.
+pub async fn project_assets(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let settings = load_config(&state.config_path).unwrap_or_default();
+    let assets = vault::collect_project_assets(&state.tendril_home, &settings, &name);
+    (StatusCode::OK, Json(json!(assets))).into_response()
+}
+
 pub async fn disconnect_vault(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,

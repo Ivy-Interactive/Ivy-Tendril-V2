@@ -335,9 +335,13 @@ async fn force_bypasses_the_duplicate_check() {
     assert_ne!(second, forced);
 }
 
-/// A predecessor that has stopped working is no reason to refuse the work again. `Blocked` counts as
-/// stopped here: a blocked row was never spawned and is waiting, not working — restarting it is the
-/// claim in `dependents.rs`, not this gate's business.
+/// A predecessor that has stopped working is no reason to refuse the work again.
+///
+/// `Blocked` is absent from this list even though the dedupe gate exempts it, because a `Blocked`
+/// `ExecutePlan` is now refused a step earlier by 00620's conflict check, which counts every
+/// non-terminal row on the plan. The dedupe gate's own `Blocked` exemption is pinned by
+/// [`a_blocked_predecessor_does_not_deduplicate_away_its_replacement`], on a job type in no conflict
+/// group where nothing else can answer first.
 #[tokio::test]
 async fn a_duplicate_of_a_terminal_predecessor_is_accepted() {
     for status in [
@@ -345,7 +349,6 @@ async fn a_duplicate_of_a_terminal_predecessor_is_accepted() {
         JobStatus::Failed,
         JobStatus::Timeout,
         JobStatus::Stopped,
-        JobStatus::Blocked,
     ] {
         let home = HomeFixture::new("dedupe-terminal");
 
@@ -374,6 +377,35 @@ async fn a_duplicate_of_a_terminal_predecessor_is_accepted() {
             status
         );
     }
+}
+
+/// `Blocked` is not in flight as far as this gate is concerned: a blocked row was never spawned, so it
+/// holds no worktree and no agent, and `dependents.rs` deletes it before submitting its replacement.
+/// Deduplicating against it would let a queued intention block the very job meant to replace it.
+///
+/// `CreatePlan` rather than `ExecutePlan`, because `CreatePlan` is in no conflict group: it isolates
+/// the dedupe key as the only gate that could refuse the resubmission, so a pass here is about the
+/// `Blocked` exemption and nothing else. (`ExecutePlan` is the other story — 00620's conflict check
+/// counts a `Blocked` row on the plan, and refusing there is correct: a plan-mutating job may only be
+/// resubmitted through the delete-then-start claim in `dependents.rs`.)
+#[tokio::test]
+async fn a_blocked_predecessor_does_not_deduplicate_away_its_replacement() {
+    let home = HomeFixture::new("dedupe-blocked-replacement");
+    let args = create_plan("Widgets", "Add a login form");
+    seed_row(&home, "00900", &args, JobStatus::Blocked);
+
+    let manager = manager_for(&home);
+    let id = manager
+        .start_job(args)
+        .await
+        .expect("a Blocked predecessor holds nothing, so its replacement must be accepted");
+
+    assert_ne!(id, "00900");
+    assert_eq!(
+        all_rows(&home).len(),
+        2,
+        "the Blocked predecessor is kept alongside its replacement"
+    );
 }
 
 // ---------------------------------------------------------------------------

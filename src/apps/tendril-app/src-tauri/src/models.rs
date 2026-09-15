@@ -43,6 +43,15 @@ pub struct ModelCatalogStatusDto {
     pub cache_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionInfoDto {
+    pub current_version: String,
+    pub latest_version: Option<String>,
+    pub has_update: bool,
+    pub last_checked: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanVerificationDto {
@@ -572,6 +581,12 @@ pub struct PrStatusDto {
     pub plan_title: String,
     #[serde(default)]
     pub project: String,
+    /// `SUM(Cost)` over the plan's `Costs` rows; `0.0` when the plan has none or none is priceable.
+    #[serde(default)]
+    pub cost: f64,
+    /// `SUM(Tokens)` over the plan's `Costs` rows; `0` when the plan has none.
+    #[serde(default)]
+    pub tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -758,4 +773,14 @@ pub struct AgentCostBreakdownDto {
     pub cost: f64,
     pub tokens: i64,
     pub plan_count: i64,
+}
+
+/// Mirrors `tendril_core::newsletter::SubscribeOutcome`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscribeOutcomeDto {
+    #[serde(default)]
+    pub subscribed: bool,
+    #[serde(default)]
+    pub error: Option<String>,
 }

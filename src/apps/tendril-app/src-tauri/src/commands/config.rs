@@ -2,7 +2,7 @@ use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
     CreateProjectDto, DoctorCheckDto, ModelCatalogStatusDto, OnboardingStatusDto,
-    ProjectSummaryDto, TendrilConfigDto,
+    ProjectSummaryDto, SubscribeOutcomeDto, TendrilConfigDto, VersionInfoDto,
 };
 
 #[tauri::command]
@@ -48,6 +48,11 @@ pub async fn cmd_dismiss_onboarding() -> Result<(), BridgeError> {
 }
 
 #[tauri::command]
+pub async fn cmd_subscribe_newsletter(email: String) -> Result<SubscribeOutcomeDto, BridgeError> {
+    get_client_from_master()?.subscribe_newsletter(&email).await
+}
+
+#[tauri::command]
 pub async fn cmd_run_doctor() -> Result<Vec<DoctorCheckDto>, BridgeError> {
     get_client_from_master()?.run_doctor().await
 }
@@ -57,6 +62,16 @@ pub async fn cmd_create_project(
     request: CreateProjectDto,
 ) -> Result<serde_json::Value, BridgeError> {
     get_client_from_master()?.create_project(request).await
+}
+
+#[tauri::command]
+pub async fn cmd_get_version_info() -> Result<VersionInfoDto, BridgeError> {
+    get_client_from_master()?.get_version_info().await
+}
+
+#[tauri::command]
+pub async fn cmd_check_version_now() -> Result<VersionInfoDto, BridgeError> {
+    get_client_from_master()?.check_version_now().await
 }
 
 #[tauri::command]

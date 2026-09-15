@@ -10,6 +10,7 @@ use serde::Serialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tendril_core::db::costs::get_plan_cost_totals;
 use tendril_core::db::open_database;
 use tendril_core::db::pr_status::get_all_pr_statuses;
 use tendril_core::error::Result;
@@ -33,6 +34,10 @@ pub struct PrStatusDto {
     pub plan_folder: String,
     pub plan_title: String,
     pub project: String,
+    /// `SUM(Cost)` over the plan's `Costs` rows; `0.0` when the plan has none or none is priceable.
+    pub cost: f64,
+    /// `SUM(Tokens)` over the plan's `Costs` rows; `0` when the plan has none.
+    pub tokens: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,15 +99,30 @@ pub async fn list_pull_requests(State(state): State<Arc<AppState>>) -> impl Into
     }
 }
 
+/// One plan's totals out of the whole-table aggregate. `plan_id` arrives zero-padded ("00610") while
+/// `Costs.PlanId` is an `i32`, so the padding has to go before the lookup. A plan with no `Costs`
+/// rows — or a folder whose id is not a number at all — reports `(0.0, 0)`, which the view renders
+/// as blank cells rather than `$0.00`.
+fn plan_cost_total(plan_id: &str, totals: &HashMap<i32, (f64, i64)>) -> (f64, i64) {
+    plan_id
+        .parse::<i32>()
+        .ok()
+        .and_then(|id| totals.get(&id).copied())
+        .unwrap_or_default()
+}
+
 /// The plans are the source of truth for *which* PRs exist; the cache only supplies status. A PR that
 /// has never been synced is therefore still listed, as `Unknown` with no `lastChecked`.
 fn collect_pull_requests(state: &AppState) -> Result<Vec<PrStatusDto>> {
-    let cached: HashMap<String, PrStatusRecord> = {
+    // Both reads share one connection: the view needs a cost total for every plan it lists, so the
+    // whole `Costs` table is aggregated once here rather than queried per row.
+    let (cached, cost_totals): (HashMap<String, PrStatusRecord>, HashMap<i32, (f64, i64)>) = {
         let conn = open_database(&state.db_path)?;
-        get_all_pr_statuses(&conn)?
+        let statuses = get_all_pr_statuses(&conn)?
             .into_iter()
             .map(|rec| (rec.pr_url.clone(), rec))
-            .collect()
+            .collect();
+        (statuses, get_plan_cost_totals(&conn)?)
     };
 
     let mut rows: Vec<PrStatusDto> = Vec::new();
@@ -123,6 +143,7 @@ fn collect_pull_requests(state: &AppState) -> Result<Vec<PrStatusDto>> {
                 .unwrap_or_default()
                 .to_string();
             let plan_id = extract_plan_id_from_folder(&folder).unwrap_or_default();
+            let (cost, tokens) = plan_cost_total(&plan_id, &cost_totals);
 
             for raw in &plan.prs {
                 let Some((owner, repo, number)) = parse_pr_url(raw) else {
@@ -153,6 +174,8 @@ fn collect_pull_requests(state: &AppState) -> Result<Vec<PrStatusDto>> {
                     plan_folder: plan_folder.clone(),
                     plan_title: plan.title.clone(),
                     project: plan.project.clone(),
+                    cost,
+                    tokens,
                 });
             }
         }
@@ -192,5 +215,36 @@ pub async fn sync_pull_requests(State(state): State<Arc<AppState>>) -> impl Into
             Json(json!({ "error": "A pull request sync is already running" })),
         )
             .into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `collect_pull_requests` itself needs an `AppState`, and constructing one spawns the periodic
+    /// sync task — so the part worth testing here is the lookup that crosses the string/integer
+    /// boundary between a plan folder id and `Costs.PlanId`.
+    fn totals() -> HashMap<i32, (f64, i64)> {
+        HashMap::from([(610, (1.23, 160_000)), (99, (10.0, 900))])
+    }
+
+    #[test]
+    fn a_padded_plan_id_matches_its_numeric_cost_key() {
+        assert_eq!(plan_cost_total("00610", &totals()), (1.23, 160_000));
+        // Three digits of padding, and an id short enough that a substring match would miss it.
+        assert_eq!(plan_cost_total("00099", &totals()), (10.0, 900));
+    }
+
+    #[test]
+    fn a_plan_with_no_cost_rows_reports_zero() {
+        assert_eq!(plan_cost_total("00800", &totals()), (0.0, 0));
+    }
+
+    #[test]
+    fn an_unparseable_plan_id_reports_zero_rather_than_panicking() {
+        // `extract_plan_id_from_folder` returns an empty string for a folder it cannot parse.
+        assert_eq!(plan_cost_total("", &totals()), (0.0, 0));
+        assert_eq!(plan_cost_total("draft", &totals()), (0.0, 0));
     }
 }

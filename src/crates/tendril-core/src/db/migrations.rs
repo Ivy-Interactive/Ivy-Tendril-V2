@@ -177,11 +177,15 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             LastOutputAt TEXT,
             WaitForJobIds TEXT,
             PermissionDenials TEXT,
-            DedupeKey TEXT
+            DedupeKey TEXT,
+            IdempotencyKey TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
         CREATE INDEX IF NOT EXISTS idx_jobs_completed ON Jobs(CompletedAt DESC);
         CREATE INDEX IF NOT EXISTS idx_jobs_planfile ON Jobs(PlanFile);
+        -- `idx_jobs_planfile` above is declared without a collation, so it cannot serve the
+        -- `PlanFile = ?1 COLLATE NOCASE` predicate the conflict guard uses. This companion can.
+        CREATE INDEX IF NOT EXISTS idx_jobs_planfile_nocase ON Jobs(PlanFile COLLATE NOCASE);
 
         CREATE TABLE IF NOT EXISTS PrStatuses (
             PrUrl TEXT PRIMARY KEY,
@@ -193,6 +197,31 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_owner_repo ON PrStatuses(Owner, Repo);
         CREATE INDEX IF NOT EXISTS idx_pr_statuses_status ON PrStatuses(Status);
+
+        -- V2-only: the landing place for an assigned GitHub issue the auto-importer swept but
+        -- nobody has accepted yet. A row is kept in every state, `Dismissed` included, because
+        -- that record is what stops the next sweep from re-importing an issue the user said no
+        -- to. The original wrote a markdown file per issue instead, so deleting the file brought
+        -- the issue straight back.
+        --
+        -- Deliberately not accompanied by a `user_version` bump: the original hard-fails on a
+        -- database whose version exceeds its own latest migration (025), and an extra table it
+        -- never queries is invisible to it. See `SCHEMA_VERSION` above.
+        CREATE TABLE IF NOT EXISTS InboxProposals (
+            Id INTEGER PRIMARY KEY AUTOINCREMENT,
+            Number INTEGER NOT NULL,
+            Repository TEXT NOT NULL,
+            Title TEXT NOT NULL,
+            Body TEXT NOT NULL DEFAULT '',
+            IssueUrl TEXT NOT NULL,
+            Project TEXT NOT NULL,
+            State TEXT NOT NULL DEFAULT 'Pending',
+            JobId TEXT,
+            Discovered TEXT NOT NULL,
+            Updated TEXT NOT NULL,
+            UNIQUE (Repository, Number)
+        );
+        CREATE INDEX IF NOT EXISTS idx_inbox_proposals_state ON InboxProposals(State);
         "#,
     )?;
 
@@ -211,6 +240,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             ("WaitForJobIds", "TEXT"),
             ("PermissionDenials", "TEXT"),
             ("DedupeKey", "TEXT"),
+            ("IdempotencyKey", "TEXT"),
         ],
     )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
@@ -239,6 +269,20 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedupe_inflight
            ON Jobs(DedupeKey)
            WHERE DedupeKey IS NOT NULL AND Status IN ('Pending', 'Queued', 'Running');",
+    )?;
+
+    // `IdempotencyKey` is the *client's* identity for one submission, not the server-derived
+    // `DedupeKey` above, so it gets its own column and its own index. Same after-the-ALTER placement,
+    // for the same reason.
+    //
+    // Unscoped by status on purpose: a key names one request for good. A client retrying a request
+    // whose response it never saw must be handed the job it already started even if that job has
+    // since failed, so that a retry can never become a second run. `NULL` never collides, so every
+    // unkeyed submission is unaffected.
+    conn.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency_key
+           ON Jobs(IdempotencyKey)
+           WHERE IdempotencyKey IS NOT NULL;",
     )?;
 
     stamp_user_version(conn)?;

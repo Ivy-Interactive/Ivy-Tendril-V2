@@ -84,6 +84,33 @@ enum Commands {
 
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
+
+        #[arg(
+            long,
+            value_name = "PATH",
+            requires = "tls_key",
+            help = "PEM certificate; serves HTTPS instead of HTTP (see `tendril generate-certs`)"
+        )]
+        tls_cert: Option<PathBuf>,
+
+        #[arg(
+            long,
+            value_name = "PATH",
+            requires = "tls_cert",
+            help = "PEM private key matching --tls-cert"
+        )]
+        tls_key: Option<PathBuf>,
+    },
+
+    #[command(
+        about = "Start the Tendril daemon, migrating the database and checking the port first"
+    )]
+    Run {
+        #[arg(short, long, help = "Port to listen on (default: 5010)")]
+        port: Option<u16>,
+
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
     },
 
     #[command(about = "Run Model Context Protocol (MCP) server over stdio")]
@@ -100,6 +127,54 @@ enum Commands {
 
     #[command(about = "Refresh deployed promptwares, preserving their Memory/ and Tools/")]
     UpdatePromptwares(commands::update_promptwares::UpdatePromptwaresArgs),
+
+    #[command(
+        about = "Hash a password for config.yaml's auth block",
+        long_about = "Hashes PASSWORD with Argon2i and prints the encoded hash plus the secret \
+(pepper) it was hashed with.\n\nThe pepper is NOT part of the hash string, so both values have to \
+be stored: the hash as `auth.password` and the pepper as `auth.hashSecret` in config.yaml. Pass \
+SECRET to reuse an existing pepper; omit it to generate a new 32-byte one."
+    )]
+    HashPassword {
+        #[arg(value_name = "PASSWORD")]
+        password: String,
+
+        #[arg(value_name = "SECRET")]
+        secret: Option<String>,
+    },
+
+    #[command(
+        name = "agent-instructions",
+        about = "Print the instructions for a coding agent in a chat session",
+        long_about = "Prints the instructions given to a coding agent running in an interactive \
+chat session, with this installation's paths substituted in.\n\nThe output is the compiled template \
+only, with no trailing newline, so it can be piped straight into an agent's system prompt."
+    )]
+    AgentInstructions,
+
+    #[command(
+        name = "generate-certs",
+        about = "Generate a self-signed localhost certificate for `serve --tls-cert`",
+        long_about = "Writes a self-signed `localhost.crt` / `localhost.key` PEM pair into \
+OUTPUT_DIR, valid for localhost, 127.0.0.1 and ::1.\n\nThis is a PEM pair, not the PKCS#12 `.pfx` \
+bundle earlier versions wrote: it is what `tendril serve --tls-cert/--tls-key` reads. The \
+certificate is self-signed, so clients have to be told to trust it."
+    )]
+    GenerateCerts {
+        #[arg(value_name = "OUTPUT_DIR")]
+        output_dir: PathBuf,
+    },
+
+    #[command(
+        name = "report-bug",
+        about = "Bundle a plan or job's diagnostics into a zip",
+        long_about = "Collects a plan's files and its jobs' artifacts, plus a health report, a \
+sanitized copy of config.yaml and a manifest of the plan's worktrees, and writes them to a zip.\n\n\
+The report is written locally and goes nowhere else unless both --submit and --yes are given, \
+because submitting attaches the bundle to a public GitHub issue. Secrets are stripped from the \
+config, the health report and every job artifact; plan files are included as they are."
+    )]
+    ReportBug(commands::report_bug::ReportBugArgs),
 }
 
 #[tokio::main]
@@ -132,8 +207,17 @@ async fn main() -> anyhow::Result<()> {
         Commands::Models { refresh } => {
             commands::models::handle_models(refresh, &tendril_home).await?
         }
-        Commands::Serve { port, host } => {
-            commands::serve::handle_serve(&tendril_home, port, Some(host)).await?
+        Commands::Serve {
+            port,
+            host,
+            tls_cert,
+            tls_key,
+        } => {
+            commands::serve::handle_serve(&tendril_home, port, Some(host), tls_cert, tls_key)
+                .await?
+        }
+        Commands::Run { port, host } => {
+            commands::run::handle_run(&tendril_home, port.unwrap_or(5010), host).await?
         }
         Commands::Mcp => commands::mcp::handle_mcp(&tendril_home).await?,
         Commands::Db(cmd) => commands::db::handle_db_command(cmd, &tendril_home)?,
@@ -142,7 +226,99 @@ async fn main() -> anyhow::Result<()> {
         Commands::UpdatePromptwares(args) => {
             commands::update_promptwares::handle_update_promptwares(args, &tendril_home)?
         }
+        Commands::HashPassword { password, secret } => {
+            commands::hash_password::handle_hash_password(&password, secret.as_deref())?
+        }
+        Commands::AgentInstructions => {
+            commands::agent_instructions::handle_agent_instructions(&tendril_home)?
+        }
+        Commands::GenerateCerts { output_dir } => {
+            commands::generate_certs::handle_generate_certs(&output_dir)?
+        }
+        Commands::ReportBug(args) => {
+            commands::report_bug::handle_report_bug(args, &tendril_home).await?
+        }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Cli;
+    use clap::CommandFactory;
+    use tendril_core::agents::instructions;
+
+    /// Every `tendril ...` invocation the agent instructions document must name a command that
+    /// actually exists. The asset is the only description of the CLI the chat agent gets, so a
+    /// renamed or dropped subcommand has to fail here rather than in a chat session.
+    #[test]
+    fn every_command_the_instructions_document_exists() {
+        let root = Cli::command();
+        let mut checked = 0usize;
+
+        for snippet in code_snippets(instructions::TEMPLATE) {
+            for invocation in snippet.split("tendril ").skip(1) {
+                let mut node = &root;
+                for token in invocation.split_whitespace() {
+                    // Placeholders (`<plan-id>`), flags, literal job types (`CreatePlan`) and
+                    // ordinary prose all end the command path.
+                    if !token
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                    {
+                        break;
+                    }
+                    // A leaf command's arguments can look like subcommand names — `tendril config
+                    // get planTemplate` — so stop as soon as there is nothing left to descend into.
+                    if node.get_subcommands().next().is_none() {
+                        break;
+                    }
+                    let found = node.get_subcommands().find(|c| c.get_name() == token);
+                    node = found.unwrap_or_else(|| {
+                        panic!(
+                            "the agent instructions name `{}`, but `{}` has no `{}` subcommand",
+                            invocation.trim(),
+                            node.get_name(),
+                            token
+                        )
+                    });
+                    checked += 1;
+                }
+            }
+        }
+
+        assert!(
+            checked > 100,
+            "only {checked} command tokens were checked — the snippet extraction is broken"
+        );
+    }
+
+    /// The contents of every inline code span and fenced code block, which is where the document
+    /// spells out commands. Prose is skipped: `` `tendril plan` CLI commands `` would otherwise look
+    /// like a `plan commands` invocation.
+    fn code_snippets(markdown: &str) -> Vec<String> {
+        let mut snippets = Vec::new();
+        let mut in_fence = false;
+
+        for line in markdown.lines() {
+            if line.trim_start().starts_with("```") {
+                in_fence = !in_fence;
+                continue;
+            }
+            if in_fence {
+                snippets.push(line.to_string());
+                continue;
+            }
+            // Inline spans, taken in pairs of backticks.
+            let mut parts = line.split('`');
+            parts.next();
+            while let Some(span) = parts.next() {
+                snippets.push(span.to_string());
+                parts.next();
+            }
+        }
+
+        snippets
+    }
 }
