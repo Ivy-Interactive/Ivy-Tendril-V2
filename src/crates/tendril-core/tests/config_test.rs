@@ -5,8 +5,8 @@ use tendril_core::config::{
     get_config_path_with_env, get_default_tendril_home, get_default_tendril_home_with_env,
     get_hooks_dir, get_plans_dir, get_plans_dir_with_env, get_plans_dir_with_settings,
     get_tendril_home, get_tendril_home_with_env, load_config, normalize_slashes, read_master,
-    remove_verification_from_projects, save_config, write_master, EnvSource, SystemEnv,
-    TendrilSettings,
+    remove_verification_from_projects, save_config, write_master, EnvSource, LoginRateLimitConfig,
+    SystemEnv, TendrilSettings,
 };
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
 
@@ -668,6 +668,113 @@ fn test_get_default_tendril_home_fallback_with_env() {
 }
 
 #[test]
+fn test_auth_api_security_absent_by_default() {
+    let settings = TendrilSettings::default();
+    assert!(settings.auth.is_none());
+    assert!(settings.api.is_none());
+    assert!(settings.security.is_none());
+}
+
+/// A config that has never enabled password auth must not gain an `auth` / `api` / `security` key
+/// merely by being loaded and saved: that is what keeps an existing install from silently changing
+/// behaviour after the upgrade.
+#[test]
+fn test_save_config_does_not_add_auth_api_security_sections() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "tendril-test-auth-defaults-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let config_path = temp_dir.join("config.yaml");
+    std::fs::write(&config_path, "codingAgent: claude\njobTimeout: 30\n").unwrap();
+
+    let settings = load_config(&config_path).expect("load");
+    assert!(settings.auth.is_none());
+    assert!(settings.api.is_none());
+    assert!(settings.security.is_none());
+
+    save_config(&config_path, &settings).expect("save");
+    let raw = std::fs::read_to_string(&config_path).unwrap();
+    assert!(
+        !raw.contains("auth:"),
+        "save_config added an auth section:\n{raw}"
+    );
+    assert!(
+        !raw.contains("api:"),
+        "save_config added an api section:\n{raw}"
+    );
+    assert!(
+        !raw.contains("security:"),
+        "save_config added a security section:\n{raw}"
+    );
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+/// `auth.rateLimit` is optional; when it is absent the original falls back to
+/// `new LoginRateLimitConfig()`, i.e. threshold 3 / 1s base / 60s cap.
+#[test]
+fn test_auth_rate_limit_defaults_match_original() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "tendril-test-auth-ratelimit-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let config_path = temp_dir.join("config.yaml");
+    std::fs::write(
+        &config_path,
+        "auth:\n  username: admin\n  password: \"$argon2i$v=19$m=65536,t=3,p=1$c2FsdA$aGFzaA\"\n  hashSecret: \"c2VjcmV0\"\n",
+    )
+    .unwrap();
+
+    let settings = load_config(&config_path).expect("load");
+    let auth = settings.auth.expect("auth section parsed");
+    assert_eq!(auth.username.as_deref(), Some("admin"));
+    assert!(auth.rate_limit.is_none());
+    assert!(auth.is_active());
+
+    let effective = auth.effective_rate_limit();
+    assert_eq!(effective.threshold, 3);
+    assert_eq!(effective.base_delay_seconds, 1.0);
+    assert_eq!(effective.max_delay_seconds, 60.0);
+    assert_eq!(effective, LoginRateLimitConfig::default());
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_security_and_api_sections_parse() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "tendril-test-security-section-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let config_path = temp_dir.join("config.yaml");
+    std::fs::write(
+        &config_path,
+        "api:\n  apiKey: k-123\nsecurity:\n  allowedHosts:\n    - tendril.example.com\n  localFileRoots:\n    - /srv/shots\n",
+    )
+    .unwrap();
+
+    let settings = load_config(&config_path).expect("load");
+    assert_eq!(
+        settings.api.expect("api section").api_key.as_deref(),
+        Some("k-123")
+    );
+    let security = settings.security.expect("security section");
+    assert_eq!(
+        security.allowed_hosts.as_deref(),
+        Some(&["tendril.example.com".to_string()][..])
+    );
+    assert_eq!(
+        security.local_file_roots.as_deref(),
+        Some(&["/srv/shots".to_string()][..])
+    );
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
 fn daemon_request_timeout_round_trips_and_defaults() {
     let test_dir = std::env::temp_dir().join(format!(
         "tendril-daemon-timeout-config-{}",
@@ -747,6 +854,7 @@ fn public_config_keys_advertise_only_real_settings() {
         );
     }
 }
+
 fn write_config(body: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "tendril-inbox-cfg-{}",

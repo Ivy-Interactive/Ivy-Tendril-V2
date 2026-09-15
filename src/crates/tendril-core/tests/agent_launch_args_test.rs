@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tendril_core::agents::{
     build_agent_spec, format_opencode_model, AgentLaunchConfig, AgentProcessSpec, McpServerConfig,
+    ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS,
 };
 
 /// One launch config exercising every field a provider might render.
@@ -306,6 +307,75 @@ fn antigravity_renders_added_dirs_and_a_prompt_file() {
             "--print",
         ])
     );
+}
+
+#[test]
+fn antigravity_injects_tool_schema_guardrails_into_prompt_file() {
+    let spec = build_agent_spec("antigravity", &full_config());
+
+    let prompt_arg = spec.args.last().expect("prompt argument");
+    let path = prompt_arg
+        .strip_prefix('@')
+        .expect("antigravity takes its prompt as @<file>");
+    let content = std::fs::read_to_string(path).expect("prompt file must exist on disk");
+
+    assert!(
+        content.starts_with(ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS),
+        "prompt file must lead with the tool schema guardrails, got: {}",
+        content
+    );
+    assert!(
+        content.contains("Do the thing."),
+        "must still carry the caller's prompt"
+    );
+
+    for temp in &spec.temp_files {
+        let _ = std::fs::remove_file(temp);
+    }
+}
+
+/// Even when the caller pre-wrote its own prompt file (as `ChatExecutionManager` does for other
+/// providers), antigravity must not trust it as-is: it writes a fresh temp file with the guardrails
+/// prepended and points `--print` at that instead.
+#[test]
+fn antigravity_with_prompt_file_path_still_injects_guardrails() {
+    let preexisting = std::env::temp_dir().join(format!(
+        "tendril-test-preexisting-prompt-{}.md",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::write(&preexisting, "Do the thing.").expect("write pre-existing prompt file");
+
+    let config = AgentLaunchConfig {
+        prompt_file_path: Some(preexisting.to_string_lossy().to_string()),
+        ..full_config()
+    };
+    let spec = build_agent_spec("antigravity", &config);
+
+    let prompt_arg = spec.args.last().expect("prompt argument");
+    let path = prompt_arg
+        .strip_prefix('@')
+        .expect("antigravity takes its prompt as @<file>");
+    assert_ne!(
+        path,
+        preexisting.to_string_lossy(),
+        "antigravity must write a fresh temp file, not reuse the caller's prompt_file_path"
+    );
+    assert!(
+        spec.temp_files.iter().any(|t| t.to_string_lossy() == path),
+        "the fresh prompt file must be registered in temp_files for cleanup"
+    );
+
+    let content = std::fs::read_to_string(path).expect("prompt file must exist on disk");
+    assert!(
+        content.starts_with(ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS),
+        "prompt file must lead with the tool schema guardrails, got: {}",
+        content
+    );
+
+    for temp in &spec.temp_files {
+        let _ = std::fs::remove_file(temp);
+    }
+    let _ = std::fs::remove_file(&preexisting);
 }
 
 #[test]

@@ -91,7 +91,7 @@ Prerequisites: Node.js 20+ and npm.
 
 ```bash
 # Navigate to extension directory
-cd extensions/vscode
+cd src/extensions/vscode
 
 # Install dependencies
 npm install
@@ -115,7 +115,7 @@ pnpm package:extension
 ### Debugging with VS Code
 
 The repository includes pre-configured launch and build tasks:
-1. Open the `extensions/vscode` folder in VS Code.
+1. Open the `src/extensions/vscode` folder in VS Code.
 2. Switch to the **Run and Debug** view (`Cmd+Shift+D` / `Ctrl+Shift+D`).
 3. Select **Run Extension** and press **F5**. This compiles the extension in watch mode and launches a new Extension Development Host window.
 4. To run tests interactively, select **Extension Tests** and press **F5**.

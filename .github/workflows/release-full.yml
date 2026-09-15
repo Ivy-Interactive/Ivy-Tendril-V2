@@ -423,11 +423,11 @@ jobs:
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/v}"
           else
-            VERSION=$(node -p "require('./extensions/vscode/package.json').version")
+            VERSION=$(node -p "require('./src/extensions/vscode/package.json').version")
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Resolved version: $VERSION"
-          cd extensions/vscode
+          cd src/extensions/vscode
           npm version --no-git-tag-version --allow-same-version "$VERSION"
 
       - name: Package extension
@@ -435,7 +435,7 @@ jobs:
 
       - name: Generate SHA256 checksum
         run: |
-          cd extensions/vscode
+          cd src/extensions/vscode
           VSIX_FILE=$(ls ivy-tendril-*.vsix)
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "$VSIX_FILE" > "${VSIX_FILE}.sha256"
@@ -448,8 +448,8 @@ jobs:
         with:
           name: full-release-extension
           path: |
-            extensions/vscode/*.vsix
-            extensions/vscode/*.vsix.sha256
+            src/extensions/vscode/*.vsix
+            src/extensions/vscode/*.vsix.sha256
 
   publish-full-release:
     name: Publish Full Release
