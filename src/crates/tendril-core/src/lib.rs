@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod analytics;
 pub mod chat;
 pub mod config;
 pub mod db;

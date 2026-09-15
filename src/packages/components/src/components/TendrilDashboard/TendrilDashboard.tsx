@@ -75,6 +75,12 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
     }
   };
 
+  const fireKpiEvent = (kpiId: string) => {
+    if (events.includes("OnSelectKpi")) {
+      eventHandler("OnSelectKpi", id, [kpiId]);
+    }
+  };
+
   const statusItems = [
     { icon: <Feather size={16} />, count: draftCount, label: "Drafts", event: "OnDrafts" },
     { icon: <Sprout size={16} />, count: inProgressCount, label: "In Progress", event: "OnJobs" },
@@ -132,20 +138,44 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
 
             {kpis.length > 0 && (
               <div className="tdb-kpis">
-                {kpis.map((kpi, index) => (
-                  <div className="tdb-kpi" data-tone={index % 4} key={kpi.label}>
-                    <div className="tdb-kpi-label">{kpi.label}</div>
-                    <div className="tdb-kpi-row">
-                      <span className="tdb-kpi-value">{kpi.value}</span>
-                      {kpi.delta && (
-                        <span className="tdb-kpi-delta">
-                          {kpi.delta}
-                          {kpi.direction === "down" ? <TrendingDown /> : <TrendingUp />}
-                        </span>
-                      )}
+                {kpis.map((kpi, index) => {
+                  const body = (
+                    <>
+                      <div className="tdb-kpi-label">{kpi.label}</div>
+                      <div className="tdb-kpi-row">
+                        <span className="tdb-kpi-value">{kpi.value}</span>
+                        {kpi.delta && (
+                          <span className="tdb-kpi-delta">
+                            {kpi.delta}
+                            {kpi.direction === "down" ? <TrendingDown /> : <TrendingUp />}
+                          </span>
+                        )}
+                      </div>
+                      {kpi.hint && <div className="tdb-kpi-hint">{kpi.hint}</div>}
+                    </>
+                  );
+                  const kpiId = kpi.id;
+                  const key = kpiId ?? kpi.label;
+
+                  // Only an identified KPI is a control. A tile with nothing to drill into stays a
+                  // plain div, so it is not focusable and does not promise a click target.
+                  return kpiId == null ? (
+                    <div className="tdb-kpi" data-tone={index % 4} key={key}>
+                      {body}
                     </div>
-                  </div>
-                ))}
+                  ) : (
+                    <button
+                      type="button"
+                      className="tdb-kpi"
+                      data-clickable="true"
+                      data-tone={index % 4}
+                      key={key}
+                      onClick={() => fireKpiEvent(kpiId)}
+                    >
+                      {body}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
