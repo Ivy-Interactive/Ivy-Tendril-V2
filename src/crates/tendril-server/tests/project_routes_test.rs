@@ -10,7 +10,9 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tendril_core::config::{generate_bearer_secret, load_config, MasterGuard};
-use tendril_core::models::ProjectConfig;
+use tendril_core::models::{
+    OutsideFileAccessPolicy, ProjectConfig, SandboxMode, SecurityPreset, TerminalAutoExecution,
+};
 use tendril_server::{create_router, AppState};
 
 /// One project carrying every modeled key *and* all nine unmodeled ones, plus a second project so a
@@ -81,8 +83,13 @@ fn expected_project_extras() -> Vec<(&'static str, Value)> {
     ]
 }
 
+/// `meta`/`autoImplementPlans` still live in `.extra`; the seven agent security keys are now typed
+/// fields on `.security`, so they're checked against the fixture's literal values directly.
 fn assert_all_nine_extras(project: &ProjectConfig, context: &str) {
-    for (key, expected) in expected_project_extras() {
+    for (key, expected) in [
+        ("meta", json!({})),
+        ("autoImplementPlans", json!("InheritGeneral")),
+    ] {
         assert_eq!(
             project.extra.get(key),
             Some(&expected),
@@ -91,6 +98,46 @@ fn assert_all_nine_extras(project: &ProjectConfig, context: &str) {
             project.extra.keys().collect::<Vec<_>>()
         );
     }
+
+    assert_eq!(
+        project.security.security_preset,
+        SecurityPreset::Custom,
+        "{context}: project '{}' lost or altered 'securityPreset'",
+        project.name
+    );
+    assert_eq!(
+        project.security.outside_file_access_policy,
+        OutsideFileAccessPolicy::Allow,
+        "{context}: project '{}' lost or altered 'outsideFileAccessPolicy'",
+        project.name
+    );
+    assert_eq!(
+        project.security.terminal_auto_execution,
+        TerminalAutoExecution::AlwaysProceed,
+        "{context}: project '{}' lost or altered 'terminalAutoExecution'",
+        project.name
+    );
+    assert_eq!(
+        project.security.sandbox_mode,
+        SandboxMode::InheritGeneral,
+        "{context}: project '{}' lost or altered 'sandboxMode'",
+        project.name
+    );
+    assert!(
+        project.security.file_permissions.is_empty(),
+        "{context}: project '{}' lost or altered 'filePermissions'",
+        project.name
+    );
+    assert!(
+        project.security.network_access_rules.is_empty(),
+        "{context}: project '{}' lost or altered 'networkAccessRules'",
+        project.name
+    );
+    assert!(
+        project.security.allowed_terminal_commands.is_empty(),
+        "{context}: project '{}' lost or altered 'allowedTerminalCommands'",
+        project.name
+    );
 }
 
 /// The same nine keys, asserted on a JSON response body. `#[serde(flatten)]` puts them at the top
@@ -244,8 +291,8 @@ async fn test_project_put_preserves_unmodeled_keys() {
     // The untouched project is untouched.
     let other = srv.project_from_disk("other-project");
     assert_eq!(
-        other.extra.get("sandboxMode"),
-        Some(&json!("Disabled")),
+        other.security.sandbox_mode,
+        SandboxMode::Disabled,
         "a write to one project altered another"
     );
 }
@@ -267,14 +314,41 @@ async fn test_project_put_merges_unmodeled_keys_without_clearing_the_rest() {
 
     let proj = srv.project_from_disk("ivy-framework");
     assert_eq!(
-        proj.extra.get("sandboxMode"),
-        Some(&json!("Disabled")),
+        proj.security.sandbox_mode,
+        SandboxMode::Disabled,
         "the incoming unmodeled key was not persisted"
     );
-    for (key, expected) in expected_project_extras() {
-        if key == "sandboxMode" {
-            continue;
-        }
+    assert_eq!(
+        proj.security.security_preset,
+        SecurityPreset::Custom,
+        "partial PUT cleared 'securityPreset'"
+    );
+    assert_eq!(
+        proj.security.outside_file_access_policy,
+        OutsideFileAccessPolicy::Allow,
+        "partial PUT cleared 'outsideFileAccessPolicy'"
+    );
+    assert_eq!(
+        proj.security.terminal_auto_execution,
+        TerminalAutoExecution::AlwaysProceed,
+        "partial PUT cleared 'terminalAutoExecution'"
+    );
+    assert!(
+        proj.security.file_permissions.is_empty(),
+        "partial PUT cleared 'filePermissions'"
+    );
+    assert!(
+        proj.security.network_access_rules.is_empty(),
+        "partial PUT cleared 'networkAccessRules'"
+    );
+    assert!(
+        proj.security.allowed_terminal_commands.is_empty(),
+        "partial PUT cleared 'allowedTerminalCommands'"
+    );
+    for (key, expected) in [
+        ("meta", json!({})),
+        ("autoImplementPlans", json!("InheritGeneral")),
+    ] {
         assert_eq!(
             proj.extra.get(key),
             Some(&expected),
@@ -366,8 +440,8 @@ async fn test_create_project_persists_extra_keys() {
 
     let proj = srv.project_from_disk("new-project");
     assert_eq!(proj.color, "Purple");
-    assert_eq!(proj.extra.get("sandboxMode"), Some(&json!("Disabled")));
-    assert_eq!(proj.extra.get("securityPreset"), Some(&json!("Strict")));
+    assert_eq!(proj.security.sandbox_mode, SandboxMode::Disabled);
+    assert_eq!(proj.security.security_preset, SecurityPreset::Strict);
 
     // Creating a project rewrites the whole file, so the existing project's keys are in scope too.
     assert_all_nine_extras(

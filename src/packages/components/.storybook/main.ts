@@ -22,6 +22,13 @@ const codeSplitting = {
       priority: 70,
       test: /node_modules[/\\](mermaid|@hpcc-js|cytoscape[^/\\]*|d3-[^/\\]+|dagre[^/\\]*|khroma|dompurify)[/\\]/,
     },
+    // echarts and its zrender canvas layer are around a megabyte together, and only the chart
+    // stories touch them. Their own group keeps them out of the `vendor` chunk every story loads.
+    {
+      name: "vendor-charts",
+      priority: 68,
+      test: /node_modules[/\\](echarts|echarts-for-react|zrender)[/\\]/,
+    },
     { name: "vendor-pdfjs", priority: 65, test: /node_modules[/\\]pdfjs-dist[/\\]/ },
     {
       name: "vendor-react",

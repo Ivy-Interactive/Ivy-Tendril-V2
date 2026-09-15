@@ -7,6 +7,11 @@ const renderContent = (content: string) => {
   return container;
 };
 
+// The lazily imported highlighter chunk is react-syntax-highlighter plus refractor, transformed on
+// demand the first time any suite reaches it. Under a full-suite run that takes well over
+// `waitFor`'s 1s default, so the wait below is sized for a cold transform.
+const HIGHLIGHTER_TIMEOUT_MS = 15_000;
+
 describe("DraftMarkdown code block rendering and width constraints", () => {
   it("renders a markdown document with long code lines without outer nested pre structure", () => {
     const longLine =
@@ -75,9 +80,12 @@ describe("DraftMarkdown code block rendering and width constraints", () => {
 
     // Once the chunk arrives, Prism splits the source across highlighted <span>s,
     // so the token count rises while the text content stays the same.
-    await waitFor(() => {
-      expect(container.querySelectorAll("pre span").length).toBeGreaterThan(0);
-    });
+    await waitFor(
+      () => {
+        expect(container.querySelectorAll("pre span").length).toBeGreaterThan(0);
+      },
+      { timeout: HIGHLIGHTER_TIMEOUT_MS },
+    );
     expect(container.querySelector(".pmv-code-block")?.textContent).toContain(source);
     expect(container.querySelectorAll("pre").length).toBe(1);
   });

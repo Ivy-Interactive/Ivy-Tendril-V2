@@ -15,8 +15,10 @@ use tendril_core::config::{
 use tendril_core::db::open_database;
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{
-    ExtraKeys, ProjectConfig, ProjectMcpServerRef, ProjectSkillRef, ProjectVerificationRef,
-    PromptwareHookConfig, RepoRef, ReviewActionConfig,
+    AgentSecurityConfig, ExtraKeys, FileAccessRuleConfig, NetworkAccessRuleConfig,
+    OutsideFileAccessPolicy, ProjectConfig, ProjectMcpServerRef, ProjectSkillRef,
+    ProjectVerificationRef, PromptwareHookConfig, RepoRef, ReviewActionConfig, SandboxMode,
+    SecurityPreset, TerminalAutoExecution,
 };
 use tendril_core::plans::helpers::resolve_plan_folder;
 
@@ -113,15 +115,51 @@ pub struct CreateProjectRequest {
     pub mcp_servers: Vec<ProjectMcpServerRef>,
     #[serde(default)]
     pub skills: Vec<ProjectSkillRef>,
-    /// Project keys this DTO does not name, persisted onto the new `ProjectConfig`. Without this a
-    /// create payload carrying the agent security block (`sandboxMode`, `securityPreset`, …) would
-    /// have it dropped on the floor.
+    /// The seven agent security controls. Flattened rather than nested, matching
+    /// `ProjectConfig::security`'s own shape — a create payload sends `sandboxMode`,
+    /// `securityPreset`, etc. as top-level keys, not under a `security` object.
+    #[serde(flatten)]
+    pub security: AgentSecurityConfig,
+    /// Project keys this DTO does not name, persisted onto the new `ProjectConfig`.
     #[serde(flatten)]
     pub extra: ExtraKeys,
 }
 
 fn default_project_color() -> String {
     "Blue".to_string()
+}
+
+/// A partial update to a project's [`AgentSecurityConfig`]: every field is `Option`, and only the
+/// ones a request body actually names get applied — see [`update_project`]. Flattened directly onto
+/// [`UpdateProjectRequest`], the same shape as [`CreateProjectRequest::security`].
+#[derive(Debug, Deserialize, Default)]
+pub struct AgentSecurityPatch {
+    #[serde(rename = "sandboxMode", alias = "sandbox_mode", default)]
+    pub sandbox_mode: Option<SandboxMode>,
+    #[serde(rename = "securityPreset", alias = "security_preset", default)]
+    pub security_preset: Option<SecurityPreset>,
+    #[serde(
+        rename = "outsideFileAccessPolicy",
+        alias = "outside_file_access_policy",
+        default
+    )]
+    pub outside_file_access_policy: Option<OutsideFileAccessPolicy>,
+    #[serde(rename = "filePermissions", alias = "file_permissions", default)]
+    pub file_permissions: Option<Vec<FileAccessRuleConfig>>,
+    #[serde(rename = "networkAccessRules", alias = "network_access_rules", default)]
+    pub network_access_rules: Option<Vec<NetworkAccessRuleConfig>>,
+    #[serde(
+        rename = "allowedTerminalCommands",
+        alias = "allowed_terminal_commands",
+        default
+    )]
+    pub allowed_terminal_commands: Option<Vec<String>>,
+    #[serde(
+        rename = "terminalAutoExecution",
+        alias = "terminal_auto_execution",
+        default
+    )]
+    pub terminal_auto_execution: Option<TerminalAutoExecution>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -143,10 +181,12 @@ pub struct UpdateProjectRequest {
     #[serde(rename = "mcpServers", alias = "mcp_servers")]
     pub mcp_servers: Option<Vec<ProjectMcpServerRef>>,
     pub skills: Option<Vec<ProjectSkillRef>>,
+    #[serde(flatten)]
+    pub security: AgentSecurityPatch,
     /// Project keys this DTO does not name. These are **merged** key-by-key into the stored
     /// project's `extra` rather than replacing the map — that is what makes a partial PUT safe: a
     /// payload naming one key must not clear the others. Keys this DTO does name (`name`, `newName`,
-    /// `color`, `repos`, …) never land here.
+    /// `color`, `repos`, the security fields, …) never land here.
     #[serde(flatten)]
     pub extra: ExtraKeys,
 }
@@ -314,6 +354,7 @@ pub async fn create_project(
         build_dependencies: req.build_dependencies,
         mcp_servers: req.mcp_servers,
         skills: req.skills,
+        security: req.security,
         extra: req.extra,
         ..Default::default()
     };
@@ -434,7 +475,35 @@ pub async fn update_project(
         settings.projects[proj_idx].skills = skills;
     }
 
-    // Merged, not assigned: a payload naming one unmodeled key must not clear the eight it omits.
+    // Applied one field at a time, same reasoning as every other `Option` field above: a payload
+    // naming one security setting must not reset the others to default.
+    if let Some(sandbox_mode) = req.security.sandbox_mode {
+        settings.projects[proj_idx].security.sandbox_mode = sandbox_mode;
+    }
+    if let Some(security_preset) = req.security.security_preset {
+        settings.projects[proj_idx].security.security_preset = security_preset;
+    }
+    if let Some(outside_file_access_policy) = req.security.outside_file_access_policy {
+        settings.projects[proj_idx]
+            .security
+            .outside_file_access_policy = outside_file_access_policy;
+    }
+    if let Some(file_permissions) = req.security.file_permissions {
+        settings.projects[proj_idx].security.file_permissions = file_permissions;
+    }
+    if let Some(network_access_rules) = req.security.network_access_rules {
+        settings.projects[proj_idx].security.network_access_rules = network_access_rules;
+    }
+    if let Some(allowed_terminal_commands) = req.security.allowed_terminal_commands {
+        settings.projects[proj_idx]
+            .security
+            .allowed_terminal_commands = allowed_terminal_commands;
+    }
+    if let Some(terminal_auto_execution) = req.security.terminal_auto_execution {
+        settings.projects[proj_idx].security.terminal_auto_execution = terminal_auto_execution;
+    }
+
+    // Merged, not assigned: a payload naming one unmodeled key must not clear the ones it omits.
     // An empty map is therefore a no-op rather than a wipe.
     if !req.extra.is_empty() {
         settings.projects[proj_idx].extra.extend(req.extra);

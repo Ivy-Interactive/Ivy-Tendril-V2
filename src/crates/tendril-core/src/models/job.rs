@@ -312,6 +312,12 @@ pub struct JobItem {
     pub cli_command: Option<String>,
     #[serde(rename = "processId", skip_serializing_if = "Option::is_none")]
     pub process_id: Option<u32>,
+    /// Set when this job's `Running` row was restored across a daemon restart with its PID still
+    /// alive. Never persisted: like `typed_args`, it is rehydrated in memory only, by
+    /// [`crate::jobs::manager::JobManager::supervise_detached`], so a row loaded straight from SQLite
+    /// always reads `false` here even for a job that is in fact detached.
+    #[serde(default)]
+    pub detached: bool,
     /// Plan state captured at launch, restored when the job fails, times out, or is cancelled.
     #[serde(rename = "previousPlanState", skip_serializing_if = "Option::is_none")]
     pub previous_plan_state: Option<String>,
@@ -390,6 +396,7 @@ impl JobItem {
             working_directory: None,
             cli_command: None,
             process_id: None,
+            detached: false,
             previous_plan_state: None,
             reported_plan_id: None,
             reported_plan_title: None,

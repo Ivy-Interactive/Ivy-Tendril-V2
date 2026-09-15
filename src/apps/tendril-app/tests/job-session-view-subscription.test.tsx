@@ -169,4 +169,27 @@ describe("JobSessionView Real-Time Subscription", () => {
     expect(screen.getByText("Starting\u2026")).toBeInTheDocument();
     expect(screen.queryByText("Waiting for agent output...")).not.toBeInTheDocument();
   });
+
+  it("renders_detached_job_badge", () => {
+    const detachedJob: Job = {
+      id: "job-view-detached",
+      type: "ExecutePlan",
+      project: "Tendril",
+      status: "Running",
+      processId: 4242,
+      detached: true,
+    };
+    jobsStore.clearSession(detachedJob.id);
+
+    render(<JobSessionView job={detachedJob} events={[]} />);
+
+    expect(screen.getByTestId("job-detached-badge")).toBeInTheDocument();
+    expect(screen.getByText("Detached (PID 4242) — Monitoring active process")).toBeInTheDocument();
+  });
+
+  it("does not render the detached badge for an ordinary job", () => {
+    render(<JobSessionView job={mockRunningJob} events={[]} />);
+
+    expect(screen.queryByTestId("job-detached-badge")).not.toBeInTheDocument();
+  });
 });

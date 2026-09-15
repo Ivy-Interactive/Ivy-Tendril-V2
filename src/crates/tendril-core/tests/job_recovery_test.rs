@@ -2,10 +2,12 @@ mod common;
 
 use common::{plan_state, plan_with, HomeFixture};
 use std::path::Path;
+use std::time::Duration;
 use tendril_core::config::{get_database_path, TendrilSettings};
 use tendril_core::db::jobs::{get_job, insert_job};
 use tendril_core::db::open_database;
 use tendril_core::error::Result;
+use tendril_core::jobs::manager::JobManager;
 use tendril_core::jobs::recovery::{reconcile_jobs_with, ReconcileReport, RESTART_MESSAGE};
 use tendril_core::models::{
     ExecutePlanArgs, JobArgs, JobItem, JobStatus, PlanStatus, VerificationStatus,
@@ -60,6 +62,7 @@ async fn reconcile(home: &HomeFixture) -> ReconcileReport {
         &home.plans_dir(),
         &TendrilSettings::default(),
         &never_called_resolver,
+        None,
     )
     .await
     .expect("reconciliation should not error")
@@ -441,4 +444,147 @@ async fn an_interrupted_job_with_a_missing_plan_folder_fails_cleanly() {
     let report = reconcile(&home).await;
     assert_eq!(report.failed_jobs, vec!["00001".to_string()]);
     assert_eq!(reload(&home, "00001").status, JobStatus::Failed);
+}
+
+/// A `Running` row whose process survives the restart is handed to `supervise_detached` rather than
+/// left in `report.live_jobs` forever. Once the process exits with its work genuinely done — a passing
+/// verification gate and a recorded commit — the supervisor finalizes it exactly as a live completion
+/// would: `Completed`, plan moved to `Review`.
+#[cfg(unix)]
+#[tokio::test]
+async fn detached_job_supervised_to_completion() {
+    let home = HomeFixture::new("rec-detached-complete");
+    let mut plan = plan_with(
+        PlanStatus::Executing,
+        &[("Build", VerificationStatus::Pass)],
+    );
+    plan.commits.push("abc123".to_string());
+    let folder = home.write_plan("00001-Detached", &plan);
+
+    let mut child = tokio::process::Command::new("sleep")
+        .arg("1")
+        .spawn()
+        .expect("spawn a short-lived process to stand in for a detached agent");
+    let pid = child.id().expect("child pid");
+    // `is_process_running` uses `kill(pid, 0)`, which still succeeds against an unreaped zombie: the
+    // child must actually be waited on for the supervisor to ever observe it as gone.
+    tokio::spawn(async move {
+        let _ = child.wait().await;
+    });
+
+    seed_job(
+        &home,
+        "00001",
+        "ExecutePlan",
+        &folder,
+        JobStatus::Running,
+        Some(pid),
+        Some("Draft"),
+    );
+
+    let manager = JobManager::new(home.path.clone(), TendrilSettings::default())
+        .with_plans_dir(Some(home.plans_dir()))
+        .share();
+    manager.supervise_detached("00001".to_string()).await;
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        if reload(&home, "00001").status != JobStatus::Running {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "detached job never left Running"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    let job = reload(&home, "00001");
+    assert_eq!(job.status, JobStatus::Completed);
+    assert_eq!(plan_state(&folder), "Review");
+}
+
+/// A dead `CreatePr`'s work is judged by the same domain evidence a live completion would use: a
+/// pull request URL already recorded on the plan means the daemon's death lost nothing, so
+/// reconciliation must resolve it to `Completed`, not the blanket `Incomplete` every other
+/// non-execution job type gets by default.
+#[tokio::test]
+async fn domain_reconciliation_create_pr_intact() {
+    let home = HomeFixture::new("rec-createpr-intact");
+    // `Review`: where a plan sits while its `CreatePr` job runs — `ExecutePlan` already moved it
+    // there, and nothing moves it again until the agent itself marks it `Completed`.
+    let mut plan = plan_with(PlanStatus::Review, &[]);
+    plan.prs
+        .push("https://github.com/example/repo/pull/42".to_string());
+    let folder = home.write_plan("00001-Prd", &plan);
+
+    seed_job(
+        &home,
+        "00001",
+        "CreatePr",
+        &folder,
+        JobStatus::Running,
+        Some(0),
+        Some("Draft"),
+    );
+
+    let report = reconcile(&home).await;
+    assert_eq!(report.completed_jobs, vec!["00001".to_string()]);
+    assert!(report.failed_jobs.is_empty());
+
+    let job = reload(&home, "00001");
+    assert_eq!(job.status, JobStatus::Completed);
+    // `plan_state_on_success` deliberately excludes CreatePr — the plan's own transition to
+    // `Completed` is written by the agent, not the job engine — so recovery must leave it untouched.
+    assert_eq!(plan_state(&folder), "Review");
+}
+
+/// The stuck-job check must not reap a detached job whose process is still actively running, even
+/// once its frozen `last_output_at` is well past the stale-output window: that staleness reflects the
+/// old daemon dying, not the agent going quiet.
+#[cfg(unix)]
+#[tokio::test]
+async fn stuck_job_check_respects_active_detached_pid() {
+    let home = HomeFixture::new("rec-stuck-detached");
+    let folder = home.write_plan("00001-Stuck", &plan_with(PlanStatus::Executing, &[]));
+
+    let mut child = tokio::process::Command::new("sleep")
+        .arg("30")
+        .spawn()
+        .expect("spawn a live process to stand in for a detached agent");
+    let pid = child.id().expect("child pid");
+
+    let mut job = seed_job(
+        &home,
+        "00001",
+        "ExecutePlan",
+        &folder,
+        JobStatus::Running,
+        Some(pid),
+        Some("Draft"),
+    );
+    // Frozen well past any stale-output window: the old daemon died, so nothing has updated this
+    // since, exactly as a real detached job's row reads after a restart.
+    job.last_output_at = Some(chrono::Utc::now() - chrono::Duration::minutes(20));
+    job.started_at = Some(chrono::Utc::now() - chrono::Duration::minutes(20));
+    {
+        let conn = open_database(&get_database_path(&home.path)).expect("open fixture db");
+        insert_job(&conn, &job).expect("update seeded job row");
+    }
+
+    let manager = JobManager::new(home.path.clone(), TendrilSettings::default())
+        .with_plans_dir(Some(home.plans_dir()))
+        .with_stale_output_timeout(Some(Duration::from_secs(1)))
+        .share();
+    manager.supervise_detached("00001".to_string()).await;
+
+    let report = manager
+        .run_maintenance_pass_with(&never_called_resolver)
+        .await;
+
+    assert!(report.reaped_jobs.is_empty(), "{:?}", report.reaped_jobs);
+    assert_eq!(reload(&home, "00001").status, JobStatus::Running);
+    assert_eq!(plan_state(&folder), "Executing");
+
+    let _ = child.kill().await;
 }

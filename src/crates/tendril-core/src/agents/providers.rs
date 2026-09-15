@@ -1,3 +1,6 @@
+use crate::models::{
+    AgentSecurityConfig, OutsideFileAccessPolicy, SandboxMode, TerminalAutoExecution,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -30,6 +33,17 @@ pub struct AgentLaunchConfig {
     pub prompt_file_path: Option<String>,
     pub mcp_servers: Vec<McpServerConfig>,
     pub timeout_seconds: Option<u64>,
+    /// `Some("Enabled")` or `Some("Disabled")`, i.e. an [`AgentSecurityConfig::effective_sandbox_mode`]
+    /// already resolved out of `InheritGeneral`. `None` preserves each provider's original hardcoded
+    /// behavior, so a caller that never sets this field (every existing test and call site) renders
+    /// byte-identical process specs to before this field existed.
+    ///
+    /// [`AgentSecurityConfig::effective_sandbox_mode`]: crate::models::project::AgentSecurityConfig::effective_sandbox_mode
+    pub sandbox_mode: Option<String>,
+    /// `Some(false)` denies outbound network access from the sandboxed agent process. `None` preserves
+    /// each provider's original hardcoded behavior (network allowed), for the same reason as
+    /// `sandbox_mode`.
+    pub network_access: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +77,50 @@ pub fn agent_command(provider: &str) -> String {
     build_agent_spec(provider, &AgentLaunchConfig::default()).command
 }
 
+/// Enforces a project's [`AgentSecurityConfig`] onto a launch config before it reaches
+/// [`build_agent_spec`]: the single place where the seven security keys turn into the
+/// provider-agnostic fields (`sandbox_mode`, `network_access`, `permission_mode`, tool
+/// allow/deny lists, writable directories) that each provider builder already knows how to
+/// render. Called from the job launcher for every job, so a project with no security
+/// configuration gets `AgentSecurityConfig::default()`'s permissive behavior rather than being
+/// skipped.
+pub fn apply_security_settings(config: &mut AgentLaunchConfig, security: &AgentSecurityConfig) {
+    if security.effective_outside_file_access() != OutsideFileAccessPolicy::Deny {
+        for rule in &security.file_permissions {
+            if rule.mode_is_deny() {
+                config.denied_tools.push(format!("Write({})", rule.path));
+                config.denied_tools.push(format!("Edit({})", rule.path));
+            } else {
+                config.writable_directories.push(rule.path.clone());
+            }
+        }
+    }
+
+    for cmd in &security.allowed_terminal_commands {
+        config.allowed_tools.push(format!("Bash({} *)", cmd));
+    }
+
+    config.permission_mode = Some(
+        match security.effective_terminal_auto_execution() {
+            TerminalAutoExecution::AlwaysAsk => "default",
+            TerminalAutoExecution::AlwaysProceed | TerminalAutoExecution::InheritGeneral => {
+                "FullAuto"
+            }
+        }
+        .to_string(),
+    );
+
+    config.sandbox_mode = Some(
+        match security.effective_sandbox_mode() {
+            SandboxMode::Enabled => "Enabled",
+            SandboxMode::Disabled | SandboxMode::InheritGeneral => "Disabled",
+        }
+        .to_string(),
+    );
+
+    config.network_access = Some(security.is_network_allowed());
+}
+
 // ---------------------------------------------------------------------------
 // Antigravity (agy)
 // ---------------------------------------------------------------------------
@@ -77,11 +135,14 @@ pub const ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS: &str = "Tool usage notes:\n\
 - `grep_search`'s `Includes` argument must be a JSON array of strings (e.g. [\"*.cs\"]), never a comma-separated string.";
 
 fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
-    let mut args = vec![
-        "--dangerously-skip-permissions".to_string(),
-        "--output-format".to_string(),
-        "stream-json".to_string(),
-    ];
+    let mut args = Vec::new();
+    // `sandbox_mode: Some("Enabled")` is the only value that turns sandboxing on; `None` (no caller
+    // opinion) and `Some("Disabled")` both keep today's unsandboxed default.
+    if config.sandbox_mode.as_deref() != Some("Enabled") {
+        args.push("--dangerously-skip-permissions".to_string());
+    }
+    args.push("--output-format".to_string());
+    args.push("stream-json".to_string());
 
     if let Some(timeout) = config.timeout_seconds {
         if timeout > 0 {
@@ -264,8 +325,18 @@ fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         }
     }
 
-    let denied_rules = translate_claude_rules(&config.denied_tools);
+    let mut denied_rules = translate_claude_rules(&config.denied_tools);
+    // Claude has no dedicated network flag, so a denial is rendered as the closest equivalent tool
+    // denial: no outbound fetch/search tools.
+    if config.network_access == Some(false) {
+        for rule in ["WebFetch", "WebSearch"] {
+            if !denied_rules.iter().any(|r| r == rule) {
+                denied_rules.push(rule.to_string());
+            }
+        }
+    }
 
+    let mut settings = serde_json::Map::new();
     if !allowed_rules.is_empty() || !denied_rules.is_empty() {
         let mut permissions = serde_json::Map::new();
         if !allowed_rules.is_empty() {
@@ -275,9 +346,14 @@ fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         if !denied_rules.is_empty() {
             permissions.insert("deny".to_string(), serde_json::json!(denied_rules));
         }
-        let settings_obj = serde_json::json!({ "permissions": permissions });
+        settings.insert("permissions".to_string(), serde_json::json!(permissions));
+    }
+    if config.sandbox_mode.as_deref() == Some("Enabled") {
+        settings.insert("sandbox".to_string(), serde_json::json!(true));
+    }
+    if !settings.is_empty() {
         args.push("--settings".to_string());
-        args.push(settings_obj.to_string());
+        args.push(serde_json::Value::Object(settings).to_string());
     }
 
     for dir in &config.writable_directories {
@@ -362,15 +438,23 @@ fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
 // Codex (codex)
 // ---------------------------------------------------------------------------
 fn build_codex_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
-    let mut args = vec![
-        "exec".to_string(),
-        "--sandbox".to_string(),
-        "workspace-write".to_string(),
-        "-c".to_string(),
-        "sandbox_workspace_write.network_access=true".to_string(),
-        "--json".to_string(),
-        "--skip-git-repo-check".to_string(),
-    ];
+    // `Some("Disabled")` is the only value that turns sandboxing off; `None` (no caller opinion) and
+    // `Some("Enabled")` both keep today's `workspace-write` default.
+    let sandboxed = config.sandbox_mode.as_deref() != Some("Disabled");
+
+    let mut args = vec!["exec".to_string(), "--sandbox".to_string()];
+    if sandboxed {
+        args.push("workspace-write".to_string());
+        args.push("-c".to_string());
+        args.push(format!(
+            "sandbox_workspace_write.network_access={}",
+            config.network_access.unwrap_or(true)
+        ));
+    } else {
+        args.push("danger-full-access".to_string());
+    }
+    args.push("--json".to_string());
+    args.push("--skip-git-repo-check".to_string());
 
     if let Some(m) = &config.model {
         if !m.is_empty() {
@@ -444,9 +528,14 @@ fn build_gemini_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         "--skip-trust".to_string(),
         "--approval-mode".to_string(),
         perm_mode.to_string(),
-        "--prompt".to_string(),
-        " ".to_string(),
     ];
+
+    if config.sandbox_mode.as_deref() == Some("Enabled") {
+        args.push("--sandbox".to_string());
+    }
+
+    args.push("--prompt".to_string());
+    args.push(" ".to_string());
 
     if let Some(m) = &config.model {
         if !m.is_empty() && !m.eq_ignore_ascii_case("default") {

@@ -31,6 +31,29 @@ import {
   Skeleton as loadingSkeletonStory,
   Spinner as loadingSpinnerStory,
 } from "../src/stories/Loading.stories.tsx";
+import areaChartMeta from "../src/stories/AreaChart.stories.tsx";
+import barChartMeta from "../src/stories/BarChart.stories.tsx";
+import chordChartMeta from "../src/stories/ChordChart.stories.tsx";
+import funnelChartMeta from "../src/stories/FunnelChart.stories.tsx";
+import gaugeChartMeta from "../src/stories/GaugeChart.stories.tsx";
+import lineChartMeta from "../src/stories/LineChart.stories.tsx";
+import pieChartMeta from "../src/stories/PieChart.stories.tsx";
+import radarChartMeta from "../src/stories/RadarChart.stories.tsx";
+import sankeyChartMeta from "../src/stories/SankeyChart.stories.tsx";
+import scatterChartMeta from "../src/stories/ScatterChart.stories.tsx";
+
+const chartMetas = [
+  areaChartMeta,
+  barChartMeta,
+  chordChartMeta,
+  funnelChartMeta,
+  gaugeChartMeta,
+  lineChartMeta,
+  pieChartMeta,
+  radarChartMeta,
+  sankeyChartMeta,
+  scatterChartMeta,
+];
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -94,6 +117,10 @@ function createPage(order: string[]) {
       waitForTimeout: vi.fn().mockResolvedValue(undefined),
       $: vi.fn().mockImplementation((selector: string) => {
         order.push(`$:${selector}`);
+        return Promise.resolve(rootElement);
+      }),
+      waitForSelector: vi.fn().mockImplementation((selector: string) => {
+        order.push(`waitForSelector:${selector}`);
         return Promise.resolve(rootElement);
       }),
     },
@@ -175,6 +202,49 @@ describe("Storybook visual regression runner", () => {
     });
 
     expect(page.waitForTimeout).toHaveBeenCalledWith(3000);
+  });
+
+  it("waits for parameters.visual.waitForSelector before freezing the page", async () => {
+    const order: string[] = [];
+    const { page } = createPage(order);
+
+    await captureSnapshotCalls(async () => {
+      await visualConfig.postVisit?.(
+        page as never,
+        {
+          id: "charts-linechart--default",
+          title: "Charts/LineChart",
+          name: "Default",
+          parameters: { visual: { waitForSelector: '[data-chart-rendered="true"]' } },
+        } as never,
+      );
+    });
+
+    // The marker has to land before the freeze CSS goes in and before the settle delay starts.
+    expect(order).toEqual([
+      "waitForPageReady",
+      'waitForSelector:[data-chart-rendered="true"]',
+      "addStyleTag:freeze",
+      "$:#storybook-root",
+    ]);
+    expect(page.waitForSelector).toHaveBeenCalledWith('[data-chart-rendered="true"]', {
+      timeout: 15_000,
+    });
+  });
+
+  it("does not call waitForSelector for a story that does not ask for one", async () => {
+    const order: string[] = [];
+    const { page } = createPage(order);
+
+    await captureSnapshotCalls(async () => {
+      await visualConfig.postVisit?.(page as never, {
+        id: "ui-button--default",
+        title: "UI/Button",
+        name: "Default",
+      });
+    });
+
+    expect(page.waitForSelector).not.toHaveBeenCalled();
   });
 
   it("writes baselines to .storybook/__image_snapshots__ with a theme and density identifier", async () => {
@@ -275,6 +345,16 @@ describe("Lazily rendered story settle delays", () => {
     expect(agentViewerRichLogsStory.parameters?.visual?.disable).toBe(true);
     expect(agentViewerMeta.parameters?.visual).toBeUndefined();
     expect(agentViewerMeta.parameters?.layout).toBe("padded");
+  });
+
+  // The charts paint to a canvas and announce it, so they get a marker instead of a longer delay.
+  it("gates every chart story on the data-chart-rendered marker", () => {
+    for (const meta of chartMetas) {
+      expect(meta.parameters?.visual?.waitForSelector, meta.title).toBe(
+        '[data-chart-rendered="true"]',
+      );
+      expect(meta.parameters?.visual?.disable, meta.title).toBeUndefined();
+    }
   });
 });
 

@@ -263,6 +263,16 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
                 {project}
               </span>
             ))}
+            {/* From 751bed8: a job supervised across a daemon restart, as opposed to one this
+                session started end to end. */}
+            {currentJob.detached && (
+              <span
+                data-testid="job-detached-badge"
+                className="rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning"
+              >
+                Detached (PID {currentJob.processId}) — Monitoring active process
+              </span>
+            )}
           </div>
           {/* The output sheet's title: `$"{job.Type} {ExtractPlanId(job.PlanFile)}"`. */}
           <h1 className="mt-2 truncate text-2xl font-bold text-foreground">
