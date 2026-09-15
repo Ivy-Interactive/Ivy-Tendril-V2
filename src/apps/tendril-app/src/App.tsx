@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { uiStore, type UiState } from "./state/uiStore";
 import { plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
+import { notificationsStore } from "./state/notificationsStore";
 import { serviceStore } from "./state/serviceStore";
 import { bridge } from "./api/bridge";
 import {
@@ -34,6 +35,17 @@ import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 const NoProjectsDialog = React.lazy(() =>
   import("./views/dialogs/NoProjectsDialog").then((m) => ({ default: m.NoProjectsDialog })),
 );
+
+// Lazy for the same reason, and it is the whole point of `notificationsStore` reaching `toast`
+// through a dynamic import too: the toast viewport is mounted from the start of the session, but
+// the chunk it lives in is fetched alongside the first view rather than blocking the entry chunk.
+const Toaster = React.lazy(() =>
+  import("@ivy-interactive/components/ui").then((m) => ({ default: m.Toaster })),
+);
+
+/** How often the job list is re-read to spot exits. Short enough that a finished job is announced
+ *  while the operator still has it in mind, long enough to be a rounding error on the daemon. */
+const JOB_POLL_INTERVAL_MS = 5000;
 
 const DashboardView = React.lazy(() =>
   import("./views/DashboardView").then((m) => ({ default: m.DashboardView })),
@@ -201,12 +213,27 @@ export const App: React.FC = () => {
       .then((unsub) => (unsubChangeStatus = unsub))
       .catch(() => {});
 
+    // Notifications: read the setting, ask for OS permission if it is on, then announce every job
+    // that exits. The daemon's WebSocket carries chat and PR events but not job lifecycle ones, so
+    // the exits have to be noticed by polling the list — `jobsStore` diffs each snapshot and only
+    // reports transitions, so the tick costs one request and raises nothing when nothing changed.
+    notificationsStore.init().catch(() => {});
+    const unsubExit = jobsStore.onJobExit((notification) =>
+      notificationsStore.notifyJobExit(notification),
+    );
+    const pollTimer = window.setInterval(() => {
+      if (serviceStore.getState().status !== "online") return;
+      jobsStore.fetchJobs().catch(() => {});
+    }, JOB_POLL_INTERVAL_MS);
+
     return () => {
       if (unsubStatus) unsubStatus();
       if (unsubJob) unsubJob();
       if (unsubPlan) unsubPlan();
       if (unsubChange) unsubChange();
       if (unsubChangeStatus) unsubChangeStatus();
+      unsubExit();
+      window.clearInterval(pollTimer);
     };
   }, []);
 
@@ -595,6 +622,10 @@ export const App: React.FC = () => {
       />
 
       <KeyboardShortcutsHelp isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+
+      <React.Suspense fallback={null}>
+        <Toaster />
+      </React.Suspense>
     </>
   );
 };

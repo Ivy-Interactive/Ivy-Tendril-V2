@@ -357,6 +357,10 @@ pub struct TendrilConfigDto {
     pub plan_template: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    /// `None` when the key is absent from `config.yaml`. The default lives in the frontend store, not
+    /// here: an absent key must read as "on", and a DTO default would hide the difference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub desktop_notifications: Option<bool>,
     #[serde(default)]
     pub raw: serde_json::Value,
 }

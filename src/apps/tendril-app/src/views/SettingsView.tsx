@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { setThemeGlobal, type Theme } from "@ivy-interactive/components/theme";
 import { bridge } from "../api/bridge";
+import { notificationsStore } from "../state/notificationsStore";
 import { describeBridgeError, type ServiceInfo, type TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
 import { NewsletterSignup } from "../components/NewsletterSignup";
@@ -25,6 +26,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
   const [jobTimeout, setJobTimeout] = useState(1800);
   const [maxConcurrentJobs, setMaxConcurrentJobs] = useState(4);
   const [theme, setTheme] = useState("dark");
+  // Absent in config.yaml means on, the same default the notifications store applies.
+  const [desktopNotifications, setDesktopNotifications] = useState(true);
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
 
   const applyConfig = (cfg: TendrilConfig) => {
     setConfig(cfg);
@@ -32,6 +37,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
     if (cfg.jobTimeout) setJobTimeout(cfg.jobTimeout);
     if (cfg.maxConcurrentJobs) setMaxConcurrentJobs(cfg.maxConcurrentJobs);
     if (cfg.theme) setTheme(cfg.theme);
+    setDesktopNotifications(cfg.desktopNotifications ?? true);
   };
 
   useEffect(() => {
@@ -50,6 +56,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
     setTheme(value);
     // Apply the choice immediately; the form's Save still persists it to config.
     setThemeGlobal(value as Theme);
+  };
+
+  // Saved on its own rather than with the preferences form: the store has to be told the moment the
+  // setting changes so routing follows without a reload, which is what upstream got from reading the
+  // setting at notification time.
+  const handleSaveNotifications = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingNotifications(true);
+    setNotificationsError(null);
+
+    try {
+      await bridge.putConfig("desktopNotifications", desktopNotifications);
+      setConfig((prev) => (prev ? { ...prev, desktopNotifications } : prev));
+      notificationsStore.setDesktopNotifications(desktopNotifications);
+      notificationsStore.notifySuccess("Saved", "Notification settings saved");
+    } catch (err) {
+      setNotificationsError(`Failed to save: ${describeBridgeError(err)}`);
+    } finally {
+      setIsSavingNotifications(false);
+    }
   };
 
   const handlePing = async () => {
@@ -280,6 +306,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
         </div>
 
         <ModelCatalogCard />
+
+        {/* Notifications */}
+        <div
+          className="rounded-xl border border-border bg-card/60 p-6"
+          data-testid="notifications-card"
+        >
+          <div className="border-b border-border pb-4">
+            <h2 className="text-base font-semibold text-foreground">Notifications</h2>
+            <p className="text-xs text-muted-foreground">
+              Configure how Tendril notifies you about job completions, failures, and other events.
+            </p>
+          </div>
+
+          {notificationsError && (
+            <div className="mt-3 rounded bg-background p-2 text-xs text-destructive border border-destructive/50">
+              {notificationsError}
+            </div>
+          )}
+
+          <form onSubmit={handleSaveNotifications} className="mt-4 space-y-4 text-sm">
+            <label className="flex items-start gap-3" htmlFor="desktop-notifications-checkbox">
+              <input
+                id="desktop-notifications-checkbox"
+                type="checkbox"
+                checked={desktopNotifications}
+                onChange={(e) => setDesktopNotifications(e.target.checked)}
+                className="mt-0.5 size-4 rounded border-border bg-background accent-primary"
+              />
+              <span>
+                <span className="block text-xs font-medium text-foreground">
+                  Enable Desktop Notifications
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Show native OS notifications when jobs finish. With this off, Tendril shows an
+                  in-app toast instead.
+                </span>
+              </span>
+            </label>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={isSavingNotifications}
+                className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+              >
+                {isSavingNotifications ? "Saving..." : "Save Notification Settings"}
+              </button>
+            </div>
+          </form>
+        </div>
 
         <div className="rounded-xl border border-border bg-card/60 p-6">
           <div className="border-b border-border pb-4">
