@@ -8,6 +8,16 @@
 export {
   ThemeProvider,
   setThemeGlobal,
+  useThemeWithMonitoring,
   type ThemeProviderProps,
+  type ThemeMonitorOptions,
+  type ThemeMonitorResult,
 } from "./components/theme-provider";
 export { useTheme, type Theme, type ThemeContextType } from "./contexts/theme-context";
+export {
+  getCSSVariable,
+  getSystemThemePreference,
+  getThemeColors,
+  isDarkMode,
+  type ThemeColors,
+} from "./lib/theme";

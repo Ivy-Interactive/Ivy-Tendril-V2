@@ -76,3 +76,34 @@ export function isDevToolsEnabled(): boolean {
   const meta = document.querySelector('meta[name="ivy-enable-dev-tools"]');
   return meta?.getAttribute("content") === "true";
 }
+
+/**
+ * Lowercase the first character of a Title Case string, leaving non-strings untouched.
+ * Chart data keys arrive Title Cased from some producers while the props that select them
+ * are camel cased.
+ */
+export function camelCase(titleCase: unknown): unknown {
+  if (typeof titleCase !== "string") {
+    return titleCase;
+  }
+  return titleCase.charAt(0).toLowerCase() + titleCase.slice(1);
+}
+
+/**
+ * Apply defaults to an object, only setting values that are undefined.
+ * Used where a producer omits a value because it equals the default, so the
+ * consumer has to reinstate it.
+ */
+export function applyDefaults<T extends object>(
+  obj: Partial<T> | undefined,
+  defaults: Partial<T>,
+): Partial<T> {
+  if (!obj) return { ...defaults };
+  const result = { ...defaults };
+  for (const key in obj) {
+    if (obj[key] !== undefined) {
+      (result as Record<string, unknown>)[key] = obj[key];
+    }
+  }
+  return result;
+}
