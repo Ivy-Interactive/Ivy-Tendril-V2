@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 use tendril_core::agents::model_cache::{self, CacheFreshness};
 use tendril_core::chat::execution::ChatExecutionManager;
@@ -11,6 +11,8 @@ use tendril_core::version_check::VersionInfo;
 use tendril_core::watcher::ChangeEvent;
 use tokio::sync::{broadcast, RwLock};
 
+use crate::event_buffer::{self, EventRingBuffer, WSEventEnvelope};
+
 #[derive(Clone)]
 pub struct AppState {
     pub tendril_home: PathBuf,
@@ -20,6 +22,12 @@ pub struct AppState {
     pub job_manager: Arc<JobManager>,
     pub chat_manager: Arc<ChatExecutionManager>,
     pub ws_tx: broadcast::Sender<String>,
+    /// Recent events dispatched over `ws_tx`, kept so a reconnecting client can resume via
+    /// `?since=<seq>` instead of re-fetching full state. See [`AppState::dispatch_ws_event`].
+    pub ring_buffer: Arc<EventRingBuffer>,
+    /// Source of the monotonic `seq` stamped onto every dispatched event. Starts at 1 so the first
+    /// dispatched event of a daemon's lifetime is `seq: 1`, never `0`.
+    pub seq_counter: Arc<AtomicU64>,
     /// Filesystem change notifications, fed by the watcher the master daemon starts and consumed by
     /// `/api/changes/events`. The channel exists whether or not a watcher is running, so a test can
     /// publish on it directly and a daemon that lost the master race still serves the route.
@@ -102,18 +110,28 @@ impl AppState {
         let job_manager = JobManager::new(tendril_home.clone(), settings).share();
         let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
+        let ring_buffer = Arc::new(EventRingBuffer::default());
+        let seq_counter = Arc::new(AtomicU64::new(1));
         // Coalesced change events, so 256 is generous: a client would have to be a full burst-window
         // behind to lag, and `stream_changes` degrades a lag to one full rescan anyway. Constructing
         // state deliberately does not start a watcher — only the master daemon does that.
         let (change_tx, _) = broadcast::channel(256);
 
-        // Forward chat events to WebSocket clients
+        // Forward chat events to WebSocket clients, through the same ring buffer/seq path every
+        // other event source uses so a resuming client sees chat events too.
         let mut chat_rx = chat_manager.subscribe_events();
         let ws_tx_clone = ws_tx.clone();
+        let ring_buffer_clone = ring_buffer.clone();
+        let seq_counter_clone = seq_counter.clone();
         tokio::spawn(async move {
             while let Ok(evt) = chat_rx.recv().await {
-                if let Ok(json) = serde_json::to_string(&evt) {
-                    let _ = ws_tx_clone.send(json);
+                if let Ok(payload) = serde_json::to_value(&evt) {
+                    event_buffer::dispatch_event(
+                        &seq_counter_clone,
+                        &ring_buffer_clone,
+                        &ws_tx_clone,
+                        payload,
+                    );
                 }
             }
         });
@@ -126,6 +144,8 @@ impl AppState {
             plans_dir.clone(),
             pr_sync_running.clone(),
             ws_tx.clone(),
+            ring_buffer.clone(),
+            seq_counter.clone(),
         );
 
         // `current_version` is always known, cache or not — only `latest_version`/`has_update`
@@ -145,11 +165,21 @@ impl AppState {
             job_manager,
             chat_manager,
             ws_tx,
+            ring_buffer,
+            seq_counter,
             change_tx,
             secret,
             basic_auth,
             pr_sync_running,
             version_info,
         }
+    }
+
+    /// Stamps `event` with the next monotonic sequence number, records it in [`Self::ring_buffer`],
+    /// and broadcasts it across [`Self::ws_tx`]. Every event a WebSocket client can observe should
+    /// go through this rather than `ws_tx.send` directly, so a reconnecting client's `?since=<seq>`
+    /// replay and the REST backfill endpoint both see it too.
+    pub fn dispatch_ws_event(&self, event: serde_json::Value) -> WSEventEnvelope {
+        event_buffer::dispatch_event(&self.seq_counter, &self.ring_buffer, &self.ws_tx, event)
     }
 }
