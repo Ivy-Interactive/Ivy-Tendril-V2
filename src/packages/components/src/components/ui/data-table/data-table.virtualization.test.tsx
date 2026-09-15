@@ -77,7 +77,9 @@ function scrollTo(scroller: HTMLElement, offset: number) {
   });
 }
 
-let originalScrollTo: typeof HTMLElement.prototype.scrollTo | undefined;
+// The descriptor rather than the method itself: reading `HTMLElement.prototype.scrollTo` as a value
+// is an unbound-method reference, and restoring the descriptor also preserves its writability.
+let originalScrollTo: PropertyDescriptor | undefined;
 
 beforeEach(() => {
   // virtual-core measures with `offsetHeight` (`getRect` and the default `measureElement` both read
@@ -98,17 +100,21 @@ beforeEach(() => {
   });
   // jsdom has no `scrollTo` at all, so `elementScroll`'s optional call would silently do nothing and
   // `scrollToIndex` (used by keyboard navigation) would never move the window.
-  originalScrollTo = HTMLElement.prototype.scrollTo;
-  HTMLElement.prototype.scrollTo = function scrollToStub(
-    this: HTMLElement,
-    options?: number | ScrollToOptions,
-    y?: number,
-  ) {
-    const top = typeof options === "number" ? y : options?.top;
-    if (typeof top !== "number") return;
-    this.scrollTop = top;
-    this.dispatchEvent(new Event("scroll"));
-  };
+  originalScrollTo = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo");
+  Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+    configurable: true,
+    writable: true,
+    value: function scrollToStub(
+      this: HTMLElement,
+      options?: number | ScrollToOptions,
+      y?: number,
+    ) {
+      const top = typeof options === "number" ? y : options?.top;
+      if (typeof top !== "number") return;
+      this.scrollTop = top;
+      this.dispatchEvent(new Event("scroll"));
+    },
+  });
 });
 
 afterEach(() => {
@@ -117,7 +123,7 @@ afterEach(() => {
   // @ts-expect-error - as above
   delete HTMLElement.prototype.clientHeight;
   if (originalScrollTo) {
-    HTMLElement.prototype.scrollTo = originalScrollTo;
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", originalScrollTo);
   } else {
     // @ts-expect-error - jsdom never defined it
     delete HTMLElement.prototype.scrollTo;
