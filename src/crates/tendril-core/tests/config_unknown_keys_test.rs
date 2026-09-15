@@ -1,4 +1,7 @@
 use tendril_core::config::{load_config, save_config, update_config_raw, TendrilSettings};
+use tendril_core::models::{
+    OutsideFileAccessPolicy, SandboxMode, SecurityPreset, TerminalAutoExecution,
+};
 
 const SAMPLE_IVY_CONFIG: &str = r##"
 codingAgent: claude
@@ -239,24 +242,18 @@ levels:
 theme: default
 "##;
 
-/// The nine keys and the exact values `SAMPLE_PROJECT_EXTRAS_CONFIG` gives them. Asserting on
-/// *values* rather than key presence is the point: a key that survives with the wrong value is still
-/// a broken security setting.
+/// The two keys `SAMPLE_PROJECT_EXTRAS_CONFIG` gives `ivy-framework` that are *still* unmodeled after
+/// [`AgentSecurityConfig`][tendril_core::models::AgentSecurityConfig] took the other seven. Asserting
+/// on *values* rather than key presence is the point: a key that survives with the wrong value is
+/// still a broken setting.
 fn expected_project_extras() -> Vec<(&'static str, serde_json::Value)> {
     vec![
         ("meta", serde_json::json!({})),
-        ("securityPreset", serde_json::json!("Custom")),
-        ("outsideFileAccessPolicy", serde_json::json!("Allow")),
-        ("terminalAutoExecution", serde_json::json!("AlwaysProceed")),
-        ("sandboxMode", serde_json::json!("InheritGeneral")),
         ("autoImplementPlans", serde_json::json!("InheritGeneral")),
-        ("filePermissions", serde_json::json!([])),
-        ("networkAccessRules", serde_json::json!([])),
-        ("allowedTerminalCommands", serde_json::json!([])),
     ]
 }
 
-fn assert_all_nine_extras(project: &tendril_core::models::ProjectConfig, context: &str) {
+fn assert_remaining_extras(project: &tendril_core::models::ProjectConfig, context: &str) {
     for (key, expected) in expected_project_extras() {
         assert_eq!(
             project.extra.get(key),
@@ -266,6 +263,43 @@ fn assert_all_nine_extras(project: &tendril_core::models::ProjectConfig, context
             project.extra.keys().collect::<Vec<_>>()
         );
     }
+}
+
+/// The seven agent security controls `SAMPLE_PROJECT_EXTRAS_CONFIG` gives `ivy-framework`, asserted
+/// as their typed values rather than raw `extra` entries.
+fn assert_ivy_framework_security(project: &tendril_core::models::ProjectConfig, context: &str) {
+    assert_eq!(
+        project.security.security_preset,
+        SecurityPreset::Custom,
+        "{context}: securityPreset"
+    );
+    assert_eq!(
+        project.security.outside_file_access_policy,
+        OutsideFileAccessPolicy::Allow,
+        "{context}: outsideFileAccessPolicy"
+    );
+    assert_eq!(
+        project.security.terminal_auto_execution,
+        TerminalAutoExecution::AlwaysProceed,
+        "{context}: terminalAutoExecution"
+    );
+    assert_eq!(
+        project.security.sandbox_mode,
+        SandboxMode::InheritGeneral,
+        "{context}: sandboxMode"
+    );
+    assert!(
+        project.security.file_permissions.is_empty(),
+        "{context}: filePermissions"
+    );
+    assert!(
+        project.security.network_access_rules.is_empty(),
+        "{context}: networkAccessRules"
+    );
+    assert!(
+        project.security.allowed_terminal_commands.is_empty(),
+        "{context}: allowedTerminalCommands"
+    );
 }
 
 /// A temp dir seeded with `SAMPLE_PROJECT_EXTRAS_CONFIG`, removed when the guard drops.
@@ -303,7 +337,8 @@ fn test_project_unmodeled_keys_survive_load_and_save() {
     assert_eq!(settings.projects.len(), 2);
 
     // Captured on load, and none of the modeled keys leaked into the catch-all.
-    assert_all_nine_extras(&settings.projects[0], "on load");
+    assert_remaining_extras(&settings.projects[0], "on load");
+    assert_ivy_framework_security(&settings.projects[0], "on load");
     for modeled in [
         "name",
         "color",
@@ -318,6 +353,13 @@ fn test_project_unmodeled_keys_survive_load_and_save() {
         "envFiles",
         "mcpServers",
         "skills",
+        "sandboxMode",
+        "securityPreset",
+        "outsideFileAccessPolicy",
+        "filePermissions",
+        "networkAccessRules",
+        "allowedTerminalCommands",
+        "terminalAutoExecution",
     ] {
         assert!(
             !settings.projects[0].extra.contains_key(modeled),
@@ -340,15 +382,16 @@ fn test_project_unmodeled_keys_survive_load_and_save() {
 
     let reloaded = load_config(&fx.path).expect("reload should succeed");
     assert_eq!(reloaded.projects[0].color, "Red");
-    assert_all_nine_extras(&reloaded.projects[0], "after save/reload");
-    // The second project's own extras are independent and equally intact.
+    assert_remaining_extras(&reloaded.projects[0], "after save/reload");
+    assert_ivy_framework_security(&reloaded.projects[0], "after save/reload");
+    // The second project's own security settings are independent and equally intact.
     assert_eq!(
-        reloaded.projects[1].extra.get("sandboxMode"),
-        Some(&serde_json::json!("Disabled"))
+        reloaded.projects[1].security.sandbox_mode,
+        SandboxMode::Disabled
     );
     assert_eq!(
-        reloaded.projects[1].extra.get("securityPreset"),
-        Some(&serde_json::json!("Strict"))
+        reloaded.projects[1].security.security_preset,
+        SecurityPreset::Strict
     );
 }
 
@@ -416,12 +459,13 @@ fn test_project_extras_survive_every_mutation_family() {
         save_config(&fx.path, &settings).expect("save_config should succeed");
 
         let reloaded = load_config(&fx.path).expect("reload should succeed");
-        assert_all_nine_extras(&reloaded.projects[0], verb);
+        assert_remaining_extras(&reloaded.projects[0], verb);
+        assert_ivy_framework_security(&reloaded.projects[0], verb);
         // Every verb leaves the project it did not touch alone.
         assert_eq!(
-            reloaded.projects[1].extra.get("securityPreset"),
-            Some(&serde_json::json!("Strict")),
-            "{verb}: second project's extras were disturbed"
+            reloaded.projects[1].security.security_preset,
+            SecurityPreset::Strict,
+            "{verb}: second project's security settings were disturbed"
         );
     }
 }
@@ -490,7 +534,8 @@ fn test_update_config_raw_merges_projects_by_name() {
     );
     assert_eq!(merged.projects[0].name, "ivy-framework");
     assert_eq!(merged.projects[0].color, "Red");
-    assert_all_nine_extras(&merged.projects[0], "after update_config_raw");
+    assert_remaining_extras(&merged.projects[0], "after update_config_raw");
+    assert_ivy_framework_security(&merged.projects[0], "after update_config_raw");
     // Modeled fields the payload omitted are kept too, not just the extras.
     assert_eq!(merged.projects[0].repos[0].path, "/repos/ivy-framework");
     assert_eq!(merged.projects[0].verifications[0].name, "DotnetBuild");
@@ -499,8 +544,8 @@ fn test_update_config_raw_merges_projects_by_name() {
     assert_eq!(merged.projects[1].name, "other-project");
     assert_eq!(merged.projects[1].color, "Blue");
     assert_eq!(
-        merged.projects[1].extra.get("securityPreset"),
-        Some(&serde_json::json!("Strict"))
+        merged.projects[1].security.security_preset,
+        SecurityPreset::Strict
     );
 }
 
@@ -526,12 +571,13 @@ fn test_update_config_raw_project_merge_is_case_insensitive_and_appends() {
     // in the body as a rename target.
     assert_eq!(merged.projects[0].name, "IVY-FRAMEWORK");
     assert_eq!(merged.projects[0].context, "matched case-insensitively");
-    assert_all_nine_extras(&merged.projects[0], "case-insensitive merge");
-    // Unmatched: appended, with its own extras.
+    assert_remaining_extras(&merged.projects[0], "case-insensitive merge");
+    assert_ivy_framework_security(&merged.projects[0], "case-insensitive merge");
+    // Unmatched: appended, with its own security settings.
     assert_eq!(merged.projects[2].name, "brand-new");
     assert_eq!(
-        merged.projects[2].extra.get("sandboxMode"),
-        Some(&serde_json::json!("InheritGeneral"))
+        merged.projects[2].security.sandbox_mode,
+        SandboxMode::InheritGeneral
     );
 }
 
@@ -559,15 +605,15 @@ fn test_update_config_raw_replaces_sequences_other_than_projects() {
     assert_eq!(merged.projects[0].verifications.len(), 1);
     assert_eq!(merged.projects[0].verifications[0].name, "OnlyThisOne");
     assert!(!merged.projects[0].verifications[0].required);
-    // An unmodeled sequence inside extras is likewise replaced.
+    // A modeled sequence inside a merged project's flattened security block is likewise replaced.
     assert_eq!(
-        merged.projects[0].extra.get("allowedTerminalCommands"),
-        Some(&serde_json::json!(["git status"]))
+        merged.projects[0].security.allowed_terminal_commands,
+        vec!["git status".to_string()]
     );
-    // The other eight extras are untouched by a payload that named only one of them.
+    // The other security fields are untouched by a payload that named only one of them.
     assert_eq!(
-        merged.projects[0].extra.get("securityPreset"),
-        Some(&serde_json::json!("Custom"))
+        merged.projects[0].security.security_preset,
+        SecurityPreset::Custom
     );
     // A top-level sequence that is not `projects` is replaced outright.
     assert_eq!(merged.levels.len(), 1);
