@@ -21,24 +21,38 @@ export interface ParsedShortcut {
 
 /**
  * Parses a shortcut string (e.g., "Ctrl+Shift+K") into its component parts.
- * Handles platform-specific modifier key mappings.
+ * Handles platform-specific modifier key mappings. `mod` is the platform command key — Command on
+ * Mac, Ctrl elsewhere — matching the `mod` support matchesShortcut() has always had; without it a
+ * host-supplied `mod+s` would silently degrade to a bare `S`.
  */
 export const parseShortcut = (shortcutStr?: string): ParsedShortcut | null => {
   if (!shortcutStr) return null;
   const parts = shortcutStr.toLowerCase().split("+");
   return {
-    ctrl: !isMac && parts.includes("ctrl"),
+    ctrl: !isMac && (parts.includes("ctrl") || parts.includes("mod")),
     shift: parts.includes("shift"),
     alt: parts.includes("alt"),
     meta: isMac
       ? parts.includes("ctrl") ||
         parts.includes("meta") ||
         parts.includes("cmd") ||
-        parts.includes("command")
+        parts.includes("command") ||
+        parts.includes("mod")
       : false,
     key: parts[parts.length - 1],
   };
 };
+
+/**
+ * True when a shortcut key is a single punctuation character, e.g. `/` or `?`.
+ *
+ * Punctuation is matched on `event.key`, not `event.code`, and without the strict shift equality test
+ * every other key gets: `?` is Shift+Slash, so the shift is what *produces* the character while
+ * parseShortcut("?") reports `shift: false`. Matching on `key` also keeps `/` and `?` distinct, which
+ * their shared `Slash` code cannot.
+ */
+export const isPunctuationKey = (key: string): boolean =>
+  key.length === 1 && !/[a-z0-9]/i.test(key);
 
 /**
  * Maps a key name to a KeyboardEvent.code value.
@@ -74,6 +88,20 @@ export const keyToCode = (key: string): string => {
     pageup: "PageUp",
     pagedown: "PageDown",
     insert: "Insert",
+    // Punctuation. The browser reports event.code === "Slash" for both "/" and "?", so without these
+    // a code-matched "/" never fires. See isPunctuationKey() for how the two are told apart.
+    "/": "Slash",
+    "?": "Slash",
+    ",": "Comma",
+    ".": "Period",
+    ";": "Semicolon",
+    "'": "Quote",
+    "[": "BracketLeft",
+    "]": "BracketRight",
+    "\\": "Backslash",
+    "-": "Minus",
+    "=": "Equal",
+    "`": "Backquote",
   };
   // F-keys: f1-f12
   const fKeyMatch = k.match(/^f(\d{1,2})$/);

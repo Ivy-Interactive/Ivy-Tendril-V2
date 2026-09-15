@@ -1,6 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
-import { isEditableTarget, isMac } from "../Shell/types";
+import { isMac } from "../Shell/types";
+import { parseShortcut } from "../../lib/shortcut";
+import { registerShortcut, unregisterShortcut } from "../../lib/shortcutRegistry";
 
 const NAMED_KEYS: Record<string, string> = {
   backspace: "⌫",
@@ -71,6 +73,8 @@ export interface ShortcutBinding {
   tag: string;
   shortcut?: string;
   disabled?: boolean;
+  /** Action label, used as the shortcut's description in the generated help panel. */
+  label?: string;
 }
 
 /** A modal layer owned by the host (an Ivy dialog or sheet) takes the keyboard; page shortcuts stay quiet under it. */
@@ -81,8 +85,7 @@ const hostModalOpen = (): boolean =>
 
 /**
  * The shell keeps inactive panes mounted but `visibility: hidden`, which neither blurs a focused
- * element inside them nor unmounts this widget; a hidden page must not answer keys, and a hidden
- * editable must not swallow them.
+ * element inside them nor unmounts this widget; a hidden page must not answer keys.
  */
 const isVisible = (element: Element): boolean => {
   if (typeof element.checkVisibility === "function")
@@ -94,13 +97,15 @@ const isVisible = (element: Element): boolean => {
   return true;
 };
 
-/** Composite widgets that move their own focus with the arrow keys keep them. */
-const ARROW_OWNER =
-  '[role="menu"], [role="menubar"], [role="listbox"], [role="tablist"], [role="radiogroup"], [role="slider"], [role="tree"], [role="grid"]';
-
 /**
- * Binds every action's shortcut on the document while nothing editable has focus and no dialog is
- * open, the way the framework's `ShortcutKey` did for the buttons this widget replaces.
+ * Registers every action's shortcut with the package's central shortcut registry, so this widget's
+ * keys are enumerable through `getRegisteredShortcuts()` and share the one window listener instead of
+ * running a `keydown` handler of their own.
+ *
+ * The gating this widget needs and the registry does not have generically — a host modal is open, or
+ * the pane is `visibility: hidden` — becomes each registration's `isActive()`. The rest (`e.repeat`,
+ * `e.defaultPrevented`, editable targets, the arrow-key escape for composite widgets) is the
+ * registry's own, applied to every consumer.
  */
 export const useActionShortcuts = (
   bindings: ShortcutBinding[],
@@ -108,23 +113,37 @@ export const useActionShortcuts = (
   enabled: boolean,
   rootRef?: RefObject<HTMLElement | null>,
 ) => {
+  const fireRef = useRef(fire);
+  fireRef.current = fire;
+
   useEffect(() => {
     if (!enabled) return;
-    const handle = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.repeat || hostModalOpen()) return;
+
+    const isActive = () => {
+      if (hostModalOpen()) return false;
       const root = rootRef?.current;
-      if (root && !isVisible(root)) return;
-      if (e.target instanceof Element && isEditableTarget(e) && isVisible(e.target)) return;
-      if (e.key.startsWith("Arrow") && e.target instanceof Element && e.target.closest(ARROW_OWNER))
-        return;
-      const hit = bindings.find(
-        (binding) => binding.shortcut && !binding.disabled && matchesShortcut(e, binding.shortcut),
-      );
-      if (!hit) return;
-      e.preventDefault();
-      fire(hit.tag);
+      return !(root && !isVisible(root));
     };
-    document.addEventListener("keydown", handle);
-    return () => document.removeEventListener("keydown", handle);
-  }, [bindings, fire, enabled, rootRef]);
+
+    const ids: string[] = [];
+    for (const binding of bindings) {
+      if (!binding.shortcut || binding.disabled) continue;
+      const shortcut = parseShortcut(binding.shortcut);
+      if (!shortcut) continue;
+      const id = `planWorkspace:${binding.tag}`;
+      const tag = binding.tag;
+      registerShortcut({
+        id,
+        shortcut,
+        handler: () => fireRef.current(tag),
+        description: binding.label ?? binding.tag,
+        isActive,
+        skipInInputs: true,
+        displayKey: binding.shortcut,
+      });
+      ids.push(id);
+    }
+
+    return () => ids.forEach(unregisterShortcut);
+  }, [bindings, enabled, rootRef]);
 };
