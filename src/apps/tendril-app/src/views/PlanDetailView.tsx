@@ -600,8 +600,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             onClick={() => setActiveSubTab(tab.id)}
             className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
               effectiveTab === tab.id
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "border-foreground text-foreground"
+                : "border-transparent text-foreground/60 hover:text-foreground"
             }`}
           >
             {tab.label}

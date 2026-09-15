@@ -16,7 +16,9 @@ import {
 function luminance(hex: string): number {
   const clean = hex.replace("#", "");
   const channels = [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16) / 255);
-  const [r, g, b] = channels.map((c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  const [r, g, b] = channels.map((c) =>
+    c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4),
+  );
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
@@ -41,7 +43,9 @@ describe("design system token sync", () => {
 
   it.each(MODES)("%s declares every managed token exactly once", (mode) => {
     const css = readTokensCss();
-    const block = new RegExp(`^${mode === "light" ? ":root" : "\\.dark"} \\{([^}]+)\\}`, "m").exec(css);
+    const block = new RegExp(`^${mode === "light" ? ":root" : "\\.dark"} \\{([^}]+)\\}`, "m").exec(
+      css,
+    );
     expect(block).not.toBeNull();
 
     for (const name of managedTokenNames()) {
@@ -52,7 +56,9 @@ describe("design system token sync", () => {
 
   it.each(MODES)("%s carries the design system's values", (mode) => {
     const css = readTokensCss();
-    const block = new RegExp(`^${mode === "light" ? ":root" : "\\.dark"} \\{([^}]+)\\}`, "m").exec(css);
+    const block = new RegExp(`^${mode === "light" ? ":root" : "\\.dark"} \\{([^}]+)\\}`, "m").exec(
+      css,
+    );
 
     for (const [name, value] of readDesignSystemTokens(mode)) {
       const declared = new RegExp(`--${name}:\\s*([^;]+);`).exec(block![1])?.[1].trim();

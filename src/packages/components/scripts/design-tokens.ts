@@ -67,7 +67,9 @@ export function readDesignSystemTokens(mode: ThemeMode): Map<string, string> {
 
   for (const [name, value] of Object.entries(ACCESSIBILITY_OVERRIDES[mode])) {
     if (!tokens.has(name)) {
-      throw new Error(`Override for --${name} (${mode}) does not correspond to a design system token`);
+      throw new Error(
+        `Override for --${name} (${mode}) does not correspond to a design system token`,
+      );
     }
     tokens.set(name, value);
   }
@@ -85,7 +87,9 @@ export function renderManagedRegion(mode: ThemeMode, indent = "  "): string {
 
   for (const [name, value] of readDesignSystemTokens(mode)) {
     const override = ACCESSIBILITY_OVERRIDES[mode][name];
-    lines.push(`${indent}--${name}: ${value};${override ? " /* see ACCESSIBILITY_OVERRIDES */" : ""}`);
+    lines.push(
+      `${indent}--${name}: ${value};${override ? " /* see ACCESSIBILITY_OVERRIDES */" : ""}`,
+    );
   }
 
   lines.push(`${indent}${MARKER_END}`);

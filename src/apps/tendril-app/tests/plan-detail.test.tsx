@@ -58,7 +58,8 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
       expect(screen.getByText("Tauri WebDriver E2E Automation")).toBeInTheDocument(),
     );
 
-    expect(screen.getByText("Medium impact")).toBeInTheDocument();
+    // `RecommendationsTabView` badges the bare impact value, not "<impact> impact".
+    expect(screen.getByText("Medium")).toBeInTheDocument();
     expect(screen.getByText("Drive the packaged app with tauri-driver.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();

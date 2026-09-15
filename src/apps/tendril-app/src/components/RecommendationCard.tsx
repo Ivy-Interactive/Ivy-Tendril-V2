@@ -15,6 +15,14 @@ export const REC_STATUS_CLASS: Record<string, string> = {
   Pending: "bg-warning/10 text-warning border border-warning/40",
 };
 
+/** `RecommendationsTabView` badges impact High -> Success, Medium -> Warning, anything else Outline. */
+export const REC_IMPACT_CLASS: Record<string, string> = {
+  High: "bg-success/10 text-success border border-success/40",
+  Medium: "bg-warning/10 text-warning border border-warning/40",
+};
+
+const REC_IMPACT_FALLBACK = "border border-border text-muted-foreground";
+
 export const RecommendationCard: React.FC<RecommendationCardProps> = ({
   recommendation,
   onAccept,
@@ -23,6 +31,9 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
 }) => {
   const statusKey = recommendation.state || "Pending";
   const badgeClass = REC_STATUS_CLASS[statusKey] ?? REC_STATUS_CLASS.Pending;
+  const impactClass = recommendation.impact
+    ? (REC_IMPACT_CLASS[recommendation.impact] ?? REC_IMPACT_FALLBACK)
+    : REC_IMPACT_FALLBACK;
   // A decline reason and an accept note live in separate fields, so which one is
   // shown follows the state rather than one field being relabelled for both.
   const rationaleLabel = statusKey === "Declined" ? "Decline reason: " : "Notes: ";
@@ -37,8 +48,8 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           <h4 className="text-sm font-medium text-foreground">{recommendation.title}</h4>
           {recommendation.impact && (
-            <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-              {recommendation.impact} impact
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${impactClass}`}>
+              {recommendation.impact}
             </span>
           )}
           <span className={`rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
@@ -60,7 +71,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
             type="button"
             disabled={disabled}
             onClick={() => onAccept(recommendation.title)}
-            className="rounded bg-primary/80 px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             Accept
           </button>
