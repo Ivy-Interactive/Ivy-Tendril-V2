@@ -303,7 +303,8 @@ fn job_tools() -> Vec<McpToolDefinition> {
                 "no_merge": { "type": "boolean", "description": "Skip merge (CreatePr)" },
                 "no_delete_branch": { "type": "boolean", "description": "Skip branch deletion (CreatePr)" },
                 "no_artifacts": { "type": "boolean", "description": "Skip artifacts (CreatePr)" },
-                "draft": { "type": "boolean", "description": "Create a draft PR (CreatePr)" }
+                "draft": { "type": "boolean", "description": "Create a draft PR (CreatePr)" },
+                "idempotency_key": { "type": "string", "description": "Resubmitting the same key returns the original job instead of starting a second one" }
             }),
             &["job_type"],
         ),
