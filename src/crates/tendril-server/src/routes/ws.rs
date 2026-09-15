@@ -1,7 +1,8 @@
 use crate::state::AppState;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::State;
-use axum::response::Response;
+use axum::extract::{Query, State};
+use axum::response::{IntoResponse, Response};
+use axum::Json;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -19,18 +20,58 @@ pub struct WSServerMessage {
     pub msg_type: String, // "state" | "complete" | "status" | "log"
     pub step: Option<serde_json::Value>,
     pub message: Option<String>,
+    /// Stamped by [`AppState::dispatch_ws_event`] once this is sent, not set here — kept `None` on
+    /// construction so callers never have to guess a sequence number ahead of dispatch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
 }
 
-pub async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+#[derive(Deserialize, Debug, Default)]
+pub struct WsQuery {
+    /// A reconnecting client's last-seen `seq`. When present, [`handle_socket`] replays every
+    /// buffered event with `seq > since` before forwarding live broadcasts, so a brief disconnect
+    /// never needs a full re-fetch of state.
+    pub since: Option<u64>,
 }
 
-async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
+pub async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<WsQuery>,
+) -> Response {
+    ws.on_upgrade(move |socket| handle_socket(socket, state, query.since))
+}
+
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>, since: Option<u64>) {
     let (mut sender, mut receiver) = socket.split();
+    // Subscribed before the ring buffer is ever read, so an event dispatched between the snapshot
+    // and the subscribe can't fall into the gap and be missed entirely.
     let mut rx = state.ws_tx.subscribe();
+
+    let mut max_replayed_seq = 0u64;
+    if let Some(since) = since {
+        for envelope in state.ring_buffer.get_since(since, None) {
+            max_replayed_seq = max_replayed_seq.max(envelope.seq);
+            if let Ok(json) = serde_json::to_string(&envelope) {
+                if sender.send(Message::Text(json)).await.is_err() {
+                    return;
+                }
+            }
+        }
+    }
 
     tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
+            // A live broadcast can race the replay above and repeat an event already sent; the
+            // replayed copy's `seq` is authoritative, so drop anything at or below it.
+            let seq = serde_json::from_str::<serde_json::Value>(&msg)
+                .ok()
+                .and_then(|v| v.get("seq").and_then(|s| s.as_u64()));
+            if let Some(seq) = seq {
+                if seq <= max_replayed_seq {
+                    continue;
+                }
+            }
             if sender.send(Message::Text(msg)).await.is_err() {
                 break;
             }
@@ -45,23 +86,46 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>) {
                         msg_type: "status".to_string(),
                         step: None,
                         message: Some("Job simulation / execution started".to_string()),
+                        seq: None,
                     };
-                    let _ = state
-                        .ws_tx
-                        .send(serde_json::to_string(&notify_msg).unwrap_or_default());
+                    state.dispatch_ws_event(serde_json::json!(notify_msg));
                 }
                 "approve_plan" => {
                     let notify_msg = WSServerMessage {
                         msg_type: "status".to_string(),
                         step: None,
                         message: Some("Plan approved".to_string()),
+                        seq: None,
                     };
-                    let _ = state
-                        .ws_tx
-                        .send(serde_json::to_string(&notify_msg).unwrap_or_default());
+                    state.dispatch_ws_event(serde_json::json!(notify_msg));
                 }
                 _ => {}
             }
         }
     }
+}
+
+#[derive(Deserialize, Debug, Default)]
+pub struct EventsBackfillQuery {
+    /// Return events with `seq > since`. Omitted (or `0`) means "everything retained".
+    pub since: Option<u64>,
+    pub limit: Option<usize>,
+}
+
+/// `GET /api/events/backfill` and `GET /api/events` — the REST counterpart to `?since=<seq>` WS
+/// resume, for a client that would rather poll than hold a socket open (or that needs to top up
+/// before opening one). `gap: true` means events between `since` and [`EventRingBuffer::oldest_seq`]
+/// were already evicted, so `events` alone cannot bring the client fully up to date.
+pub async fn events_backfill_handler(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<EventsBackfillQuery>,
+) -> impl IntoResponse {
+    let since = query.since.unwrap_or(0);
+    let events = state.ring_buffer.get_since(since, query.limit);
+    Json(serde_json::json!({
+        "events": events,
+        "oldest_seq": state.ring_buffer.oldest_seq(),
+        "latest_seq": state.ring_buffer.latest_seq(),
+        "gap": state.ring_buffer.has_gap(since),
+    }))
 }

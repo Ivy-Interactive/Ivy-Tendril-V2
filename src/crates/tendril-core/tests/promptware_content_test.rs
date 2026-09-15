@@ -84,3 +84,38 @@ fn verification_synchrony_rule_present() {
          verification as a background task and poll it) — restore it from {REFERENCE}"
     );
 }
+
+fn create_pr_program_md() -> String {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let relative = Path::new("src/promptwares/CreatePr/Program.md");
+
+    let mut dir = manifest_dir.as_path();
+    loop {
+        let candidate = dir.join(relative);
+        if candidate.is_file() {
+            return std::fs::read_to_string(&candidate)
+                .unwrap_or_else(|e| panic!("failed to read {}: {e}", candidate.display()));
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => panic!(
+                "could not locate {} by walking up from CARGO_MANIFEST_DIR ({}); the CreatePr \
+                 promptware may have moved",
+                relative.display(),
+                manifest_dir.display()
+            ),
+        }
+    }
+}
+
+#[test]
+fn create_pr_conflict_resolution_formatting_and_linting_rule_present() {
+    let content = create_pr_program_md();
+    assert!(
+        content.contains("Re-run formatting, linting, and build checks before committing"),
+        "CreatePr Program.md's merge-conflict resolution step is missing the rule to re-run \
+         formatting, linting, and build verifications on hand-resolved files before committing \
+         and pushing — restore it under '#### Conflict Resolution' in \
+         src/promptwares/CreatePr/Program.md"
+    );
+}
