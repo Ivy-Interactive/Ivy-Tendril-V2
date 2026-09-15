@@ -4,7 +4,8 @@ use crate::models::{
     DoctorCheckDto, DraftCommentDto, EnqueueItemDto, ExecuteTurnDto, JobDetailDto, JobDto,
     ModelCatalogStatusDto, OnboardingStatusDto, PlanDetailDto, PlanGitDto, PlanQueryDto,
     PlanSummaryDto, PostMessageDto, PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RepoStatusDto,
-    ReviewActionDto, RevisionResultDto, StartJobResponseDto, TendrilConfigDto, VersionInfoDto,
+    ReviewActionDto, RevisionResultDto, StartJobResponseDto, SubscribeOutcomeDto, TendrilConfigDto,
+    VersionInfoDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -1091,6 +1092,31 @@ impl TendrilClient {
         }
 
         Ok(())
+    }
+
+    pub async fn subscribe_newsletter(
+        &self,
+        email: &str,
+    ) -> Result<SubscribeOutcomeDto, BridgeError> {
+        let url = format!("{}/api/newsletter/subscribe", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&json!({ "email": email }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "SUBSCRIBE_NEWSLETTER_FAILED",
+                format!("Failed to subscribe to newsletter ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     pub async fn run_doctor(&self) -> Result<Vec<DoctorCheckDto>, BridgeError> {

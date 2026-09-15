@@ -14,6 +14,33 @@ const repoRoot = path.resolve(__dirname, "..");
 const distAssetsDir = path.join(repoRoot, "dist", "assets");
 const distIndexHtml = path.join(repoRoot, "dist", "index.html");
 
+/** Ceiling on the Vite entry chunk (`dist/assets/index-*.js`).
+ *
+ * Measured 2026-09-14 at d6d7a48: 718,210 bytes, 78.3% of this ceiling. The monolithic
+ * baseline before the split in plan 00564 was 3,461,242 bytes, so this is still a ~79%
+ * reduction. Measure from a build run outside vitest (`pnpm --filter
+ * @ivy-interactive/tendril-app build`) - a build inherited from vitest sees NODE_ENV=test
+ * and bundles development React, which inflates the entry chunk by ~28 kB.
+ *
+ * This number is not a size target, it is the regression guard on the `codeSplitting`
+ * group priorities documented in vite.config.ts. The failures it exists to catch move
+ * hundreds of KB at once - 1,802,771 bytes eager with `vendor-react` below `vendor-syntax`,
+ * 4,290,781 bytes with the non-working `manualChunks` function form - so a ceiling anywhere
+ * in this range still trips instantly on a priority mistake. It was raised from 700 kB
+ * (716,800 bytes) after organic feature-porting growth overran it by 1,410 bytes and made
+ * main CI red on three consecutive commits: the entry chunk was verified to hold no
+ * heavyweight, all nine vendor chunks and every lazy view chunk were still separate, and
+ * eager JS was 1,383,007 bytes of the 1.6 MB budget below.
+ *
+ * Before raising it again: check what became eager (the second budget below and the
+ * `mustBeLazy` list in the next test), not just this number. */
+const ENTRY_CHUNK_BUDGET_BYTES = 896 * 1024;
+
+/** Usage above this fraction of the budget prints a warning, so the next breach is
+ * caught in a green run instead of turning main CI red. At the 2026-09-14 measurement
+ * this fires at 825,753 bytes, roughly 107 kB of growth away. */
+const ENTRY_CHUNK_WARN_RATIO = 0.9;
+
 // The third test below reads dist/, which vitest never builds itself. If dist/
 // is missing, or older than the sources it was built from, rebuild it here so
 // the test is self-sufficient on a fresh worktree instead of depending on a
@@ -186,9 +213,27 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     expect(fs.existsSync(entryChunkPath)).toBe(true);
 
     const entryStat = fs.statSync(entryChunkPath);
-    // Monolithic baseline was 3.38 MB (3,461,242 bytes).
-    // The entry chunk must be dramatically reduced (< 700 kB).
-    expect(entryStat.size).toBeLessThan(700 * 1024);
+    const overage = entryStat.size - ENTRY_CHUNK_BUDGET_BYTES;
+    const overagePercent = ((overage / ENTRY_CHUNK_BUDGET_BYTES) * 100).toFixed(2);
+    const usagePercent = ((entryStat.size / ENTRY_CHUNK_BUDGET_BYTES) * 100).toFixed(1);
+
+    // Written straight to stderr, not via console.warn: vitest defaults to
+    // silent: "passed-only", which discards a passing test's console output and only
+    // replays it if the test fails. A console.warn here would therefore appear only
+    // once the budget is already blown, which is the one run where it adds nothing.
+    if (entryStat.size > ENTRY_CHUNK_BUDGET_BYTES * ENTRY_CHUNK_WARN_RATIO) {
+      process.stderr.write(
+        `WARNING: entry chunk ${entryChunkFileName} is ${entryStat.size} bytes, ${usagePercent}% ` +
+          `of the ${ENTRY_CHUNK_BUDGET_BYTES}-byte budget - check what became eager ` +
+          `before raising it\n`,
+      );
+    }
+
+    expect(
+      entryStat.size,
+      `entry chunk ${entryChunkFileName} is ${entryStat.size} bytes, over the ` +
+        `${ENTRY_CHUNK_BUDGET_BYTES}-byte budget by ${overage} bytes (${overagePercent}%)`,
+    ).toBeLessThan(ENTRY_CHUNK_BUDGET_BYTES);
   });
 
   it("keeps the diagram and syntax-highlighter chunks off the initial load", () => {

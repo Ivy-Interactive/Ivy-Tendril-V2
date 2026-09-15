@@ -206,6 +206,12 @@ export interface OnboardingStatus {
   tendrilHome: string;
 }
 
+/** Mirrors `tendril_core::newsletter::SubscribeOutcome`. */
+export interface SubscribeOutcome {
+  subscribed: boolean;
+  error: string | null;
+}
+
 export type DoctorCheckStatus = "Ok" | "Warn" | "Fail";
 
 export type DoctorCheckCategory = "Prerequisite" | "Environment";

@@ -660,10 +660,19 @@ impl McpDispatcher {
             no_delete_branch: bool_arg(args, "no_delete_branch"),
             no_artifacts: bool_arg(args, "no_artifacts"),
             draft: bool_arg(args, "draft"),
+            idempotency_key: str_arg(args, "idempotency_key").map(|s| s.to_string()),
         };
 
         let job_args = build_job_args(&request, &self.plans_dir)?;
-        let body = serde_json::to_value(&job_args).map_err(|e| e.to_string())?;
+        let mut body = serde_json::to_value(&job_args).map_err(|e| e.to_string())?;
+        // The key is not part of `JobArgs`, so it is inserted alongside the flattened args — the same
+        // shape the CLI posts. Only reached for a keyed submission, so the unkeyed path is untouched.
+        if let Some(key) = &request.idempotency_key {
+            let map = body
+                .as_object_mut()
+                .ok_or("Job args did not serialize to an object")?;
+            map.insert("idempotencyKey".to_string(), json!(key));
+        }
         let response = self.post("/api/jobs", &body).await?;
         Ok(ToolOutcome::structured(response))
     }
@@ -881,6 +890,10 @@ pub struct JobStartRequest {
     pub no_delete_branch: bool,
     pub no_artifacts: bool,
     pub draft: bool,
+    /// Client-supplied identity of this submission. Not part of any job type's args, so
+    /// [`build_job_args`] ignores it — the caller puts it on the request body alongside the flattened
+    /// `JobArgs`, the same way `waitForJobs` and `priority` ride along.
+    pub idempotency_key: Option<String>,
 }
 
 /// Builds the `JobArgs` for a job start request. The CLI and the MCP dispatcher both call this, so
