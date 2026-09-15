@@ -191,6 +191,16 @@ export type {
   PlanChangesViewProps,
 } from "./components/PlanDiffView";
 
+// Plan Git Components
+export { PlanGitView } from "./components/PlanGitView/index.ts";
+export type {
+  CommitRefStatus,
+  PlanCommitRow,
+  PlanWorktreeSection,
+  PlanGitData,
+  PlanGitViewProps,
+} from "./components/PlanGitView/index.ts";
+
 // Tendril Dashboard Components
 export {
   TendrilDashboard,
