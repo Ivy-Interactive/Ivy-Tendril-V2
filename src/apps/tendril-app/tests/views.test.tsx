@@ -10,9 +10,17 @@ import { planDetail, planSummary } from "./fixtures/plan.fixture";
 import type { PlanSummary, Job, ProjectSummary } from "../src/types/api";
 
 // The verifications tab fetches reports through the bridge; without a stub the
-// tab would try to reach a real daemon over Tauri's invoke().
+// tab would try to reach a real daemon over Tauri's invoke(). The dashboard's five
+// analytics calls are stubbed for the same reason — these cases cover the process
+// viewer and the job list rather than the analytics, and an empty activity leaves
+// the view on its in-memory KPI fallback, which is what they assert against.
 beforeEach(() => {
   vi.spyOn(bridge, "listVerificationReports").mockResolvedValue([]);
+  vi.spyOn(bridge, "getDashboardActivity").mockRejectedValue(new Error("no daemon under test"));
+  vi.spyOn(bridge, "getShippedFeatures").mockResolvedValue([]);
+  vi.spyOn(bridge, "getAgentCostBreakdown").mockResolvedValue([]);
+  vi.spyOn(bridge, "getRecentPlanCosts").mockResolvedValue([]);
+  vi.spyOn(bridge, "getRecentMergedPrs").mockResolvedValue([]);
 });
 
 afterEach(() => {
