@@ -745,6 +745,7 @@ async fn assert_persisted_job_blocks_a_start(
         &home.plans_dir(),
         &settings(2),
         &never_called_resolver,
+        None,
     )
     .await
     .expect("reconciliation should not error");
