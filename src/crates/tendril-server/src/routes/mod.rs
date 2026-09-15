@@ -366,6 +366,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // WebSocket
         .route("/api/ws", get(ws::ws_handler))
+        // REST counterpart to `?since=<seq>` WS resume — same ring buffer, for a client that would
+        // rather poll (or top up before opening a socket) than hold one open.
+        .route("/api/events/backfill", get(ws::events_backfill_handler))
+        .route("/api/events", get(ws::events_backfill_handler))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             crate::auth::auth_middleware,
