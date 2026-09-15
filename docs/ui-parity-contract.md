@@ -5,10 +5,25 @@ many people work different areas in parallel and the result still looks like one
 
 ## Source of truth
 
-V1 lives at `/Users/rorychatt/git/ivy/Ivy-Tendril` (repo `Ivy-Interactive/Ivy-Tendril`). Its UI is
-declarative C#: each screen is a `ViewBase` whose `Build()` composes Ivy Framework widgets, so layout,
-ordering, labels, empty states and affordances can all be read straight from the source. That source, not
-a screenshot and not taste, decides what V2 should do. When V1 made a decision, copy the decision.
+V1 lives at `/Users/rorychatt/git/ivy/Ivy-Tendril` (repo `Ivy-Interactive/Ivy-Tendril`), and it has **two**
+layers you need, not one.
+
+**1. V1's own React widgets** live at `src/Ivy.Tendril.Widgets/frontend/src/`, with directories that pair
+almost 1:1 with V2's `packages/components/src/components/`: `Shell/`, `ChatWidget/`, `PlanWorkspace/`,
+`PlanDiffView/`, `PlanMarkdown/`, `TendrilDashboard/`, `TendrilProcessViewer/`, `TendrilQuestions/`,
+`AgentViewer/`, `ContentInput/`, `SortableVerificationList/`, `BadgeSelect/`, `WebViewer/`.
+
+V2's components are an **older fork of these files**, not an independent port. So for anything with a
+counterpart there, diff React against React and bring the fork forward; do not reimplement from the C#
+and do not invent new markup. Those directories also carry co-located `*.test.tsx` files that encode
+intended behaviour - read them. This was learned the hard way on the shell, where the C# told us what to
+compose but the fork told us why every row was drifting while collapsing.
+
+**2. The C# apps** (`src/Ivy.Tendril/Apps/**`, `AppShell/**`) are declarative: each screen is a `ViewBase`
+whose `Build()` composes Ivy Framework widgets. Use these as the authority for *which* widgets are
+composed, in what order, with what arguments, and for labels, empty states and visibility rules.
+
+Either way: when V1 made a decision, copy the decision. Not a screenshot, not taste.
 
 Shared UX numbers live in `src/Ivy.Tendril/Helpers/UxHelper.cs` (e.g. `UxHelper.SheetWidth`). Port those
 constants rather than inventing new ones.
