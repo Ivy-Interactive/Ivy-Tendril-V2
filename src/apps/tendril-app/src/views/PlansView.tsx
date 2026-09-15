@@ -1,7 +1,15 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import { BadgeSelect, type BadgeSelectOption } from "@ivy-interactive/components/tendril";
+import {
+  BadgeSelect,
+  useFocusManagement,
+  useFocusable,
+  useShortcut,
+  type BadgeSelectOption,
+} from "@ivy-interactive/components/tendril";
 import type { PlanSummary } from "../types/api";
 import { EmptyState } from "../components/EmptyState";
+
+const PLANS_FOCUS_GROUP = "plans-list";
 
 interface PlansViewProps {
   plans: PlanSummary[];
@@ -22,23 +30,46 @@ const LIFECYCLE_OPTIONS: BadgeSelectOption[] = [
   { value: "Icebox", label: "Icebox" },
 ];
 
+/**
+ * One plan row. Registering with the focus group by index is what lets the arrow keys move real DOM
+ * focus rather than only the highlight — the row is already `tabIndex={0}` with focus-visible styling.
+ */
+const PlanRow: React.FC<{
+  index: number;
+  highlighted: boolean;
+  onSelect: () => void;
+  children: React.ReactNode;
+}> = ({ index, highlighted, onSelect, children }) => {
+  const { ref } = useFocusable(PLANS_FOCUS_GROUP, index);
+  return (
+    <div
+      ref={ref}
+      role="listitem"
+      tabIndex={0}
+      onClick={onSelect}
+      className={`cursor-pointer rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+        highlighted
+          ? "border-ring bg-card shadow-md ring-1 ring-ring"
+          : "border-border bg-card/60 hover:border-ring hover:bg-card"
+      }`}
+    >
+      {children}
+    </div>
+  );
+};
+
 export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNewPlan }) => {
   const [search, setSearch] = useState("");
   const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const rowFocus = useFocusManagement(PLANS_FOCUS_GROUP);
 
-  // Focus shortcut '/'
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "/" && document.activeElement !== searchInputRef.current) {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  // `skipInInputs` subsumes the activeElement guard this used to need: a "/" typed into the search
+  // box is a slash, not a shortcut.
+  useShortcut("plans:focus-search", "/", () => searchInputRef.current?.focus(), {
+    description: "Focus search bar in plans explorer",
+  });
 
   const filteredPlans = useMemo(() => {
     return plans.filter((p) => {
@@ -57,7 +88,9 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
     });
   }, [plans, selectedStates, search]);
 
-  // Arrow key navigation
+  // Arrow key navigation. This stays on its own listener — it drives a selection index, not a single
+  // discoverable action — but the arrows now move DOM focus alongside the highlight, so a screen
+  // reader and the focus ring follow the selection instead of staying on whatever was last clicked.
   useEffect(() => {
     const handleNavigation = (e: KeyboardEvent) => {
       if (filteredPlans.length === 0) return;
@@ -65,9 +98,11 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex((prev) => (prev + 1) % filteredPlans.length);
+        rowFocus.focusNext();
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedIndex((prev) => (prev <= 0 ? filteredPlans.length - 1 : prev - 1));
+        rowFocus.focusPrevious();
       } else if (e.key === "Enter" && document.activeElement !== searchInputRef.current) {
         e.preventDefault();
         const selected = filteredPlans[selectedIndex];
@@ -78,7 +113,7 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
     };
     window.addEventListener("keydown", handleNavigation);
     return () => window.removeEventListener("keydown", handleNavigation);
-  }, [filteredPlans, selectedIndex, onSelectPlan]);
+  }, [filteredPlans, selectedIndex, onSelectPlan, rowFocus]);
 
   return (
     <div className="space-y-6" data-testid="plans-view">
@@ -156,16 +191,11 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
           {filteredPlans.map((p, idx) => {
             const isHighlighted = idx === selectedIndex;
             return (
-              <div
+              <PlanRow
                 key={p.id}
-                role="listitem"
-                tabIndex={0}
-                onClick={() => onSelectPlan(p.id)}
-                className={`cursor-pointer rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
-                  isHighlighted
-                    ? "border-ring bg-card shadow-md ring-1 ring-ring"
-                    : "border-border bg-card/60 hover:border-ring hover:bg-card"
-                }`}
+                index={idx}
+                highlighted={isHighlighted}
+                onSelect={() => onSelectPlan(p.id)}
               >
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-xs font-semibold text-muted-foreground">
@@ -216,7 +246,7 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
                     </div>
                   )}
                 </div>
-              </div>
+              </PlanRow>
             );
           })}
         </div>
