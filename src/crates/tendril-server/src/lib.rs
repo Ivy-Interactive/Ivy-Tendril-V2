@@ -102,7 +102,7 @@ pub async fn run_server(
     };
 
     // Only the master reconciles: a daemon that lost the race must never reap the winner's jobs.
-    reconcile_after_restart(&tendril_home).await;
+    reconcile_after_restart(&tendril_home, &state.job_manager).await;
 
     // Only the master runs maintenance: a daemon that lost the race must not reap the winner's jobs.
     let maintenance_state = state.clone();
@@ -386,11 +386,23 @@ fn spawn_worktree_reaper(tendril_home: PathBuf) {
 
 /// Realigns persisted job and plan state with reality. A failure here is logged rather than fatal:
 /// the daemon is more useful up with stale rows than refusing to start.
-async fn reconcile_after_restart(tendril_home: &std::path::Path) {
+///
+/// `job_manager` is what turns a surviving `Running` row into a supervised detached job instead of a
+/// live-but-unwatched one; see `JobManager::supervise_detached`.
+async fn reconcile_after_restart(
+    tendril_home: &std::path::Path,
+    job_manager: &std::sync::Arc<tendril_core::jobs::manager::JobManager>,
+) {
     let config_path = tendril_core::config::get_config_path(tendril_home);
     let settings = tendril_core::config::load_config(&config_path).unwrap_or_default();
 
-    match tendril_core::jobs::recovery::reconcile_jobs_on_startup(tendril_home, &settings).await {
+    match tendril_core::jobs::recovery::reconcile_jobs_on_startup(
+        tendril_home,
+        &settings,
+        Some(job_manager),
+    )
+    .await
+    {
         Ok(report) => {
             tracing::info!(
                 "Startup reconciliation: {} live, {} completed, {} failed, {} queued, {} unblocked, {} plans reverted",
