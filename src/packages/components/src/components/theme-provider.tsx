@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, type ReactNode } from "react";
 import { ThemeContext, type Theme, type ThemeContextType } from "../contexts/theme-context.tsx";
+import { getThemeColors, isDarkMode, type ThemeColors } from "../lib/theme.ts";
+import { useTheme as useThemeContext } from "../contexts/theme-context.tsx";
 
 export interface ThemeProviderProps {
   children: ReactNode;
@@ -106,6 +108,101 @@ export function ThemeProvider({
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+export interface ThemeMonitorOptions {
+  /**
+   * Re-read the resolved colours when `documentElement`'s class list changes.
+   * Off by default for charts: the `MutationObserver` causes excessive re-renders.
+   */
+  monitorDOM?: boolean;
+  /** Re-read the resolved colours when the system `prefers-color-scheme` changes. */
+  monitorSystem?: boolean;
+  /** Delay before reading `getComputedStyle`, so the new stylesheet has been applied. */
+  updateDelay?: number;
+}
+
+export interface ThemeMonitorResult {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  /** Whether the dark theme is currently applied. */
+  isDark: boolean;
+  /** Every `--token` from the stylesheet, resolved to a concrete value. */
+  colors: ThemeColors;
+  /** Force a re-read of the resolved colours. */
+  refreshTheme: () => void;
+}
+
+/**
+ * Theme hook that additionally resolves every theme CSS custom property to a concrete
+ * value, so a canvas renderer (which cannot read CSS variables) can be handed colours.
+ *
+ * Values are seeded synchronously from the stylesheet and refreshed whenever the theme
+ * changes; charts pass `monitorDOM: false, monitorSystem: true`.
+ */
+export function useThemeWithMonitoring(options: ThemeMonitorOptions = {}): ThemeMonitorResult {
+  const { monitorDOM = true, monitorSystem = true, updateDelay = 50 } = options;
+
+  const { theme, setTheme, resolvedTheme } = useThemeContext();
+  const [isDark, setIsDark] = useState(() => isDarkMode());
+  const [colors, setColors] = useState<ThemeColors>(() => getThemeColors());
+
+  const updateThemeState = useCallback(() => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        setIsDark(isDarkMode());
+        setColors(getThemeColors());
+      }, updateDelay);
+    });
+  }, [updateDelay]);
+
+  const refreshTheme = useCallback(() => {
+    updateThemeState();
+  }, [updateThemeState]);
+
+  useEffect(() => {
+    // `resolvedTheme` is the provider's own view of light/dark, so re-reading whenever it
+    // changes replaces the framework's re-derivation of the theme inside this hook.
+    updateThemeState();
+
+    const cleanupFunctions: (() => void)[] = [];
+
+    if (monitorDOM && typeof document !== "undefined") {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === "attributes" && mutation.attributeName === "class") {
+            updateThemeState();
+          }
+        });
+      });
+
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+
+      cleanupFunctions.push(() => observer.disconnect());
+    }
+
+    if (monitorSystem && typeof window !== "undefined") {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+      const handleMediaChange = () => {
+        if (theme === "system") {
+          updateThemeState();
+        }
+      };
+
+      mediaQuery.addEventListener("change", handleMediaChange);
+      cleanupFunctions.push(() => mediaQuery.removeEventListener("change", handleMediaChange));
+    }
+
+    return () => {
+      cleanupFunctions.forEach((cleanup) => cleanup());
+    };
+  }, [theme, resolvedTheme, monitorDOM, monitorSystem, updateThemeState]);
+
+  return { theme, setTheme, isDark, colors, refreshTheme };
 }
 
 export { useTheme } from "../contexts/theme-context.tsx";

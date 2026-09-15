@@ -140,9 +140,14 @@ questions:
     expect(screen.getByRole("button", { name: /copy/i })).toBeTruthy();
     expect(container.querySelector(".pmv-code-block")?.textContent).toContain("const x = 42;");
 
-    await waitFor(() => {
-      expect(container.querySelector("code.language-typescript")).toBeTruthy();
-    });
+    // The highlighter chunk is transformed on demand, which under a full-suite run takes well over
+    // `waitFor`'s 1s default.
+    await waitFor(
+      () => {
+        expect(container.querySelector("code.language-typescript")).toBeTruthy();
+      },
+      { timeout: 15_000 },
+    );
     expect(container.querySelector("code.language-typescript")?.textContent).toContain(
       "const x = 42;",
     );

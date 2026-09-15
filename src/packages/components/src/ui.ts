@@ -22,7 +22,6 @@ export * from "./components/ui/calendar";
 export * from "./components/ui/callout";
 export * from "./components/ui/callout-variant";
 export * from "./components/ui/card";
-export * from "./components/ui/chart";
 export * from "./components/ui/checkbox";
 export * from "./components/ui/collapsible";
 export * from "./components/ui/command";

@@ -68,6 +68,7 @@ describe("Storybook viteFinal code splitting configuration", () => {
 
     const groupNames = codeSplitting?.groups?.map((g: any) => g.name) ?? [];
     expect(groupNames).toContain("vendor-diagrams");
+    expect(groupNames).toContain("vendor-charts");
     expect(groupNames).toContain("vendor-pdfjs");
     expect(groupNames).toContain("vendor-react");
     expect(groupNames).toContain("vendor-syntax");
@@ -101,6 +102,11 @@ describe("Storybook viteFinal code splitting configuration", () => {
       "vendor-diagrams",
     );
     expect(findGroup("/repo/node_modules/pdfjs-dist/build/pdf.mjs")?.name).toBe("vendor-pdfjs");
+    expect(findGroup("/repo/node_modules/echarts/lib/echarts.js")?.name).toBe("vendor-charts");
+    expect(findGroup("/repo/node_modules/zrender/lib/zrender.js")?.name).toBe("vendor-charts");
+    expect(findGroup("/repo/node_modules/echarts-for-react/lib/core.js")?.name).toBe(
+      "vendor-charts",
+    );
     expect(findGroup("/repo/node_modules/react-dom/client.js")?.name).toBe("vendor-react");
     expect(findGroup("/repo/node_modules/refractor/lang/tsx.js")?.name).toBe("vendor-syntax");
     expect(findGroup("/repo/node_modules/date-fns/parse.js")?.name).toBe("vendor");

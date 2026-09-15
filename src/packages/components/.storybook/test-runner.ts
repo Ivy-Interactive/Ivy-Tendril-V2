@@ -21,6 +21,12 @@ const snapshotsDir = path.join(process.cwd(), ".storybook", "__image_snapshots__
  */
 const DEFAULT_SETTLE_DELAY_MS = 100;
 
+/**
+ * How long to wait for a story's `parameters.visual.waitForSelector`. A canvas renderer signals that
+ * it has painted by setting an attribute, which is a far tighter gate than a fixed delay.
+ */
+const WAIT_FOR_SELECTOR_TIMEOUT_MS = 15_000;
+
 // Neutralises everything that would otherwise make two screenshots of the same story differ:
 // running animations and transitions, blinking text carets, and smooth scrolling.
 const FREEZE_CSS = `
@@ -89,6 +95,14 @@ const config: TestRunnerConfig = {
     // Wait for webfonts and network idle first, then freeze: injecting the CSS earlier would
     // suppress the very work this call waits on.
     await waitForPageReady(page);
+
+    // A story whose renderer paints to a canvas can name the marker it sets when it is done, so the
+    // settle delay below starts from "finished drawing" rather than from "network idle".
+    const waitForSelector = storyContext.parameters?.visual?.waitForSelector;
+    if (waitForSelector) {
+      await page.waitForSelector(waitForSelector, { timeout: WAIT_FOR_SELECTOR_TIMEOUT_MS });
+    }
+
     await page.addStyleTag({ content: FREEZE_CSS });
     await page.waitForTimeout(
       storyContext.parameters?.visual?.settleDelay ?? DEFAULT_SETTLE_DELAY_MS,
