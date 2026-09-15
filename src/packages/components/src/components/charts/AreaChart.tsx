@@ -34,7 +34,7 @@ import type {
 import type { ChartData } from "./chartTypes";
 import type { ReferenceDot } from "./chartTypes";
 import { LINE_DEFAULTS, applyDefaults } from "./chartDefaults";
-const EMPTY_ARRAY: never[] = [];
+import { EMPTY_ARRAY } from "@/lib/constants";
 
 export interface AreaChartProps {
   data?: ChartData[];

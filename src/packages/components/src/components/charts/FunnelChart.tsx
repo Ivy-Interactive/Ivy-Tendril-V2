@@ -15,6 +15,7 @@ import { generateDataProps } from "./sharedUtils";
 import { getChartThemeColors } from "./styles";
 import { FUNNEL_DEFAULTS, FUNNEL_LEGEND_DEFAULTS, applyDefaults } from "./chartDefaults";
 import { EMPTY_ARRAY } from "@/lib/constants";
+
 export const FunnelChart: React.FC<FunnelChartProps> = ({
   data = EMPTY_ARRAY,
   width = "Full",

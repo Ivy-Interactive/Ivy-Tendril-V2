@@ -25,7 +25,7 @@ import type {
   XAxisProps,
   YAxisProps,
 } from "./chartTypes";
-const EMPTY_ARRAY: never[] = [];
+import { EMPTY_ARRAY } from "@/lib/constants";
 
 // Helper: resolve a value from a data record, trying the original key first, then camelCase.
 // Needed because C# serializes property names as camelCase but DataKey string values stay PascalCase.

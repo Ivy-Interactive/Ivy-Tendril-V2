@@ -15,7 +15,7 @@ import type { PieChartProps } from "./chartTypes";
 import { generateDataProps } from "./sharedUtils";
 import { getChartThemeColors } from "./styles";
 import { PIE_DEFAULTS, PIE_LEGEND_DEFAULTS, applyDefaults } from "./chartDefaults";
-const EMPTY_ARRAY: never[] = [];
+import { EMPTY_ARRAY } from "@/lib/constants";
 
 export const PieChart: React.FC<PieChartProps> = ({
   data = EMPTY_ARRAY,

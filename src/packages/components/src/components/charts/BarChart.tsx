@@ -33,7 +33,7 @@ import type {
 } from "./chartTypes";
 import type { ChartData } from "./chartTypes";
 import { BAR_DEFAULTS, applyDefaults } from "./chartDefaults";
-const EMPTY_ARRAY: never[] = [];
+import { EMPTY_ARRAY } from "@/lib/constants";
 
 export interface BarChartProps {
   data?: ChartData[];

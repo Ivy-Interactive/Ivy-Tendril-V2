@@ -20,7 +20,7 @@ import {
 import { getChartThemeColors } from "./styles";
 import { ChartType } from "./chartTypes";
 import type { LineChartProps } from "./chartTypes";
-const EMPTY_ARRAY: never[] = [];
+import { EMPTY_ARRAY } from "@/lib/constants";
 
 export const LineChart: React.FC<LineChartProps> = ({
   data = EMPTY_ARRAY,
