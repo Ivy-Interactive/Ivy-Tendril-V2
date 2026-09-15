@@ -178,9 +178,8 @@ impl Stream {
                 .await
                 .expect("timed out waiting for the next frame")
                 .expect("stream read failed");
-            let Some(chunk) = chunk else {
-                return None;
-            };
+            // End of the stream: no more frames will arrive.
+            let chunk = chunk?;
             self.buffer.push_str(&String::from_utf8_lossy(&chunk));
 
             while let Some(end) = self.buffer.find("\n\n") {
