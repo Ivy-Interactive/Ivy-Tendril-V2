@@ -423,6 +423,251 @@ async fn test_chat_turn_closes_unclosed_tool_calls() {
     let _ = std::fs::remove_dir_all(&test_dir);
 }
 
+#[tokio::test]
+async fn test_chat_turn_empty_text_with_tool_error_generates_report() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-empty-tool-error-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| AgentProcessSpec {
+                command: "sh".to_string(),
+                args: vec![
+                    "-c".to_string(),
+                    concat!(
+                        r#"echo '{"kind":"tool_call","tool_use_id":"t1","tool_name":"Bash","input":{"command":"false"}}'; "#,
+                        r#"echo '{"kind":"tool_result","tool_use_id":"t1","output":"command not found","is_error":true}'"#
+                    )
+                    .to_string(),
+                ],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Tool Error Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(
+        &session.id,
+        "Run a command that fails",
+        ChatTurnOptions::default(),
+    )
+    .await
+    .expect("Failed to start session turn");
+
+    let mut deltas = Vec::new();
+    while let Ok(evt) = rx.recv().await {
+        match evt {
+            ChatEvent::StreamDelta { delta, .. } => deltas.push(delta),
+            ChatEvent::GeneratingState {
+                is_generating: false,
+                ..
+            } => break,
+            _ => {}
+        }
+    }
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    let assistant_msg = loaded
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .expect("Must have an assistant message");
+
+    assert!(
+        !assistant_msg.content.trim().is_empty(),
+        "a tool error with no text deltas must not leave an empty turn"
+    );
+    assert!(
+        assistant_msg.content.contains("Bash"),
+        "report must name the tool that was called, got: {}",
+        assistant_msg.content
+    );
+    assert!(
+        assistant_msg.content.contains("failed") || assistant_msg.content.contains("Failures"),
+        "report must call out the failure, got: {}",
+        assistant_msg.content
+    );
+    assert!(
+        assistant_msg.content.contains("command not found"),
+        "report must surface the tool's error output, got: {}",
+        assistant_msg.content
+    );
+    assert!(
+        deltas.iter().any(|d| d == &assistant_msg.content),
+        "the generated report must also be emitted as a StreamDelta so the frontend renders it"
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+#[tokio::test]
+async fn test_chat_turn_empty_exit_generates_fallback_report() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-empty-exit-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| AgentProcessSpec {
+                command: "sh".to_string(),
+                args: vec!["-c".to_string(), "exit 0".to_string()],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Empty Exit Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(
+        &session.id,
+        "Do nothing visible",
+        ChatTurnOptions::default(),
+    )
+    .await
+    .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    let assistant_msg = loaded
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .expect("Must have an assistant message");
+
+    assert!(
+        !assistant_msg.content.trim().is_empty(),
+        "an agent that exits with no output must still leave a non-empty report"
+    );
+    assert!(
+        assistant_msg.content.contains("without producing"),
+        "report must explain that the agent produced nothing, got: {}",
+        assistant_msg.content
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+#[tokio::test]
+async fn test_chat_turn_with_accumulated_text_preserves_content() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-preserve-text-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| AgentProcessSpec {
+                command: "sh".to_string(),
+                args: vec![
+                    "-c".to_string(),
+                    concat!(
+                        r#"echo '{"kind":"tool_call","tool_use_id":"t1","tool_name":"Bash","input":{}}'; "#,
+                        r#"echo '{"kind":"tool_result","tool_use_id":"t1","output":"ok","is_error":false}'; "#,
+                        r#"echo '{"delta": "All done."}'"#
+                    )
+                    .to_string(),
+                ],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Preserve Text Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(
+        &session.id,
+        "Run a tool then respond",
+        ChatTurnOptions::default(),
+    )
+    .await
+    .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    let assistant_msg = loaded
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .expect("Must have an assistant message");
+
+    assert_eq!(
+        assistant_msg.content, "All done.",
+        "text the agent actually emitted must never be replaced by a generated report"
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
 #[test]
 fn test_clean_generated_title() {
     let cases: Vec<(&str, Option<&str>)> = vec![

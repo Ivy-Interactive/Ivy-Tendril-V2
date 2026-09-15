@@ -453,7 +453,7 @@ mod tests {
                         ProjectPortConfig {
                             default_port: *port,
                             description: String::new(),
-                            extra: Default::default(),
+                            ..Default::default()
                         },
                     )
                 })

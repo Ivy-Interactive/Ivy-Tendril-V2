@@ -66,6 +66,16 @@ pub fn agent_command(provider: &str) -> String {
 // ---------------------------------------------------------------------------
 // Antigravity (agy)
 // ---------------------------------------------------------------------------
+
+/// Antigravity's built-in tools enforce a stricter JSON schema than the model expects, so without
+/// this notice it routinely fails common calls: `find_by_name` treats `Pattern` as required even
+/// when searching by `Extensions`, and `grep_search`'s `Includes` must be a JSON array rather than
+/// the comma-separated string a model naturally reaches for. Prepended to every prompt in
+/// [`build_antigravity_spec`] so the guidance survives regardless of caller-supplied prompt files.
+pub const ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS: &str = "Tool usage notes:\n\
+- `find_by_name` requires a `Pattern` argument; always pass one (e.g. \"*.cs\").\n\
+- `grep_search`'s `Includes` argument must be a JSON array of strings (e.g. [\"*.cs\"]), never a comma-separated string.";
+
 fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     let mut args = vec![
         "--dangerously-skip-permissions".to_string(),
@@ -116,7 +126,7 @@ fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
 
     args.extend(config.extra_arguments.clone());
 
-    let final_prompt = if let Some(sys) = &config.system_prompt {
+    let base_prompt = if let Some(sys) = &config.system_prompt {
         if !sys.is_empty() {
             format!("{}\n\n---\n\n{}", sys, config.prompt)
         } else {
@@ -125,24 +135,15 @@ fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     } else {
         config.prompt.clone()
     };
+    let final_prompt = format!("{}\n\n{}", ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS, base_prompt);
 
+    // Always write to a fresh temp file rather than trusting `config.prompt_file_path` as-is, so
+    // the guardrails above are present even when the caller already supplied its own prompt file.
     args.push("--print".to_string());
-    if let Some(path) = &config.prompt_file_path {
-        if config.system_prompt.is_none() || config.system_prompt.as_deref() == Some("") {
-            let normalized = path.replace('\\', "/");
-            args.push(format!("@{}", normalized));
-        } else {
-            let temp_path = write_temp_prompt(&final_prompt, "tendril-agy-prompt");
-            let normalized = temp_path.to_string_lossy().replace('\\', "/");
-            args.push(format!("@{}", normalized));
-            temp_files.push(temp_path);
-        }
-    } else {
-        let temp_path = write_temp_prompt(&final_prompt, "tendril-agy-prompt");
-        let normalized = temp_path.to_string_lossy().replace('\\', "/");
-        args.push(format!("@{}", normalized));
-        temp_files.push(temp_path);
-    }
+    let temp_path = write_temp_prompt(&final_prompt, "tendril-agy-prompt");
+    let normalized = temp_path.to_string_lossy().replace('\\', "/");
+    args.push(format!("@{}", normalized));
+    temp_files.push(temp_path);
 
     let mut env = default_environment();
     for (k, v) in &config.environment_variables {
