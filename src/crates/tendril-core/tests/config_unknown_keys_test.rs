@@ -86,8 +86,21 @@ fn test_config_unknown_keys_survive_load_and_save() {
         Some(&serde_json::json!("anthropic"))
     );
     assert_eq!(llm.model, "claude-3-7-sonnet");
-    assert!(settings.extra.contains_key("auth"));
-    assert!(settings.extra.contains_key("api"));
+    // `auth`, `api` and `security` are modeled fields now, so `#[serde(flatten)] extra` can no
+    // longer claim them — the same migration `codingAgents` and `llm` went through. Each record's own
+    // nested `extra` is what keeps the unmodeled inner keys alive.
+    assert!(!settings.extra.contains_key("auth"));
+    assert!(!settings.extra.contains_key("api"));
+    let auth = settings.auth.clone().expect("auth section is modeled");
+    assert!(auth.extra.contains_key("enabled"));
+    assert!(auth.extra.contains_key("tokenExpiry"));
+    // The fixture's `auth` block carries no hash, so password auth must stay inert: an inherited
+    // config like this one must not lock anybody out.
+    assert!(!auth.is_active());
+    let api = settings.api.clone().expect("api section is modeled");
+    assert!(api.extra.contains_key("baseUrl"));
+    assert!(api.extra.contains_key("timeout"));
+    assert!(api.api_key.is_none());
     assert!(settings.extra.contains_key("tunnel"));
     assert!(settings.extra.contains_key("vault"));
     assert!(settings.extra.contains_key("vaults"));
@@ -130,6 +143,20 @@ fn test_config_unknown_keys_survive_load_and_save() {
     );
     assert_eq!(reloaded.extra.get("vault"), settings.extra.get("vault"));
     assert_eq!(reloaded.extra.get("editor"), settings.extra.get("editor"));
+
+    // The nested unknown keys under the now-modeled `auth` / `api` sections survive too.
+    let reloaded_auth = reloaded.auth.expect("auth survives the round-trip");
+    assert_eq!(
+        reloaded_auth.extra.get("enabled"),
+        auth.extra.get("enabled")
+    );
+    assert_eq!(
+        reloaded_auth.extra.get("tokenExpiry"),
+        auth.extra.get("tokenExpiry")
+    );
+    let reloaded_api = reloaded.api.expect("api survives the round-trip");
+    assert_eq!(reloaded_api.extra.get("baseUrl"), api.extra.get("baseUrl"));
+    assert_eq!(reloaded_api.extra.get("timeout"), api.extra.get("timeout"));
 
     // Clean up
     let _ = std::fs::remove_dir_all(&temp_dir);

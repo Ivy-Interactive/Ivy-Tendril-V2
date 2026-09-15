@@ -1,28 +1,18 @@
 //! `tendril hash-password` — produces the Argon2 PHC string and pepper that go into
 //! `config.yaml`'s `auth` block.
 //!
-//! The parameters below are pinned to the ones the original Tendril used
-//! (`HashPasswordCommand.cs`: Isopoh `Argon2Type.DataIndependentAddressing`, `Argon2Version.Nineteen`,
-//! `TimeCost 3`, `MemoryCost 65536`, `Lanes 1`, 16-byte salt, 32-byte output). Changing any of them
-//! would not break this command — the verifier reads m/t/p and the salt back out of the encoded
-//! string — but it would stop new hashes matching what users already have on disk, so treat them as
-//! a compatibility contract rather than a tuning knob.
+//! The Argon2 parameters are pinned to the ones the original Tendril used (`HashPasswordCommand.cs`:
+//! Isopoh `Argon2Type.DataIndependentAddressing`, `Argon2Version.Nineteen`, `TimeCost 3`,
+//! `MemoryCost 65536`, `Lanes 1`, 16-byte salt, 32-byte output) — but they live in
+//! [`tendril_core::auth::password`], the workspace's single Argon2 implementation, rather than here,
+//! so this command and the server's verifier cannot drift apart. Changing them would not break this
+//! command (the verifier reads m/t/p and the salt back out of the encoded string) but it would stop
+//! new hashes matching what users already have on disk, so treat them as a compatibility contract
+//! rather than a tuning knob.
 
-use anyhow::{anyhow, Context, Result};
-use argon2::password_hash::{rand_core::RngCore, PasswordHasher, SaltString};
-use argon2::{Algorithm, Argon2, Params, Version};
+use anyhow::{Context, Result};
 use base64::Engine;
-
-/// Memory cost in KiB (`m=65536`).
-pub(crate) const MEMORY_COST_KIB: u32 = 65_536;
-/// Number of passes (`t=3`).
-pub(crate) const TIME_COST: u32 = 3;
-/// Degree of parallelism (`p=1`).
-pub(crate) const LANES: u32 = 1;
-/// Derived key length in bytes.
-pub(crate) const OUTPUT_LEN: usize = 32;
-/// Length of a freshly generated pepper, in bytes.
-pub(crate) const SECRET_LEN: usize = 32;
+use tendril_core::auth::password::{generate_hash_secret, hash_password_with_secret};
 
 /// Standard base64 with padding, matching .NET's `Convert.ToBase64String`.
 fn b64() -> base64::engine::general_purpose::GeneralPurpose {
@@ -31,9 +21,7 @@ fn b64() -> base64::engine::general_purpose::GeneralPurpose {
 
 /// A fresh 32-byte pepper, base64-encoded — the original's `GenerateSecret`.
 pub(crate) fn generate_secret() -> String {
-    let mut bytes = [0u8; SECRET_LEN];
-    argon2::password_hash::rand_core::OsRng.fill_bytes(&mut bytes);
-    b64().encode(bytes)
+    generate_hash_secret()
 }
 
 pub(crate) fn decode_secret(secret: &str) -> Result<Vec<u8>> {
@@ -45,25 +33,7 @@ pub(crate) fn decode_secret(secret: &str) -> Result<Vec<u8>> {
 /// Hashes `password` with `secret` as the Argon2 secret input (pepper). The pepper is deliberately
 /// *not* part of the returned PHC string, so it has to be stored separately in `auth.hashSecret`.
 pub(crate) fn hash_password(password: &str, secret: &[u8]) -> Result<String> {
-    let params = Params::new(MEMORY_COST_KIB, TIME_COST, LANES, Some(OUTPUT_LEN))
-        .map_err(|e| anyhow!("invalid Argon2 parameters: {}", e))?;
-    let argon2 =
-        Argon2::new_with_secret(secret, Algorithm::Argon2i, Version::V0x13, params.clone())
-            .map_err(|e| anyhow!("could not initialize Argon2: {}", e))?;
-    let salt = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
-    // The algorithm and version are passed explicitly. `None` here does *not* mean "use the ones
-    // this `Argon2` was built with" — it means `Algorithm::default()`, which is Argon2**id** and
-    // would write a `$argon2id$` string the original never produced.
-    let phc = argon2
-        .hash_password_customized(
-            password.as_bytes(),
-            Some(Algorithm::Argon2i.ident()),
-            Some(Version::V0x13.into()),
-            params,
-            &salt,
-        )
-        .map_err(|e| anyhow!("could not hash password: {}", e))?;
-    Ok(phc.to_string())
+    hash_password_with_secret(password, secret).map_err(Into::into)
 }
 
 pub fn handle_hash_password(password: &str, secret: Option<&str>) -> Result<()> {
@@ -89,6 +59,11 @@ pub fn handle_hash_password(password: &str, secret: Option<&str>) -> Result<()> 
 mod tests {
     use super::*;
     use tendril_server::auth::verify_password;
+
+    /// Length of a freshly generated pepper, in bytes. Owned by
+    /// [`tendril_core::auth::password::generate_hash_secret`]; asserted here because the printed
+    /// value is what users paste into `auth.hashSecret`.
+    const SECRET_LEN: usize = 32;
 
     /// Produced by a throwaway .NET console app running the original's exact `Argon2Config`
     /// (Isopoh.Cryptography.Argon2 2.0.0, the version `Ivy.Tendril` resolves). This is the

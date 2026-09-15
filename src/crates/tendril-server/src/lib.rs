@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod event_buffer;
+pub mod local_file_guard;
 pub mod master;
 pub mod pr_sync;
 pub mod pty;
@@ -132,11 +133,17 @@ pub async fn run_server(
     tasks::spawn_version_check(state.clone());
     spawn_assigned_issues_importer(tendril_home.clone(), state.clone());
 
+    // `into_make_service_with_connect_info` on both arms is what makes the socket peer address
+    // available to `POST /api/auth/login`, which keys its rate limiter on it. Without it every login
+    // would share one key, so one client's failures would back off everybody else.
     match tls_config {
         None => {
-            axum::serve(listener, app)
-                .with_graceful_shutdown(shutdown_signal())
-                .await?;
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .with_graceful_shutdown(shutdown_signal())
+            .await?;
         }
         Some(config) => {
             // `axum::serve` has no TLS, and `axum_server` drives shutdown through a handle rather
@@ -150,7 +157,7 @@ pub async fn run_server(
 
             axum_server::from_tcp_rustls(listener.into_std()?, config)
                 .handle(handle)
-                .serve(app.into_make_service())
+                .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
                 .await?;
         }
     }
