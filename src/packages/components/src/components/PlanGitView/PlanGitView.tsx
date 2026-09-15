@@ -1,5 +1,5 @@
 import React, { useCallback } from "react";
-import { Copy } from "lucide-react";
+import { Copy, GitBranchPlus, GitCommitHorizontal } from "lucide-react";
 
 /**
  * Whether a ref still holds a commit the plan recorded, in the repo it was made in.
@@ -83,6 +83,24 @@ function noWorktreesReason(planState: string | undefined): string {
   }
 }
 
+/**
+ * `owner/repo` from a PR URL, which is what names the row; the URL itself if it will not parse.
+ *
+ * Mirrors `PullRequestApp.ExtractRepo`. Its companion `IsValidUrl` is deliberately not mirrored: it
+ * accepts only `github.com/../../pull/N`, and dropping everything else here would silently hide a
+ * PR link this view was handed. Whether a plan's recorded PR is a real one belongs to whatever
+ * writes `prs`, not to the renderer.
+ */
+function extractRepo(prUrl: string): string {
+  try {
+    const segments = new URL(prUrl).pathname.replace(/^\/+|\/+$/g, "").split("/");
+    if (segments.length >= 2) return `${segments[0]}/${segments[1]}`;
+  } catch {
+    // Not a URL after all; the raw value is the best label available.
+  }
+  return prUrl;
+}
+
 const AT_RISK_BADGE: Partial<Record<CommitRefStatus, string>> = {
   unreachable: "unreachable",
   missing: "not found",
@@ -105,6 +123,19 @@ const CommitTable: React.FC<{
   statusOf?: (hash: string) => CommitRefStatus | undefined;
 }> = ({ rows, statusOf }) => (
   <table className="mt-3 w-full text-left text-sm">
+    <thead>
+      <tr className="text-xs uppercase tracking-wide text-muted-foreground/70">
+        <th scope="col" className="py-1 pr-3 font-medium">
+          Commit
+        </th>
+        <th scope="col" className="py-1 pr-3 font-medium">
+          Message
+        </th>
+        <th scope="col" className="w-16 py-1 text-right font-medium">
+          Files
+        </th>
+      </tr>
+    </thead>
     <tbody>
       {rows.map((row) => {
         const badge = statusOf ? AT_RISK_BADGE[statusOf(row.hash) ?? "reachable"] : undefined;
@@ -164,6 +195,8 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
   const unreachable = data.unassociatedCommits.filter((r) => statusOf(r.hash) === "unreachable");
   const missing = data.unassociatedCommits.filter((r) => statusOf(r.hash) === "missing");
 
+  const prRows = prs.map((url) => ({ repository: extractRepo(url), url }));
+
   const isEmpty =
     data.worktrees.length === 0 && data.unassociatedCommits.length === 0 && prs.length === 0;
 
@@ -207,7 +240,8 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
         </h4>
 
         {data.worktrees.length === 0 ? (
-          <div className="mt-2 rounded-xl border border-border bg-card/40 p-4">
+          <div className="mt-2 flex flex-col items-center gap-1 rounded-xl border border-border bg-card/40 p-4 text-center">
+            <GitBranchPlus className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <p className="text-sm text-muted-foreground/70">{noWorktreesReason(planState)}</p>
           </div>
         ) : (
@@ -248,7 +282,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                 </dl>
 
                 {worktree.hasUncommittedChanges && (
-                  <p className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                  <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">
                     This worktree has uncommitted changes. They belong to no commit, so nothing at
                     all is keeping them.
                   </p>
@@ -257,7 +291,13 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                 {worktree.commits.length > 0 ? (
                   <CommitTable rows={worktree.commits} />
                 ) : (
-                  <p className="mt-3 text-sm text-muted-foreground/70">(no commits)</p>
+                  <div className="mt-3 flex flex-col items-center gap-1 rounded-lg border border-border bg-card/40 p-3 text-center">
+                    <GitCommitHorizontal
+                      className="h-4 w-4 text-muted-foreground"
+                      aria-hidden="true"
+                    />
+                    <p className="text-sm text-muted-foreground/70">(no commits)</p>
+                  </div>
                 )}
               </div>
             ))}
@@ -285,19 +325,36 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Pull Requests
           </h4>
-          <ul className="mt-2 space-y-1">
-            {prs.map((url) => (
-              <li key={url}>
-                <button
-                  type="button"
-                  onClick={() => onOpenUrl?.(url)}
-                  className="break-all text-left text-sm text-primary hover:underline"
-                >
-                  {url}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <table className="mt-2 w-full text-left text-sm">
+            <thead>
+              <tr className="text-xs uppercase tracking-wide text-muted-foreground/70">
+                <th scope="col" className="py-1 pr-3 font-medium">
+                  Repository
+                </th>
+                <th scope="col" className="py-1 font-medium">
+                  PR
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {prRows.map(({ repository, url }) => (
+                <tr key={url} className="border-t border-border/50">
+                  <td className="py-1 pr-3 align-top font-mono text-xs text-muted-foreground">
+                    {repository}
+                  </td>
+                  <td className="py-1 align-top">
+                    <button
+                      type="button"
+                      onClick={() => onOpenUrl?.(url)}
+                      className="break-all text-left text-sm text-primary hover:underline"
+                    >
+                      {url}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
 

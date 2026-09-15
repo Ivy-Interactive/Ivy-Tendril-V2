@@ -173,7 +173,7 @@ describe("PlanChangesView", () => {
     expect(within(readme).queryByText("alpha note")).toBeNull();
     expect(within(alpha).getByText("alpha note")).toBeInTheDocument();
 
-    fireEvent.click(within(readme).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(readme).getByRole("button", { name: "Delete comment" }));
     expect(eventHandler).toHaveBeenCalledWith("OnDeleteComment", "pcv", [
       { filePath: "README.md", changeKey: "I1", content: "readme note", lineNumber: 1 },
     ]);

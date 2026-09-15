@@ -255,6 +255,22 @@ describe("PlanGitView pull requests and empty state", () => {
     expect(opened).toEqual([url]);
   });
 
+  // `GitTabView.cs` renders PRs as a two-column table (Repository, PR), naming each with
+  // `PullRequestApp.ExtractRepo`, so the list says which repo a PR belongs to.
+  it("names the repository each pull request belongs to", () => {
+    const url = "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/pull/42";
+    render(<PlanGitView data={data()} prs={[url]} />);
+
+    expect(screen.getByRole("columnheader", { name: "Repository" })).toBeInTheDocument();
+    expect(screen.getByText("Ivy-Interactive/Ivy-Tendril-V2")).toBeInTheDocument();
+  });
+
+  it("falls back to the raw value when a recorded PR is not a URL", () => {
+    render(<PlanGitView data={data()} prs={["not-a-url"]} />);
+
+    expect(screen.getAllByText("not-a-url").length).toBeGreaterThan(0);
+  });
+
   it("says so when there are no worktrees, commits or pull requests", () => {
     render(<PlanGitView data={data({ worktrees: [] })} prs={[]} />);
 

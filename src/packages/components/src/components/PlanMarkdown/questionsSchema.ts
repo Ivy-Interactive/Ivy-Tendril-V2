@@ -24,7 +24,7 @@ export interface PlanQuestion {
   description?: string;
   /** True when several options may be selected. Answers are then always a list. */
   multiple: boolean;
-  /** Whether the user may type a value of their own. Defaults to true, per the schema. */
+  /** Retired. Accepted only so revisions written before retirement still deserialize. No behavior depends on it. */
   other: boolean;
   /**
    * Whether the plan is complete without an answer. Worth asking, not worth blocking on: an index
