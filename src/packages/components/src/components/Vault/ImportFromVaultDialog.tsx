@@ -1,10 +1,10 @@
 import React from "react";
-import { FolderGit2 } from "lucide-react";
-import { Alert, AlertDescription } from "../ui/alert";
+import { Download, FolderGit2, GitMerge } from "lucide-react";
 import { Badge } from "../ui/badge";
+import { Callout } from "../ui/callout";
+import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Switch } from "../ui/switch";
 import { AssetChecklist } from "./AssetChecklist";
 import { VaultDialogShell } from "./VaultDialogShell";
 import type { LocalProjectRef, VaultCatalogItem, VaultImportRequest } from "./types";
@@ -40,30 +40,35 @@ const CATEGORIES = [
     label: "Skills",
     names: (item: VaultCatalogItem) => item.skillNames,
     emptyText: "No custom skills in this vault project.",
+    itemBadge: "Skill",
   },
   {
     key: "mcpServers",
     label: "MCP Servers",
     names: (item: VaultCatalogItem) => item.mcpServerNames,
     emptyText: "No MCP servers in this vault project.",
+    itemBadge: "MCP",
   },
   {
     key: "memories",
     label: "Project Memories",
     names: (item: VaultCatalogItem) => item.memoryFileNames,
     emptyText: "No project memory markdown files in this vault project.",
+    itemBadge: "Memory",
   },
   {
     key: "reviewActions",
     label: "Review Actions",
     names: (item: VaultCatalogItem) => item.reviewActionNames,
     emptyText: "No review actions in this vault project.",
+    itemBadge: "Action",
   },
   {
     key: "verifications",
     label: "Verifications",
     names: (item: VaultCatalogItem) => item.verificationNames,
     emptyText: "No verifications in this vault project.",
+    itemBadge: "Verification",
   },
 ] as const;
 
@@ -153,27 +158,29 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
       testId={mergeMode ? "merge-vault-dialog" : "import-vault-dialog"}
       error={collision ?? error}
       submitLabel={mergeMode ? "Link & Merge" : "Import Project"}
+      submitIcon={
+        mergeMode ? (
+          <GitMerge className="mr-1.5 size-3.5" aria-hidden="true" />
+        ) : (
+          <Download className="mr-1.5 size-3.5" aria-hidden="true" />
+        )
+      }
       submitDisabled={submitDisabled}
       onSubmit={handleSubmit}
     >
       {mergeMode ? (
-        <Alert data-testid="merge-vault-callout">
-          <AlertDescription>
-            Merging will link this vault project with your existing local project &apos;{item.name}
-            &apos;. Local repository paths and unconflicted settings will be preserved while
-            selected vault assets (verifications, actions, skills, MCPs, memories) will be
-            integrated.
-          </AlertDescription>
-        </Alert>
+        <Callout.Info data-testid="merge-vault-callout">
+          Merging will link this vault project with your existing local project &apos;{item.name}
+          &apos;. Local repository paths and unconflicted settings will be preserved while selected
+          vault assets (verifications, actions, skills, MCPs, memories) will be integrated.
+        </Callout.Info>
       ) : (
         nameWasTaken &&
         effectiveName !== item.name && (
-          <Alert data-testid="import-vault-rename-notice">
-            <AlertDescription>
-              A local project named &apos;{item.name}&apos; already exists. We&apos;ve suggested
-              &apos;{effectiveName}&apos; for this import to avoid conflicts.
-            </AlertDescription>
-          </Alert>
+          <Callout.Info data-testid="import-vault-rename-notice">
+            A local project named &apos;{item.name}&apos; already exists. We&apos;ve suggested
+            &apos;{effectiveName}&apos; for this import to avoid conflicts.
+          </Callout.Info>
         )
       )}
 
@@ -221,6 +228,7 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
                   </span>
                   <Input
                     aria-label={`Local path for ${key}`}
+                    className="font-mono"
                     value={path}
                     onChange={(event) =>
                       setMappings((current) => ({ ...current, [key]: event.target.value }))
@@ -243,14 +251,18 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
             items={[...category.names(item)]}
             selected={selections[category.key]}
             emptyText={category.emptyText}
+            itemBadge={category.itemBadge}
             onChange={(next) => setSelections((current) => ({ ...current, [category.key]: next }))}
           />
         ))}
-        <label className="flex items-center gap-2 text-xs text-foreground">
-          <Switch
+        <label
+          className="flex items-center gap-2 text-xs text-foreground"
+          htmlFor="import-vault-permissions"
+        >
+          <Checkbox
+            id="import-vault-permissions"
             checked={importPermissions}
-            aria-label="Import Security & Permissions Policies"
-            onCheckedChange={setImportPermissions}
+            onCheckedChange={(checked) => setImportPermissions(checked === true)}
           />
           Import Security &amp; Permissions Policies
         </label>

@@ -1,18 +1,14 @@
 import React from "react";
-import { ExternalLink, RefreshCw, Unlink } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Switch } from "../ui/switch";
+import { ExternalLink, Unlink } from "lucide-react";
+import { Checkbox } from "../ui/checkbox";
+import { DetailItem, Details } from "../ui/detail";
+import { IconButton } from "../ui/IconButton";
 import { GatedActionButton } from "./GatedActionButton";
 import { computeVaultGate, type VaultGate } from "./gate";
 import type { VaultStatus } from "./types";
 
 export interface VaultStatusCardProps {
   status: VaultStatus;
-  /** Every configured vault, so the card can offer a picker when there is more than one. */
-  vaults: VaultStatus[];
-  selectedVaultId: string;
-  onSelectVault: (vaultId: string) => void;
-  onSync: () => void;
   onDisconnect: () => void;
   onAlwaysUpToDateChange: (value: boolean) => void;
   /** Opens the target in the system browser; the app supplies it, the component never navigates. */
@@ -36,27 +32,34 @@ export function formatVaultSync(status: VaultStatus): string {
   return "In sync";
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * `MMM d, yyyy HH:mm UTC`, the format `VaultSetupView.cs` prints `LastSyncedAt` in. The month names
+ * are spelled out here rather than left to `toLocaleString`, so the label does not drift with the
+ * machine's locale.
+ */
 function formatLastSynced(lastSyncedAt?: string | null): string {
   if (!lastSyncedAt) return "Never";
   const parsed = new Date(lastSyncedAt);
   if (Number.isNaN(parsed.getTime()) || parsed.getUTCFullYear() <= 1) return "Never";
-  const date = parsed.toISOString().slice(0, 10);
-  const time = parsed.toISOString().slice(11, 16);
-  return `${date} ${time} UTC`;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const day = parsed.getUTCDate();
+  const month = MONTHS[parsed.getUTCMonth()];
+  const time = `${pad(parsed.getUTCHours())}:${pad(parsed.getUTCMinutes())}`;
+  return `${month} ${day}, ${parsed.getUTCFullYear()} ${time} UTC`;
 }
 
-/** The label a vault is picked by: its repo name, falling back to its id. */
-function vaultLabel(vault: VaultStatus): string {
-  const display = formatVaultRepo(vault);
-  return display || vault.id;
-}
-
+/**
+ * The connected vault: the four details `VaultSetupView.cs` builds with `ToDetails()` — Vault,
+ * Branch, Status, Last Synced, in that order — over the row that carries "Always in sync" and the
+ * disconnect.
+ *
+ * Sync lives in the section toolbar, not here, because that is where the original keeps it: the
+ * details row is about the vault's state and the one action that ends it.
+ */
 export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
   status,
-  vaults,
-  selectedVaultId,
-  onSelectVault,
-  onSync,
   onDisconnect,
   onAlwaysUpToDateChange,
   onOpenUrl,
@@ -76,29 +79,10 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
     });
 
   return (
-    <div
-      className="rounded-xl border border-border bg-card/60 p-4 space-y-4"
-      data-testid="vault-status-card"
-    >
-      {vaults.length > 1 && (
-        <Select value={selectedVaultId} onValueChange={onSelectVault}>
-          <SelectTrigger aria-label="Active vault" className="w-fit min-w-56">
-            <SelectValue placeholder="Select vault" />
-          </SelectTrigger>
-          <SelectContent>
-            {vaults.map((vault) => (
-              <SelectItem key={vault.id} value={vault.id}>
-                {vaultLabel(vault)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-        <div>
-          <dt className="text-muted-foreground">Vault</dt>
-          <dd className="flex items-center gap-1 font-medium text-foreground">
+    <div className="space-y-2" data-testid="vault-status-card">
+      <Details>
+        <DetailItem label="Vault">
+          <span className="flex items-center justify-end gap-1">
             <button
               type="button"
               className="text-primary underline-offset-4 hover:underline"
@@ -106,61 +90,63 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
             >
               {repo}
             </button>
-            <button
-              type="button"
-              aria-label="Open on GitHub"
-              title="Open on GitHub"
-              className="text-muted-foreground hover:text-foreground"
+            <IconButton
+              label="Open on GitHub"
+              variant="ghost"
+              size="sm"
               onClick={() => onOpenUrl?.(url)}
             >
               <ExternalLink className="size-3.5" aria-hidden="true" />
-            </button>
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Branch</dt>
-          <dd className="font-mono text-foreground">{status.currentBranch || "main"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Status</dt>
-          <dd
-            className={status.commitsBehind > 0 ? "text-destructive" : "text-muted-foreground"}
+            </IconButton>
+          </span>
+        </DetailItem>
+        <DetailItem label="Branch">
+          <span className="font-mono">{status.currentBranch || "main"}</span>
+        </DetailItem>
+        <DetailItem label="Status">
+          {/* Behind is the only state that is wrong rather than merely unpublished, so it is the
+              only one tinted; ahead reads as plain foreground and in-sync as a muted tick, exactly
+              as the `GitStatus` builder decides in `VaultSetupView.cs`. */}
+          <span
+            className={
+              status.commitsBehind > 0
+                ? "text-destructive"
+                : status.commitsAhead > 0
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+            }
             data-testid="vault-git-status"
           >
-            {syncText}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">Last Synced</dt>
-          <dd className="text-muted-foreground">{formatLastSynced(status.lastSyncedAt)}</dd>
-        </div>
-      </dl>
+            {status.commitsBehind > 0 || status.commitsAhead > 0 ? syncText : `✓ ${syncText}`}
+          </span>
+        </DetailItem>
+        <DetailItem label="Last Synced">
+          <span className="text-muted-foreground">{formatLastSynced(status.lastSyncedAt)}</span>
+        </DetailItem>
+      </Details>
 
-      <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-        <label className="flex items-center gap-2 text-xs text-foreground">
-          <Switch
+      <div className="flex items-center justify-between gap-3">
+        <label
+          className="flex items-center gap-2 text-xs text-foreground"
+          htmlFor="vault-always-in-sync"
+        >
+          <Checkbox
+            id="vault-always-in-sync"
             checked={status.alwaysUpToDate}
-            onCheckedChange={onAlwaysUpToDateChange}
-            aria-label="Always in sync"
+            onCheckedChange={(checked) => onAlwaysUpToDateChange(checked === true)}
           />
           Always in sync
         </label>
-        <div className="flex items-center gap-2">
-          <GatedActionButton gate={effectiveGate} variant="outline" size="sm" onClick={onSync}>
-            <RefreshCw className="mr-1.5 size-3.5" aria-hidden="true" />
-            Sync
-          </GatedActionButton>
-          <GatedActionButton
-            gate={effectiveGate}
-            variant="ghost"
-            size="sm"
-            className="text-destructive"
-            onClick={onDisconnect}
-          >
-            <Unlink className="mr-1.5 size-3.5" aria-hidden="true" />
-            Disconnect Vault
-          </GatedActionButton>
-        </div>
+        <GatedActionButton
+          gate={effectiveGate}
+          variant="ghost"
+          size="sm"
+          className="text-destructive"
+          onClick={onDisconnect}
+        >
+          <Unlink className="mr-1.5 size-3.5" aria-hidden="true" />
+          Disconnect Vault
+        </GatedActionButton>
       </div>
     </div>
   );

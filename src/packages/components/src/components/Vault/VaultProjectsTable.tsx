@@ -114,6 +114,9 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
   /* The changelog column earns its width only when some row has something to put in it. */
   const showChangelog = items.some((item) => item.latestChangelog || item.description);
 
+  /* Column order is `VaultProjectTableRow`'s declaration order in `VaultSetupView.cs`, which is what
+     `TableBuilder` scaffolds from: Project, Version, Actions, Sync Status, Contents, Changelog. The
+     actions sitting third rather than last is the original's ordering, not a preference here. */
   return (
     <div className="space-y-3" data-testid="vault-projects-table">
       <Table>
@@ -121,10 +124,10 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
           <TableRow>
             <TableHead>Project</TableHead>
             <TableHead>Version</TableHead>
+            <TableHead>Actions</TableHead>
             <TableHead>Sync Status</TableHead>
             <TableHead>Contents</TableHead>
             {showChangelog && <TableHead>Changelog / Context</TableHead>}
-            <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -143,25 +146,6 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
               <TableCell>
                 <Badge variant="secondary">{versionLabel(item)}</Badge>
               </TableCell>
-              <TableCell>
-                <Badge variant={SYNC_STATUS_VARIANTS[item.syncStatus]}>
-                  {SYNC_STATUS_LABELS[item.syncStatus]}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <span className="flex flex-wrap gap-1">
-                  {contentBadges(item).map((badge) => (
-                    <Badge key={badge} variant="secondary">
-                      {badge}
-                    </Badge>
-                  ))}
-                </span>
-              </TableCell>
-              {showChangelog && (
-                <TableCell className="text-muted-foreground">
-                  {item.latestChangelog || item.description || "-"}
-                </TableCell>
-              )}
               <TableCell>
                 <span className="flex items-center gap-1">
                   {item.syncStatus === "NotImported" && (
@@ -240,6 +224,25 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
                   </IconButton>
                 </span>
               </TableCell>
+              <TableCell>
+                <Badge variant={SYNC_STATUS_VARIANTS[item.syncStatus]}>
+                  {SYNC_STATUS_LABELS[item.syncStatus]}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <span className="flex flex-wrap gap-1">
+                  {contentBadges(item).map((badge) => (
+                    <Badge key={badge} variant="secondary">
+                      {badge}
+                    </Badge>
+                  ))}
+                </span>
+              </TableCell>
+              {showChangelog && (
+                <TableCell className="text-muted-foreground">
+                  {item.latestChangelog || item.description || "-"}
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>

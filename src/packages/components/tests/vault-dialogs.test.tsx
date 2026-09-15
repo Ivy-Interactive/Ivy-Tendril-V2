@@ -416,8 +416,9 @@ describe("PushToVaultDialog", () => {
     const submit = screen.getByRole("button", { name: "Publish & Open PR" });
     expect(submit).not.toBeDisabled();
 
-    /* Dropping the only selected project is what leaves nothing to publish. */
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]);
+    /* Every local project is listed with a tick, so unticking the only one leaves nothing to
+       publish — the `PushProjectSelectRow` checkbox, not a token in a combobox. */
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alpha" }));
 
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
@@ -445,7 +446,12 @@ describe("PushToVaultDialog", () => {
     fireEvent.change(screen.getByLabelText("Request PR Reviewers"), {
       target: { value: "alice, bob," },
     });
-    fireEvent.click(screen.getByLabelText("Include Security & Permissions Policies for Alpha"));
+    /* The policy checkbox carries the original's unqualified label, so it is scoped by project. */
+    fireEvent.click(
+      within(screen.getByTestId("push-project-Alpha")).getByLabelText(
+        "Include Security & Permissions Policies",
+      ),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Publish & Open PR" }));
 
     const draft = onSubmit.mock.calls[0][0];

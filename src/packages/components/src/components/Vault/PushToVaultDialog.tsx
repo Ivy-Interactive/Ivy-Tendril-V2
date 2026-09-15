@@ -1,11 +1,11 @@
 import React from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, GitPullRequest } from "lucide-react";
 import { Badge } from "../ui/badge";
+import { Callout } from "../ui/callout";
+import { Checkbox } from "../ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { MultipleSelector, type Option } from "../ui/multiselect";
-import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { AssetChecklist } from "./AssetChecklist";
 import { VaultDialogShell } from "./VaultDialogShell";
@@ -65,6 +65,24 @@ const CATEGORY_EMPTY_TEXT: Record<AssetCategory, string> = {
   verifications: "No verifications configured for this project.",
 };
 
+/** The kind badge each asset row carries, from `PushAssetItemRow`'s `badge` argument. */
+const CATEGORY_ITEM_BADGES: Record<AssetCategory, string> = {
+  skills: "Skill",
+  mcpServers: "MCP",
+  memories: "Memory",
+  reviewActions: "Action",
+  verifications: "Verification",
+};
+
+/** The short word the header summary counts each category in, from `PushProjectHeaderBadge`. */
+const CATEGORY_SUMMARY_WORDS: Record<AssetCategory, string> = {
+  skills: "skills",
+  mcpServers: "MCPs",
+  memories: "mems",
+  reviewActions: "actions",
+  verifications: "verifs",
+};
+
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as AssetCategory[];
 
 function assetsFor(
@@ -98,8 +116,6 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
   prUrl,
   isBusy = false,
 }) => {
-  const projectOptions: Option[] = availableProjects.map((name) => ({ label: name, value: name }));
-
   const [selectedProjects, setSelectedProjects] = React.useState<string[]>(() =>
     defaultProject ? [defaultProject] : [...availableProjects],
   );
@@ -113,6 +129,9 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
   const [syncPermissions, setSyncPermissions] = React.useState<Record<string, boolean>>(() =>
     Object.fromEntries(availableProjects.map((name) => [name, true])),
   );
+  /* `Expandable(...).Open(isProjectChecked)`: a project opens when it is ticked, and can still be
+     opened by hand to look at what would go out if it were. */
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
   const [version, setVersion] = React.useState(() => generateVaultVersion());
   const [changelog, setChangelog] = React.useState("");
   const [reviewers, setReviewers] = React.useState("");
@@ -124,6 +143,30 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
     }));
   };
 
+  const toggleProject = (project: string, checked: boolean) => {
+    setSelectedProjects((current) =>
+      checked
+        ? availableProjects.filter((name) => name === project || current.includes(name))
+        : current.filter((name) => name !== project),
+    );
+    setExpanded((current) => ({ ...current, [project]: checked }));
+  };
+
+  /**
+   * `selected/total` per non-empty category, joined with bullets — the `PushProjectHeaderBadge`
+   * summary. A project with nothing to publish says so rather than showing `0/0` five times.
+   */
+  const assetSummary = (project: string): string => {
+    const projectAssets = assetsFor(assets, project);
+    const parts = CATEGORIES.filter((category) => projectAssets[category].length > 0).map(
+      (category) =>
+        `${(selections[category][project] ?? []).length}/${projectAssets[category].length} ${
+          CATEGORY_SUMMARY_WORDS[category]
+        }`,
+    );
+    return parts.length > 0 ? parts.join(" • ") : "0 assets";
+  };
+
   const submitDisabled = isBusy || selectedProjects.length === 0;
 
   return (
@@ -131,10 +174,10 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
       open={open}
       onClose={onClose}
       title={`Add Project to ${vaultDisplayName} (Create PR)`}
-      description="Publishing opens a pull request against the vault; nothing changes for your team until it is merged."
       testId="push-vault-dialog"
       error={error}
       submitLabel="Publish & Open PR"
+      submitIcon={<GitPullRequest className="mr-1.5 size-3.5" aria-hidden="true" />}
       submitDisabled={submitDisabled}
       onSubmit={() => {
         if (submitDisabled) return;
@@ -156,65 +199,85 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
       <section className="space-y-2">
         <p className="text-xs font-semibold text-foreground">Projects &amp; Assets to Publish</p>
         {availableProjects.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
+          <Callout.Info data-testid="push-vault-no-projects">
             All local projects are already tracked by a vault. Create a new local project first to
             add it here.
-          </p>
+          </Callout.Info>
         ) : (
-          <MultipleSelector
-            searchable
-            placeholder="Select projects..."
-            defaultOptions={projectOptions}
-            value={projectOptions.filter((option) => selectedProjects.includes(option.value))}
-            commandProps={{ label: "Projects to publish" }}
-            onValueChange={(options) => setSelectedProjects(options.map((option) => option.value))}
-          />
+          /* Every local project is listed, ticked or not, so the assets of one you have not chosen
+             are still inspectable — the `projectSelectorList` loop over `availableProjects`. */
+          availableProjects.map((project) => {
+            const projectAssets = assetsFor(assets, project);
+            const isSelected = selectedProjects.includes(project);
+            const checkboxId = `push-select-${project}`;
+
+            return (
+              <Collapsible
+                key={project}
+                open={expanded[project] ?? isSelected}
+                onOpenChange={(next) => setExpanded((current) => ({ ...current, [project]: next }))}
+                className="rounded-box border border-border"
+                data-testid={`push-project-${project}`}
+              >
+                <div className="flex items-center gap-2 px-2 py-1">
+                  <label
+                    className="flex items-center gap-2 text-xs font-semibold text-foreground"
+                    htmlFor={checkboxId}
+                  >
+                    <Checkbox
+                      id={checkboxId}
+                      checked={isSelected}
+                      onCheckedChange={(checked) => toggleProject(project, checked === true)}
+                    />
+                    {project}
+                  </label>
+                  <Badge variant="secondary">{assetSummary(project)}</Badge>
+                  <CollapsibleTrigger
+                    className="group ml-auto rounded-selector p-1 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                    aria-label={`Assets for ${project}`}
+                  >
+                    <ChevronDown
+                      className="size-3 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
+                      aria-hidden="true"
+                    />
+                  </CollapsibleTrigger>
+                </div>
+                <CollapsibleContent className="space-y-1.5 px-2 pb-2">
+                  {CATEGORIES.map((category) => (
+                    <AssetChecklist
+                      key={category}
+                      label={CATEGORY_LABELS[category]}
+                      category={category}
+                      scope={project}
+                      items={projectAssets[category]}
+                      selected={selections[category][project] ?? []}
+                      emptyText={CATEGORY_EMPTY_TEXT[category]}
+                      itemBadge={CATEGORY_ITEM_BADGES[category]}
+                      onChange={(next) => setCategory(category, project, next)}
+                    />
+                  ))}
+                  <label
+                    className="flex items-center gap-2 px-2 text-xs text-foreground"
+                    htmlFor={`push-permissions-${project}`}
+                  >
+                    <Checkbox
+                      id={`push-permissions-${project}`}
+                      checked={syncPermissions[project] ?? true}
+                      onCheckedChange={(checked) =>
+                        setSyncPermissions((current) => ({
+                          ...current,
+                          [project]: checked === true,
+                        }))
+                      }
+                    />
+                    Include Security &amp; Permissions Policies
+                  </label>
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })
         )}
       </section>
-
-      {selectedProjects.map((project) => {
-        const projectAssets = assetsFor(assets, project);
-        const total = CATEGORIES.reduce((sum, category) => sum + projectAssets[category].length, 0);
-
-        return (
-          <Collapsible
-            key={project}
-            defaultOpen
-            className="rounded-box border border-border p-3"
-            data-testid={`push-project-${project}`}
-          >
-            <CollapsibleTrigger className="flex w-full items-center gap-2 text-left text-xs font-semibold text-foreground">
-              <ChevronDown className="size-3.5" aria-hidden="true" />
-              {project}
-              <Badge variant="secondary">{total === 0 ? "0 assets" : `${total} assets`}</Badge>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-3 pt-3">
-              {CATEGORIES.map((category) => (
-                <AssetChecklist
-                  key={category}
-                  label={CATEGORY_LABELS[category]}
-                  category={category}
-                  scope={project}
-                  items={projectAssets[category]}
-                  selected={selections[category][project] ?? []}
-                  emptyText={CATEGORY_EMPTY_TEXT[category]}
-                  onChange={(next) => setCategory(category, project, next)}
-                />
-              ))}
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <Switch
-                  checked={syncPermissions[project] ?? true}
-                  aria-label={`Include Security & Permissions Policies for ${project}`}
-                  onCheckedChange={(checked) =>
-                    setSyncPermissions((current) => ({ ...current, [project]: checked }))
-                  }
-                />
-                Include Security &amp; Permissions Policies
-              </label>
-            </CollapsibleContent>
-          </Collapsible>
-        );
-      })}
 
       <section className="space-y-3">
         <p className="text-xs font-semibold text-foreground">Release Details</p>
@@ -246,10 +309,11 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
         </div>
       </section>
 
+      {/* The dialog stays open on success so the PR link lands here, the way `createdPrUrl` does. */}
       {prUrl && (
-        <p className="text-xs text-success" data-testid="push-vault-pr-url">
+        <Callout.Success data-testid="push-vault-pr-url">
           Pull request opened successfully: {prUrl}
-        </p>
+        </Callout.Success>
       )}
     </VaultDialogShell>
   );
