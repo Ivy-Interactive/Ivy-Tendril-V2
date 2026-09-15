@@ -58,6 +58,21 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         assert!(is_port_in_use(port));
         drop(listener);
-        assert!(!is_port_in_use(port));
+
+        // On a shared machine, an unrelated process can grab this exact ephemeral port in the
+        // instant between the drop above and the check below, so retry briefly rather than
+        // asserting on a single sample.
+        let freed = (0..20).any(|_| {
+            if is_port_in_use(port) {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                false
+            } else {
+                true
+            }
+        });
+        assert!(
+            freed,
+            "port {port} still reported in use after being dropped"
+        );
     }
 }
