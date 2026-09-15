@@ -254,7 +254,7 @@ describe("ReviewView lifecycle actions", () => {
 
     renderReview();
 
-    fireEvent.click(screen.getByRole("button", { name: /approve & create pr/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^create pr$/i }));
 
     const dialog = await screen.findByTestId("create-pr-dialog");
     // Opening the dialog is not consent to open the PR.
@@ -280,7 +280,7 @@ describe("ReviewView lifecycle actions", () => {
 
     renderReview();
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes \(retry\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^request changes$/i }));
 
     const textarea = await screen.findByLabelText("Change request");
     fireEvent.change(textarea, { target: { value: "Fix the failing clippy lint." } });
@@ -304,7 +304,7 @@ describe("ReviewView lifecycle actions", () => {
 
     renderReview();
 
-    fireEvent.click(screen.getByRole("button", { name: /request changes \(retry\)/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^request changes$/i }));
 
     const textarea = await screen.findByLabelText("Change request");
     fireEvent.change(textarea, { target: { value: "Please rerun the verifications." } });
