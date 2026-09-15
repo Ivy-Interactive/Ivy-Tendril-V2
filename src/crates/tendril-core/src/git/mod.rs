@@ -1,3 +1,4 @@
+pub mod git_tab;
 pub mod github;
 pub mod issues;
 pub mod path_budget;
@@ -9,6 +10,7 @@ pub mod worktree;
 pub mod worktree_log;
 pub mod worktree_reaper;
 
+pub use git_tab::*;
 pub use github::*;
 pub use issues::*;
 pub use path_budget::*;

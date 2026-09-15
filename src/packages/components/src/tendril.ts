@@ -36,6 +36,11 @@ export {
   type UseResizableSidebarReturn,
 } from "./hooks/use-resizable-sidebar";
 
+export { getPlatformShortcut } from "./lib/shortcut";
+export { useShortcut } from "./lib/useShortcut";
+export { getRegisteredShortcuts, type ShortcutInfo } from "./lib/shortcutRegistry";
+export { useFocusable, useFocusManagement, type FocusManager } from "./hooks/use-focus-management";
+
 // Agent & Execution Visualizers
 export {
   AgentViewer,
@@ -190,6 +195,16 @@ export type {
   TreeFolder,
   PlanChangesViewProps,
 } from "./components/PlanDiffView";
+
+// Plan Git Components
+export { PlanGitView } from "./components/PlanGitView/index.ts";
+export type {
+  CommitRefStatus,
+  PlanCommitRow,
+  PlanWorktreeSection,
+  PlanGitData,
+  PlanGitViewProps,
+} from "./components/PlanGitView/index.ts";
 
 // Tendril Dashboard Components
 export {

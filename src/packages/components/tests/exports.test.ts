@@ -217,6 +217,10 @@ describe("Package Exports", () => {
       expect(tendril.buildFileTree).toBeDefined();
     });
 
+    it("should export plan git view", () => {
+      expect(tendril.PlanGitView).toBeDefined();
+    });
+
     it("should export dashboard components", () => {
       expect(tendril.TendrilDashboard).toBeDefined();
       expect(tendril.ActivityGrid).toBeDefined();

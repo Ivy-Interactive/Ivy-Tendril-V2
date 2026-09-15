@@ -14,6 +14,7 @@ import type {
   ModelCatalogStatus,
   OnboardingStatus,
   PlanDetail,
+  PlanGitData,
   PlanQuery,
   PlanSummary,
   PrStatus,
@@ -157,6 +158,14 @@ export const bridge = {
   /** Uncommitted-change status of each repo the plan targets. */
   async getRepoStatus(this: void, id: string): Promise<RepoStatus[]> {
     return invoke<RepoStatus[]>("cmd_get_repo_status", { id });
+  },
+
+  /**
+   * The plan's worktrees, its commits grouped under them, and the reachability
+   * verdict for the commits no worktree accounts for — the Git tab's data.
+   */
+  async getPlanGit(this: void, id: string): Promise<PlanGitData> {
+    return invoke<PlanGitData>("cmd_get_plan_git", { id });
   },
 
   async getRevision(this: void, id: string, number?: number): Promise<string> {

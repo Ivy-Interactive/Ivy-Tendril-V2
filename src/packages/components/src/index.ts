@@ -14,6 +14,16 @@ export { getWidth, getHeight } from "./lib/styles";
 export { prismTheme } from "./lib/prismTheme";
 export { copyToClipboard } from "./lib/clipboard";
 export { getPlatformShortcut, formatShortcut } from "./lib/shortcut";
+// Not `export *` — shortcutRegistry's `_`-prefixed test seams must stay off the public surface.
+export {
+  registerShortcut,
+  unregisterShortcut,
+  getRegisteredShortcuts,
+  serializeShortcut,
+  type ShortcutInfo,
+  type ShortcutRegistration,
+} from "./lib/shortcutRegistry";
+export { useShortcut } from "./lib/useShortcut";
 export { debugLog, isDebugLoggingEnabled } from "./lib/debug-log";
 export {
   isImageFile,
@@ -38,6 +48,14 @@ export {
   type UseResizableSidebarOptions,
   type UseResizableSidebarReturn,
 } from "./hooks/use-resizable-sidebar";
+export {
+  useFocusManagement,
+  useFocusable,
+  type FocusManager,
+  type FocusDirection,
+} from "./hooks/use-focus-management";
+export { useDebounce } from "./hooks/use-debounce";
+export { useScrollShadow, type ScrollShadowDirection } from "./hooks/use-scroll-shadow";
 
 // Theme
 export {

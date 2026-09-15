@@ -1,7 +1,38 @@
 import { bridge } from "../api/bridge";
 import { subscribeJobEvents, type EventUnsubscribe, type JobStreamEvent } from "../api/events";
 import { serviceStore } from "./serviceStore";
+import type { JobNotification } from "./notificationBurst";
 import type { Job, JobDetail, JobStatus, StartJobArgs, StartJobResponse } from "../types/api";
+
+/** A job has exited once it reaches one of these. `Blocked` and `Queued` are not exits. */
+const TERMINAL_STATUSES: readonly JobStatus[] = ["Completed", "Failed", "Timeout", "Stopped"];
+
+function isTerminal(status: JobStatus): boolean {
+  return TERMINAL_STATUSES.includes(status);
+}
+
+/**
+ * Port of `JobCompletionHandler.SendCompletionNotification`. V2's `Job` has no `PlanFile`, so
+ * `planTitle` is the readable stand-in and `planId` the fallback.
+ */
+export function describeJobExit(
+  job: Pick<Job, "type" | "status" | "planId" | "planTitle"> & {
+    statusMessage?: string;
+  },
+): JobNotification {
+  const isSuccess = job.status === "Completed";
+  const title =
+    job.status === "Timeout"
+      ? `${job.type} Timed Out`
+      : isSuccess
+        ? `${job.type} Completed`
+        : `${job.type} Failed`;
+
+  let message = job.planTitle ?? job.planId ?? job.type;
+  if (!isSuccess && job.statusMessage) message += `: ${job.statusMessage}`;
+
+  return { title, message, isSuccess };
+}
 
 export interface JobSubscriptionCallbacks {
   onEvent?: (event: JobStreamEvent) => void;
@@ -39,6 +70,12 @@ class JobsStore {
   private listeners: Set<() => void> = new Set();
   private processedEventIds: Set<string> = new Set();
 
+  /** Last status seen per job id. A job absent from here has no baseline yet and cannot have exited. */
+  private lastStatus: Map<string, JobStatus> = new Map();
+  /** Job ids already notified about, so a re-reported exit is not a second notification. */
+  private notified: Set<string> = new Set();
+  private exitListeners: Set<(notification: JobNotification) => void> = new Set();
+
   public getState(): JobsState {
     return this.state;
   }
@@ -52,6 +89,50 @@ class JobsStore {
     this.listeners.forEach((l) => l());
   }
 
+  /**
+   * Fires once per job that transitions into a terminal status. Every status write in this store
+   * funnels through `recordStatuses`, so this covers polling, cancellation and — once a realtime
+   * transport exists — the SSE paths, with no double reporting between them.
+   */
+  public onJobExit(callback: (notification: JobNotification) => void): () => void {
+    this.exitListeners.add(callback);
+    return () => this.exitListeners.delete(callback);
+  }
+
+  /**
+   * Diffs a batch of jobs against the last statuses seen and emits an exit for each new transition.
+   *
+   * The **first** sighting of a job id only records a baseline: the initial `fetchJobs()` returns a
+   * history full of finished jobs, and announcing those would greet the operator with a wave of
+   * notifications for work that finished days ago.
+   */
+  private recordStatuses(jobs: readonly Job[]): void {
+    for (const job of jobs) {
+      const previous = this.lastStatus.get(job.id);
+      this.lastStatus.set(job.id, job.status);
+
+      if (previous === undefined) continue;
+      if (!isTerminal(job.status) || isTerminal(previous)) continue;
+      if (this.notified.has(job.id)) continue;
+
+      this.notified.add(job.id);
+      const notification = describeJobExit(job);
+      this.exitListeners.forEach((listener) => listener(notification));
+    }
+  }
+
+  /** `recordStatuses` for a single job, taking the detail entry when the list has no row for it. */
+  private recordJob(jobId: string): void {
+    const job = this.state.jobs.find((j) => j.id === jobId) ?? this.state.jobDetails[jobId];
+    if (job) this.recordStatuses([job]);
+  }
+
+  /** Test seam: drops the exit baseline so a suite can replay snapshots from scratch. */
+  public resetExitTracking(): void {
+    this.lastStatus.clear();
+    this.notified.clear();
+  }
+
   public async fetchJobs(status?: string, limit?: number): Promise<Job[]> {
     this.state.isLoading = true;
     this.notify();
@@ -59,6 +140,7 @@ class JobsStore {
     try {
       const jobs = await bridge.listJobs(status, limit);
       this.state.jobs = jobs;
+      this.recordStatuses(jobs);
       this.state.isLoading = false;
       this.notify();
       return jobs;
@@ -92,6 +174,7 @@ class JobsStore {
   public async cancelJob(id: string, message?: string): Promise<void> {
     await bridge.cancelJob(id, message);
     this.state.jobs = this.state.jobs.map((j) => (j.id === id ? { ...j, status: "Stopped" } : j));
+    this.recordJob(id);
     this.notify();
   }
 
@@ -217,6 +300,7 @@ class JobsStore {
           }
 
           if (changed) {
+            this.recordJob(jobId);
             this.notify();
           }
         }
@@ -257,6 +341,7 @@ class JobsStore {
         }
 
         if (changed) {
+          this.recordJob(jobId);
           this.notify();
         }
 
