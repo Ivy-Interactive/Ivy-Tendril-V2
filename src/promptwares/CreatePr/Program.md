@@ -246,17 +246,25 @@ When the PR status is `CONFLICTING`, resolve the conflict locally:
    - Accept base branch changes for unrelated code
    - When both sides changed the same lines, merge intelligently based on the plan's intent
 
-5. **Commit the merge**:
+5. **Re-run formatting, linting, and build checks before committing.** Hand-edited conflict
+   resolutions are exactly as likely to introduce formatting drift or lint violations as any other
+   hand-written change, so they must pass the same gates:
+   - List the plan's configured verifications: `tendril plan get <plan-id> verifications`.
+   - For every verification whose name indicates formatting or linting (e.g. `RustFormat`,
+     `NpmLint`, `DotnetFormat` — names containing `Format` or `Lint`), fetch its full prompt with
+     `tendril verification get <name>` and run it, scoped to the files touched by the merge and its
+     conflict resolution. Fix anything it reports.
+   - Run the project's build verification(s) (e.g. `RustBuild`, `NpmBuild`, `DotnetBuild`) to confirm
+     the resolved tree still compiles.
+   - If any check fails, fix the issue and repeat until clean.
+
+6. **Commit the clean merge**:
    ```bash
    git add -A
    git commit -m "[<planId>] Resolve merge conflicts with <default-branch>"
    ```
-
-6. **Quick build check** (if build-critical files were involved in conflicts):
-   ```bash
-   # Fetch build command: tendril verification get Build
-   ```
-   If the build fails, fix the issue and amend the merge commit.
+   If a commit was already made before step 5's checks were run, amend it instead so the committed
+   tree matches the clean, formatted result: `git commit -a --amend --no-edit`.
 
 7. **Push** the resolved branch:
    ```bash
