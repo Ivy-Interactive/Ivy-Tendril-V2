@@ -31,6 +31,7 @@ fn server(name: &str, command: &str) -> ProjectMcpServerRef {
         arguments: vec![],
         environment: Default::default(),
         disabled: false,
+        extra: Default::default(),
     }
 }
 

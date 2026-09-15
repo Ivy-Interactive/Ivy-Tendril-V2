@@ -266,11 +266,13 @@ fn test_compute_roots_covers_home_plans_projects_and_extras() {
                     RepoRef {
                         path: "/repos/alpha".to_string(),
                         base_branch: None,
+                        extra: Default::default(),
                     },
                     // Trailing separator and a duplicate must collapse.
                     RepoRef {
                         path: "/repos/alpha/".to_string(),
                         base_branch: None,
+                        extra: Default::default(),
                     },
                 ],
                 ..ProjectConfig::default()
@@ -280,6 +282,7 @@ fn test_compute_roots_covers_home_plans_projects_and_extras() {
                 repos: vec![RepoRef {
                     path: "/repos/beta".to_string(),
                     base_branch: None,
+                    extra: Default::default(),
                 }],
                 ..ProjectConfig::default()
             },

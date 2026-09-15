@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { PlanMarkdown } from "@ivy-interactive/components/tendril";
+import { PlanGitView, PlanMarkdown } from "@ivy-interactive/components/tendril";
 import {
   describeBridgeError,
   type PlanDetail,
+  type PlanGitData,
   type PlanSummary,
   type RecommendationItem,
   type RecommendationState,
@@ -69,7 +70,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   onBack,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<
-    "spec" | "diff" | "verifications" | "recommendations" | "metadata"
+    "spec" | "diff" | "verifications" | "recommendations" | "git" | "metadata"
   >("spec");
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -103,6 +104,45 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       cancelled = true;
     };
   }, [plan.id, plan.recommendations]);
+
+  // Fetched on mount rather than when the Git tab is opened: the at-risk badge on
+  // the tab button is the whole point of the feature, and a warning you only see
+  // once you have clicked into the tab is not a warning. A rejection is confined to
+  // the Git tab's own body — it must not disturb the other tabs or the action banner.
+  const [gitData, setGitData] = useState<PlanGitData | null>(null);
+  const [gitError, setGitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setGitData(null);
+    setGitError(null);
+    let cancelled = false;
+    bridge
+      .getPlanGit(plan.id)
+      .then((data) => {
+        if (!cancelled && data) {
+          setGitData(data);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setGitError(describeBridgeError(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plan.id]);
+
+  // Legacy's CountGitItems: worktrees + recorded commits + pull requests.
+  const gitItemCount = gitData
+    ? gitData.worktrees.length + (plan.commits?.length ?? 0) + (plan.prs?.length ?? 0)
+    : null;
+
+  const commitsAtRisk = gitData
+    ? Object.values(gitData.unassociatedCommitRefStatus).filter(
+        (status) => status === "unreachable" || status === "missing",
+      ).length
+    : 0;
 
   // Gating checks
   const canExec = PlanActionsController.canExecute(plan, allPlans);
@@ -141,8 +181,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    *
    * Nothing is dispatched while a guard is open: `onExecute` is called either
    * because no guard fired, or because the operator proceeded through all of
-   * them. Repo status is best-effort — a status the service cannot report
-   * degrades to "no dirty repos known" rather than blocking execution forever.
+   * them. Repo status and the annotation count are both best-effort — what the
+   * service cannot report degrades to "nothing known" rather than blocking
+   * execution forever.
    */
   const handleExecute = async () => {
     setActionError(null);
@@ -154,9 +195,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       repoStatus = undefined;
     }
 
+    // Only unresolved annotations block: a resolved one needs no UpdatePlan run.
+    let annotationCount: number | undefined;
+    try {
+      annotationCount = (await bridge.listAnnotations(plan.id)).filter((a) => !a.isResolved).length;
+    } catch {
+      annotationCount = undefined;
+    }
+
     let collected: ExecuteGuard[] = [];
     try {
-      collected = collectExecuteGuards({ plan, repoStatus });
+      collected = collectExecuteGuards({ plan, repoStatus, annotationCount });
     } catch {
       // A guard that cannot be collected must not swallow the click.
       collected = [];
@@ -447,6 +496,26 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         </button>
         <button
           type="button"
+          onClick={() => setActiveSubTab("git")}
+          className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
+            activeSubTab === "git"
+              ? "border-ring text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {gitItemCount === null ? "Git" : `Git (${gitItemCount})`}
+          {commitsAtRisk > 0 && (
+            <span
+              data-testid="git-tab-at-risk"
+              aria-label={`${commitsAtRisk} ${
+                commitsAtRisk === 1 ? "commit is" : "commits are"
+              } at risk of being lost`}
+              className="ml-2 inline-block h-2 w-2 rounded-full bg-destructive align-middle"
+            />
+          )}
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveSubTab("metadata")}
           className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
             activeSubTab === "metadata"
@@ -507,6 +576,25 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                   />
                 ))}
               </div>
+            )}
+          </div>
+        )}
+
+        {activeSubTab === "git" && (
+          <div className="rounded-xl border border-border bg-card/40 p-6">
+            {gitError ? (
+              <p data-testid="git-tab-error" className="text-xs text-destructive">
+                {gitError}
+              </p>
+            ) : gitData ? (
+              <PlanGitView
+                data={gitData}
+                prs={plan.prs ?? []}
+                planState={plan.state}
+                onOpenUrl={(url) => void openPath(url)}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground/70">Loading git state…</p>
             )}
           </div>
         )}

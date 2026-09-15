@@ -42,7 +42,7 @@ async fn start_test_server(host: Option<String>) -> TestServer {
     let port = tokio_listener.local_addr().unwrap().port();
 
     let secret = tendril_core::config::generate_bearer_secret();
-    let guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str).unwrap();
+    let guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str, "http").unwrap();
 
     let plans_dir = tendril_home.join("Plans");
     std::fs::create_dir_all(&plans_dir).unwrap();
@@ -906,6 +906,30 @@ projects: []
     assert_eq!(get_after_del.status(), reqwest::StatusCode::NOT_FOUND);
 }
 
+/// Join the decoded payloads of every `log` frame in a review-action SSE body.
+///
+/// Only `log` frames carry base64; `meta` and `end` are JSON and plain text, so they are skipped by
+/// following the `event:` line rather than decoding every `data:`.
+fn decode_log_frames(sse_text: &str) -> String {
+    use base64::Engine;
+
+    let mut transcript = String::new();
+    let mut in_log = false;
+    for line in sse_text.lines() {
+        if let Some(name) = line.strip_prefix("event:") {
+            in_log = name.trim() == "log";
+        } else if let Some(data) = line.strip_prefix("data:") {
+            if in_log {
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(data.trim())
+                    .expect("a log frame must be base64");
+                transcript.push_str(&String::from_utf8_lossy(&bytes));
+            }
+        }
+    }
+    transcript
+}
+
 #[tokio::test]
 async fn test_review_action_execution_streaming() {
     let server = start_test_server(None).await;
@@ -967,9 +991,19 @@ level: Feature
 
     // 4. Verify SSE stream contains log events and end event
     assert!(sse_text.contains("event: log"), "Should contain log event");
-    assert!(sse_text.contains("line1"), "Should contain stdout line 1");
-    assert!(sse_text.contains("line2"), "Should contain stdout line 2");
     assert!(sse_text.contains("event: end"), "Should contain end event");
+
+    // The output arrives as raw pty bytes, base64 in the `log` frames' data, so the transcript has to
+    // be decoded before it can be searched for what the command printed.
+    let transcript = decode_log_frames(&sse_text);
+    assert!(
+        transcript.contains("line1"),
+        "Should contain stdout line 1, got {transcript:?}"
+    );
+    assert!(
+        transcript.contains("line2"),
+        "Should contain stdout line 2, got {transcript:?}"
+    );
     assert!(
         sse_text.contains("Process exited with code 0"),
         "Should indicate success code 0"

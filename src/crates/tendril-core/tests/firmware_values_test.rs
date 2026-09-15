@@ -444,6 +444,7 @@ fn add_project_emits_its_repos_as_json() {
             repos: vec![RepoRef {
                 path: "/repos/widgets".to_string(),
                 base_branch: Some("develop".to_string()),
+                extra: Default::default(),
             }],
         }),
         "",
@@ -608,10 +609,12 @@ fn the_working_directory_is_the_projects_first_existing_repo() {
                         .to_string_lossy()
                         .to_string(),
                     base_branch: None,
+                    extra: Default::default(),
                 },
                 RepoRef {
                     path: repo.to_string_lossy().to_string(),
                     base_branch: Some("develop".to_string()),
+                    extra: Default::default(),
                 },
             ],
             verifications: vec![],
@@ -699,6 +702,7 @@ fn repo_configs_list_plan_repos_then_read_only_build_dependencies() {
         repos: vec![RepoRef {
             path: "/repos/widgets".to_string(),
             base_branch: Some("develop".to_string()),
+            extra: Default::default(),
         }],
         verifications: vec![],
         context: String::new(),

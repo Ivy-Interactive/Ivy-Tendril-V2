@@ -42,10 +42,14 @@ pub fn generate_hash_secret() -> String {
 pub fn hash_password(plaintext: &str, hash_secret_b64: &str) -> Result<String> {
     let secret = decode_secret(hash_secret_b64)
         .ok_or_else(|| TendrilError::Config("auth.hashSecret is not valid base64".to_string()))?;
+    hash_password_with_secret(plaintext, &secret)
+}
 
+/// [`hash_password`] with an already-decoded pepper, for the CLI, which reports its own base64 error.
+pub fn hash_password_with_secret(plaintext: &str, secret: &[u8]) -> Result<String> {
     let params = Params::new(MEMORY_COST_KIB, TIME_COST, LANES, Some(OUTPUT_LEN))
         .map_err(|e| TendrilError::Config(format!("Invalid Argon2 parameters: {e}")))?;
-    let hasher = Argon2::new_with_secret(&secret, Algorithm::Argon2i, Version::V0x13, params)
+    let hasher = Argon2::new_with_secret(secret, Algorithm::Argon2i, Version::V0x13, params)
         .map_err(|e| TendrilError::Config(format!("Failed to initialise Argon2: {e}")))?;
 
     let mut salt_bytes = [0u8; SALT_LEN];
@@ -66,13 +70,19 @@ pub fn hash_password(plaintext: &str, hash_secret_b64: &str) -> Result<String> {
 /// `AuthPasswordHelper.StoredHashMatchesPlaintext`, and an auth check is the last place that should
 /// be able to take the process down.
 pub fn verify_password(phc: &str, plaintext: &str, hash_secret_b64: &str) -> bool {
-    if phc.trim().is_empty() || plaintext.is_empty() {
-        return false;
-    }
-
     let Some(secret) = decode_secret(hash_secret_b64) else {
         return false;
     };
+    verify_password_with_secret(phc, plaintext, &secret)
+}
+
+/// [`verify_password`] with an already-decoded pepper. This is the single Argon2 verification in the
+/// workspace: `tendril_server::auth::verify_password` and the login route both come through here, so
+/// the middleware and the CLI can never drift apart on what a valid hash is.
+pub fn verify_password_with_secret(phc: &str, plaintext: &str, secret: &[u8]) -> bool {
+    if phc.trim().is_empty() || plaintext.is_empty() {
+        return false;
+    }
 
     let Ok(parsed) = PasswordHash::new(phc) else {
         return false;
@@ -92,7 +102,7 @@ pub fn verify_password(phc: &str, plaintext: &str, hash_secret_b64: &str) -> boo
         return false;
     };
 
-    let Ok(verifier) = Argon2::new_with_secret(&secret, algorithm, version, params) else {
+    let Ok(verifier) = Argon2::new_with_secret(secret, algorithm, version, params) else {
         return false;
     };
 

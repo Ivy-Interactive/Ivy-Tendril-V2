@@ -21,6 +21,14 @@ pub struct TendrilSettings {
     #[serde(rename = "gitTimeout", default = "default_git_timeout")]
     pub git_timeout: i32,
 
+    /// Seconds to wait for a reply from the local daemon. Note the unit: unlike `jobTimeout`,
+    /// which is minutes, this is seconds. `0` or negative disables the timeout entirely.
+    #[serde(
+        rename = "daemonRequestTimeout",
+        default = "default_daemon_request_timeout"
+    )]
+    pub daemon_request_timeout: i32,
+
     #[serde(rename = "maxConcurrentJobs", default = "default_max_concurrent_jobs")]
     pub max_concurrent_jobs: i32,
 
@@ -53,8 +61,24 @@ pub struct TendrilSettings {
     #[serde(default = "default_levels")]
     pub levels: Vec<LevelConfig>,
 
-    #[serde(default = "default_true")]
-    pub telemetry: bool,
+    /// Opt-in. `None` (key absent) and `Some(false)` both mean no client is constructed and no
+    /// network call is ever attempted. Skipped on serialize when absent, so V2 never *introduces* the
+    /// key into a config.yaml shared with the original app, whose policy is opt-out and which reads an
+    /// absent key as "on". An explicit value round-trips unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub telemetry: Option<bool>,
+
+    /// Endpoint / key / model for the auxiliary LLM the original app uses for summarisation. Modeled
+    /// rather than left in `extra` because `telemetry_enabled`'s `app_started` event reports whether
+    /// it is configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm: Option<LlmConfig>,
+
+    /// The original defaults this to true, and unlike telemetry that default is not a privacy
+    /// decision, so it is mirrored as-is. No reader in V2 yet — modeling it stops it being silently
+    /// unreadable.
+    #[serde(rename = "desktopNotifications", default = "default_true")]
+    pub desktop_notifications: bool,
 
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -154,6 +178,15 @@ pub struct TendrilSettings {
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
+impl TendrilSettings {
+    /// The single reader of the `telemetry` key. Strictly opt-in: only an explicit `telemetry: true`
+    /// enables it, so an absent key and `telemetry: false` behave identically. No call site tests the
+    /// field directly.
+    pub fn telemetry_enabled(&self) -> bool {
+        self.telemetry == Some(true)
+    }
+}
+
 /// Password authentication, mirroring the original's `AuthConfig` record. `password` holds an Argon2
 /// PHC string and `hash_secret` the base64 pepper fed to Argon2 as its secret key (`K`).
 ///
@@ -169,8 +202,9 @@ pub struct AuthConfig {
     #[serde(default)]
     pub password: String,
 
-    /// Base64-encoded Argon2 secret (pepper).
-    #[serde(rename = "hashSecret", default)]
+    /// Base64-encoded Argon2 secret (pepper). The snake_case spelling is accepted too, because the
+    /// untyped reader this field replaced (`BasicAuthConfig::from_settings`) tolerated both.
+    #[serde(rename = "hashSecret", alias = "hash_secret", default)]
     pub hash_secret: String,
 
     #[serde(rename = "rateLimit", default, skip_serializing_if = "Option::is_none")]
@@ -253,6 +287,24 @@ pub struct SecuritySettings {
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
+/// Mirrors the original's `LlmConfig` (endpoint / apiKey / model). `extra` is required, not
+/// defensive: a real config.yaml carries `llm: { provider: openrouter }` and the original's
+/// tolerant JSON binding keeps it. A struct without `extra` would drop `provider` on the next save.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LlmConfig {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub endpoint: String,
+
+    #[serde(rename = "apiKey", default, skip_serializing_if = "String::is_empty")]
+    pub api_key: String,
+
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
 /// Assigned-issue auto-import. `autoAcceptAssignedIssues` selects what a swept issue becomes: a
 /// `CreatePlan` job when true, a proposal awaiting a human when false. Either way the sweep still
 /// runs — the flag picks the landing mode, it does not disable the import.
@@ -324,7 +376,6 @@ impl OnboardingConfig {
         self == &Self::default()
     }
 }
-
 /// What a single promptware asks for: the profile it runs under and the tool rules it contributes.
 ///
 /// `allowed_tools` is purely additive on top of the base set; `denied_tools` is subtracted from the
@@ -453,6 +504,9 @@ fn default_stale_output_timeout() -> i32 {
 fn default_git_timeout() -> i32 {
     10
 }
+fn default_daemon_request_timeout() -> i32 {
+    crate::http::DEFAULT_DAEMON_REQUEST_TIMEOUT_SECS as i32
+}
 fn default_max_concurrent_jobs() -> i32 {
     20
 }
@@ -530,6 +584,7 @@ impl Default for TendrilSettings {
             job_timeout: default_job_timeout(),
             stale_output_timeout: default_stale_output_timeout(),
             git_timeout: default_git_timeout(),
+            daemon_request_timeout: default_daemon_request_timeout(),
             max_concurrent_jobs: default_max_concurrent_jobs(),
             projects: Vec::new(),
             verifications: Vec::new(),
@@ -537,7 +592,9 @@ impl Default for TendrilSettings {
             plan_folder: None,
             promptware_overlay: None,
             levels: default_levels(),
-            telemetry: true,
+            telemetry: None,
+            llm: None,
+            desktop_notifications: true,
             theme: default_theme(),
             worktree_reaper_interval: default_worktree_reaper_interval(),
             worktree_reaper_grace: default_worktree_reaper_grace(),
@@ -928,6 +985,24 @@ pub fn get_database_path(tendril_home: &Path) -> PathBuf {
     tendril_home.join("tendril.db")
 }
 
+/// Where `config.yaml` hook actions keep their scripts, e.g.
+/// `pwsh -NoProfile -File %TENDRIL_HOME%/Hooks/NotifySlack.ps1`.
+pub fn get_hooks_dir(tendril_home: &Path) -> PathBuf {
+    tendril_home.join("Hooks")
+}
+
+/// Creates the home directories that nothing else owns. Idempotent: `create_dir_all` on an existing
+/// directory is a no-op, so it is safe on every daemon start, not just the first.
+///
+/// Deliberately only `Hooks` (plus the home itself): `Plans`, `Logs/Jobs`, `Attachments` and
+/// `Promptwares` are each created on demand by their owner, and duplicating that here would give two
+/// owners for one directory.
+pub fn ensure_home_directories(tendril_home: &Path) -> Result<()> {
+    std::fs::create_dir_all(tendril_home)?;
+    std::fs::create_dir_all(get_hooks_dir(tendril_home))?;
+    Ok(())
+}
+
 /// Strip everything outside `[A-Za-z0-9._-]`, matching the C# `InputSanitizer.SanitizeProjectName`
 /// so the directory layout stays byte-identical between the two implementations.
 pub fn sanitize_project_name(name: &str) -> String {
@@ -996,7 +1071,102 @@ pub fn save_config(config_path: &Path, settings: &TendrilSettings) -> Result<()>
     crate::fs_lock::write_atomic(config_path, yaml.as_bytes())
 }
 
+/// The `name` of a `projects:` entry, if it has one.
+fn project_entry_name(entry: &serde_yaml::Value) -> Option<&str> {
+    entry.get("name")?.as_str()
+}
+
+/// Merges an incoming `projects` sequence into the existing one **by project name**.
+///
+/// Entries are matched case-insensitively on `name` — the same lookup every `/api/projects` handler
+/// uses. A matched pair is merged as a mapping (so a payload naming one key does not clear the
+/// project's other keys), an incoming entry matching nothing is appended, and an existing project the
+/// payload does not mention is left untouched.
+///
+/// **Omission is not deletion.** Removing a project goes through `DELETE /api/projects/:name`, never
+/// `PUT /api/config`. Do not later "fix" this merge to honour an omitted project as a delete — that
+/// would turn every partial config PUT into a mass project wipe.
+fn merge_projects_by_name(existing: &mut serde_yaml::Value, incoming: serde_yaml::Value) {
+    let incoming_seq = match incoming {
+        serde_yaml::Value::Sequence(seq) => seq,
+        // Not a sequence: nothing to match on, so fall back to replacement.
+        other => {
+            *existing = other;
+            return;
+        }
+    };
+
+    let existing_seq = match existing.as_sequence_mut() {
+        Some(seq) => seq,
+        None => {
+            *existing = serde_yaml::Value::Sequence(incoming_seq);
+            return;
+        }
+    };
+
+    for incoming_proj in incoming_seq {
+        let matched = project_entry_name(&incoming_proj).and_then(|name| {
+            existing_seq.iter().position(|existing_proj| {
+                project_entry_name(existing_proj).is_some_and(|n| n.eq_ignore_ascii_case(name))
+            })
+        });
+
+        match matched {
+            Some(idx) => merge_config_value(&mut existing_seq[idx], incoming_proj, false),
+            None => existing_seq.push(incoming_proj),
+        }
+    }
+}
+
+/// Deep-merges `incoming` into `existing` for [`update_config_raw`].
+///
+/// - **Mappings merge recursively**, key by key. A key present only in `existing` is kept.
+/// - **Sequences replace.** This must not be generalised: an incoming `filePermissions: []` or
+///   `verifications: [...]` means "this is the list now", so merging list elements would make
+///   clearing a list impossible.
+/// - **The top-level `projects` sequence is the single exception** — see [`merge_projects_by_name`].
+///   `at_root` is what keeps that exception to the real `projects` key, so a nested key that happens
+///   to be called `projects` inside some project's own data is merged like any other sequence.
+/// - Scalars, and any type mismatch between the two sides, replace.
+fn merge_config_value(
+    existing: &mut serde_yaml::Value,
+    incoming: serde_yaml::Value,
+    at_root: bool,
+) {
+    let incoming_map = match incoming {
+        serde_yaml::Value::Mapping(map) => map,
+        other => {
+            *existing = other;
+            return;
+        }
+    };
+
+    let existing_map = match existing.as_mapping_mut() {
+        Some(map) => map,
+        None => {
+            *existing = serde_yaml::Value::Mapping(incoming_map);
+            return;
+        }
+    };
+
+    for (key, value) in incoming_map {
+        let is_projects = at_root && key.as_str() == Some("projects");
+        match existing_map.get_mut(&key) {
+            Some(slot) if is_projects => merge_projects_by_name(slot, value),
+            Some(slot) => merge_config_value(slot, value, false),
+            None => {
+                existing_map.insert(key, value);
+            }
+        }
+    }
+}
+
 /// Merges `incoming` into `config.yaml` and writes the result.
+///
+/// The merge is a **deep** one — see [`merge_config_value`] for the exact rules, and
+/// [`merge_projects_by_name`] for why `projects` is special. A shallow top-level `insert` per
+/// incoming key was the previous behaviour and meant a payload carrying `projects:` replaced the
+/// entire projects array.
 ///
 /// This is a read-modify-write, so the lock is held across **both** halves: releasing it between the
 /// read and the write is exactly how two concurrent settings edits drop one another.
@@ -1020,18 +1190,12 @@ pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Re
     let incoming_yaml: serde_yaml::Value = serde_yaml::to_value(incoming)
         .map_err(|e| TendrilError::Config(format!("Invalid incoming config: {}", e)))?;
 
-    match (&mut existing_val, incoming_yaml) {
-        (serde_yaml::Value::Mapping(existing_map), serde_yaml::Value::Mapping(incoming_map)) => {
-            for (k, v) in incoming_map {
-                existing_map.insert(k, v);
-            }
-        }
-        _ => {
-            return Err(TendrilError::Config(
-                "Config update payload must be an object".to_string(),
-            ));
-        }
+    if !incoming_yaml.is_mapping() {
+        return Err(TendrilError::Config(
+            "Config update payload must be an object".to_string(),
+        ));
     }
+    merge_config_value(&mut existing_val, incoming_yaml, true);
 
     let yaml_str = serde_yaml::to_string(&existing_val)
         .map_err(|e| TendrilError::Config(format!("Failed to serialize merged config: {}", e)))?;
@@ -1144,6 +1308,12 @@ fn default_api_version() -> u32 {
     1
 }
 
+/// `.master` files written before `serve --tls-cert/--tls-key` existed carry no `scheme`, and every
+/// one of them describes a plaintext server.
+fn default_scheme() -> String {
+    "http".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MasterInfo {
     pub port: u16,
@@ -1164,6 +1334,42 @@ pub struct MasterInfo {
     pub api_version: u32,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// `"http"` or `"https"` — which one `serve` was started with. Clients must not guess: a request
+    /// to the wrong scheme is a connection error, not a redirect.
+    #[serde(default = "default_scheme")]
+    pub scheme: String,
+}
+
+impl MasterInfo {
+    /// The base URL of the daemon's API, e.g. `https://127.0.0.1:5010`.
+    pub fn base_url(&self) -> String {
+        format!("{}://{}:{}", self.scheme, self.host, self.port)
+    }
+}
+
+#[cfg(test)]
+mod master_info_tests {
+    use super::MasterInfo;
+
+    #[test]
+    fn base_url_follows_the_recorded_scheme() {
+        let mut info: MasterInfo =
+            serde_json::from_str(r#"{"port":5010,"pid":1,"host":"127.0.0.1","scheme":"http"}"#)
+                .unwrap();
+        assert_eq!(info.base_url(), "http://127.0.0.1:5010");
+
+        info.scheme = "https".to_string();
+        assert_eq!(info.base_url(), "https://127.0.0.1:5010");
+    }
+
+    #[test]
+    fn a_master_file_without_a_scheme_reads_as_http() {
+        let json = r#"{"port":5010,"pid":42,"host":"127.0.0.1"}"#;
+        let parsed: MasterInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(parsed.scheme, "http");
+        assert_eq!(parsed.base_url(), "http://127.0.0.1:5010");
+    }
 }
 
 pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
@@ -1176,8 +1382,13 @@ pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
     serde_json::from_str(&content).ok()
 }
 
-/// True when this process is the master, i.e. `.master` names our pid. The counterpart to
-/// [`MasterGuard::acquire`] for code that needs the answer without taking the guard.
+/// True when this process owns the `.master` file. [`MasterGuard::acquire`] wrote our pid there;
+/// anything else — a foreign pid, or no file at all — means we lost the race or were superseded, so
+/// we must not write to anything the master owns.
+///
+/// Checked per pass rather than once at spawn: a daemon can be superseded while running. Being a
+/// function of the file rather than of process-wide environment state, it is testable without the
+/// cross-thread interference an env-var seam would cause.
 pub fn is_master(tendril_home: &Path) -> bool {
     read_master(tendril_home).is_some_and(|m| m.pid == std::process::id())
 }
@@ -1211,7 +1422,13 @@ pub fn write_master_info(tendril_home: &Path, info: &MasterInfo) -> Result<()> {
     Ok(())
 }
 
-pub fn write_master(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<()> {
+pub fn write_master(
+    tendril_home: &Path,
+    port: u16,
+    secret: &str,
+    host: &str,
+    scheme: &str,
+) -> Result<()> {
     let info = MasterInfo {
         port,
         pid: std::process::id(),
@@ -1221,6 +1438,7 @@ pub fn write_master(tendril_home: &Path, port: u16, secret: &str, host: &str) ->
         version: env!("CARGO_PKG_VERSION").to_string(),
         api_version: 1,
         capabilities: default_capabilities(),
+        scheme: scheme.to_string(),
     };
     write_master_info(tendril_home, &info)
 }
@@ -1259,12 +1477,26 @@ fn master_takeover_allowed() -> bool {
 }
 
 impl MasterGuard {
-    pub fn acquire(tendril_home: &Path, port: u16, secret: &str, host: &str) -> Result<Self> {
+    pub fn acquire(
+        tendril_home: &Path,
+        port: u16,
+        secret: &str,
+        host: &str,
+        scheme: &str,
+    ) -> Result<Self> {
         ensure_not_real_home(tendril_home)?;
 
         if let Some(existing) = read_master(tendril_home) {
             if is_process_running(existing.pid) {
-                if probe_health_with_retries(&existing.host, existing.port, HEALTH_PROBE_ATTEMPTS) {
+                // `probe_health` speaks plaintext HTTP, so it cannot tell a live TLS server from a
+                // dead one; for those, the pid check above is the whole answer.
+                let responding = existing.scheme.eq_ignore_ascii_case("https")
+                    || probe_health_with_retries(
+                        &existing.host,
+                        existing.port,
+                        HEALTH_PROBE_ATTEMPTS,
+                    );
+                if responding {
                     return Err(TendrilError::Other(format!(
                         "Another Tendril instance is running with PID {} on port {}",
                         existing.pid, existing.port
@@ -1300,7 +1532,7 @@ impl MasterGuard {
             }
         }
 
-        write_master(tendril_home, port, secret, host)?;
+        write_master(tendril_home, port, secret, host, scheme)?;
         Ok(Self {
             tendril_home: tendril_home.to_path_buf(),
             pid: std::process::id(),

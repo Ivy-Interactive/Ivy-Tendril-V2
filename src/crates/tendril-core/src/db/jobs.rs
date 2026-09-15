@@ -9,7 +9,7 @@ const JOB_COLUMNS: &str = "Id, Type, PlanFile, Project, Status, Provider, Starte
      CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, \
      Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, \
      ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState, \
-     Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey";
+     Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey";
 
 const INSERT_SQL: &str = r#"
     INSERT INTO Jobs (
@@ -18,17 +18,18 @@ const INSERT_SQL: &str = r#"
         CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
         Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
         ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState,
-        Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey
+        Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey
     ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
         ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
-        ?31, ?32, ?33, ?34, ?35
+        ?31, ?32, ?33, ?34, ?35, ?36
     )
 "#;
 
-/// `DedupeKey` is deliberately absent from the `DO UPDATE SET` list: the key identifies the work a
-/// job was created for and never changes, so a later write of the same row — a status change, a cost
-/// update — must not be able to clear or rewrite it.
+/// `DedupeKey` and `IdempotencyKey` are deliberately absent from the `DO UPDATE SET` list: one
+/// identifies the work a job was created for and the other the submission that created it, and
+/// neither ever changes, so a later write of the same row — a status change, a cost update — must not
+/// be able to clear or rewrite them.
 const UPSERT_TAIL: &str = r#"
     ON CONFLICT(Id) DO UPDATE SET
         Status = excluded.Status,
@@ -113,6 +114,7 @@ fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
             wait_for_json,
             permission_denials_json,
             job.dedupe_key,
+            job.idempotency_key,
         ],
     )?;
 
@@ -192,6 +194,7 @@ fn row_to_job(row: &Row<'_>) -> Result<JobItem> {
         .and_then(|json| serde_json::from_str::<Vec<String>>(json).ok())
         .filter(|d| !d.is_empty());
     item.dedupe_key = row.get(34)?;
+    item.idempotency_key = row.get(35)?;
 
     // `typed_args` has no column of its own; it is rehydrated from the Args JSON so a job loaded
     // after a daemon restart still knows what it was launched with.
@@ -251,6 +254,55 @@ pub fn list_non_terminal_jobs(conn: &Connection) -> Result<Vec<JobItem>> {
     }
 
     Ok(jobs)
+}
+
+/// Non-terminal job rows recorded against `plan_folder`, oldest first.
+///
+/// This is the persisted half of the conflict guard. Startup recovery does not rehydrate the job
+/// manager's in-memory map, so a job that survived a daemon restart — or a `Queued` row recovery
+/// deliberately left alone — can only be seen here.
+///
+/// `COLLATE NOCASE` matches the ASCII-case-insensitive comparison the in-memory check uses, so the
+/// two agree on a folder spelled differently by two callers. `idx_jobs_planfile_nocase` is the index
+/// that serves it; the plain `idx_jobs_planfile` cannot, having no collation of its own.
+pub fn list_non_terminal_jobs_for_plan(
+    conn: &Connection,
+    plan_folder: &str,
+) -> Result<Vec<JobItem>> {
+    let sql = format!(
+        "SELECT {} FROM Jobs WHERE PlanFile = ?1 COLLATE NOCASE \
+         AND Status IN ('Pending', 'Queued', 'Running', 'Blocked') ORDER BY Id ASC",
+        JOB_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([plan_folder])?;
+    let mut jobs = Vec::new();
+    while let Some(row) = rows.next()? {
+        jobs.push(row_to_job(row)?);
+    }
+
+    Ok(jobs)
+}
+
+/// The job a previous submission of `key` created, whatever status it reached.
+///
+/// Terminal rows count, which is the whole point: a client retrying a request whose response it never
+/// saw must be told about the job it already started, not handed a second one. Scoping this to
+/// in-flight statuses — as [`find_inflight_job_by_dedupe_key`] does, for a key that means something
+/// else — would turn a retry after completion into a second run.
+///
+/// Parameterised, since the key comes from a client.
+pub fn find_job_by_idempotency_key(conn: &Connection, key: &str) -> Result<Option<JobItem>> {
+    let sql = format!(
+        "SELECT {} FROM Jobs WHERE IdempotencyKey = ?1 ORDER BY Id ASC LIMIT 1",
+        JOB_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([key])?;
+    if let Some(row) = rows.next()? {
+        return Ok(Some(row_to_job(row)?));
+    }
+    Ok(None)
 }
 
 /// Statuses a job holds while its work is genuinely in flight, as SQL literals.

@@ -78,7 +78,7 @@
     "test-storybook:visual:ci": "concurrently -k -s first -n \"SB,VISUAL\" -c \"magenta,cyan\" \"http-server storybook-static -a 127.0.0.1 --port 6006 --silent\" \"wait-on tcp:127.0.0.1:6006 && cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook --ci\"",
     "test-storybook:visual:update:ci": "concurrently -k -s first -n \"SB,VISUAL\" -c \"magenta,cyan\" \"http-server storybook-static -a 127.0.0.1 --port 6006 --silent\" \"wait-on tcp:127.0.0.1:6006 && cross-env STORYBOOK_VISUAL_REGRESSION=true test-storybook --updateSnapshot\"",
     "prepublishOnly": "vp run build",
-    "prepare": "vp config && tsx scripts/patch-tsgolint-win.ts"
+    "prepare": "tsx scripts/patch-tsgolint-win.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -109,6 +109,9 @@
     "@radix-ui/react-toggle": "1.1.10",
     "@radix-ui/react-toggle-group": "1.1.11",
     "@radix-ui/react-tooltip": "1.2.8",
+    "@tanstack/react-virtual": "3.14.13",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "1.1.1",

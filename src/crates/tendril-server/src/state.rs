@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, RwLock};
+// The settings snapshot is read from synchronous middleware, so it uses the std lock; `version_info`
+// is awaited and uses tokio's. Both names would be `RwLock`, hence the alias.
+use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
 use std::time::SystemTime;
 use tendril_core::agents::model_cache::{self, CacheFreshness};
 use tendril_core::auth::rate_limit::LoginRateLimiter;
@@ -10,8 +13,9 @@ use tendril_core::config::{
 };
 use tendril_core::jobs::JobManager;
 use tendril_core::security::local_file_roots::compute_roots;
+use tendril_core::version_check::VersionInfo;
 use tendril_core::watcher::ChangeEvent;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, RwLock};
 
 /// `config.yaml` as of a given mtime, plus everything derived from it that a per-request check needs.
 ///
@@ -45,10 +49,18 @@ pub struct AppState {
     pub login_rate_limiter: Arc<LoginRateLimiter>,
     /// Settings snapshot behind an mtime check — the V2 equivalent of the original's
     /// `SettingsReloaded` event, and it also catches an edit made directly to `config.yaml`.
-    pub settings_cache: Arc<RwLock<Option<Arc<CachedSettings>>>>,
+    pub settings_cache: Arc<StdRwLock<Option<Arc<CachedSettings>>>>,
+    /// Password credentials from `config.yaml`'s `auth` block, or `None` when there is no such block
+    /// — which is the norm, and means the bearer token stays the only accepted credential. Resolved
+    /// once here rather than per request, so authentication never reads the config off disk.
+    pub basic_auth: Option<crate::auth::BasicAuthConfig>,
     /// Held for the duration of a PR reconciliation pass, so the periodic driver and a manual
     /// `POST /api/pull-requests/sync` can never run concurrently.
     pub pr_sync_running: Arc<AtomicBool>,
+    /// Last known release-check result, seeded from disk at startup and refreshed by
+    /// `spawn_version_check`/`POST /api/version/check`. `consecutive_failures` lives only here —
+    /// the disk cache is never written on a failed check.
+    pub version_info: Arc<RwLock<VersionInfo>>,
 }
 
 impl AppState {
@@ -69,6 +81,7 @@ impl AppState {
             .as_ref()
             .map(|auth| auth.effective_rate_limit())
             .unwrap_or_default();
+        let basic_auth = crate::auth::BasicAuthConfig::from_settings(&settings);
         let enrich_models = settings.enrich_models;
         let enrichment_hours = settings.model_enrichment_interval_hours;
         let warn_age_days = settings.model_cache_warn_age_days;
@@ -145,6 +158,15 @@ impl AppState {
             ws_tx.clone(),
         );
 
+        // `current_version` is always known, cache or not — only `latest_version`/`has_update`
+        // depend on a check ever having succeeded.
+        let mut seeded_version_info = tendril_core::version_check::load_cache(&tendril_home);
+        if seeded_version_info.current_version.is_empty() {
+            seeded_version_info.current_version =
+                tendril_core::version_check::current_version().to_string();
+        }
+        let version_info = Arc::new(RwLock::new(seeded_version_info));
+
         Self {
             tendril_home,
             config_path,
@@ -156,8 +178,10 @@ impl AppState {
             change_tx,
             secret,
             login_rate_limiter: Arc::new(LoginRateLimiter::new(rate_limit)),
-            settings_cache: Arc::new(RwLock::new(None)),
+            settings_cache: Arc::new(StdRwLock::new(None)),
+            basic_auth,
             pr_sync_running,
+            version_info,
         }
     }
 

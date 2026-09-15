@@ -177,11 +177,15 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             LastOutputAt TEXT,
             WaitForJobIds TEXT,
             PermissionDenials TEXT,
-            DedupeKey TEXT
+            DedupeKey TEXT,
+            IdempotencyKey TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
         CREATE INDEX IF NOT EXISTS idx_jobs_completed ON Jobs(CompletedAt DESC);
         CREATE INDEX IF NOT EXISTS idx_jobs_planfile ON Jobs(PlanFile);
+        -- `idx_jobs_planfile` above is declared without a collation, so it cannot serve the
+        -- `PlanFile = ?1 COLLATE NOCASE` predicate the conflict guard uses. This companion can.
+        CREATE INDEX IF NOT EXISTS idx_jobs_planfile_nocase ON Jobs(PlanFile COLLATE NOCASE);
 
         CREATE TABLE IF NOT EXISTS PrStatuses (
             PrUrl TEXT PRIMARY KEY,
@@ -236,6 +240,7 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             ("WaitForJobIds", "TEXT"),
             ("PermissionDenials", "TEXT"),
             ("DedupeKey", "TEXT"),
+            ("IdempotencyKey", "TEXT"),
         ],
     )?;
     ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
@@ -264,6 +269,20 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedupe_inflight
            ON Jobs(DedupeKey)
            WHERE DedupeKey IS NOT NULL AND Status IN ('Pending', 'Queued', 'Running');",
+    )?;
+
+    // `IdempotencyKey` is the *client's* identity for one submission, not the server-derived
+    // `DedupeKey` above, so it gets its own column and its own index. Same after-the-ALTER placement,
+    // for the same reason.
+    //
+    // Unscoped by status on purpose: a key names one request for good. A client retrying a request
+    // whose response it never saw must be handed the job it already started even if that job has
+    // since failed, so that a retry can never become a second run. `NULL` never collides, so every
+    // unkeyed submission is unaffected.
+    conn.execute_batch(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_idempotency_key
+           ON Jobs(IdempotencyKey)
+           WHERE IdempotencyKey IS NOT NULL;",
     )?;
 
     stamp_user_version(conn)?;

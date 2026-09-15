@@ -7,9 +7,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tendril_core::config::{expand_variables_with_env, load_config, save_config, TendrilSettings};
+use tendril_core::jobs::hook_condition::classify_hook_condition;
 use tendril_core::jobs::hooks::{
-    condition_holds, matching_hooks, run_hooks_with_env, HookCommandResult, HookCommandSpec,
-    HookExecutor, HookPhase, HookRunContext, HOOK_ACTION_TIMEOUT, HOOK_CONDITION_TIMEOUT,
+    condition_holds, matching_hooks, run_hooks_with_env, shell_hook_executor, HookCommandResult,
+    HookCommandSpec, HookExecutor, HookPhase, HookRunContext, HOOK_ACTION_TIMEOUT,
+    HOOK_CONDITION_TIMEOUT,
 };
 use tendril_core::models::{JobStatus, ProjectConfig, PromptwareHookConfig};
 
@@ -36,6 +38,7 @@ fn hook(
         promptwares: promptwares.iter().map(|p| p.to_string()).collect(),
         condition: condition.to_string(),
         action: action.to_string(),
+        extra: Default::default(),
     }
 }
 
@@ -672,4 +675,294 @@ async fn test_project_without_hooks_executes_nothing() {
     );
 
     let _ = std::fs::remove_dir_all(home);
+}
+
+// ---------------------------------------------------------------------------
+// 7. PowerShell-style conditions are evaluated in-process, not through `sh -c`
+// ---------------------------------------------------------------------------
+
+/// Fails on today's origin/main: `Test-Path` run through `sh -c` exits non-zero, so the condition
+/// never holds and the action never runs, regardless of the actual filesystem state.
+#[tokio::test]
+async fn test_powershell_style_condition_fires_the_hook() {
+    let home = temp_dir("powershell-condition");
+    let plan_folder = home.join("Plans").join("00646-Test");
+    std::fs::create_dir_all(plan_folder.join("artifacts/sample")).unwrap();
+
+    // Case 1: a plain Test-Path over an existing path fires the action, and the condition is never
+    // spawned at all — the recorder must see only the action.
+    {
+        let project = project_with_hooks(vec![hook(
+            "Notify",
+            "before",
+            &[],
+            r#"Test-Path "artifacts/sample""#,
+            "echo hi",
+        )]);
+        let mut run_ctx = ctx(&home, project, "ExecutePlan");
+        run_ctx.plan_folder = plan_folder.to_string_lossy().to_string();
+        let recorder = Recorder::ok();
+
+        run_hooks_with_env(&run_ctx, HookPhase::Before, &recorder.executor(), &no_env()).await;
+
+        assert_eq!(
+            recorder.commands(),
+            vec!["echo hi".to_string()],
+            "the PowerShell condition must never be spawned as a process"
+        );
+    }
+
+    // Case 2: an -or across a missing and an existing path still fires.
+    {
+        let project = project_with_hooks(vec![hook(
+            "Notify",
+            "before",
+            &[],
+            r#"Test-Path "missing.txt" -or Test-Path "artifacts/sample""#,
+            "echo hi",
+        )]);
+        let mut run_ctx = ctx(&home, project, "ExecutePlan");
+        run_ctx.plan_folder = plan_folder.to_string_lossy().to_string();
+        let recorder = Recorder::ok();
+
+        run_hooks_with_env(&run_ctx, HookPhase::Before, &recorder.executor(), &no_env()).await;
+
+        assert_eq!(recorder.commands(), vec!["echo hi".to_string()]);
+    }
+
+    // Case 3: a false -or over a parenthesised Test-Path on a missing path does not fire, and logs
+    // the ordinary "Condition not met" wording.
+    {
+        let project = project_with_hooks(vec![hook(
+            "Notify",
+            "before",
+            &[],
+            r#"$false -or (Test-Path "missing.txt")"#,
+            "should-not-run",
+        )]);
+        let mut run_ctx = ctx(&home, project, "ExecutePlan");
+        run_ctx.plan_folder = plan_folder.to_string_lossy().to_string();
+        let recorder = Recorder::ok();
+
+        run_hooks_with_env(&run_ctx, HookPhase::Before, &recorder.executor(), &no_env()).await;
+
+        assert!(
+            recorder.specs().is_empty(),
+            "the action must not have run, got: {:?}",
+            recorder.commands()
+        );
+        let log = std::fs::read_to_string(home.join("Logs").join("Jobs").join("04242.md"))
+            .expect("the skip must have been logged");
+        assert!(log.contains("Condition not met"), "got:\n{}", log);
+    }
+
+    let _ = std::fs::remove_dir_all(home);
+}
+
+// ---------------------------------------------------------------------------
+// 8. Unevaluable conditions are reported distinctly from an honest `False`
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_unevaluable_condition_is_reported_and_never_looks_like_a_false_condition() {
+    // A condition outside the supported subset: reported as unevaluable, action never runs, and the
+    // wording is never confusable with "Condition not met".
+    {
+        let home = temp_dir("unevaluable");
+        let project = project_with_hooks(vec![hook(
+            "Notify",
+            "before",
+            &[],
+            "Get-ChildItem | Where-Object { $_.Length -gt 0 }",
+            "should-not-run",
+        )]);
+        let recorder = Recorder::ok();
+
+        run_hooks_with_env(
+            &ctx(&home, project, "CreatePr"),
+            HookPhase::Before,
+            &recorder.executor(),
+            &no_env(),
+        )
+        .await;
+
+        assert!(
+            recorder.specs().is_empty(),
+            "the action must never have run"
+        );
+        let log = std::fs::read_to_string(home.join("Logs").join("Jobs").join("04242.md"))
+            .expect("the failure must have been logged");
+        assert!(
+            log.contains("Condition could not be evaluated"),
+            "got:\n{}",
+            log
+        );
+        assert!(
+            !log.contains("Condition not met"),
+            "an unevaluable condition must never read like an honest False, got:\n{}",
+            log
+        );
+
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    // The converse: a genuinely false condition logs "Condition not met" and never
+    // "could not be evaluated".
+    {
+        let home = temp_dir("genuinely-false");
+        let project = project_with_hooks(vec![hook(
+            "Notify",
+            "before",
+            &[],
+            "$false",
+            "should-not-run",
+        )]);
+        let recorder = Recorder::ok();
+
+        run_hooks_with_env(
+            &ctx(&home, project, "CreatePr"),
+            HookPhase::Before,
+            &recorder.executor(),
+            &no_env(),
+        )
+        .await;
+
+        assert!(recorder.specs().is_empty());
+        let log = std::fs::read_to_string(home.join("Logs").join("Jobs").join("04242.md"))
+            .expect("the skip must have been logged");
+        assert!(log.contains("Condition not met"), "got:\n{}", log);
+        assert!(!log.contains("could not be evaluated"), "got:\n{}", log);
+
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    // Shell path, timeout: `Unevaluable`, not `NotMet`.
+    {
+        let home = temp_dir("shell-timeout");
+        let project = project_with_hooks(vec![hook(
+            "Notify",
+            "before",
+            &[],
+            "check-me",
+            "should-not-run",
+        )]);
+        let recorder = Recorder::new(vec![HookCommandResult {
+            timed_out: true,
+            ..Default::default()
+        }]);
+
+        run_hooks_with_env(
+            &ctx(&home, project, "CreatePr"),
+            HookPhase::Before,
+            &recorder.executor(),
+            &no_env(),
+        )
+        .await;
+
+        let log = std::fs::read_to_string(home.join("Logs").join("Jobs").join("04242.md"))
+            .expect("the timeout must have been logged");
+        assert!(
+            log.contains("Condition could not be evaluated"),
+            "got:\n{}",
+            log
+        );
+        assert!(!log.contains("Condition not met"), "got:\n{}", log);
+
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    // Shell path, plain non-zero exit: `NotMet`, not `Unevaluable`.
+    {
+        let home = temp_dir("shell-nonzero");
+        let project = project_with_hooks(vec![hook(
+            "Notify",
+            "before",
+            &[],
+            "check-me",
+            "should-not-run",
+        )]);
+        let recorder = Recorder::new(vec![HookCommandResult {
+            exit_code: Some(3),
+            ..Default::default()
+        }]);
+
+        run_hooks_with_env(
+            &ctx(&home, project, "CreatePr"),
+            HookPhase::Before,
+            &recorder.executor(),
+            &no_env(),
+        )
+        .await;
+
+        let log = std::fs::read_to_string(home.join("Logs").join("Jobs").join("04242.md"))
+            .expect("the skip must have been logged");
+        assert!(log.contains("Condition not met"), "got:\n{}", log);
+        assert!(!log.contains("could not be evaluated"), "got:\n{}", log);
+
+        let _ = std::fs::remove_dir_all(home);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 9. POSIX conditions and commands still run through the shell, unchanged
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_posix_conditions_and_commands_still_run_through_the_shell() {
+    let home = temp_dir("posix-conditions");
+    for condition in [
+        "cd /tmp && pnpm install && pnpm dev:app",
+        "test -d .git",
+        "[ -f package.json ]",
+        "test -n \"$HOME\"",
+    ] {
+        assert_eq!(
+            classify_hook_condition(condition),
+            tendril_core::jobs::hook_condition::HookConditionLanguage::Shell,
+            "expected {condition} to classify as Shell"
+        );
+
+        let project = project_with_hooks(vec![hook("Notify", "before", &[], condition, "echo hi")]);
+        let recorder = Recorder::new(vec![success(String::new())]);
+
+        run_hooks_with_env(
+            &ctx(&home, project, "CreatePr"),
+            HookPhase::Before,
+            &recorder.executor(),
+            &no_env(),
+        )
+        .await;
+
+        let specs = recorder.specs();
+        assert_eq!(
+            specs.len(),
+            2,
+            "condition {condition} and action must both run"
+        );
+        assert_eq!(
+            specs[0].command, condition,
+            "the condition must reach the executor verbatim"
+        );
+        assert_eq!(specs[0].timeout, HOOK_CONDITION_TIMEOUT);
+        assert_eq!(specs[1].command, "echo hi");
+    }
+
+    let _ = std::fs::remove_dir_all(home);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn test_shell_executor_still_runs_posix_commands_unchanged() {
+    let executor = shell_hook_executor();
+    let result = executor(HookCommandSpec {
+        hook_name: "Notify".to_string(),
+        command: "echo hi && test -d .".to_string(),
+        working_dir: std::env::temp_dir(),
+        env: Vec::new(),
+        timeout: HOOK_CONDITION_TIMEOUT,
+    })
+    .await;
+
+    assert_eq!(result.exit_code, Some(0));
+    assert!(result.stdout.contains("hi"), "got: {:?}", result.stdout);
 }

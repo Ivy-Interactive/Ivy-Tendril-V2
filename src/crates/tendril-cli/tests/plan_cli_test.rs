@@ -2,8 +2,10 @@ use clap::Parser;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use tendril_cli::commands::plan::{
-    handle_plan_command, PlanAddDependsOnArgs, PlanCommands, PlanEditReasonArgs, PlanRecCommands,
-    PlanRemoveRepoArgs, PlanSetArgs, PlanSetVerificationArgs, PlanWriteRevisionArgs,
+    handle_plan_command, PlanAddDependsOnArgs, PlanAddPrArgs, PlanCommands, PlanEditReasonArgs,
+    PlanRecCommands, PlanRemovePrArgs, PlanRemoveRepoArgs, PlanSetArgs, PlanSetVerificationArgs,
+    PlanVerificationAddArgs, PlanVerificationCommands, PlanVerificationRemoveArgs,
+    PlanWriteRevisionArgs,
 };
 use tendril_core::config::{
     generate_bearer_secret, get_config_path, get_database_path, load_config, save_config,
@@ -12,7 +14,7 @@ use tendril_core::config::{
 use tendril_core::db::{get_recommendations, open_database, RecommendationRow};
 use tendril_core::models::{
     PlanVerificationEntry, ProjectConfig, ProjectVerificationRef, RecommendationStatus,
-    VerificationStatus,
+    VerificationConfig, VerificationStatus,
 };
 use tendril_core::plans::{
     create_plan, list_recommendations, read_plan_file, read_plan_yaml, CreatePlanOptions,
@@ -69,7 +71,7 @@ async fn start_test_server() -> TestServer {
     let port = tokio_listener.local_addr().unwrap().port();
 
     let secret = generate_bearer_secret();
-    let guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str).unwrap();
+    let guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str, "http").unwrap();
 
     let plans_dir = tendril_home.join("Plans");
     std::fs::create_dir_all(&plans_dir).unwrap();
@@ -370,6 +372,213 @@ async fn test_plan_write_revision_reports_event() {
         .contains("Reason: Added database migration step."));
 }
 
+// --- Remove-pr -----------------------------------------------------------------------------------
+
+async fn create_test_plan(
+    server: &TestServer,
+    title: &str,
+    chat_session_id: Option<String>,
+) -> tendril_core::models::PlanFile {
+    create_plan(
+        &server.state.plans_dir,
+        CreatePlanOptions {
+            title: title.to_string(),
+            project: "test-proj".to_string(),
+            level: Some("Feature".to_string()),
+            initial_prompt: None,
+            source_url: None,
+            execution_profile: None,
+            priority: Some(0),
+            repos: vec![],
+            verifications: vec![],
+            depends_on: vec![],
+            related_plans: vec![],
+            chat_session_id,
+        },
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn test_plan_remove_pr_removes_by_canonical_url() {
+    let server = start_test_server().await;
+    let pf = create_test_plan(&server, "Remove Pr Plan", None).await;
+
+    let add_args = PlanAddPrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/42".to_string(),
+        reason: None,
+        chat_session: None,
+    };
+    handle_plan_command(PlanCommands::AddPr(add_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command AddPr");
+
+    let remove_args = PlanRemovePrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/42/files".to_string(),
+        reason: Some("cleaning up a stray PR".to_string()),
+        chat_session: None,
+    };
+    handle_plan_command(PlanCommands::RemovePr(remove_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command RemovePr");
+
+    let (plan, _) = read_plan_yaml(std::path::Path::new(&pf.folder_path)).unwrap();
+    assert!(plan.prs.is_empty());
+}
+
+#[tokio::test]
+async fn test_plan_remove_pr_is_idempotent_when_absent() {
+    let server = start_test_server().await;
+    let pf = create_test_plan(&server, "Remove Pr Absent Plan", None).await;
+    let before = read_plan_yaml(std::path::Path::new(&pf.folder_path))
+        .unwrap()
+        .0
+        .updated;
+
+    let remove_args = PlanRemovePrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/99".to_string(),
+        reason: None,
+        chat_session: None,
+    };
+    handle_plan_command(PlanCommands::RemovePr(remove_args), &server.tendril_home)
+        .await
+        .expect("removing an absent PR must succeed rather than error");
+
+    let (plan, _) = read_plan_yaml(std::path::Path::new(&pf.folder_path)).unwrap();
+    assert!(plan.prs.is_empty());
+    assert_eq!(
+        plan.updated, before,
+        "a no-op removal must not bump updated"
+    );
+}
+
+#[tokio::test]
+async fn test_plan_remove_pr_reports_reason_to_chat_session() {
+    let server = start_test_server().await;
+
+    let session = server
+        .state
+        .chat_manager
+        .create_session(
+            Some("PR Removal Chat".to_string()),
+            Some("claude".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let pf = create_test_plan(&server, "Remove Pr Reason Plan", Some(session.id.clone())).await;
+
+    let add_args = PlanAddPrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/7".to_string(),
+        reason: None,
+        chat_session: Some("adder-session".to_string()),
+    };
+    handle_plan_command(PlanCommands::AddPr(add_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command AddPr");
+
+    let remove_args = PlanRemovePrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/7".to_string(),
+        reason: Some("PR was closed without merging".to_string()),
+        chat_session: Some("remover-session".to_string()),
+    };
+    handle_plan_command(PlanCommands::RemovePr(remove_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command RemovePr");
+
+    let sess_after = server
+        .state
+        .chat_manager
+        .get_session(&session.id)
+        .await
+        .unwrap();
+    let msg = sess_after
+        .messages
+        .iter()
+        .find(|m| m.content.contains("was edited directly"))
+        .expect("expected an edit notification message");
+    assert!(msg.content.contains("was edited directly"));
+    assert!(msg
+        .content
+        .contains("Reason: PR was closed without merging."));
+}
+
+#[tokio::test]
+async fn test_plan_remove_pr_falls_back_to_env_chat_session() {
+    let server = start_test_server().await;
+
+    let session = server
+        .state
+        .chat_manager
+        .create_session(
+            Some("PR Removal Env Chat".to_string()),
+            Some("claude".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let pf = create_test_plan(
+        &server,
+        "Remove Pr Env Session Plan",
+        Some(session.id.clone()),
+    )
+    .await;
+
+    let add_args = PlanAddPrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/9".to_string(),
+        reason: None,
+        chat_session: Some(session.id.clone()),
+    };
+    handle_plan_command(PlanCommands::AddPr(add_args), &server.tendril_home)
+        .await
+        .expect("handle_plan_command AddPr");
+
+    // Guarded by ENV_LOCK, held for the lifetime of `server` above.
+    let orig = std::env::var("TENDRIL_CHAT_SESSION_ID").ok();
+    std::env::set_var("TENDRIL_CHAT_SESSION_ID", "env-fallback-session");
+
+    let remove_args = PlanRemovePrArgs {
+        plan_id: pf.id().to_string(),
+        url: "https://github.com/owner/repo/pull/9".to_string(),
+        reason: Some("stray PR removed via env fallback".to_string()),
+        chat_session: None,
+    };
+    let result =
+        handle_plan_command(PlanCommands::RemovePr(remove_args), &server.tendril_home).await;
+
+    match orig {
+        Some(v) => std::env::set_var("TENDRIL_CHAT_SESSION_ID", v),
+        None => std::env::remove_var("TENDRIL_CHAT_SESSION_ID"),
+    }
+    result.expect("handle_plan_command RemovePr with env fallback session");
+
+    let sess_after = server
+        .state
+        .chat_manager
+        .get_session(&session.id)
+        .await
+        .unwrap();
+    assert!(
+        sess_after
+            .messages
+            .iter()
+            .any(|m| m.content.contains("was edited directly")),
+        "expected the plan's own chat session to receive the notification since the env session differs from it"
+    );
+}
+
 // --- Worktree creation and verification listing ------------------------------------------------
 //
 // ExecutePlan and RetryPlan parse these two commands' *stdout* — the JSON array and the
@@ -464,6 +673,7 @@ fn plan_verification_list_json_is_parseable() {
             .map(|n| ProjectVerificationRef {
                 name: n.to_string(),
                 required: true,
+                extra: Default::default(),
             })
             .collect(),
         ..Default::default()
@@ -533,6 +743,456 @@ fn plan_verification_list_json_is_parseable() {
     let stdout = home.run_ok(&["plan", "verification", "list", &plan_id]);
     assert!(stdout.contains("Name"), "table output: {}", stdout);
     assert!(stdout.contains("CheckResult"), "table output: {}", stdout);
+}
+
+fn parse_verification(args: &[&str]) -> PlanVerificationCommands {
+    let mut argv = vec!["tendril", "verification"];
+    argv.extend_from_slice(args);
+    match PlanCli::try_parse_from(argv)
+        .expect("parse verification command")
+        .command
+    {
+        PlanCommands::Verification(cmd) => cmd,
+        _ => panic!("expected a verification subcommand"),
+    }
+}
+
+#[test]
+fn plan_verification_add_remove_parse_all_flags() {
+    match parse_verification(&[
+        "add",
+        "00626",
+        "RustBuild",
+        "--status",
+        "Skipped",
+        "--reason",
+        "why",
+        "--chat-session",
+        "sess-1",
+    ]) {
+        PlanVerificationCommands::Add(args) => {
+            assert_eq!(args.plan_id, "00626");
+            assert_eq!(args.name, "RustBuild");
+            assert_eq!(args.status.as_deref(), Some("Skipped"));
+            assert_eq!(args.edit.reason.as_deref(), Some("why"));
+            assert_eq!(args.edit.chat_session.as_deref(), Some("sess-1"));
+        }
+        other => panic!("expected Add, got {:?}", std::mem::discriminant(&other)),
+    }
+
+    // A bare `<id> <name>` is valid: --status is optional.
+    match parse_verification(&["add", "00626", "RustBuild"]) {
+        PlanVerificationCommands::Add(args) => assert_eq!(args.status, None),
+        other => panic!("expected Add, got {:?}", std::mem::discriminant(&other)),
+    }
+
+    match parse_verification(&[
+        "remove",
+        "00626",
+        "RustBuild",
+        "--reason",
+        "no longer needed",
+        "--chat-session",
+        "sess-2",
+    ]) {
+        PlanVerificationCommands::Remove(args) => {
+            assert_eq!(args.plan_id, "00626");
+            assert_eq!(args.name, "RustBuild");
+            assert_eq!(args.edit.reason.as_deref(), Some("no longer needed"));
+            assert_eq!(args.edit.chat_session.as_deref(), Some("sess-2"));
+        }
+        other => panic!("expected Remove, got {:?}", std::mem::discriminant(&other)),
+    }
+}
+
+/// `add` appends to the plan's own list, independently of the project config's run order — seeding
+/// the plan out of that order (`CheckResult` before `NpmLint`) keeps the two assertions distinct.
+#[test]
+fn plan_verification_add_appends_and_defaults_to_pending() {
+    let home = CliHome::new("verification-add-append");
+
+    let cfg_path = get_config_path(&home.path);
+    let mut settings = load_config(&cfg_path).unwrap();
+    settings.projects.push(ProjectConfig {
+        name: "list-proj".to_string(),
+        verifications: ["NpmLint", "RustBuild", "CheckResult"]
+            .iter()
+            .map(|n| ProjectVerificationRef {
+                name: n.to_string(),
+                required: true,
+                extra: Default::default(),
+            })
+            .collect(),
+        ..Default::default()
+    });
+    settings.verifications.push(VerificationConfig {
+        name: "RustFormat".to_string(),
+        prompt: "Run cargo fmt --check".to_string(),
+    });
+    save_config(&cfg_path, &settings).unwrap();
+
+    let pf = create_plan(
+        &home.plans_dir(),
+        plan_opts(
+            "Verification Add Plan",
+            vec![
+                entry("CheckResult", VerificationStatus::Pending),
+                entry("NpmLint", VerificationStatus::Pending),
+            ],
+        ),
+    )
+    .unwrap();
+    let plan_id = pf.id().to_string();
+
+    home.run_ok(&["plan", "verification", "add", &plan_id, "RustFormat"]);
+
+    let (plan, _) = read_plan_yaml(Path::new(&pf.folder_path)).unwrap();
+    let names: Vec<&str> = plan.verifications.iter().map(|v| v.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["CheckResult", "NpmLint", "RustFormat"],
+        "appended last, preserving the plan's own (out-of-config) order for the rest"
+    );
+    assert_eq!(
+        plan.verifications
+            .iter()
+            .find(|v| v.name == "RustFormat")
+            .unwrap()
+            .status,
+        VerificationStatus::Pending
+    );
+
+    // The project config's order (NpmLint, RustBuild, CheckResult) is the run order, which differs
+    // from the plan's own (append) order asserted above.
+    let stdout = home.run_ok(&["plan", "verification", "list", &plan_id, "--json"]);
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    let ordered_names: Vec<&str> = parsed
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(ordered_names, ["NpmLint", "CheckResult", "RustFormat"]);
+}
+
+#[test]
+fn plan_verification_add_honours_status_flag() {
+    let home = CliHome::new("verification-add-status");
+    let pf = create_plan(
+        &home.plans_dir(),
+        plan_opts("Verification Add Status Plan", vec![]),
+    )
+    .unwrap();
+    let plan_id = pf.id().to_string();
+
+    // Lower-case exercises `VerificationStatus::from_str_loose`.
+    home.run_ok(&[
+        "plan",
+        "verification",
+        "add",
+        &plan_id,
+        "RustBuild",
+        "--status",
+        "skipped",
+    ]);
+    let (plan, _) = read_plan_yaml(Path::new(&pf.folder_path)).unwrap();
+    assert_eq!(plan.verifications[0].status, VerificationStatus::Skipped);
+
+    let out = home.run(&[
+        "plan",
+        "verification",
+        "add",
+        &plan_id,
+        "RustClippy",
+        "--status",
+        "bogus",
+    ]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("Invalid verification status"),
+        "stderr: {}",
+        stderr
+    );
+    let (plan, _) = read_plan_yaml(Path::new(&pf.folder_path)).unwrap();
+    assert_eq!(
+        plan.verifications.len(),
+        1,
+        "the bad add must not be written"
+    );
+}
+
+#[test]
+fn plan_verification_add_rejects_duplicate() {
+    let home = CliHome::new("verification-add-duplicate");
+    let pf = create_plan(
+        &home.plans_dir(),
+        plan_opts(
+            "Verification Add Duplicate Plan",
+            vec![entry("RustBuild", VerificationStatus::Pass)],
+        ),
+    )
+    .unwrap();
+    let plan_id = pf.id().to_string();
+
+    for existing_spelling in ["RustBuild", "rustbuild"] {
+        let out = home.run(&["plan", "verification", "add", &plan_id, existing_spelling]);
+        assert!(!out.status.success());
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("already exists"),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    let (plan, _) = read_plan_yaml(Path::new(&pf.folder_path)).unwrap();
+    assert_eq!(plan.verifications.len(), 1, "no second entry was written");
+    assert_eq!(plan.verifications[0].status, VerificationStatus::Pass);
+}
+
+#[test]
+fn plan_verification_add_rejects_unknown_name() {
+    let home = CliHome::new("verification-add-unknown");
+
+    let cfg_path = get_config_path(&home.path);
+    let mut settings = load_config(&cfg_path).unwrap();
+    settings.verifications.push(VerificationConfig {
+        name: "NpmLint".to_string(),
+        prompt: "Run pnpm lint".to_string(),
+    });
+    settings.verifications.push(VerificationConfig {
+        name: "RustBuild".to_string(),
+        prompt: "Run cargo build".to_string(),
+    });
+    save_config(&cfg_path, &settings).unwrap();
+
+    let pf = create_plan(
+        &home.plans_dir(),
+        plan_opts("Verification Add Unknown Plan", vec![]),
+    )
+    .unwrap();
+    let plan_id = pf.id().to_string();
+
+    let out = home.run(&["plan", "verification", "add", &plan_id, "NotAThing"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("Unknown verification 'NotAThing'"),
+        "stderr: {}",
+        stderr
+    );
+    assert!(stderr.contains("NpmLint"), "stderr: {}", stderr);
+    assert!(stderr.contains("RustBuild"), "stderr: {}", stderr);
+
+    let (plan, _) = read_plan_yaml(Path::new(&pf.folder_path)).unwrap();
+    assert!(plan.verifications.is_empty(), "nothing was written");
+}
+
+#[test]
+fn plan_verification_remove_preserves_order() {
+    let home = CliHome::new("verification-remove-order");
+    let pf = create_plan(
+        &home.plans_dir(),
+        plan_opts(
+            "Verification Remove Order Plan",
+            vec![
+                entry("NpmLint", VerificationStatus::Pending),
+                entry("RustClippy", VerificationStatus::Pending),
+                entry("RustFormat", VerificationStatus::Pending),
+                entry("CheckResult", VerificationStatus::Pending),
+            ],
+        ),
+    )
+    .unwrap();
+    let plan_id = pf.id().to_string();
+
+    home.run_ok(&["plan", "verification", "remove", &plan_id, "RustClippy"]);
+
+    let (plan, _) = read_plan_yaml(Path::new(&pf.folder_path)).unwrap();
+    let names: Vec<&str> = plan.verifications.iter().map(|v| v.name.as_str()).collect();
+    assert_eq!(names, ["NpmLint", "RustFormat", "CheckResult"]);
+}
+
+#[test]
+fn plan_verification_remove_missing_lists_current_names() {
+    let home = CliHome::new("verification-remove-missing");
+    let pf = create_plan(
+        &home.plans_dir(),
+        plan_opts(
+            "Verification Remove Missing Plan",
+            vec![
+                entry("NpmLint", VerificationStatus::Pending),
+                entry("RustBuild", VerificationStatus::Pending),
+            ],
+        ),
+    )
+    .unwrap();
+    let plan_id = pf.id().to_string();
+
+    let out = home.run(&["plan", "verification", "remove", &plan_id, "NotOnPlan"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("not found"), "stderr: {}", stderr);
+    assert!(stderr.contains("NpmLint"), "stderr: {}", stderr);
+    assert!(stderr.contains("RustBuild"), "stderr: {}", stderr);
+
+    let (plan, _) = read_plan_yaml(Path::new(&pf.folder_path)).unwrap();
+    assert_eq!(plan.verifications.len(), 2, "plan.yaml is untouched");
+}
+
+#[test]
+fn plan_verification_add_warns_on_missing_reason() {
+    let home = CliHome::new("verification-add-warn-reason");
+    let pf = create_plan(
+        &home.plans_dir(),
+        plan_opts("Verification Add Warn Plan", vec![]),
+    )
+    .unwrap();
+    let plan_id = pf.id().to_string();
+
+    let out = home.run(&["plan", "verification", "add", &plan_id, "RustBuild"]);
+    assert!(out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("warning: no --reason given for this plan edit"),
+        "stderr: {}",
+        stderr
+    );
+}
+
+#[tokio::test]
+async fn test_plan_verification_add_reports_reason() {
+    let server = start_test_server().await;
+
+    let session = server
+        .state
+        .chat_manager
+        .create_session(
+            Some("Plan Review Chat".to_string()),
+            Some("claude".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let opts = CreatePlanOptions {
+        title: "Verification Add Reason Plan".to_string(),
+        project: "test-proj".to_string(),
+        level: Some("Feature".to_string()),
+        initial_prompt: None,
+        source_url: None,
+        execution_profile: None,
+        priority: Some(0),
+        repos: vec![],
+        verifications: vec![],
+        depends_on: vec![],
+        related_plans: vec![],
+        chat_session_id: Some(session.id.clone()),
+    };
+    let pf = create_plan(&server.state.plans_dir, opts).unwrap();
+
+    let add_args = PlanVerificationAddArgs {
+        plan_id: pf.id().to_string(),
+        name: "RustFormat".to_string(),
+        status: None,
+        edit: PlanEditReasonArgs {
+            reason: Some("adding formatting gate".to_string()),
+            chat_session: Some("source-session".to_string()),
+        },
+    };
+
+    handle_plan_command(
+        PlanCommands::Verification(PlanVerificationCommands::Add(add_args)),
+        &server.tendril_home,
+    )
+    .await
+    .expect("handle_plan_command Verification Add");
+
+    let sess_after = server
+        .state
+        .chat_manager
+        .get_session(&session.id)
+        .await
+        .unwrap();
+    assert_eq!(sess_after.messages.len(), 1);
+    let msg = &sess_after.messages[0];
+    assert!(msg
+        .content
+        .contains("verification RustFormat added as Pending"));
+    assert!(msg.content.contains("Reason: adding formatting gate."));
+}
+
+#[tokio::test]
+async fn test_plan_verification_remove_reports_reason() {
+    let server = start_test_server().await;
+
+    let session = server
+        .state
+        .chat_manager
+        .create_session(
+            Some("Plan Review Chat".to_string()),
+            Some("claude".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let opts = CreatePlanOptions {
+        title: "Verification Remove Reason Plan".to_string(),
+        project: "test-proj".to_string(),
+        level: Some("Feature".to_string()),
+        initial_prompt: None,
+        source_url: None,
+        execution_profile: None,
+        priority: Some(0),
+        repos: vec![],
+        verifications: vec![PlanVerificationEntry {
+            name: "RustFormat".to_string(),
+            status: VerificationStatus::Pending,
+        }],
+        depends_on: vec![],
+        related_plans: vec![],
+        chat_session_id: Some(session.id.clone()),
+    };
+    let pf = create_plan(&server.state.plans_dir, opts).unwrap();
+
+    let remove_args = PlanVerificationRemoveArgs {
+        plan_id: pf.id().to_string(),
+        name: "RustFormat".to_string(),
+        edit: PlanEditReasonArgs {
+            reason: Some("no longer needed".to_string()),
+            chat_session: Some("source-session".to_string()),
+        },
+    };
+
+    handle_plan_command(
+        PlanCommands::Verification(PlanVerificationCommands::Remove(remove_args)),
+        &server.tendril_home,
+    )
+    .await
+    .expect("handle_plan_command Verification Remove");
+
+    let updated_pf = read_plan_file(Path::new(&pf.folder_path)).unwrap();
+    assert!(!updated_pf
+        .metadata
+        .verifications
+        .iter()
+        .any(|v| v.name == "RustFormat"));
+
+    let sess_after = server
+        .state
+        .chat_manager
+        .get_session(&session.id)
+        .await
+        .unwrap();
+    assert_eq!(sess_after.messages.len(), 1);
+    let msg = &sess_after.messages[0];
+    assert!(msg.content.contains("verification RustFormat removed"));
+    assert!(msg.content.contains("Reason: no longer needed."));
 }
 
 #[test]

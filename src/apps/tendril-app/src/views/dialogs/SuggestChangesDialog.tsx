@@ -15,6 +15,20 @@ export interface SuggestChangesDialogProps {
   onClose: () => void;
   plan: PlanDetail | PlanSummary;
   onJobStarted?: (response: StartJobResponse) => void;
+  /**
+   * Text the request opens with, for a caller that has already assembled one — the app preview's
+   * comments, formatted. Still editable: it is a draft put in front of the reviewer, not a dispatch.
+   */
+  initialChangeRequest?: string;
+  /**
+   * A read-only listing of what the pre-filled request was built from, shown above the field.
+   *
+   * The reviewer left these comments one at a time, on different screens, possibly over several
+   * minutes; this is the only place they see all of them together before they are sent.
+   */
+  summaryItems?: string[];
+  /** Heading for `summaryItems`, e.g. `3 comments on http://localhost:5173/`. */
+  summaryTitle?: string;
 }
 
 /**
@@ -22,14 +36,19 @@ export interface SuggestChangesDialogProps {
  * job's `changeRequest`, which the promptware reads as the delta to apply on top
  * of the existing worktree.
  *
- * The text reaching the job is the point of this dialog. Both call sites route
- * through it, so nothing dispatches RetryPlan with a canned change request.
+ * The text reaching the job is the point of this dialog. Every call site routes
+ * through it, so nothing dispatches RetryPlan with a canned change request — a
+ * pre-filled one included, which is why `initialChangeRequest` lands in the
+ * editable field rather than bypassing it.
  */
 export function SuggestChangesDialog({
   isOpen,
   onClose,
   plan,
   onJobStarted,
+  initialChangeRequest,
+  summaryItems,
+  summaryTitle,
 }: SuggestChangesDialogProps) {
   const [changeRequest, setChangeRequest] = React.useState("");
   const [isBusy, setIsBusy] = React.useState(false);
@@ -38,10 +57,15 @@ export function SuggestChangesDialog({
 
   React.useEffect(() => {
     if (isOpen) {
-      setChangeRequest("");
+      // Re-read on every open: a reviewer who cancels, leaves another comment and reopens should see
+      // the request the comments now add up to, not the one they added up to last time.
+      setChangeRequest(initialChangeRequest ?? "");
       setError(null);
       setIsBusy(false);
     }
+    // `initialChangeRequest` is deliberately not a dependency: rewriting the field while the dialog is
+    // open would discard whatever the reviewer had typed into it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   const handleSubmit = async () => {
@@ -84,6 +108,23 @@ export function SuggestChangesDialog({
         </>
       }
     >
+      {summaryItems && summaryItems.length > 0 && (
+        <div
+          data-testid="suggest-changes-summary"
+          className="mb-3 rounded-lg border border-border bg-muted/40 p-3"
+        >
+          {summaryTitle && (
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {summaryTitle}
+            </div>
+          )}
+          <ol className="list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
+            {summaryItems.map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ol>
+        </div>
+      )}
       <label htmlFor="suggest-changes-request" className="mb-1 block text-xs text-muted-foreground">
         Change request
       </label>
@@ -91,7 +132,9 @@ export function SuggestChangesDialog({
         id="suggest-changes-request"
         ref={textareaRef}
         aria-label="Change request"
-        rows={5}
+        // A pre-filled request is a grouped listing several screens long; five rows of it is a
+        // keyhole to read one's own feedback through.
+        rows={initialChangeRequest ? 14 : 5}
         value={changeRequest}
         onChange={(event) => setChangeRequest(event.target.value)}
         placeholder="Describe what needs to be changed, fixed or rewritten in the worktree…"

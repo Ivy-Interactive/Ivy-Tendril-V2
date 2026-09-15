@@ -1,3 +1,6 @@
+/** Team Vault DTOs live in `./vault`, next to the components that own their shape. */
+export type * from "./vault";
+
 export type PlanLifecycleState =
   | "Draft"
   | "Creating"
@@ -127,6 +130,15 @@ export interface ProjectSummary {
   reviewActions?: ReviewActionConfig[];
 }
 
+/**
+ * A **read-only projection** of the wire shape, deliberately narrower than it. The server returns the
+ * whole `ProjectConfig`, including the unmodeled keys it round-trips (the agent security block —
+ * `sandboxMode`, `securityPreset`, `filePermissions`, … — written by the .NET V1 app). Nothing in the
+ * app writes a project today, so dropping them here loses nothing.
+ *
+ * A future project-settings screen MUST PATCH only the fields it changed rather than PUT an object
+ * reconstructed from this type, or it will clear every key absent from it.
+ */
 export interface ProjectDetail extends ProjectSummary {
   color?: string;
   context?: string;
@@ -140,6 +152,8 @@ export interface TendrilConfig {
   maxConcurrentJobs?: number;
   planTemplate?: string;
   theme?: string;
+  /** Absent means "on": the setting is only written to `config.yaml` once the operator toggles it. */
+  desktopNotifications?: boolean;
   inbox?: InboxConfig;
   raw?: Record<string, unknown>;
 }
@@ -203,6 +217,12 @@ export interface OnboardingStatus {
   tendrilHome: string;
 }
 
+/** Mirrors `tendril_core::newsletter::SubscribeOutcome`. */
+export interface SubscribeOutcome {
+  subscribed: boolean;
+  error: string | null;
+}
+
 export type DoctorCheckStatus = "Ok" | "Warn" | "Fail";
 
 export type DoctorCheckCategory = "Prerequisite" | "Environment";
@@ -233,6 +253,13 @@ export interface ModelCatalogStatus {
   enrichModels: boolean;
   cachedAt: string | null;
   cachePath: string;
+}
+
+export interface VersionInfo {
+  currentVersion: string;
+  latestVersion: string | null;
+  hasUpdate: boolean;
+  lastChecked: string | null;
 }
 
 export interface StartJobArgs {
@@ -266,6 +293,26 @@ export interface RepoStatus {
   changeCount?: number;
   error?: string;
 }
+
+/**
+ * The Git tab's shapes, from `cmd_get_plan_git`.
+ *
+ * `PlanGitView` in the components package owns these declarations, because it is
+ * the component that renders them and it cannot import from the app. Re-exported
+ * here so the rest of the app keeps reaching for its types in one place.
+ *
+ * `unreachable` and `missing` are lost work: the commit's worktree and branch are
+ * gone, so nothing but the object store is keeping it, and the next `git gc` in
+ * that repo prunes it. Commits listed under a worktree section are ancestors of
+ * that worktree's HEAD and so reachable by definition; only the unassociated ones
+ * carry a status, because those are the ones that can be reachable from nothing.
+ */
+export type {
+  CommitRefStatus,
+  PlanCommitRow,
+  PlanWorktreeSection,
+  PlanGitData,
+} from "@ivy-interactive/components/tendril";
 
 /** Options the Create PR dialog passes through to the `CreatePr` job. */
 export interface CreatePrOptions {
@@ -303,6 +350,24 @@ export interface DraftComment {
   changeKey: string;
   content: string;
   lineNumber: number;
+  author?: string;
+  isResolved?: boolean;
+}
+
+/**
+ * One draft annotation on a plan's revision markdown, mirroring `AnnotationDto` in
+ * `src-tauri/src/models.rs`.
+ *
+ * `startOffset`/`endOffset` are character offsets into the revision text and `selectedText` is what
+ * they covered when the annotation was made, so a stale annotation can be recognised as stale
+ * rather than silently re-anchored. Unlike a `DraftComment` these are keyed on `id` alone.
+ */
+export interface Annotation {
+  id: string;
+  startOffset: number;
+  endOffset: number;
+  selectedText: string;
+  comment: string;
   author?: string;
   isResolved?: boolean;
 }
@@ -459,4 +524,94 @@ export interface GitHubIssuesPage {
   page: number;
   perPage: number;
   hasMore: boolean;
+}
+
+// --- dashboard analytics ---
+//
+// `null` is meaningful throughout: it means "unknown", never "zero". An unpriced
+// plan has a null cost because its rows carried tokens without a charge, and a
+// null projection means there was no spend to project from. Rendering either as
+// $0.00 asserts something the data does not say.
+
+export interface DashboardMonthStats {
+  year: number;
+  month: number;
+  plansCreated: number;
+  prsMerged: number;
+  cost: number;
+  tokens: number;
+}
+
+export interface DashboardDailyCost {
+  date: string;
+  cost: number;
+  tokens: number;
+  apiCost: number;
+  apiTokens: number;
+  subsidizedCost: number;
+  subsidizedTokens: number;
+}
+
+export interface DashboardDailyPlans {
+  date: string;
+  count: number;
+}
+
+export interface CostForecast {
+  /** Spend per calendar day times the month's length: the lower bound. */
+  calendarProjection: number | null;
+  calendarDays: number;
+  /** Spend per day that had spend: the upper bound, never below the calendar one. */
+  activityProjection: number | null;
+  activityDays: number;
+  totalSpend: number;
+  daysInMonth: number;
+  apiCalendarProjection: number | null;
+  apiActivityProjection: number | null;
+  totalApiSpend: number;
+  totalSubsidizedSpend: number;
+  totalApiTokens: number;
+  totalSubsidizedTokens: number;
+  subsidizedTokenPercent: number;
+  subsidizedCostPercent: number;
+}
+
+export interface DashboardActivity {
+  months: DashboardMonthStats[];
+  prevWeekAvgCost: number;
+  dailyCosts: DashboardDailyCost[];
+  dailyPlans: DashboardDailyPlans[];
+  /** Earliest day on record, clamped to the window. `null` gates the rolling average off. */
+  dailyDataStart: string | null;
+  forecast: CostForecast;
+}
+
+export interface ShippedFeatureDay {
+  date: string;
+  count: number;
+}
+
+export interface RecentMergedPr {
+  prUrl: string;
+  planId: number;
+  title: string;
+  repo: string | null;
+  updated: string;
+}
+
+export interface RecentPlanCost {
+  planId: number;
+  title: string;
+  state: string;
+  created: string;
+  /** `null` when no row was priced. Renders as a dash, never $0.00. */
+  cost: number | null;
+  tokens: number;
+}
+
+export interface AgentCostBreakdown {
+  agent: string;
+  cost: number;
+  tokens: number;
+  planCount: number;
 }

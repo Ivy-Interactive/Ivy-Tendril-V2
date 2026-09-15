@@ -4,11 +4,13 @@ pub mod changes;
 pub mod chat;
 pub mod config;
 pub mod costs;
+pub mod dashboard;
 pub mod health;
 pub mod inbox;
 pub mod jobs;
 pub mod local_file;
 pub mod models;
+pub mod newsletter;
 pub mod onboarding;
 pub mod ping;
 pub mod plans;
@@ -70,6 +72,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/plans/:id/repo-status",
             get(plans::repo_status_handler),
         )
+        .route("/api/plans/:id/git", get(plans::plan_git_handler))
         .route(
             "/api/plans/:id/revisions",
             get(plans::get_revision_handler).post(plans::write_revision_handler),
@@ -80,6 +83,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .post(plans::upsert_diff_comment_handler)
                 .put(plans::replace_diff_comments_handler)
                 .delete(plans::delete_diff_comments_handler),
+        )
+        .route(
+            "/api/plans/:id/annotations",
+            get(plans::list_annotations_handler)
+                .post(plans::upsert_annotation_handler)
+                .put(plans::replace_annotations_handler)
+                .delete(plans::delete_annotations_handler),
         )
         .route(
             "/api/plans/:id/recommendations",
@@ -214,6 +224,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
         )
+        // The action runs in a pty, so it is interactive: these carry the client's keystrokes and
+        // window size back to it, keyed by the session id its `meta` frame announced.
+        .route(
+            "/api/projects/:name/review-actions/:action/input",
+            post(projects::review_action_input),
+        )
+        .route(
+            "/api/projects/:name/review-actions/:action/resize",
+            post(projects::review_action_resize),
+        )
         .route(
             "/api/projects/:name/hooks",
             post(projects::add_project_hook),
@@ -231,6 +251,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/vaults/create", post(vault::create_vault_repo))
         .route("/api/vaults/discover", get(vault::discover_vaults))
         .route("/api/vaults/accounts", get(vault::github_accounts))
+        .route(
+            "/api/vaults/project-assets/:name",
+            get(vault::project_assets),
+        )
         .route(
             "/api/vaults/:id",
             get(vault::get_vault_status)
@@ -262,6 +286,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
         )
+        // Version check
+        .route("/api/version", get(health::get_version_handler))
+        .route(
+            "/api/version/check",
+            post(health::check_version_now_handler),
+        )
         // Onboarding
         .route("/api/onboarding", get(onboarding::get_status_handler))
         .route(
@@ -270,6 +300,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         .route("/api/onboarding/dismiss", post(onboarding::dismiss_handler))
         .route("/api/doctor", get(health::doctor_handler))
+        // Newsletter
+        .route(
+            "/api/newsletter/subscribe",
+            post(newsletter::subscribe_handler),
+        )
         // Pull requests
         .route("/api/pull-requests", get(pull_requests::list_pull_requests))
         .route(
@@ -279,6 +314,17 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Costs
         .route("/api/costs/summary", get(costs::get_costs_summary))
         .route("/api/costs/series", get(costs::get_costs_series))
+        .route("/api/dashboard/activity", get(dashboard::get_activity))
+        .route(
+            "/api/dashboard/shipped-features",
+            get(dashboard::get_shipped_features),
+        )
+        .route("/api/dashboard/merged-prs", get(dashboard::get_merged_prs))
+        .route("/api/dashboard/plan-costs", get(dashboard::get_plan_costs))
+        .route(
+            "/api/dashboard/agent-costs",
+            get(dashboard::get_agent_costs),
+        )
         // Models
         .route("/api/models", get(models::list_models))
         .route("/api/models/status", get(models::models_status))

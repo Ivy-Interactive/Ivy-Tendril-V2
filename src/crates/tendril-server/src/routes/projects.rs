@@ -3,6 +3,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
@@ -14,11 +15,12 @@ use tendril_core::config::{
 use tendril_core::db::open_database;
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{
-    ProjectConfig, ProjectVerificationRef, PromptwareHookConfig, RepoRef, ReviewActionConfig,
+    ExtraKeys, ProjectConfig, ProjectMcpServerRef, ProjectSkillRef, ProjectVerificationRef,
+    PromptwareHookConfig, RepoRef, ReviewActionConfig,
 };
 use tendril_core::plans::helpers::resolve_plan_folder;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RepoInput {
     String(String),
@@ -31,13 +33,14 @@ impl From<RepoInput> for RepoRef {
             RepoInput::String(path) => RepoRef {
                 path,
                 base_branch: None,
+                extra: Default::default(),
             },
             RepoInput::Object(r) => r,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum VerificationInput {
     String(String),
@@ -47,13 +50,18 @@ pub enum VerificationInput {
 /// A verification in a request body. `after` is a placement hint, not part of the stored
 /// verification: it names the verification this one goes behind, and only the add endpoint reads
 /// it — requests that supply the whole list already carry their own order.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VerificationObjectInput {
     pub name: String,
     #[serde(default)]
     pub required: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
+    /// Unmodeled keys, carried onto the stored `ProjectVerificationRef`. A request that replaces the
+    /// whole `verifications` list would otherwise drop any key this DTO does not name. `after` is
+    /// modeled, so it stays a placement hint and never leaks into the persisted extras.
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 impl VerificationInput {
@@ -71,10 +79,12 @@ impl From<VerificationInput> for ProjectVerificationRef {
             VerificationInput::String(name) => ProjectVerificationRef {
                 name,
                 required: true,
+                extra: Default::default(),
             },
             VerificationInput::Object(v) => ProjectVerificationRef {
                 name: v.name,
                 required: v.required,
+                extra: v.extra,
             },
         }
     }
@@ -99,6 +109,15 @@ pub struct CreateProjectRequest {
     pub hooks: Vec<PromptwareHookConfig>,
     #[serde(rename = "buildDependencies", alias = "build_dependencies", default)]
     pub build_dependencies: Vec<String>,
+    #[serde(rename = "mcpServers", alias = "mcp_servers", default)]
+    pub mcp_servers: Vec<ProjectMcpServerRef>,
+    #[serde(default)]
+    pub skills: Vec<ProjectSkillRef>,
+    /// Project keys this DTO does not name, persisted onto the new `ProjectConfig`. Without this a
+    /// create payload carrying the agent security block (`sandboxMode`, `securityPreset`, …) would
+    /// have it dropped on the floor.
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 fn default_project_color() -> String {
@@ -121,6 +140,15 @@ pub struct UpdateProjectRequest {
     pub hooks: Option<Vec<PromptwareHookConfig>>,
     #[serde(rename = "buildDependencies", alias = "build_dependencies")]
     pub build_dependencies: Option<Vec<String>>,
+    #[serde(rename = "mcpServers", alias = "mcp_servers")]
+    pub mcp_servers: Option<Vec<ProjectMcpServerRef>>,
+    pub skills: Option<Vec<ProjectSkillRef>>,
+    /// Project keys this DTO does not name. These are **merged** key-by-key into the stored
+    /// project's `extra` rather than replacing the map — that is what makes a partial PUT safe: a
+    /// payload naming one key must not clear the others. Keys this DTO does name (`name`, `newName`,
+    /// `color`, `repos`, …) never land here.
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -284,6 +312,9 @@ pub async fn create_project(
         review_actions: req.review_actions,
         hooks: req.hooks,
         build_dependencies: req.build_dependencies,
+        mcp_servers: req.mcp_servers,
+        skills: req.skills,
+        extra: req.extra,
         ..Default::default()
     };
 
@@ -393,6 +424,20 @@ pub async fn update_project(
 
     if let Some(build_dependencies) = req.build_dependencies {
         settings.projects[proj_idx].build_dependencies = build_dependencies;
+    }
+
+    if let Some(mcp_servers) = req.mcp_servers {
+        settings.projects[proj_idx].mcp_servers = mcp_servers;
+    }
+
+    if let Some(skills) = req.skills {
+        settings.projects[proj_idx].skills = skills;
+    }
+
+    // Merged, not assigned: a payload naming one unmodeled key must not clear the eight it omits.
+    // An empty map is therefore a no-op rather than a wipe.
+    if !req.extra.is_empty() {
+        settings.projects[proj_idx].extra.extend(req.extra);
     }
 
     let updated_project = settings.projects[proj_idx].clone();
@@ -934,6 +979,7 @@ pub async fn add_project_review_action(
             condition: req.condition,
             command: req.command,
             paths: req.paths,
+            extra: Default::default(),
         },
     );
 
@@ -1097,6 +1143,7 @@ pub async fn add_project_hook(
         promptwares: req.promptwares,
         condition: req.condition,
         action: req.action,
+        extra: Default::default(),
     });
 
     if let Err(e) = save_config(&state.config_path, &settings) {
@@ -1322,100 +1369,171 @@ pub async fn execute_review_action(
         state.tendril_home.clone()
     };
 
-    let mut cmd = if cfg!(windows) {
-        let mut c = tokio::process::Command::new("cmd");
-        c.args(["/C", &action.command]);
-        c
-    } else {
-        let mut c = tokio::process::Command::new("sh");
-        c.args(["-c", &action.command]);
-        c
+    // Everything from here on is the plan's ports and environment, then the pty. The resolution
+    // above — project, action, working directory — is all this route still does itself.
+    let plan_folder = plan_id
+        .as_deref()
+        .and_then(|pid| resolve_plan_folder(pid, &state.plans_dir).ok());
+    let plan_yaml = plan_folder
+        .as_deref()
+        .and_then(|folder| tendril_core::plans::reader::read_plan_yaml(folder).ok())
+        .map(|(plan, _)| plan);
+
+    let ports = crate::pty::resolve_ports(
+        Some(project),
+        plan_yaml.as_ref().and_then(|p| p.allocated_ports.as_ref()),
+    );
+    // `sh` will not expand `%PORT%`, so the command has to carry the resolved values before it is
+    // handed over; the injected environment covers only what the command reads itself.
+    let command = crate::pty::interpolate_command(&action.command, &ports);
+
+    // `PLAN_ID` is the padded form a plan is known by everywhere else, so a review action can build
+    // a path out of it.
+    let padded_plan_id = plan_id.as_deref().map(|pid| {
+        let trimmed = pid.trim();
+        trimmed
+            .parse::<u32>()
+            .map(|n| format!("{n:05}"))
+            .unwrap_or_else(|_| trimmed.to_string())
+    });
+    let plan_context = match (
+        padded_plan_id.as_deref(),
+        plan_folder.as_deref(),
+        plan_yaml.as_ref(),
+    ) {
+        (Some(id), Some(folder), Some(plan)) => Some(crate::pty::PlanEnvContext {
+            plan_id: id,
+            plan_folder: folder,
+            project: &project.name,
+            repos: &plan.repos,
+        }),
+        _ => None,
     };
 
-    if working_dir.exists() {
-        cmd.current_dir(&working_dir);
-    }
-    cmd.env("TENDRIL_HOME", &state.tendril_home);
+    let mut env = vec![(
+        "TENDRIL_HOME".to_string(),
+        state.tendril_home.to_string_lossy().to_string(),
+    )];
+    env.extend(crate::pty::build_environment(
+        &ports,
+        plan_context.as_ref(),
+        Some(&project.name),
+    ));
 
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
-
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
+    let stream = match crate::pty::spawn_review_action(
+        &command,
+        working_dir.exists().then_some(working_dir.as_path()),
+        &env,
+    ) {
+        Ok(stream) => stream,
         Err(e) => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("Failed to spawn command: {}", e) })),
+                Json(json!({ "error": e })),
             )
                 .into_response();
         }
     };
 
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
+    let mut frames = stream.frames;
+    let body = futures_util::stream::poll_fn(move |cx| frames.poll_recv(cx));
+    axum::response::sse::Sse::new(body).into_response()
+}
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<
-        Result<axum::response::sse::Event, std::convert::Infallible>,
-    >(128);
+/// Keystrokes for a running review action, addressed by the session id from its `meta` frame.
+///
+/// `data` is base64 for the same reason the `log` frames are: an arrow key or a Ctrl-C is a control
+/// byte, and round-tripping those through JSON as text loses them.
+#[derive(Debug, Deserialize)]
+pub struct ReviewActionInputRequest {
+    #[serde(alias = "sessionId")]
+    pub session_id: String,
+    #[serde(default)]
+    pub data: String,
+}
 
-    let stdout_handle = stdout.map(|out| {
-        let tx_out = tx.clone();
-        tokio::spawn(async move {
-            use tokio::io::AsyncBufReadExt;
-            let mut lines = tokio::io::BufReader::new(out).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let evt = axum::response::sse::Event::default()
-                    .event("log")
-                    .data(line);
-                if tx_out.send(Ok(evt)).await.is_err() {
-                    break;
-                }
-            }
-        })
-    });
+#[derive(Debug, Deserialize)]
+pub struct ReviewActionResizeRequest {
+    #[serde(alias = "sessionId")]
+    pub session_id: String,
+    pub rows: u16,
+    pub cols: u16,
+}
 
-    let stderr_handle = stderr.map(|err| {
-        let tx_err = tx.clone();
-        tokio::spawn(async move {
-            use tokio::io::AsyncBufReadExt;
-            let mut lines = tokio::io::BufReader::new(err).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                let evt = axum::response::sse::Event::default()
-                    .event("log")
-                    .data(line);
-                if tx_err.send(Ok(evt)).await.is_err() {
-                    break;
-                }
-            }
-        })
-    });
+/// Writes the client's keystrokes into the action's pty.
+///
+/// The project and action in the path are not what identifies the target — the session id is, so two
+/// runs of the same action never write into each other. They stay in the path so this sits beside
+/// `execute` rather than in a namespace of its own.
+pub async fn review_action_input(
+    Path((_project_name, _action_name)): Path<(String, String)>,
+    Json(request): Json<ReviewActionInputRequest>,
+) -> impl IntoResponse {
+    let Some(session) = crate::pty::session(&request.session_id) else {
+        return session_not_found(&request.session_id);
+    };
 
-    tokio::spawn(async move {
-        if let Some(h) = stdout_handle {
-            let _ = h.await;
+    let bytes = match base64::engine::general_purpose::STANDARD.decode(request.data.as_bytes()) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": format!("Input data is not valid base64: {}", e) })),
+            )
+                .into_response();
         }
-        if let Some(h) = stderr_handle {
-            let _ = h.await;
-        }
-        let status = child.wait().await;
-        let exit_msg = match status {
-            Ok(s) => {
-                if let Some(code) = s.code() {
-                    format!("Process exited with code {}", code)
-                } else {
-                    "Process terminated by signal".to_string()
-                }
-            }
-            Err(e) => format!("Process wait failed: {}", e),
-        };
-        let end_event = axum::response::sse::Event::default()
-            .event("end")
-            .data(exit_msg);
-        let _ = tx.send(Ok(end_event)).await;
-    });
+    };
 
-    let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
-    axum::response::sse::Sse::new(stream).into_response()
+    match session.write_input(&bytes) {
+        Ok(()) => (StatusCode::OK, Json(json!({ "status": "ok" }))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to write to the terminal: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+/// Tells the action's pty how big the client's terminal is, which is what makes a process that
+/// wraps its own output redraw to fit.
+pub async fn review_action_resize(
+    Path((_project_name, _action_name)): Path<(String, String)>,
+    Json(request): Json<ReviewActionResizeRequest>,
+) -> impl IntoResponse {
+    let Some(session) = crate::pty::session(&request.session_id) else {
+        return session_not_found(&request.session_id);
+    };
+
+    // A zero dimension is what a client sends before its terminal has been laid out; applying it
+    // would tell the process it has no window at all.
+    if request.rows == 0 || request.cols == 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "Terminal size must be at least 1x1" })),
+        )
+            .into_response();
+    }
+
+    match session.resize(request.rows, request.cols) {
+        Ok(()) => (StatusCode::OK, Json(json!({ "status": "ok" }))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to resize the terminal: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+/// A session that has exited is indistinguishable from one that never existed, and both are a `404`
+/// rather than an error: a client racing the `end` frame has done nothing wrong.
+fn session_not_found(session_id: &str) -> axum::response::Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({
+            "error": format!("Review action session '{}' is not running", session_id)
+        })),
+    )
+        .into_response()
 }
 
 #[cfg(test)]

@@ -1,8 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
+import {
+  decodeBase64,
+  onReviewActionEvent,
+  subscribeReviewAction,
+  type EventUnsubscribe,
+  type ReviewActionEvent,
+  type ReviewActionSession,
+} from "./events";
 import type {
+  AgentCostBreakdown,
+  Annotation,
   CreateProjectRequest,
+  DashboardActivity,
+  DiscoveredVaultRepo,
   DoctorCheck,
   DraftComment,
+  GitHubAccountOption,
   GitHubIssuesPage,
   InboxProposal,
   Job,
@@ -10,11 +23,15 @@ import type {
   ModelCatalogStatus,
   OnboardingStatus,
   PlanDetail,
+  PlanGitData,
   PlanQuery,
   PlanSummary,
   PrStatus,
   PrSyncReport,
+  ProjectAssets,
   ProjectSummary,
+  RecentMergedPr,
+  RecentPlanCost,
   RecommendationItem,
   RecommendationState,
   RepoStatus,
@@ -22,13 +39,266 @@ import type {
   RevisionResult,
   ServiceHealth,
   ServiceInfo,
+  ShippedFeatureDay,
   StartJobArgs,
   StartJobResponse,
+  SubscribeOutcome,
   SweepReport,
   TendrilConfig,
+  VaultCatalog,
+  VaultExportRequest,
+  VaultImportRequest,
+  VaultPrResult,
+  VaultResult,
+  VaultStatus,
   VerificationReport,
   VerificationStatus,
+  VersionInfo,
 } from "../types/api";
+
+export type { ReviewActionSession } from "./events";
+
+export interface ReviewActionRunOptions {
+  planId?: string;
+  worktree?: string;
+  /** One chunk of raw terminal output: escapes, bare carriage returns and partial sequences included. */
+  onChunk?: (bytes: Uint8Array) => void;
+  /** The process's exit message, after which no more output arrives. */
+  onEnd?: (message: string) => void;
+  onError?: (err: unknown) => void;
+}
+
+/** A running review action, and the three things a terminal view needs to do to it. */
+export interface ReviewActionRun {
+  session: ReviewActionSession;
+  /** Sends keystrokes. A string is sent as UTF-8. */
+  sendInput(data: string | Uint8Array): Promise<void>;
+  resize(rows: number, cols: number): Promise<void>;
+  /**
+   * Stops watching the output. Does not stop the process — the app it started has to keep serving the
+   * preview that replaces the terminal.
+   */
+  close(): Promise<void>;
+}
+
+function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+/** Encodes raw bytes for the daemon's `input` route, which takes base64 for the same reason `log` does. */
+function encodeBase64(data: string | Uint8Array): string {
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+function reviewActionUrl(projectName: string, actionName: string, endpoint: string): string {
+  return (
+    `/api/projects/${encodeURIComponent(projectName)}` +
+    `/review-actions/${encodeURIComponent(actionName)}/${endpoint}`
+  );
+}
+
+/**
+ * Desktop transport: the native side reads the stream and re-emits it, because `invoke` cannot stream
+ * and the daemon's route is bearer-authenticated with a secret the webview never sees.
+ *
+ * The listener is registered before the invoke and frames are held until the session id comes back,
+ * because the process can write before the invoke's return value has crossed the boundary. Frames
+ * belonging to other sessions are dropped on the replay, once there is an id to compare them to.
+ */
+async function startReviewActionViaTauri(
+  projectName: string,
+  actionName: string,
+  options: ReviewActionRunOptions,
+): Promise<ReviewActionRun> {
+  let session: ReviewActionSession | null = null;
+  const pending: ReviewActionEvent[] = [];
+
+  const deliver = (frame: ReviewActionEvent) => {
+    if (frame.event === "end") {
+      options.onEnd?.(frame.data);
+      return;
+    }
+    if (frame.event === "log") {
+      try {
+        options.onChunk?.(decodeBase64(frame.data));
+      } catch (err) {
+        options.onError?.(err);
+      }
+    }
+  };
+
+  const unlisten = await onReviewActionEvent((frame) => {
+    if (!session) {
+      pending.push(frame);
+      return;
+    }
+    if (frame.sessionId === session.sessionId) {
+      deliver(frame);
+    }
+  });
+
+  try {
+    session = await invoke<ReviewActionSession>("cmd_execute_review_action", {
+      projectName,
+      actionName,
+      planId: options.planId,
+      worktree: options.worktree,
+    });
+  } catch (err) {
+    unlisten();
+    throw err;
+  }
+
+  for (const frame of pending) {
+    if (frame.sessionId === session.sessionId) {
+      deliver(frame);
+    }
+  }
+  pending.length = 0;
+
+  const sessionId = session.sessionId;
+  return {
+    session,
+    async sendInput(data) {
+      await invoke<void>("cmd_send_review_action_input", {
+        projectName,
+        actionName,
+        sessionId,
+        data: encodeBase64(data),
+      });
+    },
+    async resize(rows, cols) {
+      await invoke<void>("cmd_resize_review_action", {
+        projectName,
+        actionName,
+        sessionId,
+        rows,
+        cols,
+      });
+    },
+    async close() {
+      unlisten();
+      await invoke<boolean>("cmd_close_review_action", { sessionId });
+    },
+  };
+}
+
+/** Browser transport: the webview reads the SSE stream itself, same-origin through the dev proxy. */
+async function startReviewActionViaHttp(
+  projectName: string,
+  actionName: string,
+  options: ReviewActionRunOptions,
+): Promise<ReviewActionRun> {
+  let unsubscribe: EventUnsubscribe = () => {};
+
+  const session = await new Promise<ReviewActionSession>((resolve, reject) => {
+    let settled = false;
+    unsubscribe = subscribeReviewAction("", projectName, actionName, {
+      planId: options.planId,
+      worktree: options.worktree,
+      onSession: (announced) => {
+        settled = true;
+        resolve(announced);
+      },
+      onChunk: (bytes) => options.onChunk?.(bytes),
+      onEnd: (message) => {
+        // A command that fails to start exits before announcing anything; that end message is the
+        // only explanation the caller will get.
+        if (!settled) {
+          settled = true;
+          reject(new Error(message));
+          return;
+        }
+        options.onEnd?.(message);
+      },
+      onError: (err) => {
+        if (!settled) {
+          settled = true;
+          reject(err);
+          return;
+        }
+        options.onError?.(err);
+      },
+    });
+  }).catch((err) => {
+    unsubscribe();
+    throw err;
+  });
+
+  const post = async (endpoint: string, body: Record<string, unknown>) => {
+    const res = await fetch(reviewActionUrl(projectName, actionName, endpoint), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: session.sessionId, ...body }),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`Review action ${endpoint} failed (${res.status}): ${detail}`);
+    }
+  };
+
+  return {
+    session,
+    async sendInput(data) {
+      await post("input", { data: encodeBase64(data) });
+    },
+    async resize(rows, cols) {
+      await post("resize", { rows, cols });
+    },
+    async close() {
+      unsubscribe();
+    },
+  };
+}
+
+/**
+ * A call that prefers Tauri IPC and falls back to the daemon over HTTP.
+ *
+ * IPC is the real path: the daemon's bearer secret is read from `.master` on the native side and never
+ * enters the webview, so only the Rust command can authenticate. The `fetch` is for running the UI in
+ * a plain browser during development, where the dev server proxies `/api`.
+ */
+async function invokeOrFetch<T>(
+  command: string,
+  args: Record<string, unknown>,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  try {
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+      return await invoke<T>(command, args);
+    }
+  } catch {
+    // Fall back to direct fetch if Tauri invoke is not available
+  }
+
+  /* `Headers` rather than an object spread: `HeadersInit` also allows an array of pairs, and
+     spreading one of those would turn it into numeric keys. */
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+
+  const res = await fetch(path, { ...init, headers });
+  if (!res.ok) {
+    /* A failed vault result answers 500 carrying the message the dialogs show, so it is a value
+       rather than an error — see `vault_request` in src-tauri. */
+    const body = await res.json().catch(() => null);
+    if (body && typeof body === "object" && (body as { success?: unknown }).success === false) {
+      return body as T;
+    }
+    throw new Error(`Request to ${path} failed (${res.status})`);
+  }
+  return res.json() as Promise<T>;
+}
+
+/** `default` is the id the service resolves to the primary vault. */
+function vaultPath(vaultId: string | undefined, suffix = ""): string {
+  return `/api/vaults/${encodeURIComponent(vaultId?.trim() || "default")}${suffix}`;
+}
 
 export const bridge = {
   async checkServiceHealth(this: void): Promise<ServiceHealth> {
@@ -99,6 +369,14 @@ export const bridge = {
     return invoke<RepoStatus[]>("cmd_get_repo_status", { id });
   },
 
+  /**
+   * The plan's worktrees, its commits grouped under them, and the reachability
+   * verdict for the commits no worktree accounts for — the Git tab's data.
+   */
+  async getPlanGit(this: void, id: string): Promise<PlanGitData> {
+    return invoke<PlanGitData>("cmd_get_plan_git", { id });
+  },
+
   async getRevision(this: void, id: string, number?: number): Promise<string> {
     return invoke<string>("cmd_get_revision", { id, number });
   },
@@ -136,6 +414,31 @@ export const bridge = {
 
   async clearDiffComments(this: void, planId: string): Promise<void> {
     return invoke<void>("cmd_clear_diff_comments", { planId });
+  },
+
+  /**
+   * Every draft annotation left on a plan's revision markdown.
+   *
+   * Same contract as the diff comments above: the mutations return the plan's new full list.
+   */
+  async listAnnotations(this: void, planId: string): Promise<Annotation[]> {
+    return invoke<Annotation[]>("cmd_list_annotations", { planId });
+  },
+
+  async upsertAnnotation(
+    this: void,
+    planId: string,
+    annotation: Annotation,
+  ): Promise<Annotation[]> {
+    return invoke<Annotation[]>("cmd_upsert_annotation", { planId, annotation });
+  },
+
+  async deleteAnnotation(this: void, planId: string, annotationId: string): Promise<Annotation[]> {
+    return invoke<Annotation[]>("cmd_delete_annotation", { planId, annotationId });
+  },
+
+  async clearAnnotations(this: void, planId: string): Promise<void> {
+    return invoke<void>("cmd_clear_annotations", { planId });
   },
 
   /** Markdown of one `<planFolder>/Verification/<name>.md` report. */
@@ -236,39 +539,38 @@ export const bridge = {
     }
   },
 
+  /**
+   * Starts a review action and streams its terminal output.
+   *
+   * Resolves once the daemon has announced the session, which is what the input and resize routes are
+   * keyed by; output can start arriving before that, so both transports buffer rather than drop it.
+   */
+  async startReviewAction(
+    this: void,
+    projectName: string,
+    actionName: string,
+    options: ReviewActionRunOptions = {},
+  ): Promise<ReviewActionRun> {
+    return isTauri()
+      ? startReviewActionViaTauri(projectName, actionName, options)
+      : startReviewActionViaHttp(projectName, actionName, options);
+  },
+
+  /**
+   * Starts a review action without watching its output, returning the session it announced.
+   *
+   * The stream is left open and unread: the process is a dev server that has to keep serving after
+   * the caller has stopped listening.
+   */
   async executeReviewAction(
     this: void,
     projectName: string,
     actionName: string,
     planId?: string,
     worktree?: string,
-  ): Promise<unknown> {
-    try {
-      if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-        return await invoke<unknown>("cmd_execute_review_action", {
-          projectName,
-          actionName,
-          planId,
-          worktree,
-        });
-      }
-    } catch {
-      // Fall back to direct fetch if Tauri invoke is not available
-    }
-
-    const res = await fetch(
-      `/api/projects/${encodeURIComponent(projectName)}/review-actions/${encodeURIComponent(actionName)}/execute`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId, worktree }),
-      },
-    );
-    if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      throw new Error(`Execution failed (${res.status}): ${err}`);
-    }
-    return res.json().catch(() => ({ status: "ok" }));
+  ): Promise<ReviewActionSession> {
+    const run = await bridge.startReviewAction(projectName, actionName, { planId, worktree });
+    return run.session;
   },
 
   async createProject(this: void, request: CreateProjectRequest): Promise<unknown> {
@@ -296,6 +598,10 @@ export const bridge = {
     return invoke<void>("cmd_dismiss_onboarding");
   },
 
+  async subscribeNewsletter(this: void, email: string): Promise<SubscribeOutcome> {
+    return invoke<SubscribeOutcome>("cmd_subscribe_newsletter", { email });
+  },
+
   async runDoctor(this: void): Promise<DoctorCheck[]> {
     return invoke<DoctorCheck[]>("cmd_run_doctor");
   },
@@ -308,12 +614,189 @@ export const bridge = {
     return invoke<ModelCatalogStatus>("cmd_refresh_models");
   },
 
+  async getVersionInfo(this: void): Promise<VersionInfo> {
+    return invoke<VersionInfo>("cmd_get_version_info");
+  },
+
+  async checkVersionNow(this: void): Promise<VersionInfo> {
+    return invoke<VersionInfo>("cmd_check_version_now");
+  },
+
   async saveUiState(this: void, key: string, value: string): Promise<void> {
     return invoke<void>("cmd_save_ui_state", { key, value });
   },
 
   async loadUiState(this: void, key: string): Promise<string | null> {
     return invoke<string | null>("cmd_load_ui_state", { key });
+  },
+
+  /**
+   * Monthly rollups, the daily series and the month's projection in one call. The projection is
+   * computed by the daemon, not here, so there is exactly one implementation of it.
+   */
+  async getDashboardActivity(this: void, months?: number): Promise<DashboardActivity> {
+    return invoke<DashboardActivity>("cmd_get_dashboard_activity", { months });
+  },
+
+  async getShippedFeatures(this: void, days?: number): Promise<ShippedFeatureDay[]> {
+    return invoke<ShippedFeatureDay[]>("cmd_get_shipped_features", { days });
+  },
+
+  async getRecentMergedPrs(this: void, limit?: number): Promise<RecentMergedPr[]> {
+    return invoke<RecentMergedPr[]>("cmd_get_recent_merged_prs", { limit });
+  },
+
+  async getRecentPlanCosts(this: void, days?: number): Promise<RecentPlanCost[]> {
+    return invoke<RecentPlanCost[]>("cmd_get_recent_plan_costs", { days });
+  },
+
+  async getAgentCostBreakdown(this: void, days?: number): Promise<AgentCostBreakdown[]> {
+    return invoke<AgentCostBreakdown[]>("cmd_get_agent_cost_breakdown", { days });
+  },
+
+  /* --- Team Vault ------------------------------------------------------------------------------
+     These wrappers are the only place that knows command names and route shapes: the vault
+     components take plain data and callbacks. `vaultId` is optional everywhere — omitting it means
+     the primary vault, which is what `default` resolves to on the service. */
+
+  async listVaults(this: void): Promise<VaultStatus[]> {
+    return invokeOrFetch<VaultStatus[]>("cmd_vault_list", {}, "/api/vaults");
+  },
+
+  async getVaultStatus(this: void, vaultId?: string): Promise<VaultStatus> {
+    return invokeOrFetch<VaultStatus>("cmd_vault_status", { vaultId }, vaultPath(vaultId));
+  },
+
+  async getVaultCatalog(this: void, vaultId?: string): Promise<VaultCatalog> {
+    return invokeOrFetch<VaultCatalog>(
+      "cmd_vault_catalog",
+      { vaultId },
+      vaultPath(vaultId, "/catalog"),
+    );
+  },
+
+  /** The GitHub identities a vault can be created under. Empty means "not signed in". */
+  async listGitHubAccounts(this: void): Promise<GitHubAccountOption[]> {
+    return invokeOrFetch<GitHubAccountOption[]>(
+      "cmd_vault_github_accounts",
+      {},
+      "/api/vaults/accounts",
+    );
+  },
+
+  /** Repositories on GitHub that look like a Tendril vault, for the connect dialog. */
+  async discoverVaults(this: void): Promise<DiscoveredVaultRepo[]> {
+    return invokeOrFetch<DiscoveredVaultRepo[]>("cmd_vault_discover", {}, "/api/vaults/discover");
+  },
+
+  async createVaultRepo(
+    this: void,
+    name: string,
+    isPrivate: boolean,
+    org?: string,
+  ): Promise<VaultResult> {
+    return invokeOrFetch<VaultResult>(
+      "cmd_vault_create",
+      { name, isPrivate, org },
+      "/api/vaults/create",
+      { method: "POST", body: JSON.stringify({ repoName: name, private: isPrivate, org }) },
+    );
+  },
+
+  async connectVault(this: void, repoUrl: string, name?: string): Promise<VaultResult> {
+    return invokeOrFetch<VaultResult>("cmd_vault_connect", { repoUrl, name }, "/api/vaults", {
+      method: "POST",
+      body: JSON.stringify({ repoUrl, name }),
+    });
+  },
+
+  /** Forget a vault. The clone is left on disk, so nothing local is lost. */
+  async disconnectVault(this: void, vaultId?: string): Promise<VaultResult> {
+    return invokeOrFetch<VaultResult>("cmd_vault_disconnect", { vaultId }, vaultPath(vaultId), {
+      method: "DELETE",
+    });
+  },
+
+  async setVaultAlwaysUpToDate(
+    this: void,
+    alwaysUpToDate: boolean,
+    vaultId?: string,
+  ): Promise<VaultResult> {
+    return invokeOrFetch<VaultResult>(
+      "cmd_vault_set_always_up_to_date",
+      { vaultId, alwaysUpToDate },
+      vaultPath(vaultId),
+      { method: "PUT", body: JSON.stringify({ alwaysUpToDate }) },
+    );
+  },
+
+  async pullVaultLatest(this: void, vaultId?: string): Promise<VaultResult> {
+    return invokeOrFetch<VaultResult>("cmd_vault_pull", { vaultId }, vaultPath(vaultId, "/pull"), {
+      method: "POST",
+    });
+  },
+
+  /** What a local project could publish, for the push dialog's asset checklists. */
+  async collectProjectAssets(this: void, projectName: string): Promise<ProjectAssets> {
+    return invokeOrFetch<ProjectAssets>(
+      "cmd_vault_project_assets",
+      { projectName },
+      `/api/vaults/project-assets/${encodeURIComponent(projectName)}`,
+    );
+  },
+
+  async pushToVault(
+    this: void,
+    request: VaultExportRequest,
+    vaultId?: string,
+  ): Promise<VaultPrResult> {
+    return invokeOrFetch<VaultPrResult>(
+      "cmd_vault_push",
+      { request, vaultId },
+      vaultPath(vaultId, "/push"),
+      { method: "POST", body: JSON.stringify(request) },
+    );
+  },
+
+  async importVaultProject(
+    this: void,
+    request: VaultImportRequest,
+    vaultId?: string,
+  ): Promise<VaultResult> {
+    return invokeOrFetch<VaultResult>(
+      "cmd_vault_import",
+      { request, vaultId },
+      vaultPath(vaultId, "/projects"),
+      { method: "POST", body: JSON.stringify({ ...request, merge: false }) },
+    );
+  },
+
+  /** Adopt a vault project into the local project of the same name, keeping local repo paths. */
+  async mergeVaultProject(
+    this: void,
+    request: VaultImportRequest,
+    vaultId?: string,
+  ): Promise<VaultResult> {
+    return invokeOrFetch<VaultResult>(
+      "cmd_vault_merge",
+      { request, vaultId },
+      vaultPath(vaultId, "/projects"),
+      { method: "POST", body: JSON.stringify({ ...request, merge: true }) },
+    );
+  },
+
+  /** Opens a PR that removes the project from the vault; the local project is untouched. */
+  async deleteVaultProject(
+    this: void,
+    projectName: string,
+    vaultId?: string,
+  ): Promise<VaultPrResult> {
+    return invokeOrFetch<VaultPrResult>(
+      "cmd_vault_delete_project",
+      { projectName, vaultId },
+      vaultPath(vaultId, `/projects/${encodeURIComponent(projectName)}`),
+      { method: "DELETE" },
+    );
   },
 
   async listGitHubIssues(

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "tauri": "tauri",
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
@@ -20,6 +21,7 @@
     "@ivy-interactive/components": "workspace:*",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
+    "@tauri-apps/plugin-notification": "^2.4.0",
     "@tauri-apps/plugin-opener": "^2.2.5",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",

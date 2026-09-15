@@ -27,6 +27,7 @@ fn port_config(default_port: u16) -> ProjectPortConfig {
     ProjectPortConfig {
         default_port,
         description: String::new(),
+        extra: Default::default(),
     }
 }
 
@@ -223,6 +224,7 @@ fn materialize_renders_template_with_allocated_ports() {
             ("EXTRA".to_string(), "added".to_string()),
         ]
         .into(),
+        extra: Default::default(),
     }];
 
     let allocated: BTreeMap<String, u16> = [("backend".to_string(), 31234)].into();
@@ -260,6 +262,7 @@ fn materialize_is_idempotent() {
         path: ".env".to_string(),
         template: None,
         overrides: [("MODE".to_string(), "test".to_string())].into(),
+        extra: Default::default(),
     }];
 
     let allocated = BTreeMap::new();
@@ -289,6 +292,7 @@ fn materialize_does_not_clobber_a_hand_edited_env() {
         path: ".env".to_string(),
         template: None,
         overrides: [("MODE".to_string(), "test".to_string())].into(),
+        extra: Default::default(),
     }];
 
     let allocated = BTreeMap::new();
@@ -341,6 +345,7 @@ fn missing_env_reference_is_reported_not_substituted() {
         path: ".env".to_string(),
         template: Some(".env.example".to_string()),
         overrides: BTreeMap::new(),
+        extra: Default::default(),
     }];
 
     let allocated = BTreeMap::new();
@@ -433,6 +438,7 @@ fn materialize_plan_env_writes_into_the_plans_worktree() {
         path: ".env".to_string(),
         template: None,
         overrides: [("PORT".to_string(), "${ports.backend}".to_string())].into(),
+        extra: Default::default(),
     }];
     write_project_config(&home, &project);
 

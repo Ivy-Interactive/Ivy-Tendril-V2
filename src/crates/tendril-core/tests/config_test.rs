@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 use tendril_core::config::{
-    delete_master, dirs_home, dirs_home_with_env, expand_variables, expand_variables_with_env,
-    find_projects_referencing_verification, get_config_path, get_config_path_with_env,
-    get_default_tendril_home, get_default_tendril_home_with_env, get_plans_dir,
-    get_plans_dir_with_env, get_plans_dir_with_settings, get_tendril_home,
-    get_tendril_home_with_env, load_config, normalize_slashes, read_master,
+    delete_master, dirs_home, dirs_home_with_env, ensure_home_directories, expand_variables,
+    expand_variables_with_env, find_projects_referencing_verification, get_config_path,
+    get_config_path_with_env, get_default_tendril_home, get_default_tendril_home_with_env,
+    get_hooks_dir, get_plans_dir, get_plans_dir_with_env, get_plans_dir_with_settings,
+    get_tendril_home, get_tendril_home_with_env, load_config, normalize_slashes, read_master,
     remove_verification_from_projects, save_config, write_master, EnvSource, LoginRateLimitConfig,
     SystemEnv, TendrilSettings,
 };
@@ -59,10 +59,12 @@ fn test_config_load_and_save() {
         repos: vec![RepoRef {
             path: "D:/repos/test".to_string(),
             base_branch: Some("main".to_string()),
+            extra: Default::default(),
         }],
         verifications: vec![ProjectVerificationRef {
             name: "Build".to_string(),
             required: true,
+            extra: Default::default(),
         }],
         context: "Rust Project".to_string(),
         stack_hash: None,
@@ -155,12 +157,14 @@ fn test_review_action_paths_round_trip_and_omitted_when_empty() {
                 condition: String::new(),
                 command: String::new(),
                 paths: vec!["src/packages/components".to_string()],
+                extra: Default::default(),
             },
             ReviewActionConfig {
                 name: "App".to_string(),
                 condition: String::new(),
                 command: String::new(),
                 paths: vec![],
+                extra: Default::default(),
             },
         ],
         ..Default::default()
@@ -223,7 +227,7 @@ fn test_master_file_lifecycle() {
 
     assert!(read_master(&test_dir).is_none());
 
-    write_master(&test_dir, 49200, "secret-token-xyz", "127.0.0.1")
+    write_master(&test_dir, 49200, "secret-token-xyz", "127.0.0.1", "http")
         .expect("Failed to write master");
 
     let master_info = read_master(&test_dir).expect("Master info not found");
@@ -512,10 +516,12 @@ fn test_find_and_remove_projects_referencing_verification() {
             ProjectVerificationRef {
                 name: "RustClippy".to_string(),
                 required: true,
+                extra: Default::default(),
             },
             ProjectVerificationRef {
                 name: "RustTest".to_string(),
                 required: false,
+                extra: Default::default(),
             },
         ],
         context: "".to_string(),
@@ -531,6 +537,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         verifications: vec![ProjectVerificationRef {
             name: "rustclippy".to_string(), // case-insensitive check
             required: true,
+            extra: Default::default(),
         }],
         context: "".to_string(),
         stack_hash: None,
@@ -545,6 +552,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         verifications: vec![ProjectVerificationRef {
             name: "RustTest".to_string(),
             required: true,
+            extra: Default::default(),
         }],
         context: "".to_string(),
         stack_hash: None,
@@ -766,6 +774,87 @@ fn test_security_and_api_sections_parse() {
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
 
+#[test]
+fn daemon_request_timeout_round_trips_and_defaults() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-daemon-timeout-config-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+    let config_file = test_dir.join("config.yaml");
+
+    // A config written before this setting existed must load with the default, not with 0 — which
+    // would silently mean "no timeout" and restore the hang.
+    std::fs::write(&config_file, "codingAgent: claude\njobTimeout: 30\n").unwrap();
+    let legacy = load_config(&config_file).expect("Failed to load legacy config");
+    assert_eq!(legacy.daemon_request_timeout, 30);
+
+    let settings = TendrilSettings {
+        daemon_request_timeout: 12,
+        ..TendrilSettings::default()
+    };
+    save_config(&config_file, &settings).expect("Failed to save config");
+
+    let raw = std::fs::read_to_string(&config_file).unwrap();
+    assert!(
+        raw.contains("daemonRequestTimeout: 12"),
+        "the setting must serialize under its camelCase name: {}",
+        raw
+    );
+
+    let loaded = load_config(&config_file).expect("Failed to reload config");
+    assert_eq!(loaded.daemon_request_timeout, 12);
+    // If the rename and the field ever disagree, the value lands in the flattened `extra` map and
+    // the modeled field silently keeps its default. Assert it does not.
+    assert!(
+        !loaded.extra.contains_key("daemonRequestTimeout"),
+        "daemonRequestTimeout must be a modeled field, not an unknown passthrough key"
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+#[test]
+fn public_config_keys_advertise_only_real_settings() {
+    use tendril_core::mcp::dispatch::PUBLIC_CONFIG_KEYS;
+
+    assert!(
+        PUBLIC_CONFIG_KEYS.contains(&"daemonRequestTimeout"),
+        "the new setting must be readable through the MCP config tool"
+    );
+    // `chatTimeout` was advertised with no field behind it, so reading it always returned null.
+    assert!(
+        !PUBLIC_CONFIG_KEYS.contains(&"chatTimeout"),
+        "chatTimeout has no field behind it and must not be advertised"
+    );
+
+    // `planFolder` and `telemetry` are both `skip_serializing_if = "Option::is_none"`, so they only
+    // appear once populated; populate them rather than carve them out.
+    let settings = TendrilSettings {
+        plan_folder: Some("Plans".to_string()),
+        telemetry: Some(false),
+        ..TendrilSettings::default()
+    };
+    let serialized = serde_json::to_value(&settings).expect("settings must serialize");
+    let object = serialized.as_object().expect("settings serialize to a map");
+
+    // `themeMode` is a V1 desktop key with no Rust field: it round-trips through the flattened
+    // `extra` map (asserted by config_unknown_keys_test) and is deliberately still advertised.
+    const EXTRA_BACKED_KEYS: &[&str] = &["themeMode"];
+
+    for key in PUBLIC_CONFIG_KEYS {
+        if EXTRA_BACKED_KEYS.contains(key) {
+            continue;
+        }
+        assert!(
+            object.contains_key(*key),
+            "advertised config key '{}' does not resolve to a serialized field, so reading it \
+             would always return null",
+            key
+        );
+    }
+}
+
 fn write_config(body: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!(
         "tendril-inbox-cfg-{}",
@@ -860,4 +949,28 @@ fn an_inbox_section_survives_a_save_load_round_trip() {
         "The section must be written in the camelCase the original app reads, got:\n{raw}"
     );
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
+#[test]
+fn test_ensure_home_directories_creates_hooks_and_is_idempotent() {
+    let home = std::env::temp_dir().join(format!(
+        "tendril-ensure-home-dirs-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+
+    ensure_home_directories(&home).expect("must create a fresh home's directories");
+    assert!(home.is_dir());
+    assert!(get_hooks_dir(&home).is_dir());
+
+    let sentinel = get_hooks_dir(&home).join("NotifySlack.ps1");
+    std::fs::write(&sentinel, "# sentinel").expect("must write into the created Hooks dir");
+
+    ensure_home_directories(&home).expect("must be idempotent on an existing home");
+    assert!(get_hooks_dir(&home).is_dir());
+    assert!(
+        sentinel.is_file(),
+        "a second call must not recreate or wipe an existing Hooks dir"
+    );
+
+    let _ = std::fs::remove_dir_all(home);
 }

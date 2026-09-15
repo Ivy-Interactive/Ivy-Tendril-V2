@@ -651,6 +651,7 @@ async fn prepare_plan_worktrees_creates_one_per_repo() {
                 .map(|path| RepoRef {
                     path: path.clone(),
                     base_branch: Some("main".to_string()),
+                    extra: Default::default(),
                 })
                 .collect(),
             verifications: vec![],

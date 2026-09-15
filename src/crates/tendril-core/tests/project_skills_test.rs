@@ -27,6 +27,7 @@ fn skill(name: &str) -> ProjectSkillRef {
         path: None,
         instructions: None,
         disabled: false,
+        extra: Default::default(),
     }
 }
 

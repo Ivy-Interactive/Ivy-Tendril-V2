@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { setThemeGlobal, type Theme } from "@ivy-interactive/components/theme";
 import { bridge } from "../api/bridge";
-import type { ServiceInfo, TendrilConfig } from "../types/api";
+import { notificationsStore } from "../state/notificationsStore";
+import { describeBridgeError, type ServiceInfo, type TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
+import { NewsletterSignup } from "../components/NewsletterSignup";
 import { ServiceSettingsView } from "../components/service";
+import { VaultSettingsView } from "./VaultSettingsView";
 
 interface SettingsViewProps {
   serviceInfo: ServiceInfo | null;
@@ -11,27 +14,37 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefreshHealth }) => {
-  const [_config, setConfig] = useState<TendrilConfig | null>(null);
+  const [config, setConfig] = useState<TendrilConfig | null>(null);
   const [isPinging, setIsPinging] = useState(false);
   const [pingResult, setPingResult] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Form states for editable config
   const [codingAgent, setCodingAgent] = useState("claude");
   const [jobTimeout, setJobTimeout] = useState(1800);
   const [maxConcurrentJobs, setMaxConcurrentJobs] = useState(4);
   const [theme, setTheme] = useState("dark");
+  // Absent in config.yaml means on, the same default the notifications store applies.
+  const [desktopNotifications, setDesktopNotifications] = useState(true);
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+
+  const applyConfig = (cfg: TendrilConfig) => {
+    setConfig(cfg);
+    if (cfg.codingAgent) setCodingAgent(cfg.codingAgent);
+    if (cfg.jobTimeout) setJobTimeout(cfg.jobTimeout);
+    if (cfg.maxConcurrentJobs) setMaxConcurrentJobs(cfg.maxConcurrentJobs);
+    if (cfg.theme) setTheme(cfg.theme);
+    setDesktopNotifications(cfg.desktopNotifications ?? true);
+  };
 
   useEffect(() => {
     async function loadConfig() {
       try {
         const cfg = await bridge.getConfig();
-        setConfig(cfg);
-        if (cfg.codingAgent) setCodingAgent(cfg.codingAgent);
-        if (cfg.jobTimeout) setJobTimeout(cfg.jobTimeout);
-        if (cfg.maxConcurrentJobs) setMaxConcurrentJobs(cfg.maxConcurrentJobs);
-        if (cfg.theme) setTheme(cfg.theme);
+        applyConfig(cfg);
       } catch {
         // Use default config values
       }
@@ -43,6 +56,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
     setTheme(value);
     // Apply the choice immediately; the form's Save still persists it to config.
     setThemeGlobal(value as Theme);
+  };
+
+  // Saved on its own rather than with the preferences form: the store has to be told the moment the
+  // setting changes so routing follows without a reload, which is what upstream got from reading the
+  // setting at notification time.
+  const handleSaveNotifications = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingNotifications(true);
+    setNotificationsError(null);
+
+    try {
+      await bridge.putConfig("desktopNotifications", desktopNotifications);
+      setConfig((prev) => (prev ? { ...prev, desktopNotifications } : prev));
+      notificationsStore.setDesktopNotifications(desktopNotifications);
+      notificationsStore.notifySuccess("Saved", "Notification settings saved");
+    } catch (err) {
+      setNotificationsError(`Failed to save: ${describeBridgeError(err)}`);
+    } finally {
+      setIsSavingNotifications(false);
+    }
   };
 
   const handlePing = async () => {
@@ -63,22 +96,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
     e.preventDefault();
     setIsSaving(true);
     setSaveMessage(null);
+    setSaveError(null);
+
+    // Only changed keys: a full-object overwrite would clobber a concurrent edit to config.yaml.
+    const pending: Array<[string, string | number]> = [];
+    if (codingAgent !== config?.codingAgent) pending.push(["codingAgent", codingAgent]);
+    if (jobTimeout !== config?.jobTimeout) pending.push(["jobTimeout", jobTimeout]);
+    if (maxConcurrentJobs !== config?.maxConcurrentJobs)
+      pending.push(["maxConcurrentJobs", maxConcurrentJobs]);
+    if (theme !== config?.theme) pending.push(["theme", theme]);
 
     try {
-      // In Tendril, config values are updated through the CLI or REST put_config
-      // For the UI, we simulate or save settings
-      await bridge.saveUiState(
-        "config_preferences",
-        JSON.stringify({
-          codingAgent,
-          jobTimeout,
-          maxConcurrentJobs,
-          theme,
-        }),
+      for (const [key, value] of pending) {
+        await bridge.putConfig(key, value);
+      }
+      // Re-read so the form shows what is actually on disk, not optimistic local state.
+      const fresh = await bridge.getConfig();
+      applyConfig(fresh);
+      setSaveMessage(
+        pending.length === 0 ? "No changes to save." : "Configuration saved to config.yaml.",
       );
-      setSaveMessage("Configuration preferences saved successfully.");
     } catch (err) {
-      setSaveMessage(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+      setSaveError(`Failed to save: ${describeBridgeError(err)}`);
     } finally {
       setIsSaving(false);
     }
@@ -168,6 +207,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
           {saveMessage && (
             <div className="mt-3 rounded bg-background p-2 text-xs text-success border border-success/50">
               {saveMessage}
+            </div>
+          )}
+
+          {saveError && (
+            <div className="mt-3 rounded bg-background p-2 text-xs text-destructive border border-destructive/50">
+              {saveError}
             </div>
           )}
 
@@ -261,6 +306,82 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
         </div>
 
         <ModelCatalogCard />
+
+        {/* Notifications */}
+        <div
+          className="rounded-xl border border-border bg-card/60 p-6"
+          data-testid="notifications-card"
+        >
+          <div className="border-b border-border pb-4">
+            <h2 className="text-base font-semibold text-foreground">Notifications</h2>
+            <p className="text-xs text-muted-foreground">
+              Configure how Tendril notifies you about job completions, failures, and other events.
+            </p>
+          </div>
+
+          {notificationsError && (
+            <div className="mt-3 rounded bg-background p-2 text-xs text-destructive border border-destructive/50">
+              {notificationsError}
+            </div>
+          )}
+
+          <form onSubmit={handleSaveNotifications} className="mt-4 space-y-4 text-sm">
+            <label className="flex items-start gap-3" htmlFor="desktop-notifications-checkbox">
+              <input
+                id="desktop-notifications-checkbox"
+                type="checkbox"
+                checked={desktopNotifications}
+                onChange={(e) => setDesktopNotifications(e.target.checked)}
+                className="mt-0.5 size-4 rounded border-border bg-background accent-primary"
+              />
+              <span>
+                <span className="block text-xs font-medium text-foreground">
+                  Enable Desktop Notifications
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Show native OS notifications when jobs finish. With this off, Tendril shows an
+                  in-app toast instead.
+                </span>
+              </span>
+            </label>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                disabled={isSavingNotifications}
+                className="rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+              >
+                {isSavingNotifications ? "Saving..." : "Save Notification Settings"}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card/60 p-6">
+          <div className="border-b border-border pb-4">
+            <h2 className="text-base font-semibold text-foreground">Newsletter</h2>
+            <p className="text-xs text-muted-foreground">
+              Subscribe to the Ivy & Tendril newsletter to receive updates, feature highlights, and
+              release notes.
+            </p>
+          </div>
+          <div className="mt-4">
+            <NewsletterSignup />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card/60 p-6">
+        <div className="border-b border-border pb-4">
+          <h2 className="text-base font-semibold text-foreground">Team Vault</h2>
+          <p className="text-xs text-muted-foreground">
+            Share projects, skills, MCP servers and security policies with your team through a
+            versioned Git repository.
+          </p>
+        </div>
+        <div className="pt-4">
+          <VaultSettingsView tendrilHome={serviceInfo?.tendrilHome} />
+        </div>
       </div>
 
       <ServiceSettingsView serviceInfo={serviceInfo} onRefreshHealth={onRefreshHealth} />

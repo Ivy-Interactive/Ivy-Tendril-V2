@@ -33,7 +33,7 @@ async fn start_test_server() -> TestServer {
     let port = tokio_listener.local_addr().unwrap().port();
 
     let secret = tendril_core::config::generate_bearer_secret();
-    let _guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str).unwrap();
+    let _guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str, "http").unwrap();
 
     let plans_dir = tendril_home.join("Plans");
     std::fs::create_dir_all(&plans_dir).unwrap();
@@ -468,6 +468,7 @@ async fn test_verification_cli_remove_referenced_blocked_and_force_cleans_fs() {
         verifications: vec![ProjectVerificationRef {
             name: "CheckLint".to_string(),
             required: true,
+            extra: Default::default(),
         }],
         context: "".to_string(),
         stack_hash: None,
@@ -532,6 +533,7 @@ async fn test_verification_cli_remove_referenced_blocked_and_force_cleans_daemon
         verifications: vec![ProjectVerificationRef {
             name: "DaemonLint".to_string(),
             required: true,
+            extra: Default::default(),
         }],
         context: "".to_string(),
         stack_hash: None,
@@ -594,6 +596,7 @@ fn test_doctor_warns_on_non_existent_verification() {
         verifications: vec![ProjectVerificationRef {
             name: "GhostVerification".to_string(),
             required: true,
+            extra: Default::default(),
         }],
         context: "".to_string(),
         stack_hash: None,
@@ -629,14 +632,17 @@ fn test_doctor_warns_on_non_existent_repository_path() {
             RepoRef {
                 path: "/non/existent/path/to/repo".to_string(),
                 base_branch: None,
+                extra: Default::default(),
             },
             RepoRef {
                 path: "%TENDRIL_HOME%/ghost-repo".to_string(),
                 base_branch: None,
+                extra: Default::default(),
             },
             RepoRef {
                 path: existing_repo.to_string_lossy().to_string(),
                 base_branch: None,
+                extra: Default::default(),
             },
         ],
         verifications: vec![],
@@ -677,10 +683,12 @@ fn test_doctor_warns_on_non_git_repository_path() {
             RepoRef {
                 path: non_git_repo.to_string_lossy().to_string(),
                 base_branch: None,
+                extra: Default::default(),
             },
             RepoRef {
                 path: git_repo.to_string_lossy().to_string(),
                 base_branch: None,
+                extra: Default::default(),
             },
         ],
         verifications: vec![],

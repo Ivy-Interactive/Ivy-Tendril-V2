@@ -36,6 +36,11 @@ export {
   type UseResizableSidebarReturn,
 } from "./hooks/use-resizable-sidebar";
 
+export { getPlatformShortcut } from "./lib/shortcut";
+export { useShortcut } from "./lib/useShortcut";
+export { getRegisteredShortcuts, type ShortcutInfo } from "./lib/shortcutRegistry";
+export { useFocusable, useFocusManagement, type FocusManager } from "./hooks/use-focus-management";
+
 // Agent & Execution Visualizers
 export {
   AgentViewer,
@@ -191,6 +196,16 @@ export type {
   PlanChangesViewProps,
 } from "./components/PlanDiffView";
 
+// Plan Git Components
+export { PlanGitView } from "./components/PlanGitView/index.ts";
+export type {
+  CommitRefStatus,
+  PlanCommitRow,
+  PlanWorktreeSection,
+  PlanGitData,
+  PlanGitViewProps,
+} from "./components/PlanGitView/index.ts";
+
 // Tendril Dashboard Components
 export {
   TendrilDashboard,
@@ -218,6 +233,11 @@ export type {
 export { WebViewer, Toolbar } from "./components/WebViewer/index.ts";
 export type { WebViewerProps, ToolbarProps, ToolbarAction } from "./components/WebViewer/index.ts";
 
+// Terminal Component. Sits next to the WebViewer because they are the two halves of reviewing a
+// running app: the terminal is what the app boots in, the viewer is what it is then previewed in.
+export { Terminal } from "./components/Terminal/index.ts";
+export type { TerminalProps, TerminalHandle } from "./components/Terminal/index.ts";
+
 // Plan Workspace Split-Pane Layout
 export { PlanWorkspace } from "./components/PlanWorkspace/index.ts";
 export type {
@@ -226,3 +246,64 @@ export type {
   PlanWorkspaceProps,
   PlanWorkspaceSlots,
 } from "./components/PlanWorkspace/index.ts";
+
+// Team Configuration Vault
+export {
+  AssetChecklist,
+  computeVaultGate,
+  ConfirmVaultDeleteDialog,
+  ConnectVaultDialog,
+  CreateVaultDialog,
+  defaultLocalRepoPath,
+  formatAccountOption,
+  formatDiscoveredRepo,
+  formatVaultRepo,
+  formatVaultSync,
+  GatedActionButton,
+  generateVaultVersion,
+  ImportFromVaultDialog,
+  isLocalProjectNameTaken,
+  parseReviewers,
+  PushToVaultDialog,
+  repoFolderName,
+  seedRepoMappings,
+  suggestLocalProjectName,
+  VAULT_GATE_REASONS,
+  VaultDialogShell,
+  VaultEmptyState,
+  VaultProjectsTable,
+  vaultRepoKey,
+  VaultStatusCard,
+} from "./components/Vault/index.ts";
+export type {
+  AssetChecklistProps,
+  ConfirmVaultDeleteDialogProps,
+  ConnectVaultDialogProps,
+  ConnectVaultSubmission,
+  CreateVaultDialogProps,
+  CreateVaultSubmission,
+  DiscoveredVaultRepo,
+  GatedActionButtonProps,
+  GitHubAccountOption,
+  ImportFromVaultDialogProps,
+  LocalProjectRef,
+  ProjectAssets,
+  PushToVaultDialogProps,
+  VaultCatalog,
+  VaultCatalogItem,
+  VaultDialogShellProps,
+  VaultEmptyStateProps,
+  VaultExportDraft,
+  VaultExportRequest,
+  VaultGate,
+  VaultGateInput,
+  VaultGateRequirement,
+  VaultImportRequest,
+  VaultItemSyncStatus,
+  VaultPrResult,
+  VaultProjectsTableProps,
+  VaultRepoRef,
+  VaultResult,
+  VaultStatus,
+  VaultStatusCardProps,
+} from "./components/Vault/index.ts";

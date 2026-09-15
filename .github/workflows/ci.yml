@@ -18,6 +18,19 @@ jobs:
     name: Continuous Integration
     runs-on: ubuntu-latest
     steps:
+      - name: Free disk space
+        # ubuntu-latest ships ~14 GB free on /, and `target/debug` for this workspace is ~14 GB on
+        # its own. Reclaiming the preinstalled toolchains we never use gives ~20 GB of headroom, so
+        # `cargo test --workspace` stops hitting "No space left on device" — which surfaces as
+        # `collect2: fatal error: ld terminated with signal 7 [Bus error]` from the linker.
+        # See https://github.com/Ivy-Interactive/Ivy-Tendril-V2/actions/runs/34857841035
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost /usr/local/share/powershell /usr/share/swift
+          sudo docker image prune --all --force || true
+          df -h /
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -106,9 +119,19 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Rust Test
+        # `-j 2` caps concurrent codegen and link jobs. On a 4-core runner cargo otherwise runs four
+        # link steps at once — the Tauri app links ~300 rlibs per integration test binary — which
+        # spikes both linker RSS and the peak on-disk size of target/debug. Together with
+        # `debug = 0` in the root Cargo.toml this keeps the step inside the runner's budget.
+        # See the bus error in https://github.com/Ivy-Interactive/Ivy-Tendril-V2/actions/runs/34857841035
+        env:
+          CARGO_BUILD_JOBS: 2
         run: cargo test --workspace
 
       - name: Rust Build
+        # Same cap, same reason as Rust Test above.
+        env:
+          CARGO_BUILD_JOBS: 2
         run: cargo build --workspace
 
   link-check:
