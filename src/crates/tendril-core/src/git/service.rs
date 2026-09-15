@@ -22,6 +22,7 @@ pub struct WorktreeBaseInfo {
 /// Once a plan's worktree and branch are gone, its commits can survive as nothing but loose
 /// objects, which the next `git gc` in that repo prunes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum CommitRefStatus {
     /// Some ref — a branch, a remote-tracking branch or a tag — contains the commit.
     Reachable,

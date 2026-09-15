@@ -245,6 +245,177 @@ fn a_worktree_directory_git_no_longer_knows_about_is_skipped() {
     );
 }
 
+/// A commit lives in exactly one repo of a multi-repo plan, so the repo that has never heard of it
+/// answers `Missing` while the repo holding it answers `Reachable`. The better answer has to win, or
+/// adding a second repo to a plan would make every commit in the first one look destroyed.
+#[test]
+fn a_repo_that_never_saw_the_commit_does_not_mask_the_repo_that_did() {
+    let home = HomeFixture::new("git-tab-two-repos");
+    let holder = GitRepoFixture::new("holder");
+    let stranger = GitRepoFixture::new("stranger");
+    let folder = plan_folder(&home, "00208-TwoRepos");
+
+    holder.commit_on("feature", "held.txt", "held\n");
+    let hash = holder.git(&["rev-parse", "HEAD"]).trim().to_string();
+
+    // The stranger is listed first, so its `Missing` verdict is the one recorded first.
+    let both = [stranger.repo.clone(), holder.repo.clone()];
+    let data = build_plan_git_data(&folder, std::slice::from_ref(&hash), &both);
+
+    assert_eq!(
+        data.unassociated_commit_ref_status.get(&hash),
+        Some(&CommitRefStatus::Reachable),
+        "the repo that holds the commit outranks the one that never saw it"
+    );
+    assert!(data.commits_at_risk().is_empty());
+    assert_eq!(
+        data.unassociated_commits[0].title, "Add held.txt",
+        "the title comes from whichever repo could resolve the hash"
+    );
+}
+
+/// The conservative bias, ported deliberately from legacy `GitService.cs:405-412`: only a ref query
+/// that ran and came back empty may report `Unreachable`. That verdict is the one that tells a user
+/// their object is still there and can be rescued, so producing it from a query that never answered
+/// would be the false alarm that teaches people to ignore the alarm.
+///
+/// Forcing `for-each-ref --contains` itself to exit non-zero is not something real git allows — it
+/// warns and carries on even over a corrupt ref — so the reachable-on-failure branch is guarded here
+/// at the level that is deterministic: a repo that cannot resolve the commit at all reports `Missing`,
+/// never `Unreachable`.
+#[test]
+fn a_repo_that_cannot_answer_never_reports_a_commit_unreachable() {
+    let home = HomeFixture::new("git-tab-unreadable");
+    let folder = plan_folder(&home, "00209-Unreadable");
+
+    // A path that is not a git repository at all: every query against it fails.
+    let not_a_repo = home.path.join("not-a-repo");
+    std::fs::create_dir_all(&not_a_repo).expect("create non-repo dir");
+
+    let hash = "89abcdef0123456789abcdef0123456789abcdef".to_string();
+    let data = build_plan_git_data(&folder, std::slice::from_ref(&hash), &[not_a_repo]);
+
+    assert_eq!(
+        data.unassociated_commit_ref_status.get(&hash),
+        Some(&CommitRefStatus::Missing),
+        "a repo that cannot answer says 'not found here', not 'exists but nothing holds it'"
+    );
+    assert_ne!(
+        data.unassociated_commit_ref_status.get(&hash),
+        Some(&CommitRefStatus::Unreachable),
+        "the rescue-it wording must never rest on a query that did not run"
+    );
+}
+
+/// The empty-input short circuit: no commits means no git subprocesses and no verdicts, so a plan
+/// that has not committed anything yet cannot be reported as having lost anything.
+#[test]
+fn a_plan_with_a_worktree_but_no_commits_reports_no_verdicts() {
+    let home = HomeFixture::new("git-tab-no-commits");
+    let fx = GitRepoFixture::new("nocommits");
+    let folder = plan_folder(&home, "00213-NoCommits");
+    worktree_for(&fx, &folder);
+
+    let data = build_plan_git_data(&folder, &[], repos(&fx));
+
+    assert_eq!(data.worktrees.len(), 1, "the worktree still gets a section");
+    assert!(data.worktrees[0].commits.is_empty());
+    assert!(
+        data.unassociated_commit_ref_status.is_empty(),
+        "nothing was asked, so nothing is claimed either way"
+    );
+    assert!(data.commits_at_risk().is_empty());
+}
+
+#[test]
+fn a_worktree_section_reports_the_base_branch_it_was_pushed_to() {
+    let home = HomeFixture::new("git-tab-upstream");
+    let fx = GitRepoFixture::new("upstream");
+    let folder = plan_folder(&home, "00210-Upstream");
+    let worktree = worktree_for(&fx, &folder);
+
+    let hash = commit_in(&fx, &worktree, "pushed.txt", "pushed\n");
+    fx.git_in(
+        &worktree,
+        &["push", "-u", "origin", "tendril/00210-Upstream"],
+    );
+
+    let data = build_plan_git_data(&folder, std::slice::from_ref(&hash), repos(&fx));
+
+    let section = &data.worktrees[0];
+    assert_eq!(
+        section.base_branch.as_deref(),
+        Some("tendril/00210-Upstream"),
+        "the upstream is the better base answer, with `origin/` stripped"
+    );
+    assert!(section.base_short_hash.is_some());
+}
+
+#[test]
+fn only_the_unassociated_commits_carry_a_ref_status() {
+    let home = HomeFixture::new("git-tab-status-scope");
+    let fx = GitRepoFixture::new("statusscope");
+    let folder = plan_folder(&home, "00211-StatusScope");
+    let worktree = worktree_for(&fx, &folder);
+
+    let claimed = commit_in(&fx, &worktree, "claimed.txt", "claimed\n");
+    fx.commit_on("feature", "loose.txt", "loose\n");
+    let unclaimed = fx.git(&["rev-parse", "HEAD"]).trim().to_string();
+
+    let data = build_plan_git_data(&folder, &[claimed.clone(), unclaimed.clone()], repos(&fx));
+
+    assert_eq!(data.worktrees[0].commits.len(), 1);
+    assert!(
+        !data.unassociated_commit_ref_status.contains_key(&claimed),
+        "a commit under a section is an ancestor of that HEAD, so asking is wasted work"
+    );
+    assert!(data.unassociated_commit_ref_status.contains_key(&unclaimed));
+}
+
+/// Two worktrees cut from the same base both reach the base's commits. Showing such a commit twice
+/// would overstate how many places are holding it, so the first section to claim it owns it.
+#[test]
+fn a_commit_two_worktrees_both_reach_is_claimed_by_exactly_one() {
+    let home = HomeFixture::new("git-tab-two-worktrees");
+    let fx = GitRepoFixture::new("twoworktrees");
+    let folder = plan_folder(&home, "00212-TwoWorktrees");
+
+    // A commit on `main`, which both worktrees will be cut from and so both will reach.
+    fx.commit_on("main", "shared.txt", "shared\n");
+    let shared = fx.git(&["rev-parse", "HEAD"]).trim().to_string();
+
+    let first = worktree_for(&fx, &folder);
+    let second = folder.join("Worktrees").join("second");
+    fx.git(&[
+        "worktree",
+        "add",
+        "-b",
+        "tendril/00212-Second",
+        &second.to_string_lossy(),
+        "main",
+    ]);
+
+    let data = build_plan_git_data(&folder, std::slice::from_ref(&shared), repos(&fx));
+
+    assert_eq!(data.worktrees.len(), 2, "both worktrees produce a section");
+    let holding: Vec<&str> = data
+        .worktrees
+        .iter()
+        .filter(|s| s.commits.iter().any(|c| c.hash == shared))
+        .map(|s| s.name.as_str())
+        .collect();
+    assert_eq!(
+        holding.len(),
+        1,
+        "the first section to claim the commit owns it, so it is listed once: {holding:?}"
+    );
+    assert!(
+        data.unassociated_commits.is_empty(),
+        "a claimed commit is not also unassociated"
+    );
+    assert!(first.is_dir());
+}
+
 fn canonical(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
