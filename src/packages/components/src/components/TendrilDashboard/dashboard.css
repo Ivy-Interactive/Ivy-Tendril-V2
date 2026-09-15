@@ -9,7 +9,7 @@
   --tdb-block-border: color-mix(in srgb, var(--foreground, #000000) 6%, var(--background, #ffffff));
   --tdb-fg: var(--foreground, #000000);
   --tdb-muted: color-mix(in srgb, var(--foreground, #000000) 60%, transparent);
-  --tdb-faint: color-mix(in srgb, var(--foreground, #000000) 56%, transparent);
+  --tdb-faint: color-mix(in srgb, var(--foreground, #000000) 28%, transparent);
   --tdb-divider: color-mix(in srgb, var(--foreground, #000000) 20%, transparent);
   --tdb-pill-bg: color-mix(in srgb, var(--foreground, #000000) 6%, transparent);
   --tdb-popover: var(--popover, #ffffff);
@@ -20,11 +20,6 @@
   --tdb-ramp-2: color-mix(in srgb, var(--foreground, #000000) 26%, transparent);
   --tdb-ramp-3: color-mix(in srgb, var(--foreground, #000000) 60%, transparent);
   --tdb-ramp-4: var(--foreground, #000000);
-
-  /* Comparison (previous year) line. Derived from the theme's --primary so it
-     tracks alternate themes; kept near full strength (unlike the KPI tints)
-     because it is a thin dashed stroke that has to stay readable. */
-  --tdb-compare: color-mix(in srgb, var(--primary, #a0bce8) 70%, var(--tdb-bg));
 
   /* KPI card tints. All four derive from the host theme's --primary so
      alternate themes (neon, retro, cupcake...) recolor the cards
@@ -211,11 +206,10 @@
 
 /* ---------- KPI cards ---------- */
 
-/* auto-fit rather than a fixed count: the tile set is data-driven now, and five
-   KPIs in a hard four-column grid left one stranded on a row of its own. */
+/* Four KPI metrics: 4 columns across when wide, folding to a 2x2 grid when narrower. */
 .tdb-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 24px;
 }
 
@@ -226,7 +220,10 @@
   color: var(--tdb-fg);
 }
 
-/* A clickable KPI is a <button>, so undo the UA styling it arrives with. */
+/* A clickable KPI is a real <button> here rather than a div with role="button",
+   so undo the UA styling it arrives with. The lift, shadow and focus ring below
+   are V1's; only the selector narrows, because a tile with no drill-down behind
+   it is not a control and must not offer a pointer or a focus stop. */
 button.tdb-kpi {
   display: block;
   width: 100%;
@@ -235,15 +232,19 @@ button.tdb-kpi {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: filter 120ms ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
 }
 
 button.tdb-kpi:hover {
-  filter: brightness(1.08);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 button.tdb-kpi:focus-visible {
-  outline: 2px solid var(--primary, #66e0be);
+  outline: 2px solid var(--tdb-focus, var(--tdb-muted));
   outline-offset: 2px;
 }
 
@@ -279,6 +280,13 @@ button.tdb-kpi:focus-visible {
   white-space: nowrap;
 }
 
+.tdb-kpi-subvalue {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
 .tdb-kpi-delta {
   display: flex;
   align-items: center;
@@ -292,9 +300,12 @@ button.tdb-kpi:focus-visible {
   height: 14px;
 }
 
+/* The basis behind a value, muted so it reads as a footnote to the number
+   rather than competing with it. */
 .tdb-kpi-hint {
   margin-top: 8px;
   font-size: 11px;
+  line-height: 15px;
   opacity: 0.7;
 }
 
@@ -303,6 +314,8 @@ button.tdb-kpi:focus-visible {
 .tdb-trend {
   padding: 24px;
   min-height: 330px;
+  display: flex;
+  flex-direction: column;
 }
 
 .tdb-trend-header {
@@ -363,15 +376,20 @@ button.tdb-kpi:focus-visible {
   flex-shrink: 0;
 }
 
-.tdb-legend-dash {
+.tdb-legend-line-avg {
   width: 10px;
   height: 0;
-  border-top: 2px dashed var(--tdb-compare);
+  border-top: 1.5px dashed var(--tdb-muted);
+  opacity: 0.8;
   flex-shrink: 0;
 }
 
 .tdb-trend-chart {
   margin-top: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* ---------- SVG charts (shared) ---------- */
@@ -379,11 +397,16 @@ button.tdb-kpi:focus-visible {
 .tdb-chart-wrap {
   position: relative;
   width: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 236px;
 }
 
 .tdb-chart-wrap svg {
   display: block;
   width: 100%;
+  height: 100%;
   overflow: visible;
 }
 
@@ -401,13 +424,16 @@ button.tdb-kpi:focus-visible {
   stroke-linejoin: round;
 }
 
-.tdb-trend-compare {
+/* Dashed curve for 7-day average to distinguish from solid current usage. */
+.tdb-trend-avg-curve {
   fill: none;
-  stroke: var(--tdb-compare);
-  stroke-width: 1.25;
-  stroke-dasharray: 5 4;
+  stroke: var(--tdb-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
   stroke-linecap: round;
   stroke-linejoin: round;
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 .tdb-chart-tooltip {
@@ -443,6 +469,7 @@ button.tdb-kpi:focus-visible {
   min-height: 280px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .tdb-side-head {
@@ -451,6 +478,16 @@ button.tdb-kpi:focus-visible {
   justify-content: space-between;
   gap: 8px;
   min-height: 24px;
+}
+
+.tdb-side-tabs {
+  gap: 8px;
+}
+
+.tdb-side-tab {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 6px;
 }
 
 .tdb-tunnel {
@@ -469,6 +506,9 @@ button.tdb-kpi:focus-visible {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   min-height: 0;
 }
 
@@ -478,21 +518,27 @@ button.tdb-kpi:focus-visible {
   flex-direction: column;
   justify-content: flex-end;
   margin-top: 16px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   min-height: 0;
 }
 
 /* ---------- Activity grid ---------- */
 
 .tdb-activity-scroll {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-right: 16px;
+  padding-right: 4px;
 }
 
 .tdb-activity {
   display: flex;
   align-items: flex-end;
-  gap: 6px;
+  gap: 5px;
   min-height: 166px;
 }
 
@@ -500,19 +546,20 @@ button.tdb-kpi:focus-visible {
   display: flex;
   flex-direction: column-reverse;
   gap: 8px;
-  flex: 1 0 12px;
-  min-width: 12px;
+  flex: 1 1 0;
+  min-width: 9px;
+  max-width: 22px;
 }
 
 .tdb-activity-cell {
   width: 100%;
-  max-width: 18px;
+  max-width: 22px;
   aspect-ratio: 1;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
 .tdb-activity-cell[data-level="0"] {
-  background: color-mix(in srgb, var(--tdb-fg) 5%, transparent);
+  background: color-mix(in srgb, var(--tdb-fg) 6%, transparent);
 }
 .tdb-activity-cell[data-level="1"] {
   background: var(--tdb-ramp-1);
@@ -529,17 +576,31 @@ button.tdb-kpi:focus-visible {
 
 .tdb-activity-labels {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   margin-top: 16px;
 }
 
 .tdb-activity-label {
-  flex: 1 0 12px;
-  min-width: 12px;
+  flex: 1 1 0;
+  min-width: 9px;
+  max-width: 22px;
   font-size: 12px;
   color: var(--tdb-muted);
   text-align: left;
   white-space: nowrap;
+}
+
+/* The trailing label sits under the right-most column and its text is wider than
+   that column, so the line overflows. text-align cannot pull it back in: an
+   overflowing line is pinned to its inline start edge, which is why the earlier
+   text-align: right (commit 8cb43501) changed nothing and the label stayed
+   clipped (issue #2593). Flipping the inline direction moves that start edge to
+   the right, so the overhang goes left, inside the card. A Latin label keeps its
+   normal glyph order. text-align: right still applies when the label does fit,
+   which is the wide-card case where columns hit their 22px cap. */
+.tdb-activity-label:last-child {
+  direction: rtl;
+  text-align: right;
 }
 
 .tdb-empty-note {
@@ -553,7 +614,7 @@ button.tdb-kpi:focus-visible {
 
 .tdb-bars {
   display: flex;
-  gap: 16px;
+  gap: 10px;
   flex: 1;
   min-height: 0;
 }
@@ -565,14 +626,14 @@ button.tdb-kpi:focus-visible {
   font-size: 12px;
   color: var(--tdb-muted);
   text-align: left;
-  padding-bottom: 26px;
+  padding-bottom: 36px;
 }
 
 .tdb-bars-plot {
   flex: 1;
   display: flex;
   align-items: flex-end;
-  gap: 16px;
+  gap: 8px;
 }
 
 .tdb-bar-item {
@@ -580,9 +641,10 @@ button.tdb-kpi:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   height: 100%;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .tdb-bar-track {
@@ -616,8 +678,17 @@ button.tdb-kpi:focus-visible {
 }
 
 .tdb-bar-label {
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.2;
   color: var(--tdb-muted);
+  text-align: center;
+  white-space: pre-line;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  width: 100%;
+  min-height: 28px;
 }
 
 /* ---------- Active jobs ---------- */
@@ -735,7 +806,7 @@ button.tdb-kpi:focus-visible {
 /* Narrow two-column band: the main column is squeezed, so compact the
    status strip and fold the KPI cards. Below 1080px the grid goes
    single-column and the full-width layouts fit again. */
-@container tdb (min-width: 1080px) and (max-width: 1200px) {
+@container tdb (min-width: 1080px) and (max-width: 1260px) {
   .tdb-status {
     gap: 8px 4px;
   }
@@ -784,5 +855,11 @@ button.tdb-kpi:focus-visible {
 
   .tdb-status-sep {
     display: none;
+  }
+}
+
+@container tdb (max-width: 480px) {
+  .tdb-kpis {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

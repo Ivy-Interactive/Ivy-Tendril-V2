@@ -11,19 +11,39 @@ export interface DashboardKpiDto {
    * Stable identifier passed as the sole argument to `OnSelectKpi`. A KPI without one is not
    * clickable, which is what keeps a purely informational tile from opening an empty drill-down.
    */
-  id?: string;
-  /** Secondary line under the value — typically the basis a figure was computed from. */
-  hint?: string;
+  id?: string | null;
+  /**
+   * A second line under the value, for a figure that is not actionable without its basis (the cost
+   * forecast states the day counts it projected from here). Null on the cards that need none.
+   */
+  hint?: string | null;
+  /** A smaller figure beside the value, on a card whose number needs a second one to read. */
+  subValue?: string | null;
 }
 
 export interface DashboardMonthValueDto {
   label: string;
   value: number;
+  /**
+   * The bucket's calendar position. Optional: a caller that supplies none gets `label` verbatim in
+   * the tooltip and the accessible name, which is what the samples app relies on.
+   */
+  year?: number;
+  month?: number;
+  day?: number;
+  date?: string;
+}
+
+export interface DashboardActivityDayDto {
+  date: string;
+  count: number;
 }
 
 export interface DashboardActivityMonthDto {
   label: string;
   weeks: number[];
+  /** The month's daily breakdown, which is the only thing a week cell's date can be recovered from. */
+  days?: DashboardActivityDayDto[];
 }
 
 export interface DashboardJobDto {
@@ -35,11 +55,13 @@ export interface DashboardJobDto {
 }
 
 export interface DashboardTrendDto {
-  months: string[];
+  /** One `yyyy-MM-dd` per plotted day, ascending and contiguous. Labels are derived from these. */
+  dates: string[];
   cost: number[];
   plans: number[];
-  prevCost: (number | null)[];
-  prevPlans: (number | null)[];
+  /** 7-day trailing mean aligned to `dates`; null where the window reaches past the earliest record. */
+  rollingCost: (number | null)[];
+  rollingPlans: (number | null)[];
 }
 
 export interface TendrilDashboardProps {
@@ -58,7 +80,10 @@ export interface TendrilDashboardProps {
   failedCount?: number;
   kpis?: DashboardKpiDto[];
   trend?: DashboardTrendDto | null;
+  /** The short window, preferred over `trend` when supplied. */
+  trendWeekly?: DashboardTrendDto | null;
   pullRequests?: DashboardMonthValueDto[];
+  pullRequestsWeekly?: DashboardMonthValueDto[];
   activity?: DashboardActivityMonthDto[];
   jobs?: DashboardJobDto[];
   slots?: {
@@ -103,4 +128,74 @@ export const formatCurrencyTick = (value: number): string => {
 export const formatCountTick = (value: number): string => {
   if (value >= 1000) return `${Math.round(value / 1000)}K`;
   return String(Math.round(value));
+};
+
+/** Arithmetic mean of non-empty number arrays, returning null when empty. */
+export const computeAverage = (values: number[]): number | null => {
+  if (!values || values.length === 0) return null;
+  const sum = values.reduce((acc, val) => acc + val, 0);
+  return sum / values.length;
+};
+
+export const ROLLING_WINDOW_DAYS = 7;
+
+/**
+ * Trailing mean of each entry and up to `window - 1` before it, calculating an expanding
+ * average for leading entries with fewer days than `window`. Only a fallback: the host sends
+ * a rolling series that also sees the days before the displayed range, and this one cannot.
+ */
+export const computeRollingAverage = (
+  values: number[],
+  window = ROLLING_WINDOW_DAYS,
+): (number | null)[] =>
+  values.map((_, index) =>
+    index < window - 1
+      ? values.slice(0, index + 1).reduce((acc, v) => acc + v, 0) / (index + 1)
+      : values.slice(index - window + 1, index + 1).reduce((acc, value) => acc + value, 0) / window,
+  );
+
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * Splits `yyyy-MM-dd` by hand rather than through `new Date(iso)`: the string form parses as UTC
+ * midnight and reports the previous day in every negative-offset time zone.
+ */
+const parseIsoDate = (iso: string): { year: number; month: number; day: number } | null => {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!parts) return null;
+  const month = Number(parts[2]);
+  if (month < 1 || month > 12) return null;
+  return { year: Number(parts[1]), month, day: Number(parts[3]) };
+};
+
+/** Axis tick for a day: "Sep 7", or "Sep 7 '25" when the year has to be spelled out. */
+export const formatAxisDate = (iso: string, includeYear = false): string => {
+  const parsed = parseIsoDate(iso);
+  if (!parsed) return iso;
+  const base = `${MONTH_NAMES[parsed.month - 1]} ${parsed.day}`;
+  return includeYear ? `${base} '${String(parsed.year).slice(-2)}` : base;
+};
+
+/** Tooltip title for a day: "Sun, Sep 7, 2026". */
+export const formatTooltipDate = (iso: string): string => {
+  const parsed = parseIsoDate(iso);
+  if (!parsed) return iso;
+  // Local Date constructor, for the weekday only; the parts above are already parsed.
+  const weekday = DAY_NAMES[new Date(parsed.year, parsed.month - 1, parsed.day).getDay()];
+  return `${weekday}, ${MONTH_NAMES[parsed.month - 1]} ${parsed.day}, ${parsed.year}`;
 };
