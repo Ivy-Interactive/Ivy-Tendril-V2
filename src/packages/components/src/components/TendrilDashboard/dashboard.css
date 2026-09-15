@@ -211,9 +211,11 @@
 
 /* ---------- KPI cards ---------- */
 
+/* auto-fit rather than a fixed count: the tile set is data-driven now, and five
+   KPIs in a hard four-column grid left one stranded on a row of its own. */
 .tdb-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 24px;
 }
 
@@ -222,6 +224,27 @@
   padding: 22px 24px;
   min-height: 110px;
   color: var(--tdb-fg);
+}
+
+/* A clickable KPI is a <button>, so undo the UA styling it arrives with. */
+button.tdb-kpi {
+  display: block;
+  width: 100%;
+  border: none;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+
+button.tdb-kpi:hover {
+  filter: brightness(1.08);
+}
+
+button.tdb-kpi:focus-visible {
+  outline: 2px solid var(--primary, #66e0be);
+  outline-offset: 2px;
 }
 
 .tdb-kpi[data-tone="0"] {
@@ -267,6 +290,12 @@
 .tdb-kpi-delta svg {
   width: 14px;
   height: 14px;
+}
+
+.tdb-kpi-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 /* ---------- Trend chart block ---------- */

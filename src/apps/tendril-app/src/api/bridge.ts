@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentCostBreakdown,
   CreateProjectRequest,
+  DashboardActivity,
   DiscoveredVaultRepo,
   DoctorCheck,
   DraftComment,
@@ -18,6 +20,8 @@ import type {
   PrSyncReport,
   ProjectAssets,
   ProjectSummary,
+  RecentMergedPr,
+  RecentPlanCost,
   RecommendationItem,
   RecommendationState,
   RepoStatus,
@@ -25,6 +29,7 @@ import type {
   RevisionResult,
   ServiceHealth,
   ServiceInfo,
+  ShippedFeatureDay,
   StartJobArgs,
   StartJobResponse,
   SubscribeOutcome,
@@ -361,6 +366,30 @@ export const bridge = {
 
   async loadUiState(this: void, key: string): Promise<string | null> {
     return invoke<string | null>("cmd_load_ui_state", { key });
+  },
+
+  /**
+   * Monthly rollups, the daily series and the month's projection in one call. The projection is
+   * computed by the daemon, not here, so there is exactly one implementation of it.
+   */
+  async getDashboardActivity(this: void, months?: number): Promise<DashboardActivity> {
+    return invoke<DashboardActivity>("cmd_get_dashboard_activity", { months });
+  },
+
+  async getShippedFeatures(this: void, days?: number): Promise<ShippedFeatureDay[]> {
+    return invoke<ShippedFeatureDay[]>("cmd_get_shipped_features", { days });
+  },
+
+  async getRecentMergedPrs(this: void, limit?: number): Promise<RecentMergedPr[]> {
+    return invoke<RecentMergedPr[]>("cmd_get_recent_merged_prs", { limit });
+  },
+
+  async getRecentPlanCosts(this: void, days?: number): Promise<RecentPlanCost[]> {
+    return invoke<RecentPlanCost[]>("cmd_get_recent_plan_costs", { days });
+  },
+
+  async getAgentCostBreakdown(this: void, days?: number): Promise<AgentCostBreakdown[]> {
+    return invoke<AgentCostBreakdown[]>("cmd_get_agent_cost_breakdown", { days });
   },
 
   /* --- Team Vault ------------------------------------------------------------------------------
