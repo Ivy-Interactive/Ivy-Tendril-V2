@@ -36,6 +36,10 @@ export {
   type UseResizableSidebarReturn,
 } from "./hooks/use-resizable-sidebar";
 
+export { useShortcut } from "./lib/useShortcut";
+export { getRegisteredShortcuts, type ShortcutInfo } from "./lib/shortcutRegistry";
+export { useFocusable, useFocusManagement, type FocusManager } from "./hooks/use-focus-management";
+
 // Agent & Execution Visualizers
 export {
   AgentViewer,
