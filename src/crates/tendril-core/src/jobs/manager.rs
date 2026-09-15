@@ -1,4 +1,6 @@
-use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
+use crate::agents::providers::{
+    apply_security_settings, build_agent_spec, AgentLaunchConfig, AgentProcessSpec,
+};
 use crate::agents::reconcile::build_missing_result_lines;
 use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
@@ -1782,13 +1784,18 @@ fn spawn_runner(
             }
         }
 
-        let launch_config = AgentLaunchConfig {
+        let security = find_project(&settings, &resolve_project(&job, &settings))
+            .map(|p| p.security.clone())
+            .unwrap_or_default();
+
+        let mut launch_config = AgentLaunchConfig {
             prompt: compiled_prompt,
             working_directory: working_dir.clone(),
             model: job.model.clone(),
             effort: job.effort.clone(),
             ..Default::default()
         };
+        apply_security_settings(&mut launch_config, &security);
 
         let spec = (spec_builder)(&job.provider, &launch_config);
         job.working_directory = Some(working_dir.to_string_lossy().to_string());
