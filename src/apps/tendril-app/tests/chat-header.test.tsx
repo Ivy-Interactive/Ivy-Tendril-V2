@@ -27,7 +27,6 @@ const systemMessage = (id: string, content: string): ChatMessage => ({
 
 const headerProps = {
   title: "Planning",
-  isGenerating: false,
   autoScrollEnabled: true,
   onToggleAutoScroll: () => {},
 };
@@ -99,15 +98,55 @@ describe("ChatHeader", () => {
     window.HTMLElement.prototype.scrollIntoView = vi.fn();
   });
 
-  it("omits the message count until there is a session", () => {
-    const { rerender } = render(<ChatHeader {...headerProps} title="No Active Chat" />);
+  it("shows the chat's name as the only thing in the title area", () => {
+    render(<ChatHeader {...headerProps} />);
+
+    expect(screen.getByRole("heading", { name: "Planning" })).toBeInTheDocument();
+    // No message count and no streaming pill: V1's header carries the name and nothing else.
     expect(screen.queryByText(/message/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Streaming/)).not.toBeInTheDocument();
+  });
 
-    rerender(<ChatHeader {...headerProps} messageCount={1} />);
-    expect(screen.getByText("1 message")).toBeInTheDocument();
+  it("keeps the options menu out of the header until a session is selected", () => {
+    const { rerender } = render(<ChatHeader {...headerProps} />);
+    expect(screen.queryByRole("button", { name: /Chat options/i })).not.toBeInTheDocument();
 
-    rerender(<ChatHeader {...headerProps} messageCount={4} />);
-    expect(screen.getByText("4 messages")).toBeInTheDocument();
+    rerender(<ChatHeader {...headerProps} editable />);
+    expect(screen.getByRole("button", { name: /Chat options/i })).toBeInTheDocument();
+  });
+
+  it("renames the chat inline from the options menu", () => {
+    const onRename = vi.fn();
+    render(<ChatHeader {...headerProps} editable onRename={onRename} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Chat options/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Edit name/i }));
+
+    const input = screen.getByRole("textbox", { name: /Chat name/i });
+    fireEvent.change(input, { target: { value: "Dark mode toggle" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onRename).toHaveBeenCalledWith("Dark mode toggle");
+  });
+
+  it("offers Delete chat from the options menu and closes it on use", () => {
+    const onDelete = vi.fn();
+    render(<ChatHeader {...headerProps} editable onDelete={onDelete} />);
+
+    expect(screen.queryByRole("menuitem", { name: /Delete chat/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Chat options/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete chat/i }));
+
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menuitem", { name: /Delete chat/i })).not.toBeInTheDocument();
+  });
+
+  it("starts a new chat from the header button", () => {
+    const onNewChat = vi.fn();
+    render(<ChatHeader {...headerProps} onNewChat={onNewChat} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /New chat/i }));
+    expect(onNewChat).toHaveBeenCalledTimes(1);
   });
 
   it("hides the jobs pill until the conversation has started one", () => {
@@ -135,7 +174,7 @@ describe("ChatHeader", () => {
 
     fireEvent.click(screen.getByTestId("chat-jobs-badge"));
     const list = await waitFor(() => screen.getByRole("dialog"), POPOVER_TIMEOUT);
-    expect(within(list).getByText("Spawned jobs (1)")).toBeInTheDocument();
+    expect(within(list).getByText("Spawned Jobs (1)")).toBeInTheDocument();
 
     fireEvent.click(within(list).getByTitle("Open plan"));
     expect(onOpenPlan).toHaveBeenCalledWith("00059");
@@ -172,30 +211,20 @@ describe("ChatHeader", () => {
     );
   });
 
-  it("renders the agent picker slot and the auto-scroll state", () => {
+  it("reports the auto-scroll lock state", () => {
     const onToggleAutoScroll = vi.fn();
     render(
       <ChatHeader
         {...headerProps}
         autoScrollEnabled={false}
         onToggleAutoScroll={onToggleAutoScroll}
-        agentPicker={<button type="button">Agent slot</button>}
       />,
     );
 
-    expect(screen.getByText("Agent slot")).toBeInTheDocument();
     const toggle = screen.getByTestId("chat-autoscroll-toggle");
     expect(toggle).toHaveTextContent("Auto-scroll: OFF");
     fireEvent.click(toggle);
     expect(onToggleAutoScroll).toHaveBeenCalledTimes(1);
-  });
-
-  it("shows the streaming indicator only while generating", () => {
-    const { rerender } = render(<ChatHeader {...headerProps} />);
-    expect(screen.queryByText("Streaming...")).not.toBeInTheDocument();
-
-    rerender(<ChatHeader {...headerProps} isGenerating />);
-    expect(screen.getByText("Streaming...")).toBeInTheDocument();
   });
 });
 

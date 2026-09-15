@@ -46,8 +46,9 @@ describe("ChatView queued prompt editing", () => {
 
     render(<ChatView />);
 
-    const drawer = await screen.findByText(/Queued Prompts \(2\)/);
-    fireEvent.click(drawer);
+    // The queued panel opens with the queue: a prompt that will be sent for you is worth reading
+    // without a click.
+    await screen.findByText("Queued Messages");
     await waitFor(() => {
       expect(screen.getAllByTestId("queued-item")).toHaveLength(2);
     });

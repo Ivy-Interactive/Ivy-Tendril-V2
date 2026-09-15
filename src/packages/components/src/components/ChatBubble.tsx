@@ -10,12 +10,18 @@ export interface ChatBubbleProps {
   children: React.ReactNode;
 }
 
+/**
+ * One row of the thread. A sent message is pushed to the trailing edge and keeps its bubble
+ * shape; a received one starts at the leading edge and is free to take the whole row, because an
+ * agent turn carries structured content (code blocks, tables, question blocks) that a bubble would
+ * squeeze. Vertical rhythm belongs to the thread's own gap, not to the row.
+ */
 export function ChatBubble({ variant = "received", className, children }: ChatBubbleProps) {
   return (
     <div
       className={cn(
-        "flex items-start gap-2 mb-4",
-        variant === "sent" && "flex-row-reverse",
+        "group flex w-full min-w-0",
+        variant === "sent" ? "flex-row-reverse" : "justify-start",
         className,
       )}
     >
@@ -28,20 +34,31 @@ export interface ChatBubbleMessageProps {
   variant?: "sent" | "received";
   isLoading?: boolean;
   className?: string;
+  /** Hover text for the bubble, e.g. the message's timestamp. */
+  title?: string;
   children?: React.ReactNode;
 }
 
+/**
+ * The message body. Sent: a primary-filled bubble, squared off at the corner nearest the sender,
+ * never wider than four fifths of the row. Received: no surface at all, so the agent's prose sits
+ * on the page like a document.
+ */
 export function ChatBubbleMessage({
   variant = "received",
   isLoading,
   className,
+  title,
   children,
 }: ChatBubbleMessageProps) {
   return (
     <div
+      title={title}
       className={cn(
-        "rounded-box p-3 text-large-body",
-        variant === "sent" ? "bg-primary text-primary-foreground" : "bg-muted",
+        "text-large-body",
+        variant === "sent"
+          ? "flex max-w-[80%] flex-col items-end gap-2.5 rounded-2xl rounded-tr-none bg-primary p-4 text-primary-foreground wrap-anywhere"
+          : "w-full min-w-0 max-w-full leading-relaxed text-foreground",
         className,
       )}
     >
@@ -81,8 +98,21 @@ export interface ChatBubbleActionWrapperProps {
   children: React.ReactNode;
 }
 
+/**
+ * The row's trailing meta line: small, muted and out of the way until the row is hovered or
+ * focused, so a long thread reads as content rather than as rows of buttons.
+ */
 export function ChatBubbleActionWrapper({ className, children }: ChatBubbleActionWrapperProps) {
-  return <div className={cn("flex items-center gap-1 mt-2", className)}>{children}</div>;
+  return (
+    <div
+      className={cn(
+        "mt-1 flex items-center gap-2.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 export default ChatBubble;
