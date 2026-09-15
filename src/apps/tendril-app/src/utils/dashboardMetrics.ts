@@ -148,7 +148,10 @@ export function buildActivityMonths(
   const plotted = activity.months.slice(-TREND_MONTHS);
   const buckets = new Map<string, number[]>();
   for (const month of plotted) {
-    buckets.set(monthKey(month.year, month.month), new Array<number>(ACTIVITY_WEEKS).fill(0));
+    buckets.set(
+      monthKey(month.year, month.month),
+      Array.from({ length: ACTIVITY_WEEKS }, () => 0),
+    );
   }
 
   for (const day of activity.dailyPlans) {

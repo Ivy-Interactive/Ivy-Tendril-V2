@@ -390,6 +390,8 @@ export const bridge = {
 
   async getAgentCostBreakdown(this: void, days?: number): Promise<AgentCostBreakdown[]> {
     return invoke<AgentCostBreakdown[]>("cmd_get_agent_cost_breakdown", { days });
+  },
+
   /* --- Team Vault ------------------------------------------------------------------------------
      These wrappers are the only place that knows command names and route shapes: the vault
      components take plain data and callbacks. `vaultId` is optional everywhere — omitting it means
