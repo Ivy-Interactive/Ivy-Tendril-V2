@@ -1,13 +1,33 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type { DoctorCheck, DoctorCheckStatus } from "../../types/api";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
-/** Tailwind classes per check status, shared with {@link CodingAgentStep}'s annotations. */
+/**
+ * This module owns two things V1 keeps in two different places:
+ *
+ * - {@link DataStorageStep}, which is V1's `TendrilHomeStepView` (the wizard's second step,
+ *   "Data Storage").
+ * - The prerequisite check rows, which V1 runs *inside* its coding-agent step
+ *   (`CodingAgentStepView.RunFlowAsync` + `InstallMissingDialog`), so {@link CodingAgentStep}
+ *   renders {@link PrerequisiteChecks} rather than the wizard giving them a step of their own.
+ */
+
+/**
+ * Tailwind classes per check status.
+ *
+ * V1 never paints a passing check. `CodingAgentStepView.RunFlowAsync` shows "Checking Git..."
+ * while a probe runs, says nothing at all when it succeeds, and only speaks up - through
+ * `InstallMissingDialog` - when something is missing. `Ok` is therefore deliberately neutral
+ * here: a green pass badge would invent an emphasis V1 does not have, and with `--primary` now
+ * Ivy green it would also read as the wizard's primary action colour. Warn and Fail carry the
+ * semantic warning/destructive tokens.
+ */
 export const CHECK_STATUS_CLASSES: Record<DoctorCheckStatus, string> = {
-  Ok: "border-green-500/40 bg-green-500/10 text-green-500",
-  Warn: "border-yellow-500/40 bg-yellow-500/10 text-yellow-500",
+  Ok: "border-border bg-muted text-muted-foreground",
+  Warn: "border-warning/40 bg-warning/10 text-warning",
   Fail: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
+/** The bracketed tag doctor prints; mirrors `CheckStatus::tag()` in `tendril-core`. */
 const STATUS_LABELS: Record<DoctorCheckStatus, string> = {
   Ok: "OK",
   Warn: "WARN",
@@ -24,52 +44,52 @@ export function CheckBadge({ status }: { status: DoctorCheckStatus }) {
   );
 }
 
-export interface PrerequisitesStepProps {
+/**
+ * The checks that stop the wizard, matching V1's gate: `CodingAgentStepView` will not advance the
+ * stepper while a required `SoftwareCheck` fails - it reopens `InstallMissingDialog` instead. The
+ * registry's own `required` flag decides, per its contract in `tendril-core::health`: "`false`
+ * means Tendril still works without it - the wizard must not block on those."
+ */
+export function blockingChecks(checks: DoctorCheck[]): DoctorCheck[] {
+  return checks.filter((check) => check.required && check.status === "Fail");
+}
+
+export interface PrerequisiteChecksProps {
+  /** Already narrowed by the caller to the rows that step is responsible for. */
   checks: DoctorCheck[];
   loading: boolean;
   error: string | null;
   onRecheck: () => void;
-  /** Where this install keeps its config, plans and database — read-only here. */
-  tendrilHome: string;
 }
 
 /**
- * The same probes `tendril doctor` prints, from the one registry in `tendril-core`.
- *
- * Nothing on this step can block Continue: an absent `gh` or a coding agent the operator does not
- * use is reported, not enforced. Only the operator decides when to move on.
+ * The machine prerequisites, from the one registry in `tendril-core` that `tendril doctor` also
+ * prints. V1 probes these one at a time behind a progress bar and blocks on a missing required
+ * tool with a dialog whose two buttons are Install ("open the install page") and OK ("once you've
+ * installed it"); the list form keeps both affordances - Install per row, Re-check for the whole
+ * set - because V2's registry reports every probe in one call instead of sequentially.
  */
-export function PrerequisitesStep({
-  checks,
-  loading,
-  error,
-  onRecheck,
-  tendrilHome,
-}: PrerequisitesStepProps) {
+export function PrerequisiteChecks({ checks, loading, error, onRecheck }: PrerequisiteChecksProps) {
   const openInstall = (url: string) => {
     void openUrl(url).catch(() => {});
   };
 
-  return (
-    <div className="space-y-4" data-testid="onboarding-step-prerequisites">
-      <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs">
-        <div className="text-muted-foreground">Tendril Home</div>
-        <div className="mt-0.5 font-mono text-foreground" data-testid="onboarding-tendril-home">
-          {tendrilHome || "(not resolved)"}
-        </div>
-      </div>
+  const blocking = blockingChecks(checks);
 
-      <div className="flex items-center justify-between">
+  return (
+    <div className="space-y-3" data-testid="onboarding-prerequisites">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Checking the tools Tendril launches. Warnings are informational — you can continue with
-          any of them unresolved.
+          {blocking.length > 0
+            ? `Tendril needs ${blocking.map((check) => check.name).join(", ")} but it isn't installed. Install it, then press Re-check.`
+            : "The tools Tendril launches on your machine."}
         </p>
         <button
           type="button"
           onClick={onRecheck}
           disabled={loading}
           data-testid="onboarding-recheck"
-          className="ml-3 shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+          className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
         >
           {loading ? "Checking…" : "Re-check"}
         </button>
@@ -89,36 +109,91 @@ export function PrerequisitesStep({
         <p className="text-xs text-muted-foreground">No checks reported.</p>
       )}
 
-      <ul className="divide-y divide-border rounded-lg border border-border">
-        {checks.map((check) => (
-          <li
-            key={`${check.category}-${check.name}`}
-            data-testid={`onboarding-check-${check.name}`}
-            className="flex items-start gap-3 p-3"
-          >
-            <CheckBadge status={check.status} />
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-foreground">
-                {check.name}
-                {check.required && (
-                  <span className="ml-2 text-[10px] uppercase text-muted-foreground">required</span>
-                )}
+      {checks.length > 0 && (
+        <ul className="divide-y divide-border rounded-lg border border-border">
+          {checks.map((check) => (
+            <li
+              key={`${check.category}-${check.name}`}
+              data-testid={`onboarding-check-${check.name}`}
+              className="flex items-start gap-3 p-3"
+            >
+              <CheckBadge status={check.status} />
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-medium text-foreground">
+                  {check.name}
+                  {check.required && (
+                    <span className="ml-2 text-[10px] uppercase text-muted-foreground">
+                      required
+                    </span>
+                  )}
+                </div>
+                <div className="break-words text-xs text-muted-foreground">{check.message}</div>
               </div>
-              <div className="break-words text-xs text-muted-foreground">{check.message}</div>
-            </div>
-            {check.status !== "Ok" && check.installUrl && (
-              <button
-                type="button"
-                onClick={() => openInstall(check.installUrl as string)}
-                data-testid={`onboarding-install-${check.name}`}
-                className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted"
-              >
-                Install
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
+              {check.status !== "Ok" && check.installUrl && (
+                <button
+                  type="button"
+                  onClick={() => openInstall(check.installUrl as string)}
+                  data-testid={`onboarding-install-${check.name}`}
+                  className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted"
+                >
+                  Install
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export interface DataStorageStepProps {
+  /** Where this install keeps its config, plans and database. */
+  tendrilHome: string;
+}
+
+/**
+ * V1's `TendrilHomeStepView`: one question, one field, and Next gated on the path being non-empty
+ * (the wizard owns that gate, exactly as V1's `.Disabled(...)` does).
+ *
+ * The field is read-only here, which is the one deliberate difference: V1 can bootstrap a new home
+ * because the app *is* the process that reads it, while V2's daemon resolves `TENDRIL_HOME` at
+ * startup and `PUT /api/config` writes keys *inside* config.yaml, not the directory that holds it.
+ */
+export function DataStorageStep({ tendrilHome }: DataStorageStepProps) {
+  return (
+    <div className="space-y-4" data-testid="onboarding-step-data-storage">
+      <h3 className="text-base font-semibold text-foreground">Where should we store your data?</h3>
+      <p className="text-sm text-muted-foreground">
+        Tendril keeps your config and plans in this folder.
+      </p>
+
+      <div className="space-y-1">
+        <label
+          className="block text-xs font-medium text-foreground"
+          htmlFor="onboarding-tendril-home-input"
+        >
+          Tendril Home <span className="text-destructive">*</span>
+        </label>
+        <input
+          id="onboarding-tendril-home-input"
+          type="text"
+          readOnly
+          value={tendrilHome}
+          data-testid="onboarding-tendril-home"
+          className="w-full rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm text-foreground"
+        />
+        {tendrilHome ? (
+          <p className="text-xs text-muted-foreground">
+            The running daemon resolved this folder. Set{" "}
+            <code className="font-mono">TENDRIL_HOME</code> before starting Tendril to move it.
+          </p>
+        ) : (
+          <p className="text-xs text-destructive" data-testid="onboarding-tendril-home-error">
+            Please provide a valid path.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
