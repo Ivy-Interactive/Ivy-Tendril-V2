@@ -8,7 +8,6 @@ import {
   type ShellNavItemDto,
   type ShellTabDto,
 } from "@ivy-interactive/components/tendril";
-import "@ivy-interactive/components/style.css";
 import type { ServiceInfo, VersionInfo } from "../types/api";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceStatusBanner } from "../components/service";
