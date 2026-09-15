@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod event_buffer;
 pub mod master;
 pub mod pr_sync;
 pub mod pty;
