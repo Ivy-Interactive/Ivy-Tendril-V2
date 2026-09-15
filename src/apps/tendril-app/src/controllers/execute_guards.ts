@@ -8,7 +8,7 @@ export interface ExecuteGuard {
   kind: ExecuteGuardKind;
   /** UnansweredQuestions: the questions still missing an answer. */
   questions?: PlanQuestion[];
-  /** PendingAnnotations: how many answers/notes are not yet folded into the plan. */
+  /** PendingAnnotations: unresolved annotations plus answers not yet folded into the plan. */
   annotationCount?: number;
   /** DirtyRepo: repos reporting uncommitted changes. */
   dirtyRepos?: RepoStatus[];
@@ -19,8 +19,8 @@ export interface CollectExecuteGuardsInput {
   /** From `bridge.getRepoStatus`. Absent means "not known", which never blocks. */
   repoStatus?: RepoStatus[];
   /**
-   * Overrides the derived count. The prop exists so a real annotation store can
-   * feed this later without touching the dialog.
+   * Unresolved annotations from the store, via `bridge.listAnnotations`. Absent
+   * means "not known", which contributes nothing rather than blocking.
    */
   annotationCount?: number;
 }
@@ -44,13 +44,15 @@ export function unansweredQuestions(plan: PlanDetail): PlanQuestion[] {
 }
 
 /**
- * Answers written into the plan but not yet folded into its body by UpdatePlan.
+ * Answers written into the plan but not yet folded into its body by UpdatePlan:
+ * an answered question on a plan still sitting at its first revision, where the
+ * answer exists but no UpdatePlan run has incorporated it.
  *
- * V2 has no annotation store, so the nearest signal is an answered question on a
- * plan still sitting at its first revision: the answer exists, but no UpdatePlan
- * run has incorporated it.
+ * The *second* term of the PendingAnnotations count, alongside unresolved
+ * annotations from the store. Both are cleared by the same UpdatePlan run, which
+ * is why they add up rather than compete.
  */
-export function pendingAnnotationCount(plan: PlanDetail): number {
+export function unfoldedAnswerCount(plan: PlanDetail): number {
   if (plan.state !== "Draft" || plan.revisionCount !== 1) return 0;
   try {
     return extractPlanQuestions(plan.latestRevisionContent ?? "").filter((q) => q.answerPresent)
@@ -64,7 +66,8 @@ export function pendingAnnotationCount(plan: PlanDetail): number {
  * The guards standing between an Execute click and job dispatch, in the order
  * they must be shown: **PendingAnnotations → UnansweredQuestions → DirtyRepo**.
  *
- * Cheapest fix first. Unincorporated answers just need an UpdatePlan run;
+ * Cheapest fix first. Annotations and unincorporated answers just need an
+ * UpdatePlan run;
  * unanswered questions need someone to decide; a dirty repo is the one most
  * likely to be a deliberate "yes, I know", so it asks last, closest to dispatch.
  *
@@ -74,7 +77,8 @@ export function collectExecuteGuards(input: CollectExecuteGuardsInput): ExecuteG
   const { plan, repoStatus, annotationCount } = input;
   const guards: ExecuteGuard[] = [];
 
-  const annotations = annotationCount ?? pendingAnnotationCount(plan);
+  // Both terms, matching upstream's `activeAnnotationCount + answeredQuestions`.
+  const annotations = (annotationCount ?? 0) + unfoldedAnswerCount(plan);
   if (annotations > 0) {
     guards.push({ kind: "PendingAnnotations", annotationCount: annotations });
   }

@@ -83,6 +83,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(plans::delete_diff_comments_handler),
         )
         .route(
+            "/api/plans/:id/annotations",
+            get(plans::list_annotations_handler)
+                .post(plans::upsert_annotation_handler)
+                .put(plans::replace_annotations_handler)
+                .delete(plans::delete_annotations_handler),
+        )
+        .route(
             "/api/plans/:id/recommendations",
             get(plans::list_recommendations_handler).post(plans::add_recommendation_handler),
         )

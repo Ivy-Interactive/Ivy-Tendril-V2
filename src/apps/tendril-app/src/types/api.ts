@@ -354,6 +354,24 @@ export interface DraftComment {
   isResolved?: boolean;
 }
 
+/**
+ * One draft annotation on a plan's revision markdown, mirroring `AnnotationDto` in
+ * `src-tauri/src/models.rs`.
+ *
+ * `startOffset`/`endOffset` are character offsets into the revision text and `selectedText` is what
+ * they covered when the annotation was made, so a stale annotation can be recognised as stale
+ * rather than silently re-anchored. Unlike a `DraftComment` these are keyed on `id` alone.
+ */
+export interface Annotation {
+  id: string;
+  startOffset: number;
+  endOffset: number;
+  selectedText: string;
+  comment: string;
+  author?: string;
+  isResolved?: boolean;
+}
+
 export type RecommendationState = "Pending" | "Accepted" | "AcceptedWithNotes" | "Declined";
 
 export interface RecommendationItem {
