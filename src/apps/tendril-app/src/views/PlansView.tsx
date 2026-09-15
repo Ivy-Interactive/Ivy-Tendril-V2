@@ -1,15 +1,24 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
+import { Plus, SearchX } from "lucide-react";
 import {
   BadgeSelect,
+  getPlatformShortcut,
   useFocusManagement,
   useFocusable,
   useShortcut,
   type BadgeSelectOption,
 } from "@ivy-interactive/components/tendril";
-import type { PlanSummary } from "../types/api";
+import type { PlanSummary, PlanVerification, VerificationStatus } from "../types/api";
 import { EmptyState } from "../components/EmptyState";
 
 const PLANS_FOCUS_GROUP = "plans-list";
+
+/**
+ * The New Plan shortcut, bound and labelled as V1 binds and labels it
+ * (`NewPlanButton.ShortcutKey("CTRL+ALT+N")` / `NewPlanButton.GetTooltip`). `Ctrl` maps to
+ * Command on macOS in both frameworks, so the one string covers both platforms.
+ */
+const NEW_PLAN_SHORTCUT = "Ctrl+Alt+N";
 
 interface PlansViewProps {
   plans: PlanSummary[];
@@ -17,18 +26,83 @@ interface PlansViewProps {
   onNewPlan?: () => void;
 }
 
+/**
+ * The lifecycle states, in `PlanStatus` declaration order (V1
+ * `src/Ivy.Tendril/Models/PlanModels.cs`). The filter reads as the lifecycle it
+ * describes rather than as an arbitrary list.
+ */
 const LIFECYCLE_OPTIONS: BadgeSelectOption[] = [
   { value: "Draft", label: "Draft" },
   { value: "Creating", label: "Creating" },
   { value: "Updating", label: "Updating" },
   { value: "Executing", label: "Executing" },
-  { value: "Review", label: "Review" },
-  { value: "Failed", label: "Failed" },
   { value: "Completed", label: "Completed" },
+  { value: "Failed", label: "Failed" },
+  { value: "Review", label: "Review" },
   { value: "Skipped", label: "Skipped" },
-  { value: "Blocked", label: "Blocked" },
   { value: "Icebox", label: "Icebox" },
+  { value: "Blocked", label: "Blocked" },
 ];
+
+/**
+ * Plan state to badge classes, mirroring `Constants.PlanStatusBadgeVariants` in V1
+ * (`src/Ivy.Tendril/Constants.cs`): the three in-flight states are Info, Review and
+ * Completed are Success, Failed is Destructive, Blocked is Warning, and the three
+ * resting states (Draft, Skipped, Icebox) are the neutral Outline.
+ *
+ * Semantic tokens only. `--primary` is Ivy green, so a state badge must never reach
+ * for it: green here would read as "succeeded" on a plan that has not run.
+ */
+export const PLAN_STATE_BADGE_CLASS: Record<string, string> = {
+  Creating: "border-info/40 bg-info/10 text-info",
+  Updating: "border-info/40 bg-info/10 text-info",
+  Executing: "border-info/40 bg-info/10 text-info",
+  Review: "border-success/40 bg-success/10 text-success",
+  Completed: "border-success/40 bg-success/10 text-success",
+  Failed: "border-destructive/40 bg-destructive/10 text-destructive",
+  Blocked: "border-warning/40 bg-warning/10 text-warning",
+  Draft: "border-border bg-transparent text-muted-foreground",
+  Skipped: "border-border bg-transparent text-muted-foreground",
+  Icebox: "border-border bg-transparent text-muted-foreground",
+};
+
+export const planStateBadgeClass = (state: string): string =>
+  PLAN_STATE_BADGE_CLASS[state] ?? "border-border bg-transparent text-muted-foreground";
+
+/**
+ * Verification status to dot colour, from `Constants.VerificationStatusBadgeVariants`
+ * (V1 `src/Ivy.Tendril/Constants.cs`): Pass is Success, Fail is Destructive, and both
+ * Pending and Skipped are Outline. Pending is not a warning - a verification that has
+ * not run yet is news about nothing.
+ */
+const VERIFICATION_DOT_CLASS: Record<VerificationStatus, string> = {
+  Pass: "bg-success",
+  Fail: "bg-destructive",
+  Pending: "bg-muted-foreground/50",
+  Skipped: "bg-muted-foreground/50",
+};
+
+/**
+ * `#21`, not `#00021`: V1 tags a row with `$"#{plan.Id}"` (`PlansApp.BuildSidebarList`)
+ * where `Id` is the integer, so the zero padding of the folder name never reaches the UI.
+ */
+export const formatPlanId = (id: string): string => {
+  const trimmed = id.replace(/^0+(?=\d)/, "");
+  return `#${trimmed || id}`;
+};
+
+/** `ProjectHelper.ParseProjects`: a plan's project field can name several, comma separated. */
+export const parseProjects = (project: string | undefined): string[] =>
+  (project ?? "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+/** The plan id as a number, for ordering. Non-numeric ids sort last. */
+const planIdOrder = (id: string): number => {
+  const parsed = Number.parseInt(id, 10);
+  return Number.isNaN(parsed) ? -1 : parsed;
+};
 
 /**
  * One plan row. Registering with the focus group by index is what lets the arrow keys move real DOM
@@ -47,16 +121,59 @@ const PlanRow: React.FC<{
       role="listitem"
       tabIndex={0}
       onClick={onSelect}
-      className={`cursor-pointer rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
+      className={`cursor-pointer rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
         highlighted
-          ? "border-ring bg-card shadow-md ring-1 ring-ring"
-          : "border-border bg-card/60 hover:border-ring hover:bg-card"
+          ? "border-primary bg-card shadow-md ring-1 ring-primary"
+          : "border-border bg-card/60 hover:border-primary hover:bg-card"
       }`}
     >
       {children}
     </div>
   );
 };
+
+/** The badges a row carries, in `PlansApp.BuildRowBadges` order. */
+const PlanRowBadges: React.FC<{ plan: PlanSummary }> = ({ plan }) => (
+  <>
+    {/* Draft carries no state badge: it is where every plan starts, so saying so is not news. */}
+    {plan.state !== "Draft" && (
+      <span
+        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${planStateBadgeClass(
+          plan.state,
+        )}`}
+      >
+        {plan.state}
+      </span>
+    )}
+    {parseProjects(plan.project).map((project) => (
+      <span
+        key={project}
+        className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground"
+      >
+        {project}
+      </span>
+    ))}
+    {plan.level && (
+      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+        {plan.level}
+      </span>
+    )}
+  </>
+);
+
+const VerificationDots: React.FC<{ verifications: PlanVerification[] }> = ({ verifications }) => (
+  <div className="flex shrink-0 space-x-1">
+    {verifications.map((v) => (
+      <span
+        key={v.name}
+        title={`${v.name}: ${v.status}`}
+        className={`h-2 w-2 rounded-full ${
+          VERIFICATION_DOT_CLASS[v.status] ?? VERIFICATION_DOT_CLASS.Pending
+        }`}
+      />
+    ))}
+  </div>
+);
 
 export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNewPlan }) => {
   const [search, setSearch] = useState("");
@@ -71,8 +188,13 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
     description: "Focus search bar in plans explorer",
   });
 
+  useShortcut("plans:new-plan", NEW_PLAN_SHORTCUT, () => onNewPlan?.(), {
+    description: "New Plan",
+    disabled: !onNewPlan,
+  });
+
   const filteredPlans = useMemo(() => {
-    return plans.filter((p) => {
+    const matching = plans.filter((p) => {
       if (selectedStates.length > 0 && !selectedStates.includes(p.state)) {
         return false;
       }
@@ -86,6 +208,9 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
       }
       return true;
     });
+    // `PlansApp.Build`: `.OrderByDescending(p => p.Id)`. Newest plan first, and stable
+    // regardless of the order the service happened to hand them over in.
+    return matching.sort((a, b) => planIdOrder(b.id) - planIdOrder(a.id));
   }, [plans, selectedStates, search]);
 
   // Arrow key navigation. This stays on its own listener — it drives a selection index, not a single
@@ -118,6 +243,8 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
     window.addEventListener("keydown", handleNavigation);
     return () => window.removeEventListener("keydown", handleNavigation);
   }, [filteredPlans, selectedIndex, onSelectPlan, rowFocus]);
+
+  const isFiltered = search.length > 0 || selectedStates.length > 0;
 
   return (
     <div className="space-y-6" data-testid="plans-view">
@@ -153,6 +280,9 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
               value={selectedStates}
               placeholder="Filter by state..."
               multiple={true}
+              // BadgeSelect only emits an event it was told to emit; without this the
+              // filter is decorative.
+              events={["OnChange"]}
               eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
                 if (args && Array.isArray(args[0])) {
                   setSelectedStates(args[0] as string[]);
@@ -165,27 +295,33 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
               type="button"
               onClick={onNewPlan}
               aria-label="New Plan"
+              title={`New Plan (${getPlatformShortcut(NEW_PLAN_SHORTCUT)})`}
               className="flex items-center space-x-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
             >
-              <span>+</span>
+              <Plus size={16} aria-hidden="true" />
               <span>New Plan</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Plans List or Empty State */}
+      {/* Plans List or Empty State.
+          V1 keeps these two cases apart: nothing to show at all is `NoContentView`
+          ("No plans" / "Plans you create will appear here", `ContentView.BuildNoSelectionView`),
+          while a filter that excludes everything is the much smaller inline `NoResultsView`. */}
       {filteredPlans.length === 0 ? (
-        <EmptyState
-          title="No plans found"
-          description={
-            search || selectedStates.length > 0
-              ? "No plans match your current search query or filter criteria."
-              : "No plans are registered in the current Tendril workspace."
-          }
-          actionLabel={onNewPlan ? "Create Your First Plan" : undefined}
-          onAction={onNewPlan}
-        />
+        isFiltered ? (
+          <div
+            role="region"
+            aria-label="No results"
+            className="flex items-start gap-2 p-4 text-sm text-muted-foreground"
+          >
+            <SearchX size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+            <span>No results. Try adjusting your filters.</span>
+          </div>
+        ) : (
+          <EmptyState title="No plans" description="Plans you create will appear here" />
+        )
       ) : (
         <div
           role="list"
@@ -201,53 +337,20 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
                 highlighted={isHighlighted}
                 onSelect={() => onSelectPlan(p.id)}
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-semibold text-muted-foreground">
-                    {p.id}
-                  </span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      p.state === "Completed"
-                        ? "bg-success/10 text-success border border-success/40"
-                        : p.state === "Review"
-                          ? "bg-warning/10 text-warning border border-warning/40"
-                          : p.state === "Executing"
-                            ? "bg-info/10 text-info border border-info/40"
-                            : p.state === "Failed"
-                              ? "bg-destructive/10 text-destructive border border-destructive/40"
-                              : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {p.state}
-                  </span>
-                </div>
+                <span className="font-mono text-xs font-semibold text-muted-foreground">
+                  {formatPlanId(p.id)}
+                </span>
 
                 <h3 className="mt-2 text-sm font-semibold text-foreground line-clamp-2">
                   {p.title}
                 </h3>
 
-                <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="rounded bg-muted/80 px-2 py-0.5 font-medium text-muted-foreground">
-                    {p.project}
-                  </span>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <PlanRowBadges plan={p} />
+                  </div>
                   {p.verifications && p.verifications.length > 0 && (
-                    <div className="flex space-x-1">
-                      {p.verifications.map((v) => (
-                        <span
-                          key={v.name}
-                          title={`${v.name}: ${v.status}`}
-                          className={`h-2 w-2 rounded-full ${
-                            v.status === "Pass"
-                              ? "bg-success"
-                              : v.status === "Fail"
-                                ? "bg-destructive"
-                                : v.status === "Skipped"
-                                  ? "bg-muted-foreground"
-                                  : "bg-warning"
-                          }`}
-                        />
-                      ))}
-                    </div>
+                    <VerificationDots verifications={p.verifications} />
                   )}
                 </div>
               </PlanRow>

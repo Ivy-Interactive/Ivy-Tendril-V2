@@ -9,22 +9,74 @@ interface NewPlanModalProps {
   onClose: () => void;
   projects: ProjectSummary[];
   onJobStarted?: (res: StartJobResponse) => void;
+  /** Opens project settings, for the picker's "+ Add New Project" entry. Omitted, the entry is not offered. */
+  onAddProject?: () => void;
   initialTitle?: string;
   initialDescription?: string;
   initialProject?: string;
   initialSourceUrl?: string;
 }
 
+/**
+ * `CreatePlanDialog.AddProjectActionValue`. Picking it is a navigation, not a project.
+ */
+const ADD_PROJECT_VALUE = "__tendril_add_project__";
+
+/**
+ * `CreatePlanDialog.MaxProjectsForToggleVariant`: up to this many projects the picker is a
+ * segmented toggle, above it a plain select.
+ */
+const MAX_PROJECTS_FOR_TOGGLE = 6;
+
+/**
+ * `CreatePlanDialog.BuildProjectSelectOptions`: "Auto" leads whenever there is more than one
+ * project to choose between (or none configured yet), then the projects, then the escape hatch to
+ * settings. With exactly one project there is nothing to decide, so no "Auto".
+ */
+export function buildProjectOptions(
+  projectNames: string[],
+  includeAddProject: boolean,
+): { value: string; label: string }[] {
+  const options: { value: string; label: string }[] = [];
+  if (projectNames.length > 1 || projectNames.length === 0) {
+    options.push({ value: "Auto", label: "Auto" });
+  }
+  options.push(...projectNames.map((p) => ({ value: p, label: p })));
+  if (includeAddProject) {
+    options.push({ value: ADD_PROJECT_VALUE, label: "+ Add New Project" });
+  }
+  return options;
+}
+
+/**
+ * `CreatePlanDialog._defaultProject`: one project means that project; otherwise the remembered
+ * or caller-supplied one if it is still real, and "Auto" when it is not.
+ */
+export function defaultProject(projectNames: string[], preferred?: string): string {
+  if (projectNames.length === 1) return projectNames[0];
+  if (preferred === "Auto" || (preferred && projectNames.includes(preferred))) return preferred;
+  return "Auto";
+}
+
+/**
+ * Create New Plan, as V1's `CreatePlanDialog` composes it: a project picker over a single
+ * content input that owns its own Create button. There is no priority field — V1 passes
+ * `priority: 0` for every plan created here (`onCreatePlan(text, project, 0, uploadSessionId)`),
+ * and its `PriorityOptions` never reach the dialog body.
+ */
 export const NewPlanModal: React.FC<NewPlanModalProps> = ({
   isOpen,
   onClose,
   projects,
   onJobStarted,
+  onAddProject,
   initialTitle = "",
   initialDescription = "",
   initialProject = "",
   initialSourceUrl = "",
 }) => {
+  const projectNames = projects.map((p) => p.name);
+
   const [description, setDescription] = useState(
     initialTitle
       ? initialDescription
@@ -33,10 +85,9 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
       : initialDescription,
   );
   const [selectedProject, setSelectedProject] = useState(
-    initialProject || projects[0]?.name || "Tendril-App",
+    defaultProject(projectNames, initialProject),
   );
   const [sourceUrl, setSourceUrl] = useState(initialSourceUrl);
-  const [priority, setPriority] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,11 +99,12 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           : initialTitle
         : initialDescription;
       setDescription(combinedDesc);
-      if (initialProject && projects.some((p) => p.name === initialProject)) {
-        setSelectedProject(initialProject);
-      } else if (projects[0]?.name) {
-        setSelectedProject(projects[0].name);
-      }
+      setSelectedProject(
+        defaultProject(
+          projects.map((p) => p.name),
+          initialProject,
+        ),
+      );
       setSourceUrl(initialSourceUrl);
       setError(null);
     }
@@ -60,7 +112,19 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
 
   if (!isOpen) return null;
 
-  const projectNames = projects.map((p) => p.name);
+  const options = buildProjectOptions(projectNames, onAddProject !== undefined);
+  const useToggleVariant = projectNames.length <= MAX_PROJECTS_FOR_TOGGLE;
+
+  const handleProjectChange = (value: string) => {
+    // `UseEffect` on `selectedProject` in V1: the action value is never a selection, it closes
+    // the dialog and takes you to Settings → Projects.
+    if (value === ADD_PROJECT_VALUE) {
+      onClose();
+      onAddProject?.();
+      return;
+    }
+    setSelectedProject(value);
+  };
 
   const handleSubmit = async (submittedText?: string) => {
     if (isSubmitting) return;
@@ -74,12 +138,13 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
     setError(null);
 
     try {
-      // Safe new plan intake: dispatches CreatePlan promptware job
+      // Safe new plan intake: dispatches CreatePlan promptware job. Priority is always Normal
+      // here, matching V1's dialog.
       const res = await jobsStore.startJob({
         type: "CreatePlan",
         project: selectedProject,
         description: text,
-        priority,
+        priority: 0,
         sourceUrl: sourceUrl.trim() || undefined,
       });
 
@@ -105,19 +170,15 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
+      {/* `.Width(Size.Rem(30))` on V1's dialog. */}
       <div
-        className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl"
+        className="w-full max-w-[30rem] rounded-2xl border border-border bg-card p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border pb-4">
-          <div>
-            <h2 id="new-plan-title" className="text-lg font-bold text-foreground">
-              Create New Plan (Intake)
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Dispatches an autonomous CreatePlan job to research codebase and author plan.
-            </p>
-          </div>
+          <h2 id="new-plan-title" className="text-lg font-bold text-foreground">
+            Create New Plan
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -134,102 +195,67 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           </div>
         )}
 
-        <div className="mt-4 space-y-4">
-          <div className="flex items-center space-x-4">
-            <div className="flex-1">
-              <label
-                htmlFor="project-select"
-                className="block text-xs font-medium text-muted-foreground mb-1"
-              >
-                Target Project
-              </label>
-              <select
-                id="project-select"
-                aria-label="Target Project"
-                value={selectedProject}
-                onChange={(e) => setSelectedProject(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
-              >
-                {projectNames.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
+        {/* `Layout.Vertical().Gap(2) | projectPickerWidget | contentInputWidget` */}
+        <div className="mt-4 space-y-2">
+          {useToggleVariant ? (
+            <div
+              role="radiogroup"
+              aria-label="Target Project"
+              className="flex flex-wrap gap-1 rounded-lg border border-border p-1"
+            >
+              {options.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedProject === o.value}
+                  onClick={() => handleProjectChange(o.value)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                    selectedProject === o.value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
             </div>
+          ) : (
+            <select
+              id="project-select"
+              aria-label="Target Project"
+              value={selectedProject}
+              onChange={(e) => handleProjectChange(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
+            >
+              {options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          )}
 
-            <div className="w-32">
-              <label
-                htmlFor="priority-input"
-                className="block text-xs font-medium text-muted-foreground mb-1"
-              >
-                Priority
-              </label>
-              <input
-                id="priority-input"
-                aria-label="Priority"
-                type="number"
-                value={priority}
-                onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1">
-              Task Description & Objectives
-            </label>
-            <ContentInput
-              id="content-input"
-              value={description}
-              placeholder="Describe the task, bug to fix, feature to build, or files to inspect..."
-              eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-                if (evt === "OnChange") {
-                  const text = firstStringArg(args);
-                  if (text !== undefined) setDescription(text);
-                  return;
-                }
-                if (evt === "OnSubmit") {
-                  const text = submitValueArg(args);
-                  if (text === undefined) return;
-                  setDescription(text);
-                  void handleSubmit(text);
-                }
-              }}
-            />
-            {/* Fallback textarea for direct editing */}
-            <textarea
-              aria-label="Task description"
-              rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What needs to be implemented or investigated?"
-              className="mt-2 w-full rounded-lg border border-border bg-background p-3 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none"
-            />
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end space-x-3 border-t border-border pt-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={isSubmitting || !description.trim()}
-            onClick={() => void handleSubmit()}
-            className={`rounded-lg px-4 py-2 text-sm font-medium text-white transition ${
-              isSubmitting || !description.trim()
-                ? "cursor-not-allowed bg-muted text-muted-foreground/70"
-                : "bg-primary hover:bg-primary/90"
-            }`}
-          >
-            {isSubmitting ? "Dispatching..." : "Start CreatePlan"}
-          </button>
+          <ContentInput
+            id="content-input"
+            value={description}
+            autoFocus
+            submitLabel="Create"
+            placeholder="Enter task description..."
+            eventHandler={(evt: string, _id: string, args?: unknown[]) => {
+              if (evt === "OnChange") {
+                const text = firstStringArg(args);
+                if (text !== undefined) setDescription(text);
+                return;
+              }
+              if (evt === "OnSubmit") {
+                const text = submitValueArg(args);
+                if (text === undefined) return;
+                setDescription(text);
+                void handleSubmit(text);
+              }
+            }}
+          />
         </div>
       </div>
     </div>

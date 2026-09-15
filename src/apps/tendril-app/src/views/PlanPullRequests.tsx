@@ -9,11 +9,20 @@ interface PlanPullRequestsProps {
   prs: string[];
 }
 
+/**
+ * PR state to badge classes, mirroring the `BadgeColorMapping` V1's `PullRequestApp` gives its
+ * Status column (`src/Ivy.Tendril/Apps/PullRequest/PullRequestApp.cs`): Open is Green, Merged is
+ * Purple, Closed is Zinc. `Unknown` is not in that map, so it renders as the default neutral
+ * badge here too.
+ *
+ * These are the design system's own named colour tokens, not Tailwind palette literals: the
+ * mapping is V1's, so the colours have to be the ones V1 names.
+ */
 const STATE_CLASS: Record<PrState, string> = {
-  Open: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-  Merged: "bg-violet-500/10 text-violet-300 border-violet-500/30",
-  Closed: "bg-rose-500/10 text-rose-300 border-rose-500/30",
-  Unknown: "bg-slate-700/40 text-slate-400 border-slate-600/40",
+  Open: "border-green/40 bg-green/10 text-green",
+  Merged: "border-purple/40 bg-purple/10 text-purple",
+  Closed: "border-zinc/40 bg-zinc/10 text-zinc",
+  Unknown: "border-border bg-muted text-muted-foreground",
 };
 
 /** `https://github.com/{owner}/{repo}/pull/{n}`, so `/pull/7/files` and `/pull/7` are one row. */
@@ -26,6 +35,12 @@ export function canonicalPrUrl(url: string): string | null {
 function prNumber(url: string): string {
   const match = /\/pull\/(\d+)/.exec(url);
   return match ? `#${match[1]}` : url;
+}
+
+/** `PullRequestApp.ExtractRepo`: the first two path segments, i.e. `owner/repo`. */
+export function prRepo(url: string): string {
+  const match = /github\.com\/([^/]+)\/([^/]+)/i.exec(url.trim());
+  return match ? `${match[1]}/${match[2]}` : url;
 }
 
 function formatRelativeTime(dateString: string): string {
@@ -143,8 +158,8 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
         </button>
       </div>
 
-      {notice && <p className="mt-2 text-xs text-amber-300">{notice}</p>}
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {notice && <p className="mt-2 text-xs text-warning">{notice}</p>}
+      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
 
       <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
         {rows.length > 0 ? (
@@ -157,11 +172,14 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
               >
                 {status?.status ?? "Unknown"}
               </span>
+              {/* V1's PR table pairs a Repository column with the PR link; the repo is what
+                  tells two PRs of a multi-repo plan apart. */}
+              <span className="font-mono text-xs text-muted-foreground">{prRepo(url)}</span>
               <a
                 href={url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-success hover:underline font-mono text-xs"
+                className="text-primary hover:underline font-mono text-xs"
                 title={url}
               >
                 {prNumber(url)}

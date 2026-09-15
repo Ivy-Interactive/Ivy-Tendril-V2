@@ -159,25 +159,43 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
     expect(screen.getByRole("button", { name: "Decline" })).toBeInTheDocument();
   });
 
-  it("changes verification status using dropdown control", async () => {
+  // V1's `VerificationsPanelView` gives each verification a checkbox, not a status picker: a
+  // checked box is Pending and an unchecked one Skipped, and Pass/Fail are only ever written by
+  // the runner. The old dropdown let an operator declare an outcome no execution produced.
+  it("skips a verification by unchecking it, while the plan is still a draft", async () => {
     const setVerificationStatus = vi
       .spyOn(bridge, "setVerificationStatus")
       .mockResolvedValue(undefined);
 
-    render(<PlanVerifications planId="00021" verifications={testPlan.verifications} />);
+    render(
+      <PlanVerifications planId="00021" planState="Draft" verifications={testPlan.verifications} />,
+    );
 
     await waitFor(() => expect(screen.getByTestId("plan-verifications")).toBeInTheDocument());
 
-    const select = screen.getByTestId("verification-status-select-CheckResult");
-    expect(select).toHaveValue("Pending");
+    const checkbox = screen.getByTestId("verification-checkbox-CheckResult");
+    expect(checkbox).toBeChecked();
 
-    fireEvent.change(select, { target: { value: "Pass" } });
+    fireEvent.click(checkbox);
 
     await waitFor(() =>
-      expect(setVerificationStatus).toHaveBeenCalledWith("00021", "CheckResult", "Pass"),
+      expect(setVerificationStatus).toHaveBeenCalledWith("00021", "CheckResult", "Skipped"),
     );
 
-    expect(select).toHaveValue("Pass");
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it("disables the checkboxes once the plan has left Draft", async () => {
+    render(
+      <PlanVerifications
+        planId="00021"
+        planState="Review"
+        verifications={testPlan.verifications}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId("plan-verifications")).toBeInTheDocument());
+    expect(screen.getByTestId("verification-checkbox-CheckResult")).toBeDisabled();
   });
 
   it("rolls back verification status and shows error banner on update failure", async () => {
@@ -185,14 +203,16 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
       new Error("Failed to write to verification endpoint"),
     );
 
-    render(<PlanVerifications planId="00021" verifications={testPlan.verifications} />);
+    render(
+      <PlanVerifications planId="00021" planState="Draft" verifications={testPlan.verifications} />,
+    );
 
     await waitFor(() => expect(screen.getByTestId("plan-verifications")).toBeInTheDocument());
 
-    const select = screen.getByTestId("verification-status-select-CheckResult");
-    expect(select).toHaveValue("Pending");
+    const checkbox = screen.getByTestId("verification-checkbox-CheckResult");
+    expect(checkbox).toBeChecked();
 
-    fireEvent.change(select, { target: { value: "Fail" } });
+    fireEvent.click(checkbox);
 
     await waitFor(() =>
       expect(screen.getByTestId("verification-reports-error")).toHaveTextContent(
@@ -200,10 +220,10 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
       ),
     );
 
-    // Rolled back to Pending
-    expect(select).toHaveValue("Pending");
+    // Rolled back to Pending, so the box is checked again.
+    expect(checkbox).toBeChecked();
   });
-  it("shows PR status in the metadata tab's Pull Requests card", async () => {
+  it("shows PR status in the Details tab's Pull Requests card", async () => {
     vi.spyOn(bridge, "listPullRequests").mockResolvedValue([
       prStatus({
         prUrl: "https://github.com/SpaceCorps/Tendril-App/pull/2",
@@ -215,7 +235,7 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
 
     render(<PlanDetailView plan={testPlan} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /metadata & history/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
 
     expect(screen.getByText("Pull Requests")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Merged")).toBeInTheDocument());
@@ -287,7 +307,7 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
     render(<PlanDetailView plan={testPlan} />);
 
     // The other tabs are unaffected, and the action banner stays clear.
-    fireEvent.click(screen.getByRole("button", { name: /metadata & history/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(screen.getByText("Repositories")).toBeInTheDocument();
     expect(screen.queryByTestId("plan-action-error")).not.toBeInTheDocument();
 

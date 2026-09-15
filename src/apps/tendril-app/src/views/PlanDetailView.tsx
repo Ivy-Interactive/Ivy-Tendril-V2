@@ -18,6 +18,7 @@ import { draftActions, type DraftAction } from "../controllers/draft_actions";
 import { collectExecuteGuards, type ExecuteGuard } from "../controllers/execute_guards";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
+import { formatPlanId, parseProjects, planStateBadgeClass } from "./PlansView";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { CreateIssueDialog } from "./dialogs/CreateIssueDialog";
@@ -31,6 +32,87 @@ import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
 import { UnansweredQuestionsDialog } from "./dialogs/UnansweredQuestionsDialog";
 import { UpdatePlanDialog } from "./dialogs/UpdatePlanDialog";
+
+type PlanDetailTab = "plan" | "details" | "diff" | "verifications" | "recommendations" | "git";
+
+/**
+ * `PlanModels.cs`: `IsPullRequestSource => SourceUrl?.Contains("/pull/") == true`. The workspace
+ * labels the source link "PR" or "Issue" from exactly this test
+ * (`ContentView.Build`: `.Source(..., selectedPlan.IsPullRequestSource ? "PR" : "Issue")`).
+ */
+const sourceLabel = (sourceUrl: string | undefined): string =>
+  sourceUrl?.includes("/pull/") ? "PR" : "Issue";
+
+/** `#21` from a `00021-SomeFolderName` plan folder, as `DetailsTabView.ParsePlanLinks` does. */
+const planLinkLabel = (folder: string): string => {
+  const name = folder.split(/[/\\]/).pop() ?? folder;
+  const dashIdx = name.indexOf("-");
+  const idPart = dashIdx > 0 ? name.slice(0, dashIdx) : name;
+  return formatPlanId(idPart);
+};
+
+/**
+ * The workspace's meta line, from `ContentView.BuildMeta`: the plan's position in the list, and
+ * the plans it waits on. Position is computed over the same newest-first ordering the list uses.
+ */
+const buildMeta = (plan: PlanDetail, allPlans: PlanSummary[]): string | null => {
+  const ordered = [...allPlans].sort(
+    (a, b) => (Number.parseInt(b.id, 10) || 0) - (Number.parseInt(a.id, 10) || 0),
+  );
+  const index = ordered.findIndex((p) => p.id === plan.id);
+  const parts: string[] = [];
+  if (index >= 0 && ordered.length > 0) parts.push(`${index + 1}/${ordered.length} plans`);
+  if (plan.dependsOn && plan.dependsOn.length > 0)
+    parts.push(`Depends on ${plan.dependsOn.map(planLinkLabel).join(", ")}`);
+  return parts.length > 0 ? parts.join(" \u00b7 ") : null;
+};
+
+/**
+ * `ContentView.BuildFailureCallout`: a failed plan says why at the top of its Plan tab, and a
+ * failed verification is the better answer than the job log. The report bodies V1 quotes live in
+ * `<planFolder>/Verification/<name>.md`, which this page reads only inside the Verifications tab,
+ * so the callout names the verifications and points at their reports rather than inventing a
+ * summary. With no failed verification at all it falls back to V1's log wording.
+ */
+const ExecutionFailedCallout: React.FC<{ plan: PlanDetail }> = ({ plan }) => {
+  const failed = (plan.verifications ?? []).filter(
+    (v) => v.status === "Fail" || v.status === "Pending",
+  );
+  return (
+    <div
+      role="alert"
+      data-testid="plan-failure-callout"
+      className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+    >
+      <p className="font-semibold">Execution Failed</p>
+      {failed.length > 0 ? (
+        <ul className="mt-1 space-y-0.5">
+          {failed.map((v) => (
+            <li key={v.name}>
+              <span className="font-semibold">{v.name}</span> {v.status}, see verification report
+              for details
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1">No details available. Check the job logs.</p>
+      )}
+    </div>
+  );
+};
+
+/** One label/value row of the Details tab, dropped entirely when the value is empty. */
+const DetailRow: React.FC<{ label: string; children?: React.ReactNode; empty?: boolean }> = ({
+  label,
+  children,
+  empty,
+}) =>
+  empty ? null : (
+    <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
+      <dt className="w-40 shrink-0 text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-sm text-foreground">{children}</dd>
+    </div>
+  );
 
 /** The lifecycle dialogs this view owns, at most one open at a time. */
 type LifecycleDialog =
@@ -69,9 +151,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   onPlanDeleted,
   onBack,
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<
-    "spec" | "diff" | "verifications" | "recommendations" | "git" | "metadata"
-  >("spec");
+  // V1's tab ids (`ContentView.PlanTab` / `DetailsTab` / `GitTab`), plus the three tabs V2
+  // adds. Order matters: see the tab strip below.
+  const [activeSubTab, setActiveSubTab] = useState<PlanDetailTab>("plan");
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>(
@@ -143,6 +225,31 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         (status) => status === "unreachable" || status === "missing",
       ).length
     : 0;
+
+  /**
+   * The tab strip, in V1's order. `ContentView.Build` adds Git only when it has something to
+   * show (`if (gitItemCount > 0) tabs.Add(...)`); a null count means the fetch has not answered
+   * yet, so the tab stays rather than appearing and disappearing under the pointer.
+   *
+   * Deviation: the counts stay inside the label rather than becoming `PlanTabDto.Badge`
+   * elements, so a tab's accessible name still carries its count.
+   */
+  const tabs: { id: PlanDetailTab; label: string }[] = [
+    { id: "plan", label: "Plan" },
+    { id: "details", label: "Details" },
+    { id: "diff", label: "Diff View" },
+    { id: "verifications", label: `Verifications (${plan.verifications?.length || 0})` },
+    { id: "recommendations", label: `Recommendations (${recommendations.length})` },
+  ];
+  if (gitItemCount === null || gitItemCount > 0)
+    tabs.push({ id: "git", label: gitItemCount === null ? "Git" : `Git (${gitItemCount})` });
+
+  // `var activeTab = tabs.Any(t => t.Id == selectedTab.Value) ? selectedTab.Value : PlanTab;`
+  const effectiveTab: PlanDetailTab = tabs.some((t) => t.id === activeSubTab)
+    ? activeSubTab
+    : "plan";
+
+  const meta = buildMeta(plan, allPlans);
 
   // Gating checks
   const canExec = PlanActionsController.canExecute(plan, allPlans);
@@ -338,16 +445,51 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               ← Back to plans
             </button>
           )}
-          <div className="flex items-center space-x-3">
-            <span className="font-mono text-sm font-bold text-muted-foreground">{plan.id}</span>
-            <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-foreground">
+          {/* The workspace title bar's own order (`ContentView.Build`): plan id, then the state,
+              then the project badges, then the level. `#21`, not `#00021`. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm font-bold text-muted-foreground">
+              {formatPlanId(plan.id)}
+            </span>
+            <span
+              data-testid="plan-state-badge"
+              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${planStateBadgeClass(
+                plan.state,
+              )}`}
+            >
               {plan.state}
             </span>
-            <span className="rounded bg-muted/80 px-2 py-0.5 text-xs text-muted-foreground">
-              {plan.project}
-            </span>
+            {parseProjects(plan.project).map((project) => (
+              <span
+                key={project}
+                className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
+              >
+                {project}
+              </span>
+            ))}
+            {plan.level && (
+              <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                {plan.level}
+              </span>
+            )}
           </div>
           <h1 className="mt-2 text-2xl font-bold text-foreground">{plan.title}</h1>
+          {/* `.Meta(BuildMeta(...))` and `.Source(...)` on the workspace: where this plan sits in
+              the list, what it waits on, and a link to the issue or PR it came from. */}
+          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            {meta && <span>{meta}</span>}
+            {plan.sourceUrl && (
+              <a
+                href={plan.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                title={plan.sourceUrl}
+                className="text-primary hover:underline"
+              >
+                {sourceLabel(plan.sourceUrl)}
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Action Toolbar */}
@@ -448,89 +590,40 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         </div>
       )}
 
-      {/* Detail Tabs Header */}
-      <div className="flex border-b border-border">
-        <button
-          type="button"
-          onClick={() => setActiveSubTab("spec")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
-            activeSubTab === "spec"
-              ? "border-ring text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Plan Specification
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSubTab("diff")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
-            activeSubTab === "diff"
-              ? "border-ring text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Diff View
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSubTab("verifications")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
-            activeSubTab === "verifications"
-              ? "border-ring text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Verifications ({plan.verifications?.length || 0})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSubTab("recommendations")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
-            activeSubTab === "recommendations"
-              ? "border-ring text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Recommendations ({recommendations.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSubTab("git")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
-            activeSubTab === "git"
-              ? "border-ring text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {gitItemCount === null ? "Git" : `Git (${gitItemCount})`}
-          {commitsAtRisk > 0 && (
-            <span
-              data-testid="git-tab-at-risk"
-              aria-label={`${commitsAtRisk} ${
-                commitsAtRisk === 1 ? "commit is" : "commits are"
-              } at risk of being lost`}
-              className="ml-2 inline-block h-2 w-2 rounded-full bg-destructive align-middle"
-            />
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSubTab("metadata")}
-          className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
-            activeSubTab === "metadata"
-              ? "border-ring text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Metadata & History
-        </button>
+      {/* Detail tab strip. V1's own order and labels (`ContentView.Build`): Plan, Details, then
+          Git last and only when it has something to show, with the three tabs V2 adds in between. */}
+      <div className="flex flex-wrap border-b border-border">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveSubTab(tab.id)}
+            className={`border-b-2 px-4 py-2 text-sm font-medium transition ${
+              effectiveTab === tab.id
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab.label}
+            {tab.id === "git" && commitsAtRisk > 0 && (
+              <span
+                data-testid="git-tab-at-risk"
+                aria-label={`${commitsAtRisk} ${
+                  commitsAtRisk === 1 ? "commit is" : "commits are"
+                } at risk of being lost`}
+                className="ml-2 inline-block h-2 w-2 rounded-full bg-destructive align-middle"
+              />
+            )}
+          </button>
+        ))}
       </div>
 
       {/* Tab Content */}
       <div className="mt-4">
-        {activeSubTab === "spec" && (
+        {effectiveTab === "plan" && (
           <div className="rounded-xl border border-border bg-card/40 p-6">
+            {/* `PlanTabView.Build`: a failed plan leads with why, above the plan itself. */}
+            {plan.state === "Failed" && <ExecutionFailedCallout plan={plan} />}
             <PlanMarkdown
               id="plan-markdown"
               content={plan.latestRevisionContent || "# No revision content available"}
@@ -539,20 +632,24 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           </div>
         )}
 
-        {activeSubTab === "diff" && (
+        {effectiveTab === "diff" && (
           <div className="rounded-xl border border-border bg-card/40 p-6">
             <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
           </div>
         )}
 
-        {activeSubTab === "verifications" && (
+        {effectiveTab === "verifications" && (
           <div className="rounded-xl border border-border bg-card/40 p-6">
             <h3 className="text-sm font-semibold text-foreground mb-3">Plan Verifications</h3>
-            <PlanVerifications planId={plan.id} verifications={plan.verifications || []} />
+            <PlanVerifications
+              planId={plan.id}
+              verifications={plan.verifications || []}
+              planState={plan.state}
+            />
           </div>
         )}
 
-        {activeSubTab === "recommendations" && (
+        {effectiveTab === "recommendations" && (
           <div className="rounded-xl border border-border bg-card/40 p-6 space-y-4">
             <div>
               <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
@@ -580,7 +677,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           </div>
         )}
 
-        {activeSubTab === "git" && (
+        {effectiveTab === "git" && (
           <div className="rounded-xl border border-border bg-card/40 p-6">
             {gitError ? (
               <p data-testid="git-tab-error" className="text-xs text-destructive">
@@ -599,48 +696,114 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           </div>
         )}
 
-        {activeSubTab === "metadata" && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-xl border border-border bg-card/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Repositories
-              </h4>
-              <ul className="mt-2 space-y-1 text-sm font-mono text-muted-foreground">
-                {plan.repos && plan.repos.length > 0 ? (
-                  plan.repos.map((r, i) => <li key={i}>{r}</li>)
-                ) : (
-                  <li className="text-muted-foreground/70 font-sans">No repositories specified</li>
-                )}
-              </ul>
-            </div>
+        {effectiveTab === "details" && (
+          <div className="space-y-4">
+            {/* `DetailsTabView.Build`'s own field order, and its `RemoveEmpty()`: a row the plan
+                has no value for is dropped rather than rendered blank. */}
+            <dl className="rounded-xl border border-border bg-card/40 p-4">
+              <DetailRow label="Plan ID">
+                <button
+                  type="button"
+                  onClick={() =>
+                    void runAction("Copy Plan ID", () => navigator.clipboard.writeText(plan.id))
+                  }
+                  title="Copy to clipboard"
+                  className="font-mono hover:underline"
+                >
+                  {plan.id}
+                </button>
+              </DetailRow>
+              <DetailRow label="Folder" empty={!plan.folderPath}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void runAction("Copy Folder Path", () =>
+                      navigator.clipboard.writeText(plan.folderPath ?? ""),
+                    )
+                  }
+                  title="Copy to clipboard"
+                  className="break-all font-mono hover:underline"
+                >
+                  {plan.folderPath}
+                </button>
+              </DetailRow>
+              <DetailRow label="Initial Prompt" empty={!plan.initialPrompt}>
+                <span className="whitespace-pre-wrap">{plan.initialPrompt}</span>
+              </DetailRow>
+              <DetailRow label="Revision" empty={!plan.revisionCount}>
+                {plan.revisionCount}
+              </DetailRow>
+              <DetailRow label="Profile" empty={!plan.executionProfile}>
+                {plan.executionProfile}
+              </DetailRow>
+              <DetailRow
+                label="Related Plans"
+                empty={!plan.relatedPlans || plan.relatedPlans.length === 0}
+              >
+                {(plan.relatedPlans ?? []).map(planLinkLabel).join(", ")}
+              </DetailRow>
+              <DetailRow label="Depends On" empty={!plan.dependsOn || plan.dependsOn.length === 0}>
+                {(plan.dependsOn ?? []).map(planLinkLabel).join(", ")}
+              </DetailRow>
+              <DetailRow label="Issue" empty={!plan.sourceUrl}>
+                <a
+                  href={plan.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-all text-primary hover:underline"
+                >
+                  {plan.sourceUrl}
+                </a>
+              </DetailRow>
+              <DetailRow label="Created" empty={!plan.created}>
+                {(plan.created ?? "").slice(0, 10)}
+              </DetailRow>
+              <DetailRow label="Level" empty={!plan.level}>
+                {plan.level}
+              </DetailRow>
+              <DetailRow label="Project" empty={!plan.project}>
+                {plan.project}
+              </DetailRow>
+              <DetailRow label="State">{plan.state}</DetailRow>
+            </dl>
 
-            <div className="rounded-xl border border-border bg-card/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Dependencies
-              </h4>
-              <ul className="mt-2 space-y-1 text-sm font-mono text-muted-foreground">
-                {plan.dependsOn && plan.dependsOn.length > 0 ? (
-                  plan.dependsOn.map((d, i) => <li key={i}>{d}</li>)
-                ) : (
-                  <li className="text-muted-foreground/70 font-sans">No dependencies</li>
-                )}
-              </ul>
-            </div>
+            {/* Repos and commits have no row of their own in V1's Details tab; they are kept here
+                because V2's Git tab is the only other place they appear and it is hidden while a
+                plan has nothing in git yet. */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-xl border border-border bg-card/40 p-4">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Repositories
+                </h4>
+                <ul className="mt-2 space-y-1 text-sm font-mono text-muted-foreground">
+                  {plan.repos && plan.repos.length > 0 ? (
+                    plan.repos.map((r, i) => <li key={i}>{r}</li>)
+                  ) : (
+                    <li className="text-muted-foreground/70 font-sans">
+                      No repositories specified
+                    </li>
+                  )}
+                </ul>
+              </div>
 
-            <div className="rounded-xl border border-border bg-card/40 p-4">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Commits
-              </h4>
-              <ul className="mt-2 space-y-1 text-sm font-mono text-muted-foreground">
-                {plan.commits && plan.commits.length > 0 ? (
-                  plan.commits.map((c, i) => <li key={i}>{c}</li>)
-                ) : (
-                  <li className="text-muted-foreground/70 font-sans">No commits yet</li>
-                )}
-              </ul>
-            </div>
+              <div className="rounded-xl border border-border bg-card/40 p-4">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Commits
+                </h4>
+                <ul className="mt-2 space-y-1 text-sm font-mono text-muted-foreground">
+                  {plan.commits && plan.commits.length > 0 ? (
+                    plan.commits.map((c, i) => <li key={i}>{c}</li>)
+                  ) : (
+                    <li className="text-muted-foreground/70 font-sans">No commits yet</li>
+                  )}
+                </ul>
+              </div>
 
-            <PlanPullRequests planId={plan.id} prs={plan.prs ?? []} />
+              {/* `GitTabView`: the PR section exists only when the plan records one. */}
+              {plan.prs && plan.prs.length > 0 && (
+                <PlanPullRequests planId={plan.id} prs={plan.prs} />
+              )}
+            </div>
           </div>
         )}
       </div>
