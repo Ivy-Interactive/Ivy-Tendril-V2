@@ -180,9 +180,7 @@ describe("JobSessionView Real-Time Subscription", () => {
     render(<JobSessionView job={detachedJob} events={[]} />);
 
     expect(screen.getByTestId("job-detached-badge")).toBeInTheDocument();
-    expect(
-      screen.getByText("Detached (PID 4242) — Monitoring active process"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Detached (PID 4242) — Monitoring active process")).toBeInTheDocument();
   });
 
   it("does not render the detached badge for an ordinary job", () => {
