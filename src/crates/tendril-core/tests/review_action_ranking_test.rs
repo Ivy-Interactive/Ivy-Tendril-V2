@@ -6,6 +6,7 @@ fn action(name: &str, paths: &[&str]) -> ReviewActionConfig {
         condition: String::new(),
         command: String::new(),
         paths: paths.iter().map(|p| p.to_string()).collect(),
+        extra: Default::default(),
     }
 }
 

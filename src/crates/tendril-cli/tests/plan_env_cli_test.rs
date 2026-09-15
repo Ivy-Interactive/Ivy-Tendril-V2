@@ -50,6 +50,7 @@ impl Fixture {
                         ProjectPortConfig {
                             default_port: *default_port,
                             description: String::new(),
+                            extra: Default::default(),
                         },
                     )
                 })
@@ -136,6 +137,7 @@ fn env_file(
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect(),
+        extra: Default::default(),
     }
 }
 

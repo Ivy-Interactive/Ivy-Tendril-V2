@@ -179,3 +179,499 @@ fn test_update_config_raw_preserves_untouched_keys() {
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Project-level unmodeled keys.
+//
+// The suite above only ever exercised *top-level* unknown keys — its `projects:` block carries
+// nothing but modeled fields, which is why the project-level hole went unnoticed. Everything below
+// covers keys under `projects:`.
+// ---------------------------------------------------------------------------------------------
+
+/// One project carrying every modeled key *and* all nine keys the .NET V1 app really writes, with
+/// the values a live `config.yaml` holds. A second project exists so the by-name merge has something
+/// to leave alone.
+const SAMPLE_PROJECT_EXTRAS_CONFIG: &str = r##"
+codingAgent: claude
+jobTimeout: 30
+maxConcurrentJobs: 20
+projects:
+  - name: ivy-framework
+    color: Green
+    meta: {}
+    repos:
+      - path: /repos/ivy-framework
+        baseBranch: development
+    verifications:
+      - name: DotnetBuild
+        required: true
+    context: ''
+    stackHash: fe.ts:react/be.cs:aspnetcore
+    reviewActions:
+      - name: Docs
+        condition: Test-Path "src/Ivy.Docs"
+        command: dotnet run --project src/Ivy.Docs/Ivy.Docs.csproj
+    hooks: []
+    buildDependencies: []
+    mcpServers: []
+    skills: []
+    ports: {}
+    envFiles: []
+    securityPreset: Custom
+    outsideFileAccessPolicy: Allow
+    terminalAutoExecution: AlwaysProceed
+    sandboxMode: InheritGeneral
+    autoImplementPlans: InheritGeneral
+    filePermissions: []
+    networkAccessRules: []
+    allowedTerminalCommands: []
+  - name: other-project
+    color: Blue
+    repos:
+      - path: /repos/other
+    sandboxMode: Disabled
+    securityPreset: Strict
+verifications: []
+planTemplate: "# Plan Template"
+levels:
+  - name: Feature
+    color: Blue
+theme: default
+"##;
+
+/// The nine keys and the exact values `SAMPLE_PROJECT_EXTRAS_CONFIG` gives them. Asserting on
+/// *values* rather than key presence is the point: a key that survives with the wrong value is still
+/// a broken security setting.
+fn expected_project_extras() -> Vec<(&'static str, serde_json::Value)> {
+    vec![
+        ("meta", serde_json::json!({})),
+        ("securityPreset", serde_json::json!("Custom")),
+        ("outsideFileAccessPolicy", serde_json::json!("Allow")),
+        ("terminalAutoExecution", serde_json::json!("AlwaysProceed")),
+        ("sandboxMode", serde_json::json!("InheritGeneral")),
+        ("autoImplementPlans", serde_json::json!("InheritGeneral")),
+        ("filePermissions", serde_json::json!([])),
+        ("networkAccessRules", serde_json::json!([])),
+        ("allowedTerminalCommands", serde_json::json!([])),
+    ]
+}
+
+fn assert_all_nine_extras(project: &tendril_core::models::ProjectConfig, context: &str) {
+    for (key, expected) in expected_project_extras() {
+        assert_eq!(
+            project.extra.get(key),
+            Some(&expected),
+            "{context}: project '{}' lost or altered '{key}' (extras present: {:?})",
+            project.name,
+            project.extra.keys().collect::<Vec<_>>()
+        );
+    }
+}
+
+/// A temp dir seeded with `SAMPLE_PROJECT_EXTRAS_CONFIG`, removed when the guard drops.
+struct ConfigFixture {
+    dir: std::path::PathBuf,
+    path: std::path::PathBuf,
+}
+
+impl ConfigFixture {
+    fn new(tag: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!(
+            "tendril-test-project-extras-{tag}-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.yaml");
+        std::fs::write(&path, SAMPLE_PROJECT_EXTRAS_CONFIG).unwrap();
+        Self { dir, path }
+    }
+}
+
+impl Drop for ConfigFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// **This is the test that demonstrates the bug.** Before `ProjectConfig::extra` existed the nine
+/// keys were absent from the reloaded project entirely.
+#[test]
+fn test_project_unmodeled_keys_survive_load_and_save() {
+    let fx = ConfigFixture::new("load-save");
+
+    let mut settings = load_config(&fx.path).expect("load_config should succeed");
+    assert_eq!(settings.projects.len(), 2);
+
+    // Captured on load, and none of the modeled keys leaked into the catch-all.
+    assert_all_nine_extras(&settings.projects[0], "on load");
+    for modeled in [
+        "name",
+        "color",
+        "repos",
+        "verifications",
+        "context",
+        "stackHash",
+        "reviewActions",
+        "hooks",
+        "buildDependencies",
+        "ports",
+        "envFiles",
+        "mcpServers",
+        "skills",
+    ] {
+        assert!(
+            !settings.projects[0].extra.contains_key(modeled),
+            "modeled key '{modeled}' should not land in extra"
+        );
+    }
+    // Modeled fields still bind normally alongside the extras.
+    assert_eq!(settings.projects[0].color, "Green");
+    assert_eq!(settings.projects[0].repos[0].path, "/repos/ivy-framework");
+    assert_eq!(
+        settings.projects[0].repos[0].base_branch.as_deref(),
+        Some("development")
+    );
+    assert_eq!(settings.projects[0].verifications[0].name, "DotnetBuild");
+    assert_eq!(settings.projects[0].review_actions[0].name, "Docs");
+
+    // Mutate a modeled field the way every `save_config` call site does, then round-trip.
+    settings.projects[0].color = "Red".to_string();
+    save_config(&fx.path, &settings).expect("save_config should succeed");
+
+    let reloaded = load_config(&fx.path).expect("reload should succeed");
+    assert_eq!(reloaded.projects[0].color, "Red");
+    assert_all_nine_extras(&reloaded.projects[0], "after save/reload");
+    // The second project's own extras are independent and equally intact.
+    assert_eq!(
+        reloaded.projects[1].extra.get("sandboxMode"),
+        Some(&serde_json::json!("Disabled"))
+    );
+    assert_eq!(
+        reloaded.projects[1].extra.get("securityPreset"),
+        Some(&serde_json::json!("Strict"))
+    );
+}
+
+/// One case per mutation verb family, each from a fresh fixture, applying the mutation exactly as the
+/// CLI verb and the HTTP handler do.
+#[test]
+fn test_project_extras_survive_every_mutation_family() {
+    use tendril_core::config::insert_project_verification;
+    use tendril_core::models::{
+        ProjectVerificationRef, PromptwareHookConfig, RepoRef, ReviewActionConfig,
+    };
+
+    type Mutation = (&'static str, fn(&mut tendril_core::models::ProjectConfig));
+
+    let mutations: Vec<Mutation> = vec![
+        ("set", |p| {
+            p.color = "Red".to_string();
+            p.context = "some context".to_string();
+        }),
+        ("rename", |p| p.name = "renamed".to_string()),
+        ("add-repo", |p| {
+            p.repos.push(RepoRef {
+                path: "/repos/added".to_string(),
+                base_branch: Some("main".to_string()),
+                extra: Default::default(),
+            })
+        }),
+        ("add-verification", |p| {
+            insert_project_verification(
+                p,
+                ProjectVerificationRef {
+                    name: "DotnetTest".to_string(),
+                    required: true,
+                    extra: Default::default(),
+                },
+                Some("DotnetBuild"),
+            )
+            .expect("insert_project_verification should succeed");
+        }),
+        ("add-review-action", |p| {
+            p.review_actions.push(ReviewActionConfig {
+                name: "Samples".to_string(),
+                condition: "Test-Path \"src/Ivy.Samples\"".to_string(),
+                command: "dotnet run".to_string(),
+                paths: vec![],
+                extra: Default::default(),
+            })
+        }),
+        ("add-hook", |p| {
+            p.hooks.push(PromptwareHookConfig {
+                name: "notify".to_string(),
+                when: "after".to_string(),
+                promptwares: vec!["ExecutePlan".to_string()],
+                condition: String::new(),
+                action: "echo done".to_string(),
+                extra: Default::default(),
+            })
+        }),
+    ];
+
+    for (verb, mutate) in mutations {
+        let fx = ConfigFixture::new(verb);
+        let mut settings = load_config(&fx.path).expect("load_config should succeed");
+        mutate(&mut settings.projects[0]);
+        save_config(&fx.path, &settings).expect("save_config should succeed");
+
+        let reloaded = load_config(&fx.path).expect("reload should succeed");
+        assert_all_nine_extras(&reloaded.projects[0], verb);
+        // Every verb leaves the project it did not touch alone.
+        assert_eq!(
+            reloaded.projects[1].extra.get("securityPreset"),
+            Some(&serde_json::json!("Strict")),
+            "{verb}: second project's extras were disturbed"
+        );
+    }
+}
+
+/// Guards the decision to omit `skip_serializing_if` on the flattened extras maps: an empty map
+/// already emits zero keys, so a project with no extras must round-trip gaining nothing.
+#[test]
+fn test_save_config_is_byte_identical_without_project_extras() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "tendril-test-no-extras-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let config_path = temp_dir.join("config.yaml");
+    std::fs::write(&config_path, SAMPLE_IVY_CONFIG).unwrap();
+
+    let settings = load_config(&config_path).expect("load_config should succeed");
+    assert!(
+        settings.projects[0].extra.is_empty(),
+        "the modeled-only fixture should produce no project extras"
+    );
+
+    // Save with no mutation at all, then compare the serialized project object key-for-key.
+    let before = serde_yaml::to_value(&settings.projects[0]).unwrap();
+    save_config(&config_path, &settings).expect("save_config should succeed");
+    let reloaded = load_config(&config_path).expect("reload should succeed");
+    let after = serde_yaml::to_value(&reloaded.projects[0]).unwrap();
+
+    assert_eq!(
+        before, after,
+        "an extras-free project must not gain or lose keys across save/load"
+    );
+    let keys: Vec<String> = after
+        .as_mapping()
+        .unwrap()
+        .keys()
+        .map(|k| k.as_str().unwrap_or_default().to_string())
+        .collect();
+    assert!(
+        !keys.iter().any(|k| k == "extra"),
+        "the extras map must stay flattened, never appear as an 'extra' key: {keys:?}"
+    );
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+/// `update_config_raw` used to `insert` the whole `projects` array, replacing it. It now merges by
+/// name, so a payload naming one project with one key keeps that project's extras and leaves the
+/// other project entirely alone.
+#[test]
+fn test_update_config_raw_merges_projects_by_name() {
+    let fx = ConfigFixture::new("raw-merge");
+
+    let payload = serde_json::json!({
+        "projects": [
+            { "name": "ivy-framework", "color": "Red" }
+        ]
+    });
+    update_config_raw(&fx.path, &payload).expect("update_config_raw should succeed");
+
+    let merged = load_config(&fx.path).expect("load merged config");
+    assert_eq!(
+        merged.projects.len(),
+        2,
+        "the unmentioned project must not be dropped"
+    );
+    assert_eq!(merged.projects[0].name, "ivy-framework");
+    assert_eq!(merged.projects[0].color, "Red");
+    assert_all_nine_extras(&merged.projects[0], "after update_config_raw");
+    // Modeled fields the payload omitted are kept too, not just the extras.
+    assert_eq!(merged.projects[0].repos[0].path, "/repos/ivy-framework");
+    assert_eq!(merged.projects[0].verifications[0].name, "DotnetBuild");
+    assert_eq!(merged.projects[0].review_actions[0].name, "Docs");
+    // The second project is untouched.
+    assert_eq!(merged.projects[1].name, "other-project");
+    assert_eq!(merged.projects[1].color, "Blue");
+    assert_eq!(
+        merged.projects[1].extra.get("securityPreset"),
+        Some(&serde_json::json!("Strict"))
+    );
+}
+
+/// The by-name match is case-insensitive (the lookup every `/api/projects` handler uses), and an
+/// entry matching nothing is appended rather than replacing the array.
+#[test]
+fn test_update_config_raw_project_merge_is_case_insensitive_and_appends() {
+    let fx = ConfigFixture::new("raw-merge-case");
+
+    let payload = serde_json::json!({
+        "projects": [
+            { "name": "IVY-FRAMEWORK", "context": "matched case-insensitively" },
+            { "name": "brand-new", "color": "Amber", "sandboxMode": "InheritGeneral" }
+        ]
+    });
+    update_config_raw(&fx.path, &payload).expect("update_config_raw should succeed");
+
+    let merged = load_config(&fx.path).expect("load merged config");
+    assert_eq!(merged.projects.len(), 3);
+    // Matched by name ignoring case, so it merged in place instead of appending a near-duplicate.
+    // The payload's own `name` casing then wins, because `name` is just another mapping key and
+    // scalars replace. That matches `PUT /api/projects/:name`, which also treats an explicit `name`
+    // in the body as a rename target.
+    assert_eq!(merged.projects[0].name, "IVY-FRAMEWORK");
+    assert_eq!(merged.projects[0].context, "matched case-insensitively");
+    assert_all_nine_extras(&merged.projects[0], "case-insensitive merge");
+    // Unmatched: appended, with its own extras.
+    assert_eq!(merged.projects[2].name, "brand-new");
+    assert_eq!(
+        merged.projects[2].extra.get("sandboxMode"),
+        Some(&serde_json::json!("InheritGeneral"))
+    );
+}
+
+/// Sequences replace, and that must stay true — an incoming empty list means "this is the list now".
+/// Only `projects` is exempt. This is the guard against someone generalising the by-name merge into
+/// "merge all sequences", which would make clearing a list impossible.
+#[test]
+fn test_update_config_raw_replaces_sequences_other_than_projects() {
+    let fx = ConfigFixture::new("raw-seq");
+
+    let payload = serde_json::json!({
+        "projects": [
+            {
+                "name": "ivy-framework",
+                "verifications": [ { "name": "OnlyThisOne", "required": false } ],
+                "allowedTerminalCommands": ["git status"]
+            }
+        ],
+        "levels": [ { "name": "Bug", "color": "Red" } ]
+    });
+    update_config_raw(&fx.path, &payload).expect("update_config_raw should succeed");
+
+    let merged = load_config(&fx.path).expect("load merged config");
+    // A modeled sequence inside a merged project is replaced, not appended to.
+    assert_eq!(merged.projects[0].verifications.len(), 1);
+    assert_eq!(merged.projects[0].verifications[0].name, "OnlyThisOne");
+    assert!(!merged.projects[0].verifications[0].required);
+    // An unmodeled sequence inside extras is likewise replaced.
+    assert_eq!(
+        merged.projects[0].extra.get("allowedTerminalCommands"),
+        Some(&serde_json::json!(["git status"]))
+    );
+    // The other eight extras are untouched by a payload that named only one of them.
+    assert_eq!(
+        merged.projects[0].extra.get("securityPreset"),
+        Some(&serde_json::json!("Custom"))
+    );
+    // A top-level sequence that is not `projects` is replaced outright.
+    assert_eq!(merged.levels.len(), 1);
+    assert_eq!(merged.levels[0].name, "Bug");
+}
+
+/// The nested project types round-trip their own unknown keys too, so the same class of loss cannot
+/// reappear one level down when V1 adds a key under a repo, verification, review action or hook.
+#[test]
+fn test_nested_project_types_round_trip_unknown_keys() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "tendril-test-nested-extras-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let config_path = temp_dir.join("config.yaml");
+    std::fs::write(
+        &config_path,
+        r##"
+codingAgent: claude
+projects:
+  - name: nested
+    color: Blue
+    repos:
+      - path: /repos/nested
+        baseBranch: main
+        futureRepoKey: repo-value
+    verifications:
+      - name: DotnetBuild
+        required: true
+        futureVerificationKey: verification-value
+    reviewActions:
+      - name: Docs
+        condition: ''
+        command: dotnet run
+        futureActionKey: action-value
+    hooks:
+      - name: notify
+        when: after
+        futureHookKey: hook-value
+    mcpServers:
+      - name: playwright
+        command: npx
+        futureMcpKey: mcp-value
+    skills:
+      - name: reviewing
+        futureSkillKey: skill-value
+    ports:
+      backend:
+        defaultPort: 3001
+        futurePortKey: port-value
+    envFiles:
+      - path: .env
+        futureEnvKey: env-value
+verifications: []
+levels: []
+"##,
+    )
+    .unwrap();
+
+    let mut settings = load_config(&config_path).expect("load_config should succeed");
+    settings.projects[0].color = "Red".to_string();
+    save_config(&config_path, &settings).expect("save_config should succeed");
+    let p = &load_config(&config_path)
+        .expect("reload should succeed")
+        .projects[0];
+
+    assert_eq!(p.color, "Red");
+    assert_eq!(
+        p.repos[0].extra.get("futureRepoKey"),
+        Some(&serde_json::json!("repo-value"))
+    );
+    assert_eq!(
+        p.verifications[0].extra.get("futureVerificationKey"),
+        Some(&serde_json::json!("verification-value"))
+    );
+    assert_eq!(
+        p.review_actions[0].extra.get("futureActionKey"),
+        Some(&serde_json::json!("action-value"))
+    );
+    assert_eq!(
+        p.hooks[0].extra.get("futureHookKey"),
+        Some(&serde_json::json!("hook-value"))
+    );
+    assert_eq!(
+        p.mcp_servers[0].extra.get("futureMcpKey"),
+        Some(&serde_json::json!("mcp-value"))
+    );
+    assert_eq!(
+        p.skills[0].extra.get("futureSkillKey"),
+        Some(&serde_json::json!("skill-value"))
+    );
+    assert_eq!(
+        p.ports["backend"].extra.get("futurePortKey"),
+        Some(&serde_json::json!("port-value"))
+    );
+    assert_eq!(
+        p.env_files[0].extra.get("futureEnvKey"),
+        Some(&serde_json::json!("env-value"))
+    );
+    // Modeled siblings still bind correctly alongside the extras.
+    assert_eq!(p.repos[0].base_branch.as_deref(), Some("main"));
+    assert_eq!(p.ports["backend"].default_port, 3001);
+    assert_eq!(p.env_files[0].path, ".env");
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
