@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "tauri": "tauri",
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
