@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useMemo, useRef, useEffect } from "react";
 
 export type FocusDirection = "next" | "previous" | "first" | "last";
 
@@ -7,6 +7,7 @@ export interface FocusManager {
   focusPrevious: () => void;
   focusFirst: () => void;
   focusLast: () => void;
+  focusIndex: (index: number) => void;
   registerElement: (element: HTMLElement, priority?: number) => void;
   unregisterElement: (element: HTMLElement) => void;
 }
@@ -66,6 +67,19 @@ export const useFocusManagement = (groupId: string): FocusManager => {
     elements[elements.length - 1]?.focus();
   }, [getElements]);
 
+  /**
+   * Focus one position in the walk. A caller that already tracks a selected index — a list whose
+   * arrow keys move a highlight, say — needs this rather than focusNext(): stepping the walk from
+   * "nothing in this group has focus" lands on the first element, which is one row behind a
+   * highlight that has already moved.
+   */
+  const focusIndex = useCallback(
+    (index: number) => {
+      getElements()[index]?.focus();
+    },
+    [getElements],
+  );
+
   const registerElement = useCallback(
     (element: HTMLElement, priority?: number) => {
       const elements = getElements();
@@ -101,14 +115,30 @@ export const useFocusManagement = (groupId: string): FocusManager => {
     [groupId, getElements],
   );
 
-  return {
-    focusNext,
-    focusPrevious,
-    focusFirst,
-    focusLast,
-    registerElement,
-    unregisterElement,
-  };
+  // Memoized because useFocusable hangs both its ref callback and its unmount effect off this
+  // object. A fresh object per render re-runs that effect's cleanup after the refs have already
+  // re-attached, so every re-render of the host left the group empty and focusNext() a no-op — the
+  // roving focus worked exactly once, until the first state change.
+  return useMemo(
+    () => ({
+      focusNext,
+      focusPrevious,
+      focusFirst,
+      focusLast,
+      focusIndex,
+      registerElement,
+      unregisterElement,
+    }),
+    [
+      focusNext,
+      focusPrevious,
+      focusFirst,
+      focusLast,
+      focusIndex,
+      registerElement,
+      unregisterElement,
+    ],
+  );
 };
 
 // Hook for components that want to participate in focus management

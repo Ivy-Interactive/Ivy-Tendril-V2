@@ -36,6 +36,7 @@ export {
   type UseResizableSidebarReturn,
 } from "./hooks/use-resizable-sidebar";
 
+export { getPlatformShortcut } from "./lib/shortcut";
 export { useShortcut } from "./lib/useShortcut";
 export { getRegisteredShortcuts, type ShortcutInfo } from "./lib/shortcutRegistry";
 export { useFocusable, useFocusManagement, type FocusManager } from "./hooks/use-focus-management";
