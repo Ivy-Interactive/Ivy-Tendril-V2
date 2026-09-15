@@ -37,10 +37,19 @@ import type {
   DataTableRowActionEvent,
   DataTableSort,
   DataTableToolbarSlots,
+  DataTableVirtualized,
 } from "./types";
 import { useColumnVisibility } from "./use-column-visibility";
 import { useDataTablePagination } from "./use-data-table-pagination";
+import { useDataTableRowFocus } from "./use-data-table-row-focus";
 import { useDataTableSort } from "./use-data-table-sort";
+import {
+  DATA_TABLE_MAX_BODY_HEIGHT,
+  DATA_TABLE_OVERSCAN,
+  DATA_TABLE_ROW_HEIGHT_ESTIMATES,
+  DATA_TABLE_VIRTUALIZATION_THRESHOLD,
+  useDataTableVirtualization,
+} from "./use-data-table-virtualization";
 import { useInlineCellEdit } from "./use-inline-cell-edit";
 import { getCellValue, getRenderableActions, toDisplayString } from "./utils";
 import { dataTableCellAlignVariant, dataTableRowVariant } from "./variant";
@@ -108,6 +117,34 @@ export interface DataTableProps<TRow> extends Omit<
   /** Optional row activation. Row actions, selection and the inline editor never trigger it. */
   onRowClick?: (row: TRow, id: string) => void;
 
+  /**
+   * Row windowing. `"auto"` (the default) engages only above `virtualizationThreshold` rendered
+   * rows, so a default `paginated` call site renders every one of its 10 rows exactly as before.
+   *
+   * While windowing is active:
+   * - Only the visible slice plus `overscan` is in the DOM, padded by two `aria-hidden` spacer rows
+   *   so the scrollbar reports the true height. `aria-rowcount`/`aria-rowindex` keep reporting the
+   *   real row count and each row's absolute position regardless.
+   * - **Text selection cannot extend past the rendered rows.** Rendered rows stay in `<tbody>`
+   *   document order so selection across them works normally, but a row that is not mounted cannot
+   *   be selected. This is inherent to windowing.
+   * - The table switches to `table-layout: fixed`, so column widths stay put instead of twitching
+   *   as longer content scrolls in. Zero-width selection and row-action columns get real widths;
+   *   override the latter with the `--ivy-data-table-actions-width` custom property.
+   */
+  virtualized?: DataTableVirtualized;
+  /** Rendered-row count above which `virtualized="auto"` engages. Defaults to 50. */
+  virtualizationThreshold?: number;
+  /**
+   * `max-height` of the table's scroll container while windowing is active (a number is px).
+   * Defaults to 480. Windowing needs a bounded viewport — without one every row is "visible".
+   */
+  maxBodyHeight?: number | string;
+  /** First-paint row-height estimate in px. Defaults per density (Small 36, Medium 44, Large 52). */
+  estimateRowHeight?: number;
+  /** Rows rendered beyond the visible range while windowing. Defaults to 8. */
+  overscan?: number;
+
   /** Skeleton body. Defaults to false. */
   loading?: boolean;
   /** Replaces the default muted "No results." row. */
@@ -162,6 +199,11 @@ function DataTableInner<TRow>(
     editable = false,
     onCellCommit,
     onRowClick,
+    virtualized = "auto",
+    virtualizationThreshold = DATA_TABLE_VIRTUALIZATION_THRESHOLD,
+    maxBodyHeight = DATA_TABLE_MAX_BODY_HEIGHT,
+    estimateRowHeight,
+    overscan = DATA_TABLE_OVERSCAN,
     loading = false,
     emptyState,
     toolbar,
@@ -268,6 +310,56 @@ function DataTableInner<TRow>(
   const hasFooter = visibleColumns.some((column) => column.footer !== undefined);
   const columnCount = visibleColumns.length + (selectable ? 1 : 0) + (hasActionsColumn ? 1 : 0);
   const showToolbar = Boolean(toolbar?.left || toolbar?.right || showColumnOptions);
+
+  // Windowing and roving row focus are mutually dependent — the virtualizer pins the focused row
+  // into its rendered range, and moving focus scrolls through the virtualizer — so the scroll
+  // container ref lives here and `scrollToIndex` is reached through a ref rather than a closure.
+  const scrollContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const scrollToIndexRef = React.useRef<(index: number) => void>(() => undefined);
+  const scrollToIndex = React.useCallback((index: number) => {
+    scrollToIndexRef.current(index);
+  }, []);
+
+  const rowFocus = useDataTableRowFocus({
+    count: pageRows.length,
+    containerRef: scrollContainerRef,
+    scrollToIndex,
+    estimatedRowHeight: estimateRowHeight ?? DATA_TABLE_ROW_HEIGHT_ESTIMATES[density],
+  });
+
+  const virtualization = useDataTableVirtualization({
+    containerRef: scrollContainerRef,
+    rowIds: pageRowIds,
+    virtualized,
+    virtualizationThreshold,
+    maxBodyHeight,
+    estimateRowHeight,
+    overscan,
+    density,
+    pinnedIndex: rowFocus.pinnedIndex,
+    enabled: !loading,
+  });
+  scrollToIndexRef.current = virtualization.scrollToIndex;
+
+  /**
+   * Under `table-layout: fixed` a `w-0` utility is taken literally, collapsing the selection and
+   * row-action columns and painting their controls over the neighbouring cell. Swap in real widths
+   * for the windowed variant; auto layout keeps `w-0`'s shrink-to-fit behaviour.
+   */
+  const fitColumnClass = (kind: "select" | "actions") =>
+    virtualization.active ? `ivy-data-table-fit-${kind}` : "w-0";
+
+  /** 1-based absolute position, so paging and windowing both report true `aria-rowindex` values. */
+  const absoluteRowIndex = (rowIndex: number) =>
+    manualPagination || !paginated
+      ? rowIndex + 1
+      : (pagination.page - 1) * pagination.pageSize + rowIndex + 1;
+
+  const spacerRow = (key: string, height: number) => (
+    <tr key={key} aria-hidden="true" data-slot="data-table-spacer">
+      <td colSpan={Math.max(1, columnCount)} style={{ height, padding: 0, border: 0 }} />
+    </tr>
+  );
 
   const columnOptionsControl = showColumnOptions ? (
     <Popover>
@@ -376,7 +468,8 @@ function DataTableInner<TRow>(
       );
     }
 
-    return pageRows.map((row, rowIndex) => {
+    const renderRow = (rowIndex: number) => {
+      const row = pageRows[rowIndex];
       const rowId = pageRowIds[rowIndex];
       const rowSelected = selectedSet.has(rowId);
       const actions = hasActionsColumn ? resolveActions(row) : [];
@@ -384,14 +477,23 @@ function DataTableInner<TRow>(
       return (
         <TableRow
           key={rowId}
+          // `data-index` is not decoration: virtual-core reads it back off the measured element and
+          // warns if it is missing. `data-row-id` is the focus/query handle.
+          data-index={rowIndex}
+          data-row-id={rowId}
+          ref={virtualization.active ? virtualization.measureRowElement : undefined}
+          aria-rowindex={absoluteRowIndex(rowIndex)}
+          tabIndex={rowFocus.rowTabIndex(rowIndex)}
+          onFocus={() => rowFocus.handleRowFocus(rowIndex)}
           data-state={rowSelected ? "selected" : undefined}
           className={cn(
             dataTableRowVariant({ interactive: Boolean(onRowClick), selected: rowSelected }),
+            "outline-none focus-visible:ring-1 focus-visible:ring-ring",
           )}
           onClick={onRowClick ? () => onRowClick(row, rowId) : undefined}
         >
           {selectable ? (
-            <TableCell className="w-0">
+            <TableCell className={fitColumnClass("select")}>
               <div
                 className="flex items-center"
                 onClick={(event) => event.stopPropagation()}
@@ -423,7 +525,7 @@ function DataTableInner<TRow>(
           ))}
 
           {hasActionsColumn ? (
-            <TableCell className="w-0">
+            <TableCell className={fitColumnClass("actions")}>
               <DataTableRowActions
                 actions={actions}
                 row={row}
@@ -434,7 +536,33 @@ function DataTableInner<TRow>(
           ) : null}
         </TableRow>
       );
+    };
+
+    const { virtualItems } = virtualization;
+    if (!virtualItems) {
+      return pageRows.map((_, rowIndex) => renderRow(rowIndex));
+    }
+
+    // Real `<tr>`/`<td>` in document order, padded by spacer rows rather than absolutely positioned:
+    // absolute positioning would need `display: block` on table/tbody/tr, which destroys column
+    // alignment, the sticky `<thead>` and cross-row text selection.
+    const rendered: React.ReactNode[] = [];
+    if (virtualization.padStart > 0) {
+      rendered.push(spacerRow("virtual-pad-start", virtualization.padStart));
+    }
+    virtualItems.forEach((item, position) => {
+      rendered.push(renderRow(item.index));
+      // Non-zero only when the focused row is pinned in from outside the contiguous window, which
+      // keeps padStart + rendered + gaps + padEnd equal to the true total height even then.
+      const gap = virtualization.gapAfter(position);
+      if (gap > 0) {
+        rendered.push(spacerRow(`virtual-gap-${item.index}`, gap));
+      }
     });
+    if (virtualization.padEnd > 0) {
+      rendered.push(spacerRow("virtual-pad-end", virtualization.padEnd));
+    }
+    return rendered;
   })();
 
   return (
@@ -457,14 +585,21 @@ function DataTableInner<TRow>(
           ref={ref}
           density={density}
           aria-busy={loading || undefined}
-          className="ivy-data-table"
+          // Counts data rows only, and the header row carries no `aria-rowindex`. A stricter ARIA
+          // reading would include the header (N + 1); N is the convention here, applied whether or
+          // not windowing is active so a screen reader always hears the true row count.
+          aria-rowcount={total}
+          onKeyDown={rowFocus.handleKeyDown}
+          className={cn("ivy-data-table", virtualization.active && "ivy-data-table-virtualized")}
+          containerRef={scrollContainerRef}
+          containerStyle={virtualization.containerStyle}
           {...tableProps}
         >
           {caption ? <TableCaption>{caption}</TableCaption> : null}
           <TableHeader>
             <TableRow>
               {selectable ? (
-                <TableHead className="w-0">
+                <TableHead className={fitColumnClass("select")}>
                   <div className="flex items-center">
                     <Checkbox
                       id={`${selectionIdPrefix}-all`}
@@ -489,7 +624,7 @@ function DataTableInner<TRow>(
               ))}
 
               {hasActionsColumn ? (
-                <TableHead aria-label="Row actions" className="w-0">
+                <TableHead aria-label="Row actions" className={fitColumnClass("actions")}>
                   <span className="sr-only">Row actions</span>
                 </TableHead>
               ) : null}

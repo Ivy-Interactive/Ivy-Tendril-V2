@@ -95,6 +95,7 @@ export * from "./components/ui/badge";
 export * from "./components/ui/data-table";
 export * from "./components/ui/dialog";
 export * from "./components/ui/tabs";
+export * from "./components/ui/virtual-list";
 
 // Primary Renderers
 export {
