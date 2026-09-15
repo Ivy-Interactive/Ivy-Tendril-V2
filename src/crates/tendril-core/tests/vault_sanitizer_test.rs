@@ -132,6 +132,7 @@ fn playwright_server() -> ProjectMcpServerRef {
         ],
         environment,
         disabled: false,
+        extra: Default::default(),
     }
 }
 
@@ -164,6 +165,7 @@ fn sanitize_mcp_servers_maps_every_server() {
             arguments: vec!["--port".to_string(), "8080".to_string()],
             environment: HashMap::new(),
             disabled: true,
+            extra: Default::default(),
         },
     ];
 

@@ -465,6 +465,7 @@ fn plan_verification_list_json_is_parseable() {
             .map(|n| ProjectVerificationRef {
                 name: n.to_string(),
                 required: true,
+                extra: Default::default(),
             })
             .collect(),
         ..Default::default()
@@ -611,6 +612,7 @@ fn plan_verification_add_appends_and_defaults_to_pending() {
             .map(|n| ProjectVerificationRef {
                 name: n.to_string(),
                 required: true,
+                extra: Default::default(),
             })
             .collect(),
         ..Default::default()

@@ -29,6 +29,7 @@ fn repo_config(path: &str, base_branch: Option<&str>) -> ProjectConfig {
         repos: vec![RepoRef {
             path: path.to_string(),
             base_branch: base_branch.map(str::to_string),
+            extra: Default::default(),
         }],
         ..Default::default()
     }
@@ -212,10 +213,12 @@ fn sync_project_returns_one_result_per_repo_in_configured_order() {
             RepoRef {
                 path: first.repo.to_string_lossy().to_string(),
                 base_branch: Some("main".to_string()),
+                extra: Default::default(),
             },
             RepoRef {
                 path: second.repo.to_string_lossy().to_string(),
                 base_branch: Some("main".to_string()),
+                extra: Default::default(),
             },
         ],
         ..Default::default()
