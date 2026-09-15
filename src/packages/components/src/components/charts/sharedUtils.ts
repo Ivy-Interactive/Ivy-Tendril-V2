@@ -449,7 +449,9 @@ export const generateSeries = (
         focus: "series",
         disabled: true,
         lineStyle: { width: 3, opacity: 1 },
-        itemStyle: { borderWidth: 2, borderColor: "var(--background, #fff)" },
+        // echarts paints to a canvas and cannot resolve a CSS custom property, so the symbol
+        // border has to be the already-resolved background rather than `var(--background)`.
+        itemStyle: { borderWidth: 2, borderColor: markLineTheme?.background ?? "#fff" },
       },
       blur: { lineStyle: { opacity: 0.6 } },
       animation: true,
