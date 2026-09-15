@@ -23,13 +23,14 @@ export const Default: Story = {
   },
 };
 
-export const TwoSeriesFilled: Story = {
+/**
+ * One `radars` entry styles every ring, rather than one entry per ring: a radar series carries all
+ * the rows, so a second config would repeat them instead of adding a ring.
+ */
+export const Filled: Story = {
   args: {
     data: RADAR_DATA,
-    radars: [
-      { dataKey: "current", name: "Current", filled: true },
-      { dataKey: "target", name: "Target" },
-    ],
+    radars: [{ dataKey: "measure", name: "Score", filled: true }],
     legend: { verticalAlign: "Bottom" },
   },
 };

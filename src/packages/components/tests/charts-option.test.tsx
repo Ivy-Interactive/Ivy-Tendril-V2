@@ -35,6 +35,7 @@ import {
 } from "../src/charts";
 import { getThemeColors } from "../src/lib/theme";
 import { getChartColors } from "../src/components/charts/styles";
+import { CATEGORY_DATA, FUNNEL_DATA, RADAR_DATA } from "../src/stories/chart-harness";
 
 interface Series {
   name?: string;
@@ -43,6 +44,12 @@ interface Series {
   stack?: string;
   itemStyle?: Record<string, unknown>;
   emphasis?: { itemStyle?: Record<string, unknown> };
+}
+
+/** A pie or funnel slice, after the component has resolved its value and label columns. */
+interface Slice {
+  value?: unknown;
+  name?: unknown;
 }
 
 interface Axis {
@@ -54,6 +61,7 @@ interface Axis {
 
 interface ChartOption {
   color?: string[];
+  radar?: { indicator?: { name?: string }[] };
   series?: Series[] | Series;
   xAxis?: Axis;
   yAxis?: Axis;
@@ -65,7 +73,6 @@ interface ChartOption {
     formatter?: unknown;
   };
   textStyle?: { color?: string; fontFamily?: string; fontSize?: number };
-  radar?: unknown;
   [key: string]: unknown;
 }
 
@@ -404,6 +411,146 @@ describe("chart options", () => {
       const option = optionFor(<LineChart />);
 
       expect(seriesOf(option)).toEqual([]);
+    });
+  });
+
+  /**
+   * `PieChart` and `FunnelChart` resolve their value and label columns from the first `pies`/
+   * `funnels` entry, falling back to `dimension` and `measure`. Give them neither and every slice
+   * resolves to `undefined` — echarts then paints nothing at all rather than raising, so this is a
+   * failure mode that a "does it render" test cannot see. Three of the chart stories shipped blank
+   * for exactly this reason before the screenshots caught it.
+   */
+  describe("dimension and measure column resolution", () => {
+    const DIMENSION_DATA = [
+      { dimension: "Direct", measure: 4200 },
+      { dimension: "Organic", measure: 3100 },
+    ];
+    const CUSTOM_KEY_DATA = [
+      { channel: "Direct", sessions: 4200 },
+      { channel: "Organic", sessions: 3100 },
+    ];
+
+    const slicesOf = (option: ChartOption): Slice[] => {
+      const [first] = seriesOf(option);
+      expect(Array.isArray(first?.data)).toBe(true);
+      return first.data as Slice[];
+    };
+
+    it("PieChart falls back to the dimension and measure columns", () => {
+      expect(slicesOf(optionFor(<PieChart data={DIMENSION_DATA} />))).toEqual([
+        { value: 4200, name: "Direct" },
+        { value: 3100, name: "Organic" },
+      ]);
+    });
+
+    it("PieChart honours an explicit dataKey and nameKey", () => {
+      const option = optionFor(
+        <PieChart data={CUSTOM_KEY_DATA} pies={[{ dataKey: "sessions", nameKey: "channel" }]} />,
+      );
+
+      expect(slicesOf(option)).toEqual([
+        { value: 4200, name: "Direct" },
+        { value: 3100, name: "Organic" },
+      ]);
+    });
+
+    it("FunnelChart falls back to the dimension and measure columns", () => {
+      const slices = slicesOf(optionFor(<FunnelChart data={DIMENSION_DATA} />));
+
+      expect(slices.map((slice) => slice.name)).toEqual(["Direct", "Organic"]);
+      expect(slices.map((slice) => slice.value)).toEqual([4200, 3100]);
+    });
+
+    it("FunnelChart honours an explicit dataKey and nameKey", () => {
+      const slices = slicesOf(
+        optionFor(
+          <FunnelChart
+            data={CUSTOM_KEY_DATA}
+            funnels={[{ dataKey: "sessions", nameKey: "channel" }]}
+          />,
+        ),
+      );
+
+      expect(slices.map((slice) => slice.name)).toEqual(["Direct", "Organic"]);
+      expect(slices.map((slice) => slice.value)).toEqual([4200, 3100]);
+    });
+
+    it("leaves a pie slice unresolved when neither the config nor the columns match", () => {
+      // The negative case, so the four assertions above cannot pass for the wrong reason.
+      expect(slicesOf(optionFor(<PieChart data={CUSTOM_KEY_DATA} />))).toEqual([
+        { value: undefined, name: undefined },
+        { value: undefined, name: undefined },
+      ]);
+    });
+  });
+
+  /**
+   * `RadarChart` inverts the usual layout: one axis per numeric column, one ring per row. A radar
+   * with two axes is drawn by echarts as a bare line, so the indicator count is the thing to pin.
+   */
+  /**
+   * The same guard aimed at the story fixtures themselves, since those are what the visual
+   * baselines are rendered from and a blank canvas is a passing screenshot.
+   */
+  describe("story fixtures resolve to real slices", () => {
+    it("CATEGORY_DATA drives a pie with a label and a value per slice", () => {
+      const [series] = seriesOf(optionFor(<PieChart data={CATEGORY_DATA} />));
+      const slices = series.data as Slice[];
+
+      expect(slices).toHaveLength(CATEGORY_DATA.length);
+      for (const slice of slices) {
+        expect(typeof slice.name).toBe("string");
+        expect(typeof slice.value).toBe("number");
+      }
+    });
+
+    it("FUNNEL_DATA drives a funnel with a label and a value per stage", () => {
+      const [series] = seriesOf(optionFor(<FunnelChart data={FUNNEL_DATA} />));
+      const slices = series.data as Slice[];
+
+      expect(slices).toHaveLength(FUNNEL_DATA.length);
+      for (const slice of slices) {
+        expect(typeof slice.name).toBe("string");
+        expect(typeof slice.value).toBe("number");
+      }
+    });
+
+    it("RADAR_DATA gives the radar enough axes to be a polygon", () => {
+      const option = optionFor(<RadarChart data={RADAR_DATA} />);
+
+      expect(option.radar?.indicator?.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  describe("RadarChart axes", () => {
+    it("derives one indicator per numeric column and one ring per row", () => {
+      const option = optionFor(
+        <RadarChart
+          data={[
+            { name: "Current", speed: 82, reliability: 91, coverage: 68 },
+            { name: "Target", speed: 95, reliability: 98, coverage: 90 },
+          ]}
+        />,
+      );
+
+      expect(option.radar?.indicator?.map((i) => i.name)).toEqual([
+        "speed",
+        "reliability",
+        "coverage",
+      ]);
+
+      const [series] = seriesOf(option);
+      expect(series.data).toEqual([
+        { value: [82, 91, 68], name: "Current" },
+        { value: [95, 98, 90], name: "Target" },
+      ]);
+    });
+
+    it("collapses to two indicators when the rows carry only two measures", () => {
+      const option = optionFor(<RadarChart data={[{ axis: "Speed", current: 82, target: 95 }]} />);
+
+      expect(option.radar?.indicator).toHaveLength(2);
     });
   });
 });

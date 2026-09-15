@@ -54,13 +54,29 @@ export const MONTHLY_DATA: ChartData[] = [
   { month: "Jun", revenue: 7100, costs: 3500, profit: 3600 },
 ];
 
-/** A single-measure categorical series, for the charts that show one value per slice. */
+/**
+ * A single-measure categorical series, for the charts that show one value per slice.
+ *
+ * The columns are `dimension` and `measure` because that is the pair `PieChart` and `FunnelChart`
+ * fall back to when no `pies`/`funnels` entry names a `dataKey` and `nameKey`. Hand them
+ * differently named columns with no config and every slice resolves to `undefined`: an empty
+ * canvas, not an error. `CATEGORY_DATA_CUSTOM_KEYS` covers the other half of that contract.
+ */
 export const CATEGORY_DATA: ChartData[] = [
-  { category: "Direct", value: 4200 },
-  { category: "Organic", value: 3100 },
-  { category: "Referral", value: 2200 },
-  { category: "Social", value: 1400 },
-  { category: "Email", value: 900 },
+  { dimension: "Direct", measure: 4200 },
+  { dimension: "Organic", measure: 3100 },
+  { dimension: "Referral", measure: 2200 },
+  { dimension: "Social", measure: 1400 },
+  { dimension: "Email", measure: 900 },
+];
+
+/** The same series under arbitrary column names, for the stories that remap them explicitly. */
+export const CATEGORY_DATA_CUSTOM_KEYS: ChartData[] = [
+  { channel: "Direct", sessions: 4200 },
+  { channel: "Organic", sessions: 3100 },
+  { channel: "Referral", sessions: 2200 },
+  { channel: "Social", sessions: 1400 },
+  { channel: "Email", sessions: 900 },
 ];
 
 /** Correlated x/y pairs for the scatter chart. */
@@ -74,22 +90,25 @@ export const SCATTER_DATA: ChartData[] = [
   { weight: 5.9, height: 8.4 },
 ];
 
-/** Per-axis scores for the radar chart. */
+/**
+ * Scores for the radar chart, one row per series.
+ *
+ * `RadarChart` inverts the usual layout: each numeric column becomes an axis and each row becomes a
+ * ring, labelled from the row's `name`. Laying it out the other way round — a label column plus two
+ * measures — yields a two-axis radar, which echarts draws as a bare line.
+ */
 export const RADAR_DATA: ChartData[] = [
-  { axis: "Speed", current: 82, target: 95 },
-  { axis: "Reliability", current: 91, target: 98 },
-  { axis: "Coverage", current: 68, target: 90 },
-  { axis: "Cost", current: 74, target: 60 },
-  { axis: "Support", current: 88, target: 92 },
+  { name: "Current", speed: 82, reliability: 91, coverage: 68, cost: 74, support: 88 },
+  { name: "Target", speed: 95, reliability: 98, coverage: 90, cost: 60, support: 92 },
 ];
 
-/** A staged conversion funnel. */
+/** A staged conversion funnel, keyed like `CATEGORY_DATA` for the same reason. */
 export const FUNNEL_DATA: ChartData[] = [
-  { stage: "Visited", count: 12000 },
-  { stage: "Signed up", count: 5400 },
-  { stage: "Activated", count: 3100 },
-  { stage: "Subscribed", count: 1200 },
-  { stage: "Renewed", count: 740 },
+  { dimension: "Visited", measure: 12000 },
+  { dimension: "Signed up", measure: 5400 },
+  { dimension: "Activated", measure: 3100 },
+  { dimension: "Subscribed", measure: 1200 },
+  { dimension: "Renewed", measure: 740 },
 ];
 
 /** A flow graph for the sankey chart. */

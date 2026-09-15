@@ -1,6 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { FunnelChart } from "@/components/charts/FunnelChart";
-import { FUNNEL_DATA, chartDecorator, chartParameters } from "./chart-harness";
+import {
+  CATEGORY_DATA_CUSTOM_KEYS,
+  FUNNEL_DATA,
+  chartDecorator,
+  chartParameters,
+} from "./chart-harness";
 
 const meta: Meta<typeof FunnelChart> = {
   title: "Charts/FunnelChart",
@@ -27,8 +32,15 @@ export const Default: Story = {
 export const WithLegend: Story = {
   args: {
     data: FUNNEL_DATA,
-    funnels: [{ dataKey: "count", nameKey: "stage" }],
     legend: { verticalAlign: "Bottom" },
+  },
+};
+
+/** Arbitrary column names, resolved through the `funnels` entry's `dataKey` and `nameKey`. */
+export const CustomKeys: Story = {
+  args: {
+    data: CATEGORY_DATA_CUSTOM_KEYS,
+    funnels: [{ dataKey: "sessions", nameKey: "channel" }],
   },
 };
 
