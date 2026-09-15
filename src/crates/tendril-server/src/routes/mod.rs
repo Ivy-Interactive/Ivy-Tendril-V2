@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod auth;
 pub mod changes;
 pub mod chat;
 pub mod config;
@@ -7,6 +8,7 @@ pub mod dashboard;
 pub mod health;
 pub mod inbox;
 pub mod jobs;
+pub mod local_file;
 pub mod models;
 pub mod newsletter;
 pub mod onboarding;
@@ -366,15 +368,48 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // WebSocket
         .route("/api/ws", get(ws::ws_handler))
+        // REST counterpart to `?since=<seq>` WS resume — same ring buffer, for a client that would
+        // rather poll (or top up before opening a socket) than hold one open.
+        .route("/api/events/backfill", get(ws::events_backfill_handler))
+        .route("/api/events", get(ws::events_backfill_handler))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             crate::auth::auth_middleware,
+        ))
+        // Outside `auth_middleware`, so a configured `api.apiKey` is checked *before* it and a request
+        // must clear both — the same order as `ApiKeyAuthMiddleware` ahead of session auth in the
+        // original. A no-op when no key is configured.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::api_key_middleware,
+        ));
+
+    // Password login: no bearer credential (that is what it issues), but a configured `api.apiKey`
+    // still applies, since it applies to every `/api` path in the original.
+    let password_auth = Router::new()
+        .route("/api/auth/login", post(auth::login_handler))
+        .route("/api/auth/status", get(auth::status_handler))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::api_key_middleware,
+        ));
+
+    // `GET /ivy/local-file`, outside the bearer layer because an `<img src>` navigation carries no
+    // `Authorization` header. Its own guard supplies the credential check (`?token=`) plus host,
+    // origin, extension and root-confinement enforcement — see crate::local_file_guard.
+    let local_file = Router::new()
+        .route("/ivy/local-file", get(local_file::get_local_file))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::local_file_guard::local_file_guard,
         ));
 
     Router::new()
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
+        .merge(password_auth)
+        .merge(local_file)
         // Alias for the original Tendril's GET /api/jobs/health, same handler/payload. Kept
         // unauthenticated to match /api/health (the original guards it, but a peer that hasn't
         // read the secret yet still needs to probe it) and registered on this router so the

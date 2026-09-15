@@ -5,13 +5,15 @@
 //! and an operator's Refresh click can never run concurrently and double the `gh` call count.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tendril_core::db::open_database;
 use tendril_core::error::{Result, TendrilError};
 use tendril_core::git::pr_sync::{sync_pr_statuses, PrSyncReport};
 use tokio::sync::broadcast;
+
+use crate::event_buffer::{self, EventRingBuffer};
 
 /// Let the daemon settle before the first pass.
 const FIRST_RUN_DELAY: Duration = Duration::from_secs(30);
@@ -27,6 +29,8 @@ pub async fn run_pr_sync_pass(
     plans_dir: &Path,
     running: &Arc<AtomicBool>,
     ws_tx: &broadcast::Sender<String>,
+    ring_buffer: &EventRingBuffer,
+    seq_counter: &AtomicU64,
 ) -> Option<Result<PrSyncReport>> {
     if running.swap(true, Ordering::SeqCst) {
         return None;
@@ -47,7 +51,12 @@ pub async fn run_pr_sync_pass(
     if let Ok(report) = &result {
         if report.changed() {
             // The WS bridge forwards this to the frontend, so the UI refreshes without polling.
-            let _ = ws_tx.send(r#"{"type":"pr_status_changed"}"#.to_string());
+            event_buffer::dispatch_event(
+                seq_counter,
+                ring_buffer,
+                ws_tx,
+                serde_json::json!({"type": "pr_status_changed"}),
+            );
         }
     }
 
@@ -66,6 +75,8 @@ pub fn spawn_pr_status_sync(
     plans_dir: PathBuf,
     running: Arc<AtomicBool>,
     ws_tx: broadcast::Sender<String>,
+    ring_buffer: Arc<EventRingBuffer>,
+    seq_counter: Arc<AtomicU64>,
 ) {
     tokio::spawn(async move {
         tokio::time::sleep(FIRST_RUN_DELAY).await;
@@ -75,7 +86,16 @@ pub fn spawn_pr_status_sync(
         ticker.tick().await;
 
         loop {
-            match run_pr_sync_pass(&db_path, &plans_dir, &running, &ws_tx).await {
+            match run_pr_sync_pass(
+                &db_path,
+                &plans_dir,
+                &running,
+                &ws_tx,
+                &ring_buffer,
+                &seq_counter,
+            )
+            .await
+            {
                 Some(Ok(report)) => log_report(&report),
                 Some(Err(e)) => tracing::warn!("PR status sync pass failed: {}", e),
                 None => tracing::debug!("PR status sync skipped: a pass is already running"),

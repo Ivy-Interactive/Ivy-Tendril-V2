@@ -159,6 +159,17 @@ pub struct TendrilSettings {
     )]
     pub model_cache_max_age_days: i64,
 
+    /// Password (session) authentication. Absent on every install that has never enabled it, and
+    /// `skip_serializing_if` keeps it absent through a save/reload round-trip.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AuthConfig>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<ApiSettings>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security: Option<SecuritySettings>,
+
     /// Assigned-issue auto-import. Tolerant of shape: see [`deserialize_inbox`].
     #[serde(default, deserialize_with = "deserialize_inbox")]
     pub inbox: InboxConfig,
@@ -174,6 +185,106 @@ impl TendrilSettings {
     pub fn telemetry_enabled(&self) -> bool {
         self.telemetry == Some(true)
     }
+}
+
+/// Password authentication, mirroring the original's `AuthConfig` record. `password` holds an Argon2
+/// PHC string and `hash_secret` the base64 pepper fed to Argon2 as its secret key (`K`).
+///
+/// The nested `extra` matters: real configs in the wild carry keys this record does not model (e.g.
+/// `enabled`, `tokenExpiry`), and dropping them on the next `save_config` would break V2's promise
+/// that an unknown key survives a round-trip.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AuthConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+
+    /// Argon2 PHC string. Empty means password auth is not configured.
+    #[serde(default)]
+    pub password: String,
+
+    /// Base64-encoded Argon2 secret (pepper). The snake_case spelling is accepted too, because the
+    /// untyped reader this field replaced (`BasicAuthConfig::from_settings`) tolerated both.
+    #[serde(rename = "hashSecret", alias = "hash_secret", default)]
+    pub hash_secret: String,
+
+    #[serde(rename = "rateLimit", default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit: Option<LoginRateLimitConfig>,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+impl AuthConfig {
+    /// Whether password login is actually usable. A config carrying only `auth: {enabled: true}` —
+    /// which is what several inherited configs look like — must not lock anybody out, so both the
+    /// hash and the pepper have to be present before the login route accepts anything.
+    pub fn is_active(&self) -> bool {
+        !self.password.trim().is_empty() && !self.hash_secret.trim().is_empty()
+    }
+
+    /// The rate-limit config to use, falling back to the defaults the original applies when
+    /// `rateLimit` is absent (`TendrilAuthProvider` constructs `new LoginRateLimitConfig()`).
+    pub fn effective_rate_limit(&self) -> LoginRateLimitConfig {
+        self.rate_limit.clone().unwrap_or_default()
+    }
+}
+
+/// Exponential-backoff parameters for failed logins. The defaults are the original's: three free
+/// attempts, then 1s doubling up to 60s.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoginRateLimitConfig {
+    #[serde(default = "default_rate_limit_threshold")]
+    pub threshold: i32,
+
+    #[serde(rename = "baseDelaySeconds", default = "default_rate_limit_base_delay")]
+    pub base_delay_seconds: f64,
+
+    #[serde(rename = "maxDelaySeconds", default = "default_rate_limit_max_delay")]
+    pub max_delay_seconds: f64,
+}
+
+impl Default for LoginRateLimitConfig {
+    fn default() -> Self {
+        Self {
+            threshold: default_rate_limit_threshold(),
+            base_delay_seconds: default_rate_limit_base_delay(),
+            max_delay_seconds: default_rate_limit_max_delay(),
+        }
+    }
+}
+
+/// `api.apiKey`: when set, every `/api` request must also present a matching `X-Api-Key`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ApiSettings {
+    #[serde(rename = "apiKey", default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SecuritySettings {
+    /// Extra hosts `/ivy/local-file` may be reached on, on top of loopback, private IPv4,
+    /// `*.local` and the active tunnel host.
+    #[serde(
+        rename = "allowedHosts",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub allowed_hosts: Option<Vec<String>>,
+
+    /// Extra directories `GET /ivy/local-file` may serve from, on top of the Tendril home,
+    /// the plans folder and configured project repos.
+    #[serde(
+        rename = "localFileRoots",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub local_file_roots: Option<Vec<String>>,
+
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// Mirrors the original's `LlmConfig` (endpoint / apiKey / model). `extra` is required, not
@@ -426,6 +537,15 @@ fn default_worktree_reaper_grace() -> i32 {
 fn default_worktree_branch_delete_mode() -> String {
     "PreserveUnpushed".to_string()
 }
+fn default_rate_limit_threshold() -> i32 {
+    3
+}
+fn default_rate_limit_base_delay() -> f64 {
+    1.0
+}
+fn default_rate_limit_max_delay() -> f64 {
+    60.0
+}
 
 fn default_levels() -> Vec<LevelConfig> {
     vec![
@@ -487,6 +607,9 @@ impl Default for TendrilSettings {
             model_enrichment_interval_hours: default_model_enrichment_interval_hours(),
             model_cache_warn_age_days: default_model_cache_warn_age_days(),
             model_cache_max_age_days: default_model_cache_max_age_days(),
+            auth: None,
+            api: None,
+            security: None,
             inbox: InboxConfig::default(),
             extra: BTreeMap::new(),
         }

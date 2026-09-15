@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod analytics;
+pub mod auth;
 pub mod chat;
 pub mod config;
 pub mod db;
@@ -17,6 +18,7 @@ pub mod onboarding;
 pub mod plans;
 pub mod promptware;
 pub mod questions;
+pub mod security;
 pub mod skills;
 pub mod stack;
 pub mod telemetry;

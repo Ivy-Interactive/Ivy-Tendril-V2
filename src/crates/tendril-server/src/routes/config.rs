@@ -16,7 +16,12 @@ pub async fn put_config_handler(
     State(state): State<Arc<AppState>>,
     Json(incoming): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    match update_config_raw(&state.config_path, &incoming) {
+    let result = update_config_raw(&state.config_path, &incoming);
+    // Dropped whatever the outcome: a partial write still changes what the next request must see, and
+    // mtime granularity means the cached snapshot cannot be relied on to notice a same-tick write.
+    state.invalidate_settings_cache();
+
+    match result {
         Ok(_) => (
             StatusCode::OK,
             Json(json!({ "status": "ok", "message": "Config updated" })),

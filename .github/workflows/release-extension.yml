@@ -68,7 +68,7 @@ jobs:
           elif [[ "${{ github.ref }}" == refs/tags/vscode-v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/vscode-v}"
           else
-            VERSION=$(node -p "require('./extensions/vscode/package.json').version")
+            VERSION=$(node -p "require('./src/extensions/vscode/package.json').version")
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -80,7 +80,7 @@ jobs:
           fi
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
-          cd extensions/vscode
+          cd src/extensions/vscode
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Package extension
@@ -88,7 +88,7 @@ jobs:
 
       - name: Generate SHA256 checksum
         run: |
-          cd extensions/vscode
+          cd src/extensions/vscode
           VSIX_FILE=$(ls ivy-tendril-*.vsix)
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "$VSIX_FILE" > "${VSIX_FILE}.sha256"
@@ -102,8 +102,8 @@ jobs:
         with:
           name: ivy-tendril-${{ steps.version.outputs.version }}
           path: |
-            extensions/vscode/*.vsix
-            extensions/vscode/*.vsix.sha256
+            src/extensions/vscode/*.vsix
+            src/extensions/vscode/*.vsix.sha256
 
       - name: Attach to GitHub Release
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.test-mode)
@@ -111,8 +111,8 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
           files: |
-            extensions/vscode/*.vsix
-            extensions/vscode/*.vsix.sha256
+            src/extensions/vscode/*.vsix
+            src/extensions/vscode/*.vsix.sha256
 
       - name: Publish to Visual Studio Code Marketplace
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.test-mode)
@@ -120,7 +120,7 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           if [ -n "$VSCE_PAT" ]; then
-            npx --yes @vscode/vsce publish --packagePath extensions/vscode/*.vsix --skip-duplicate
+            npx --yes @vscode/vsce publish --packagePath src/extensions/vscode/*.vsix --skip-duplicate
           else
             echo "VSCE_PAT secret is not set; skipping Visual Studio Code Marketplace publishing."
           fi
@@ -131,7 +131,7 @@ jobs:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           if [ -n "$OVSX_PAT" ]; then
-            npx --yes ovsx publish extensions/vscode/*.vsix --skip-duplicate
+            npx --yes ovsx publish src/extensions/vscode/*.vsix --skip-duplicate
           else
             echo "OVSX_PAT secret is not set; skipping Open VSX publishing."
           fi

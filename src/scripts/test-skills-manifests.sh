@@ -4,7 +4,7 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-repo_root=$(cd "$script_dir/.." && pwd)
+repo_root=$(cd "$script_dir/../.." && pwd)
 
 echo "==> Validating Tendril Agent Skills in: $repo_root"
 failed=0
@@ -95,11 +95,11 @@ if [ $? -ne 0 ]; then
     failed=1
 fi
 
-# 2. Validate skills/ subdirectories and SKILL.md frontmatter
-echo "--- Step 2: Validating skills/ subdirectories and SKILL.md frontmatter ---"
-skills_dir="$repo_root/skills"
+# 2. Validate src/skills/ subdirectories and SKILL.md frontmatter
+echo "--- Step 2: Validating src/skills/ subdirectories and SKILL.md frontmatter ---"
+skills_dir="$repo_root/src/skills"
 if [ ! -d "$skills_dir" ]; then
-    echo "FAIL: skills/ directory does not exist"
+    echo "FAIL: src/skills/ directory does not exist"
     failed=1
 else
     skill_count=0
@@ -109,7 +109,7 @@ else
             skill_md="$skill_path/SKILL.md"
             skill_count=$((skill_count + 1))
             if [ ! -f "$skill_md" ]; then
-                echo "FAIL: Missing SKILL.md in skills/$skill_name"
+                echo "FAIL: Missing SKILL.md in src/skills/$skill_name"
                 failed=1
                 continue
             fi
@@ -120,15 +120,15 @@ else
             has_desc=$(grep -E "^description:[[:space:]]+" "$skill_md" | head -n 1 || true)
 
             if [ "$has_frontmatter" -eq 0 ] || [ -z "$has_name" ] || [ -z "$has_desc" ]; then
-                echo "FAIL: skills/$skill_name/SKILL.md missing valid YAML frontmatter (name, description)"
+                echo "FAIL: src/skills/$skill_name/SKILL.md missing valid YAML frontmatter (name, description)"
                 failed=1
             else
-                echo "PASS: skills/$skill_name (valid SKILL.md with frontmatter)"
+                echo "PASS: src/skills/$skill_name (valid SKILL.md with frontmatter)"
             fi
         fi
     done
     if [ "$skill_count" -eq 0 ]; then
-        echo "FAIL: No skills found in skills/ directory"
+        echo "FAIL: No skills found in src/skills/ directory"
         failed=1
     fi
 fi
@@ -153,11 +153,11 @@ done
 
 # Validate referenced helper scripts
 scripts_to_check=(
-    "skills/tendril-extension/scripts/package.ts"
-    "skills/tendril-extension/scripts/verify.ts"
-    "skills/tendril-extension/scripts/install-antigravity.sh"
-    "skills/tendril-extension/scripts/package-vsix.sh"
-    "skills/tendril-extension/scripts/uninstall-antigravity.sh"
+    "src/skills/tendril-extension/scripts/package.ts"
+    "src/skills/tendril-extension/scripts/verify.ts"
+    "src/skills/tendril-extension/scripts/install-antigravity.sh"
+    "src/skills/tendril-extension/scripts/package-vsix.sh"
+    "src/skills/tendril-extension/scripts/uninstall-antigravity.sh"
 )
 
 for script in "${scripts_to_check[@]}"; do

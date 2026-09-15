@@ -1,15 +1,36 @@
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
+// The settings snapshot is read from synchronous middleware, so it uses the std lock; `version_info`
+// is awaited and uses tokio's. Both names would be `RwLock`, hence the alias.
 use std::sync::Arc;
+use std::sync::RwLock as StdRwLock;
+use std::time::SystemTime;
 use tendril_core::agents::model_cache::{self, CacheFreshness};
+use tendril_core::auth::rate_limit::LoginRateLimiter;
 use tendril_core::chat::execution::ChatExecutionManager;
 use tendril_core::config::{
-    get_config_path, get_database_path, get_plans_dir_with_settings, load_config,
+    get_config_path, get_database_path, get_plans_dir_with_settings, load_config, TendrilSettings,
 };
 use tendril_core::jobs::JobManager;
+use tendril_core::security::local_file_roots::compute_roots;
 use tendril_core::version_check::VersionInfo;
 use tendril_core::watcher::ChangeEvent;
 use tokio::sync::{broadcast, RwLock};
+
+use crate::event_buffer::{self, EventRingBuffer, WSEventEnvelope};
+
+/// `config.yaml` as of a given mtime, plus everything derived from it that a per-request check needs.
+///
+/// The API key and the local-file roots are both read on requests that must not pay for a YAML parse
+/// (and, for the roots, a directory-resolution walk) every time, so they are cached together and
+/// invalidated together.
+pub struct CachedSettings {
+    /// `None` when `config.yaml` does not exist — an install with no config still gets a snapshot,
+    /// and will pick one up the moment the file appears.
+    pub mtime: Option<SystemTime>,
+    pub settings: Arc<TendrilSettings>,
+    pub local_file_roots: Arc<Vec<PathBuf>>,
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -20,11 +41,23 @@ pub struct AppState {
     pub job_manager: Arc<JobManager>,
     pub chat_manager: Arc<ChatExecutionManager>,
     pub ws_tx: broadcast::Sender<String>,
+    /// Recent events dispatched over `ws_tx`, kept so a reconnecting client can resume via
+    /// `?since=<seq>` instead of re-fetching full state. See [`AppState::dispatch_ws_event`].
+    pub ring_buffer: Arc<EventRingBuffer>,
+    /// Source of the monotonic `seq` stamped onto every dispatched event. Starts at 1 so the first
+    /// dispatched event of a daemon's lifetime is `seq: 1`, never `0`.
+    pub seq_counter: Arc<AtomicU64>,
     /// Filesystem change notifications, fed by the watcher the master daemon starts and consumed by
     /// `/api/changes/events`. The channel exists whether or not a watcher is running, so a test can
     /// publish on it directly and a daemon that lost the master race still serves the route.
     pub change_tx: broadcast::Sender<ChangeEvent>,
     pub secret: String,
+    /// Exponential backoff for `POST /api/auth/login`, shared by every request so the backoff is not
+    /// reset by anything short of a successful login or the cleanup sweep.
+    pub login_rate_limiter: Arc<LoginRateLimiter>,
+    /// Settings snapshot behind an mtime check — the V2 equivalent of the original's
+    /// `SettingsReloaded` event, and it also catches an edit made directly to `config.yaml`.
+    pub settings_cache: Arc<StdRwLock<Option<Arc<CachedSettings>>>>,
     /// Password credentials from `config.yaml`'s `auth` block, or `None` when there is no such block
     /// — which is the norm, and means the bearer token stays the only accepted credential. Resolved
     /// once here rather than per request, so authentication never reads the config off disk.
@@ -51,6 +84,11 @@ impl AppState {
         let db_path = get_database_path(&tendril_home);
 
         let settings = load_config(&config_path).unwrap_or_default();
+        let rate_limit = settings
+            .auth
+            .as_ref()
+            .map(|auth| auth.effective_rate_limit())
+            .unwrap_or_default();
         let basic_auth = crate::auth::BasicAuthConfig::from_settings(&settings);
         let enrich_models = settings.enrich_models;
         let enrichment_hours = settings.model_enrichment_interval_hours;
@@ -102,18 +140,28 @@ impl AppState {
         let job_manager = JobManager::new(tendril_home.clone(), settings).share();
         let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
+        let ring_buffer = Arc::new(EventRingBuffer::default());
+        let seq_counter = Arc::new(AtomicU64::new(1));
         // Coalesced change events, so 256 is generous: a client would have to be a full burst-window
         // behind to lag, and `stream_changes` degrades a lag to one full rescan anyway. Constructing
         // state deliberately does not start a watcher — only the master daemon does that.
         let (change_tx, _) = broadcast::channel(256);
 
-        // Forward chat events to WebSocket clients
+        // Forward chat events to WebSocket clients, through the same ring buffer/seq path every
+        // other event source uses so a resuming client sees chat events too.
         let mut chat_rx = chat_manager.subscribe_events();
         let ws_tx_clone = ws_tx.clone();
+        let ring_buffer_clone = ring_buffer.clone();
+        let seq_counter_clone = seq_counter.clone();
         tokio::spawn(async move {
             while let Ok(evt) = chat_rx.recv().await {
-                if let Ok(json) = serde_json::to_string(&evt) {
-                    let _ = ws_tx_clone.send(json);
+                if let Ok(payload) = serde_json::to_value(&evt) {
+                    event_buffer::dispatch_event(
+                        &seq_counter_clone,
+                        &ring_buffer_clone,
+                        &ws_tx_clone,
+                        payload,
+                    );
                 }
             }
         });
@@ -126,6 +174,8 @@ impl AppState {
             plans_dir.clone(),
             pr_sync_running.clone(),
             ws_tx.clone(),
+            ring_buffer.clone(),
+            seq_counter.clone(),
         );
 
         // `current_version` is always known, cache or not — only `latest_version`/`has_update`
@@ -145,11 +195,78 @@ impl AppState {
             job_manager,
             chat_manager,
             ws_tx,
+            ring_buffer,
+            seq_counter,
             change_tx,
             secret,
+            login_rate_limiter: Arc::new(LoginRateLimiter::new(rate_limit)),
+            settings_cache: Arc::new(StdRwLock::new(None)),
             basic_auth,
             pr_sync_running,
             version_info,
         }
+    }
+
+    /// The current settings and local-file roots, reparsing `config.yaml` only when its mtime moved.
+    ///
+    /// mtime granularity means two writes inside the same filesystem tick can look identical, so the
+    /// config write path calls [`AppState::invalidate_settings_cache`] rather than relying on this.
+    pub fn settings_snapshot(&self) -> Arc<CachedSettings> {
+        let mtime = std::fs::metadata(&self.config_path)
+            .ok()
+            .and_then(|meta| meta.modified().ok());
+
+        if let Some(cached) = self
+            .settings_cache
+            .read()
+            .ok()
+            .and_then(|guard| guard.clone())
+        {
+            if cached.mtime == mtime {
+                return cached;
+            }
+        }
+
+        let settings = load_config(&self.config_path).unwrap_or_default();
+        let roots = compute_roots(&settings, &self.tendril_home, &self.plans_dir);
+        let fresh = Arc::new(CachedSettings {
+            mtime,
+            settings: Arc::new(settings),
+            local_file_roots: Arc::new(roots),
+        });
+
+        if let Ok(mut guard) = self.settings_cache.write() {
+            *guard = Some(fresh.clone());
+        }
+
+        fresh
+    }
+
+    /// Drops the snapshot so the next reader reparses. Called by the config write path, where the new
+    /// contents are known to differ whatever the mtime says.
+    pub fn invalidate_settings_cache(&self) {
+        if let Ok(mut guard) = self.settings_cache.write() {
+            *guard = None;
+        }
+    }
+
+    /// The configured `api.apiKey`, or `None` when the install has none (every install that has never
+    /// set one, which is the no-op path for the API-key layer).
+    pub fn api_key(&self) -> Option<String> {
+        self.settings_snapshot()
+            .settings
+            .api
+            .as_ref()
+            .and_then(|api| api.api_key.as_ref())
+            .map(|key| key.trim().to_string())
+            .filter(|key| !key.is_empty())
+    }
+
+    /// Stamps `event` with the next monotonic sequence number, records it in [`Self::ring_buffer`],
+    /// and broadcasts it across [`Self::ws_tx`]. Every event a WebSocket client can observe should
+    /// go through this rather than `ws_tx.send` directly, so a reconnecting client's `?since=<seq>`
+    /// replay and the REST backfill endpoint both see it too.
+    pub fn dispatch_ws_event(&self, event: serde_json::Value) -> WSEventEnvelope {
+        event_buffer::dispatch_event(&self.seq_counter, &self.ring_buffer, &self.ws_tx, event)
     }
 }

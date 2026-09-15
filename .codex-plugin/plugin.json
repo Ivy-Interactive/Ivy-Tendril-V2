@@ -9,7 +9,7 @@
   "homepage": "https://github.com/ivy-interactive/ivy-tendril-v2",
   "repository": "https://github.com/ivy-interactive/ivy-tendril-v2",
   "license": "FSL-1.1-ALv2",
-  "skills": "./skills/",
+  "skills": "./src/skills/",
   "interface": {
     "displayName": "Tendril Skills",
     "shortDescription": "Engineering and debugging skills for Ivy Tendril plans and workflows.",

@@ -1049,18 +1049,15 @@ impl ReplaceDiffCommentsBody {
 
 /// Tell every connected client that a plan's diff comments moved.
 ///
-/// `send` on a `broadcast::Sender` with no subscribers returns `Err`; ignoring it is deliberate — a
-/// failed broadcast must never fail the write that triggered it.
+/// Goes through [`AppState::dispatch_ws_event`] rather than `ws_tx.send` directly, so a client that
+/// missed this while disconnected can pick it up via `?since=<seq>` resume or the backfill endpoint.
 fn broadcast_diff_comments_changed(state: &AppState, folder_name: &str, count: usize) {
-    let _ = state.ws_tx.send(
-        json!({
-            "type": "plan.diff_comments_changed",
-            "planId": format!("{:05}", plan_id_from_folder_name(folder_name)),
-            "folderName": folder_name,
-            "count": count,
-        })
-        .to_string(),
-    );
+    state.dispatch_ws_event(json!({
+        "type": "plan.diff_comments_changed",
+        "planId": format!("{:05}", plan_id_from_folder_name(folder_name)),
+        "folderName": folder_name,
+        "count": count,
+    }));
 }
 
 fn folder_name_of(folder: &std::path::Path) -> String {
@@ -1224,18 +1221,15 @@ impl ReplaceAnnotationsBody {
 
 /// Tell every connected client that a plan's annotations moved.
 ///
-/// `send` on a `broadcast::Sender` with no subscribers returns `Err`; ignoring it is deliberate — a
-/// failed broadcast must never fail the write that triggered it.
+/// Goes through [`AppState::dispatch_ws_event`] for the same reason as
+/// [`broadcast_diff_comments_changed`]: so a resuming or backfilling client sees it too.
 fn broadcast_annotations_changed(state: &AppState, folder_name: &str, count: usize) {
-    let _ = state.ws_tx.send(
-        json!({
-            "type": "plan.annotations_changed",
-            "planId": format!("{:05}", plan_id_from_folder_name(folder_name)),
-            "folderName": folder_name,
-            "count": count,
-        })
-        .to_string(),
-    );
+    state.dispatch_ws_event(json!({
+        "type": "plan.annotations_changed",
+        "planId": format!("{:05}", plan_id_from_folder_name(folder_name)),
+        "folderName": folder_name,
+        "count": count,
+    }));
 }
 
 pub async fn list_annotations_handler(

@@ -52,6 +52,8 @@ portable-pty = "0.9"
 # parameters are pinned in those two places rather than here, because they must match the hashes the
 # original Tendril already wrote into users' config.yaml.
 argon2 = "0.5"
+# HS256 session tokens minted by POST /api/auth/login, signed with the decoded `auth.hashSecret`.
+jsonwebtoken = "9"
 # Self-signed localhost certificates for `tendril generate-certs`.
 rcgen = "0.13"
 # TLS listener for `tendril serve --tls-cert/--tls-key`. Plain `axum::serve` has no TLS.
