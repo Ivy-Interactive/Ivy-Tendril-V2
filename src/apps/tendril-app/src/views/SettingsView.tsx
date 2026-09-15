@@ -25,7 +25,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
   const [codingAgent, setCodingAgent] = useState("claude");
   const [jobTimeout, setJobTimeout] = useState(1800);
   const [maxConcurrentJobs, setMaxConcurrentJobs] = useState(4);
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("system");
   // Absent in config.yaml means on, the same default the notifications store applies.
   const [desktopNotifications, setDesktopNotifications] = useState(true);
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);

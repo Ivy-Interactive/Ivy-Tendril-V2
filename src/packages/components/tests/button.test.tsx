@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { Button } from "../src/components/ui/button";
+import { readDesignSystemTokens } from "../scripts/design-tokens.ts";
 import { readCssInlined } from "./read-css.ts";
 
 function getRelativeLuminance(hex: string): number {
@@ -110,33 +111,38 @@ describe("Destructive theme contrast compliance (WCAG 2.1 AA)", () => {
 });
 
 describe("Semantic theme contrast compliance (WCAG 2.1 AA)", () => {
+  // The palette is generated from @ivy-interactive/ivy-design-system (see scripts/design-tokens.ts), the
+  // same source the C# app renders from. It picks each foreground from that colour's own luminance rather
+  // than from the mode: light `--info` (#4469c0) is dark enough to need white text, while dark `--success`
+  // and `--warning` are light enough to need black. So the invariants worth enforcing are the contrast
+  // ratio and agreement with that source of truth, not a per-mode literal.
   const cases = ENTRY_POINTS.flatMap(([name, path]) =>
     ["info", "success", "warning"].map((semantic) => [name, semantic, path] as const),
   );
 
   it.each(cases)(
-    "%s light mode --%s-foreground is #000000 and meets AA contrast (>= 4.5:1)",
+    "%s light mode --%s-foreground matches the design system and meets AA contrast (>= 4.5:1)",
     (_name, semantic, path) => {
       const rootBlock = block(path, ":root");
       const background = token(rootBlock, semantic);
       const foreground = token(rootBlock, `${semantic}-foreground`);
 
       expect(background).toBeDefined();
-      expect(foreground).toBe("#000000");
+      expect(foreground).toBe(readDesignSystemTokens("light").get(`${semantic}-foreground`));
       const contrast = getContrastRatio(background!, foreground!);
       expect(contrast).toBeGreaterThanOrEqual(4.5);
     },
   );
 
   it.each(cases)(
-    "%s dark mode --%s-foreground is #ffffff and meets AA contrast (>= 4.5:1)",
+    "%s dark mode --%s-foreground matches the design system and meets AA contrast (>= 4.5:1)",
     (_name, semantic, path) => {
       const darkBlock = block(path, ".dark");
       const background = token(darkBlock, semantic);
       const foreground = token(darkBlock, `${semantic}-foreground`);
 
       expect(background).toBeDefined();
-      expect(foreground).toBe("#ffffff");
+      expect(foreground).toBe(readDesignSystemTokens("dark").get(`${semantic}-foreground`));
       const contrast = getContrastRatio(background!, foreground!);
       expect(contrast).toBeGreaterThanOrEqual(4.5);
     },
