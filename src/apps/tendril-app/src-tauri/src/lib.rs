@@ -8,6 +8,7 @@ pub mod verification_reports;
 pub use commands::agents::*;
 pub use commands::chat::*;
 pub use commands::config::*;
+pub use commands::dashboard::*;
 pub use commands::github::*;
 pub use commands::inbox::*;
 pub use commands::jobs::*;
@@ -27,6 +28,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // Job-exit notifications route to the OS through this plugin when `desktopNotifications` is
+        // on. The matching `notification:default` entry in `capabilities/default.json` is what makes
+        // it reachable from the webview: without it `sendNotification` is refused at runtime, and
+        // nothing about that shows up at build time.
+        .plugin(tauri_plugin_notification::init())
         .manage(ui_store)
         .setup(|app| {
             // Connect the WebSocket bridge, which re-emits daemon events to the frontend as
@@ -87,6 +93,7 @@ pub fn run() {
             cmd_delete_plan,
             cmd_reset_plan,
             cmd_get_repo_status,
+            cmd_get_plan_git,
             cmd_get_revision,
             cmd_write_revision,
             cmd_get_verification_report,
@@ -163,6 +170,11 @@ pub fn run() {
             cmd_dismiss_inbox_proposal,
             cmd_list_pull_requests,
             cmd_sync_pull_requests,
+            cmd_get_dashboard_activity,
+            cmd_get_shipped_features,
+            cmd_get_recent_merged_prs,
+            cmd_get_recent_plan_costs,
+            cmd_get_agent_cost_breakdown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

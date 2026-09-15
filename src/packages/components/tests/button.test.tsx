@@ -1,8 +1,8 @@
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { Button } from "../src/components/ui/button";
+import { readCssInlined } from "./read-css.ts";
 
 function getRelativeLuminance(hex: string): number {
   const cleanHex = hex.replace("#", "");
@@ -58,74 +58,68 @@ describe("Button component", () => {
   });
 });
 
+const ENTRY_POINTS: readonly (readonly [string, string])[] = [
+  ["globals.css", resolve(__dirname, "..", "src/styles/globals.css")],
+  ["index.css", resolve(__dirname, "..", "src/styles/index.css")],
+];
+
+/**
+ * Both entry points import the same `tokens.css`, so they resolve every shared token to the same
+ * value and the expectations below hold for either one. `readCssInlined` splices the imported blocks
+ * back in, which is what keeps the `[^}]+` block regexes here working — `style-token-parity.test.ts`
+ * asserts the single-block invariant they rely on.
+ */
+function block(path: string, selector: ":root" | ".dark"): string {
+  const css = readCssInlined(path);
+  const pattern = selector === ":root" ? /:root\s*\{([^}]+)\}/s : /\.dark\s*\{([^}]+)\}/s;
+  return pattern.exec(css)?.[1] ?? "";
+}
+
+function token(css: string, name: string): string | undefined {
+  return new RegExp(`--${name}:\\s*([^;]+);`).exec(css)?.[1].trim();
+}
+
 describe("Destructive theme contrast compliance (WCAG 2.1 AA)", () => {
-  const rootDir = resolve(__dirname, "..");
-  const globalsCssPath = resolve(rootDir, "src/styles/globals.css");
-  const indexCssPath = resolve(rootDir, "src/styles/index.css");
+  it.each(ENTRY_POINTS)(
+    "%s light mode meets WCAG 2.1 AA contrast requirements (>= 4.5:1)",
+    (_name, path) => {
+      const rootBlock = block(path, ":root");
+      const destructive = token(rootBlock, "destructive");
+      const foreground = token(rootBlock, "destructive-foreground");
 
-  it("globals.css light mode meets WCAG 2.1 AA contrast requirements (>= 4.5:1)", () => {
-    const globalsCss = readFileSync(globalsCssPath, "utf-8");
-    const rootBlock = /:root\s*\{([^}]+)\}/s.exec(globalsCss)?.[1] ?? "";
-    const destructive = /--destructive:\s*([^;]+);/.exec(rootBlock)?.[1].trim();
-    const foreground = /--destructive-foreground:\s*([^;]+);/.exec(rootBlock)?.[1].trim();
+      expect(destructive).toBeDefined();
+      expect(foreground).toBe("#000000");
+      const contrast = getContrastRatio(destructive!, foreground!);
+      expect(contrast).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 
-    expect(destructive).toBeDefined();
-    expect(foreground).toBe("#000000");
-    const contrast = getContrastRatio(destructive!, foreground!);
-    expect(contrast).toBeGreaterThanOrEqual(4.5);
-  });
+  it.each(ENTRY_POINTS)(
+    "%s dark mode meets WCAG 2.1 AA contrast requirements (>= 4.5:1)",
+    (_name, path) => {
+      const darkBlock = block(path, ".dark");
+      const destructive = token(darkBlock, "destructive");
+      const foreground = token(darkBlock, "destructive-foreground");
 
-  it("globals.css dark mode meets WCAG 2.1 AA contrast requirements (>= 4.5:1)", () => {
-    const globalsCss = readFileSync(globalsCssPath, "utf-8");
-    const darkBlock = /\.dark\s*\{([^}]+)\}/s.exec(globalsCss)?.[1] ?? "";
-    const destructive = /--destructive:\s*([^;]+);/.exec(darkBlock)?.[1].trim();
-    const foreground = /--destructive-foreground:\s*([^;]+);/.exec(darkBlock)?.[1].trim();
-
-    expect(destructive).toBeDefined();
-    expect(foreground).toBeDefined();
-    const contrast = getContrastRatio(destructive!, foreground!);
-    expect(contrast).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it("index.css light mode meets WCAG 2.1 AA contrast requirements (>= 4.5:1)", () => {
-    const indexCss = readFileSync(indexCssPath, "utf-8");
-    const rootBlock = /:root\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
-    const destructive = /--destructive:\s*([^;]+);/.exec(rootBlock)?.[1].trim();
-    const foreground = /--destructive-foreground:\s*([^;]+);/.exec(rootBlock)?.[1].trim();
-
-    expect(destructive).toBeDefined();
-    expect(foreground).toBe("#000000");
-    const contrast = getContrastRatio(destructive!, foreground!);
-    expect(contrast).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it("index.css dark mode meets WCAG 2.1 AA contrast requirements (>= 4.5:1)", () => {
-    const indexCss = readFileSync(indexCssPath, "utf-8");
-    const darkBlock = /\.dark\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
-    const destructive = /--destructive:\s*([^;]+);/.exec(darkBlock)?.[1].trim();
-    const foreground = /--destructive-foreground:\s*([^;]+);/.exec(darkBlock)?.[1].trim();
-
-    expect(destructive).toBeDefined();
-    expect(foreground).toBe("#000000");
-    const contrast = getContrastRatio(destructive!, foreground!);
-    expect(contrast).toBeGreaterThanOrEqual(4.5);
-  });
+      expect(destructive).toBeDefined();
+      expect(foreground).toBeDefined();
+      const contrast = getContrastRatio(destructive!, foreground!);
+      expect(contrast).toBeGreaterThanOrEqual(4.5);
+    },
+  );
 });
 
 describe("Semantic theme contrast compliance (WCAG 2.1 AA)", () => {
-  const rootDir = resolve(__dirname, "..");
-  const globalsCssPath = resolve(rootDir, "src/styles/globals.css");
-  const indexCssPath = resolve(rootDir, "src/styles/index.css");
+  const cases = ENTRY_POINTS.flatMap(([name, path]) =>
+    ["info", "success", "warning"].map((semantic) => [name, semantic, path] as const),
+  );
 
-  it.each(["info", "success", "warning"] as const)(
-    "globals.css light mode --%s-foreground is #000000 and meets AA contrast (>= 4.5:1)",
-    (token) => {
-      const globalsCss = readFileSync(globalsCssPath, "utf-8");
-      const rootBlock = /:root\s*\{([^}]+)\}/s.exec(globalsCss)?.[1] ?? "";
-      const background = new RegExp(`--${token}:\\s*([^;]+);`).exec(rootBlock)?.[1].trim();
-      const foreground = new RegExp(`--${token}-foreground:\\s*([^;]+);`)
-        .exec(rootBlock)?.[1]
-        .trim();
+  it.each(cases)(
+    "%s light mode --%s-foreground is #000000 and meets AA contrast (>= 4.5:1)",
+    (_name, semantic, path) => {
+      const rootBlock = block(path, ":root");
+      const background = token(rootBlock, semantic);
+      const foreground = token(rootBlock, `${semantic}-foreground`);
 
       expect(background).toBeDefined();
       expect(foreground).toBe("#000000");
@@ -134,15 +128,12 @@ describe("Semantic theme contrast compliance (WCAG 2.1 AA)", () => {
     },
   );
 
-  it.each(["info", "success", "warning"] as const)(
-    "globals.css dark mode --%s-foreground is #ffffff and meets AA contrast (>= 4.5:1)",
-    (token) => {
-      const globalsCss = readFileSync(globalsCssPath, "utf-8");
-      const darkBlock = /\.dark\s*\{([^}]+)\}/s.exec(globalsCss)?.[1] ?? "";
-      const background = new RegExp(`--${token}:\\s*([^;]+);`).exec(darkBlock)?.[1].trim();
-      const foreground = new RegExp(`--${token}-foreground:\\s*([^;]+);`)
-        .exec(darkBlock)?.[1]
-        .trim();
+  it.each(cases)(
+    "%s dark mode --%s-foreground is #ffffff and meets AA contrast (>= 4.5:1)",
+    (_name, semantic, path) => {
+      const darkBlock = block(path, ".dark");
+      const background = token(darkBlock, semantic);
+      const foreground = token(darkBlock, `${semantic}-foreground`);
 
       expect(background).toBeDefined();
       expect(foreground).toBe("#ffffff");
@@ -150,39 +141,4 @@ describe("Semantic theme contrast compliance (WCAG 2.1 AA)", () => {
       expect(contrast).toBeGreaterThanOrEqual(4.5);
     },
   );
-
-  it.each(["success", "warning"] as const)(
-    "index.css light and dark mode --%s-foreground is #000000 and meets AA contrast (>= 4.5:1)",
-    (token) => {
-      const indexCss = readFileSync(indexCssPath, "utf-8");
-      const rootBlock = /:root\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
-      const darkBlock = /\.dark\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
-
-      for (const block of [rootBlock, darkBlock]) {
-        const background = new RegExp(`--${token}:\\s*([^;]+);`).exec(block)?.[1].trim();
-        const foreground = new RegExp(`--${token}-foreground:\\s*([^;]+);`).exec(block)?.[1].trim();
-
-        expect(background).toBeDefined();
-        expect(foreground).toBe("#000000");
-        const contrast = getContrastRatio(background!, foreground!);
-        expect(contrast).toBeGreaterThanOrEqual(4.5);
-      }
-    },
-  );
-
-  it("index.css light and dark mode --info-foreground is #ffffff and meets AA contrast (>= 4.5:1)", () => {
-    const indexCss = readFileSync(indexCssPath, "utf-8");
-    const rootBlock = /:root\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
-    const darkBlock = /\.dark\s*\{([^}]+)\}/s.exec(indexCss)?.[1] ?? "";
-
-    for (const block of [rootBlock, darkBlock]) {
-      const background = new RegExp(`--info:\\s*([^;]+);`).exec(block)?.[1].trim();
-      const foreground = new RegExp(`--info-foreground:\\s*([^;]+);`).exec(block)?.[1].trim();
-
-      expect(background).toBeDefined();
-      expect(foreground).toBe("#ffffff");
-      const contrast = getContrastRatio(background!, foreground!);
-      expect(contrast).toBeGreaterThanOrEqual(4.5);
-    }
-  });
 });

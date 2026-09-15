@@ -12,7 +12,7 @@ use tendril_core::db::{
     delete_plan as delete_plan_row, get_plans_limited, open_database, sync_plan,
 };
 use tendril_core::error::TendrilError;
-use tendril_core::git::{cleanup_worktrees, run_git};
+use tendril_core::git::{build_plan_git_data, cleanup_worktrees, run_git};
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
 };
@@ -2144,6 +2144,49 @@ pub async fn repo_status_handler(
     }
 
     (StatusCode::OK, Json(json!({ "repos": repos })))
+}
+
+/// `GET /api/plans/:id/git` — the plan's worktrees, its commits grouped under them, and a
+/// reachability verdict for the commits no worktree accounts for.
+///
+/// A sub-resource rather than a field on `GET /api/plans/:id`: answering it runs several git
+/// processes per worktree, and the plan detail is polled by views that never open the Git tab.
+///
+/// Read-only and forgiving in the same way as `repo-status` — a repo that cannot be inspected
+/// contributes no answer rather than failing the request.
+pub async fn plan_git_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+            )
+                .into_response()
+        }
+    };
+
+    let (plan, _) = match read_plan_yaml(&folder) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to read plan.yaml: {}", e) })),
+            )
+                .into_response()
+        }
+    };
+
+    let repo_paths: Vec<std::path::PathBuf> = effective_repos(&state, &plan)
+        .into_iter()
+        .map(std::path::PathBuf::from)
+        .collect();
+
+    let data = build_plan_git_data(&folder, &plan.commits, &repo_paths);
+    (StatusCode::OK, Json(json!(data))).into_response()
 }
 
 /// `POST /api/plans/:id/reset` — back to Draft, worktrees removed.

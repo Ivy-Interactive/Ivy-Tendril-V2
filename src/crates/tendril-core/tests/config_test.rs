@@ -59,10 +59,12 @@ fn test_config_load_and_save() {
         repos: vec![RepoRef {
             path: "D:/repos/test".to_string(),
             base_branch: Some("main".to_string()),
+            extra: Default::default(),
         }],
         verifications: vec![ProjectVerificationRef {
             name: "Build".to_string(),
             required: true,
+            extra: Default::default(),
         }],
         context: "Rust Project".to_string(),
         stack_hash: None,
@@ -155,12 +157,14 @@ fn test_review_action_paths_round_trip_and_omitted_when_empty() {
                 condition: String::new(),
                 command: String::new(),
                 paths: vec!["src/packages/components".to_string()],
+                extra: Default::default(),
             },
             ReviewActionConfig {
                 name: "App".to_string(),
                 condition: String::new(),
                 command: String::new(),
                 paths: vec![],
+                extra: Default::default(),
             },
         ],
         ..Default::default()
@@ -512,10 +516,12 @@ fn test_find_and_remove_projects_referencing_verification() {
             ProjectVerificationRef {
                 name: "RustClippy".to_string(),
                 required: true,
+                extra: Default::default(),
             },
             ProjectVerificationRef {
                 name: "RustTest".to_string(),
                 required: false,
+                extra: Default::default(),
             },
         ],
         context: "".to_string(),
@@ -531,6 +537,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         verifications: vec![ProjectVerificationRef {
             name: "rustclippy".to_string(), // case-insensitive check
             required: true,
+            extra: Default::default(),
         }],
         context: "".to_string(),
         stack_hash: None,
@@ -545,6 +552,7 @@ fn test_find_and_remove_projects_referencing_verification() {
         verifications: vec![ProjectVerificationRef {
             name: "RustTest".to_string(),
             required: true,
+            extra: Default::default(),
         }],
         context: "".to_string(),
         stack_hash: None,

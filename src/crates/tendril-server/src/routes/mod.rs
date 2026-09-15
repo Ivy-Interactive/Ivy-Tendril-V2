@@ -3,6 +3,7 @@ pub mod changes;
 pub mod chat;
 pub mod config;
 pub mod costs;
+pub mod dashboard;
 pub mod health;
 pub mod inbox;
 pub mod jobs;
@@ -69,6 +70,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/plans/:id/repo-status",
             get(plans::repo_status_handler),
         )
+        .route("/api/plans/:id/git", get(plans::plan_git_handler))
         .route(
             "/api/plans/:id/revisions",
             get(plans::get_revision_handler).post(plans::write_revision_handler),
@@ -300,6 +302,17 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Costs
         .route("/api/costs/summary", get(costs::get_costs_summary))
         .route("/api/costs/series", get(costs::get_costs_series))
+        .route("/api/dashboard/activity", get(dashboard::get_activity))
+        .route(
+            "/api/dashboard/shipped-features",
+            get(dashboard::get_shipped_features),
+        )
+        .route("/api/dashboard/merged-prs", get(dashboard::get_merged_prs))
+        .route("/api/dashboard/plan-costs", get(dashboard::get_plan_costs))
+        .route(
+            "/api/dashboard/agent-costs",
+            get(dashboard::get_agent_costs),
+        )
         // Models
         .route("/api/models", get(models::list_models))
         .route("/api/models/status", get(models::models_status))

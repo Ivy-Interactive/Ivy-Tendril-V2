@@ -197,6 +197,39 @@ describe("PlanWorkspace", () => {
     menu.remove();
   });
 
+  it("stays quiet under a host modal, on auto-repeat, and inside a listbox", () => {
+    const handler = vi.fn();
+    renderWorkspace(handler, {
+      shortcuts: [{ tag: "NextPlan", label: "Next plan", shortcut: "ArrowRight" }],
+    });
+
+    // A dialog the host opened owns the keyboard.
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("data-state", "open");
+    document.body.appendChild(dialog);
+    fireEvent.keyDown(document.body, { key: "x" });
+    expect(handler).not.toHaveBeenCalled();
+    dialog.remove();
+
+    // An auto-repeat is a key held down, not a fresh press.
+    fireEvent.keyDown(document.body, { key: "x", repeat: true });
+    expect(handler).not.toHaveBeenCalled();
+
+    // A listbox moves its own selection with the arrows.
+    const listbox = document.createElement("div");
+    listbox.setAttribute("role", "listbox");
+    listbox.innerHTML = '<div role="option" tabindex="0" aria-label="option"></div>';
+    document.body.appendChild(listbox);
+    fireEvent.keyDown(screen.getByLabelText("option"), { key: "ArrowRight" });
+    expect(handler).not.toHaveBeenCalled();
+    listbox.remove();
+
+    // With every gate lifted the same key does fire, so the assertions above mean something.
+    fireEvent.keyDown(document.body, { key: "x" });
+    expect(handler).toHaveBeenCalledWith("OnAction", "w", ["Execute"]);
+  });
+
   it("opens the verifications and questions dropdowns from the tab strip corner", () => {
     renderWorkspace();
     expect(screen.queryByText("verification rows")).not.toBeInTheDocument();

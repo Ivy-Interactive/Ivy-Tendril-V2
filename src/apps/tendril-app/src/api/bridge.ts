@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentCostBreakdown,
   Annotation,
   CreateProjectRequest,
+  DashboardActivity,
   DiscoveredVaultRepo,
   DoctorCheck,
   DraftComment,
@@ -13,12 +15,15 @@ import type {
   ModelCatalogStatus,
   OnboardingStatus,
   PlanDetail,
+  PlanGitData,
   PlanQuery,
   PlanSummary,
   PrStatus,
   PrSyncReport,
   ProjectAssets,
   ProjectSummary,
+  RecentMergedPr,
+  RecentPlanCost,
   RecommendationItem,
   RecommendationState,
   RepoStatus,
@@ -26,6 +31,7 @@ import type {
   RevisionResult,
   ServiceHealth,
   ServiceInfo,
+  ShippedFeatureDay,
   StartJobArgs,
   StartJobResponse,
   SubscribeOutcome,
@@ -153,6 +159,14 @@ export const bridge = {
   /** Uncommitted-change status of each repo the plan targets. */
   async getRepoStatus(this: void, id: string): Promise<RepoStatus[]> {
     return invoke<RepoStatus[]>("cmd_get_repo_status", { id });
+  },
+
+  /**
+   * The plan's worktrees, its commits grouped under them, and the reachability
+   * verdict for the commits no worktree accounts for — the Git tab's data.
+   */
+  async getPlanGit(this: void, id: string): Promise<PlanGitData> {
+    return invoke<PlanGitData>("cmd_get_plan_git", { id });
   },
 
   async getRevision(this: void, id: string, number?: number): Promise<string> {
@@ -387,6 +401,30 @@ export const bridge = {
 
   async loadUiState(this: void, key: string): Promise<string | null> {
     return invoke<string | null>("cmd_load_ui_state", { key });
+  },
+
+  /**
+   * Monthly rollups, the daily series and the month's projection in one call. The projection is
+   * computed by the daemon, not here, so there is exactly one implementation of it.
+   */
+  async getDashboardActivity(this: void, months?: number): Promise<DashboardActivity> {
+    return invoke<DashboardActivity>("cmd_get_dashboard_activity", { months });
+  },
+
+  async getShippedFeatures(this: void, days?: number): Promise<ShippedFeatureDay[]> {
+    return invoke<ShippedFeatureDay[]>("cmd_get_shipped_features", { days });
+  },
+
+  async getRecentMergedPrs(this: void, limit?: number): Promise<RecentMergedPr[]> {
+    return invoke<RecentMergedPr[]>("cmd_get_recent_merged_prs", { limit });
+  },
+
+  async getRecentPlanCosts(this: void, days?: number): Promise<RecentPlanCost[]> {
+    return invoke<RecentPlanCost[]>("cmd_get_recent_plan_costs", { days });
+  },
+
+  async getAgentCostBreakdown(this: void, days?: number): Promise<AgentCostBreakdown[]> {
+    return invoke<AgentCostBreakdown[]>("cmd_get_agent_cost_breakdown", { days });
   },
 
   /* --- Team Vault ------------------------------------------------------------------------------

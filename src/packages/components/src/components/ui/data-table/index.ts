@@ -31,6 +31,7 @@ export type {
   DataTableSort,
   DataTableSortDirection,
   DataTableToolbarSlots,
+  DataTableVirtualized,
 } from "./types";
 
 export {
@@ -44,10 +45,24 @@ export {
   type UseDataTablePaginationResult,
 } from "./use-data-table-pagination";
 export {
+  useDataTableRowFocus,
+  type UseDataTableRowFocusOptions,
+  type UseDataTableRowFocusResult,
+} from "./use-data-table-row-focus";
+export {
   useDataTableSort,
   type UseDataTableSortOptions,
   type UseDataTableSortResult,
 } from "./use-data-table-sort";
+export {
+  DATA_TABLE_MAX_BODY_HEIGHT,
+  DATA_TABLE_OVERSCAN,
+  DATA_TABLE_ROW_HEIGHT_ESTIMATES,
+  DATA_TABLE_VIRTUALIZATION_THRESHOLD,
+  useDataTableVirtualization,
+  type UseDataTableVirtualizationOptions,
+  type UseDataTableVirtualizationResult,
+} from "./use-data-table-virtualization";
 export {
   useInlineCellEdit,
   type DataTableEditSession,

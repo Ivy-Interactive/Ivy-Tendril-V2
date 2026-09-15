@@ -40,7 +40,7 @@ impl WsBridge {
         let is_connected = Arc::new(AtomicBool::new(false));
         let is_connected_clone = Arc::clone(&is_connected);
 
-        tokio::spawn(async move {
+        tauri::async_runtime::spawn(async move {
             let mut backoff = Duration::from_millis(500);
             let max_backoff = Duration::from_secs(10);
 
