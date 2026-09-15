@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod chat;
 pub mod config;
+pub mod dashboard;
 pub mod github;
 pub mod inbox;
 pub mod jobs;

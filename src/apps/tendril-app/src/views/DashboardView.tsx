@@ -5,8 +5,18 @@ import {
   type DashboardKpiDto,
   type DashboardJobDto,
 } from "@ivy-interactive/components/tendril";
+import { BladeContainer } from "@ivy-interactive/components/ui";
+import { X } from "lucide-react";
 import type { PlanSummary, Job, JobStatus } from "../types/api";
 import { firstStringArg } from "../utils/eventArgs";
+import { useDashboardAnalytics } from "../hooks/useDashboardAnalytics";
+import {
+  buildActivityMonths,
+  buildKpis,
+  buildPullRequests,
+  buildTrend,
+} from "../utils/dashboardMetrics";
+import { buildKpiBlade, isKpiBreakdownId } from "./KpiBreakdown";
 
 interface DashboardViewProps {
   plans: PlanSummary[];
@@ -42,6 +52,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
   onNewPlan,
 }) => {
+  const analytics = useDashboardAnalytics();
+  const [selectedKpi, setSelectedKpi] = React.useState<string | null>(null);
+
   // Compute counts for process viewer
   const draftCount = plans.filter((p) => p.state === "Draft").length;
   const reviewCount = plans.filter((p) => p.state === "Review").length;
@@ -56,7 +69,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalCost = jobs.reduce((acc, j) => acc + (j.cost || 0), 0);
   const totalTokens = jobs.reduce((acc, j) => acc + (j.tokens || 0), 0);
 
-  const kpis: DashboardKpiDto[] = [
+  /**
+   * What the dashboard showed before the analytics existed, kept as the fallback for a daemon that
+   * has not answered yet or at all. None of these carries an `id`, so nothing is clickable while
+   * the drill-down has no data behind it — a card that opens an empty panel is worse than an inert
+   * one. An offline daemon must degrade the page, never blank it.
+   */
+  const fallbackKpis: DashboardKpiDto[] = [
     {
       label: "Active Plans",
       value: String(draftCount + reviewCount + executingCount),
@@ -83,6 +102,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     },
   ];
 
+  const { activity } = analytics;
+  const kpis =
+    activity == null
+      ? fallbackKpis
+      : buildKpis({
+          activity,
+          shippedFeatures: analytics.shippedFeatures,
+          planCosts: analytics.planCosts,
+        });
+
+  const blade =
+    selectedKpi == null
+      ? null
+      : buildKpiBlade(selectedKpi, {
+          activity,
+          mergedPrs: analytics.mergedPrs,
+          planCosts: analytics.planCosts,
+          agentCosts: analytics.agentCosts,
+        });
+
+  // Escape closes the drill-down: the container leaves it alone at depth 1 because the root blade
+  // is not closable, so the host owns dismissal.
+  React.useEffect(() => {
+    if (blade == null) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedKpi(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [blade]);
+
   const dashboardJobs: DashboardJobDto[] = jobs.slice(0, 5).map((j) => ({
     id: j.id,
     planId: j.planId || "",
@@ -108,17 +158,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         reviewCount={reviewCount}
         completedCount={completedCount}
         failedCount={0}
-        events={["OnJob", "OnDrafts", "OnReview", "OnJobs"]}
+        events={["OnJob", "OnDrafts", "OnReview", "OnJobs", "OnSelectKpi"]}
         eventHandler={(evt: string, _id: string, args?: unknown[]) => {
           if (evt === "OnJob") {
             const jobId = firstStringArg(args);
             if (jobId) onSelectJob?.(jobId);
             return;
           }
+          if (evt === "OnSelectKpi") {
+            const kpiId = firstStringArg(args);
+            if (kpiId && isKpiBreakdownId(kpiId)) setSelectedKpi(kpiId);
+            return;
+          }
           const nav = NAV_BY_EVENT[evt];
           if (nav) onNavigate?.(nav);
         }}
         kpis={kpis}
+        trend={buildTrend(activity)}
+        pullRequests={buildPullRequests(activity)}
+        activity={buildActivityMonths(activity)}
         jobs={dashboardJobs}
         slots={{
           ProcessViewer: (
@@ -146,6 +204,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           ),
         }}
       />
+
+      {blade && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-black/40"
+          data-testid="kpi-breakdown"
+          role="presentation"
+          onClick={(event) => {
+            // Only the backdrop itself dismisses; a click inside a blade must not.
+            if (event.target === event.currentTarget) setSelectedKpi(null);
+          }}
+        >
+          <div className="h-full w-full max-w-[72rem] shadow-2xl">
+            {/* The selected KPI is the stack's root, so a breakdown row can push a further blade
+                (agent → that agent's plans) without the dashboard itself becoming a blade. */}
+            <BladeContainer
+              root={{
+                ...blade,
+                // The descriptor's own width hint is what it gets when something pushes it deeper in
+                // a stack; as the root of this overlay it fills the panel instead.
+                width: "flex",
+                headerAction: (
+                  <button
+                    type="button"
+                    aria-label="Close breakdown"
+                    className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    onClick={() => setSelectedKpi(null)}
+                  >
+                    <X className="size-4" />
+                  </button>
+                ),
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
