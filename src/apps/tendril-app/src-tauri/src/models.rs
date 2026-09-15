@@ -249,7 +249,7 @@ pub struct WorktreeSectionDto {
 ///
 /// `unassociated_commit_ref_status` carries the point of the tab: a commit no surviving worktree
 /// accounts for may be held by no ref at all, in which case the next `git gc` in its repo destroys
-/// it. Values are `Reachable`, `Unreachable` or `Missing`, keyed by full hash.
+/// it. Values are `reachable`, `unreachable` or `missing`, keyed by full hash.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanGitDto {

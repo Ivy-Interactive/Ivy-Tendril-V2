@@ -278,50 +278,24 @@ export interface RepoStatus {
 }
 
 /**
- * Whether a commit a plan recorded is still held alive by a ref in the repo it
- * was made in. `Unreachable` and `Missing` are lost work: the commit's worktree
- * and branch are gone, so nothing but the object store is keeping it, and the
- * next `git gc` in that repo prunes it.
- */
-export type CommitRefStatus = "Reachable" | "Unreachable" | "Missing";
-
-/** One of a plan's recorded commits, resolved against a repo that still holds it. */
-export interface CommitRow {
-  hash: string;
-  shortHash: string;
-  /** The commit's subject line, or empty when no repo could resolve the hash. */
-  title: string;
-  /** Files the commit touched, or absent when no repo could resolve the hash. */
-  fileCount?: number;
-}
-
-/** A worktree the plan still has on disk, and the commits reachable from its HEAD. */
-export interface WorktreeSection {
-  name: string;
-  path: string;
-  /** HEAD's branch, or empty for a detached HEAD. */
-  branch: string;
-  shortHash: string;
-  hasUncommittedChanges: boolean;
-  commits: CommitRow[];
-  parentRepoPath?: string;
-  baseBranch?: string;
-  baseShortHash?: string;
-}
-
-/**
- * The Git tab's data for one plan, from `cmd_get_plan_git`.
+ * The Git tab's shapes, from `cmd_get_plan_git`.
  *
- * Commits listed under a worktree section are ancestors of that worktree's HEAD
- * and so reachable by definition; only the unassociated ones carry a status,
- * because those are the ones that can turn out to be reachable from nothing.
+ * `PlanGitView` in the components package owns these declarations, because it is
+ * the component that renders them and it cannot import from the app. Re-exported
+ * here so the rest of the app keeps reaching for its types in one place.
+ *
+ * `unreachable` and `missing` are lost work: the commit's worktree and branch are
+ * gone, so nothing but the object store is keeping it, and the next `git gc` in
+ * that repo prunes it. Commits listed under a worktree section are ancestors of
+ * that worktree's HEAD and so reachable by definition; only the unassociated ones
+ * carry a status, because those are the ones that can be reachable from nothing.
  */
-export interface PlanGit {
-  worktrees: WorktreeSection[];
-  unassociatedCommits: CommitRow[];
-  /** Keyed by full commit hash. */
-  unassociatedCommitRefStatus: Record<string, CommitRefStatus>;
-}
+export type {
+  CommitRefStatus,
+  PlanCommitRow,
+  PlanWorktreeSection,
+  PlanGitData,
+} from "@ivy-interactive/components/tendril";
 
 /** Options the Create PR dialog passes through to the `CreatePr` job. */
 export interface CreatePrOptions {

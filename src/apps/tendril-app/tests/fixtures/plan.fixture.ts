@@ -1,13 +1,13 @@
 import type {
-  CommitRow,
+  PlanCommitRow,
   PlanDetail,
-  PlanGit,
+  PlanGitData,
   PlanSummary,
   PlanVerification,
   PrStatus,
   PrSyncReport,
   VerificationReport,
-  WorktreeSection,
+  PlanWorktreeSection,
 } from "../../src/types/api";
 
 /**
@@ -91,7 +91,7 @@ export function prStatus(overrides: Partial<PrStatus> = {}): PrStatus {
   };
 }
 
-export function commitRow(overrides: Partial<CommitRow> = {}): CommitRow {
+export function commitRow(overrides: Partial<PlanCommitRow> = {}): PlanCommitRow {
   return {
     hash: "abc1234000000000000000000000000000000000",
     shortHash: "abc1234",
@@ -101,7 +101,7 @@ export function commitRow(overrides: Partial<CommitRow> = {}): CommitRow {
   };
 }
 
-export function worktreeSection(overrides: Partial<WorktreeSection> = {}): WorktreeSection {
+export function worktreeSection(overrides: Partial<PlanWorktreeSection> = {}): PlanWorktreeSection {
   return {
     name: "Tendril-App",
     path: "/home/op/.tendril/Plans/00021-BuildDesktopOperator/Worktrees/Tendril-App",
@@ -116,7 +116,7 @@ export function worktreeSection(overrides: Partial<WorktreeSection> = {}): Workt
   };
 }
 
-export function planGit(overrides: Partial<PlanGit> = {}): PlanGit {
+export function planGit(overrides: Partial<PlanGitData> = {}): PlanGitData {
   return {
     worktrees: [worktreeSection()],
     unassociatedCommits: [],

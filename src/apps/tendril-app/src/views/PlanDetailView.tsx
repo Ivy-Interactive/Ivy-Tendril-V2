@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { PlanMarkdown } from "@ivy-interactive/components/tendril";
+import { PlanGitView, PlanMarkdown } from "@ivy-interactive/components/tendril";
 import {
   describeBridgeError,
   type PlanDetail,
+  type PlanGitData,
   type PlanSummary,
   type RecommendationItem,
   type RecommendationState,
@@ -12,7 +13,6 @@ import {
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
-import { PlanGit } from "./PlanGit";
 import { PlanPullRequests } from "./PlanPullRequests";
 import { draftActions, type DraftAction } from "../controllers/draft_actions";
 import { collectExecuteGuards, type ExecuteGuard } from "../controllers/execute_guards";
@@ -104,6 +104,45 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       cancelled = true;
     };
   }, [plan.id, plan.recommendations]);
+
+  // Fetched on mount rather than when the Git tab is opened: the at-risk badge on
+  // the tab button is the whole point of the feature, and a warning you only see
+  // once you have clicked into the tab is not a warning. A rejection is confined to
+  // the Git tab's own body — it must not disturb the other tabs or the action banner.
+  const [gitData, setGitData] = useState<PlanGitData | null>(null);
+  const [gitError, setGitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setGitData(null);
+    setGitError(null);
+    let cancelled = false;
+    bridge
+      .getPlanGit(plan.id)
+      .then((data) => {
+        if (!cancelled && data) {
+          setGitData(data);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setGitError(describeBridgeError(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plan.id]);
+
+  // Legacy's CountGitItems: worktrees + recorded commits + pull requests.
+  const gitItemCount = gitData
+    ? gitData.worktrees.length + (plan.commits?.length ?? 0) + (plan.prs?.length ?? 0)
+    : null;
+
+  const commitsAtRisk = gitData
+    ? Object.values(gitData.unassociatedCommitRefStatus).filter(
+        (status) => status === "unreachable" || status === "missing",
+      ).length
+    : 0;
 
   // Gating checks
   const canExec = PlanActionsController.canExecute(plan, allPlans);
@@ -455,7 +494,16 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Git
+          {gitItemCount === null ? "Git" : `Git (${gitItemCount})`}
+          {commitsAtRisk > 0 && (
+            <span
+              data-testid="git-tab-at-risk"
+              aria-label={`${commitsAtRisk} ${
+                commitsAtRisk === 1 ? "commit is" : "commits are"
+              } at risk of being lost`}
+              className="ml-2 inline-block h-2 w-2 rounded-full bg-destructive align-middle"
+            />
+          )}
         </button>
         <button
           type="button"
@@ -523,7 +571,24 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           </div>
         )}
 
-        {activeSubTab === "git" && <PlanGit planId={plan.id} />}
+        {activeSubTab === "git" && (
+          <div className="rounded-xl border border-border bg-card/40 p-6">
+            {gitError ? (
+              <p data-testid="git-tab-error" className="text-xs text-destructive">
+                {gitError}
+              </p>
+            ) : gitData ? (
+              <PlanGitView
+                data={gitData}
+                prs={plan.prs ?? []}
+                planState={plan.state}
+                onOpenUrl={(url) => void openPath(url)}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground/70">Loading git state…</p>
+            )}
+          </div>
+        )}
 
         {activeSubTab === "metadata" && (
           <div className="grid gap-4 sm:grid-cols-2">
