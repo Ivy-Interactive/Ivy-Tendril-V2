@@ -31,8 +31,8 @@ You can reference Tendril skills from your project's `.cursorrules` or `.cursor/
 
 ```markdown
 When debugging failed plans or reviewing changes:
-- Reference skills/tendril-debug-plan for plan execution diagnosis.
-- Run skills/tendril-review procedures before finalizing pull requests.
+- Reference src/skills/tendril-debug-plan for plan execution diagnosis.
+- Run src/skills/tendril-review procedures before finalizing pull requests.
 ```
 
 ## 4. Usage in Cursor Agent Chat
