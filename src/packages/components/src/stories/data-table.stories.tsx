@@ -167,3 +167,49 @@ export const Loading: StoryObj = {
     </div>
   ),
 };
+
+const manyDeployments: Deployment[] = Array.from({ length: 1000 }, (_, index) => ({
+  id: `v${index + 1}`,
+  service: `${services[index % services.length]}-${index + 1}`,
+  environment: environments[index % environments.length],
+  status: statuses[index % statuses.length],
+  requests: (index + 1) * 137 + (index % 7) * 29,
+  owner: owners[index % owners.length],
+}));
+
+const virtualizedColumns: DataTableColumn<Deployment>[] = [
+  { name: "service", header: "Service", width: "220px" },
+  { name: "environment", header: "Environment" },
+  {
+    name: "status",
+    header: "Status",
+    cell: (value) => (
+      <Badge variant={statusVariant[value as Deployment["status"]]}>
+        {value as Deployment["status"]}
+      </Badge>
+    ),
+  },
+  { name: "requests", header: "Requests", align: "Right" },
+  { name: "owner", header: "Owner" },
+];
+
+/**
+ * 1,000 unpaginated rows. `virtualized="auto"` engages past the 50-row threshold, so only the visible
+ * slice plus overscan is in the DOM while the scrollbar and `aria-rowcount` still report all 1,000.
+ * Sorting, selection, roving row focus and the sticky header keep working through the window.
+ */
+export const Virtualized: StoryObj = {
+  render: () => (
+    <div className="w-[900px]">
+      <DataTable
+        columns={virtualizedColumns}
+        rows={manyDeployments}
+        getRowId={(row) => row.id}
+        caption="1,000 deployments, windowed"
+        paginated={false}
+        selectable
+        rowActions={rowActions}
+      />
+    </div>
+  ),
+};

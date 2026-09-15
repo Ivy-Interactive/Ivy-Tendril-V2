@@ -6,14 +6,18 @@ export interface PendingAnnotationsDialogProps {
   isOpen: boolean;
   onClose: () => void;
   annotationCount: number;
-  /** Opens `UpdatePlanDialog` so the answers get folded into the plan body. */
+  /** Opens `UpdatePlanDialog` so the pending items get folded into the plan body. */
   onUpdatePlan: () => void;
   onProceed: () => void;
 }
 
 /**
- * Warns that answers have been written onto the plan but never folded into its
- * body — the cheapest of the three guards to resolve, hence the first asked.
+ * Warns that annotations or answers have been written onto the plan but never
+ * folded into its body — the cheapest of the three guards to resolve, hence the
+ * first asked.
+ *
+ * The count sums both sources (see `collectExecuteGuards`), so the copy names
+ * neither: one phrasing that stays true whichever of them is pending.
  */
 export function PendingAnnotationsDialog({
   isOpen,
@@ -29,7 +33,7 @@ export function PendingAnnotationsDialog({
       isOpen={isOpen}
       onClose={onClose}
       title="Pending annotations"
-      description={`⚠ This plan has ${annotationCount} answer${
+      description={`⚠ This plan has ${annotationCount} item${
         annotationCount === 1 ? "" : "s"
       } that no UpdatePlan run has incorporated yet.`}
       testId="pending-annotations-dialog"
@@ -49,7 +53,7 @@ export function PendingAnnotationsDialog({
       }
     >
       <p className="text-sm text-muted-foreground">
-        Executing now runs the plan as written, so those answers will not shape what the agent does.
+        Executing now runs the plan as written, so those notes will not shape what the agent does.
         Running UpdatePlan first folds them into the plan body.
       </p>
     </DialogShell>

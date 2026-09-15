@@ -189,6 +189,30 @@ pub struct DraftCommentDto {
     pub is_resolved: bool,
 }
 
+/// One draft annotation on a plan's revision markdown, as stored in
+/// `<planFolder>/Artifacts/draft_annotations.yaml`.
+///
+/// Like [`DraftCommentDto`] the field names are the legacy on-disk spelling, which is also the JSON
+/// the service speaks, so the DTO passes straight through. Unlike diff comments these are keyed on
+/// `id` alone: the annotation carries its own offsets into the markdown rather than a file path.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationDto {
+    pub id: String,
+    #[serde(default)]
+    pub start_offset: i64,
+    #[serde(default)]
+    pub end_offset: i64,
+    #[serde(default)]
+    pub selected_text: String,
+    #[serde(default)]
+    pub comment: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    #[serde(default)]
+    pub is_resolved: bool,
+}
+
 /// One repo of a plan, as reported by `GET /api/plans/:id/repo-status`.
 ///
 /// A repo that could not be inspected carries `error` and `is_dirty: false`:

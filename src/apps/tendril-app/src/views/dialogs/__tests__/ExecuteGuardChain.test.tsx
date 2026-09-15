@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { PlanDetailView } from "../../PlanDetailView";
 import { bridge } from "../../../api/bridge";
-import type { PlanDetail, RepoStatus } from "../../../types/api";
+import type { Annotation, PlanDetail, RepoStatus } from "../../../types/api";
 import { planDetail } from "../../../../tests/fixtures/plan.fixture";
 
 /**
@@ -43,6 +43,18 @@ const DIRTY: RepoStatus[] = [
   { path: "/repos/Tendril-App", isDirty: true, changes: [" M src/App.tsx"], changeCount: 1 },
 ];
 
+function annotation(overrides: Partial<Annotation> = {}): Annotation {
+  return {
+    id: "ann-1",
+    startOffset: 4,
+    endOffset: 9,
+    selectedText: "Plan",
+    comment: "Narrow this down.",
+    isResolved: false,
+    ...overrides,
+  };
+}
+
 function draftPlan(overrides: Partial<PlanDetail> = {}): PlanDetail {
   return planDetail({
     id: "00021",
@@ -69,6 +81,7 @@ beforeEach(() => {
   vi.spyOn(bridge, "listVerificationReports").mockResolvedValue([]);
   vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
   vi.spyOn(bridge, "getRepoStatus").mockResolvedValue([]);
+  vi.spyOn(bridge, "listAnnotations").mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -94,6 +107,54 @@ describe("pre-execution guard chain", () => {
 
     expect(await screen.findByTestId("pending-annotations-dialog")).toBeInTheDocument();
     expect(onExecute).not.toHaveBeenCalled();
+  });
+
+  it("blocks on an unresolved annotation from the store", async () => {
+    vi.spyOn(bridge, "listAnnotations").mockResolvedValue([annotation()]);
+    // Revision 2 with no fences, so the store is the only thing that can fire it.
+    const onExecute = renderView(draftPlan());
+
+    await clickExecute();
+
+    const dialog = await screen.findByTestId("pending-annotations-dialog");
+    expect(within(dialog).getByText(/1 item that no UpdatePlan run/)).toBeInTheDocument();
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
+  it("does not block on an annotation that is already resolved", async () => {
+    vi.spyOn(bridge, "listAnnotations").mockResolvedValue([annotation({ isResolved: true })]);
+    const onExecute = renderView(draftPlan());
+
+    await clickExecute();
+
+    await waitFor(() => expect(onExecute).toHaveBeenCalledWith("00021"));
+    expect(screen.queryByTestId("pending-annotations-dialog")).not.toBeInTheDocument();
+  });
+
+  it("sums store annotations and unfolded answers into one count", async () => {
+    vi.spyOn(bridge, "listAnnotations").mockResolvedValue([
+      annotation(),
+      annotation({ id: "ann-2" }),
+    ]);
+    const onExecute = renderView(
+      draftPlan({ revisionCount: 1, latestRevisionContent: ANSWERED_FENCE }),
+    );
+
+    await clickExecute();
+
+    const dialog = await screen.findByTestId("pending-annotations-dialog");
+    expect(within(dialog).getByText(/3 items that no UpdatePlan run/)).toBeInTheDocument();
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
+  it("does not let an unreadable annotation list block execution forever", async () => {
+    vi.spyOn(bridge, "listAnnotations").mockRejectedValue(new Error("service unreachable"));
+    const onExecute = renderView(draftPlan());
+
+    await clickExecute();
+
+    await waitFor(() => expect(onExecute).toHaveBeenCalledWith("00021"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("blocks on unanswered questions without dispatching, and lists them", async () => {

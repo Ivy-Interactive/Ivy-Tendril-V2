@@ -20,4 +20,38 @@
     white-space: normal;
     overflow-wrap: anywhere;
   }
+
+  /*
+   * Windowed variant. Auto layout sizes columns from the rendered rows only, so columns twitch as
+   * longer content scrolls into the window; fixed layout takes widths from `column.width` (or an
+   * equal split) and holds them. It is also what the nowrap ellipsis rule above presupposes.
+   */
+  .ivy-data-table.ivy-data-table-virtualized {
+    table-layout: fixed;
+  }
+
+  /*
+   * Fixed layout takes the `w-0` utility literally, so the selection and row-action columns need
+   * real widths — the TSX swaps `w-0` for these classes while windowing. Fixed layout reads column
+   * widths from the first row, so sizing the `<th>` is enough; the `<td>` rules only matter for a
+   * table rendered without a header.
+   */
+  .ivy-data-table.ivy-data-table-virtualized th.ivy-data-table-fit-select,
+  .ivy-data-table.ivy-data-table-virtualized td.ivy-data-table-fit-select {
+    width: 2.75rem;
+  }
+
+  .ivy-data-table.ivy-data-table-virtualized th.ivy-data-table-fit-actions,
+  .ivy-data-table.ivy-data-table-virtualized td.ivy-data-table-fit-actions {
+    width: var(--ivy-data-table-actions-width, 5rem);
+  }
+
+  /* Spacer rows stand in for the unrendered rows above and below the window. */
+  .ivy-data-table tr[data-slot="data-table-spacer"] {
+    border: 0;
+  }
+
+  .ivy-data-table tr[data-slot="data-table-spacer"]:hover {
+    background: transparent;
+  }
 }

@@ -130,6 +130,15 @@ export interface ProjectSummary {
   reviewActions?: ReviewActionConfig[];
 }
 
+/**
+ * A **read-only projection** of the wire shape, deliberately narrower than it. The server returns the
+ * whole `ProjectConfig`, including the unmodeled keys it round-trips (the agent security block —
+ * `sandboxMode`, `securityPreset`, `filePermissions`, … — written by the .NET V1 app). Nothing in the
+ * app writes a project today, so dropping them here loses nothing.
+ *
+ * A future project-settings screen MUST PATCH only the fields it changed rather than PUT an object
+ * reconstructed from this type, or it will clear every key absent from it.
+ */
 export interface ProjectDetail extends ProjectSummary {
   color?: string;
   context?: string;
@@ -341,6 +350,24 @@ export interface DraftComment {
   changeKey: string;
   content: string;
   lineNumber: number;
+  author?: string;
+  isResolved?: boolean;
+}
+
+/**
+ * One draft annotation on a plan's revision markdown, mirroring `AnnotationDto` in
+ * `src-tauri/src/models.rs`.
+ *
+ * `startOffset`/`endOffset` are character offsets into the revision text and `selectedText` is what
+ * they covered when the annotation was made, so a stale annotation can be recognised as stale
+ * rather than silently re-anchored. Unlike a `DraftComment` these are keyed on `id` alone.
+ */
+export interface Annotation {
+  id: string;
+  startOffset: number;
+  endOffset: number;
+  selectedText: string;
+  comment: string;
   author?: string;
   isResolved?: boolean;
 }

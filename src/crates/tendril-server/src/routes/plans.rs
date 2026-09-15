@@ -18,13 +18,14 @@ use tendril_core::models::{
 };
 use tendril_core::plans::{
     accept_recommendation, add_plan_verification, add_recommendation, check_plan_health,
-    clear_diff_comments, create_plan, decline_recommendation, get_plan_field, get_revision,
-    list_plan_verifications, list_recommendations, read_diff_comments, read_plan_file,
-    read_plan_yaml, remove_diff_comment, remove_plan_verification, remove_recommendation,
-    resolve_plan_folder, resolve_plan_folder_name, set_plan_verification_status,
-    set_recommendation_field, set_recommendation_state, upsert_diff_comment, write_diff_comments,
-    write_plan_yaml, write_revision, CreatePlanOptions, DraftComment, PlanCompletionGuard,
-    SUPPORTED_PLAN_FIELDS,
+    clear_annotations, clear_diff_comments, create_plan, decline_recommendation, get_plan_field,
+    get_revision, list_plan_verifications, list_recommendations, read_annotations,
+    read_diff_comments, read_plan_file, read_plan_yaml, remove_annotation, remove_diff_comment,
+    remove_plan_verification, remove_recommendation, resolve_plan_folder, resolve_plan_folder_name,
+    set_plan_verification_status, set_recommendation_field, set_recommendation_state,
+    upsert_annotation, upsert_diff_comment, write_annotations, write_diff_comments,
+    write_plan_yaml, write_revision, Annotation, CreatePlanOptions, DraftComment,
+    PlanCompletionGuard, SUPPORTED_PLAN_FIELDS,
 };
 
 #[derive(Debug, Deserialize)]
@@ -1185,6 +1186,169 @@ pub async fn delete_diff_comments_handler(
         Err(e) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to delete diff comments: {}", e),
+        ),
+    }
+}
+
+// --- Draft Annotation Handlers ---
+//
+// A reviewer's draft annotations on a revision's markdown live in
+// `<planFolder>/Artifacts/draft_annotations.yaml`, not in `plan.yaml`, so like the diff-comment
+// handlers above these must not call `sync_plan`: there is no DB-projected field to refresh.
+//
+// These are annotations on a revision's **body**, not comments on a **diff** — a separate concept
+// with a separate file, deliberately shaped like its sibling so the difference is easy to see.
+
+#[derive(Debug, Deserialize)]
+pub struct AnnotationQuery {
+    pub id: Option<String>,
+}
+
+/// `PUT` accepts `{ "annotations": [...] }` and a bare array alike — the wrapper reads better from
+/// a client, the bare form is what a naive caller sends.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ReplaceAnnotationsBody {
+    Wrapped { annotations: Vec<Annotation> },
+    Bare(Vec<Annotation>),
+}
+
+impl ReplaceAnnotationsBody {
+    fn into_annotations(self) -> Vec<Annotation> {
+        match self {
+            Self::Wrapped { annotations } => annotations,
+            Self::Bare(annotations) => annotations,
+        }
+    }
+}
+
+/// Tell every connected client that a plan's annotations moved.
+///
+/// `send` on a `broadcast::Sender` with no subscribers returns `Err`; ignoring it is deliberate — a
+/// failed broadcast must never fail the write that triggered it.
+fn broadcast_annotations_changed(state: &AppState, folder_name: &str, count: usize) {
+    let _ = state.ws_tx.send(
+        json!({
+            "type": "plan.annotations_changed",
+            "planId": format!("{:05}", plan_id_from_folder_name(folder_name)),
+            "folderName": folder_name,
+            "count": count,
+        })
+        .to_string(),
+    );
+}
+
+pub async fn list_annotations_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    match read_annotations(&folder) {
+        Ok(annotations) => (StatusCode::OK, Json(json!(annotations))).into_response(),
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to read annotations: {}", e),
+        ),
+    }
+}
+
+pub async fn upsert_annotation_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(annotation): Json<Annotation>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    match upsert_annotation(&folder, &annotation) {
+        Ok(annotations) => {
+            broadcast_annotations_changed(&state, &folder_name_of(&folder), annotations.len());
+            (StatusCode::OK, Json(json!(annotations))).into_response()
+        }
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to save annotation: {}", e),
+        ),
+    }
+}
+
+pub async fn replace_annotations_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<ReplaceAnnotationsBody>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    let annotations = body.into_annotations();
+    match write_annotations(&folder, &annotations) {
+        Ok(()) => {
+            broadcast_annotations_changed(&state, &folder_name_of(&folder), annotations.len());
+            (StatusCode::OK, Json(json!(annotations))).into_response()
+        }
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to replace annotations: {}", e),
+        ),
+    }
+}
+
+/// `?id=..` removes one annotation; no query at all clears the plan's whole set.
+///
+/// There is no `BAD_REQUEST` branch here, unlike the diff-comment handler: an annotation's identity
+/// is a single `id`, so there is no half-a-key case a client could send by mistake. The absence is
+/// deliberate rather than an omission.
+pub async fn delete_annotations_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Query(query): Query<AnnotationQuery>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return error_response(
+                StatusCode::NOT_FOUND,
+                format!("Plan '{}' not found", plan_id),
+            )
+        }
+    };
+
+    let outcome = match query.id.as_deref() {
+        Some(id) => remove_annotation(&folder, id),
+        None => clear_annotations(&folder).map(|()| Vec::new()),
+    };
+
+    match outcome {
+        Ok(annotations) => {
+            broadcast_annotations_changed(&state, &folder_name_of(&folder), annotations.len());
+            (StatusCode::OK, Json(json!(annotations))).into_response()
+        }
+        Err(e) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete annotations: {}", e),
         ),
     }
 }

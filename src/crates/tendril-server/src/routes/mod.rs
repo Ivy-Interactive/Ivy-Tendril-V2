@@ -83,6 +83,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .delete(plans::delete_diff_comments_handler),
         )
         .route(
+            "/api/plans/:id/annotations",
+            get(plans::list_annotations_handler)
+                .post(plans::upsert_annotation_handler)
+                .put(plans::replace_annotations_handler)
+                .delete(plans::delete_annotations_handler),
+        )
+        .route(
             "/api/plans/:id/recommendations",
             get(plans::list_recommendations_handler).post(plans::add_recommendation_handler),
         )
@@ -214,6 +221,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/projects/:name/review-actions/:action/execute",
             post(projects::execute_review_action),
+        )
+        // The action runs in a pty, so it is interactive: these carry the client's keystrokes and
+        // window size back to it, keyed by the session id its `meta` frame announced.
+        .route(
+            "/api/projects/:name/review-actions/:action/input",
+            post(projects::review_action_input),
+        )
+        .route(
+            "/api/projects/:name/review-actions/:action/resize",
+            post(projects::review_action_resize),
         )
         .route(
             "/api/projects/:name/hooks",

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
+import { readCssInlined } from "./read-css.ts";
 
 describe("Geist and Geist Mono Font Assets & Configuration", () => {
   const rootDir = resolve(__dirname, "..");
@@ -35,8 +36,10 @@ describe("Geist and Geist Mono Font Assets & Configuration", () => {
     expect(previewContent).not.toContain("@fontsource/geist-mono");
   });
 
+  // The font tokens live in the shared `tokens.css` that both entry points import, so these read
+  // each stylesheet with its relative imports inlined.
   test("globals.css defines --font-sans containing Geist Variable and --font-mono containing Geist Mono Variable", () => {
-    const globalsCss = readFileSync(globalsCssPath, "utf-8");
+    const globalsCss = readCssInlined(globalsCssPath);
 
     expect(globalsCss).toMatch(/--font-sans:[^;]*Geist Variable[^;]*;/);
     expect(globalsCss).toMatch(/--font-mono:[^;]*Geist Mono Variable[^;]*;/);
@@ -45,7 +48,7 @@ describe("Geist and Geist Mono Font Assets & Configuration", () => {
   });
 
   test("index.css defines --font-sans containing Geist Variable and --font-mono containing Geist Mono Variable", () => {
-    const indexCss = readFileSync(indexCssPath, "utf-8");
+    const indexCss = readCssInlined(indexCssPath);
 
     expect(indexCss).toMatch(/--font-sans:[^;]*Geist Variable[^;]*;/);
     expect(indexCss).toMatch(/--font-mono:[^;]*Geist Mono Variable[^;]*;/);
@@ -53,16 +56,9 @@ describe("Geist and Geist Mono Font Assets & Configuration", () => {
     expect(indexCss).toContain("--font-family-sans: var(--font-sans);");
   });
 
-  test("globals.css and index.css declare the same Geist variable families", () => {
-    const families = (css: string) =>
-      [/--font-sans:\s*([^;]+);/.exec(css)?.[1], /--font-mono:\s*([^;]+);/.exec(css)?.[1]].map(
-        (v) => v?.replace(/\s+/g, " ").trim(),
-      );
-
-    expect(families(readFileSync(globalsCssPath, "utf-8"))).toEqual(
-      families(readFileSync(indexCssPath, "utf-8")),
-    );
-  });
+  // The cross-file "same Geist variable families" assertion that used to live here is now part of
+  // the broader token parity suite in `style-token-parity.test.ts`, which covers --font-sans,
+  // --font-serif and --font-mono rather than just the two.
 
   test("agent-output.css names Geist Mono Variable", () => {
     const agentOutputCssPath = resolve(rootDir, "src/components/AgentViewer/agent-output.css");

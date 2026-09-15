@@ -158,6 +158,10 @@ describe("WebViewer", () => {
             comment: "Please change button color to primary",
             xpath: "/html/body/div[1]/button",
             selector: "#submit-btn",
+            // The marker's own id and tag. `comment-edit` and `comment-delete` name a comment by id,
+            // so a host that was never told one cannot apply either of them.
+            id: expect.stringMatching(/^m_\d+_\d+$/),
+            tag: "BUTTON",
           }),
         ]),
       );

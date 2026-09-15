@@ -1,6 +1,32 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Keys a `config.yaml` object under `projects:` carries that the corresponding struct does not
+/// model, kept verbatim so a project mutation cannot drop them.
+///
+/// `config.yaml` is shared with the .NET V1 app, which writes an agent security block
+/// (`sandboxMode`, `securityPreset`, `outsideFileAccessPolicy`, `filePermissions`,
+/// `networkAccessRules`, `allowedTerminalCommands`, `terminalAutoExecution`) plus
+/// `autoImplementPlans` and `meta` under each project.
+/// [`save_config`][crate::config::save_config] rewrites the whole file from the typed value, so
+/// without a catch-all every `tendril project ...` verb and every `/api/projects` write silently
+/// deleted that block.
+///
+/// Two things about the shape are deliberate and should not be "tidied":
+///
+/// - `serde_json::Value`, **not** `serde_yaml::Value` — this matches the four extras maps already
+///   on [`TendrilSettings`][crate::config::TendrilSettings] and friends, and
+///   [`update_config_raw`][crate::config::update_config_raw] already round-trips config through
+///   `serde_json::Value`.
+/// - **No `skip_serializing_if`.** A flattened empty map emits zero keys, so a `config.yaml` with
+///   no extras round-trips byte-identically without it; `skip_serializing_if` on a flattened map is
+///   a no-op, and none of the existing extras fields carry one.
+///
+/// Every type holding one of these drops its `Eq` derive (keeping `PartialEq`), because
+/// `serde_json::Value` is not `Eq` — its `Number` may hold an `f64`.
+pub type ExtraKeys = BTreeMap<String, serde_json::Value>;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RepoRef {
     pub path: String,
     #[serde(
@@ -9,16 +35,22 @@ pub struct RepoRef {
         skip_serializing_if = "Option::is_none"
     )]
     pub base_branch: Option<String>,
+    /// Unmodeled keys — see [`ExtraKeys`].
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProjectVerificationRef {
     pub name: String,
     #[serde(default)]
     pub required: bool,
+    /// Unmodeled keys — see [`ExtraKeys`].
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ReviewActionConfig {
     pub name: String,
     #[serde(default)]
@@ -30,6 +62,9 @@ pub struct ReviewActionConfig {
     /// existed and is only ever used as a fallback by [`ProjectConfig::rank_review_actions`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<String>,
+    /// Unmodeled keys — see [`ExtraKeys`].
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 /// A shell command a project runs around a promptware run.
@@ -39,7 +74,7 @@ pub struct ReviewActionConfig {
 ///
 /// `when` stays a `String` rather than an enum on purpose: a typo in `config.yaml` must leave the
 /// hook inert, not fail the whole config load.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PromptwareHookConfig {
     pub name: String,
     #[serde(default = "default_hook_when")]
@@ -50,6 +85,9 @@ pub struct PromptwareHookConfig {
     pub condition: String,
     #[serde(default)]
     pub action: String,
+    /// Unmodeled keys — see [`ExtraKeys`].
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 fn default_hook_when() -> String {
@@ -66,18 +104,21 @@ pub struct LevelConfig {
 
 /// A named service port. Each plan gets its own concrete port for it, so two plans under review at
 /// the same time never collide on the static default.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProjectPortConfig {
     #[serde(rename = "defaultPort", alias = "default_port", default)]
     pub default_port: u16,
     #[serde(default)]
     pub description: String,
+    /// Unmodeled keys — see [`ExtraKeys`].
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 /// An environment file to materialize into a plan's worktree. Git worktrees start without the
 /// untracked `.env` files that exist in the original checkout, so services and migrations cannot
 /// boot until the file is recreated from `template` plus `overrides`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ProjectEnvFileConfig {
     /// Target path, relative to the worktree root (e.g. `apps/web/.env`).
     #[serde(default)]
@@ -88,6 +129,9 @@ pub struct ProjectEnvFileConfig {
     /// Keys written on top of the template. Values support placeholder expansion.
     #[serde(default)]
     pub overrides: std::collections::BTreeMap<String, String>,
+    /// Unmodeled keys — see [`ExtraKeys`].
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -122,6 +166,12 @@ pub struct ProjectConfig {
     pub mcp_servers: Vec<ProjectMcpServerRef>,
     #[serde(default)]
     pub skills: Vec<ProjectSkillRef>,
+    /// Unmodeled project-level keys — see [`ExtraKeys`]. This is the field that fixes the data loss:
+    /// every one of the `save_config` call sites in `tendril-server` and `tendril-cli` mutates the
+    /// loaded `ProjectConfig` in place, so capturing the keys on load is enough to carry them back
+    /// out on save.
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 /// An MCP server every job of a project gets, declared under the project in `config.yaml`.
@@ -139,13 +189,16 @@ pub struct ProjectMcpServerRef {
     pub environment: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub disabled: bool,
+    /// Unmodeled keys — see [`ExtraKeys`].
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 /// A skill every job of a project gets, declared under the project in `config.yaml`.
 ///
 /// `path` is expanded against `TENDRIL_HOME` and may name a markdown file or a folder holding
 /// `SKILL.md`; when it resolves, its contents replace `instructions`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProjectSkillRef {
     pub name: String,
     #[serde(default)]
@@ -156,6 +209,9 @@ pub struct ProjectSkillRef {
     pub instructions: Option<String>,
     #[serde(default)]
     pub disabled: bool,
+    /// Unmodeled keys — see [`ExtraKeys`].
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 /// A project skill with its instructions already read off disk, ready to render into a firmware.

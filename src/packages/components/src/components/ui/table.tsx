@@ -15,16 +15,41 @@ import { useDensity } from "@/contexts/density-context";
 export interface TableProps
   extends
     Omit<React.HTMLAttributes<HTMLTableElement>, "size">,
-    VariantProps<typeof tableSizeVariant> {}
+    VariantProps<typeof tableSizeVariant> {
+  /**
+   * Ref to the `overflow-auto` wrapper around the table. This is the element that scrolls, so it is
+   * what a virtualizer must observe — there is otherwise no way to reach it from outside.
+   */
+  containerRef?: React.Ref<HTMLDivElement>;
+  /** Extra classes for the scroll wrapper. `className` targets the inner `<table>`. */
+  containerClassName?: string;
+  /** Inline styles for the scroll wrapper, e.g. a `maxHeight` bounding the scroll viewport. */
+  containerStyle?: React.CSSProperties;
+}
 
 const Table = React.forwardRef<HTMLTableElement, TableProps>(
-  ({ className, density: propDensity, children, ...props }, ref) => {
+  (
+    {
+      className,
+      density: propDensity,
+      children,
+      containerRef,
+      containerClassName,
+      containerStyle,
+      ...props
+    },
+    ref,
+  ) => {
     const globalDensity = useDensity();
     const density = propDensity ?? globalDensity;
 
     return (
       <TableProvider density={density as Densities}>
-        <div className="relative w-full overflow-auto">
+        <div
+          ref={containerRef}
+          className={cn("relative w-full overflow-auto", containerClassName)}
+          style={containerStyle}
+        >
           <table
             ref={ref}
             className={cn("w-full caption-bottom", tableSizeVariant({ density }), className)}

@@ -45,11 +45,26 @@ if (typeof window !== "undefined") {
   }
 }
 
+// jsdom has no canvas, and xterm.js measures text on one as soon as it is imported. Any test that
+// imports the components barrel therefore logs a "Not implemented: getContext" error, even without
+// rendering a Terminal. jsdom's own getContext returns null after complaining, so this changes
+// nothing but the noise.
+if (typeof HTMLCanvasElement !== "undefined") {
+  HTMLCanvasElement.prototype.getContext = vi.fn(
+    () => null,
+  ) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+}
+
 // This environment's window has no matchMedia, so useIsMobile in components-storybook
 // throws "window.matchMedia is not a function" from its effect — which surfaces as a
 // render failure in anything built on the blade container. The stub reports "not
 // matching" and never fires a change event, so useIsMobile falls back to innerWidth
 // (1024 in jsdom) and every blade renders in its expanded, non-collapsed form.
+//
+// xterm.js needs the same stub for a different reason: it watches a `(resolution: <n>dppx)` query
+// for device-pixel-ratio changes as soon as a terminal is opened, and without one it dies inside
+// its constructor — in an async callback, so it surfaces as an unhandled rejection rather than a
+// failed assertion.
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   window.matchMedia = (query: string): MediaQueryList =>
     ({

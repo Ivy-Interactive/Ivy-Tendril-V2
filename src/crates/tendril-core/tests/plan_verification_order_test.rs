@@ -26,6 +26,7 @@ fn project_refs(names: &[&str]) -> Vec<ProjectVerificationRef> {
         .map(|n| ProjectVerificationRef {
             name: n.to_string(),
             required: true,
+            extra: Default::default(),
         })
         .collect()
 }
@@ -226,6 +227,7 @@ fn insert_verification_after_places_it_behind_the_target() {
         ProjectVerificationRef {
             name: "RustClippy".to_string(),
             required: true,
+            extra: Default::default(),
         },
         Some("NpmLint"),
     )
@@ -246,6 +248,7 @@ fn insert_verification_without_after_appends() {
         ProjectVerificationRef {
             name: "CheckResult".to_string(),
             required: false,
+            extra: Default::default(),
         },
         None,
     )
@@ -263,6 +266,7 @@ fn insert_verification_rejects_a_duplicate() {
         ProjectVerificationRef {
             name: "npmlint".to_string(),
             required: true,
+            extra: Default::default(),
         },
         None,
     )

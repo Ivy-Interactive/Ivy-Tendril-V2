@@ -127,5 +127,6 @@ pub fn to_project_ref(server: &DiscoveredMcpServer) -> ProjectMcpServerRef {
         arguments: server.arguments.clone(),
         environment: server.environment.clone(),
         disabled: false,
+        extra: Default::default(),
     }
 }

@@ -1,11 +1,11 @@
 use crate::error::BridgeError;
 use crate::models::{
-    AgentCostBreakdownDto, AgentOptionDto, ChatQueuedItemDto, ChatSessionDto, CreateProjectDto,
-    CreateSessionDto, DashboardActivityDto, DoctorCheckDto, DraftCommentDto, EnqueueItemDto,
-    ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto, OnboardingStatusDto,
-    PlanDetailDto, PlanGitDto, PlanQueryDto, PlanSummaryDto, PostMessageDto, PrStatusDto,
-    PrSyncReportDto, ProjectSummaryDto, RecentMergedPrDto, RecentPlanCostDto, RepoStatusDto,
-    ReviewActionDto, RevisionResultDto, ShippedFeatureDayDto, StartJobResponseDto,
+    AgentCostBreakdownDto, AgentOptionDto, AnnotationDto, ChatQueuedItemDto, ChatSessionDto,
+    CreateProjectDto, CreateSessionDto, DashboardActivityDto, DoctorCheckDto, DraftCommentDto,
+    EnqueueItemDto, ExecuteTurnDto, JobDetailDto, JobDto, ModelCatalogStatusDto,
+    OnboardingStatusDto, PlanDetailDto, PlanGitDto, PlanQueryDto, PlanSummaryDto, PostMessageDto,
+    PrStatusDto, PrSyncReportDto, ProjectSummaryDto, RecentMergedPrDto, RecentPlanCostDto,
+    RepoStatusDto, ReviewActionDto, RevisionResultDto, ShippedFeatureDayDto, StartJobResponseDto,
     SubscribeOutcomeDto, TendrilConfigDto, VersionInfoDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
@@ -940,13 +940,18 @@ impl TendrilClient {
         Ok(summaries)
     }
 
+    /// Starts a review action and hands back the still-open response.
+    ///
+    /// The body is an SSE stream that lives as long as the process does, so it is deliberately not
+    /// consumed here: reading it as JSON would block until the process exited and then throw away
+    /// everything it had said. [`super::review_action_bridge`] owns the stream from here.
     pub async fn execute_review_action(
         &self,
         project_name: &str,
         action_name: &str,
         plan_id: Option<&str>,
         worktree: Option<&str>,
-    ) -> Result<serde_json::Value, BridgeError> {
+    ) -> Result<reqwest::Response, BridgeError> {
         let url = format!(
             "{}/api/projects/{}/review-actions/{}/execute",
             self.base_url,
@@ -962,6 +967,7 @@ impl TendrilClient {
             .client
             .post(&url)
             .headers(self.headers())
+            .header(reqwest::header::ACCEPT, "text/event-stream")
             .json(&body)
             .send()
             .await?;
@@ -975,8 +981,80 @@ impl TendrilClient {
             ));
         }
 
-        let result = resp.json().await.unwrap_or(json!({ "status": "ok" }));
-        Ok(result)
+        Ok(resp)
+    }
+
+    /// Sends keystrokes to a running review action. `data` is base64 of the raw bytes, because a
+    /// control character is most of what a terminal sends.
+    pub async fn review_action_input(
+        &self,
+        project_name: &str,
+        action_name: &str,
+        session_id: &str,
+        data: &str,
+    ) -> Result<(), BridgeError> {
+        self.post_review_action_control(
+            project_name,
+            action_name,
+            "input",
+            json!({ "sessionId": session_id, "data": data }),
+        )
+        .await
+    }
+
+    /// Reports the terminal's size to a running review action.
+    pub async fn review_action_resize(
+        &self,
+        project_name: &str,
+        action_name: &str,
+        session_id: &str,
+        rows: u16,
+        cols: u16,
+    ) -> Result<(), BridgeError> {
+        self.post_review_action_control(
+            project_name,
+            action_name,
+            "resize",
+            json!({ "sessionId": session_id, "rows": rows, "cols": cols }),
+        )
+        .await
+    }
+
+    async fn post_review_action_control(
+        &self,
+        project_name: &str,
+        action_name: &str,
+        endpoint: &str,
+        body: serde_json::Value,
+    ) -> Result<(), BridgeError> {
+        let url = format!(
+            "{}/api/projects/{}/review-actions/{}/{}",
+            self.base_url,
+            path_segment(project_name),
+            path_segment(action_name),
+            endpoint
+        );
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        // A `404` means the process has already exited, which a client racing the `end` frame cannot
+        // avoid; it is reported rather than retried.
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "REVIEW_ACTION_CONTROL_FAILED",
+                format!("Review action {endpoint} failed ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
     }
 
     pub async fn get_config(&self) -> Result<TendrilConfigDto, BridgeError> {
@@ -2016,6 +2094,138 @@ impl TendrilClient {
             return Err(BridgeError::new(
                 "CLEAR_DIFF_COMMENTS_FAILED",
                 format!("Failed to clear diff comments on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    // --- Draft annotations ---
+    //
+    // Same contract as the diff comments above: every mutation returns the plan's new list.
+
+    fn annotations_url(&self, id: &str) -> String {
+        format!(
+            "{}/api/plans/{}/annotations",
+            self.base_url,
+            path_segment(id)
+        )
+    }
+
+    pub async fn list_annotations(&self, id: &str) -> Result<Vec<AnnotationDto>, BridgeError> {
+        let resp = self
+            .client
+            .get(self.annotations_url(id))
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "LIST_ANNOTATIONS_FAILED",
+                format!("Failed to list annotations for plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn upsert_annotation(
+        &self,
+        id: &str,
+        annotation: &AnnotationDto,
+    ) -> Result<Vec<AnnotationDto>, BridgeError> {
+        let resp = self
+            .client
+            .post(self.annotations_url(id))
+            .headers(self.headers())
+            .json(annotation)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "UPSERT_ANNOTATION_FAILED",
+                format!("Failed to save annotation on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn replace_annotations(
+        &self,
+        id: &str,
+        annotations: &[AnnotationDto],
+    ) -> Result<Vec<AnnotationDto>, BridgeError> {
+        let resp = self
+            .client
+            .put(self.annotations_url(id))
+            .headers(self.headers())
+            .json(&json!({ "annotations": annotations }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "REPLACE_ANNOTATIONS_FAILED",
+                format!("Failed to replace annotations on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    pub async fn delete_annotation(
+        &self,
+        id: &str,
+        annotation_id: &str,
+    ) -> Result<Vec<AnnotationDto>, BridgeError> {
+        let url = format!(
+            "{}?id={}",
+            self.annotations_url(id),
+            urlencoding(annotation_id)
+        );
+        let resp = self
+            .client
+            .delete(url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "DELETE_ANNOTATION_FAILED",
+                format!("Failed to delete annotation on plan '{id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Drop a plan's whole annotation set — no query string means clear-all.
+    pub async fn clear_annotations(&self, id: &str) -> Result<(), BridgeError> {
+        let resp = self
+            .client
+            .delete(self.annotations_url(id))
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CLEAR_ANNOTATIONS_FAILED",
+                format!("Failed to clear annotations on plan '{id}' ({status}): {text}"),
             ));
         }
 
