@@ -1,5 +1,6 @@
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
-use crate::agents::runner::{run_agent_process, AgentOutputEvent};
+use crate::agents::reconcile::build_missing_result_lines;
+use crate::agents::runner::{run_agent_process, AgentOutputEvent, TerminationReason};
 use crate::chat::models::{ChatMessage, ChatQueuedItem, ChatSession};
 use crate::chat::storage::{
     delete_session as storage_delete, load_all_sessions, load_session,
@@ -57,6 +58,12 @@ pub enum ChatEvent {
         session_id: String,
         #[serde(rename = "jobId")]
         job_id: String,
+    },
+    #[serde(rename = "chat.session_renamed")]
+    SessionRenamed {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        title: String,
     },
 }
 
@@ -168,6 +175,10 @@ impl ChatExecutionManager {
             .write()
             .await
             .insert(id.to_string(), updated.clone());
+        let _ = self.event_tx.send(ChatEvent::SessionRenamed {
+            session_id: id.to_string(),
+            title: updated.title.clone(),
+        });
         Ok(updated)
     }
 
@@ -269,6 +280,11 @@ impl ChatExecutionManager {
         false
     }
 
+    pub async fn clear_queued_messages(&self, session_id: &str) {
+        let mut map = self.queued_messages.write().await;
+        map.remove(session_id);
+    }
+
     /// Rewrites a queued item's prompt in place, keeping its position in the queue. Returns the
     /// updated item, or `None` when the session has no item with that id.
     pub async fn update_queued_message(
@@ -282,11 +298,6 @@ impl ChatExecutionManager {
         let item = queue.iter_mut().find(|i| i.id == item_id)?;
         item.prompt = prompt.to_string();
         Some(item.clone())
-    }
-
-    pub async fn clear_queued_messages(&self, session_id: &str) {
-        let mut map = self.queued_messages.write().await;
-        map.remove(session_id);
     }
 
     // Cancellation
@@ -364,10 +375,15 @@ impl ChatExecutionManager {
         let mut session = self.get_session(session_id).await?;
         let now = Utc::now();
 
-        // If title is "New Chat", auto-generate from prompt
-        if session.title == "New Chat" && !user_prompt.trim().is_empty() {
+        // If title is still default, write a synchronous snippet immediately (so the sidebar
+        // never flashes "New Chat") and remember it so the naming task below can tell an
+        // auto-generated title apart from a user rename that lands during its 30s budget.
+        let mut auto_title_snippet: Option<String> = None;
+        if is_default_chat_title(&session.title) && !user_prompt.trim().is_empty() {
             let snippet: String = user_prompt.trim().chars().take(40).collect();
-            session.title = sanitize_title(&snippet);
+            let snippet = sanitize_title(&snippet);
+            session.title = snippet.clone();
+            auto_title_snippet = Some(snippet);
         }
 
         // Add user message
@@ -394,6 +410,10 @@ impl ChatExecutionManager {
             .clone()
             .unwrap_or_else(|| session.model_id.clone());
         let effort_to_use = options.effort.clone().or_else(|| session.effort.clone());
+        let working_dir_for_naming = options
+            .working_directory
+            .clone()
+            .unwrap_or_else(|| self.tendril_home.clone());
 
         let assistant_msg = ChatMessage {
             id: assistant_msg_id.clone(),
@@ -567,7 +587,27 @@ impl ChatExecutionManager {
                     }
                 }
 
-                let _ = run_handle.await;
+                // The join result also tells us why the stream ended, so any tool_call that never
+                // got a matching tool_result can be closed out with a reason-appropriate output
+                // before the message is persisted. This runs only here, after the loop: the
+                // periodic `persist_in_flight_message` tick above must never reconcile, since a
+                // tool that is genuinely still running would get a fake result written over it.
+                let run_result = run_handle.await;
+                let synthetic_output = match &run_result {
+                    Ok(Ok(outcome)) => match outcome.terminated {
+                        TerminationReason::Cancelled => "[Cancelled]",
+                        TerminationReason::TimedOut => "[Timed out]",
+                        TerminationReason::Exited | TerminationReason::PostResultGraceExceeded => {
+                            "[No output received]"
+                        }
+                    },
+                    _ => "[No output received]",
+                };
+                raw_stream_lines.extend(build_missing_result_lines(
+                    &raw_stream_lines,
+                    synthetic_output,
+                    true,
+                ));
 
                 // Final message update & persistence
                 mgr.finalize_message(
@@ -639,7 +679,125 @@ impl ChatExecutionManager {
             });
         });
 
+        // Spawn the title-naming task, independent of the turn's lifecycle above: it is bounded
+        // by its own 30s timeout and is not reachable from `cancel_session`.
+        if let Some(snippet) = auto_title_snippet {
+            let mgr = Arc::clone(self);
+            let s_id = session_id.to_string();
+            let prompt_for_title = user_prompt.to_string();
+            tokio::spawn(async move {
+                mgr.generate_title(
+                    &s_id,
+                    &prompt_for_title,
+                    &snippet,
+                    &agent_to_use,
+                    model_to_use,
+                    working_dir_for_naming,
+                )
+                .await;
+            });
+        }
+
         Ok(())
+    }
+
+    /// Runs the naming agent in Plan mode against `user_prompt` and renames the session if the
+    /// result is usable and the title has not been changed since `snippet` was written (a user
+    /// rename during the 30s budget always wins).
+    async fn generate_title(
+        self: Arc<Self>,
+        session_id: &str,
+        user_prompt: &str,
+        snippet: &str,
+        agent_id: &str,
+        model_id: String,
+        working_directory: PathBuf,
+    ) {
+        let launch_config = AgentLaunchConfig {
+            prompt: build_title_prompt(user_prompt),
+            working_directory,
+            model: Some(model_id),
+            effort: None,
+            permission_mode: Some("Plan".to_string()),
+            session_id: None,
+            ..Default::default()
+        };
+
+        let spec = (self.spec_builder)(agent_id, &launch_config);
+        let (line_tx, mut line_rx) = tokio::sync::mpsc::unbounded_channel::<AgentOutputEvent>();
+        let (_cancel_tx, cancel_rx) = watch::channel(false);
+
+        let run_handle = tokio::spawn(async move {
+            run_agent_process(
+                spec,
+                move |evt| {
+                    let _ = line_tx.send(evt);
+                },
+                |_pid| {},
+                cancel_rx,
+                Some(Duration::from_secs(30)),
+            )
+            .await
+        });
+
+        let mut accumulated_text = String::new();
+        while let Some(evt) = line_rx.recv().await {
+            accumulated_text.push_str(&extract_delta(&evt.raw_line, evt.is_stderr));
+        }
+
+        let outcome = match run_handle.await {
+            Ok(Ok(outcome)) => outcome,
+            Ok(Err(err)) => {
+                tracing::warn!(
+                    "Title generation failed for chat session {}: {}",
+                    session_id,
+                    err
+                );
+                return;
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Title generation task panicked for chat session {}: {}",
+                    session_id,
+                    err
+                );
+                return;
+            }
+        };
+
+        if outcome.terminated != TerminationReason::Exited || outcome.exit_code != Some(0) {
+            tracing::warn!(
+                "Title generation for chat session {} did not complete successfully: {:?}",
+                session_id,
+                outcome.terminated
+            );
+            return;
+        }
+
+        let cleaned = match clean_generated_title(&accumulated_text) {
+            Some(t) if !is_default_chat_title(&t) => t,
+            _ => {
+                tracing::debug!(
+                    "Generated title for chat session {} was empty or default after cleaning",
+                    session_id
+                );
+                return;
+            }
+        };
+
+        let latest = match self.get_session(session_id).await {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if latest.title == snippet {
+            if let Err(err) = self.rename_session(session_id, &cleaned).await {
+                tracing::warn!(
+                    "Failed to persist generated title for chat session {}: {}",
+                    session_id,
+                    err
+                );
+            }
+        }
     }
 
     async fn persist_in_flight_message(
@@ -716,4 +874,129 @@ fn extract_delta(line: &str, is_stderr: bool) -> String {
     }
 
     format!("{}\n", line)
+}
+
+/// True for the placeholder title a session is created with, and for anything blank —
+/// the guard `start_session_turn` and `generate_title` use to decide whether a title is still
+/// eligible for auto-generation.
+pub fn is_default_chat_title(title: &str) -> bool {
+    let trimmed = title.trim();
+    trimmed.is_empty() || trimmed.eq_ignore_ascii_case("New Chat")
+}
+
+/// Verbatim port of `ChatSessionNamingService.BuildPrompt` (legacy C#).
+pub fn build_title_prompt(user_prompt: &str) -> String {
+    format!(
+        "Generate a short 3 to 6 word title describing the topic of the following user request.\n\
+Output ONLY the title text. Do not include quotes, markdown headings, prefixes like \"Title:\", or trailing punctuation.\n\
+Do not act on the request, run tools, or edit any files.\n\
+\n\
+User:\n\
+{}",
+        user_prompt
+    )
+}
+
+fn strip_wrapping_title_formatting(text: &str) -> String {
+    let result = text.trim();
+    let char_count = result.chars().count();
+    if result.starts_with("**") && result.ends_with("**") && char_count >= 4 {
+        result[2..result.len() - 2].trim().to_string()
+    } else if ((result.starts_with('*') && result.ends_with('*'))
+        || (result.starts_with('`') && result.ends_with('`')))
+        && char_count >= 2
+    {
+        result[1..result.len() - 1].trim().to_string()
+    } else {
+        result.to_string()
+    }
+}
+
+const TITLE_QUOTE_CHARS: [char; 7] = [
+    '"', '\'', '`', '\u{201C}', '\u{201D}', '\u{00AB}', '\u{00BB}',
+];
+
+/// Port of `ChatSessionNamingService.CleanGeneratedTitle` (legacy C#): first non-empty line, then
+/// a fixpoint loop stripping heading markers, bold/italic/code wrapping, `Title:`-style prefixes,
+/// surrounding quotes and trailing punctuation, capped at 50 **chars** (not bytes — the C#
+/// `title[..50]` is a UTF-16 index and a byte slice in Rust would panic on multi-byte input).
+/// Unlike the legacy split between this method and the caller's own `IsDefaultTitle` check, a
+/// cleaned result that is still the default title is folded in here and returned as `None`, so
+/// every caller gets one signal for "no usable title" rather than two to check separately.
+pub fn clean_generated_title(raw: &str) -> Option<String> {
+    let first_line = raw
+        .split(['\r', '\n'])
+        .map(|l| l.trim())
+        .find(|l| !l.is_empty())?;
+
+    let mut title = first_line.to_string();
+    let prefixes = ["Title:", "Topic:", "Subject:", "Name:"];
+
+    loop {
+        let previous = title.clone();
+
+        while title.starts_with('#') {
+            title = title.trim_start_matches('#').trim_start().to_string();
+        }
+
+        title = strip_wrapping_title_formatting(&title);
+
+        for prefix in prefixes {
+            let plen = prefix.chars().count();
+            let candidate: String = title.chars().take(plen).collect();
+            if candidate.eq_ignore_ascii_case(prefix) {
+                title = title
+                    .chars()
+                    .skip(plen)
+                    .collect::<String>()
+                    .trim()
+                    .to_string();
+                break;
+            }
+        }
+
+        title = title
+            .trim_matches(|c| TITLE_QUOTE_CHARS.contains(&c))
+            .to_string();
+
+        while title.ends_with("...") || title.ends_with('…') {
+            if title.ends_with("...") {
+                title = title[..title.len() - 3].trim_end().to_string();
+            } else {
+                let new_len = title.len() - '…'.len_utf8();
+                title = title[..new_len].trim_end().to_string();
+            }
+        }
+        title = title
+            .trim_end_matches(['.', '!', '?', ':', ';', ','])
+            .to_string();
+
+        title = title
+            .trim_matches(|c| TITLE_QUOTE_CHARS.contains(&c))
+            .to_string();
+        title = title.trim().to_string();
+
+        if title == previous || title.is_empty() {
+            break;
+        }
+    }
+
+    if title.is_empty() {
+        return None;
+    }
+
+    if title.chars().count() > 50 {
+        title = title
+            .chars()
+            .take(50)
+            .collect::<String>()
+            .trim()
+            .to_string();
+    }
+
+    if title.is_empty() || is_default_chat_title(&title) {
+        None
+    } else {
+        Some(title)
+    }
 }

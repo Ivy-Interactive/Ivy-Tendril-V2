@@ -2,10 +2,12 @@ pub mod agents;
 pub mod chat;
 pub mod config;
 pub mod github;
+pub mod inbox;
 pub mod jobs;
 pub mod plans;
 pub mod pull_requests;
 pub mod state;
+pub mod vault;
 
 use crate::daemon::{discover_daemon_status, resolve_tendril_home, DaemonStatusResponse};
 use crate::error::BridgeError;

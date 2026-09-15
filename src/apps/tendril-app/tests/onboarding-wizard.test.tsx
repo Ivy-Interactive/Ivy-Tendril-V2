@@ -210,6 +210,30 @@ describe("OnboardingWizard", () => {
     expect(putConfig).not.toHaveBeenCalled();
     expect(onFinished).toHaveBeenCalledTimes(1);
   });
+
+  it("still finishes when the newsletter signup on the Finish step fails", async () => {
+    vi.spyOn(bridge, "subscribeNewsletter").mockRejectedValue(new Error("daemon unreachable"));
+
+    const onFinished = await renderWizard();
+    await click("onboarding-skip");
+    await click("onboarding-skip");
+    await click("onboarding-skip");
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("newsletter-email"), {
+        target: { value: "a@b.co" },
+      });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("newsletter-submit"));
+    });
+    await screen.findByTestId("newsletter-error");
+
+    await click("onboarding-continue");
+
+    expect(completeOnboarding).toHaveBeenCalledTimes(1);
+    expect(onFinished).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("App onboarding gate", () => {

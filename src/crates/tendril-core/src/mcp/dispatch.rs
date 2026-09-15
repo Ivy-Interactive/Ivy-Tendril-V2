@@ -14,6 +14,7 @@ use crate::config::{
     get_config_path, get_database_path, get_plans_dir, load_config, read_master, MasterInfo,
 };
 use crate::db::{open_database, sync_plan};
+use crate::http::describe_transport_error;
 use crate::mcp::redact::{redact_named, redact_value};
 use crate::mcp::tools::find_mcp_tool;
 use crate::mcp::validate::validate_arguments;
@@ -24,9 +25,10 @@ use crate::models::{
 };
 use crate::plans::{
     add_recommendation, check_plan_health, create_plan, get_revision, list_plan_verifications,
-    list_recommendations, read_plan_file, read_plan_yaml, remove_recommendation,
-    resolve_plan_folder, set_plan_verification_status, set_recommendation_state, write_plan_yaml,
-    write_revision, CreatePlanOptions, PlanCompletionGuard,
+    list_recommendations, read_plan_file, read_plan_yaml, remove_plan_verification,
+    remove_recommendation, resolve_plan_folder, set_plan_verification_status,
+    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
+    PlanCompletionGuard,
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Map, Value};
@@ -37,9 +39,9 @@ use std::path::{Path, PathBuf};
 pub const PUBLIC_CONFIG_KEYS: &[&str] = &[
     "codingAgent",
     "jobTimeout",
-    "chatTimeout",
     "staleOutputTimeout",
     "gitTimeout",
+    "daemonRequestTimeout",
     "maxConcurrentJobs",
     "planTemplate",
     "planFolder",
@@ -50,6 +52,9 @@ pub const PUBLIC_CONFIG_KEYS: &[&str] = &[
     "levels",
 ];
 
+/// Correct only when the connection never established. A daemon that accepted the connection and
+/// then failed to answer in time is running, so a transport error is classified before it is
+/// described — see [`describe_transport_error`].
 pub const DAEMON_OFFLINE_MESSAGE: &str =
     "Tendril server is not running. Start it with 'tendril serve' first.";
 
@@ -104,6 +109,8 @@ pub struct McpDispatcher {
     tendril_home: PathBuf,
     plans_dir: PathBuf,
     http: reqwest::Client,
+    /// The budget `http` was built with, kept so a timeout message can name it.
+    http_timeout: Option<std::time::Duration>,
 }
 
 impl McpDispatcher {
@@ -115,10 +122,12 @@ impl McpDispatcher {
     /// Builds a dispatcher against an explicit plans directory, so a test never depends on an
     /// ambient `TENDRIL_PLANS`.
     pub fn with_plans_dir(tendril_home: &Path, plans_dir: &Path) -> Self {
+        let http_timeout = crate::http::daemon_request_timeout_for(tendril_home);
         Self {
             tendril_home: tendril_home.to_path_buf(),
             plans_dir: plans_dir.to_path_buf(),
-            http: reqwest::Client::new(),
+            http: crate::http::daemon_client_with_timeout(http_timeout),
+            http_timeout,
         }
     }
 
@@ -169,6 +178,7 @@ impl McpDispatcher {
             "tendril_plan_write_revision" => self.plan_write_revision(args),
             "tendril_plan_set" => self.plan_set(args),
             "tendril_plan_set_verification" => self.plan_set_verification(args),
+            "tendril_plan_verification_remove" => self.verification_remove(args),
             "tendril_plan_add_repo"
             | "tendril_plan_remove_repo"
             | "tendril_plan_add_pr"
@@ -509,6 +519,24 @@ impl McpDispatcher {
         })))
     }
 
+    fn verification_remove(&self, args: &Value) -> Exec {
+        let (folder, plan) = self.open_for_write(args, None)?;
+        let name = required_str(args, "name")?;
+        remove_plan_verification(&folder, name).map_err(|e| {
+            let current = plan
+                .verifications
+                .iter()
+                .map(|v| v.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}. Current verifications: {}", e, current)
+        })?;
+        self.sync(&folder);
+        Ok(ToolOutcome::structured(
+            json!({ "name": name, "state": "Removed" }),
+        ))
+    }
+
     /// The list-valued plan edits: repos, PRs, commits, related plans and dependencies.
     fn plan_list_edit(&self, tool: &str, args: &Value) -> Exec {
         let (folder, mut plan) = self.open_for_write(args, None)?;
@@ -632,10 +660,19 @@ impl McpDispatcher {
             no_delete_branch: bool_arg(args, "no_delete_branch"),
             no_artifacts: bool_arg(args, "no_artifacts"),
             draft: bool_arg(args, "draft"),
+            idempotency_key: str_arg(args, "idempotency_key").map(|s| s.to_string()),
         };
 
         let job_args = build_job_args(&request, &self.plans_dir)?;
-        let body = serde_json::to_value(&job_args).map_err(|e| e.to_string())?;
+        let mut body = serde_json::to_value(&job_args).map_err(|e| e.to_string())?;
+        // The key is not part of `JobArgs`, so it is inserted alongside the flattened args — the same
+        // shape the CLI posts. Only reached for a keyed submission, so the unkeyed path is untouched.
+        if let Some(key) = &request.idempotency_key {
+            let map = body
+                .as_object_mut()
+                .ok_or("Job args did not serialize to an object")?;
+            map.insert("idempotencyKey".to_string(), json!(key));
+        }
         let response = self.post("/api/jobs", &body).await?;
         Ok(ToolOutcome::structured(response))
     }
@@ -784,20 +821,20 @@ impl McpDispatcher {
 
     async fn get(&self, path: &str) -> std::result::Result<Value, String> {
         let master = self.master()?;
-        let url = format!("http://{}:{}{}", master.host, master.port, path);
+        let url = format!("{}{}", master.base_url(), path);
         let response = self
             .http
             .get(&url)
             .bearer_auth(&master.secret)
             .send()
             .await
-            .map_err(|e| format!("{}: {}", DAEMON_OFFLINE_MESSAGE, e))?;
+            .map_err(|e| describe_transport_error(&e, &master, self.http_timeout))?;
         read_daemon_response(response, &master).await
     }
 
     async fn post(&self, path: &str, body: &Value) -> std::result::Result<Value, String> {
         let master = self.master()?;
-        let url = format!("http://{}:{}{}", master.host, master.port, path);
+        let url = format!("{}{}", master.base_url(), path);
         let response = self
             .http
             .post(&url)
@@ -805,7 +842,7 @@ impl McpDispatcher {
             .json(body)
             .send()
             .await
-            .map_err(|e| format!("{}: {}", DAEMON_OFFLINE_MESSAGE, e))?;
+            .map_err(|e| describe_transport_error(&e, &master, self.http_timeout))?;
         read_daemon_response(response, &master).await
     }
 }
@@ -816,8 +853,8 @@ async fn read_daemon_response(
 ) -> std::result::Result<Value, String> {
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
         return Err(format!(
-            "Authentication failed: unauthorized request to Tendril daemon at {}:{}",
-            master.host, master.port
+            "Authentication failed: unauthorized request to Tendril daemon at {}",
+            master.base_url()
         ));
     }
     let status = response.status();
@@ -853,6 +890,10 @@ pub struct JobStartRequest {
     pub no_delete_branch: bool,
     pub no_artifacts: bool,
     pub draft: bool,
+    /// Client-supplied identity of this submission. Not part of any job type's args, so
+    /// [`build_job_args`] ignores it — the caller puts it on the request body alongside the flattened
+    /// `JobArgs`, the same way `waitForJobs` and `priority` ride along.
+    pub idempotency_key: Option<String>,
 }
 
 /// Builds the `JobArgs` for a job start request. The CLI and the MCP dispatcher both call this, so

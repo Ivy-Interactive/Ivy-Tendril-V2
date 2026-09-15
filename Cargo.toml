@@ -48,3 +48,44 @@ sha2 = "0.10"
 # colour and buffer differently when stdout is not a TTY, and one that prompts on first run cannot be
 # answered through a pipe at all.
 portable-pty = "0.9"
+# Password hashing for `tendril hash-password` and the server's Basic-auth verification path. The
+# parameters are pinned in those two places rather than here, because they must match the hashes the
+# original Tendril already wrote into users' config.yaml.
+argon2 = "0.5"
+# Self-signed localhost certificates for `tendril generate-certs`.
+rcgen = "0.13"
+# TLS listener for `tendril serve --tls-cert/--tls-key`. Plain `axum::serve` has no TLS.
+#
+# `tls-rustls-no-provider` rather than `tls-rustls`: the latter turns on `rustls/aws-lc-rs`, which
+# both drags in the `aws-lc-sys` C build and leaves rustls with two enabled providers and therefore
+# no unambiguous default — `RustlsConfig::from_pem_file` then panics at runtime. `ring` is already
+# enabled workspace-wide (reqwest's `rustls-tls` in tendril-app), so the server installs the ring
+# provider explicitly instead.
+axum-server = { version = "0.7", default-features = false, features = [
+    "tls-rustls-no-provider",
+] }
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+    "logging",
+] }
+toml = "0.9"
+
+# CI runs `cargo test --workspace` on a ubuntu-latest runner with ~14 GB of free disk, and a full
+# debug build of this workspace is ~14 GB on its own — debug info is the bulk of it. Without this,
+# rustc hits "IO failure on output stream: No space left on device" and the linker then dies with
+# `collect2: fatal error: ld terminated with signal 7 [Bus error]` (SIGBUS on its mmap'd output).
+# See https://github.com/Ivy-Interactive/Ivy-Tendril-V2/actions/runs/34857841035
+#
+# Assertion failures still report file:line — that comes from `panic!`'s compile-time location, not
+# from debug info. Only RUST_BACKTRACE line numbers are lost. To get them back locally:
+#   CARGO_PROFILE_DEV_DEBUG=2 cargo build --workspace
+#   CARGO_PROFILE_TEST_DEBUG=2 cargo test -p tendril-core
+[profile.dev]
+debug = 0
+strip = "debuginfo"
+
+[profile.test]
+debug = 0
+strip = "debuginfo"

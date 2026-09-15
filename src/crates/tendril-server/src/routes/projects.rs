@@ -15,7 +15,8 @@ use tendril_core::config::{
 use tendril_core::db::open_database;
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{
-    ProjectConfig, ProjectVerificationRef, PromptwareHookConfig, RepoRef, ReviewActionConfig,
+    ProjectConfig, ProjectMcpServerRef, ProjectSkillRef, ProjectVerificationRef,
+    PromptwareHookConfig, RepoRef, ReviewActionConfig,
 };
 use tendril_core::plans::helpers::resolve_plan_folder;
 
@@ -100,6 +101,10 @@ pub struct CreateProjectRequest {
     pub hooks: Vec<PromptwareHookConfig>,
     #[serde(rename = "buildDependencies", alias = "build_dependencies", default)]
     pub build_dependencies: Vec<String>,
+    #[serde(rename = "mcpServers", alias = "mcp_servers", default)]
+    pub mcp_servers: Vec<ProjectMcpServerRef>,
+    #[serde(default)]
+    pub skills: Vec<ProjectSkillRef>,
 }
 
 fn default_project_color() -> String {
@@ -122,6 +127,9 @@ pub struct UpdateProjectRequest {
     pub hooks: Option<Vec<PromptwareHookConfig>>,
     #[serde(rename = "buildDependencies", alias = "build_dependencies")]
     pub build_dependencies: Option<Vec<String>>,
+    #[serde(rename = "mcpServers", alias = "mcp_servers")]
+    pub mcp_servers: Option<Vec<ProjectMcpServerRef>>,
+    pub skills: Option<Vec<ProjectSkillRef>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -285,6 +293,8 @@ pub async fn create_project(
         review_actions: req.review_actions,
         hooks: req.hooks,
         build_dependencies: req.build_dependencies,
+        mcp_servers: req.mcp_servers,
+        skills: req.skills,
         ..Default::default()
     };
 
@@ -394,6 +404,14 @@ pub async fn update_project(
 
     if let Some(build_dependencies) = req.build_dependencies {
         settings.projects[proj_idx].build_dependencies = build_dependencies;
+    }
+
+    if let Some(mcp_servers) = req.mcp_servers {
+        settings.projects[proj_idx].mcp_servers = mcp_servers;
+    }
+
+    if let Some(skills) = req.skills {
+        settings.projects[proj_idx].skills = skills;
     }
 
     let updated_project = settings.projects[proj_idx].clone();

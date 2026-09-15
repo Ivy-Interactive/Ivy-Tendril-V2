@@ -9,10 +9,12 @@ pub use commands::agents::*;
 pub use commands::chat::*;
 pub use commands::config::*;
 pub use commands::github::*;
+pub use commands::inbox::*;
 pub use commands::jobs::*;
 pub use commands::plans::*;
 pub use commands::pull_requests::*;
 pub use commands::state::*;
+pub use commands::vault::*;
 pub use commands::*;
 
 use service::{MasterDiscovery, WsBridge};
@@ -107,9 +109,12 @@ pub fn run() {
             cmd_get_onboarding_status,
             cmd_complete_onboarding,
             cmd_dismiss_onboarding,
+            cmd_subscribe_newsletter,
             cmd_run_doctor,
             cmd_get_models_status,
             cmd_refresh_models,
+            cmd_get_version_info,
+            cmd_check_version_now,
             cmd_execute_review_action,
             cmd_send_review_action_input,
             cmd_resize_review_action,
@@ -136,6 +141,25 @@ pub fn run() {
             cmd_update_queued_chat_item,
             cmd_list_agents,
             cmd_list_github_issues,
+            cmd_vault_list,
+            cmd_vault_status,
+            cmd_vault_catalog,
+            cmd_vault_github_accounts,
+            cmd_vault_discover,
+            cmd_vault_create,
+            cmd_vault_connect,
+            cmd_vault_disconnect,
+            cmd_vault_set_always_up_to_date,
+            cmd_vault_pull,
+            cmd_vault_project_assets,
+            cmd_vault_push,
+            cmd_vault_import,
+            cmd_vault_merge,
+            cmd_vault_delete_project,
+            cmd_check_inbox,
+            cmd_list_inbox_proposals,
+            cmd_accept_inbox_proposal,
+            cmd_dismiss_inbox_proposal,
             cmd_list_pull_requests,
             cmd_sync_pull_requests,
         ])

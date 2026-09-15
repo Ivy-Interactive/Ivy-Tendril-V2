@@ -2,7 +2,9 @@
 //!
 //! Follows `project.rs`: when a master daemon is reachable every subcommand goes over HTTP so it sees
 //! the same in-memory state as the app, and a *transport* failure falls back to driving
-//! `tendril_core::vault` directly against the filesystem. An HTTP status error is a real error, not a
+//! `tendril_core::vault` directly against the filesystem — but only when the connection never
+//! established, since a timed-out mutation may already have been applied by the daemon and writing it
+//! locally too would apply it twice. An HTTP status error is a real error, not a
 //! fallback — a 404 from the daemon means the vault genuinely does not exist, and silently re-answering
 //! from disk would hide that.
 //!
@@ -11,7 +13,12 @@
 use clap::Subcommand;
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::time::Duration;
 use tendril_core::config::{get_config_path, load_config, read_master, MasterInfo};
+use tendril_core::http::{
+    classify_transport_error, daemon_client_with_timeout_and_master, daemon_request_timeout_for,
+    describe_transport_error, DaemonTransportFailure,
+};
 use tendril_core::vault::{
     self, VaultCatalog, VaultExportRequest, VaultImportRequest, VaultPrResult, VaultResult,
     VaultStatus, VaultSyncResult,
@@ -154,9 +161,26 @@ enum DaemonOutcome {
     Fallback,
 }
 
+/// A daemon call that failed at the transport level.
+///
+/// Only an unreachable daemon may fall back to `config.yaml`: a timed-out mutation may already have
+/// been applied by the daemon, and applying it locally too would apply it twice.
+fn fallback_or_fail(
+    err: reqwest::Error,
+    master: &MasterInfo,
+    timeout: Option<Duration>,
+) -> anyhow::Result<DaemonOutcome> {
+    match classify_transport_error(&err) {
+        DaemonTransportFailure::Unreachable => Ok(DaemonOutcome::Fallback),
+        _ => Err(anyhow::anyhow!(describe_transport_error(
+            &err, master, timeout
+        ))),
+    }
+}
+
 pub async fn handle_vault_command(cmd: VaultCommands, tendril_home: &Path) -> anyhow::Result<()> {
     if let Some(master) = read_master(tendril_home) {
-        match handle_vault_command_daemon(&cmd, &master).await {
+        match handle_vault_command_daemon(tendril_home, &cmd, &master).await {
             Ok(DaemonOutcome::Handled) => return Ok(()),
             Ok(DaemonOutcome::Fallback) => {
                 tracing::debug!("Failed to reach master daemon, falling back to filesystem");
@@ -792,18 +816,21 @@ fn vault_segment(vault_id: Option<&str>) -> String {
 }
 
 async fn handle_vault_command_daemon(
+    tendril_home: &Path,
     cmd: &VaultCommands,
     master: &MasterInfo,
 ) -> anyhow::Result<DaemonOutcome> {
-    let client = reqwest::Client::new();
-    let base_url = format!("http://{}:{}", master.host, master.port);
+    let timeout = daemon_request_timeout_for(tendril_home);
+    let client = daemon_client_with_timeout_and_master(timeout, master);
+    let base_url = master.base_url();
 
-    /// A transport failure means the daemon is gone; anything else is a real error.
+    /// A transport failure that proves the daemon never saw the request falls back to the
+    /// filesystem; a timeout may already have been applied there, so it is an error.
     macro_rules! send {
         ($builder:expr) => {
             match $builder.bearer_auth(&master.secret).send().await {
                 Ok(response) => response,
-                Err(_) => return Ok(DaemonOutcome::Fallback),
+                Err(e) => return fallback_or_fail(e, master, timeout),
             }
         };
     }

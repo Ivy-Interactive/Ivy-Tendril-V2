@@ -12,7 +12,13 @@ import {
   onServiceStatus,
 } from "./api/events";
 import { applyChangeEvent } from "./api/changes";
-import { describeBridgeError, type OnboardingStatus, type ProjectSummary } from "./types/api";
+import {
+  describeBridgeError,
+  type OnboardingStatus,
+  type ProjectSummary,
+  type VersionInfo,
+} from "./types/api";
+import { getUpdateCommand } from "./utils/updateCommand";
 
 import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
@@ -55,6 +61,9 @@ const ChatView = React.lazy(() =>
 const InboxView = React.lazy(() =>
   import("./views/InboxView").then((m) => ({ default: m.InboxView })),
 );
+const PullRequestsView = React.lazy(() =>
+  import("./views/PullRequestsView").then((m) => ({ default: m.PullRequestsView })),
+);
 // Lazy for the same reason as the rest, with more at stake: this is the only
 // view that pulls in xterm.js, which nothing else in the shell needs.
 const ReviewActionView = React.lazy(() =>
@@ -91,6 +100,7 @@ export const App: React.FC = () => {
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   // Failures from actions the shell itself owns (service restart/repair).
   const [shellError, setShellError] = useState<string | null>(null);
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
 
   // Subscribe to stores
   useEffect(() => {
@@ -119,11 +129,28 @@ export const App: React.FC = () => {
       .then(setOnboarding)
       .catch(() => setOnboarding(null));
 
+    // The app only ever reads the daemon's cached release-check result, never the release feed
+    // itself — a 6-hour poll matches the daemon's own success-path interval.
+    bridge
+      .getVersionInfo()
+      .then(setVersionInfo)
+      .catch(() => {});
+    const versionInterval = setInterval(
+      () => {
+        bridge
+          .getVersionInfo()
+          .then(setVersionInfo)
+          .catch(() => {});
+      },
+      6 * 60 * 60 * 1000,
+    );
+
     return () => {
       unsubUi();
       unsubPlans();
       unsubJobs();
       unsubService();
+      clearInterval(versionInterval);
     };
   }, []);
 
@@ -442,6 +469,17 @@ export const App: React.FC = () => {
         );
       }
 
+      case "pull-requests":
+        return (
+          <PullRequestsView
+            onSelectPlan={handleSelectPlan}
+            onOpenNewPlanModal={(prefill) => {
+              setNewPlanPrefill(prefill);
+              setIsNewPlanOpen(true);
+            }}
+          />
+        );
+
       case "jobs":
         return (
           <div className="space-y-4">
@@ -549,6 +587,10 @@ export const App: React.FC = () => {
         onViewDiagnostics={() => {
           uiStore.setActiveNav("settings");
         }}
+        versionInfo={versionInfo}
+        dismissedUpdateVersion={uiState.dismissedUpdateVersion}
+        onDismissUpdate={(version) => uiStore.setDismissedUpdateVersion(version)}
+        onCopyUpdateCommand={() => void navigator.clipboard.writeText(getUpdateCommand())}
       >
         {shellError && (
           <div

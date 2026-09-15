@@ -34,7 +34,7 @@ async fn start_test_server() -> TestServer {
     let port = tokio_listener.local_addr().unwrap().port();
 
     let secret = tendril_core::config::generate_bearer_secret();
-    let _guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str).unwrap();
+    let _guard = MasterGuard::acquire(&tendril_home, port, &secret, &host_str, "http").unwrap();
 
     let plans_dir = tendril_home.join("Plans");
     std::fs::create_dir_all(&plans_dir).unwrap();
@@ -1821,4 +1821,642 @@ async fn test_project_cli_review_actions_ranks_by_changed_file() {
     .expect("Rank review actions falls back to configured order when plan is missing");
 
     let _ = std::fs::remove_dir_all(&tendril_home);
+}
+
+// ---------------------------------------------------------------------------
+// Build dependencies, MCP servers, skills, sync and the import verbs.
+//
+// The list verbs run through `through_both_paths` because the daemon arm and the filesystem arm
+// share the mutation helpers and must agree; sync and the imports only ever take the filesystem
+// arm, so they are exercised once each.
+// ---------------------------------------------------------------------------
+
+/// A project's config as written, for asserting on the new lists.
+fn project_config(tendril_home: &Path, project: &str) -> tendril_core::models::ProjectConfig {
+    load_config(&get_config_path(tendril_home))
+        .expect("load config")
+        .projects
+        .into_iter()
+        .find(|p| p.name.eq_ignore_ascii_case(project))
+        .expect("project exists")
+}
+
+async fn add_project(tendril_home: &Path, project: &str) {
+    handle_project_command(
+        ProjectCommands::Add {
+            name: project.to_string(),
+        },
+        tendril_home,
+    )
+    .await
+    .expect("add project");
+}
+
+#[tokio::test]
+async fn project_build_dep_add_and_remove() {
+    through_both_paths("build-dep", |home| async move {
+        add_project(&home, "Proj").await;
+
+        handle_project_command(
+            ProjectCommands::AddBuildDep {
+                name: "Proj".to_string(),
+                dependency: "Ivy-Framework".to_string(),
+            },
+            &home,
+        )
+        .await
+        .expect("add build dependency");
+        assert_eq!(
+            project_config(&home, "Proj").build_dependencies,
+            ["Ivy-Framework"]
+        );
+
+        // Case-insensitive: the same dependency in different case is still a duplicate.
+        let duplicate = handle_project_command(
+            ProjectCommands::AddBuildDep {
+                name: "Proj".to_string(),
+                dependency: "ivy-framework".to_string(),
+            },
+            &home,
+        )
+        .await;
+        assert!(duplicate.is_err(), "duplicate build dependency accepted");
+        assert_eq!(project_config(&home, "Proj").build_dependencies.len(), 1);
+
+        handle_project_command(
+            ProjectCommands::RemoveBuildDep {
+                name: "Proj".to_string(),
+                dependency: "IVY-FRAMEWORK".to_string(),
+            },
+            &home,
+        )
+        .await
+        .expect("remove build dependency");
+        assert!(project_config(&home, "Proj").build_dependencies.is_empty());
+
+        let missing = handle_project_command(
+            ProjectCommands::RemoveBuildDep {
+                name: "Proj".to_string(),
+                dependency: "Ivy-Framework".to_string(),
+            },
+            &home,
+        )
+        .await;
+        assert!(missing.is_err(), "removing a missing dependency succeeded");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn project_mcp_add_list_remove() {
+    through_both_paths("mcp-verbs", |home| async move {
+        add_project(&home, "Proj").await;
+
+        handle_project_command(
+            ProjectCommands::ListMcp {
+                name: "Proj".to_string(),
+            },
+            &home,
+        )
+        .await
+        .expect("list an empty MCP list");
+
+        handle_project_command(
+            ProjectCommands::AddMcp {
+                name: "Proj".to_string(),
+                server: "filesystem".to_string(),
+                command: "npx".to_string(),
+                arguments: vec!["-y".to_string(), "@mcp/filesystem".to_string()],
+                environment: vec![
+                    "ROOT=/tmp".to_string(),
+                    // No '=' and a blank key are both dropped rather than stored.
+                    "MALFORMED".to_string(),
+                    "=orphan".to_string(),
+                ],
+            },
+            &home,
+        )
+        .await
+        .expect("add MCP server");
+
+        let servers = project_config(&home, "Proj").mcp_servers;
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].name, "filesystem");
+        assert_eq!(servers[0].command, "npx");
+        assert_eq!(servers[0].arguments, ["-y", "@mcp/filesystem"]);
+        assert_eq!(servers[0].environment.len(), 1);
+        assert_eq!(
+            servers[0].environment.get("ROOT").map(String::as_str),
+            Some("/tmp")
+        );
+        assert!(!servers[0].disabled);
+
+        let duplicate = handle_project_command(
+            ProjectCommands::AddMcp {
+                name: "Proj".to_string(),
+                server: "FILESYSTEM".to_string(),
+                command: "uvx".to_string(),
+                arguments: vec![],
+                environment: vec![],
+            },
+            &home,
+        )
+        .await;
+        assert!(duplicate.is_err(), "duplicate MCP server accepted");
+
+        handle_project_command(
+            ProjectCommands::ListMcp {
+                name: "Proj".to_string(),
+            },
+            &home,
+        )
+        .await
+        .expect("list MCP servers");
+
+        handle_project_command(
+            ProjectCommands::RemoveMcp {
+                name: "Proj".to_string(),
+                server: "filesystem".to_string(),
+            },
+            &home,
+        )
+        .await
+        .expect("remove MCP server");
+        assert!(project_config(&home, "Proj").mcp_servers.is_empty());
+
+        let missing = handle_project_command(
+            ProjectCommands::RemoveMcp {
+                name: "Proj".to_string(),
+                server: "filesystem".to_string(),
+            },
+            &home,
+        )
+        .await;
+        assert!(missing.is_err(), "removing a missing MCP server succeeded");
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn project_skill_add_list_remove() {
+    through_both_paths("skill-verbs", |home| async move {
+        add_project(&home, "Proj").await;
+
+        handle_project_command(
+            ProjectCommands::ListSkills {
+                name: "Proj".to_string(),
+            },
+            &home,
+        )
+        .await
+        .expect("list an empty skill list");
+
+        handle_project_command(
+            ProjectCommands::AddSkill {
+                name: "Proj".to_string(),
+                skill: "review-checklist".to_string(),
+                description: Some("How this project reviews changes".to_string()),
+                path: None,
+                // A blank string is stored as None, so the config never carries an empty field.
+                instructions: Some("   ".to_string()),
+            },
+            &home,
+        )
+        .await
+        .expect("add custom skill");
+
+        let skills = project_config(&home, "Proj").skills;
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "review-checklist");
+        assert_eq!(skills[0].description, "How this project reviews changes");
+        assert!(skills[0].path.is_none());
+        assert!(skills[0].instructions.is_none());
+        assert!(!skills[0].disabled);
+
+        let duplicate = handle_project_command(
+            ProjectCommands::AddSkill {
+                name: "Proj".to_string(),
+                skill: "Review-Checklist".to_string(),
+                description: None,
+                path: None,
+                instructions: None,
+            },
+            &home,
+        )
+        .await;
+        assert!(duplicate.is_err(), "duplicate skill accepted");
+
+        handle_project_command(
+            ProjectCommands::ListSkills {
+                name: "Proj".to_string(),
+            },
+            &home,
+        )
+        .await
+        .expect("list skills");
+
+        handle_project_command(
+            ProjectCommands::RemoveSkill {
+                name: "Proj".to_string(),
+                skill: "review-checklist".to_string(),
+            },
+            &home,
+        )
+        .await
+        .expect("remove skill");
+        assert!(project_config(&home, "Proj").skills.is_empty());
+
+        let missing = handle_project_command(
+            ProjectCommands::RemoveSkill {
+                name: "Proj".to_string(),
+                skill: "review-checklist".to_string(),
+            },
+            &home,
+        )
+        .await;
+        assert!(missing.is_err(), "removing a missing skill succeeded");
+    })
+    .await;
+}
+
+/// A repo whose local `main` is one commit behind a bare `origin` beside it.
+///
+/// The CLI's sync arm is only meaningful against real git, and the core tests cover the failure
+/// states, so this fixture is the minimum needed to see the verb fast-forward and report a refusal.
+struct SyncRepoFixture {
+    root: PathBuf,
+    repo: PathBuf,
+}
+
+impl Drop for SyncRepoFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+impl SyncRepoFixture {
+    fn new(label: &str) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "tendril-cli-sync-{}-{}",
+            label,
+            uuid::Uuid::new_v4().simple()
+        ));
+        let repo = root.join(label);
+        let origin = root.join("origin.git");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&origin).unwrap();
+
+        let fixture = Self { root, repo };
+        fixture.git_in(&origin, &["init", "--bare", "-b", "main"]);
+        fixture.git(&["init", "-b", "main"]);
+        fixture.git(&["config", "user.email", "fixture@tendril.test"]);
+        fixture.git(&["config", "user.name", "Tendril Fixture"]);
+        fixture.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(fixture.repo.join("README.md"), "fixture\n").unwrap();
+        fixture.git(&["add", "."]);
+        fixture.git(&["commit", "-m", "Initial commit"]);
+        let origin_url = origin.to_string_lossy().to_string();
+        fixture.git(&["remote", "add", "origin", &origin_url]);
+        fixture.git(&["push", "-u", "origin", "main"]);
+
+        std::fs::write(fixture.repo.join("ahead.txt"), "ahead\n").unwrap();
+        fixture.git(&["add", "ahead.txt"]);
+        fixture.git(&["commit", "-m", "Commit only origin has"]);
+        fixture.git(&["push", "origin", "main"]);
+        fixture.git(&["reset", "--hard", "HEAD~1"]);
+
+        fixture
+    }
+
+    fn git(&self, args: &[&str]) -> String {
+        let repo = self.repo.clone();
+        self.git_in(&repo, args)
+    }
+
+    fn git_in(&self, dir: &Path, args: &[&str]) -> String {
+        let (code, stdout, stderr) =
+            tendril_core::git::service::run_git(args, dir).expect("run git");
+        assert_eq!(code, 0, "git {:?} failed: {}{}", args, stdout, stderr);
+        stdout
+    }
+
+    fn head(&self) -> String {
+        self.git(&["rev-parse", "HEAD"]).trim().to_string()
+    }
+}
+
+#[tokio::test]
+async fn project_sync_reports_a_project_with_no_repos() {
+    let home = FsHome::new("sync-no-repos");
+    add_project(&home.path, "Proj").await;
+
+    // Nothing to do is not a failure: the operator gets told and the command exits zero.
+    handle_project_command(
+        ProjectCommands::Sync {
+            name: "Proj".to_string(),
+            repo: None,
+        },
+        &home.path,
+    )
+    .await
+    .expect("sync a project with no repos");
+}
+
+#[tokio::test]
+async fn project_sync_fast_forwards_then_refuses_a_dirty_tree() {
+    let home = FsHome::new("sync-repo");
+    let fixture = SyncRepoFixture::new("syncable");
+
+    add_project(&home.path, "Proj").await;
+    handle_project_command(
+        ProjectCommands::AddRepo {
+            name: "Proj".to_string(),
+            path: fixture.repo.to_string_lossy().to_string(),
+        },
+        &home.path,
+    )
+    .await
+    .expect("add repo");
+
+    let before = fixture.head();
+    handle_project_command(
+        ProjectCommands::Sync {
+            name: "Proj".to_string(),
+            repo: None,
+        },
+        &home.path,
+    )
+    .await
+    .expect("sync fast-forwards");
+    assert_ne!(fixture.head(), before, "HEAD did not advance");
+
+    // An unmatched --repo selects nothing, which is reported rather than treated as a failure.
+    handle_project_command(
+        ProjectCommands::Sync {
+            name: "Proj".to_string(),
+            repo: Some("no-such-repo".to_string()),
+        },
+        &home.path,
+    )
+    .await
+    .expect("sync with an unmatched --repo");
+
+    std::fs::write(fixture.repo.join("README.md"), "edited\n").unwrap();
+    let dirty = handle_project_command(
+        ProjectCommands::Sync {
+            name: "Proj".to_string(),
+            repo: Some("syncable".to_string()),
+        },
+        &home.path,
+    )
+    .await;
+    assert!(dirty.is_err(), "a dirty repo should fail the command");
+}
+
+/// A repo directory holding one MCP config and one skill folder.
+struct ImportRepoFixture {
+    path: PathBuf,
+}
+
+impl Drop for ImportRepoFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+impl ImportRepoFixture {
+    fn new(label: &str) -> Self {
+        let path = std::env::temp_dir().join(format!(
+            "tendril-cli-import-{}-{}",
+            label,
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(
+            path.join(".mcp.json"),
+            r#"{ "mcpServers": { "filesystem": { "command": "npx", "args": ["-y"] } } }"#,
+        )
+        .unwrap();
+
+        let skill_dir = path.join(".claude").join("skills").join("repo-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: repo-skill\ndescription: A skill the repo ships\n---\n\nDo the thing.\n",
+        )
+        .unwrap();
+
+        Self { path }
+    }
+
+    fn arg(&self) -> String {
+        self.path.to_string_lossy().to_string()
+    }
+}
+
+#[tokio::test]
+async fn project_import_mcp_upserts_and_filters() {
+    let home = FsHome::new("import-mcp");
+    let repo = ImportRepoFixture::new("mcp");
+    add_project(&home.path, "Proj").await;
+
+    handle_project_command(
+        ProjectCommands::ImportMcp {
+            name: "Proj".to_string(),
+            repo: repo.arg(),
+            server: None,
+        },
+        &home.path,
+    )
+    .await
+    .expect("import MCP servers");
+
+    let servers = project_config(&home.path, "Proj").mcp_servers;
+    assert_eq!(servers.len(), 1);
+    assert_eq!(servers[0].name, "filesystem");
+    assert_eq!(servers[0].arguments, ["-y"]);
+
+    // Re-importing replaces the entry in place rather than appending a second copy.
+    handle_project_command(
+        ProjectCommands::ImportMcp {
+            name: "Proj".to_string(),
+            repo: repo.arg(),
+            server: None,
+        },
+        &home.path,
+    )
+    .await
+    .expect("re-import MCP servers");
+    assert_eq!(project_config(&home.path, "Proj").mcp_servers.len(), 1);
+
+    // A --name that matches nothing reports it and exits zero, leaving the config alone.
+    handle_project_command(
+        ProjectCommands::ImportMcp {
+            name: "Proj".to_string(),
+            repo: repo.arg(),
+            server: Some("not-in-this-repo".to_string()),
+        },
+        &home.path,
+    )
+    .await
+    .expect("import with an unmatched --name");
+    assert_eq!(project_config(&home.path, "Proj").mcp_servers.len(), 1);
+
+    let unknown_repo = handle_project_command(
+        ProjectCommands::ImportMcp {
+            name: "Proj".to_string(),
+            repo: "/definitely/not/a/repo/on/this/machine".to_string(),
+            server: None,
+        },
+        &home.path,
+    )
+    .await;
+    assert!(unknown_repo.is_err(), "unknown repo argument accepted");
+}
+
+#[tokio::test]
+async fn project_import_skills_copies_and_filters() {
+    let home = FsHome::new("import-skills");
+    let repo = ImportRepoFixture::new("skills");
+    add_project(&home.path, "Proj").await;
+
+    handle_project_command(
+        ProjectCommands::ImportSkills {
+            name: "Proj".to_string(),
+            repo: repo.arg(),
+            skill: None,
+            no_copy: false,
+        },
+        &home.path,
+    )
+    .await
+    .expect("import skills");
+
+    let skills = project_config(&home.path, "Proj").skills;
+    assert_eq!(skills.len(), 1);
+    assert_eq!(skills[0].name, "repo-skill");
+    assert_eq!(skills[0].description, "A skill the repo ships");
+    assert!(
+        tendril_core::skills::project_skills_dir(&home.path, "Proj")
+            .join("repo-skill")
+            .join("SKILL.md")
+            .is_file(),
+        "the skill files were not copied into the project"
+    );
+
+    handle_project_command(
+        ProjectCommands::ImportSkills {
+            name: "Proj".to_string(),
+            repo: repo.arg(),
+            skill: Some("repo-skill".to_string()),
+            no_copy: true,
+        },
+        &home.path,
+    )
+    .await
+    .expect("re-import one skill without copying");
+    assert_eq!(project_config(&home.path, "Proj").skills.len(), 1);
+
+    handle_project_command(
+        ProjectCommands::ImportSkills {
+            name: "Proj".to_string(),
+            repo: repo.arg(),
+            skill: Some("no-such-skill".to_string()),
+            no_copy: false,
+        },
+        &home.path,
+    )
+    .await
+    .expect("import with an unmatched --name");
+    assert_eq!(project_config(&home.path, "Proj").skills.len(), 1);
+}
+
+#[tokio::test]
+async fn project_import_honours_mcp_only_and_skills_only() {
+    let home = FsHome::new("import-both");
+    let repo = ImportRepoFixture::new("both");
+    add_project(&home.path, "McpOnly").await;
+    add_project(&home.path, "SkillsOnly").await;
+    add_project(&home.path, "Everything").await;
+
+    handle_project_command(
+        ProjectCommands::Import {
+            name: "McpOnly".to_string(),
+            repo: repo.arg(),
+            mcp_only: true,
+            skills_only: false,
+        },
+        &home.path,
+    )
+    .await
+    .expect("import --mcp-only");
+    let mcp_only = project_config(&home.path, "McpOnly");
+    assert_eq!(mcp_only.mcp_servers.len(), 1);
+    assert!(mcp_only.skills.is_empty());
+
+    handle_project_command(
+        ProjectCommands::Import {
+            name: "SkillsOnly".to_string(),
+            repo: repo.arg(),
+            mcp_only: false,
+            skills_only: true,
+        },
+        &home.path,
+    )
+    .await
+    .expect("import --skills-only");
+    let skills_only = project_config(&home.path, "SkillsOnly");
+    assert!(skills_only.mcp_servers.is_empty());
+    assert_eq!(skills_only.skills.len(), 1);
+
+    // Both flags together run both halves, as the original does.
+    handle_project_command(
+        ProjectCommands::Import {
+            name: "Everything".to_string(),
+            repo: repo.arg(),
+            mcp_only: true,
+            skills_only: true,
+        },
+        &home.path,
+    )
+    .await
+    .expect("import with both flags");
+    let everything = project_config(&home.path, "Everything");
+    assert_eq!(everything.mcp_servers.len(), 1);
+    assert_eq!(everything.skills.len(), 1);
+}
+
+#[tokio::test]
+async fn project_import_resolves_a_configured_repo_by_directory_name() {
+    let home = FsHome::new("import-by-name");
+    let repo = ImportRepoFixture::new("named");
+    add_project(&home.path, "Proj").await;
+    handle_project_command(
+        ProjectCommands::AddRepo {
+            name: "Proj".to_string(),
+            path: repo.arg(),
+        },
+        &home.path,
+    )
+    .await
+    .expect("add repo");
+
+    let dir_name = repo
+        .path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .expect("fixture dir name")
+        .to_string();
+
+    handle_project_command(
+        ProjectCommands::ImportMcp {
+            name: "Proj".to_string(),
+            repo: dir_name,
+            server: None,
+        },
+        &home.path,
+    )
+    .await
+    .expect("import by the repo's directory name");
+    assert_eq!(project_config(&home.path, "Proj").mcp_servers.len(), 1);
 }

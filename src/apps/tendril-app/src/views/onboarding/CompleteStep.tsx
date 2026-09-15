@@ -1,3 +1,4 @@
+import { NewsletterSignup } from "../../components/NewsletterSignup";
 import { ONBOARDING_AGENTS } from "./CodingAgentStep";
 
 export interface CompleteStepProps {
@@ -38,6 +39,16 @@ export function CompleteStep({ selectedAgent, projectName, projectRegistered }: 
         Next: create a plan from the Dashboard, or let a running AddProject job finish deriving your
         project's verifications first.
       </p>
+
+      <div className="rounded-lg border border-border p-3">
+        <h3 className="text-sm font-semibold text-foreground">Newsletter</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Be the first to know when we have a new release!
+        </p>
+        <div className="mt-3">
+          <NewsletterSignup />
+        </div>
+      </div>
     </div>
   );
 }

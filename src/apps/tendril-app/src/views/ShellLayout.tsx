@@ -9,9 +9,10 @@ import {
   type ShellTabDto,
 } from "@ivy-interactive/components/tendril";
 import "@ivy-interactive/components/style.css";
-import type { ServiceInfo } from "../types/api";
+import type { ServiceInfo, VersionInfo } from "../types/api";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceStatusBanner } from "../components/service";
+import { UpdateNotice } from "../components/UpdateNotice";
 import { firstStringArg } from "../utils/eventArgs";
 
 interface ShellLayoutProps {
@@ -29,6 +30,10 @@ interface ShellLayoutProps {
   onRestartService?: () => void;
   onRepairService?: () => void;
   onViewDiagnostics?: () => void;
+  versionInfo?: VersionInfo | null;
+  dismissedUpdateVersion?: string | null;
+  onDismissUpdate?: (version: string) => void;
+  onCopyUpdateCommand?: () => void;
   children: React.ReactNode;
 }
 
@@ -47,6 +52,10 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   onRestartService,
   onRepairService,
   onViewDiagnostics,
+  versionInfo = null,
+  dismissedUpdateVersion = null,
+  onDismissUpdate = () => {},
+  onCopyUpdateCommand = () => {},
   children,
 }) => {
   const navItems: ShellNavItemDto[] = [
@@ -55,6 +64,12 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
     { id: "inbox", label: "Inbox", icon: "Inbox", isActive: activeNav === "inbox" },
     { id: "plans", label: "Plans", icon: "Feather", isActive: activeNav === "plans" },
     { id: "review", label: "Review", icon: "ThumbsUp", isActive: activeNav === "review" },
+    {
+      id: "pull-requests",
+      label: "Pull Requests",
+      icon: "GitPullRequest",
+      isActive: activeNav === "pull-requests",
+    },
     { id: "jobs", label: "Jobs", icon: "Activity", isActive: activeNav === "jobs" },
     { id: "settings", label: "Settings", icon: "Sliders", isActive: activeNav === "settings" },
   ];
@@ -89,6 +104,10 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
       // says they are done watching.
       title = "Review Action";
       icon = "Terminal";
+    } else if (tabId === "pull-requests") {
+      title = "Pull Requests";
+      icon = "GitPullRequest";
+      isClosable = false;
     } else if (tabId === "settings") {
       title = "Settings";
       icon = "Sliders";
@@ -114,6 +133,14 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground">
+      {/* Update Available Notice */}
+      <UpdateNotice
+        info={versionInfo}
+        dismissedVersion={dismissedUpdateVersion}
+        onDismiss={onDismissUpdate}
+        onCopyCommand={onCopyUpdateCommand}
+      />
+
       {/* Top Offline / Reconnection Banner */}
       <OfflineBanner
         status={connectionStatus}
