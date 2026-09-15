@@ -18,6 +18,7 @@ export default defineConfig({
       "src/renderers.ts",
       "src/tendril.ts",
       "src/diagrams.ts",
+      "src/charts.ts",
       "src/theme.ts",
     ],
     format: ["esm"],
