@@ -117,6 +117,14 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           {currentJob.planTitle && (
             <span className="text-xs text-muted-foreground">Plan: {currentJob.planTitle}</span>
           )}
+          {currentJob.detached && (
+            <span
+              data-testid="job-detached-badge"
+              className="rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning"
+            >
+              Detached (PID {currentJob.processId}) — Monitoring active process
+            </span>
+          )}
         </div>
 
         <div className="flex items-center space-x-3">
