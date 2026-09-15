@@ -122,6 +122,8 @@ fn test_all_agent_providers_spec_generation() {
         prompt_file_path: None,
         mcp_servers: vec![],
         timeout_seconds: Some(60),
+        sandbox_mode: None,
+        network_access: None,
     };
 
     let providers = [

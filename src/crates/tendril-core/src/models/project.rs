@@ -1,6 +1,244 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// Strips whitespace, `_` and `-` and lowercases, so `"Inherit General"`, `"inherit_general"` and
+/// `"InheritGeneral"` all normalize to the same token. Used to tolerantly parse the agent security
+/// enums below, which the .NET V1 app writes with spaces between words.
+fn normalize_enum_token(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| !c.is_whitespace() && *c != '_' && *c != '-')
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+/// Whether an agent process should run inside a sandbox. `InheritGeneral` resolves to `Disabled` —
+/// see [`AgentSecurityConfig::effective_sandbox_mode`] — so a project that never set this key keeps
+/// exactly the unsandboxed behavior it had before this type existed.
+///
+/// Deserialization is lenient by design, the same reasoning as [`PromptwareHookConfig::when`]: an
+/// unrecognized or garbled value must not fail the whole `config.yaml` load, so it falls back to
+/// `InheritGeneral` rather than erroring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub enum SandboxMode {
+    #[default]
+    InheritGeneral,
+    Enabled,
+    Disabled,
+}
+
+impl<'de> Deserialize<'de> for SandboxMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match normalize_enum_token(&raw).as_str() {
+            "enabled" => SandboxMode::Enabled,
+            "disabled" => SandboxMode::Disabled,
+            _ => SandboxMode::InheritGeneral,
+        })
+    }
+}
+
+/// A named bundle of security settings that overrides the individually configured fields when set
+/// to anything other than `Custom`. See [`AgentSecurityConfig`]'s `effective_*` methods for exactly
+/// what each preset forces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub enum SecurityPreset {
+    #[default]
+    Custom,
+    Permissive,
+    Restricted,
+    Strict,
+}
+
+impl<'de> Deserialize<'de> for SecurityPreset {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match normalize_enum_token(&raw).as_str() {
+            "permissive" => SecurityPreset::Permissive,
+            "restricted" => SecurityPreset::Restricted,
+            "strict" => SecurityPreset::Strict,
+            _ => SecurityPreset::Custom,
+        })
+    }
+}
+
+/// Whether an agent may touch files outside the plan's worktree/writable directories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub enum OutsideFileAccessPolicy {
+    #[default]
+    Allow,
+    Ask,
+    Deny,
+}
+
+impl<'de> Deserialize<'de> for OutsideFileAccessPolicy {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match normalize_enum_token(&raw).as_str() {
+            "ask" => OutsideFileAccessPolicy::Ask,
+            "deny" => OutsideFileAccessPolicy::Deny,
+            _ => OutsideFileAccessPolicy::Allow,
+        })
+    }
+}
+
+/// Whether a headless agent may run a terminal command without confirmation. `InheritGeneral`
+/// resolves to `AlwaysProceed` — a batch-mode agent has no user to ask, so `AlwaysAsk` is only ever
+/// meaningful as an explicit, deliberate setting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+pub enum TerminalAutoExecution {
+    #[default]
+    InheritGeneral,
+    AlwaysProceed,
+    AlwaysAsk,
+}
+
+impl<'de> Deserialize<'de> for TerminalAutoExecution {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match normalize_enum_token(&raw).as_str() {
+            "alwaysproceed" => TerminalAutoExecution::AlwaysProceed,
+            "alwaysask" => TerminalAutoExecution::AlwaysAsk,
+            _ => TerminalAutoExecution::InheritGeneral,
+        })
+    }
+}
+
+fn default_allow_mode() -> String {
+    "Allow".to_string()
+}
+
+/// A single file-path access rule. `mode` stays a `String` (semantically `Allow`/`Ask`/`Deny`)
+/// rather than a typed enum, the same "leave a typo inert" reasoning as
+/// [`PromptwareHookConfig::when`] — see [`FileAccessRuleConfig::mode_is_deny`] for the tolerant
+/// comparison.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileAccessRuleConfig {
+    pub path: String,
+    #[serde(default = "default_allow_mode")]
+    pub mode: String,
+}
+
+impl FileAccessRuleConfig {
+    pub fn mode_is_deny(&self) -> bool {
+        normalize_enum_token(&self.mode) == "deny"
+    }
+}
+
+/// A single outbound-network access rule, keyed by URL pattern.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkAccessRuleConfig {
+    #[serde(rename = "urlPattern", alias = "url_pattern")]
+    pub url_pattern: String,
+    #[serde(default = "default_allow_mode")]
+    pub mode: String,
+}
+
+impl NetworkAccessRuleConfig {
+    pub fn mode_is_deny(&self) -> bool {
+        normalize_enum_token(&self.mode) == "deny"
+    }
+}
+
+/// The seven agent security controls the .NET V1 app writes under each project in `config.yaml`
+/// (`sandboxMode`, `securityPreset`, `outsideFileAccessPolicy`, `filePermissions`,
+/// `networkAccessRules`, `allowedTerminalCommands`, `terminalAutoExecution`). Flattened directly
+/// onto [`ProjectConfig`] so they serialize back to top-level project keys, not a nested object —
+/// see the flatten note on `ProjectConfig::security`.
+///
+/// Every field defaults to the value that reproduces today's unenforced behavior when the key is
+/// absent, so a project that predates this type keeps running exactly as it did before: no
+/// sandboxing, no file/network restrictions, terminal commands proceed automatically.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct AgentSecurityConfig {
+    #[serde(rename = "sandboxMode", alias = "sandbox_mode", default)]
+    pub sandbox_mode: SandboxMode,
+    #[serde(rename = "securityPreset", alias = "security_preset", default)]
+    pub security_preset: SecurityPreset,
+    #[serde(
+        rename = "outsideFileAccessPolicy",
+        alias = "outside_file_access_policy",
+        default
+    )]
+    pub outside_file_access_policy: OutsideFileAccessPolicy,
+    #[serde(rename = "filePermissions", alias = "file_permissions", default)]
+    pub file_permissions: Vec<FileAccessRuleConfig>,
+    #[serde(rename = "networkAccessRules", alias = "network_access_rules", default)]
+    pub network_access_rules: Vec<NetworkAccessRuleConfig>,
+    #[serde(
+        rename = "allowedTerminalCommands",
+        alias = "allowed_terminal_commands",
+        default
+    )]
+    pub allowed_terminal_commands: Vec<String>,
+    #[serde(
+        rename = "terminalAutoExecution",
+        alias = "terminal_auto_execution",
+        default
+    )]
+    pub terminal_auto_execution: TerminalAutoExecution,
+}
+
+impl AgentSecurityConfig {
+    /// `InheritGeneral` resolves to `Disabled` (no process sandboxing) — the "Permissive" resolution
+    /// chosen for this project, see the `inherit-general-fallback` question in the plan that added
+    /// this type. A `Permissive` preset forces the same; `Strict` and `Restricted` force `Enabled`.
+    pub fn effective_sandbox_mode(&self) -> SandboxMode {
+        match self.security_preset {
+            SecurityPreset::Permissive => SandboxMode::Disabled,
+            SecurityPreset::Strict | SecurityPreset::Restricted => SandboxMode::Enabled,
+            SecurityPreset::Custom => match self.sandbox_mode {
+                SandboxMode::InheritGeneral => SandboxMode::Disabled,
+                explicit => explicit,
+            },
+        }
+    }
+
+    /// `InheritGeneral` resolves to `AlwaysProceed`: a headless batch agent has no user to ask, so
+    /// there is no meaningful "inherited" behavior other than proceeding. Independent of preset —
+    /// `SecurityPreset` only governs sandboxing and file/network access, not terminal confirmation.
+    pub fn effective_terminal_auto_execution(&self) -> TerminalAutoExecution {
+        match self.terminal_auto_execution {
+            TerminalAutoExecution::InheritGeneral => TerminalAutoExecution::AlwaysProceed,
+            explicit => explicit,
+        }
+    }
+
+    /// Preset overrides win over the explicit field, same precedence as `effective_sandbox_mode`.
+    pub fn effective_outside_file_access(&self) -> OutsideFileAccessPolicy {
+        match self.security_preset {
+            SecurityPreset::Permissive => OutsideFileAccessPolicy::Allow,
+            SecurityPreset::Strict => OutsideFileAccessPolicy::Deny,
+            SecurityPreset::Restricted => OutsideFileAccessPolicy::Ask,
+            SecurityPreset::Custom => self.outside_file_access_policy,
+        }
+    }
+
+    /// `false` if the preset is `Strict`, or if any configured rule denies network access — there is
+    /// no URL to check against here, so a single deny rule is treated as denying network access
+    /// outright rather than being scoped to its own pattern.
+    pub fn is_network_allowed(&self) -> bool {
+        if self.security_preset == SecurityPreset::Strict {
+            return false;
+        }
+        !self
+            .network_access_rules
+            .iter()
+            .any(|rule| rule.mode_is_deny())
+    }
+}
+
 /// Keys a `config.yaml` object under `projects:` carries that the corresponding struct does not
 /// model, kept verbatim so a project mutation cannot drop them.
 ///
@@ -166,6 +404,11 @@ pub struct ProjectConfig {
     pub mcp_servers: Vec<ProjectMcpServerRef>,
     #[serde(default)]
     pub skills: Vec<ProjectSkillRef>,
+    /// The seven agent security controls — flattened so they still serialize as top-level project
+    /// keys (`sandboxMode`, `securityPreset`, ...) rather than a nested `security:` object, keeping
+    /// `config.yaml`'s shape unchanged from before this field existed.
+    #[serde(flatten)]
+    pub security: AgentSecurityConfig,
     /// Unmodeled project-level keys — see [`ExtraKeys`]. This is the field that fixes the data loss:
     /// every one of the `save_config` call sites in `tendril-server` and `tendril-cli` mutates the
     /// loaded `ProjectConfig` in place, so capturing the keys on load is enough to carry them back
@@ -315,4 +558,205 @@ fn longest_covering_prefix_len(
     }
 
     Some(longest)
+}
+
+#[cfg(test)]
+mod agent_security_tests {
+    use super::*;
+
+    #[test]
+    fn parses_all_seven_keys_from_camel_case_config_yaml() {
+        let yaml = r#"
+name: demo
+sandboxMode: Enabled
+securityPreset: Restricted
+outsideFileAccessPolicy: Ask
+filePermissions:
+  - path: /etc
+    mode: Deny
+networkAccessRules:
+  - urlPattern: "https://internal.example.com/*"
+    mode: Deny
+allowedTerminalCommands:
+  - git
+  - cargo
+terminalAutoExecution: AlwaysAsk
+"#;
+        let project: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(project.security.sandbox_mode, SandboxMode::Enabled);
+        assert_eq!(project.security.security_preset, SecurityPreset::Restricted);
+        assert_eq!(
+            project.security.outside_file_access_policy,
+            OutsideFileAccessPolicy::Ask
+        );
+        assert_eq!(project.security.file_permissions.len(), 1);
+        assert_eq!(project.security.file_permissions[0].path, "/etc");
+        assert!(project.security.file_permissions[0].mode_is_deny());
+        assert_eq!(project.security.network_access_rules.len(), 1);
+        assert!(project.security.network_access_rules[0].mode_is_deny());
+        assert_eq!(
+            project.security.allowed_terminal_commands,
+            vec!["git".to_string(), "cargo".to_string()]
+        );
+        assert_eq!(
+            project.security.terminal_auto_execution,
+            TerminalAutoExecution::AlwaysAsk
+        );
+        assert!(project.extra.is_empty());
+    }
+
+    #[test]
+    fn normalizes_legacy_space_separated_values() {
+        let yaml = r#"
+name: demo
+sandboxMode: "Inherit General"
+terminalAutoExecution: "Always Proceed"
+securityPreset: "inherit_general"
+"#;
+        let project: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(project.security.sandbox_mode, SandboxMode::InheritGeneral);
+        assert_eq!(
+            project.security.terminal_auto_execution,
+            TerminalAutoExecution::AlwaysProceed
+        );
+        // Unrecognized token falls back to the default variant rather than failing the load.
+        assert_eq!(project.security.security_preset, SecurityPreset::Custom);
+    }
+
+    #[test]
+    fn unrecognized_enum_value_falls_back_to_default_instead_of_erroring() {
+        let yaml = r#"
+name: demo
+sandboxMode: "some-typo-value"
+"#;
+        let project: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(project.security.sandbox_mode, SandboxMode::InheritGeneral);
+    }
+
+    #[test]
+    fn serializes_security_fields_as_top_level_project_keys() {
+        let mut project = ProjectConfig {
+            name: "demo".to_string(),
+            ..Default::default()
+        };
+        project.security.sandbox_mode = SandboxMode::Enabled;
+        project.security.allowed_terminal_commands = vec!["git".to_string()];
+
+        let value = serde_json::to_value(&project).unwrap();
+        assert_eq!(value["sandboxMode"], "Enabled");
+        assert_eq!(value["allowedTerminalCommands"][0], "git");
+        assert!(value.get("security").is_none());
+    }
+
+    #[test]
+    fn absent_security_keys_default_to_todays_unenforced_behavior() {
+        let yaml = "name: demo\n";
+        let project: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            project.security.effective_sandbox_mode(),
+            SandboxMode::Disabled
+        );
+        assert_eq!(
+            project.security.effective_terminal_auto_execution(),
+            TerminalAutoExecution::AlwaysProceed
+        );
+        assert_eq!(
+            project.security.effective_outside_file_access(),
+            OutsideFileAccessPolicy::Allow
+        );
+        assert!(project.security.is_network_allowed());
+    }
+
+    #[test]
+    fn inherit_general_sandbox_mode_resolves_to_disabled() {
+        let config = AgentSecurityConfig {
+            sandbox_mode: SandboxMode::InheritGeneral,
+            security_preset: SecurityPreset::Custom,
+            ..Default::default()
+        };
+        assert_eq!(config.effective_sandbox_mode(), SandboxMode::Disabled);
+    }
+
+    #[test]
+    fn permissive_preset_forces_sandbox_disabled_even_if_explicit_enabled() {
+        let config = AgentSecurityConfig {
+            sandbox_mode: SandboxMode::Enabled,
+            security_preset: SecurityPreset::Permissive,
+            ..Default::default()
+        };
+        assert_eq!(config.effective_sandbox_mode(), SandboxMode::Disabled);
+    }
+
+    #[test]
+    fn strict_and_restricted_presets_force_sandbox_enabled() {
+        for preset in [SecurityPreset::Strict, SecurityPreset::Restricted] {
+            let config = AgentSecurityConfig {
+                sandbox_mode: SandboxMode::Disabled,
+                security_preset: preset,
+                ..Default::default()
+            };
+            assert_eq!(config.effective_sandbox_mode(), SandboxMode::Enabled);
+        }
+    }
+
+    #[test]
+    fn custom_preset_respects_explicit_sandbox_mode() {
+        let config = AgentSecurityConfig {
+            sandbox_mode: SandboxMode::Enabled,
+            security_preset: SecurityPreset::Custom,
+            ..Default::default()
+        };
+        assert_eq!(config.effective_sandbox_mode(), SandboxMode::Enabled);
+    }
+
+    #[test]
+    fn strict_preset_forces_outside_file_access_deny_and_network_denied() {
+        let config = AgentSecurityConfig {
+            outside_file_access_policy: OutsideFileAccessPolicy::Allow,
+            security_preset: SecurityPreset::Strict,
+            ..Default::default()
+        };
+        assert_eq!(
+            config.effective_outside_file_access(),
+            OutsideFileAccessPolicy::Deny
+        );
+        assert!(!config.is_network_allowed());
+    }
+
+    #[test]
+    fn restricted_preset_forces_outside_file_access_ask() {
+        let config = AgentSecurityConfig {
+            outside_file_access_policy: OutsideFileAccessPolicy::Allow,
+            security_preset: SecurityPreset::Restricted,
+            ..Default::default()
+        };
+        assert_eq!(
+            config.effective_outside_file_access(),
+            OutsideFileAccessPolicy::Ask
+        );
+    }
+
+    #[test]
+    fn a_single_deny_network_rule_denies_network_access_outright() {
+        let config = AgentSecurityConfig {
+            network_access_rules: vec![NetworkAccessRuleConfig {
+                url_pattern: "https://example.com/*".to_string(),
+                mode: "Deny".to_string(),
+            }],
+            ..Default::default()
+        };
+        assert!(!config.is_network_allowed());
+    }
+
+    #[test]
+    fn allow_only_network_rules_permit_network_access() {
+        let config = AgentSecurityConfig {
+            network_access_rules: vec![NetworkAccessRuleConfig {
+                url_pattern: "https://example.com/*".to_string(),
+                mode: "Allow".to_string(),
+            }],
+            ..Default::default()
+        };
+        assert!(config.is_network_allowed());
+    }
 }
