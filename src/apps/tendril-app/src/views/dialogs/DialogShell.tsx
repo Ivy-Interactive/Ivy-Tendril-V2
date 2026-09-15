@@ -18,6 +18,8 @@ export interface DialogShellProps {
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   footer: React.ReactNode;
   children?: React.ReactNode;
+  /** Overrides the accessible name Radix would otherwise derive from `title` via `aria-labelledby`. */
+  ariaLabel?: string;
 }
 
 /**
@@ -45,6 +47,7 @@ export function DialogShell({
   initialFocusRef,
   footer,
   children,
+  ariaLabel,
 }: DialogShellProps) {
   const invokerRef = React.useRef<HTMLElement | null>(null);
 
@@ -73,6 +76,7 @@ export function DialogShell({
         // nothing to describe it, so the attribute is dropped deliberately —
         // which is also how Radix asks to be told the omission is intended.
         {...(description === undefined ? { "aria-describedby": undefined } : {})}
+        {...(ariaLabel !== undefined ? { "aria-label": ariaLabel } : {})}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           const target = initialFocusRef?.current ?? (event.currentTarget as HTMLElement | null);
