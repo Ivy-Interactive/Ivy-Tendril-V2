@@ -83,7 +83,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
       render(<DashboardView plans={mockPlans} jobs={mockJobs} onSelectJob={() => {}} />);
 
       expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
-      expect(screen.getByText("Tendril Dashboard")).toBeInTheDocument();
+      expect(screen.getByText("What Are We Producing Today?")).toBeInTheDocument();
       expect(screen.getByText("First Accessible Plan")).toBeInTheDocument();
     });
   });

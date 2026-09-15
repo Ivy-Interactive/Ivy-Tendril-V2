@@ -13,7 +13,6 @@ import type {
   DashboardActivityMonthDto,
   DashboardKpiDto,
   DashboardMonthValueDto,
-  DashboardTrendDto,
 } from "@ivy-interactive/components/tendril";
 import type {
   DashboardActivity,
@@ -58,13 +57,6 @@ const monthLabel = (month: DashboardMonthStats): string =>
 const monthKey = (year: number, month: number): string =>
   `${year}-${String(month).padStart(2, "0")}`;
 
-/**
- * Whether any record could exist in this month. A month that ended before the first record is
- * unknown, not empty, and the comparison line must break there rather than trace the axis.
- */
-const hasRecords = (month: DashboardMonthStats, dataStart: string | null): boolean =>
-  dataStart != null && monthKey(month.year, month.month) >= dataStart.slice(0, 7);
-
 // --- formatting ---------------------------------------------------------------
 
 /** The dash an unknown value renders as. Never "$0.00", which would be a claim. */
@@ -92,40 +84,6 @@ const deltaDirection = (change: number | null): "up" | "down" | null => {
 };
 
 // --- component props ---------------------------------------------------------
-
-/**
- * The last 12 months plotted, with the same months a year earlier as the comparison series.
- * `TrendChart` already renders a `null` in `previous` as a break, which is what the 736-day window
- * exists to make possible: before the comparison year has data there is nothing to compare to.
- */
-export function buildTrend(activity: DashboardActivity | null): DashboardTrendDto | null {
-  if (activity == null || activity.months.length === 0) return null;
-
-  const { months, dailyDataStart } = activity;
-  const plotted = months.slice(-TREND_MONTHS);
-  const offset = months.length - plotted.length;
-
-  const prevCost: (number | null)[] = [];
-  const prevPlans: (number | null)[] = [];
-  plotted.forEach((_, index) => {
-    const prior = months[offset + index - TREND_MONTHS];
-    if (prior == null || !hasRecords(prior, dailyDataStart)) {
-      prevCost.push(null);
-      prevPlans.push(null);
-      return;
-    }
-    prevCost.push(prior.cost);
-    prevPlans.push(prior.plansCreated);
-  });
-
-  return {
-    months: plotted.map(monthLabel),
-    cost: plotted.map((m) => m.cost),
-    plans: plotted.map((m) => m.plansCreated),
-    prevCost,
-    prevPlans,
-  };
-}
 
 /** Merged PRs per month, which is what `PillBars` plots. */
 export function buildPullRequests(activity: DashboardActivity | null): DashboardMonthValueDto[] {
