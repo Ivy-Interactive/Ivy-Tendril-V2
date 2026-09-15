@@ -23,8 +23,7 @@ const serviceInfo: ServiceInfo = {
   message: "Online",
 };
 
-const checkbox = () =>
-  screen.getByLabelText(/Enable Desktop Notifications/) as HTMLInputElement;
+const checkbox = () => screen.getByLabelText(/Enable Desktop Notifications/) as HTMLInputElement;
 
 const save = async () => {
   await act(async () => {

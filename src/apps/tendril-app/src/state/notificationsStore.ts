@@ -1,8 +1,5 @@
 import { bridge } from "../api/bridge";
-import {
-  NotificationBurstSummarizer,
-  type JobNotification,
-} from "./notificationBurst";
+import { NotificationBurstSummarizer, type JobNotification } from "./notificationBurst";
 
 /**
  * Whether the in-app toast should be shown for a job notification. In desktop mode the native OS
@@ -45,9 +42,8 @@ async function sendOsNotification(notification: JobNotification): Promise<void> 
 }
 
 async function requestOsPermission(): Promise<boolean> {
-  const { isPermissionGranted, requestPermission } = await import(
-    "@tauri-apps/plugin-notification"
-  );
+  const { isPermissionGranted, requestPermission } =
+    await import("@tauri-apps/plugin-notification");
   if (await isPermissionGranted()) return true;
   return (await requestPermission()) === "granted";
 }

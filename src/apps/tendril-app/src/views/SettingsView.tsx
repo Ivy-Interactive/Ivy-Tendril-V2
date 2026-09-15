@@ -308,7 +308,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
         <ModelCatalogCard />
 
         {/* Notifications */}
-        <div className="rounded-xl border border-border bg-card/60 p-6" data-testid="notifications-card">
+        <div
+          className="rounded-xl border border-border bg-card/60 p-6"
+          data-testid="notifications-card"
+        >
           <div className="border-b border-border pb-4">
             <h2 className="text-base font-semibold text-foreground">Notifications</h2>
             <p className="text-xs text-muted-foreground">

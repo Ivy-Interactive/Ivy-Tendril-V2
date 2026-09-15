@@ -15,9 +15,11 @@ function isTerminal(status: JobStatus): boolean {
  * Port of `JobCompletionHandler.SendCompletionNotification`. V2's `Job` has no `PlanFile`, so
  * `planTitle` is the readable stand-in and `planId` the fallback.
  */
-export function describeJobExit(job: Pick<Job, "type" | "status" | "planId" | "planTitle"> & {
-  statusMessage?: string;
-}): JobNotification {
+export function describeJobExit(
+  job: Pick<Job, "type" | "status" | "planId" | "planTitle"> & {
+    statusMessage?: string;
+  },
+): JobNotification {
   const isSuccess = job.status === "Completed";
   const title =
     job.status === "Timeout"
