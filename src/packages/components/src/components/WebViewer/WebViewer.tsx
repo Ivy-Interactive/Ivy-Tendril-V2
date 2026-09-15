@@ -772,7 +772,13 @@ export const WebViewer: React.FC<WebViewerProps> = ({
 
     void resolveSource(debug).then((enriched) => {
       emit("comment", {
+        // The marker's id, which is what `comment-edit` and `comment-delete` name. Without it a host
+        // collecting these events has nothing to apply either of them to.
+        id,
         number,
+        // The element's own tag, so a host can say which element a comment is about without holding
+        // a selector.
+        tag: marker.tag,
         xpath,
         selector,
         comment: text,

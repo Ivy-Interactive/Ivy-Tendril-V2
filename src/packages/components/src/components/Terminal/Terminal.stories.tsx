@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal, type TerminalHandle } from "./Terminal.tsx";
 
 const meta: Meta<typeof Terminal> = {

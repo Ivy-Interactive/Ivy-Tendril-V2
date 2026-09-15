@@ -19,6 +19,8 @@ import { ShellLayout } from "./views/ShellLayout";
 import { OnboardingWizard } from "./views/onboarding/OnboardingWizard";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
+// Type only, so this does not pull the view (and xterm.js with it) into the entry chunk.
+import type { ReviewActionTarget } from "./views/ReviewActionView";
 
 // Lazy, and by module rather than through the `./views/dialogs` barrel. App.tsx
 // is the one eager module in the shell — every view below it is lazy — and the
@@ -53,6 +55,14 @@ const ChatView = React.lazy(() =>
 const InboxView = React.lazy(() =>
   import("./views/InboxView").then((m) => ({ default: m.InboxView })),
 );
+// Lazy for the same reason as the rest, with more at stake: this is the only
+// view that pulls in xterm.js, which nothing else in the shell needs.
+const ReviewActionView = React.lazy(() =>
+  import("./views/ReviewActionView").then((m) => ({ default: m.ReviewActionView })),
+);
+
+/** Nav id for the review-action view. One at a time, so it needs no per-target suffix. */
+const REVIEW_ACTION_NAV = "review-action";
 
 export const App: React.FC = () => {
   const [uiState, setUiState] = useState<UiState>(uiStore.getState());
@@ -72,6 +82,10 @@ export const App: React.FC = () => {
     project?: string;
   }>({});
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  // Which review action the review-action view is running. Held here rather than encoded into the nav
+  // id: it is three values, and it is deliberately not persisted — a restored nav pointing at a
+  // process that died with the last session has nothing to show.
+  const [reviewActionTarget, setReviewActionTarget] = useState<ReviewActionTarget | null>(null);
   // Null means "no wizard": either it is not needed, or the status call failed. An unreachable
   // daemon must never produce a first-run wizard, and must never block the shell.
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
@@ -231,6 +245,16 @@ export const App: React.FC = () => {
     }
   };
 
+  /**
+   * Opens the review action's own view, which is what runs it: the command is spawned by the view, not
+   * before it, so its output has somewhere to go from the first byte.
+   */
+  const handleOpenReviewAction = (target: ReviewActionTarget) => {
+    setReviewActionTarget(target);
+    uiStore.openTab(REVIEW_ACTION_NAV);
+    uiStore.setActiveNav(REVIEW_ACTION_NAV);
+  };
+
   const handleSelectJob = (jobId: string) => {
     uiStore.openTab(`job-${jobId}`);
     uiStore.setActiveNav(`job-${jobId}`);
@@ -253,6 +277,16 @@ export const App: React.FC = () => {
   };
 
   const activeNav = uiState.activeNav;
+
+  // The nav and its tabs are persisted; the run behind them is not. A restored session therefore
+  // lands on the review-action nav with nothing to show, so the tab is dropped and Review takes over
+  // — the process that view was watching does not exist any more.
+  useEffect(() => {
+    if (activeNav === REVIEW_ACTION_NAV && !reviewActionTarget) {
+      uiStore.closeTab(REVIEW_ACTION_NAV);
+      uiStore.setActiveNav("review");
+    }
+  }, [activeNav, reviewActionTarget]);
 
   // Render view depending on navigation/tab
   const renderActiveView = () => {
@@ -374,12 +408,39 @@ export const App: React.FC = () => {
           <ReviewView
             plans={plansState.plans}
             onSelectPlan={handleSelectPlan}
+            onOpenReviewAction={handleOpenReviewAction}
             onJobStarted={(res) => handleSelectJob(res.jobId)}
             onPlanChanged={() => {
               plansStore.fetchPlans().catch(() => {});
             }}
           />
         );
+
+      case REVIEW_ACTION_NAV: {
+        // No target: a restored nav, which the effect above is already navigating away from.
+        if (!reviewActionTarget) return null;
+        return (
+          <ReviewActionView
+            target={reviewActionTarget}
+            plan={
+              reviewActionTarget.planId
+                ? // Detail where it is the plan already loaded, the summary otherwise: RetryPlan's
+                  // gate reads `state`, which both carry.
+                  ((plansState.selectedPlan?.id === reviewActionTarget.planId
+                    ? plansState.selectedPlan
+                    : undefined) ??
+                  plansState.plans.find((p) => p.id === reviewActionTarget.planId))
+                : undefined
+            }
+            onClose={() => {
+              setReviewActionTarget(null);
+              uiStore.closeTab(REVIEW_ACTION_NAV);
+              uiStore.setActiveNav("review");
+            }}
+            onJobStarted={(res) => handleSelectJob(res.jobId)}
+          />
+        );
+      }
 
       case "jobs":
         return (

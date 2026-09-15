@@ -245,7 +245,7 @@ describe("subscribeReviewAction", () => {
 
     expect(calls[0].url).toBe("/api/projects/Demo/review-actions/Run%20App/execute");
     expect(calls[0].init.method).toBe("POST");
-    expect(JSON.parse(String(calls[0].init.body))).toEqual({ planId: "00636", worktree: null });
+    expect(JSON.parse(calls[0].init.body as string)).toEqual({ planId: "00636", worktree: null });
     expect(sessions).toEqual([{ encoding: "base64", sessionId: "abc123", rows: 24, cols: 80 }]);
     expect(new TextDecoder().decode(chunks[0])).toBe(payload);
     expect(ended).toEqual(["Process exited with code 0"]);

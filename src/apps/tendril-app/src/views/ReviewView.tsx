@@ -13,6 +13,7 @@ import { EmptyState } from "../components/EmptyState";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
+import type { ReviewActionTarget } from "./ReviewActionView";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
 import { DiscardPlanDialog } from "./dialogs/DiscardPlanDialog";
 import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
@@ -29,6 +30,13 @@ interface ReviewViewProps {
   onJobStarted?: (response: StartJobResponse) => void;
   /** The plan's state changed on the service; the caller should re-fetch. */
   onPlanChanged?: (planId: string) => void;
+  /**
+   * Hand a review action to the shell, which opens it in the full-height review-action view.
+   *
+   * This view cannot host the run itself: the action's output is a live stream and the app it starts
+   * has to be framed at full height, neither of which fits inside a card on a scrolling triage page.
+   */
+  onOpenReviewAction?: (target: ReviewActionTarget) => void;
 }
 
 export const ReviewView: React.FC<ReviewViewProps> = ({
@@ -36,6 +44,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   onSelectPlan,
   onJobStarted,
   onPlanChanged,
+  onOpenReviewAction,
 }) => {
   const reviewPlans = plans.filter((p) => p.state === "Review");
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(reviewPlans[0]?.id || null);
@@ -188,6 +197,16 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const handleExecuteReviewAction = async (actionName: string) => {
     if (!selectedPlan) return;
     setActionError(null);
+    if (onOpenReviewAction) {
+      onOpenReviewAction({
+        project: selectedPlan.project,
+        actionName,
+        planId: selectedPlan.id,
+      });
+      return;
+    }
+    // No host to open the view in — this view rendered on its own. Start the action anyway, which is
+    // what pressing the button did before there was a view to watch it in.
     try {
       await bridge.executeReviewAction(selectedPlan.project, actionName, selectedPlan.id);
     } catch (err) {

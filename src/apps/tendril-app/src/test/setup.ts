@@ -54,3 +54,20 @@ if (typeof HTMLCanvasElement !== "undefined") {
     () => null,
   ) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 }
+
+// jsdom does not implement matchMedia, and xterm.js watches a `(resolution: <n>dppx)` query for
+// device-pixel-ratio changes as soon as a terminal is opened. Without this, a test that renders one
+// dies inside xterm's constructor — in an async callback, so it surfaces as an unhandled rejection
+// rather than a failed assertion.
+if (typeof window !== "undefined" && !window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}

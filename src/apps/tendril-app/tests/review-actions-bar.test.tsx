@@ -208,4 +208,37 @@ describe("ReviewView integration with ReviewActionsBarView", () => {
       expect(executeSpy).toHaveBeenCalledWith("Ivy-Tendril-V2", "Dev Server", "00509");
     });
   });
+
+  /**
+   * The run has to be started by the view that shows it, or its first output — the banner with the
+   * app's URL in it — is printed to nobody. So a shell that can host the view gets the action handed
+   * to it instead of the bridge being called here.
+   */
+  it("hands the action to the shell instead of starting it blind", async () => {
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
+    vi.spyOn(bridge, "getProjectReviewActions").mockResolvedValue([
+      { name: "Dev Server", condition: "$true", command: "vp dev" },
+    ]);
+    const executeSpy = vi.spyOn(bridge, "executeReviewAction");
+    const onOpenReviewAction = vi.fn();
+
+    render(
+      <ReviewView
+        plans={[samplePlan]}
+        onSelectPlan={() => {}}
+        onOpenReviewAction={onOpenReviewAction}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Dev Server" }));
+
+    await waitFor(() => {
+      expect(onOpenReviewAction).toHaveBeenCalledWith({
+        project: "Ivy-Tendril-V2",
+        actionName: "Dev Server",
+        planId: "00509",
+      });
+    });
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
 });
