@@ -11,28 +11,33 @@
  */
 
 :root {
-  --background: #ffffff;
-  --foreground: #09090b;
-  --card: #ffffff;
-  --card-foreground: #09090b;
-  --popover: #ffffff;
-  --popover-foreground: #09090b;
-  --primary: #18181b;
-  --primary-foreground: #fafafa;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #18181b;
-  --muted: #f4f4f5;
-  --muted-foreground: #64646b;
-  --accent: #f4f4f5;
-  --accent-foreground: #18181b;
-  --destructive: #ef4444;
+  /* ivy-design-system:start — generated, run pnpm sync:tokens */
+  --primary: #00cc92;
+  --primary-foreground: #000000;
+  --secondary: #dfe7e3;
+  --secondary-foreground: #000000;
+  --destructive: #dd5860;
   --destructive-foreground: #000000;
-  --success: #22c55e;
+  --success: #86d26f;
   --success-foreground: #000000;
-  --warning: #f59e0b;
+  --warning: #deb145;
   --warning-foreground: #000000;
-  --info: #3b82f6;
-  --info-foreground: #000000;
+  --info: #4469c0;
+  --info-foreground: #ffffff;
+  --background: #ffffff;
+  --foreground: #000000;
+  --border: #d1d5db;
+  --input: #d1d5db;
+  --ring: #777777;
+  --muted: #f8f8f8;
+  --muted-foreground: #8f8f8f;
+  --accent: #f8f8f8;
+  --accent-foreground: #333333;
+  --card: #ffffff;
+  --card-foreground: #262626;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  /* ivy-design-system:end */
   --cyan: #0369a1;
   --purple: #7e22ce;
   --pink: #be185d;
@@ -109,9 +114,6 @@
   --font-serif: "Geist Variable", "Geist", serif;
   --spacing: 0.27rem;
   --toolbox: #38363a;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #18181b;
   --radius: 0.5rem;
   --radius-boxes: 0.5rem;
   --radius-fields: 0.375rem;
@@ -134,28 +136,33 @@
 }
 
 .dark {
-  --background: #09090b;
-  --foreground: #fafafa;
-  --card: #09090b;
-  --card-foreground: #fafafa;
-  --popover: #09090b;
-  --popover-foreground: #fafafa;
-  --primary: #fafafa;
-  --primary-foreground: #18181b;
-  --secondary: #27272a;
-  --secondary-foreground: #fafafa;
-  --muted: #27272a;
-  --muted-foreground: #a1a1aa;
-  --accent: #27272a;
-  --accent-foreground: #fafafa;
-  --destructive: #7f1d1d;
-  --destructive-foreground: #fafafa;
-  --success: #15803d;
-  --success-foreground: #ffffff;
-  --warning: #b45309;
-  --warning-foreground: #ffffff;
-  --info: #1d4ed8;
+  /* ivy-design-system:start — generated, run pnpm sync:tokens */
+  --primary: #00cc92;
+  --primary-foreground: #000000;
+  --secondary: #26262b;
+  --secondary-foreground: #f8f8f8;
+  --destructive: #dd5860;
+  --destructive-foreground: #000000; /* see ACCESSIBILITY_OVERRIDES */
+  --success: #86d26f;
+  --success-foreground: #000000;
+  --warning: #deb145;
+  --warning-foreground: #000000;
+  --info: #4469c0;
   --info-foreground: #ffffff;
+  --background: #0a0a0a;
+  --foreground: #f8f8f8;
+  --border: #262626;
+  --input: #262626;
+  --ring: #777777;
+  --muted: #1a1a1a;
+  --muted-foreground: #8f8f8f;
+  --accent: #1a1a1a;
+  --accent-foreground: #f8f8f8;
+  --card: #171717;
+  --card-foreground: #f8f8f8;
+  --popover: #000000;
+  --popover-foreground: #f8f8f8;
+  /* ivy-design-system:end */
   --cyan: #38bdf8;
   --purple: #c084fc;
   --pink: #f472b6;
@@ -221,9 +228,6 @@
 
   /* Misc framework tokens */
   --toolbox: #edeaf1;
-  --border: #27272a;
-  --input: #27272a;
-  --ring: #d4d4d8;
   --sidebar-background: #18181b;
   --sidebar-foreground: #f4f4f5;
   --sidebar-primary: #fafafa;

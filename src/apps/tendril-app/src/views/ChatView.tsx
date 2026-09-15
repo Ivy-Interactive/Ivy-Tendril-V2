@@ -1,12 +1,22 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useResizableSidebar } from "@ivy-interactive/components";
-import { ChatMessageList } from "@ivy-interactive/components/renderers";
-import { ContentInput } from "@ivy-interactive/components/tendril";
-import { Input } from "@ivy-interactive/components/ui";
+import { ChatInput, ChatMessageList } from "@ivy-interactive/components/renderers";
+import { VoiceRecorder, type VoiceStatus } from "@ivy-interactive/components/tendril";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  Input,
+} from "@ivy-interactive/components/ui";
 import { chatStore, type ChatState } from "../state/chatStore";
 import { jobsStore } from "../state/jobsStore";
-import type { ChatMessage, ChatSession, ChatAttachment } from "../types/chat";
+import type { ChatMessage, ChatSession, ChatAttachment, ChatQueuedItem } from "../types/chat";
 import type { Job } from "../types/api";
 import { PIN_TOP_PADDING, useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import {
@@ -19,24 +29,27 @@ import { ChatHeader } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
 import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
 import { useWebviewFileDrop } from "../hooks/useWebviewFileDrop";
-import { firstStringArg, submitValueArg } from "../utils/eventArgs";
 import { resolveJobState } from "../utils/jobStatus";
 import {
-  Plus,
-  Edit2,
-  Check,
-  Trash2,
-  Send,
-  Square,
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-  Paperclip,
-  X,
   ArrowDown,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Edit2,
   HelpCircle,
+  ListPlus,
+  Loader2,
+  Mic,
+  Paperclip,
+  Pencil,
   Pin,
   PinOff,
+  Plus,
+  SendHorizontal,
+  Square,
+  Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 
@@ -51,60 +64,147 @@ const DEFAULT_CHAT_SIDEBAR_WIDTH = 256;
 const MIN_CHAT_SIDEBAR_WIDTH = 180;
 const MAX_CHAT_SIDEBAR_WIDTH = 480;
 
+/** The transcription socket the shared composer defaults to; the mic here speaks to the same one. */
+const TRANSCRIPTION_URL = "wss://tendril-api.ivy.app/transcribe/ws";
+
+/** The composer's headline prompt, and the placeholder it writes under. */
+const COMPOSER_PLACEHOLDER = "Ask Tendril anything...";
+const EMPTY_STATE_HEADLINE = "What Are We Producing Today?";
+
+/** A single line of prompt text at the composer's line height, in CSS pixels. */
+const SINGLE_LINE_HEIGHT = 32;
+
+/**
+ * The static tail of the sample prompts, in the order and with the wording of
+ * `SamplePrompts.ForChat`'s fallbacks: the label is the button, the prompt is what it drafts.
+ */
 const SAMPLE_PROMPTS = [
   { label: "Add a new project", prompt: "Add a new project to my tendril" },
   { label: "Edit verifications", prompt: "Edit verifications for my projects" },
   { label: "Create a team vault", prompt: "Create a shared team vault" },
-  { label: "What should I work on next?", prompt: "What should I work on next?" },
-  { label: "What shipped this week?", prompt: "What shipped this week?" },
+  {
+    label: "What should I work on next?",
+    prompt:
+      "Look at my draft plans across all projects and recommend which two to execute next, with reasons.",
+  },
+  {
+    label: "What shipped this week?",
+    prompt:
+      "Summarize the plans that reached Completed in the last seven days, grouped by project.",
+  },
 ];
 
-function formatRelativeTime(dateString: string): string {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (isNaN(diffSec) || diffSec < 60) return "Just now";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
+/** The time-of-day greeting above the empty state's headline. */
+function buildGreeting(now: Date): string {
+  const hour = now.getHours();
+  const word =
+    hour >= 5 && hour < 12 ? "Morning" : hour >= 12 && hour < 17 ? "Afternoon" : "Evening";
+  return `Good ${word}!`;
 }
+
+/** The chat's own name, falling back to the label a chat carries before it is titled. */
+const displayTitle = (session: ChatSession | null | undefined): string =>
+  session && session.title.trim() ? session.title : "New Chat";
+
+/** The plan a session belongs to, shown as its row tag; null for a free-standing chat. */
+const planTag = (session: ChatSession): string | null =>
+  session.planFolderName ? `#${session.planFolderName.split("-")[0]}` : null;
+
+/**
+ * Whether the prompt needs more than one line beside the composer's buttons. It is measured at the
+ * width the textarea has inline, whichever layout is showing, so the composer does not flip back
+ * and forth once the toolbar has moved above the text and widened it.
+ */
+const needsMultipleLines = (textarea: HTMLTextAreaElement, row: HTMLElement | null): boolean => {
+  if (!textarea.value) return false;
+  if (textarea.value.includes("\n")) return true;
+  // Before the composer has a width nothing can be measured; the placeholder would wrap.
+  if (!row || row.clientWidth === 0) return false;
+  const siblings = Array.from(row.children).filter((child) => child !== textarea) as HTMLElement[];
+  const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
+  const inlineWidth =
+    row.clientWidth -
+    siblings.reduce((sum, child) => sum + child.offsetWidth, 0) -
+    gap * siblings.length;
+  if (inlineWidth <= 0) return false;
+  const previous = {
+    flex: textarea.style.flex,
+    width: textarea.style.width,
+    height: textarea.style.height,
+  };
+  textarea.style.flex = "0 0 auto";
+  textarea.style.width = `${Math.max(inlineWidth, 0)}px`;
+  textarea.style.height = "auto";
+  const wraps = textarea.scrollHeight > SINGLE_LINE_HEIGHT;
+  textarea.style.flex = previous.flex;
+  textarea.style.width = previous.width;
+  textarea.style.height = previous.height;
+  return wraps;
+};
 
 export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) => {
   const [storeState, setStoreState] = useState<ChatState>(chatStore.getState());
   const [inputPrompt, setInputPrompt] = useState("");
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  const [isQueueExpanded, setIsQueueExpanded] = useState(false);
+  // V1 opens the queue panel: a prompt that will be sent for you is worth reading without a click.
+  const [isQueueExpanded, setIsQueueExpanded] = useState(true);
   const [editingQueuedId, setEditingQueuedId] = useState<string | null>(null);
   const [editingQueuedText, setEditingQueuedText] = useState("");
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [activeLightboxImage, setActiveLightboxImage] = useState<LightboxImage | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>(jobsStore.getState().jobs);
-  const composerRef = useRef<HTMLDivElement>(null);
+  const [multiline, setMultiline] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRowRef = useRef<HTMLDivElement>(null);
+  const recorderRef = useRef<VoiceRecorder | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queuedEditFocusedIdRef = useRef<string | null>(null);
   const pinnedMessageRef = useRef<{ id: string; content: string } | null>(null);
 
-  const [focusRequest, setFocusRequest] = useState(0);
-
-  /**
-   * Focus is requested rather than taken: ContentInput refuses to adopt a new `value` while its
-   * textarea has focus, so prefilling the composer has to land before the focus does.
-   */
   const requestComposerFocus = useCallback(() => {
-    setFocusRequest((n) => n + 1);
+    textareaRef.current?.focus();
   }, []);
 
+  const syncMultiline = useCallback(() => {
+    const el = textareaRef.current;
+    if (el) setMultiline(needsMultipleLines(el, inputRowRef.current));
+  }, []);
+
+  /** Grows the field with its content up to the ten-line ceiling the stylesheet caps it at. */
+  const adjustTextareaHeight = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    syncMultiline();
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [syncMultiline]);
+
+  // The toolbar moving above or back beside the text changes the textarea's width, so its height
+  // follows; on mount the textarea keeps its stylesheet height.
+  const shownMultilineRef = useRef(multiline);
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el || shownMultilineRef.current === multiline) return;
+    shownMultilineRef.current = multiline;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [multiline]);
+
   useEffect(() => {
-    if (focusRequest === 0) return;
-    composerRef.current?.querySelector("textarea")?.focus();
-  }, [focusRequest]);
+    const row = inputRowRef.current;
+    if (!row || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => syncMultiline());
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [syncMultiline]);
+
+  useEffect(() => () => recorderRef.current?.stop(), []);
 
   const {
     width: sidebarWidth,
@@ -304,8 +404,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     }
   };
 
-  const handleDeleteSession = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  /** Deleting a conversation is confirmed first: V1 puts a dialog in front of it. */
+  const confirmDeleteSession = async () => {
+    const id = deletingSessionId;
+    setDeletingSessionId(null);
+    if (!id) return;
     try {
       await chatStore.deleteSession(id);
     } catch {
@@ -313,12 +416,34 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     }
   };
 
-  const handleSendMessage = async (overrideText?: string) => {
-    const text = (overrideText ?? inputPrompt).trim();
-    if ((!text && attachments.length === 0) || isGenerating) return;
-    const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
+  /** Clears the composer after a send or a queue, and lets the field collapse to one line. */
+  const resetComposer = () => {
     setInputPrompt("");
     setAttachments([]);
+    setMultiline(false);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+  };
+
+  /**
+   * Sends, or queues while the agent is still working: V1's composer never refuses a prompt, it
+   * parks it behind the turn in flight and sends it when the agent finishes.
+   */
+  const handleSendMessage = async (overrideText?: string) => {
+    const text = (overrideText ?? inputPrompt).trim();
+    if (!text && attachments.length === 0) return;
+    const currentAttachments = attachments.length > 0 ? [...attachments] : undefined;
+
+    if (isGenerating) {
+      resetComposer();
+      try {
+        await chatStore.sendMessage(text, { enqueue: true, attachments: currentAttachments });
+      } catch {
+        // Handled in store
+      }
+      return;
+    }
+
+    resetComposer();
     resetToTail();
     try {
       // The store appends its optimistic user message synchronously, so the row to pin exists by
@@ -337,26 +462,53 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     }
   };
 
-  /**
-   * Plain Enter sends. ContentInput submits on ⌘/Ctrl+Enter itself, so this handler deliberately
-   * ignores the modifier combination rather than sending the same prompt twice.
-   */
-  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+  /** Enter sends, ⌘/Ctrl+Enter sends, Shift+Enter is a newline. */
+  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Enter" || e.shiftKey || e.altKey) return;
     e.preventDefault();
     void handleSendMessage();
   };
 
-  const handleComposerEvent = (eventName: string, _id: string, args: unknown[]) => {
-    if (eventName === "OnChange") {
-      setInputPrompt(firstStringArg(args) ?? "");
+  const handleComposerChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputPrompt(e.target.value);
+    adjustTextareaHeight();
+  };
+
+  /** Files pasted into the prompt become attachments, as they do on a drop. */
+  const handleComposerPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = Array.from(e.clipboardData?.files ?? []);
+    if (pasted.length === 0) return;
+    e.preventDefault();
+    processFiles(pasted);
+  };
+
+  /**
+   * Dictation, transcribed by the same endpoint the shared composer uses. The transcript is
+   * appended to whatever is already typed rather than replacing it.
+   */
+  const toggleVoiceRecording = async () => {
+    if (voiceStatus !== "idle") {
+      recorderRef.current?.stop();
       return;
     }
-    if (eventName === "OnSubmit") {
-      // ⌘/Ctrl+Enter: the payload is the authority on what was typed, because the last OnChange
-      // may not have been applied to our state yet.
-      void handleSendMessage(submitValueArg(args));
-    }
+    setVoiceError(null);
+    const recorder = new VoiceRecorder({
+      endpoint: TRANSCRIPTION_URL,
+      onStatusChange: setVoiceStatus,
+      onResult: (transcription: string) => {
+        const trimmed = transcription.trim();
+        if (!trimmed) {
+          setVoiceError("Nothing was transcribed. Please try again.");
+          return;
+        }
+        setInputPrompt((prev) => (prev ? `${prev} ${trimmed}` : trimmed));
+        requestComposerFocus();
+        requestAnimationFrame(adjustTextareaHeight);
+      },
+      onError: (message: string) => setVoiceError(message),
+    });
+    recorderRef.current = recorder;
+    await recorder.start();
   };
 
   /**
@@ -371,6 +523,19 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
       `Review the outcomes of the jobs this conversation started and tell me what changed:\n${summary}`,
     );
     requestComposerFocus();
+  };
+
+  /**
+   * Jumps a queued prompt to the front: it leaves the queue and starts a turn right away, even
+   * while one is running, which is what V1's force-send does.
+   */
+  const handleSendQueuedNow = async (item: ChatQueuedItem) => {
+    try {
+      await chatStore.deleteQueuedMessage(item.id);
+      await chatStore.sendMessage(item.prompt, { attachments: item.attachments });
+    } catch {
+      // Handled in store
+    }
   };
 
   const handleStartEditQueued = (itemId: string, prompt: string) => {
@@ -492,6 +657,14 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     />
   );
 
+  const greeting = useMemo(() => buildGreeting(new Date()), []);
+  const hasComposerContent = inputPrompt.trim().length > 0 || attachments.length > 0;
+
+  const sessionPendingDeletion = sessions.find((s) => s.id === deletingSessionId);
+  const sessionPendingDeletionLabel = sessionPendingDeletion?.title.trim()
+    ? `"${sessionPendingDeletion.title}"`
+    : "this chat session";
+
   const pinnedSessionsList = sessions.filter((s) => s.isPinned);
   const unpinnedSessionsList = sessions.filter((s) => !s.isPinned);
 
@@ -526,7 +699,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
               <button
                 type="button"
                 onClick={(e) => handleSaveRename(session.id, e)}
-                className="text-muted-foreground hover:text-success p-0.5"
+                className="p-0.5 text-muted-foreground hover:text-foreground"
                 title="Save"
               >
                 <Check className="size-3.5" />
@@ -538,11 +711,12 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 {session.isPinned && (
                   <Pin className="size-3 text-warning shrink-0" data-testid="pin-indicator" />
                 )}
-                <span className="truncate text-xs font-medium">{session.title}</span>
+                <span className="truncate text-xs font-medium">{displayTitle(session)}</span>
               </div>
-              <div className="text-[10px] text-muted-foreground/70">
-                {formatRelativeTime(session.updatedAt || session.createdAt)}
-              </div>
+              {/* The row's tag is the plan the chat belongs to, as in the shell's Chats list. */}
+              {planTag(session) && (
+                <div className="text-[10px] text-muted-foreground">{planTag(session)}</div>
+              )}
             </>
           )}
         </div>
@@ -574,7 +748,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
             </button>
             <button
               type="button"
-              onClick={(e) => handleDeleteSession(session.id, e)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeletingSessionId(session.id);
+              }}
               className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               title="Delete"
             >
@@ -639,8 +816,22 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
         />
       </aside>
 
-      {/* Main Chat Thread Area */}
-      <main className="flex flex-1 flex-col overflow-hidden">
+      {/* Main Chat Thread Area. A file may be dropped anywhere in it, not only on the composer. */}
+      <main
+        className="relative flex flex-1 flex-col overflow-hidden"
+        onDragOver={handleDragOver}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {isDraggingOver && (
+          <div className="absolute inset-2 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-foreground bg-background/90 backdrop-blur-xs pointer-events-none">
+            <div className="flex flex-col items-center gap-2.5 text-center text-foreground">
+              <Upload className="size-9 opacity-80" />
+              <span className="font-medium">Drop files here to attach to message</span>
+            </div>
+          </div>
+        )}
         {/* Error Banner */}
         {error && (
           <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive flex items-center justify-between">
@@ -650,52 +841,51 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
 
         {/* Header Toolbar */}
         <ChatHeader
-          title={activeSession ? activeSession.title : "No Active Chat"}
-          messageCount={activeSession ? activeSession.messages.length : undefined}
-          isGenerating={isGenerating}
+          key={activeSessionId ?? "none"}
+          title={activeSession ? displayTitle(activeSession) : "No Active Chat"}
+          editable={Boolean(activeSession)}
           autoScrollEnabled={autoScrollEnabled}
           onToggleAutoScroll={toggleAutoScroll}
           jobs={spawnedJobs}
           onOpenPlan={onOpenPlan}
           onReviewJobs={handleReviewJobs}
-          agentPicker={renderAgentPicker(true)}
+          onNewChat={handleCreateSession}
+          onRename={(next) => {
+            if (activeSession) void chatStore.renameSession(activeSession.id, next);
+          }}
+          onDelete={() => activeSession && setDeletingSessionId(activeSession.id)}
         />
 
         {/* Message Thread List */}
         <div className="flex-1 overflow-hidden relative">
           {!activeSession || activeSession.messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center text-center p-6 text-muted-foreground">
-              <div className="max-w-md space-y-4">
-                <div className="space-y-2">
-                  <h3 className="text-lg font-semibold text-foreground">
-                    Tendril Conversational Agent
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    Ask questions, research codebase architecture, or plan new features. Interactive
-                    question blocks and live streaming will appear here.
-                  </p>
-                </div>
-
-                <div className="pt-2">
-                  <div className="text-xs font-medium text-muted-foreground/70 mb-2.5 uppercase tracking-wider">
-                    Suggested Prompts
-                  </div>
-                  <div className="flex flex-wrap justify-center gap-2" data-testid="sample-prompts">
-                    {SAMPLE_PROMPTS.map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={() => {
-                          setInputPrompt(item.prompt);
-                          requestComposerFocus();
-                        }}
-                        className="rounded-lg border border-border bg-card/80 px-3 py-1.5 text-xs text-muted-foreground hover:border-ring hover:bg-muted hover:text-foreground transition-colors shadow-xs"
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            /* V1's empty thread: the greeting, the headline, and the prompts it suggests. No
+               explanation of what a chat is - the composer below says that. */
+            <div className="flex h-full flex-col items-center justify-center gap-1 px-4 py-12 text-center">
+              <div className="text-2xl font-normal leading-tight text-muted-foreground">
+                {greeting}
+              </div>
+              <div className="text-2xl font-semibold leading-tight text-foreground">
+                {EMPTY_STATE_HEADLINE}
+              </div>
+              <div
+                className="mt-4 flex flex-wrap justify-center gap-2"
+                data-testid="sample-prompts"
+              >
+                {SAMPLE_PROMPTS.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    title={item.prompt}
+                    onClick={() => {
+                      setInputPrompt(item.prompt);
+                      requestComposerFocus();
+                    }}
+                    className="rounded-2xl border border-border bg-background px-4 py-2 font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent"
+                  >
+                    {item.label}
+                  </button>
+                ))}
               </div>
             </div>
           ) : (
@@ -736,6 +926,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                           isSubmittingAnswer={chatStore.isSubmittingAnswer(msg.id)}
                           onOpenPlan={onOpenPlan}
                           onOpenImage={setActiveLightboxImage}
+                          jobs={jobs}
+                          threadMessages={messages}
                         />
                       </div>
                     );
@@ -753,15 +945,19 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                       isSubmittingAnswer={chatStore.isSubmittingAnswer(msg.id)}
                       onOpenPlan={onOpenPlan}
                       onOpenImage={setActiveLightboxImage}
+                      jobs={jobs}
+                      threadMessages={messages}
                     />
                   </div>
                 ))
               )}
 
+              {/* The live turn's own status line, as V1 renders it: muted, in the thread, at the
+                  leading edge where the reply will appear. */}
               {isGenerating && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground px-4 py-2">
-                  <Loader2 className="size-4 animate-spin text-success" />
-                  <span>Generating response...</span>
+                <div className="flex min-h-6 w-full items-center gap-2 text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  <span>Working...</span>
                 </div>
               )}
 
@@ -789,7 +985,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 type="button"
                 data-testid="chat-jump-to-question-button"
                 onClick={() => handleJumpToQuestion(targetPendingQuestion.messageIndex)}
-                className="pointer-events-auto flex items-center gap-2 rounded-full bg-warning/10 border border-warning/40 px-3.5 py-1.5 text-xs font-medium text-warning shadow-lg backdrop-blur hover:bg-warning/20 transition-all cursor-pointer"
+                className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-warning/40 bg-warning/10 px-3.5 py-1.5 text-xs font-medium text-warning shadow-lg backdrop-blur transition-colors hover:bg-warning/20"
               >
                 <HelpCircle className="size-3.5 text-warning" />
                 <span>
@@ -803,13 +999,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 type="button"
                 data-testid="chat-scroll-tail-button"
                 onClick={() => scrollToTail(true)}
-                className="pointer-events-auto flex items-center gap-2 rounded-full bg-card/90 border border-border px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur hover:bg-muted transition-all cursor-pointer"
+                className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-border bg-popover/90 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors hover:bg-accent"
               >
-                <ArrowDown className="size-3.5 text-success" />
+                <ArrowDown className="size-3.5 text-muted-foreground" />
                 {isGenerating ? (
                   <>
                     <span>Scroll to streaming tail</span>
-                    <span className="flex h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+                    <span className="flex size-1.5 animate-pulse rounded-full bg-current" />
                   </>
                 ) : (
                   <span>Scroll to bottom</span>
@@ -819,224 +1015,347 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
           </div>
         </div>
 
-        {/* Queued Items Drawer */}
-        {queuedItems.length > 0 && (
-          <div className="border-t border-border bg-card/80 px-4 py-2">
-            <div
-              className="flex items-center justify-between cursor-pointer text-xs font-semibold text-muted-foreground select-none"
-              onClick={() => setIsQueueExpanded(!isQueueExpanded)}
-            >
-              <div className="flex items-center gap-2">
-                <span>Queued Prompts ({queuedItems.length})</span>
-              </div>
-              {isQueueExpanded ? (
-                <ChevronDown className="size-3.5" />
-              ) : (
-                <ChevronUp className="size-3.5" />
-              )}
-            </div>
-
-            {isQueueExpanded && (
-              <div className="mt-2 max-h-32 overflow-y-auto space-y-1">
-                {queuedItems.map((item) => (
-                  <div
-                    key={item.id}
-                    data-testid="queued-item"
-                    className="flex items-center justify-between gap-2 rounded bg-background px-2 py-1 text-xs border border-border"
-                  >
-                    {editingQueuedId === item.id ? (
-                      <>
-                        <Input
-                          data-testid="queued-item-input"
-                          aria-label="Edit queued prompt"
-                          value={editingQueuedText}
-                          ref={(node) => {
-                            // Focus once per edit: re-focusing on every keystroke would fight the
-                            // caret the user is moving.
-                            if (node && queuedEditFocusedIdRef.current !== item.id) {
-                              queuedEditFocusedIdRef.current = item.id;
-                              node.focus();
-                              node.select();
-                            }
-                          }}
-                          onChange={(e) => setEditingQueuedText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              void handleSaveEditQueued(item.id);
-                            }
-                            if (e.key === "Escape") {
-                              e.preventDefault();
-                              handleCancelEditQueued();
-                            }
-                          }}
-                          className="h-6 flex-1 border-border bg-card px-1.5 py-0.5 text-xs text-foreground"
-                        />
-                        <button
-                          type="button"
-                          data-testid="queued-item-save"
-                          onClick={() => void handleSaveEditQueued(item.id)}
-                          className="text-muted-foreground/70 hover:text-success"
-                          title="Save queued prompt"
-                        >
-                          <Check className="size-3" />
-                        </button>
-                        <button
-                          type="button"
-                          data-testid="queued-item-cancel"
-                          onClick={handleCancelEditQueued}
-                          className="text-muted-foreground/70 hover:text-foreground"
-                          title="Cancel edit"
-                        >
-                          <X className="size-3" />
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="truncate pr-2 text-muted-foreground">{item.prompt}</span>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          <button
-                            type="button"
-                            data-testid="queued-item-edit"
-                            onClick={() => handleStartEditQueued(item.id, item.prompt)}
-                            className="text-muted-foreground/70 hover:text-success"
-                            title="Edit queued prompt"
-                          >
-                            <Edit2 className="size-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => chatStore.deleteQueuedMessage(item.id)}
-                            className="text-muted-foreground/70 hover:text-destructive"
-                            title="Remove from queue"
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
-                        </div>
-                      </>
-                    )}
+        {/*
+          The composer, as V1 builds it: one rounded surface holding the attachment affordance, the
+          prompt, and the agent picker, mic and send button, with the queue that feeds it directly
+          above and the whole thing capped to the thread's width.
+        */}
+        {/* No divider above the composer: its own surface separates it from the thread. */}
+        <div data-testid="chat-composer-area" className="shrink-0 px-3 py-4">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-2.5">
+            {queuedItems.length > 0 && (
+              <div className="rounded-2xl border border-border bg-muted/60 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="font-medium text-foreground">Queued Messages</span>
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-background px-1.5 text-xs text-foreground">
+                      {queuedItems.length}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      Sends after agent finishes working
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Composer Input Area */}
-        <div
-          onDragOver={handleDragOver}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={`relative border-t p-4 transition-colors ${
-            isDraggingOver
-              ? "border-ring bg-success/10 ring-2 ring-ring/50 ring-dashed"
-              : "border-border bg-card"
-          }`}
-        >
-          {isDraggingOver && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-xs border-2 border-dashed border-ring pointer-events-none">
-              <div className="flex items-center gap-2 text-success font-medium text-sm">
-                <Paperclip className="size-5 animate-bounce" />
-                <span>Drop files here to attach</span>
-              </div>
-            </div>
-          )}
-
-          <div className="max-w-4xl mx-auto space-y-2">
-            {/* Attachment chip list */}
-            {attachments.length > 0 && (
-              <div
-                data-testid="composer-attachment-chips"
-                className="flex flex-wrap items-center gap-1.5 pb-1"
-              >
-                {attachments.map((att, index) => (
-                  <div
-                    key={`${att.path}-${index}`}
-                    className="flex items-center gap-1 rounded-md bg-muted border border-border px-2 py-1 text-xs text-foreground shadow-sm"
-                    title={att.path}
-                  >
-                    <Paperclip className="size-3 text-muted-foreground shrink-0" />
-                    <span className="max-w-[140px] truncate">{att.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveAttachment(index)}
-                      className="ml-0.5 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-                      title={`Remove ${att.name}`}
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </div>
-                ))}
-                {attachments.length > 1 && (
                   <button
                     type="button"
-                    onClick={() => setAttachments([])}
-                    className="text-[11px] text-muted-foreground hover:text-destructive px-1.5 py-0.5 rounded transition-colors"
+                    data-testid="chat-queue-collapse"
+                    aria-label={
+                      isQueueExpanded ? "Collapse queued messages" : "Expand queued messages"
+                    }
+                    aria-expanded={isQueueExpanded}
+                    onClick={() => setIsQueueExpanded(!isQueueExpanded)}
+                    className="inline-flex size-6 shrink-0 items-center justify-center rounded-selector text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    Clear all
+                    <ChevronDown
+                      className={`size-4 transition-transform ${isQueueExpanded ? "" : "-rotate-90"}`}
+                    />
                   </button>
+                </div>
+
+                {isQueueExpanded && (
+                  <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                    {queuedItems.map((item) => (
+                      <div
+                        key={item.id}
+                        data-testid="queued-item"
+                        className="flex items-center justify-between gap-2 rounded-selector bg-background px-2 py-1"
+                      >
+                        {editingQueuedId === item.id ? (
+                          <>
+                            <Input
+                              data-testid="queued-item-input"
+                              aria-label="Edit queued prompt"
+                              value={editingQueuedText}
+                              ref={(node) => {
+                                // Focus once per edit: re-focusing on every keystroke would fight
+                                // the caret the user is moving.
+                                if (node && queuedEditFocusedIdRef.current !== item.id) {
+                                  queuedEditFocusedIdRef.current = item.id;
+                                  node.focus();
+                                  node.select();
+                                }
+                              }}
+                              onChange={(e) => setEditingQueuedText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  void handleSaveEditQueued(item.id);
+                                }
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  handleCancelEditQueued();
+                                }
+                              }}
+                              className="h-7 flex-1 border-border bg-background px-1.5 py-0.5 text-foreground"
+                            />
+                            <button
+                              type="button"
+                              data-testid="queued-item-save"
+                              onClick={() => void handleSaveEditQueued(item.id)}
+                              className="text-muted-foreground hover:text-foreground"
+                              title="Save queued prompt"
+                            >
+                              <Check className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="queued-item-cancel"
+                              onClick={handleCancelEditQueued}
+                              className="text-muted-foreground hover:text-destructive"
+                              title="Cancel edit"
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                              <span className="truncate text-foreground">
+                                {item.prompt ||
+                                  (item.attachments && item.attachments.length > 0
+                                    ? `${item.attachments.length} attachment${item.attachments.length > 1 ? "s" : ""}`
+                                    : "")}
+                              </span>
+                              {item.attachments && item.attachments.length > 0 && (
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">
+                                  <Paperclip className="size-2.5" />
+                                  {item.attachments.length}
+                                </span>
+                              )}
+                            </span>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <button
+                                type="button"
+                                data-testid="queued-item-send-now"
+                                onClick={() => void handleSendQueuedNow(item)}
+                                className="text-muted-foreground hover:text-foreground"
+                                title="Send now"
+                              >
+                                <ArrowRight className="size-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                data-testid="queued-item-edit"
+                                onClick={() => handleStartEditQueued(item.id, item.prompt)}
+                                className="text-muted-foreground hover:text-foreground"
+                                title="Edit queued prompt"
+                              >
+                                <Pencil className="size-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => chatStore.deleteQueuedMessage(item.id)}
+                                className="text-muted-foreground hover:text-destructive"
+                                title="Remove from queue"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
 
-            <div className="flex items-end gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                data-testid="file-upload-input"
-                onChange={handleFileInputChange}
-              />
-              <button
-                type="button"
-                data-testid="composer-attach-button"
-                onClick={handleAttachClick}
-                disabled={isGenerating}
-                className="flex items-center justify-center rounded-lg border border-border bg-muted p-3 text-muted-foreground shadow hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title="Attach files from disk"
-              >
-                <Paperclip className="size-5" />
-              </button>
-
-              {/* ContentInput sends on ⌘/Ctrl+Enter itself; plain Enter is handled here. */}
-              <div ref={composerRef} onKeyDown={handleComposerKeyDown} className="flex-1 relative">
-                <ContentInput
-                  id="chat-composer"
-                  value={inputPrompt}
-                  placeholder="Ask Tendril or discuss plans (Enter or ⌘/Ctrl+Enter to send, Shift+Enter for newline)..."
-                  events={["OnChange", "OnSubmit"]}
-                  eventHandler={handleComposerEvent}
-                  slots={{ LeftActions: renderAgentPicker(false) }}
-                />
-              </div>
-
-              {isGenerating ? (
-                <button
-                  type="button"
-                  onClick={() => chatStore.cancelGeneration()}
-                  className="flex items-center justify-center rounded-lg bg-destructive p-3 text-destructive-foreground shadow hover:bg-destructive/90 transition-colors"
-                  title="Stop generation"
+            <div
+              className={`flex flex-col gap-2 rounded-2xl border bg-muted py-2 pl-3.5 pr-2 transition-colors ${
+                isDraggingOver
+                  ? "border-dashed border-foreground"
+                  : "border-transparent focus-within:border-input"
+              }`}
+            >
+              {voiceError && (
+                <div
+                  role="alert"
+                  className="flex items-center gap-2 rounded-field border border-destructive bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive"
                 >
-                  <Square className="size-5" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void handleSendMessage()}
-                  disabled={!inputPrompt.trim() && attachments.length === 0}
-                  className="flex items-center justify-center rounded-lg bg-primary p-3 text-primary-foreground shadow hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title="Send message"
-                >
-                  <Send className="size-5" />
-                </button>
+                  <span className="min-w-0 flex-1">{voiceError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setVoiceError(null)}
+                    aria-label="Dismiss voice input error"
+                    title="Dismiss"
+                    className="inline-flex size-5 shrink-0 items-center justify-center rounded-selector text-current"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
               )}
+
+              {attachments.length > 0 && (
+                <div
+                  data-testid="composer-attachment-chips"
+                  className="flex flex-wrap items-center gap-1.5"
+                >
+                  {attachments.map((att, index) => (
+                    <div
+                      key={`${att.path}-${index}`}
+                      className="flex max-w-full items-center gap-1.5 rounded-md bg-background px-1.5 py-1 text-foreground"
+                      title={att.path}
+                    >
+                      <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="max-w-[220px] truncate">{att.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAttachment(index)}
+                        className="rounded-selector p-0.5 text-muted-foreground hover:text-destructive"
+                        title={`Remove ${att.name}`}
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ))}
+                  {attachments.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setAttachments([])}
+                      className="rounded-selector px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-destructive"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* One line: buttons sit beside the text. More than one: the buttons line up as a
+                  toolbar above it and the text takes the whole width. */}
+              <div
+                ref={inputRowRef}
+                data-multiline={multiline}
+                className={`flex min-h-8 items-end gap-3 ${multiline ? "flex-wrap" : ""}`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  data-testid="file-upload-input"
+                  onChange={handleFileInputChange}
+                />
+                <button
+                  type="button"
+                  data-testid="composer-attach-button"
+                  onClick={handleAttachClick}
+                  title="Attach file"
+                  aria-label="Attach file"
+                  className={`-ml-1.5 inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-foreground opacity-60 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    multiline ? "order-0" : ""
+                  }`}
+                >
+                  <Paperclip className="size-5" />
+                </button>
+
+                <ChatInput
+                  ref={textareaRef}
+                  id="chat-composer"
+                  aria-label="Chat prompt"
+                  placeholder={COMPOSER_PLACEHOLDER}
+                  value={inputPrompt}
+                  onChange={handleComposerChange}
+                  onKeyDown={handleComposerKeyDown}
+                  onPaste={handleComposerPaste}
+                  className={multiline ? "order-2 basis-full" : ""}
+                />
+
+                <div
+                  className={`flex shrink-0 items-center gap-3 ${multiline ? "order-1 ml-auto" : ""}`}
+                >
+                  {renderAgentPicker(false)}
+
+                  <button
+                    type="button"
+                    data-testid="composer-voice-button"
+                    onClick={() => void toggleVoiceRecording()}
+                    title="Voice input"
+                    aria-label="Voice input"
+                    className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      voiceStatus === "recording"
+                        ? "animate-pulse text-destructive opacity-100"
+                        : voiceStatus === "idle"
+                          ? "text-foreground opacity-60 hover:opacity-100"
+                          : "text-foreground opacity-100"
+                    }`}
+                  >
+                    {voiceStatus === "connecting" || voiceStatus === "processing" ? (
+                      <Loader2 className="size-5 animate-spin" />
+                    ) : voiceStatus === "recording" ? (
+                      <Square className="size-5" />
+                    ) : (
+                      <Mic className="size-5" />
+                    )}
+                  </button>
+
+                  {isGenerating ? (
+                    <>
+                      {hasComposerContent && (
+                        <button
+                          type="button"
+                          data-testid="composer-queue-button"
+                          onClick={() => void handleSendMessage()}
+                          title="Queue message"
+                          aria-label="Queue message"
+                          className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <ListPlus className="size-4" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => chatStore.cancelGeneration()}
+                        title="Stop agent"
+                        aria-label="Stop agent"
+                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-input bg-muted text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <Square className="size-3 fill-current" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleSendMessage()}
+                      disabled={!hasComposerContent}
+                      title="Send message"
+                      aria-label="Send message"
+                      className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <SendHorizontal className="size-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <ImageLightbox image={activeLightboxImage} onClose={() => setActiveLightboxImage(null)} />
+
+        <AlertDialog
+          open={deletingSessionId !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeletingSessionId(null);
+          }}
+        >
+          <AlertDialogContent data-testid="chat-delete-session-dialog">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Session</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete {sessionPendingDeletionLabel}? This action cannot be
+                undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                data-testid="chat-delete-session-confirm"
+                onClick={() => void confirmDeleteSession()}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </div>
   );

@@ -4,11 +4,17 @@ import { SettingsView } from "../src/views/SettingsView";
 import { bridge } from "../src/api/bridge";
 import type { ServiceInfo, TendrilConfig } from "../src/types/api";
 
+/**
+ * Port of `SettingsApp`'s root setup views. Each section saves on its own, its Save stays disabled
+ * until that section changes (`hasChanges` in every V1 setup view), and `jobTimeout` is minutes -
+ * `TendrilSettings::job_timeout` is documented as minutes, unlike `daemonRequestTimeout`.
+ */
+
 const baseConfig: TendrilConfig = {
   codingAgent: "claude",
-  jobTimeout: 1800,
-  maxConcurrentJobs: 4,
-  theme: "dark",
+  jobTimeout: 30,
+  maxConcurrentJobs: 20,
+  raw: { staleOutputTimeout: 10, beta: false, themeMode: "system" },
 };
 
 const serviceInfo: ServiceInfo = {
@@ -28,9 +34,17 @@ async function renderSettings(onRefreshHealth = vi.fn()) {
   });
 }
 
-const submit = async () => {
+/** The Save inside one section card, since every section now carries its own. */
+const saveIn = (testId: string) => {
+  const card = screen.getByTestId(testId);
+  const button = Array.from(card.querySelectorAll("button")).find((b) => b.textContent === "Save");
+  if (!button) throw new Error(`No Save button in ${testId}`);
+  return button;
+};
+
+const submitIn = async (testId: string) => {
   await act(async () => {
-    fireEvent.click(screen.getByText("Save Preferences"));
+    fireEvent.click(saveIn(testId));
   });
 };
 
@@ -59,44 +73,61 @@ describe("SettingsView", () => {
     vi.restoreAllMocks();
   });
 
+  it("offers every agent `build_agent_spec` can launch, in V1's order", async () => {
+    await renderSettings();
+
+    const labels = Array.from(
+      screen.getByTestId("coding-agent-card").querySelectorAll("[data-testid^='coding-agent-']"),
+    ).map((el) => el.textContent?.trim());
+
+    expect(labels).toEqual(["Claude", "Copilot", "Codex", "Gemini", "Antigravity", "OpenCode"]);
+    expect(screen.getByTestId("coding-agent-claude")).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("writes a changed field to config.yaml via putConfig, never saveUiState", async () => {
     await renderSettings();
 
-    fireEvent.change(screen.getByLabelText("Coding Agent CLI"), {
-      target: { value: "gemini" },
-    });
-    await submit();
+    fireEvent.click(screen.getByTestId("coding-agent-gemini"));
+    await submitIn("coding-agent-card");
 
     expect(putConfig).toHaveBeenCalledWith("codingAgent", "gemini");
     expect(putConfig).toHaveBeenCalledTimes(1);
     expect(saveUiState).not.toHaveBeenCalled();
   });
 
-  it("does not write unchanged fields", async () => {
+  it("keeps each section's Save disabled until that section changes", async () => {
     await renderSettings();
 
-    fireEvent.change(screen.getByLabelText("Job Timeout (seconds)"), {
-      target: { value: "3600" },
-    });
-    await submit();
+    expect(saveIn("coding-agent-card")).toBeDisabled();
+    expect(saveIn("advanced-settings-card")).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Job Timeout"), { target: { value: "45" } });
+
+    expect(saveIn("advanced-settings-card")).toBeEnabled();
+    // A change in one section does not arm another section's Save.
+    expect(saveIn("coding-agent-card")).toBeDisabled();
+  });
+
+  it("writes only the advanced keys that changed, and job timeout in minutes", async () => {
+    await renderSettings();
+
+    fireEvent.change(screen.getByLabelText("Job Timeout"), { target: { value: "45" } });
+    await submitIn("advanced-settings-card");
 
     expect(putConfig).toHaveBeenCalledTimes(1);
-    expect(putConfig).toHaveBeenCalledWith("jobTimeout", 3600);
+    expect(putConfig).toHaveBeenCalledWith("jobTimeout", 45);
   });
 
   it("surfaces a rejected save as an error, not a success message", async () => {
     putConfig.mockRejectedValue(new Error("Failed to update config: Merged config is invalid"));
     await renderSettings();
 
-    fireEvent.change(screen.getByLabelText("Coding Agent CLI"), {
-      target: { value: "gemini" },
-    });
-    await submit();
+    fireEvent.click(screen.getByTestId("coding-agent-gemini"));
+    await submitIn("coding-agent-card");
 
     expect(
       screen.getByText(/Failed to update config: Merged config is invalid/),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Configuration saved to config.yaml.")).not.toBeInTheDocument();
     expect(getConfig).toHaveBeenCalledTimes(1);
   });
 
@@ -107,12 +138,39 @@ describe("SettingsView", () => {
 
     await renderSettings();
 
-    fireEvent.change(screen.getByLabelText("Max Concurrent Jobs"), {
-      target: { value: "8" },
-    });
-    await submit();
+    fireEvent.change(screen.getByLabelText("Max Concurrent Jobs"), { target: { value: "8" } });
+    await submitIn("advanced-settings-card");
 
     expect(getConfig).toHaveBeenCalledTimes(2);
     expect(screen.getByLabelText("Max Concurrent Jobs")).toHaveValue(8);
+    expect(saveIn("advanced-settings-card")).toBeDisabled();
+  });
+
+  it("saves the appearance mode on the click, under V1's themeMode key", async () => {
+    await renderSettings();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Light" }));
+    });
+
+    expect(putConfig).toHaveBeenCalledWith("themeMode", "light");
+    expect(screen.getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("defaults the appearance mode to System when config.yaml does not mention it", async () => {
+    getConfig.mockResolvedValue({ ...baseConfig, raw: {} });
+    await renderSettings();
+
+    expect(screen.getByRole("button", { name: "System" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("saves the plan template on its own", async () => {
+    await renderSettings();
+
+    fireEvent.change(screen.getByLabelText("Plan Template"), { target: { value: "## Goal" } });
+    await submitIn("plans-settings-card");
+
+    expect(putConfig).toHaveBeenCalledTimes(1);
+    expect(putConfig).toHaveBeenCalledWith("planTemplate", "## Goal");
   });
 });

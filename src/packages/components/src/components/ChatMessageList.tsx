@@ -35,13 +35,17 @@ const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
       <div className="relative w-full h-full">
         <div
           tabIndex={0}
-          className={`flex flex-col w-full h-full p-4 overflow-y-auto focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset ${className || ""}`}
+          className={`flex flex-col w-full h-full overflow-y-auto focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset ${className || ""}`}
           ref={scrollRef}
           onWheel={disableAutoScroll}
           onTouchMove={disableAutoScroll}
           {...props}
         >
-          <div className="flex flex-col gap-6">{children}</div>
+          {/* The thread is a single measured column: the scroller runs edge to edge, the content
+              is capped and centred, and the inset lives here rather than on the scroller. */}
+          <div className="flex grow shrink-0 flex-col gap-6 w-full max-w-3xl mx-auto px-2.5 pt-2.5">
+            {children}
+          </div>
         </div>
 
         {showScrollButton && !isAtBottom && (

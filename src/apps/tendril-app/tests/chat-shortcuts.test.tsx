@@ -46,7 +46,7 @@ describe("ChatView Keyboard Shortcuts", () => {
       expect(screen.getAllByText("Shortcuts Session").length).toBeGreaterThan(0);
     });
 
-    const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
     fireEvent.change(textarea, { target: { value: "Sending via Ctrl+Enter" } });
 
     fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
@@ -69,7 +69,7 @@ describe("ChatView Keyboard Shortcuts", () => {
       expect(screen.getAllByText("Shortcuts Session").length).toBeGreaterThan(0);
     });
 
-    const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
     fireEvent.change(textarea, { target: { value: "Sending via Cmd+Enter" } });
 
     fireEvent.keyDown(textarea, { key: "Enter", metaKey: true });
@@ -92,7 +92,7 @@ describe("ChatView Keyboard Shortcuts", () => {
       expect(screen.getAllByText("Shortcuts Session").length).toBeGreaterThan(0);
     });
 
-    const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
 
     // Shift+Enter should NOT submit
     fireEvent.change(textarea, { target: { value: "Line one\n" } });

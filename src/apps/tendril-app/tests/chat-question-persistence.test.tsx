@@ -796,11 +796,11 @@ questions:
     );
 
     const otherRadio = container.querySelector(
-      ".pmv-question-other-label input",
+      ".tq-option--other .tq-option-input",
     ) as HTMLInputElement;
     fireEvent.click(otherRadio);
 
-    const input = container.querySelector("input.pmv-question-other-input") as HTMLInputElement;
+    const input = container.querySelector("input.tq-text-input") as HTMLInputElement;
     expect(input).toBeInTheDocument();
 
     // User focuses the other input and types in-progress draft text

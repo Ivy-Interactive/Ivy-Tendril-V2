@@ -23,9 +23,13 @@ describe("PlanVerifications", () => {
 
     await waitFor(() => expect(screen.getByTestId("plan-verifications")).toBeInTheDocument());
     expect(screen.getByText("RustClippy")).toBeInTheDocument();
-    expect(screen.getByTestId("verification-status-select-RustClippy")).toHaveValue("Pass");
-    expect(screen.getByTestId("verification-status-select-RustTest")).toHaveValue("Fail");
-    expect(screen.getByTestId("verification-status-select-CheckResult")).toHaveValue("Pending");
+    // A checkbox per verification, and a badge only for the two terminal outcomes: V1's
+    // `VerificationRowView` conveys Pending and Skipped with the box alone.
+    expect(screen.getByTestId("verification-checkbox-RustClippy")).toBeChecked();
+    expect(screen.getByTestId("verification-status-RustClippy")).toHaveTextContent("Pass");
+    expect(screen.getByTestId("verification-status-RustTest")).toHaveTextContent("Fail");
+    expect(screen.getByTestId("verification-checkbox-CheckResult")).toBeChecked();
+    expect(screen.queryByTestId("verification-status-CheckResult")).not.toBeInTheDocument();
   });
 
   it("expands a report so a failure can be diagnosed in-app", async () => {

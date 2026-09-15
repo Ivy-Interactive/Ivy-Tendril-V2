@@ -1,4 +1,16 @@
 /*
+ * The host is the positioning context for the loading overlay, and the box the terminal element
+ * fills. `className` lands here, so a host that says `h-full` sizes the whole terminal.
+ */
+.ivy-terminal-host {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
  * The emulator sizes itself to this element, so it has to have a box of its own: a container that
  * shrink-wraps its content gives the fit addon nothing to measure and the terminal opens at its
  * default 24x80 regardless of the space available.
@@ -8,10 +20,13 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: #0a0a0a;
   /* Matches the theme's background so the gap the fit addon leaves below the last full row is not a
-     lighter stripe. */
-  padding: 8px;
+     lighter stripe. `Ivy.Widgets.Xterm`'s own container colour, and the same value as
+     DEFAULT_THEME.background. */
+  background: #000000;
+  /* `Ivy.Widgets.Xterm`: `padding: 10px 0px 10px 10px`. No right padding, because the viewport's
+     scrollbar lives there. Terminal.tsx's fit accounts for the vertical half. */
+  padding: 10px 0 10px 10px;
   box-sizing: border-box;
 }
 
@@ -31,4 +46,50 @@
 
 .ivy-terminal .xterm-viewport::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/*
+ * "Starting <agent>..." while the pty spawns, over the terminal's own background rather than the
+ * app's: this sits inside a black surface, so it takes its colours from DEFAULT_THEME, not from the
+ * app's semantic tokens. Non-interactive, so clicks and focus still reach the terminal underneath.
+ */
+.ivy-terminal-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+  color: #d4d4d4;
+  font-family:
+    "Cascadia Mono",
+    Geist Mono,
+    Menlo,
+    Monaco,
+    "Courier New",
+    monospace;
+  font-size: 13px;
+}
+
+.ivy-terminal-spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 3px solid rgba(128, 128, 128, 0.3);
+  border-top-color: currentColor;
+  animation: ivy-terminal-spin 0.8s linear infinite;
+}
+
+@keyframes ivy-terminal-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ivy-terminal-spinner {
+    animation-duration: 2.4s;
+  }
 }

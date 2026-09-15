@@ -137,7 +137,7 @@ describe("RecommendationCard", () => {
     expect(screen.getByTestId("recommendation-card-Support Dark Mode")).toBeInTheDocument();
     expect(screen.getByText("Support Dark Mode")).toBeInTheDocument();
     expect(screen.getByText("Implement dark theme palette.")).toBeInTheDocument();
-    expect(screen.getByText("High impact")).toBeInTheDocument();
+    expect(screen.getByText("High")).toBeInTheDocument();
     expect(screen.getByText("Pending")).toHaveClass(REC_STATUS_CLASS.Pending.split(" ")[0]);
 
     expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();

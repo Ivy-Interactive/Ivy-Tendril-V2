@@ -126,3 +126,55 @@ export const ReadOnly: Story = {
     );
   },
 };
+
+/**
+ * The overlay `Ivy.Widgets.Xterm` shows while a pty spawns (`AgentApp.cs`:
+ * `.Loading($"Starting {agentLabel}...")`). It survives the escape-sequence preamble a shell emits
+ * on startup and only clears once the process prints something a person could read.
+ */
+export const Starting: Story = {
+  render: () => {
+    const ref = useRef<TerminalHandle>(null);
+
+    useEffect(() => {
+      // A title set and a screen clear: output, but nothing visible.
+      ref.current?.write(encoder.encode("\x1b]0;zsh\x07\x1b[2J\x1b[H"));
+      const timer = setTimeout(() => {
+        ref.current?.write(encoder.encode("Welcome to Claude Code\r\n"));
+      }, 2500);
+      return () => clearTimeout(timer);
+    }, []);
+
+    return (
+      <div style={{ height: "100vh" }}>
+        <Terminal ref={ref} loading loadingText="Starting Claude..." />
+      </div>
+    );
+  },
+};
+
+/**
+ * The process has exited (`.Closed(ptyHandle.Closed)`): the log stays readable, the keyboard is
+ * gone, and so is the cursor.
+ */
+export const Closed: Story = {
+  render: () => {
+    const ref = useRef<TerminalHandle>(null);
+
+    useEffect(() => {
+      ref.current?.write(encoder.encode("$ vp check\r\npass: no errors in 35 files\r\n$ exit\r\n"));
+    }, []);
+
+    return (
+      <div style={{ height: "100vh" }}>
+        <Terminal
+          ref={ref}
+          closed
+          onInput={() => {
+            throw new Error("a closed terminal must not report input");
+          }}
+        />
+      </div>
+    );
+  },
+};

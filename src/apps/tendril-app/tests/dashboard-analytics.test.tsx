@@ -126,7 +126,7 @@ const mockAnalytics = (data: DashboardActivity | null) => {
 
 const renderDashboard = () => render(<DashboardView plans={[]} jobs={[]} />);
 
-/** The five analytics KPI cards, which are buttons; the fallback ones are plain divs. */
+/** The four analytics KPI cards, which are buttons; the fallback ones are plain divs. */
 const kpiButtons = () =>
   Array.from(document.querySelectorAll<HTMLElement>(".tdb-kpi[data-clickable='true']"));
 
@@ -144,20 +144,22 @@ afterEach(() => {
 });
 
 describe("DashboardView analytics", () => {
-  it("renders the five analytics KPIs from the bridge", async () => {
+  it("renders the four analytics KPIs from the bridge", async () => {
     mockAnalytics(activity());
     renderDashboard();
 
-    await waitFor(() => expect(kpiButtons()).toHaveLength(5));
+    // Four cards, in this order: `DashboardApp.BuildKpis` emits exactly these, its fourth being the
+    // permanent Avg Cost/Plan fallback for the agent usage window V2 has no service for.
+    await waitFor(() => expect(kpiButtons()).toHaveLength(4));
     for (const label of [
       "Features Shipped",
       "Avg Cost / Feature",
       "Forecast This Month",
       "Avg Cost / Plan",
-      "Tokens Consumed",
     ]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+    expect(screen.queryByText("Tokens Consumed")).not.toBeInTheDocument();
     // 3 features over 30 days, and $20 of spend over them.
     const features = kpiButtons().find((b) => b.textContent?.includes("Features Shipped"));
     expect(features?.querySelector(".tdb-kpi-value")?.textContent).toBe("3");
@@ -205,14 +207,46 @@ describe("DashboardView analytics", () => {
     expect(panel.textContent).not.toContain("$0.00");
   });
 
-  it("falls back to the in-memory KPIs when the analytics fetch rejects", async () => {
+  it("keeps the four cards, valueless, when the analytics fetch rejects", async () => {
     mockAnalytics(null);
     renderDashboard();
 
-    await waitFor(() => expect(screen.getByText("Active Plans")).toBeInTheDocument());
+    // V1 states an unknown figure as a dash or "n/a" with a hint saying why, and never changes
+    // which cards the dashboard has (`DashboardApp.BuildKpis`).
+    await waitFor(() => expect(screen.getByText("Features shipped")).toBeInTheDocument());
+    expect(screen.getByText("Forecast This Month")).toBeInTheDocument();
+    expect(screen.getByText("No cost data in the last 30 days")).toBeInTheDocument();
     expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
     // Nothing is clickable while there is no data to drill into.
     expect(kpiButtons()).toHaveLength(0);
+  });
+
+  it("puts the per-agent split under every card that reports money", async () => {
+    // `KpiBreakdownSheet` appends BuildAgentBreakdownSection to the cost-per-feature, forecast and
+    // avg-cost-per-plan sheets, and flags the unattributable rows.
+    mockAnalytics(activity());
+    renderDashboard();
+
+    await clickKpi("Forecast This Month");
+
+    const panel = screen.getByTestId("kpi-breakdown");
+    expect(screen.getByText("Spend by Coding Agent")).toBeInTheDocument();
+    expect(screen.getByText("claude-opus-5")).toBeInTheDocument();
+    expect(panel.textContent).toContain("Partial Attribution");
+    // Both projection bases are reported here too, never one picked.
+    expect(screen.getByText("Total Forecast (Calendar Basis)")).toBeInTheDocument();
+    expect(screen.getByText("Total Forecast (Activity Basis)")).toBeInTheDocument();
+  });
+
+  it("shows the quotient's two halves on the cost-per-feature panel", async () => {
+    mockAnalytics(activity());
+    renderDashboard();
+
+    await clickKpi("Avg Cost / Feature");
+
+    expect(screen.getByText("30-day spend / 30-day features shipped")).toBeInTheDocument();
+    expect(screen.getByText("Last 30 Days (Features)")).toBeInTheDocument();
+    expect(screen.getByText("Spend by Coding Agent")).toBeInTheDocument();
   });
 
   it("feeds the trend, activity and pull-request panels", async () => {
@@ -221,7 +255,12 @@ describe("DashboardView analytics", () => {
 
     // The trend block is skipped entirely when `trend` is null, so its presence is the assertion.
     await waitFor(() => expect(container.querySelector(".tdb-trend")).not.toBeNull());
+    // The trend axis is daily now ("Sep 12"), so a bare month label can only come from the
+    // activity grid and the PR bars.
     expect(screen.getAllByText("Sep").length).toBeGreaterThan(0);
+    // V1's rolling-average curve, not a previous-year comparison line.
+    expect(screen.getByText("7-day average")).toBeInTheDocument();
+    expect(container.querySelector(".tdb-trend-compare")).toBeNull();
     // ActivityGrid and PillBars render one column/bar per month, and their empty state renders
     // neither — so counting the nodes distinguishes "fed" from "defaulted".
     expect(container.querySelectorAll(".tdb-activity-col")).toHaveLength(2);

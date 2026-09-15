@@ -300,7 +300,7 @@ function vaultPath(vaultId: string | undefined, suffix = ""): string {
   return `/api/vaults/${encodeURIComponent(vaultId?.trim() || "default")}${suffix}`;
 }
 
-export const bridge = {
+const tauriClient = {
   async checkServiceHealth(this: void): Promise<ServiceHealth> {
     return invoke<ServiceHealth>("cmd_check_service_health");
   },
@@ -836,3 +836,62 @@ export const bridge = {
     await invoke("cmd_dismiss_inbox_proposal", { id });
   },
 };
+
+/**
+ * The surface every view talks to, and the seam a non-Tauri client plugs into.
+ *
+ * `tauriClient` reaches the daemon through Tauri IPC, which only works when the app and the daemon share
+ * a machine: `invoke` is not available in a browser, and the webview holds no daemon credential of its
+ * own (see #143). A web or mobile client therefore needs a different implementation of this same shape,
+ * talking HTTP with a session token from `POST /api/auth/login`.
+ *
+ * Views import `bridge` and are indifferent to which implementation is installed. The indirection is a
+ * `Proxy` rather than 100-odd delegating methods, so adding a command to `tauriClient` needs no second
+ * edit here, and `TendrilClient` stays derived from the implementation instead of drifting from it.
+ */
+export type TendrilClient = typeof tauriClient;
+
+let current: TendrilClient = tauriClient;
+
+/** Installs a different client, e.g. an HTTP one for a client that is not on the daemon's machine. */
+export function setTendrilClient(next: TendrilClient): void {
+  current = next;
+}
+
+/** Restores the Tauri client. Tests use this to undo `setTendrilClient`. */
+export function resetTendrilClient(): void {
+  current = tauriClient;
+}
+
+export const bridge: TendrilClient = new Proxy({} as TendrilClient, {
+  get(_target, property) {
+    return (current as unknown as Record<string | symbol, unknown>)[property];
+  },
+  // `vi.spyOn(bridge, "listGitHubIssues")` writes the spy back onto the object, so `set` and
+  // `deleteProperty` have to reach the installed client too. Without them the spy lands on the proxy's
+  // own target, `get` keeps returning the original method, and the stub silently never fires.
+  set(_target, property, value) {
+    (current as unknown as Record<string | symbol, unknown>)[property] = value;
+    return true;
+  },
+  deleteProperty(_target, property) {
+    delete (current as unknown as Record<string | symbol, unknown>)[property];
+    return true;
+  },
+  // `vi.spyOn` installs through `Object.defineProperty`, not a plain assignment, so this trap is what
+  // actually makes spying work; without it the spy is defined on the proxy's own target and `get` keeps
+  // serving the original method.
+  defineProperty(_target, property, descriptor) {
+    Object.defineProperty(current as object, property, descriptor);
+    return true;
+  },
+  has(_target, property) {
+    return property in (current as object);
+  },
+  ownKeys() {
+    return Reflect.ownKeys(current as object);
+  },
+  getOwnPropertyDescriptor(_target, property) {
+    return Reflect.getOwnPropertyDescriptor(current as object, property);
+  },
+});

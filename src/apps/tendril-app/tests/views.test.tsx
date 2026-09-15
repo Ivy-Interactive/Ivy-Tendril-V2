@@ -83,7 +83,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
       render(<DashboardView plans={mockPlans} jobs={mockJobs} onSelectJob={() => {}} />);
 
       expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
-      expect(screen.getByText("Tendril Dashboard")).toBeInTheDocument();
+      expect(screen.getByText("What Are We Producing Today?")).toBeInTheDocument();
       expect(screen.getByText("First Accessible Plan")).toBeInTheDocument();
     });
   });
@@ -314,10 +314,25 @@ describe("Operator Views Component & Accessibility Tests", () => {
       expect(screen.queryByText("First Accessible Plan")).not.toBeInTheDocument();
     });
 
-    it("renders empty state when no plans match filter", () => {
+    // V1 keeps two empty states apart: `NoContentView("No plans", "Plans you create will appear
+    // here")` for a workspace with none, and the inline `NoResultsView` for a filter that
+    // excludes everything.
+    it("renders the no-plans empty state for a workspace with no plans", () => {
       render(<PlansView plans={[]} onSelectPlan={() => {}} onNewPlan={() => {}} />);
 
-      expect(screen.getByText("No plans found")).toBeInTheDocument();
+      expect(screen.getByText("No plans")).toBeInTheDocument();
+      expect(screen.getByText("Plans you create will appear here")).toBeInTheDocument();
+    });
+
+    it("renders the no-results state when a search excludes every plan", () => {
+      render(<PlansView plans={mockPlans} onSelectPlan={() => {}} onNewPlan={() => {}} />);
+
+      fireEvent.change(screen.getByRole("searchbox", { name: /search plans/i }), {
+        target: { value: "nothing matches this" },
+      });
+
+      expect(screen.getByText("No results. Try adjusting your filters.")).toBeInTheDocument();
+      expect(screen.queryByText("No plans")).not.toBeInTheDocument();
     });
   });
 
@@ -327,20 +342,21 @@ describe("Operator Views Component & Accessibility Tests", () => {
 
       expect(screen.getByTestId("plan-detail-view")).toBeInTheDocument();
       expect(screen.getByText("First Accessible Plan")).toBeInTheDocument();
-      expect(screen.getByText("Plan Specification")).toBeInTheDocument();
+      // V1's tab labels and order (`ContentView.Build`): Plan first, Details second.
+      expect(screen.getByRole("button", { name: "Plan" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
       expect(screen.getByText("Diff View")).toBeInTheDocument();
       expect(screen.getByText(/Verifications/)).toBeInTheDocument();
     });
 
-    it("switches to Verifications and Metadata tabs on click", () => {
+    it("switches to Verifications and Details tabs on click", () => {
       render(<PlanDetailView plan={mockPlanDetail} allPlans={mockPlans} />);
 
       const verificationsTab = screen.getByText(/Verifications/);
       fireEvent.click(verificationsTab);
       expect(screen.getByText("Plan Verifications")).toBeInTheDocument();
 
-      const metadataTab = screen.getByText("Metadata & History");
-      fireEvent.click(metadataTab);
+      fireEvent.click(screen.getByRole("button", { name: "Details" }));
       expect(screen.getByText("Repositories")).toBeInTheDocument();
       expect(screen.getByText("/Users/rorychatt/repos/test")).toBeInTheDocument();
     });
@@ -354,9 +370,9 @@ describe("Operator Views Component & Accessibility Tests", () => {
       const dialog = screen.getByRole("dialog", { name: /create new plan/i });
       expect(dialog).toBeInTheDocument();
       expect(screen.getByLabelText(/target project/i)).toBeInTheDocument();
-      expect(screen.getAllByRole("button", { name: /start createplan/i }).length).toBeGreaterThan(
-        0,
-      );
+      // V1's dialog body is the project picker over one ContentInput, which owns the Create
+      // button (`SubmitLabel("Create")`); there is no separate footer submit.
+      expect(screen.getByTitle("Create")).toBeInTheDocument();
 
       const closeBtn = screen.getByRole("button", { name: /close modal/i });
       fireEvent.click(closeBtn);
@@ -382,14 +398,21 @@ describe("Operator Views Component & Accessibility Tests", () => {
         />,
       );
 
-      const textarea = screen.getByLabelText(/task description/i);
-      expect(textarea).toHaveValue("Fix OAuth callback\n\nToken refresh fails on redirect");
-      expect(screen.getByLabelText(/target project/i)).toHaveValue("Tendril-App");
+      expect(
+        screen.getByText("Fix OAuth callback Token refresh fails on redirect", {
+          exact: false,
+        }),
+      ).toBeInTheDocument();
+      // One configured project means no "Auto" and no choice to make, so the toggle variant
+      // renders it pre-selected (`CreatePlanDialog._defaultProject`).
+      expect(screen.getByRole("radio", { name: "Tendril-App" })).toBeChecked();
     });
   });
 
   describe("ShellLayout", () => {
-    it("renders Inbox navigation item and Inbox tab", () => {
+    // Inbox is a footer button, not a nav row, and it is icon-only: V1's `ShowLabel(!inboxInFooter)`
+    // is false once Inbox sits in the footer, so there is no "Inbox" text node to find.
+    it("renders Inbox as an icon-only footer button", () => {
       const handleSelectNav = vi.fn();
       render(
         <ShellLayout
@@ -410,8 +433,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
       );
 
       expect(screen.getByText("Inbox View Content")).toBeInTheDocument();
-      // Verify Inbox tab is rendered in ShellTabs
-      expect(screen.getAllByText("Inbox").length).toBeGreaterThan(0);
+      expect(screen.getByLabelText("Inbox")).toBeInTheDocument();
     });
 
     it("calls onSelectNav with the item id when a nav item is clicked", () => {
@@ -434,11 +456,11 @@ describe("Operator Views Component & Accessibility Tests", () => {
         </ShellLayout>,
       );
 
-      fireEvent.click(screen.getByTitle("Jobs"));
+      fireEvent.click(screen.getByLabelText("Jobs"));
       expect(handleSelectNav).toHaveBeenCalledWith("jobs");
     });
 
-    it("exposes a Pull Requests nav entry that selects the cross-plan view", () => {
+    it("exposes Pull Requests via the settings menu, which selects the cross-plan view", () => {
       const handleSelectNav = vi.fn();
       render(
         <ShellLayout
@@ -459,10 +481,12 @@ describe("Operator Views Component & Accessibility Tests", () => {
       );
 
       expect(screen.getByText("Pull Requests View Content")).toBeInTheDocument();
-      // The nav item plus the tab.
-      expect(screen.getAllByText("Pull Requests").length).toBeGreaterThan(0);
 
-      fireEvent.click(screen.getByTitle("Pull Requests"));
+      // V1 marks the Pull Requests app `isVisible: false` and reaches it from the footer cog's
+      // menu (`settingsMenuItems`), so it is no longer a nav row.
+      // Radix opens the menu on keydown/pointerdown, not click: same approach as toolbar.test.tsx.
+      fireEvent.keyDown(screen.getByLabelText("Settings"), { key: "Enter" });
+      fireEvent.click(screen.getByText("Pull Requests"));
       expect(handleSelectNav).toHaveBeenCalledWith("pull-requests");
     });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import { ReviewActionView } from "../src/views/ReviewActionView";
 import { bridge, type ReviewActionRun } from "../src/api/bridge";
 import { planSummary } from "./fixtures/plan.fixture";
@@ -60,7 +60,13 @@ describe("ReviewActionView", () => {
     expect(await screen.findByTestId("terminal")).toBeInTheDocument();
   });
 
-  it("frames the app once the command prints its URL, and can go back to the terminal", async () => {
+  /**
+   * The swap is one-way, as in V1's `ReviewActionApp`: "the terminal is the start of a review
+   * action, not the point of one", so the tab becomes the app and stays it. The URL is shown by the
+   * viewer's own address bar rather than by chrome of this view's own — `AppPreviewView` adds one
+   * control to the widget, Update, and nothing else.
+   */
+  it("frames the app once the command prints its URL, and does not swap back", async () => {
     const { feed } = stubRun();
 
     render(
@@ -76,11 +82,30 @@ describe("ReviewActionView", () => {
 
     expect(await screen.findByTitle("Web content")).toBeInTheDocument();
     expect(screen.queryByTestId("terminal")).not.toBeInTheDocument();
-    expect(screen.getByText("http://localhost:5173/")).toBeInTheDocument();
+    expect(screen.getByLabelText("Address")).toHaveAttribute("title", "http://localhost:5173/");
+    expect(screen.queryByTestId("review-action-show-terminal")).not.toBeInTheDocument();
+  });
 
-    // The command keeps printing after the app is up; the reviewer can still read it.
-    fireEvent.click(screen.getByTestId("review-action-show-terminal"));
-    expect(await screen.findByTestId("terminal")).toBeInTheDocument();
+  /** `Terminal.Loading($"Starting {action.Name}...")`, dismissed by the command's first output. */
+  it("says which action it is starting until the command prints", async () => {
+    const { feed } = stubRun();
+
+    render(
+      <ReviewActionView
+        target={{ project: "Ivy-Tendril-V2", actionName: "Dev Server" }}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(await screen.findByText("Starting Dev Server…")).toBeInTheDocument();
+
+    // An escape sequence is not output: a command whose first write hides the cursor has not
+    // started printing yet.
+    await feed("\x1b[?25l");
+    expect(screen.getByText("Starting Dev Server…")).toBeInTheDocument();
+
+    await feed("vite v5.0.0 building...\r\n");
+    expect(screen.queryByText("Starting Dev Server…")).not.toBeInTheDocument();
   });
 
   it("keeps the terminal for a project-scoped action, which has no plan to change", async () => {

@@ -168,7 +168,7 @@ describe("JobSessionView", () => {
     expect(screen.queryByTestId("job-failure-reason")).not.toBeInTheDocument();
   });
 
-  it("reports a failed cancel, because the job is still running", async () => {
+  it("reports a failed stop, because the job is still running", async () => {
     vi.spyOn(bridge, "cancelJob").mockRejectedValue(
       bridgeError({
         code: "CANCEL_JOB_FAILED",
@@ -179,15 +179,15 @@ describe("JobSessionView", () => {
 
     render(<JobSessionView job={job()} events={[]} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /cancel job/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^stop$/i }));
 
     await waitFor(() =>
       expect(screen.getByTestId("job-cancel-error")).toHaveTextContent(
-        /Cancel failed: Job 00158 already completed/,
+        /Stop failed: Job 00158 already completed/,
       ),
     );
     // Re-enabled so the operator can try again.
-    expect(screen.getByRole("button", { name: /cancel job/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^stop$/i })).toBeEnabled();
   });
 
   it("awaits an injected onCancel handler and reports its rejection", async () => {
@@ -196,10 +196,10 @@ describe("JobSessionView", () => {
       .mockRejectedValue(bridgeError({ code: "DISCONNECTED", message: "no daemon" }));
 
     render(<JobSessionView job={job()} events={[]} onCancel={onCancel} />);
-    fireEvent.click(screen.getByRole("button", { name: /cancel job/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^stop$/i }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("job-cancel-error")).toHaveTextContent(/Cancel failed: no daemon/),
+      expect(screen.getByTestId("job-cancel-error")).toHaveTextContent(/Stop failed: no daemon/),
     );
   });
 });

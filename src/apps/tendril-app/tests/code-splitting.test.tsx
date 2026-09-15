@@ -127,11 +127,8 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     );
 
     expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
-    expect(screen.getByText("Tendril Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("What Are We Producing Today?")).toBeInTheDocument();
     expect(screen.getByText("Active Split Plan")).toBeInTheDocument();
-    expect(
-      screen.getByText("Autonomous Pipeline Health and Execution Metrics"),
-    ).toBeInTheDocument();
   });
 
   it("renders lazy-loaded DashboardView within a Suspense boundary when resolved", async () => {
@@ -152,7 +149,7 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     });
 
     expect(screen.getByTestId("dashboard-view")).toBeInTheDocument();
-    expect(screen.getByText("Tendril Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("What Are We Producing Today?")).toBeInTheDocument();
   });
 
   it("produces isolated vendor chunks and code-split view chunks in the build output", () => {

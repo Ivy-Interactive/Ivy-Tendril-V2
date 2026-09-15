@@ -1,43 +1,18 @@
 import { NewsletterSignup } from "../../components/NewsletterSignup";
-import { ONBOARDING_AGENTS } from "./CodingAgentStep";
-
-export interface CompleteStepProps {
-  selectedAgent: string | null;
-  projectName: string;
-  projectRegistered: boolean;
-}
 
 /**
- * What Finish will write, spelled out. At most two keys are touched — `codingAgent` (only when an
- * agent was picked) and `onboarding` — and both are merged into `config.yaml`, never rewritten over.
+ * V1's `CompleteStepView`: a heading, one line, and the newsletter box. Nothing else - V1 does not
+ * restate what Finish will write, and the Finish button itself lives in the wizard's footer.
+ *
+ * Finish touches at most two keys, `codingAgent` (only when an agent was picked) and `onboarding`,
+ * and both are merged into `config.yaml`, never rewritten over.
  */
-export function CompleteStep({ selectedAgent, projectName, projectRegistered }: CompleteStepProps) {
-  const agentLabel = ONBOARDING_AGENTS.find((a) => a.id === selectedAgent)?.label;
-
+export function CompleteStep() {
   return (
     <div className="space-y-4" data-testid="onboarding-step-complete">
+      <h3 className="text-base font-semibold text-foreground">Ready to Go!</h3>
       <p className="text-sm text-muted-foreground">
-        That is everything Tendril needs. Finish saves your choices and opens the app.
-      </p>
-
-      <ul className="space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
-        <li>
-          <span className="text-muted-foreground">Coding agent: </span>
-          <span className="text-foreground" data-testid="onboarding-summary-agent">
-            {agentLabel ?? "not selected — Settings keeps the current value"}
-          </span>
-        </li>
-        <li>
-          <span className="text-muted-foreground">First project: </span>
-          <span className="text-foreground" data-testid="onboarding-summary-project">
-            {projectRegistered && projectName ? projectName : "skipped — add one from Settings"}
-          </span>
-        </li>
-      </ul>
-
-      <p className="text-xs text-muted-foreground">
-        Next: create a plan from the Dashboard, or let a running AddProject job finish deriving your
-        project's verifications first.
+        Your project is configured. Click Finish to start using Tendril.
       </p>
 
       <div className="rounded-lg border border-border p-3">

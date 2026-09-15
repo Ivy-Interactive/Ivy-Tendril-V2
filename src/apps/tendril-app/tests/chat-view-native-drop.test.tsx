@@ -87,20 +87,20 @@ describe("ChatView native webview drag-drop", () => {
     await renderChatView();
 
     emit({ type: "enter", paths: [] });
-    expect(screen.getByText("Drop files here to attach")).toBeInTheDocument();
+    expect(screen.getByText("Drop files here to attach to message")).toBeInTheDocument();
 
     emit({ type: "leave" });
-    expect(screen.queryByText("Drop files here to attach")).not.toBeInTheDocument();
+    expect(screen.queryByText("Drop files here to attach to message")).not.toBeInTheDocument();
   });
 
   it("hides the drop overlay on drop", async () => {
     await renderChatView();
 
     emit({ type: "enter", paths: [] });
-    expect(screen.getByText("Drop files here to attach")).toBeInTheDocument();
+    expect(screen.getByText("Drop files here to attach to message")).toBeInTheDocument();
 
     emit({ type: "drop", paths: ["/tmp/a.txt"] });
-    expect(screen.queryByText("Drop files here to attach")).not.toBeInTheDocument();
+    expect(screen.queryByText("Drop files here to attach to message")).not.toBeInTheDocument();
   });
 
   it("does not add a duplicate chip for a path already attached", async () => {
@@ -119,9 +119,7 @@ describe("ChatView native webview drag-drop", () => {
     await renderChatView();
 
     const file = new File(["dummy"], "ignored.ts", { type: "text/plain" });
-    const composerArea = screen
-      .getByPlaceholderText(/Ask Tendril or discuss plans/i)
-      .closest("div[class*='border-t']");
+    const composerArea = screen.getByTestId("chat-composer-area");
     expect(composerArea).toBeInTheDocument();
 
     fireEvent.drop(composerArea!, {
@@ -140,7 +138,7 @@ describe("ChatView native webview drag-drop", () => {
       expect(screen.getByText("notes.md")).toBeInTheDocument();
     });
 
-    const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
     fireEvent.change(textarea, { target: { value: "Look at this" } });
     fireEvent.click(screen.getByTitle("Send message"));
 

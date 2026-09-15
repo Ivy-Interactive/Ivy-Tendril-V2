@@ -88,7 +88,7 @@ questions:
       expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
-    const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
     fireEvent.change(textarea, { target: { value: "Let us discuss API design." } });
 
     const sendBtn = screen.getByTitle("Send message");
@@ -164,15 +164,13 @@ questions:
     const file = new File(["dummy content"], "test-dropped-file.ts", { type: "text/plain" });
     Object.defineProperty(file, "path", { value: "/path/to/test-dropped-file.ts" });
 
-    const composerArea = screen
-      .getByPlaceholderText(/Ask Tendril or discuss plans/i)
-      .closest("div[class*='border-t']");
+    const composerArea = screen.getByTestId("chat-composer-area");
     expect(composerArea).toBeInTheDocument();
 
     fireEvent.dragEnter(composerArea!, {
       dataTransfer: { files: [file] },
     });
-    expect(screen.getByText("Drop files here to attach")).toBeInTheDocument();
+    expect(screen.getByText("Drop files here to attach to message")).toBeInTheDocument();
 
     fireEvent.drop(composerArea!, {
       dataTransfer: { files: [file] },
@@ -181,7 +179,7 @@ questions:
     await waitFor(() => {
       expect(screen.getByText("test-dropped-file.ts")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Drop files here to attach")).not.toBeInTheDocument();
+    expect(screen.queryByText("Drop files here to attach to message")).not.toBeInTheDocument();
   });
 
   it("adds attachment chips when selecting files via file input", async () => {
@@ -254,7 +252,7 @@ questions:
       expect(screen.getByText("payload.txt")).toBeInTheDocument();
     });
 
-    const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
     fireEvent.change(textarea, { target: { value: "Review this file" } });
 
     const sendBtn = screen.getByTitle("Send message");
@@ -317,22 +315,27 @@ questions:
     expect(attachmentChip.closest("div")).toHaveAttribute("title", "/var/log/system.log");
   });
 
-  it("renders Auto-scroll toggle button with initial state ON and toggles state on click", async () => {
+  it("renders the auto-scroll lock with initial state ON and toggles state on click", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
 
     render(<ChatView />);
 
-    const toggleBtn = await screen.findByTestId("chat-autoscroll-toggle");
-    expect(toggleBtn).toBeInTheDocument();
-    expect(toggleBtn).toHaveTextContent("Auto-scroll: ON");
+    // The header is keyed on the session, so it remounts once the session list arrives; wait for
+    // that before holding on to the control.
+    await waitFor(() => {
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+    });
 
-    fireEvent.click(toggleBtn);
-    expect(toggleBtn).toHaveTextContent("Auto-scroll: OFF");
+    const toggle = () => screen.getByTestId("chat-autoscroll-toggle");
+    expect(toggle()).toHaveTextContent("Auto-scroll: ON");
 
-    fireEvent.click(toggleBtn);
-    expect(toggleBtn).toHaveTextContent("Auto-scroll: ON");
+    fireEvent.click(toggle());
+    expect(toggle()).toHaveTextContent("Auto-scroll: OFF");
+
+    fireEvent.click(toggle());
+    expect(toggle()).toHaveTextContent("Auto-scroll: ON");
   });
 
   it("renders bottom anchor element with data-testid chat-scroll-anchor", async () => {
@@ -464,9 +467,13 @@ questions:
 
     render(<ChatView />);
 
-    const toggleBtn = await screen.findByTestId("chat-autoscroll-toggle");
-    fireEvent.click(toggleBtn);
-    expect(toggleBtn).toHaveTextContent("Auto-scroll: OFF");
+    await waitFor(() => {
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+    });
+
+    const toggle = () => screen.getByTestId("chat-autoscroll-toggle");
+    fireEvent.click(toggle());
+    expect(toggle()).toHaveTextContent("Auto-scroll: OFF");
 
     scrollIntoViewMock.mockClear();
 
@@ -512,7 +519,7 @@ questions:
       expect(await screen.findByTestId("chat-scroll-tail-button")).toBeInTheDocument();
     }
 
-    const textarea = screen.getByPlaceholderText(/Ask Tendril or discuss plans/i);
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
     fireEvent.change(textarea, { target: { value: "New question" } });
 
     scrollIntoViewMock.mockClear();
@@ -603,6 +610,93 @@ questions:
       expect(open).toHaveBeenCalled();
       expect(clickSpy).toHaveBeenCalled();
     });
+  });
+
+  it("greets an empty thread with the headline and the prompts it suggests", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("What Are We Producing Today?")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/^Good (Morning|Afternoon|Evening)!$/)).toBeInTheDocument();
+
+    // The chip drafts the full prompt, not its own label.
+    const chip = screen.getByText("What should I work on next?");
+    expect(chip).toHaveAttribute(
+      "title",
+      "Look at my draft plans across all projects and recommend which two to execute next, with reasons.",
+    );
+    fireEvent.click(chip);
+    expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue(
+      "Look at my draft plans across all projects and recommend which two to execute next, with reasons.",
+    );
+  });
+
+  it("confirms before deleting a chat and only then deletes it", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    const deleteSpy = vi.spyOn(chatApi, "deleteSession").mockResolvedValue();
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getByTitle("Delete"));
+    const dialog = await screen.findByTestId("chat-delete-session-dialog");
+    expect(dialog).toHaveTextContent('Are you sure you want to delete "Architecture Planning"?');
+    expect(deleteSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("chat-delete-session-confirm"));
+    await waitFor(() => {
+      expect(deleteSpy).toHaveBeenCalledWith("session-10");
+    });
+  });
+
+  it("queues a prompt typed while the agent is still working instead of refusing it", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    const executeSpy = vi.spyOn(chatApi, "executeTurn").mockResolvedValue();
+    const postSpy = vi.spyOn(chatApi, "postMessage").mockResolvedValue({ queued: true });
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      chatStore.handleChatEvent({
+        type: "chat.generating_state",
+        sessionId: "session-10",
+        isGenerating: true,
+      });
+    });
+
+    // While the agent works the composer offers the queue and the stop, never a send.
+    expect(screen.getByTitle("Stop agent")).toBeInTheDocument();
+    expect(screen.queryByTitle("Send message")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("composer-queue-button")).not.toBeInTheDocument();
+
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
+    fireEvent.change(textarea, { target: { value: "And after that, deploy it" } });
+
+    fireEvent.click(screen.getByTestId("composer-queue-button"));
+
+    await waitFor(() => {
+      expect(postSpy).toHaveBeenCalledWith(
+        "session-10",
+        "And after that, deploy it",
+        expect.objectContaining({ enqueue: true }),
+      );
+    });
+    expect(executeSpy).not.toHaveBeenCalled();
   });
 
   it("renders thread list without CSS scroll-button hack and suppresses library scroll button", async () => {

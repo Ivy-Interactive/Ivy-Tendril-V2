@@ -1,8 +1,8 @@
 import React from "react";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { Checkbox } from "../ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Switch } from "../ui/switch";
 import { VaultDialogShell } from "./VaultDialogShell";
 import type { GitHubAccountOption } from "./types";
 
@@ -103,11 +103,16 @@ export const CreateVaultDialog: React.FC<CreateVaultDialogProps> = ({
         )}
       </div>
 
-      <label className="flex items-center gap-2 text-xs text-foreground">
-        <Switch
+      {/* `isPrivate.ToBoolInput("Private Repository")` — `BoolInputVariant.Checkbox` is the default
+          `ToBoolInput` variant, so every vault bool reads as a checkbox rather than a switch. */}
+      <label
+        className="flex items-center gap-2 text-xs text-foreground"
+        htmlFor="create-vault-private"
+      >
+        <Checkbox
+          id="create-vault-private"
           checked={isPrivate}
-          onCheckedChange={setIsPrivate}
-          aria-label="Private Repository"
+          onCheckedChange={(checked) => setIsPrivate(checked === true)}
         />
         Private Repository
       </label>

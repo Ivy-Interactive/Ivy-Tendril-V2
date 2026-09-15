@@ -19,7 +19,7 @@ describe("TendrilProcessViewer", () => {
     );
 
     expect(screen.getByText("New Plan")).toBeInTheDocument();
-    expect(screen.getByText("Drafts")).toBeInTheDocument();
+    expect(screen.getByText("Plans")).toBeInTheDocument();
     expect(screen.getByText("Review")).toBeInTheDocument();
 
     const createBtn = screen.getByText("New Plan").closest("button");
@@ -69,7 +69,7 @@ describe("TendrilProcessViewer", () => {
     fireEvent.click(screen.getByText("New Plan"));
     expect(eventHandler).toHaveBeenCalledWith("OnCreate", "test-process", []);
 
-    fireEvent.click(screen.getByText("Drafts"));
+    fireEvent.click(screen.getByText("Plans"));
     expect(eventHandler).toHaveBeenCalledWith("OnDrafts", "test-process", []);
 
     fireEvent.click(screen.getByText("Review"));

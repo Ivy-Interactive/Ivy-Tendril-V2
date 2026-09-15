@@ -1,6 +1,6 @@
 import React from "react";
-import { Alert, AlertDescription } from "../ui/alert";
 import { Button, type ButtonProps } from "../ui/button/button";
+import { Callout } from "../ui/callout";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +21,8 @@ export interface VaultDialogShellProps {
   submitLabel: string;
   submitDisabled?: boolean;
   submitVariant?: ButtonProps["variant"];
+  /** Leading icon on the confirm button, matching the icon the original puts on it. */
+  submitIcon?: React.ReactNode;
   onSubmit: () => void;
   children?: React.ReactNode;
 }
@@ -43,6 +45,7 @@ export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
   submitLabel,
   submitDisabled = false,
   submitVariant,
+  submitIcon,
   onSubmit,
   children,
 }) => (
@@ -70,11 +73,7 @@ export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-2 text-sm text-foreground">
         {children}
-        {error && (
-          <Alert variant="destructive" data-testid={`${testId}-error`}>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
+        {error && <Callout.Error data-testid={`${testId}-error`}>{error}</Callout.Error>}
       </div>
 
       <DialogFooter>
@@ -88,6 +87,7 @@ export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
           aria-disabled={submitDisabled}
           onClick={onSubmit}
         >
+          {submitIcon}
           {submitLabel}
         </Button>
       </DialogFooter>

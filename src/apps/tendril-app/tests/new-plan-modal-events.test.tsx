@@ -64,8 +64,9 @@ describe("NewPlanModal ContentInput event handling", () => {
     );
     fireEvent.change(contentInputTextarea, { target: { value: "Investigate flaky test" } });
 
-    const fallbackTextarea = screen.getByLabelText(/task description/i);
-    expect(fallbackTextarea).toHaveValue("Investigate flaky test");
+    // The mock is a controlled input, so its value coming back is the modal having taken the change.
+    // (V1's dialog has one editor - the ContentInput - so there is no second textarea to read.)
+    expect(contentInputTextarea).toHaveValue("Investigate flaky test");
   });
 
   it("dispatches a CreatePlan job when ContentInput's own submit button fires OnSubmit", async () => {
@@ -130,8 +131,7 @@ describe("NewPlanModal ContentInput event handling", () => {
     const malformedButton = screen.getByTitle("Send malformed");
     fireEvent.click(malformedButton);
 
-    const fallbackTextarea = screen.getByLabelText(/task description/i);
-    expect(fallbackTextarea).not.toHaveValue("[object Object]");
+    expect(contentInputTextarea).not.toHaveValue("[object Object]");
     expect(startJobSpy).not.toHaveBeenCalled();
   });
 });

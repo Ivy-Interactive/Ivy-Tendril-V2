@@ -26,7 +26,6 @@ describe("PlanDiffView comment toggle", () => {
 
     const button = getByLabelText("Hide comments") as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(button.title).toBe("No comments on this file");
   });
 
   it("shows the count", () => {

@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { getInitials, type MarkdownAnnotation } from "./annotationUtils";
+import { TuiBadge } from "../ui/TuiBadge";
+import { TuiKbd } from "../ui/TuiKbd";
+import { Tooltip } from "../ui/TuiTooltip";
 
 interface Position {
   top: number;
@@ -169,7 +172,11 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
             <span className="pmv-popover-author-name">{annotation.author.trim()}</span>
           </div>
         )}
-        {isResolved && <span className="pmv-resolved-badge">✓ Resolved</span>}
+        {isResolved && (
+          <TuiBadge kind="success" className="pmv-resolved-badge">
+            ✓ Resolved
+          </TuiBadge>
+        )}
       </div>
       <div className="pmv-popover-quote">
         &ldquo;{annotation.selectedText.slice(0, 50)}
@@ -192,24 +199,26 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
       <div className="pmv-popover-actions pmv-popover-actions--between">
         <div className="flex items-center gap-1">
           {canResolve && onToggleResolve && (
-            <button
-              type="button"
-              className={`pmv-popover-btn ${isResolved ? "pmv-popover-btn--ghost" : "pmv-popover-btn--success"}`}
-              onClick={onToggleResolve}
-              title={isResolved ? "Reopen annotation" : "Mark annotation as resolved"}
-            >
-              {isResolved ? "Unresolve" : "Resolve"}
-            </button>
+            <Tooltip content={isResolved ? "Reopen annotation" : "Mark annotation as resolved"}>
+              <button
+                type="button"
+                className={`pmv-popover-btn ${isResolved ? "pmv-popover-btn--ghost" : "pmv-popover-btn--success"}`}
+                onClick={onToggleResolve}
+              >
+                {isResolved ? "Unresolve" : "Resolve"}
+              </button>
+            </Tooltip>
           )}
           {canRemove && (
-            <button
-              type="button"
-              className="pmv-popover-btn pmv-popover-btn--danger"
-              onClick={onRemove}
-              title="Delete annotation"
-            >
-              Delete
-            </button>
+            <Tooltip content="Delete annotation">
+              <button
+                type="button"
+                className="pmv-popover-btn pmv-popover-btn--danger"
+                onClick={onRemove}
+              >
+                Delete
+              </button>
+            </Tooltip>
           )}
         </div>
         <div className="pmv-popover-actions pmv-popover-actions--end">
@@ -255,12 +264,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
       className="pmv-selection-toolbar"
       style={{ top: position.top, left: position.left, visibility: visible ? "visible" : "hidden" }}
     >
-      <button
-        type="button"
-        className="pmv-selection-toolbar-btn"
-        onClick={onAddComment}
-        title={`Add Comment (${ADD_COMMENT_SHORTCUT})`}
-      >
+      <button type="button" className="pmv-selection-toolbar-btn" onClick={onAddComment}>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           width="12"
@@ -276,7 +280,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
         </svg>
         Add Comment
-        <kbd className="pmv-selection-toolbar-kbd">{ADD_COMMENT_SHORTCUT}</kbd>
+        <TuiKbd keys={ADD_COMMENT_SHORTCUT} className="pmv-selection-toolbar-kbd" />
       </button>
     </div>,
     document.body,

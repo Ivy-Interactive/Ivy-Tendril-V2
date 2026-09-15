@@ -149,24 +149,40 @@ describe("VaultSettingsView", () => {
     expect(screen.queryByTestId("create-vault-dialog")).not.toBeInTheDocument();
   });
 
-  it("disables Sync and Open a PR with 'Connect a vault first' until a vault exists", async () => {
-    const spies = stubBridge({ vaults: [] });
+  /* `VaultSetupView.cs` returns the not-configured layout and nothing else while no vault exists:
+     the picker, the details and the whole toolbar only come with a vault. */
+  it("shows no vault toolbar at all until a vault exists", async () => {
+    const spies = stubBridge({ vaults: [], projects: [localProject("Alpha")] });
 
     render(<VaultSettingsView />);
 
     await screen.findByTestId("vault-empty-state");
-    const sync = screen.getByRole("button", { name: /^Sync$/ });
-    const openPr = screen.getByRole("button", { name: /Open a PR/ });
-
-    for (const button of [sync, openPr]) {
-      expect(button).toBeDisabled();
-      expect(button).toHaveAttribute("title", "Connect a vault first");
-    }
-
-    fireEvent.click(sync);
-    fireEvent.click(openPr);
+    expect(screen.queryByRole("button", { name: /^Sync$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open a PR/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Active vault" })).not.toBeInTheDocument();
     expect(spies.pullVaultLatest).not.toHaveBeenCalled();
     expect(spies.collectProjectAssets).not.toHaveBeenCalled();
+  });
+
+  it("offers sync, publish, connect and create once a vault is configured", async () => {
+    stubBridge({ vaults: [vaultStatus()], projects: [localProject("Alpha")] });
+
+    render(<VaultSettingsView />);
+
+    await screen.findByTestId("vault-status-card");
+    for (const name of [/^Sync$/, /Open a PR/, /Connect Vault/, /Create Vault/]) {
+      expect(screen.getByRole("button", { name })).toBeEnabled();
+    }
+  });
+
+  /* `hasChangesToPublish`: with no local project and nothing unpublished there is no PR to open. */
+  it("hides Open a PR when there is nothing to publish", async () => {
+    stubBridge({ vaults: [vaultStatus()], projects: [] });
+
+    render(<VaultSettingsView />);
+
+    await screen.findByTestId("vault-status-card");
+    expect(screen.queryByRole("button", { name: /Open a PR/ })).not.toBeInTheDocument();
   });
 
   it("shows the connected vault and persists the always-in-sync toggle", async () => {
@@ -181,12 +197,25 @@ describe("VaultSettingsView", () => {
     expect(within(card).getByRole("button", { name: "acme/Tendril-Vault" })).toBeInTheDocument();
     expect(within(card).getByText("main")).toBeInTheDocument();
     expect(within(card).getByTestId("vault-git-status")).toHaveTextContent("2 behind");
+    expect(within(card).getByTestId("vault-git-status")).toHaveClass("text-destructive");
+    expect(within(card).getByText("Never")).toBeInTheDocument();
 
-    fireEvent.click(within(card).getByRole("switch", { name: "Always in sync" }));
+    fireEvent.click(within(card).getByRole("checkbox", { name: "Always in sync" }));
 
     await waitFor(() => {
       expect(spies.setVaultAlwaysUpToDate).toHaveBeenCalledWith(true, "v1");
     });
+  });
+
+  it("marks an in-sync vault with a tick and a synced-at stamp", async () => {
+    const synced = vaultStatus({ lastSyncedAt: "2026-01-02T03:04:05Z" });
+    stubBridge({ vaults: [synced], status: synced });
+
+    render(<VaultSettingsView />);
+
+    const card = await screen.findByTestId("vault-status-card");
+    expect(within(card).getByTestId("vault-git-status")).toHaveTextContent("✓ In sync");
+    expect(within(card).getByText("Jan 2, 2026 03:04 UTC")).toBeInTheDocument();
   });
 
   it("routes a name conflict through merge and a new project through import", async () => {

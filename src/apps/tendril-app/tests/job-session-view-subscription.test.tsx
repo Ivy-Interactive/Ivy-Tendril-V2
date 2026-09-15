@@ -160,10 +160,14 @@ describe("JobSessionView Real-Time Subscription", () => {
     expect(screen.queryByText("Running")).not.toBeInTheDocument();
   });
 
-  it("displays fallback placeholder text when rendered with empty events before stream arrives", () => {
+  // V1's `OutputSheet.cs` renders the AgentViewer for a running job even with nothing buffered, and
+  // lets the viewer's own animated status label say where it is - the same choice
+  // `ProjectAgentStepView.cs` documents, rather than a placeholder event faked into the stream.
+  it("leaves a running job with no output yet to the viewer's own status label", () => {
     render(<JobSessionView job={mockRunningJob} events={[]} />);
 
-    expect(screen.getByText("Waiting for agent output...")).toBeInTheDocument();
+    expect(screen.getByText("Starting\u2026")).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for agent output...")).not.toBeInTheDocument();
   });
 
   it("renders_detached_job_badge", () => {

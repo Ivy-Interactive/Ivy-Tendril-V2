@@ -236,6 +236,9 @@ importers:
       '@hpcc-js/wasm-graphviz':
         specifier: 1.22.0
         version: 1.22.0
+      '@ivy-interactive/ivy-design-system':
+        specifier: 1.1.18
+        version: 1.1.18
       '@radix-ui/react-accordion':
         specifier: 1.2.12
         version: 1.2.12(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -1177,6 +1180,9 @@ packages:
   '@istanbuljs/schema@0.1.6':
     resolution: {integrity: sha512-+Sg6GCR/wy1oSmQDFq4LQDAhm3ETKnorxN+y5nbLULOR3P0c14f2Wurzj3/xqPXtasLFfHd5iRFQ7AJt4KH2cw==}
     engines: {node: '>=8'}
+
+  '@ivy-interactive/ivy-design-system@1.1.18':
+    resolution: {integrity: sha512-bkfnLdTodu67hP6OJCy7LCgoIfCwf8Wnw3dRtSU6PIDAp/1jlPajPAiSPb3Im6LcRPVsalt9YLBh582JcKVyzQ==}
 
   '@jest/console@29.7.0':
     resolution: {integrity: sha512-5Ni4CU7XHQi32IJ398EEP4RrB8eV09sXP2ROqD4bksHrnTree52PsxvX8tpL8LvTZ3pFzXyPbNQReSN41CAhOg==}
@@ -7227,6 +7233,8 @@ snapshots:
       resolve-from: 5.0.0
 
   '@istanbuljs/schema@0.1.6': {}
+
+  '@ivy-interactive/ivy-design-system@1.1.18': {}
 
   '@jest/console@29.7.0':
     dependencies:

@@ -23,6 +23,12 @@ const { FakeTerminal, FakeFitAddon } = vi.hoisted(() => {
     disposed = false;
     cleared = false;
     focused = false;
+    /** The grid a real emulator reports once it has measured its container. */
+    cols = 120;
+    rows = 40;
+    pasted: string[] = [];
+    keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
+    selection = "";
 
     private dataHandlers: ((data: string) => void)[] = [];
     private resizeHandlers: ((size: { rows: number; cols: number }) => void)[] = [];
@@ -49,6 +55,19 @@ const { FakeTerminal, FakeFitAddon } = vi.hoisted(() => {
     }
     dispose() {
       this.disposed = true;
+    }
+
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
+      this.keyHandler = handler;
+    }
+    hasSelection() {
+      return this.selection.length > 0;
+    }
+    getSelection() {
+      return this.selection;
+    }
+    paste(text: string) {
+      this.pasted.push(text);
     }
 
     onData(handler: (data: string) => void): { dispose: () => void } {
@@ -207,6 +226,137 @@ describe("Terminal", () => {
     expect(onResize).toHaveBeenCalledWith(40, 120);
   });
 
+  it("reports the grid it opened at, not only later changes", async () => {
+    giveContainersASize();
+    const onResize = vi.fn();
+    await act(async () => {
+      render(<Terminal onResize={onResize} />);
+    });
+
+    // `fit()` raises the emulator's own resize event only when the grid changed, so a terminal that
+    // opened at the size it wanted would otherwise never tell the host what to size the pty to.
+    expect(onResize).toHaveBeenCalledWith(40, 120);
+  });
+
+  it("opens with Ivy.Widgets.Xterm's defaults", async () => {
+    await act(async () => {
+      render(<Terminal />);
+    });
+
+    const options = latest().options;
+    expect(options.fontSize).toBe(14);
+    expect(options.lineHeight).toBe(1);
+    expect(options.scrollback).toBe(1000);
+    expect(options.cursorStyle).toBe("block");
+    expect(options.cursorBlink).toBe(true);
+    expect(options.disableStdin).toBe(false);
+    expect((options.theme as { background: string }).background).toBe("#000000");
+  });
+
+  it("writes the snapshot the host already had before any streamed output", async () => {
+    const ref = React.createRef<TerminalHandle>();
+    act(() => {
+      render(<Terminal ref={ref} initialContent={"restored scrollback\r\n"} />);
+    });
+    act(() => ref.current?.write("live output\r\n"));
+
+    await act(async () => {});
+
+    expect(latest().written).toEqual(["restored scrollback\r\n", "live output\r\n"]);
+  });
+
+  it("takes the keyboard away from a pty that has exited, and hides its cursor", async () => {
+    let rerender: (ui: React.ReactElement) => void = () => {};
+    await act(async () => {
+      ({ rerender } = render(<Terminal />));
+    });
+    const instance = latest();
+
+    await act(async () => {
+      rerender(<Terminal closed />);
+    });
+
+    expect(instance.options.disableStdin).toBe(true);
+    expect(instance.options.cursorBlink).toBe(false);
+    // A caret left blinking on a dead pty invites typing that goes nowhere.
+    expect(instance.written).toContain("\x1b[?25l");
+    // Still the same emulator: the log the process left behind has to stay readable.
+    expect(instance.disposed).toBe(false);
+  });
+
+  it("drops keystrokes once closed, without being told it is read-only", async () => {
+    const onInput = vi.fn();
+    let rerender: (ui: React.ReactElement) => void = () => {};
+    await act(async () => {
+      ({ rerender } = render(<Terminal onInput={onInput} />));
+    });
+    await act(async () => {
+      rerender(<Terminal onInput={onInput} closed />);
+    });
+
+    act(() => latest().emitData("y"));
+
+    expect(onInput).not.toHaveBeenCalled();
+  });
+
+  it("copies a selection on Ctrl+C but leaves an empty one to the process as SIGINT", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    // Defined rather than stubbed whole: jsdom's navigator carries things testing-library reads.
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    await act(async () => {
+      render(<Terminal />);
+    });
+    const instance = latest();
+
+    // No selection: Ctrl+C has to reach the pty.
+    expect(
+      instance.keyHandler?.({
+        type: "keydown",
+        key: "c",
+        ctrlKey: true,
+        preventDefault: () => {},
+      } as unknown as KeyboardEvent),
+    ).toBe(true);
+    expect(writeText).not.toHaveBeenCalled();
+
+    instance.selection = "pass: 35 files";
+    expect(
+      instance.keyHandler?.({
+        type: "keydown",
+        key: "c",
+        ctrlKey: true,
+        preventDefault: () => {},
+      } as unknown as KeyboardEvent),
+    ).toBe(false);
+    expect(writeText).toHaveBeenCalledWith("pass: 35 files");
+  });
+
+  it("shows the loading overlay until the process prints something visible", async () => {
+    const ref = React.createRef<TerminalHandle>();
+    await act(async () => {
+      render(<Terminal ref={ref} loading loadingText="Starting Claude..." />);
+    });
+
+    expect(screen.getByTestId("terminal-loading").textContent).toContain("Starting Claude...");
+
+    // A pty emits a title set and cursor homing within milliseconds of spawning, long before the
+    // process itself writes: dismissing on that would flash the overlay away over an empty screen.
+    await act(async () => ref.current?.write("\x1b]0;zsh\x07\x1b[2J\x1b[H"));
+    expect(screen.queryByTestId("terminal-loading")).not.toBeNull();
+
+    await act(async () => ref.current?.write("Welcome to Claude Code"));
+    expect(screen.queryByTestId("terminal-loading")).toBeNull();
+  });
+
+  it("never shows the overlay for a pty that has already exited", async () => {
+    await act(async () => {
+      render(<Terminal loading closed />);
+    });
+
+    expect(screen.queryByTestId("terminal-loading")).toBeNull();
+  });
+
   it("keeps calling the current callbacks after a re-render", async () => {
     const first = vi.fn();
     const second = vi.fn();
@@ -246,7 +396,7 @@ describe("Terminal", () => {
     expect(instance.disposed).toBe(false);
     expect(instance.options.fontSize).toBe(18);
     expect((instance.options.theme as { background: string }).background).toBe("#123456");
-    expect((instance.options.theme as { foreground: string }).foreground).toBe("#e4e4e7");
+    expect((instance.options.theme as { foreground: string }).foreground).toBe("#d4d4d4");
   });
 
   it("does not fit a container that has not been laid out yet", async () => {

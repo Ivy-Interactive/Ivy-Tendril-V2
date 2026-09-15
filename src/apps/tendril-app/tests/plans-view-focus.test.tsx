@@ -26,7 +26,9 @@ describe("PlansView focus-visible styling", () => {
     const cards = screen.getAllByRole("listitem");
     const highlighted = cards[0];
     expect(highlighted.className).toContain("ring-1");
-    expect(highlighted.className).toContain("ring-emerald-500");
+    // Semantic token, not a Tailwind palette literal: `ring-emerald-500` was the old
+    // near-black-primary tuning and the parity contract bans hardcoded colours.
+    expect(highlighted.className).toContain("ring-primary");
     expect(highlighted.className).toContain("focus-visible:ring-2");
   });
 });

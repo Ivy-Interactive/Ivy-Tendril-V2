@@ -15,6 +15,7 @@ const freshInstall: OnboardingStatus = {
   tendrilHome: "/tmp/tendril-home",
 };
 
+/** Git is required and failing, which is what V1 refuses to move past. */
 const checks: DoctorCheck[] = [
   {
     name: "Git",
@@ -42,7 +43,14 @@ const checks: DoctorCheck[] = [
   },
 ];
 
-/** Renders the wizard with the doctor call resolved, so step 1 is never mid-flight. */
+/** The same registry with nothing required missing, so picking an agent advances. */
+const healthyChecks: DoctorCheck[] = checks.map((check) =>
+  check.name === "Git"
+    ? { ...check, status: "Ok" as const, message: "Git installed: git version 2.43.0" }
+    : check,
+);
+
+/** Renders the wizard with the doctor call resolved, so the first step is never mid-flight. */
 async function renderWizard(onFinished = vi.fn()) {
   await act(async () => {
     render(<OnboardingWizard status={freshInstall} onFinished={onFinished} />);
@@ -56,6 +64,19 @@ const click = async (testId: string) => {
   });
 };
 
+/**
+ * V1's stepper is how you get past a step you do not want to fill in - `OnboardingApp.OnSelect`
+ * accepts any target unless you are on the last step, where it only goes backwards - so the walks
+ * below navigate with it rather than with a per-step Skip button, which V1 only has on the project
+ * step.
+ */
+const goToStep = (index: number) => click(`onboarding-step-nav-${index}`);
+
+const AGENT_STEP = 0;
+const HOME_STEP = 1;
+const PROJECT_STEP = 2;
+const COMPLETE_STEP = 3;
+
 describe("OnboardingWizard", () => {
   let runDoctor: ReturnType<typeof vi.spyOn>;
   let dismissOnboarding: ReturnType<typeof vi.spyOn>;
@@ -65,7 +86,7 @@ describe("OnboardingWizard", () => {
   let startJob: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    runDoctor = vi.spyOn(bridge, "runDoctor").mockResolvedValue(checks);
+    runDoctor = vi.spyOn(bridge, "runDoctor").mockResolvedValue(healthyChecks);
     dismissOnboarding = vi.spyOn(bridge, "dismissOnboarding").mockResolvedValue(undefined);
     completeOnboarding = vi.spyOn(bridge, "completeOnboarding").mockResolvedValue(undefined);
     putConfig = vi.spyOn(bridge, "putConfig").mockResolvedValue(undefined);
@@ -81,18 +102,44 @@ describe("OnboardingWizard", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders the doctor results on step 1 and keeps Continue enabled while a check fails", async () => {
+  it("opens on the agent picker with the machine prerequisites under it", async () => {
     await renderWizard();
 
     expect(runDoctor).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("onboarding-step-prerequisites")).toBeInTheDocument();
-    expect(screen.getByText("Git not found on PATH")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-step-agent")).toBeInTheDocument();
+    expect(screen.getByText("What is your coding agent?")).toBeInTheDocument();
+    // Git and gh are the machine's tools; the agent CLIs annotate their own cards instead.
+    expect(screen.getByTestId("onboarding-check-Git")).toBeInTheDocument();
     expect(screen.getByText("GitHub CLI ('gh') not found on PATH")).toBeInTheDocument();
-    expect(screen.getByTestId("onboarding-tendril-home")).toHaveTextContent("/tmp/tendril-home");
+    expect(screen.queryByTestId("onboarding-check-Claude")).not.toBeInTheDocument();
+  });
 
-    // A failing required check offers an install link but must not gate the flow.
+  it("blocks the pick while a required check fails, and offers its install link", async () => {
+    // V1 parity: `CodingAgentStepView.RunFlowAsync` reopens `InstallMissingDialog` instead of
+    // advancing, so a failed required probe keeps the operator on this step. The old expectation
+    // (Continue never gated on a health check) was the behaviour this change replaces.
+    runDoctor.mockResolvedValue(checks);
+    await renderWizard();
+
     expect(screen.getByTestId("onboarding-install-Git")).toBeInTheDocument();
-    expect(screen.getByTestId("onboarding-continue")).not.toBeDisabled();
+
+    await click("onboarding-agent-claude");
+
+    expect(screen.getByTestId("onboarding-step-agent")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-error")).toHaveTextContent(
+      "Tendril needs Git but it isn't installed.",
+    );
+    // The pick is still recorded, so the card shows what was chosen.
+    expect(screen.getByTestId("onboarding-agent-claude")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("advances on the pick itself when nothing required is missing", async () => {
+    await renderWizard();
+
+    await click("onboarding-agent-claude");
+
+    expect(screen.getByTestId("onboarding-step-data-storage")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-tendril-home")).toHaveValue("/tmp/tendril-home");
   });
 
   it("re-runs the checks when Re-check is pressed", async () => {
@@ -101,14 +148,22 @@ describe("OnboardingWizard", () => {
     expect(runDoctor).toHaveBeenCalledTimes(2);
   });
 
-  it.each([0, 1, 2, 3])(
+  it("only goes backwards from the last step", async () => {
+    await renderWizard();
+    await goToStep(COMPLETE_STEP);
+    expect(screen.getByTestId("onboarding-step-complete")).toBeInTheDocument();
+
+    // Forwards is already impossible here; a backwards target is still honoured.
+    await goToStep(HOME_STEP);
+    expect(screen.getByTestId("onboarding-step-data-storage")).toBeInTheDocument();
+  });
+
+  it.each([AGENT_STEP, HOME_STEP, PROJECT_STEP, COMPLETE_STEP])(
     "Skip setup on step %i dismisses onboarding and writes nothing else",
     async (step) => {
       const onFinished = await renderWizard();
 
-      for (let i = 0; i < step; i += 1) {
-        await click("onboarding-skip");
-      }
+      if (step !== AGENT_STEP) await goToStep(step);
 
       await click("onboarding-skip-setup");
 
@@ -120,7 +175,7 @@ describe("OnboardingWizard", () => {
     },
   );
 
-  it("creates the project before starting AddProject on step 3", async () => {
+  it("creates the project before starting AddProject on the project step", async () => {
     const order: string[] = [];
     createProject.mockImplementation(async () => {
       order.push("createProject");
@@ -132,20 +187,21 @@ describe("OnboardingWizard", () => {
     });
 
     await renderWizard();
-    await click("onboarding-skip");
-    await click("onboarding-skip");
+    await goToStep(PROJECT_STEP);
     expect(screen.getByTestId("onboarding-step-project")).toBeInTheDocument();
 
-    await act(async () => {
-      fireEvent.change(screen.getByTestId("onboarding-project-name"), {
-        target: { value: "Ivy-Tendril-V2" },
-      });
-    });
     await act(async () => {
       fireEvent.change(screen.getByTestId("onboarding-repo-input"), {
         target: { value: "/repos/tendril" },
       });
       fireEvent.keyDown(screen.getByTestId("onboarding-repo-input"), { key: "Enter" });
+    });
+    // V1's picker fills the name in from the first repository it adds.
+    expect(screen.getByTestId("onboarding-project-name")).toHaveValue("tendril");
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("onboarding-project-name"), {
+        target: { value: "Ivy-Tendril-V2" },
+      });
     });
 
     await click("onboarding-continue");
@@ -164,15 +220,40 @@ describe("OnboardingWizard", () => {
     expect(screen.getByTestId("onboarding-step-complete")).toBeInTheDocument();
   });
 
-  it("refuses to create a project without a name and does not advance", async () => {
+  it("disables Create Project until there is a name and a repository", async () => {
+    // V1 parity: `ProjectInputStepView` disables its next button rather than reporting an error
+    // after the fact, which is what the old "refuses to create a project" case asserted.
     await renderWizard();
-    await click("onboarding-skip");
-    await click("onboarding-skip");
-    await click("onboarding-continue");
+    await goToStep(PROJECT_STEP);
 
+    expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("onboarding-project-name"), {
+        target: { value: "Ivy-Tendril-V2" },
+      });
+    });
+    // A name on its own is not enough - V1 wants at least one repository too.
+    expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("onboarding-repo-input"), {
+        target: { value: "/repos/tendril" },
+      });
+      fireEvent.keyDown(screen.getByTestId("onboarding-repo-input"), { key: "Enter" });
+    });
+    expect(screen.getByTestId("onboarding-continue")).not.toBeDisabled();
     expect(createProject).not.toHaveBeenCalled();
-    expect(screen.getByTestId("onboarding-error")).toBeInTheDocument();
-    expect(screen.getByTestId("onboarding-step-project")).toBeInTheDocument();
+  });
+
+  it("skips the whole project section straight to the last step", async () => {
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+
+    await click("onboarding-skip");
+
+    expect(screen.getByTestId("onboarding-step-complete")).toBeInTheDocument();
+    expect(createProject).not.toHaveBeenCalled();
   });
 
   it("writes the selected coding agent and then completes on Finish", async () => {
@@ -185,11 +266,9 @@ describe("OnboardingWizard", () => {
     });
 
     const onFinished = await renderWizard();
-    await click("onboarding-skip");
     await click("onboarding-agent-claude");
-    await click("onboarding-skip");
-    await click("onboarding-skip");
-    expect(screen.getByTestId("onboarding-summary-agent")).toHaveTextContent("Claude Code");
+    await goToStep(COMPLETE_STEP);
+    expect(screen.getByText("Ready to Go!")).toBeInTheDocument();
 
     await click("onboarding-continue");
 
@@ -200,9 +279,7 @@ describe("OnboardingWizard", () => {
 
   it("completes without touching config when no agent was selected", async () => {
     const onFinished = await renderWizard();
-    await click("onboarding-skip");
-    await click("onboarding-skip");
-    await click("onboarding-skip");
+    await goToStep(COMPLETE_STEP);
 
     await click("onboarding-continue");
 
@@ -215,9 +292,7 @@ describe("OnboardingWizard", () => {
     vi.spyOn(bridge, "subscribeNewsletter").mockRejectedValue(new Error("daemon unreachable"));
 
     const onFinished = await renderWizard();
-    await click("onboarding-skip");
-    await click("onboarding-skip");
-    await click("onboarding-skip");
+    await goToStep(COMPLETE_STEP);
 
     await act(async () => {
       fireEvent.change(screen.getByTestId("newsletter-email"), {

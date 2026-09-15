@@ -12,13 +12,17 @@ export interface VaultEmptyStateProps {
 
 const OPEN: VaultGate = { disabled: false };
 
-/** What the Team Vault section shows before any vault is connected. */
+/**
+ * What the Team Vault section shows before any vault is connected — the `notConfiguredLayout` of
+ * `VaultSetupView.cs`, which is the whole section in that state: no toolbar, no details, no table.
+ * `max-w-200` is its `Size.Auto().Max(Size.Units(200))`.
+ */
 export const VaultEmptyState: React.FC<VaultEmptyStateProps> = ({
   onCreate,
   onConnect,
   gate = OPEN,
 }) => (
-  <div className="max-w-2xl space-y-3" data-testid="vault-empty-state">
+  <div className="max-w-200 space-y-3" data-testid="vault-empty-state">
     <h3 className="text-sm font-semibold text-foreground">Team Configuration Vault</h3>
     <p className="text-xs text-muted-foreground">
       Share and synchronize Tendril projects, custom skills, MCP servers, and security rules across

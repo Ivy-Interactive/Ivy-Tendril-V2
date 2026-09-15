@@ -1,5 +1,6 @@
 import React from "react";
-import { Alert, AlertDescription } from "../ui/alert";
+import { GitPullRequest } from "lucide-react";
+import { Callout } from "../ui/callout";
 import { VaultDialogShell } from "./VaultDialogShell";
 
 export interface ConfirmVaultDeleteDialogProps {
@@ -31,15 +32,14 @@ export const ConfirmVaultDeleteDialog: React.FC<ConfirmVaultDeleteDialogProps> =
     error={error}
     submitLabel="Create Deletion PR"
     submitVariant="destructive"
+    submitIcon={<GitPullRequest className="mr-1.5 size-3.5" aria-hidden="true" />}
     submitDisabled={isBusy}
     onSubmit={onConfirm}
   >
-    <Alert variant="destructive">
-      <AlertDescription>
-        This will remove project &apos;{projectName}&apos; and all its associated manifests, skills,
-        MCP configs, and memories from the vault repository.
-      </AlertDescription>
-    </Alert>
+    <Callout.Error>
+      This will remove project &apos;{projectName}&apos; and all its associated manifests, skills,
+      MCP configs, and memories from the vault repository.
+    </Callout.Error>
     <p className="text-xs text-muted-foreground">
       A new branch and pull request will be opened against the vault repository to perform this
       deletion.

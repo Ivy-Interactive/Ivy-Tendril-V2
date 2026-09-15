@@ -1,7 +1,17 @@
 import React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { RefreshCw, Upload } from "lucide-react";
-import { Alert, AlertDescription, Button } from "@ivy-interactive/components/ui";
+import { GitBranch, Plus, RefreshCw, GitPullRequest } from "lucide-react";
+import { DensityProvider } from "@ivy-interactive/components";
+import {
+  Callout,
+  Densities,
+  IconButton,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@ivy-interactive/components/ui";
 import {
   ConfirmVaultDeleteDialog,
   ConnectVaultDialog,
@@ -13,6 +23,7 @@ import {
   VaultProjectsTable,
   VaultStatusCard,
   computeVaultGate,
+  formatVaultRepo,
   type VaultExportDraft,
 } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
@@ -81,6 +92,9 @@ function resultMessage(result: VaultActionResult): string {
  * `getProjectReviewActions` does — a vault that cannot be reached must not take the settings page
  * down with it. Actions that cannot work yet are disabled with the reason as their tooltip
  * (`computeVaultGate`) instead of failing against GitHub on click.
+ *
+ * The section is `Small` density throughout because `VaultSetupView.cs` marks every button, badge and
+ * expander in it `.Small()`, and `max-w-240` is its `Size.Full().Max(Size.Units(240))`.
  */
 export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHome }) => {
   const [vaults, setVaults] = React.useState<VaultStatus[]>([]);
@@ -98,6 +112,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
   const [dialog, setDialog] = React.useState<VaultDialog | null>(null);
   const [dialogError, setDialogError] = React.useState<string | null>(null);
   const [pushAssets, setPushAssets] = React.useState<ProjectAssets[]>([]);
+  const [pushPrUrl, setPushPrUrl] = React.useState<string | null>(null);
 
   const addError = (message: string) => setErrors((current) => [...new Set([...current, message])]);
 
@@ -167,30 +182,48 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
     name: project.name,
     repos: project.repos,
   }));
+  const configuredVaults = vaults.filter((vault) => vault.isConfigured);
 
   const createGate = computeVaultGate({ hasGitHubAuth, hasVault, isBusy, requires: ["github"] });
   const vaultGate = computeVaultGate({ hasGitHubAuth, hasVault, isBusy, requires: ["vault"] });
+
+  /**
+   * Whether there is anything a PR could carry: a project the vault does not have or has an older
+   * copy of, unpushed vault commits, or simply a local project. `hasChangesToPublish` in
+   * `VaultSetupView.cs`, which hides *Open a PR* rather than offering an empty one.
+   */
+  const hasChangesToPublish =
+    catalog.some(
+      (item) =>
+        item.syncStatus === "LocalOnly" ||
+        item.syncStatus === "UpdateAvailable" ||
+        item.syncStatus === "Modified",
+    ) ||
+    (status?.commitsAhead ?? 0) > 0 ||
+    projects.length > 0;
 
   /** Runs one mutation, keeping a failed result in the dialog and a successful one in the section. */
   const runVaultAction = async (
     work: () => Promise<VaultActionResult>,
     { closeOnSuccess = true }: { closeOnSuccess?: boolean } = {},
-  ) => {
+  ): Promise<VaultActionResult | null> => {
     setIsBusy(true);
     setDialogError(null);
     try {
       const result = await work();
       if (!result.success) {
         setDialogError(resultMessage(result) || "The vault service reported a failure.");
-        return;
+        return null;
       }
 
       const prUrl = result.prUrl?.trim();
       setNotice([resultMessage(result), prUrl].filter(Boolean).join(" — ") || "Done.");
       if (closeOnSuccess) setDialog(null);
       await refresh(selectedVaultId);
+      return result;
     } catch (error) {
       setDialogError(String(error));
+      return null;
     } finally {
       setIsBusy(false);
     }
@@ -221,6 +254,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
    */
   const openPushDialog = async (project: string | null) => {
     setDialogError(null);
+    setPushPrUrl(null);
     const names = projects.map((entry) => entry.name);
     const assets = await Promise.all(
       names.map((name) => bridge.collectProjectAssets(name).catch(() => EMPTY_ASSETS(name))),
@@ -244,7 +278,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
         : bridge.importVaultProject(request, selectedVaultId),
     );
 
-  const handlePushSubmit = (draft: VaultExportDraft) => {
+  const handlePushSubmit = async (draft: VaultExportDraft) => {
     const projectList = draft.projectNames.join(", ");
     const prTitle = `feat(vault): update ${projectList} to v${draft.version}`;
     const prBody = [
@@ -255,186 +289,226 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
       .filter(Boolean)
       .join("\n");
 
-    return runVaultAction(() =>
-      bridge.pushToVault(
-        { ...draft, targetVaultId: draft.targetVaultId ?? selectedVaultId, prTitle, prBody },
-        selectedVaultId,
-      ),
+    /* The push dialog stays open on success and shows the PR link, the way `createdPrUrl` does. */
+    const result = await runVaultAction(
+      () =>
+        bridge.pushToVault(
+          { ...draft, targetVaultId: draft.targetVaultId ?? selectedVaultId, prTitle, prBody },
+          selectedVaultId,
+        ),
+      { closeOnSuccess: false },
     );
+    if (result) setPushPrUrl(result.prUrl?.trim() || null);
   };
 
   return (
-    <div className="space-y-4" data-testid="vault-settings-view">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={isLoading || isBusy}
-          onClick={() => void refresh(selectedVaultId)}
-        >
-          <RefreshCw className="mr-1.5 size-3.5" aria-hidden="true" />
-          Refresh
-        </Button>
-        {/* Gated rather than hidden: a disabled control with its reason tells the operator what to
-            fix, which is the whole point of the preflight check this ports. */}
-        <GatedActionButton
-          gate={vaultGate}
-          variant="outline"
-          size="sm"
-          onClick={() => void runVaultAction(() => bridge.pullVaultLatest(selectedVaultId))}
-        >
-          Sync
-        </GatedActionButton>
-        <GatedActionButton
-          gate={vaultGate}
-          variant="outline"
-          size="sm"
-          onClick={() => void openPushDialog(null)}
-        >
-          <Upload className="mr-1.5 size-3.5" aria-hidden="true" />
-          Open a PR
-        </GatedActionButton>
-      </div>
+    <DensityProvider density={Densities.Small}>
+      <div className="max-w-240 space-y-4" data-testid="vault-settings-view">
+        {errors.map((message) => (
+          <Callout.Error key={message} data-testid="vault-settings-error">
+            {message}
+          </Callout.Error>
+        ))}
 
-      {errors.map((message) => (
-        <Alert key={message} variant="destructive" data-testid="vault-settings-error">
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
-      ))}
+        {notice && <Callout.Success data-testid="vault-settings-notice">{notice}</Callout.Success>}
 
-      {notice && (
-        <Alert data-testid="vault-settings-notice">
-          <AlertDescription>{notice}</AlertDescription>
-        </Alert>
-      )}
+        {hasVault && status ? (
+          <>
+            {/* `topHeader`: the vault picker on the left, the toolbar on the right. Both only exist
+                once a vault does — until then the section is the empty state and nothing else. */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Select value={selectedVaultId} onValueChange={(id) => void handleSelectVault(id)}>
+                <SelectTrigger aria-label="Active vault" className="w-fit min-w-56">
+                  <SelectValue placeholder="Select vault" />
+                </SelectTrigger>
+                <SelectContent>
+                  {configuredVaults.map((vault) => (
+                    <SelectItem key={vault.id} value={vault.id}>
+                      {formatVaultRepo(vault) || vault.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
 
-      {hasVault && status ? (
-        <>
-          <VaultStatusCard
-            status={status}
-            vaults={vaults.filter((vault) => vault.isConfigured)}
-            selectedVaultId={selectedVaultId}
-            onSelectVault={(vaultId) => void handleSelectVault(vaultId)}
-            onSync={() => void runVaultAction(() => bridge.pullVaultLatest(selectedVaultId))}
-            onDisconnect={() =>
-              void runVaultAction(() => bridge.disconnectVault(selectedVaultId), {
-                closeOnSuccess: false,
-              })
-            }
-            onAlwaysUpToDateChange={(value) =>
-              void runVaultAction(() => bridge.setVaultAlwaysUpToDate(value, selectedVaultId), {
-                closeOnSuccess: false,
-              })
-            }
-            onOpenUrl={(url) => void handleOpenUrl(url)}
-            isBusy={isBusy}
-          />
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Not in the original, which reloads off its own `VaultChanged` event: without it a
+                    failed first load would have nothing to retry with. */}
+                <IconButton
+                  label="Refresh"
+                  size="sm"
+                  disabled={isLoading || isBusy}
+                  onClick={() => void refresh(selectedVaultId)}
+                >
+                  <RefreshCw className="size-3.5" aria-hidden="true" />
+                </IconButton>
+                {/* Gated rather than hidden: a disabled control with its reason tells the operator
+                    what to fix, which is the whole point of the preflight check this ports. */}
+                <GatedActionButton
+                  gate={vaultGate}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void runVaultAction(() => bridge.pullVaultLatest(selectedVaultId))}
+                >
+                  <RefreshCw className="mr-1.5 size-3.5" aria-hidden="true" />
+                  Sync
+                </GatedActionButton>
+                {hasChangesToPublish && (
+                  <GatedActionButton
+                    gate={vaultGate}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void openPushDialog(null)}
+                  >
+                    <GitPullRequest className="mr-1.5 size-3.5" aria-hidden="true" />
+                    Open a PR
+                  </GatedActionButton>
+                )}
+                <GatedActionButton
+                  gate={createGate}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void openConnectDialog()}
+                >
+                  <GitBranch className="mr-1.5 size-3.5" aria-hidden="true" />
+                  Connect Vault
+                </GatedActionButton>
+                <GatedActionButton
+                  gate={createGate}
+                  variant="outline"
+                  size="sm"
+                  onClick={openCreateDialog}
+                >
+                  <Plus className="mr-1.5 size-3.5" aria-hidden="true" />
+                  Create Vault
+                </GatedActionButton>
+              </div>
+            </div>
 
-          <section className="space-y-2">
-            <h4 className="text-xs font-semibold text-foreground">Shared Projects</h4>
-            <VaultProjectsTable
-              items={catalog}
-              isLoading={isLoading}
-              gate={vaultGate}
-              onImport={(item) => {
-                setDialogError(null);
-                setDialog({ kind: "import", item, merge: false });
-              }}
-              onMerge={(item) => {
-                setDialogError(null);
-                setDialog({ kind: "import", item, merge: true });
-              }}
-              onUpdate={(item) => {
-                setDialogError(null);
-                setDialog({ kind: "import", item, merge: false });
-              }}
-              onPublish={(item) => void openPushDialog(item.name)}
-              onDelete={(item) => {
-                setDialogError(null);
-                setDialog({ kind: "delete", item });
-              }}
-              onAddTrackedProject={() => void openPushDialog(null)}
+            <VaultStatusCard
+              status={status}
+              onDisconnect={() =>
+                void runVaultAction(() => bridge.disconnectVault(selectedVaultId), {
+                  closeOnSuccess: false,
+                })
+              }
+              onAlwaysUpToDateChange={(value) =>
+                void runVaultAction(() => bridge.setVaultAlwaysUpToDate(value, selectedVaultId), {
+                  closeOnSuccess: false,
+                })
+              }
+              onOpenUrl={(url) => void handleOpenUrl(url)}
+              isBusy={isBusy}
             />
-          </section>
-        </>
-      ) : (
-        <VaultEmptyState
-          gate={createGate}
-          onCreate={openCreateDialog}
-          onConnect={() => void openConnectDialog()}
-        />
-      )}
 
-      {dialog?.kind === "create" && (
-        <CreateVaultDialog
-          open
-          accounts={accounts}
-          error={dialogError}
-          isBusy={isBusy}
-          onClose={() => setDialog(null)}
-          onSubmit={({ name, isPrivate, owner }) =>
-            void runVaultAction(() => bridge.createVaultRepo(name, isPrivate, owner || undefined))
-          }
-        />
-      )}
+            <section className="space-y-2">
+              <h4 className="text-sm font-semibold text-foreground">Shared Projects</h4>
+              <VaultProjectsTable
+                items={catalog}
+                isLoading={isLoading}
+                gate={vaultGate}
+                onImport={(item) => {
+                  setDialogError(null);
+                  setDialog({ kind: "import", item, merge: false });
+                }}
+                onMerge={(item) => {
+                  setDialogError(null);
+                  setDialog({ kind: "import", item, merge: true });
+                }}
+                onUpdate={(item) => {
+                  setDialogError(null);
+                  setDialog({ kind: "import", item, merge: false });
+                }}
+                onPublish={(item) => void openPushDialog(item.name)}
+                onDelete={(item) => {
+                  setDialogError(null);
+                  setDialog({ kind: "delete", item });
+                }}
+                onAddTrackedProject={() => void openPushDialog(null)}
+              />
+            </section>
+          </>
+        ) : (
+          <VaultEmptyState
+            gate={createGate}
+            onCreate={openCreateDialog}
+            onConnect={() => void openConnectDialog()}
+          />
+        )}
 
-      {dialog?.kind === "connect" && (
-        <ConnectVaultDialog
-          open
-          discovered={discovered}
-          isDiscovering={isDiscovering}
-          error={dialogError}
-          isBusy={isBusy}
-          onClose={() => setDialog(null)}
-          onSubmit={({ repoUrl, displayName }) =>
-            void runVaultAction(() => bridge.connectVault(repoUrl, displayName || undefined))
-          }
-        />
-      )}
+        {dialog?.kind === "create" && (
+          <CreateVaultDialog
+            open
+            accounts={accounts}
+            error={dialogError}
+            isBusy={isBusy}
+            onClose={() => setDialog(null)}
+            onSubmit={({ name, isPrivate, owner }) =>
+              void runVaultAction(() => bridge.createVaultRepo(name, isPrivate, owner || undefined))
+            }
+          />
+        )}
 
-      {dialog?.kind === "push" && (
-        <PushToVaultDialog
-          open
-          vaultDisplayName={status?.name || "Team Vault"}
-          targetVaultId={selectedVaultId}
-          availableProjects={existingNames}
-          assets={pushAssets}
-          defaultProject={dialog.project}
-          error={dialogError}
-          isBusy={isBusy}
-          onClose={() => setDialog(null)}
-          onSubmit={(draft) => void handlePushSubmit(draft)}
-        />
-      )}
+        {dialog?.kind === "connect" && (
+          <ConnectVaultDialog
+            open
+            discovered={discovered}
+            isDiscovering={isDiscovering}
+            error={dialogError}
+            isBusy={isBusy}
+            onClose={() => setDialog(null)}
+            onSubmit={({ repoUrl, displayName }) =>
+              void runVaultAction(() => bridge.connectVault(repoUrl, displayName || undefined))
+            }
+          />
+        )}
 
-      {dialog?.kind === "import" && (
-        <ImportFromVaultDialog
-          open
-          mergeMode={dialog.merge}
-          item={dialog.item}
-          existingNames={existingNames}
-          existingPaths={existingPaths}
-          localProjects={localProjects}
-          homeDir={homeDirOf(tendrilHome)}
-          error={dialogError}
-          isBusy={isBusy}
-          onClose={() => setDialog(null)}
-          onSubmit={(request) => void handleImportSubmit(request, dialog.merge)}
-        />
-      )}
+        {dialog?.kind === "push" && (
+          <PushToVaultDialog
+            open
+            vaultDisplayName={status ? formatVaultRepo(status) : "Team Vault"}
+            targetVaultId={selectedVaultId}
+            availableProjects={existingNames}
+            assets={pushAssets}
+            defaultProject={dialog.project}
+            error={dialogError}
+            prUrl={pushPrUrl}
+            isBusy={isBusy}
+            onClose={() => setDialog(null)}
+            onSubmit={(draft) => void handlePushSubmit(draft)}
+          />
+        )}
 
-      {dialog?.kind === "delete" && (
-        <ConfirmVaultDeleteDialog
-          open
-          projectName={dialog.item.name}
-          error={dialogError}
-          isBusy={isBusy}
-          onClose={() => setDialog(null)}
-          onConfirm={() =>
-            void runVaultAction(() => bridge.deleteVaultProject(dialog.item.name, selectedVaultId))
-          }
-        />
-      )}
-    </div>
+        {dialog?.kind === "import" && (
+          <ImportFromVaultDialog
+            open
+            mergeMode={dialog.merge}
+            item={dialog.item}
+            existingNames={existingNames}
+            existingPaths={existingPaths}
+            localProjects={localProjects}
+            homeDir={homeDirOf(tendrilHome)}
+            error={dialogError}
+            isBusy={isBusy}
+            onClose={() => setDialog(null)}
+            onSubmit={(request) => void handleImportSubmit(request, dialog.merge)}
+          />
+        )}
+
+        {dialog?.kind === "delete" && (
+          <ConfirmVaultDeleteDialog
+            open
+            projectName={dialog.item.name}
+            error={dialogError}
+            isBusy={isBusy}
+            onClose={() => setDialog(null)}
+            onConfirm={() =>
+              void runVaultAction(() =>
+                bridge.deleteVaultProject(dialog.item.name, selectedVaultId),
+              )
+            }
+          />
+        )}
+      </div>
+    </DensityProvider>
   );
 };

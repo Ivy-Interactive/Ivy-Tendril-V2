@@ -35,61 +35,76 @@ const mockKpis: DashboardKpiDto[] = [
   },
 ];
 
-/** The five drill-down tiles the app supplies, each with the id `OnSelectKpi` reports. */
+/** The four drill-down tiles the app supplies, each with the id `OnSelectKpi` reports. */
 const mockDrillDownKpis: DashboardKpiDto[] = [
   {
     id: "featuresShipped",
-    label: "Features Shipped",
+    label: "Features shipped",
     value: "128",
-    hint: "last 60 days",
+    hint: "merged PRs and solved issues, last 30 days",
     delta: "+22%",
     direction: "up",
   },
   {
     id: "costPerFeature",
-    label: "Cost / Feature",
+    label: "Avg cost per Feature",
     value: "$3.84",
-    hint: "priced features only",
+    hint: "$491.52 over 128 features",
     delta: "-9%",
     direction: "down",
   },
   {
     id: "forecastMonth",
     label: "Forecast This Month",
-    value: "$620 – $940",
-    hint: "calendar to activity basis",
+    value: "$780",
+    hint: "38% subsidized via subscription",
   },
   {
     id: "avgCostPlan",
-    label: "Average Cost / Plan",
+    label: "Avg Cost/Plan",
     value: "$4.12",
     hint: "vs $4.68 prior week",
     delta: "-12%",
     direction: "down",
   },
-  {
-    id: "tokensConsumed",
-    label: "Tokens Consumed",
-    value: "412M",
-    hint: "38% subsidized",
-  },
 ];
 
+const TREND_DATES = Array.from({ length: 28 }, (_, index) => {
+  const day = new Date(Date.UTC(2026, 8, 5) - (27 - index) * 86_400_000);
+  return day.toISOString().slice(0, 10);
+});
+
+const TREND_COST = [
+  12, 18, 9, 0, 0, 24, 31, 27, 15, 8, 0, 19, 33, 41, 28, 22, 0, 0, 17, 26, 38, 44, 31, 20, 12, 0,
+  29, 47,
+];
+
+const TREND_PLANS = [
+  2, 3, 1, 0, 0, 4, 5, 4, 2, 1, 0, 3, 5, 6, 4, 3, 0, 0, 2, 4, 6, 7, 5, 3, 2, 0, 4, 7,
+];
+
+const rollingMean = (values: number[]): (number | null)[] =>
+  values.map((_, index) =>
+    index < 6
+      ? null
+      : values.slice(index - 6, index + 1).reduce((acc, value) => acc + value, 0) / 7,
+  );
+
 const mockTrend: DashboardTrendDto = {
-  months: ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"],
-  cost: [120, 150, 180, 220, 280, 310, 390, 420, 480, 510, 580, 640],
-  plans: [14, 18, 22, 28, 35, 38, 44, 48, 52, 58, 62, 70],
-  prevCost: [90, 110, 130, 160, 190, 210, 260, 290, 320, 340, 390, 420],
-  prevPlans: [10, 12, 15, 19, 22, 25, 30, 33, 36, 40, 42, 46],
+  dates: TREND_DATES,
+  cost: TREND_COST,
+  plans: TREND_PLANS,
+  rollingCost: rollingMean(TREND_COST),
+  rollingPlans: rollingMean(TREND_PLANS),
 };
 
 const mockPullRequests: DashboardMonthValueDto[] = [
-  { label: "Apr", value: 34 },
-  { label: "May", value: 42 },
-  { label: "Jun", value: 48 },
-  { label: "Jul", value: 55 },
-  { label: "Aug", value: 64 },
-  { label: "Sep", value: 72 },
+  { label: "Apr", value: 34, year: 2026, month: 4, day: 1, date: "2026-04-01" },
+  { label: "May", value: 42, year: 2026, month: 5, day: 1, date: "2026-05-01" },
+  { label: "Jun", value: 48, year: 2026, month: 6, day: 1, date: "2026-06-01" },
+  { label: "Jul", value: 55, year: 2026, month: 7, day: 1, date: "2026-07-01" },
+  { label: "Aug", value: 64, year: 2026, month: 8, day: 1, date: "2026-08-01" },
+  { label: "Sep", value: 72, year: 2026, month: 9, day: 1, date: "2026-09-01" },
 ];
 
 const mockActivity: DashboardActivityMonthDto[] = [
@@ -139,7 +154,7 @@ export const Default: Story = {
     eventHandler: (eventName, id, args) => {
       console.log("Dashboard event:", eventName, id, args);
     },
-    dateText: "Saturday, September 5, 2026",
+    dateText: "Saturday, 5th September",
     greeting: "Good morning, Operator",
     headline: "Tendril Autonomous Execution Fleet",
     draftCount: 8,
@@ -160,7 +175,7 @@ export const EmptyState: Story = {
     id: "dashboard-empty",
     events: [],
     eventHandler: () => {},
-    dateText: "Saturday, September 5, 2026",
+    dateText: "Saturday, 5th September",
     greeting: "Welcome to Tendril",
     headline: "System Initialized",
     draftCount: 0,

@@ -5,9 +5,18 @@ import {
   ShellNav,
   ShellTabs,
   ShellNewPlanButton,
+  ShellAgentButton,
+  ShellSettingsButton,
   type ShellNavItemDto,
   type ShellTabDto,
 } from "@ivy-interactive/components/tendril";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@ivy-interactive/components/ui";
 import type { ServiceInfo, VersionInfo } from "../types/api";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceStatusBanner } from "../components/service";
@@ -36,6 +45,17 @@ interface ShellLayoutProps {
   children: React.ReactNode;
 }
 
+/**
+ * The app chrome, mirroring V1's `TendrilAppShell.Build()`.
+ *
+ * The sidebar body is New Plan, then the Chat row, then the nav (V1's
+ * `sidebarBody: [newPlanButton, chatButton, nav, section]`). Chat and Inbox are
+ * deliberately absent from the nav: V1's `BuildNavItems` drops the agent and chat
+ * entries because the dedicated Chat row above the nav reaches them, and drops
+ * `footerAppIds` because the Inbox gets its own icon-only footer button
+ * (`ShowInboxInFooter`). Settings and Pull Requests are `isVisible: false` apps in
+ * V1, reached from the footer's settings menu (`settingsMenuItems`), not the nav.
+ */
 export const ShellLayout: React.FC<ShellLayoutProps> = ({
   activeNav,
   activeTabs,
@@ -57,60 +77,59 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   onCopyUpdateCommand = () => {},
   children,
 }) => {
+  /* V1's visible "Apps" group in `Constants` order (Dashboard 10, Plans 20, Review 30,
+     Jobs 50), minus the entries `BuildNavItems` excludes. Recommendations (40) has no V2
+     view yet, so it is the one V1 row missing here. */
   const navItems: ShellNavItemDto[] = [
     { id: "dashboard", label: "Dashboard", icon: "ChartBar", isActive: activeNav === "dashboard" },
-    { id: "chat", label: "Chat", icon: "MessageSquare", isActive: activeNav === "chat" },
-    { id: "inbox", label: "Inbox", icon: "Inbox", isActive: activeNav === "inbox" },
     { id: "plans", label: "Plans", icon: "Feather", isActive: activeNav === "plans" },
     { id: "review", label: "Review", icon: "ThumbsUp", isActive: activeNav === "review" },
-    {
-      id: "pull-requests",
-      label: "Pull Requests",
-      icon: "GitPullRequest",
-      isActive: activeNav === "pull-requests",
-    },
     { id: "jobs", label: "Jobs", icon: "Activity", isActive: activeNav === "jobs" },
-    { id: "settings", label: "Settings", icon: "Sliders", isActive: activeNav === "settings" },
   ];
 
+  /* V1 splits the strip into non-closable page tabs, which carry the icon of the app
+     they reveal, and closable session tabs, which carry the terminal glyph and an X
+     (`BuildStripTabs`). Only `closable` and `icon` reach ShellTabs; the selection comes
+     from `selectedId`, as in `SelectedStripTabId`. */
   const shellTabs: ShellTabDto[] = activeTabs.map((tabId) => {
     let title = tabId;
-    let icon = "File";
-    let isClosable = true;
+    let icon: string | undefined = "File";
+    let closable = true;
 
     if (tabId === "dashboard") {
       title = "Dashboard";
       icon = "ChartBar";
-      isClosable = false;
+      closable = false;
     } else if (tabId === "chat") {
       title = "Chat";
       icon = "MessageSquare";
-      isClosable = false;
+      closable = false;
     } else if (tabId === "inbox") {
       title = "Inbox";
       icon = "Inbox";
-      isClosable = false;
+      closable = false;
     } else if (tabId === "plans") {
       title = "Plans Explorer";
       icon = "Feather";
-      isClosable = false;
+      closable = false;
     } else if (tabId === "review") {
       title = "Review";
       icon = "ThumbsUp";
-      isClosable = false;
+      closable = false;
     } else if (tabId === "review-action") {
-      // Closable, unlike the other named tabs: it holds one run, and closing it is how the reviewer
-      // says they are done watching.
+      // Closable, unlike the other named tabs: it holds one run, and closing it is how the
+      // reviewer says they are done watching. It passes no icon, so it gets the terminal
+      // glyph every session tab gets.
       title = "Review Action";
-      icon = "Terminal";
+      icon = undefined;
     } else if (tabId === "pull-requests") {
       title = "Pull Requests";
       icon = "GitPullRequest";
-      isClosable = false;
+      closable = false;
     } else if (tabId === "settings") {
       title = "Settings";
-      icon = "Sliders";
-      isClosable = false;
+      icon = "Settings";
+      closable = false;
     } else if (tabId.startsWith("plan-")) {
       title = `Plan ${tabId.replace("plan-", "")}`;
       icon = "FileText";
@@ -119,14 +138,13 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
       icon = "Activity";
     }
 
-    return {
-      id: tabId,
-      title,
-      icon,
-      isActive: activeNav === tabId,
-      isClosable,
-    };
+    return { id: tabId, title, icon, closable };
   });
+
+  /* V1's `.HasTabs(stripTabs.Count > 0)` counts session tabs only: the page tabs never
+     keep the strip alive on their own, and ShellTabs applies the same rule to its own
+     markup. Keep the two in step. */
+  const hasSessionTabs = shellTabs.some((tab) => tab.closable !== false);
 
   const noop = () => {};
 
@@ -159,62 +177,98 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
         <TendrilShell
           id="tendril-shell"
           eventHandler={noop}
+          hasTabs={hasSessionTabs}
           slots={{
+            // The header is the brand row alone. V1 formats the version as "v <x.y.z>".
             SidebarHeader: (
-              <div className="flex flex-col space-y-2">
-                <ShellSidebarHeader
-                  id="shell-sidebar-header"
-                  title="Tendril"
-                  version={serviceInfo?.apiVersion ? `v${serviceInfo.apiVersion}` : "Desktop 0.1.0"}
-                  eventHandler={noop}
-                />
-                <div className="px-2">
-                  <ShellNewPlanButton id="new-plan-btn" eventHandler={onNewPlan} />
-                </div>
-              </div>
+              <ShellSidebarHeader
+                id="shell-sidebar-header"
+                title="Tendril"
+                version={serviceInfo?.apiVersion ? `v ${serviceInfo.apiVersion}` : undefined}
+                eventHandler={noop}
+              />
             ),
             SidebarBody: (
-              <div className="flex flex-col justify-between h-full py-2">
+              <>
+                <ShellNewPlanButton id="new-plan-btn" eventHandler={onNewPlan} />
+                {/* V1's chatButton: label "Chat", the MessageCircle glyph, active while the
+                    chat page is showing. */}
+                <ShellAgentButton
+                  id="shell-chat-btn"
+                  label="Chat"
+                  icon="MessageCircle"
+                  isActive={activeNav === "chat"}
+                  events={["OnOpen"]}
+                  eventHandler={() => onSelectNav("chat")}
+                />
                 <ShellNav
                   id="shell-nav"
                   items={navItems}
+                  showDivider
                   events={["OnSelect"]}
                   eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
                     const navId = firstStringArg(args);
                     if (navId) onSelectNav(navId);
                   }}
                 />
-                <div className="px-4 py-2 border-t border-border/80">
-                  <button
-                    type="button"
-                    onClick={onOpenShortcuts}
-                    className="text-xs text-muted-foreground/70 hover:text-muted-foreground flex items-center space-x-1.5"
-                  >
-                    <span>⌨️</span>
-                    <span>Shortcuts (?)</span>
-                  </button>
-                </div>
-              </div>
+              </>
             ),
-            Content: (
-              <div className="flex h-full flex-col overflow-hidden">
-                {shellTabs.length > 0 && (
-                  <div className="border-b border-border bg-card/50">
-                    <ShellTabs
-                      id="shell-tabs"
-                      tabs={shellTabs}
-                      events={["OnSelect", "OnClose"]}
-                      eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-                        const tabId = firstStringArg(args);
-                        if (!tabId) return;
-                        if (evt === "OnSelect") onSelectTab(tabId);
-                        else if (evt === "OnClose") onCloseTab(tabId);
-                      }}
+            /* V1's footer is `[settingsMenu, inboxButton]`: the settings cog is a
+               DropDownMenu trigger and the Inbox its own button, both icon-only
+               (`ShowLabel(!inboxInFooter)` is false whenever the Inbox is in the footer). */
+            SidebarFooter: (
+              <>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <ShellSettingsButton
+                      id="shell-settings-btn"
+                      label="Settings"
+                      icon="Settings"
+                      showLabel={false}
+                      isActive={activeNav === "settings"}
+                      eventHandler={noop}
                     />
-                  </div>
-                )}
-                <main className="flex-1 overflow-y-auto p-6">{children}</main>
-              </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="top" align="start">
+                    <DropdownMenuItem onSelect={() => onSelectNav("settings")}>
+                      Configuration
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onSelectNav("pull-requests")}>
+                      Pull Requests
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onSelect={onOpenShortcuts}>
+                      Keyboard Shortcuts
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <ShellSettingsButton
+                  id="shell-inbox-btn"
+                  label="Inbox"
+                  icon="Inbox"
+                  showLabel={false}
+                  isActive={activeNav === "inbox"}
+                  events={["OnClick"]}
+                  eventHandler={() => onSelectNav("inbox")}
+                />
+              </>
+            ),
+            Content: <main className="flex-1 overflow-y-auto p-6">{children}</main>,
+            /* The strip belongs to the shell frame's bottom edge, not to the content: V1
+               hands it to the `tabs` slot and gates the row on `hasTabs`. */
+            Tabs: (
+              <ShellTabs
+                id="shell-tabs"
+                tabs={shellTabs}
+                selectedId={activeNav}
+                events={["OnSelect", "OnClose"]}
+                eventHandler={(evt: string, _id: string, args?: unknown[]) => {
+                  const tabId = firstStringArg(args);
+                  if (!tabId) return;
+                  if (evt === "OnSelect") onSelectTab(tabId);
+                  else if (evt === "OnClose") onCloseTab(tabId);
+                }}
+              />
             ),
           }}
         />

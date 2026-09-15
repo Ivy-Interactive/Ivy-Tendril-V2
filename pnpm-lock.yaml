@@ -225,6 +225,9 @@ importers:
       '@hpcc-js/wasm-graphviz':
         specifier: 1.22.0
         version: 1.22.0
+      '@ivy-interactive/ivy-design-system':
+        specifier: 1.1.18
+        version: 1.1.18
       '@radix-ui/react-accordion':
         specifier: 1.2.12
         version: 1.2.12(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -435,7 +438,7 @@ importers:
         version: 4.1.16(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))
       '@testing-library/jest-dom':
         specifier: ^7.0.1
-        version: 7.0.1(@testing-library/dom@10.4.1)(vitest@5.0.0(@types/node@26.5.1)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1))
+        version: 7.0.1(@testing-library/dom@10.4.1)(vitest@5.0.0(@types/node@26.5.1)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1))
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -507,7 +510,7 @@ importers:
         version: 0.3.0(@types/node@26.5.1)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(esbuild@0.25.12)(jiti@2.7.0)(jsdom@29.1.1)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1)
       vitest:
         specifier: ^5.0.0
-        version: 5.0.0(@types/node@26.5.1)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1)
+        version: 5.0.0(@types/node@26.5.1)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1)
       wait-on:
         specifier: ^8.0.4
         version: 8.0.5(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
@@ -1253,6 +1256,9 @@ packages:
   '@istanbuljs/schema@0.1.6':
     resolution: {integrity: sha512-+Sg6GCR/wy1oSmQDFq4LQDAhm3ETKnorxN+y5nbLULOR3P0c14f2Wurzj3/xqPXtasLFfHd5iRFQ7AJt4KH2cw==}
     engines: {node: '>=8'}
+
+  '@ivy-interactive/ivy-design-system@1.1.18':
+    resolution: {integrity: sha512-bkfnLdTodu67hP6OJCy7LCgoIfCwf8Wnw3dRtSU6PIDAp/1jlPajPAiSPb3Im6LcRPVsalt9YLBh582JcKVyzQ==}
 
   '@jest/console@29.7.0':
     resolution: {integrity: sha512-5Ni4CU7XHQi32IJ398EEP4RrB8eV09sXP2ROqD4bksHrnTree52PsxvX8tpL8LvTZ3pFzXyPbNQReSN41CAhOg==}
@@ -8306,6 +8312,8 @@ snapshots:
 
   '@istanbuljs/schema@0.1.6': {}
 
+  '@ivy-interactive/ivy-design-system@1.1.18': {}
+
   '@jest/console@29.7.0':
     dependencies:
       '@jest/types': 29.6.3
@@ -9994,7 +10002,7 @@ snapshots:
     optionalDependencies:
       vitest: 4.1.11(@types/node@26.5.1)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(typescript@5.9.3)(yaml@2.9.1))(jsdom@26.1.0(supports-color@8.1.1))
 
-  '@testing-library/jest-dom@7.0.1(@testing-library/dom@10.4.1)(vitest@5.0.0(@types/node@26.5.1)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1))':
+  '@testing-library/jest-dom@7.0.1(@testing-library/dom@10.4.1)(vitest@5.0.0(@types/node@26.5.1)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1))':
     dependencies:
       '@adobe/css-tools': 4.5.0
       '@testing-library/dom': 10.4.1
@@ -10004,7 +10012,7 @@ snapshots:
       picocolors: 1.1.1
       redent: 3.0.0
     optionalDependencies:
-      vitest: 5.0.0(@types/node@26.5.1)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1)
+      vitest: 5.0.0(@types/node@26.5.1)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1)
 
   '@testing-library/react@16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
     dependencies:
@@ -15280,7 +15288,7 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  vitest@5.0.0(@types/node@26.5.1)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1):
+  vitest@5.0.0(@types/node@26.5.1)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(jsdom@29.1.1):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.0.0(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))
@@ -15298,6 +15306,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.5.1
+      '@vitest/browser-preview': 4.1.11(@voidzero-dev/vite-plus-core@0.3.0(@types/node@26.5.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.13)(typescript@7.0.2)(yaml@2.9.1))(vitest@4.1.11)
       jsdom: 29.1.1
     transitivePeerDependencies:
       - msw

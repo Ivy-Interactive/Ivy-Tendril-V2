@@ -7,20 +7,13 @@ import {
 } from "@ivy-interactive/components/renderers";
 import { PlanMarkdown } from "@ivy-interactive/components/tendril";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import {
-  CheckCircle2,
-  Copy,
-  FilePlus,
-  Info,
-  Loader2,
-  Paperclip,
-  PlayCircle,
-  XCircle,
-} from "lucide-react";
+import { CheckCheck, Copy, FilePlus, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
 import { chatStore } from "../state/chatStore";
 import type { ChatAttachment, ChatMessage, InProgressQuestionAnswers } from "../types/chat";
+import type { Job } from "../types/api";
 import { isWriteInAnswer, patchQuestionsMarkdown } from "../utils/questionMarkdown";
-import { formatSystemEvent, type SystemEventKind } from "../utils/systemEvents";
+import { formatSystemEvent } from "../utils/systemEvents";
+import { resolveJobState, type JobDisplayState } from "../utils/jobStatus";
 import type { LightboxImage } from "../components/chat/ImageLightbox";
 
 export interface ChatMessageRowProps {
@@ -34,6 +27,12 @@ export interface ChatMessageRowProps {
   onOpenPlan?: (planId: string) => void;
   /** Opens an image attachment in the lightbox. */
   onOpenImage?: (image: LightboxImage) => void;
+  /**
+   * The conversation's jobs and transcript, used to resolve what a "job started" event turned
+   * into: the row's icon reports the outcome rather than freezing on "started".
+   */
+  jobs?: Job[];
+  threadMessages?: ChatMessage[];
 }
 
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
@@ -51,11 +50,17 @@ const imageSrc = (path: string): string => {
   }
 };
 
-const SYSTEM_EVENT_ICONS: Record<SystemEventKind, React.ReactNode> = {
-  completed: <CheckCircle2 className="size-3.5 text-success" aria-hidden="true" />,
-  failed: <XCircle className="size-3.5 text-destructive" aria-hidden="true" />,
-  started: <PlayCircle className="size-3.5 text-info" aria-hidden="true" />,
-  info: <Info className="size-3.5 text-muted-foreground" aria-hidden="true" />,
+/**
+ * The event's icon colour. A resolved job outcome outranks the event's own kind, so a "started"
+ * note whose job has since finished reads green (or red) rather than staying muted; a plain
+ * completion inherits the body colour, as it is not a status in its own right.
+ */
+const systemEventIconTone = (kind: string, jobState: JobDisplayState): string => {
+  if (jobState === "completed") return "text-success";
+  if (jobState === "failed") return "text-destructive";
+  if (kind === "failed") return "text-destructive";
+  if (kind === "started" || kind === "info") return "text-muted-foreground";
+  return "";
 };
 
 export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function ChatMessageRow({
@@ -67,6 +72,8 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   isSubmittingAnswer: propIsSubmittingAnswer,
   onOpenPlan,
   onOpenImage,
+  jobs = [],
+  threadMessages = [],
 }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
@@ -154,58 +161,94 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     [isSystem, currentMessage.content],
   );
 
-  // A system event is a one-line timeline note, not a turn in the conversation: no bubble, no
+  const jobState = useMemo(
+    () => (systemEvent ? resolveJobState(systemEvent.jobId, jobs, threadMessages) : "unknown"),
+    [systemEvent, jobs, threadMessages],
+  );
+
+  // A system event is a one-line timeline note, not a turn in the conversation: it sits at the
+  // leading edge of the thread as a sentence with a status icon, with no bubble and no
   // copy/create-plan actions, and the instructions the backend addressed to the agent are dropped.
   if (systemEvent) {
+    const tone = systemEventIconTone(systemEvent.kind, jobState);
+    const icon =
+      systemEvent.kind === "started" ? (
+        jobState === "completed" ? (
+          <CheckCheck className={`size-4 shrink-0 ${tone}`} aria-hidden="true" />
+        ) : jobState === "failed" ? (
+          <XCircle className={`size-4 shrink-0 ${tone}`} aria-hidden="true" />
+        ) : jobState === "running" ? (
+          <Loader2 className={`size-4 shrink-0 animate-spin ${tone}`} aria-hidden="true" />
+        ) : (
+          <span
+            className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-muted-foreground"
+            aria-hidden="true"
+          />
+        )
+      ) : systemEvent.kind === "completed" ? (
+        <CheckCheck className={`size-4 shrink-0 ${tone}`} aria-hidden="true" />
+      ) : systemEvent.kind === "failed" ? (
+        <XCircle className={`size-4 shrink-0 ${tone}`} aria-hidden="true" />
+      ) : (
+        <Sparkles className={`size-4 shrink-0 ${tone}`} aria-hidden="true" />
+      );
+
     return (
       <div
         data-message-id={message.id}
         data-testid="chat-system-event"
         data-kind={systemEvent.kind}
-        className="flex justify-center px-4 py-1.5"
+        data-job-state={jobState}
+        title={message.timestamp}
+        className="flex w-full items-start gap-1.5 text-foreground"
       >
-        <div className="flex max-w-3xl flex-wrap items-center gap-1.5 rounded-full border border-border bg-muted/50 px-3 py-1 text-xs text-muted-foreground">
-          {SYSTEM_EVENT_ICONS[systemEvent.kind]}
-          <span>{systemEvent.text}</span>
-          {systemEvent.plan &&
-            (onOpenPlan ? (
-              <button
-                type="button"
-                data-testid="chat-system-event-plan"
-                onClick={() => onOpenPlan(systemEvent.plan!.id)}
-                title="Open plan"
-                className="rounded px-1 font-medium text-success underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {systemEvent.plan.label}
-              </button>
-            ) : (
-              <span className="font-medium text-foreground">{systemEvent.plan.label}</span>
-            ))}
+        {icon}
+        <span className="min-w-0 leading-tight wrap-anywhere">
+          {systemEvent.text}
+          {systemEvent.plan && (
+            <>
+              {" "}
+              {onOpenPlan ? (
+                <button
+                  type="button"
+                  data-testid="chat-system-event-plan"
+                  onClick={() => onOpenPlan(systemEvent.plan!.id)}
+                  title="Open plan"
+                  className="cursor-pointer border-0 bg-transparent p-0 text-inherit underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {systemEvent.plan.label}
+                </button>
+              ) : (
+                <span className="underline">{systemEvent.plan.label}</span>
+              )}
+            </>
+          )}
+          {systemEvent.plan || systemEvent.kind !== "info" ? "." : ""}
           {systemEvent.detail && (
-            <span className="text-muted-foreground" title={systemEvent.detail}>
-              — {systemEvent.detail}
+            <span className="mt-0.5 block text-xs text-muted-foreground" title={systemEvent.detail}>
+              {systemEvent.detail}
             </span>
           )}
-        </div>
+        </span>
       </div>
     );
   }
 
   return (
     <ChatBubble variant={isUser ? "sent" : "received"} layout={isUser ? "default" : "ai"}>
-      <div data-message-id={message.id} className="flex flex-col max-w-3xl">
+      <div
+        data-message-id={message.id}
+        className={`flex min-w-0 flex-col ${isUser ? "max-w-[80%] items-end" : "w-full"}`}
+      >
         <ChatBubbleMessage
           variant={isUser ? "sent" : "received"}
-          className={
-            isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-card border border-border text-foreground"
-          }
+          className={isUser ? "max-w-full" : undefined}
+          title={isUser ? message.timestamp : undefined}
         >
           {isUser ? (
-            <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
+            <div className="self-stretch whitespace-pre-wrap">{message.content}</div>
           ) : (
-            <div className="text-sm">
+            <div>
               <PlanMarkdown
                 id={`chat-msg-${message.id}`}
                 content={content}
@@ -215,7 +258,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
               {isSubmitting && (
                 <div
                   data-testid="submitting-answer-indicator"
-                  className="flex items-center gap-1.5 text-xs text-success mt-2 font-medium"
+                  className="mt-2 flex min-h-6 items-center gap-1.5 text-xs text-muted-foreground"
                 >
                   <Loader2 className="size-3.5 animate-spin" />
                   <span>Submitting answer...</span>
@@ -227,8 +270,8 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
           {message.attachments && message.attachments.length > 0 && (
             <div
               data-testid="message-attachments"
-              className={`mt-2 flex flex-wrap gap-1.5 pt-1.5 border-t ${
-                isUser ? "border-success/40" : "border-border"
+              className={`flex max-w-full flex-wrap gap-1.5 ${
+                isUser ? "justify-end" : "mt-2 justify-start"
               }`}
             >
               {message.attachments.map((att, idx) =>
@@ -240,7 +283,9 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                     onClick={() => onOpenImage({ url: imageSrc(att.path), title: att.name })}
                     title={`Open ${att.name}`}
                     aria-label={`Open ${att.name}`}
-                    className="overflow-hidden rounded border border-border hover:border-success focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className={`overflow-hidden rounded-md transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 ${
+                      isUser ? "focus-visible:ring-primary-foreground" : "focus-visible:ring-ring"
+                    }`}
                   >
                     <img
                       src={imageSrc(att.path)}
@@ -252,13 +297,15 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                 ) : (
                   <div
                     key={`${att.path}-${idx}`}
-                    className={`flex items-center gap-1 rounded px-2 py-0.5 text-xs ${
-                      isUser ? "bg-black/20 text-white/95" : "bg-muted text-muted-foreground"
+                    className={`flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 ${
+                      isUser
+                        ? "bg-primary-foreground/20 text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
                     }`}
                     title={att.path}
                   >
-                    <Paperclip className="size-3 opacity-75 shrink-0" />
-                    <span className="max-w-[140px] truncate">{att.name}</span>
+                    <Paperclip className="size-4 shrink-0 opacity-85" />
+                    <span className="max-w-[220px] truncate">{att.name}</span>
                   </div>
                 ),
               )}
@@ -266,17 +313,19 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
           )}
         </ChatBubbleMessage>
 
-        {/* Action bar on message */}
+        {/* The row's meta line. V1 shows the finished turn's metrics here; V2 has no per-turn
+            metrics yet, so the slot carries the two actions the desktop app adds. */}
         <ChatBubbleActionWrapper className={isUser ? "justify-end" : "justify-start"}>
           <ChatBubbleAction
             icon={<Copy className="size-3.5" />}
+            title="Copy message"
             onClick={() => onCopy(message)}
-            className={isCopied ? "text-success" : "text-muted-foreground"}
+            className={isCopied ? "text-foreground" : "text-muted-foreground"}
           />
           <button
             type="button"
             onClick={() => onCreatePlan(message.content)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-success px-2 py-1 rounded transition-colors"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded px-1 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
             title="Create Plan from message"
           >
             <FilePlus className="size-3.5" />
