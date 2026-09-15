@@ -148,12 +148,12 @@ describe("shortcutRegistry", () => {
   });
 
   it("serializes a shortcut in canonical ctrl+meta+alt+shift+key order", () => {
-    expect(
-      serializeShortcut({ ctrl: true, meta: true, alt: true, shift: true, key: "K" }),
-    ).toBe("ctrl+meta+alt+shift+k");
-    expect(serializeShortcut({ ctrl: false, meta: false, alt: false, shift: false, key: "k" })).toBe(
-      "k",
+    expect(serializeShortcut({ ctrl: true, meta: true, alt: true, shift: true, key: "K" })).toBe(
+      "ctrl+meta+alt+shift+k",
     );
+    expect(
+      serializeShortcut({ ctrl: false, meta: false, alt: false, shift: false, key: "k" }),
+    ).toBe("k");
   });
 
   it("matches on event.code and, independently, on event.key", () => {
