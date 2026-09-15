@@ -60,7 +60,7 @@ When working inside Antigravity IDE:
 1. Skills placed in the root `.agents/skills/` directory of your workspace are automatically indexed.
 2. To link the Ivy Tendril extension into Antigravity IDE:
    ```bash
-   skills/tendril-extension/scripts/install-antigravity.sh
+   src/skills/tendril-extension/scripts/install-antigravity.sh
    ```
 3. Reload Antigravity IDE (`Cmd+Shift+P` -> `Developer: Reload Window`).
 

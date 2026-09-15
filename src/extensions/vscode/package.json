@@ -10,7 +10,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git",
-    "directory": "extensions/vscode"
+    "directory": "src/extensions/vscode"
   },
   "bugs": {
     "url": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues"
