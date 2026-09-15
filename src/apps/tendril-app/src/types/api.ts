@@ -130,6 +130,15 @@ export interface ProjectSummary {
   reviewActions?: ReviewActionConfig[];
 }
 
+/**
+ * A **read-only projection** of the wire shape, deliberately narrower than it. The server returns the
+ * whole `ProjectConfig`, including the unmodeled keys it round-trips (the agent security block —
+ * `sandboxMode`, `securityPreset`, `filePermissions`, … — written by the .NET V1 app). Nothing in the
+ * app writes a project today, so dropping them here loses nothing.
+ *
+ * A future project-settings screen MUST PATCH only the fields it changed rather than PUT an object
+ * reconstructed from this type, or it will clear every key absent from it.
+ */
 export interface ProjectDetail extends ProjectSummary {
   color?: string;
   context?: string;
@@ -143,6 +152,8 @@ export interface TendrilConfig {
   maxConcurrentJobs?: number;
   planTemplate?: string;
   theme?: string;
+  /** Absent means "on": the setting is only written to `config.yaml` once the operator toggles it. */
+  desktopNotifications?: boolean;
   inbox?: InboxConfig;
   raw?: Record<string, unknown>;
 }
@@ -282,6 +293,26 @@ export interface RepoStatus {
   changeCount?: number;
   error?: string;
 }
+
+/**
+ * The Git tab's shapes, from `cmd_get_plan_git`.
+ *
+ * `PlanGitView` in the components package owns these declarations, because it is
+ * the component that renders them and it cannot import from the app. Re-exported
+ * here so the rest of the app keeps reaching for its types in one place.
+ *
+ * `unreachable` and `missing` are lost work: the commit's worktree and branch are
+ * gone, so nothing but the object store is keeping it, and the next `git gc` in
+ * that repo prunes it. Commits listed under a worktree section are ancestors of
+ * that worktree's HEAD and so reachable by definition; only the unassociated ones
+ * carry a status, because those are the ones that can be reachable from nothing.
+ */
+export type {
+  CommitRefStatus,
+  PlanCommitRow,
+  PlanWorktreeSection,
+  PlanGitData,
+} from "@ivy-interactive/components/tendril";
 
 /** Options the Create PR dialog passes through to the `CreatePr` job. */
 export interface CreatePrOptions {

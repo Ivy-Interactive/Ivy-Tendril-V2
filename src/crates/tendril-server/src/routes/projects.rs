@@ -15,12 +15,12 @@ use tendril_core::config::{
 use tendril_core::db::open_database;
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{
-    ProjectConfig, ProjectMcpServerRef, ProjectSkillRef, ProjectVerificationRef,
+    ExtraKeys, ProjectConfig, ProjectMcpServerRef, ProjectSkillRef, ProjectVerificationRef,
     PromptwareHookConfig, RepoRef, ReviewActionConfig,
 };
 use tendril_core::plans::helpers::resolve_plan_folder;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RepoInput {
     String(String),
@@ -33,13 +33,14 @@ impl From<RepoInput> for RepoRef {
             RepoInput::String(path) => RepoRef {
                 path,
                 base_branch: None,
+                extra: Default::default(),
             },
             RepoInput::Object(r) => r,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum VerificationInput {
     String(String),
@@ -49,13 +50,18 @@ pub enum VerificationInput {
 /// A verification in a request body. `after` is a placement hint, not part of the stored
 /// verification: it names the verification this one goes behind, and only the add endpoint reads
 /// it — requests that supply the whole list already carry their own order.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VerificationObjectInput {
     pub name: String,
     #[serde(default)]
     pub required: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after: Option<String>,
+    /// Unmodeled keys, carried onto the stored `ProjectVerificationRef`. A request that replaces the
+    /// whole `verifications` list would otherwise drop any key this DTO does not name. `after` is
+    /// modeled, so it stays a placement hint and never leaks into the persisted extras.
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 impl VerificationInput {
@@ -73,10 +79,12 @@ impl From<VerificationInput> for ProjectVerificationRef {
             VerificationInput::String(name) => ProjectVerificationRef {
                 name,
                 required: true,
+                extra: Default::default(),
             },
             VerificationInput::Object(v) => ProjectVerificationRef {
                 name: v.name,
                 required: v.required,
+                extra: v.extra,
             },
         }
     }
@@ -105,6 +113,11 @@ pub struct CreateProjectRequest {
     pub mcp_servers: Vec<ProjectMcpServerRef>,
     #[serde(default)]
     pub skills: Vec<ProjectSkillRef>,
+    /// Project keys this DTO does not name, persisted onto the new `ProjectConfig`. Without this a
+    /// create payload carrying the agent security block (`sandboxMode`, `securityPreset`, …) would
+    /// have it dropped on the floor.
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 fn default_project_color() -> String {
@@ -130,6 +143,12 @@ pub struct UpdateProjectRequest {
     #[serde(rename = "mcpServers", alias = "mcp_servers")]
     pub mcp_servers: Option<Vec<ProjectMcpServerRef>>,
     pub skills: Option<Vec<ProjectSkillRef>>,
+    /// Project keys this DTO does not name. These are **merged** key-by-key into the stored
+    /// project's `extra` rather than replacing the map — that is what makes a partial PUT safe: a
+    /// payload naming one key must not clear the others. Keys this DTO does name (`name`, `newName`,
+    /// `color`, `repos`, …) never land here.
+    #[serde(flatten)]
+    pub extra: ExtraKeys,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -295,6 +314,7 @@ pub async fn create_project(
         build_dependencies: req.build_dependencies,
         mcp_servers: req.mcp_servers,
         skills: req.skills,
+        extra: req.extra,
         ..Default::default()
     };
 
@@ -412,6 +432,12 @@ pub async fn update_project(
 
     if let Some(skills) = req.skills {
         settings.projects[proj_idx].skills = skills;
+    }
+
+    // Merged, not assigned: a payload naming one unmodeled key must not clear the eight it omits.
+    // An empty map is therefore a no-op rather than a wipe.
+    if !req.extra.is_empty() {
+        settings.projects[proj_idx].extra.extend(req.extra);
     }
 
     let updated_project = settings.projects[proj_idx].clone();
@@ -953,6 +979,7 @@ pub async fn add_project_review_action(
             condition: req.condition,
             command: req.command,
             paths: req.paths,
+            extra: Default::default(),
         },
     );
 
@@ -1116,6 +1143,7 @@ pub async fn add_project_hook(
         promptwares: req.promptwares,
         condition: req.condition,
         action: req.action,
+        extra: Default::default(),
     });
 
     if let Err(e) = save_config(&state.config_path, &settings) {

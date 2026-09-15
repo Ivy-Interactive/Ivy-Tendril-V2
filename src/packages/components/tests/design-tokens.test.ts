@@ -1,12 +1,11 @@
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { NAMED_COLORS } from "../src/stories/colors.stories.tsx";
+import { readCssInlined } from "./read-css.ts";
 
-const globalsCss = readFileSync(
-  resolve(__dirname, "..", "src/styles/globals.css"),
-  "utf-8",
-) as string;
+// The token blocks live in `tokens.css`, which globals.css imports and shares with index.css, so this
+// reads the stylesheet with its relative imports inlined — the text a bundler ends up compiling.
+const globalsCss: string = readCssInlined(resolve(__dirname, "..", "src/styles/globals.css"));
 
 /** Same extraction the contrast assertions in button.test.tsx use. */
 const rootBlock = /:root\s*\{([^}]+)\}/s.exec(globalsCss)?.[1] ?? "";
@@ -40,7 +39,9 @@ function declaration(block: string, name: string): string | undefined {
 
 describe("globals.css block structure", () => {
   it("declares exactly one top-level :root and one .dark block", () => {
-    // The single-block invariant the `[^}]+` contrast regexes in button.test.tsx depend on.
+    // The single-block invariant the `[^}]+` contrast regexes in button.test.tsx depend on. It is now
+    // `tokens.css` that supplies these blocks; the assertion holds on the inlined text, which is what
+    // those regexes are handed.
     expect(globalsCss.match(/^:root \{/gm)).toHaveLength(1);
     expect(globalsCss.match(/^\.dark \{/gm)).toHaveLength(1);
     expect(globalsCss.match(/^@theme inline \{/gm)).toHaveLength(1);

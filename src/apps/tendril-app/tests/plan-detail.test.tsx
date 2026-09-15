@@ -3,7 +3,14 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PlanDetailView } from "../src/views/PlanDetailView";
 import { PlanVerifications } from "../src/views/PlanVerifications";
 import { bridge } from "../src/api/bridge";
-import { planDetail, prStatus, verification } from "./fixtures/plan.fixture";
+import {
+  commitRow,
+  planDetail,
+  planGit,
+  prStatus,
+  verification,
+  worktreeSection,
+} from "./fixtures/plan.fixture";
 import { recommendation, bridgeError } from "./fixtures/recommendation.fixture";
 
 describe("PlanDetailView and PlanVerifications interactive controls", () => {
@@ -30,6 +37,7 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
     vi.spyOn(bridge, "listVerificationReports").mockResolvedValue([]);
     vi.spyOn(bridge, "listRecommendations").mockResolvedValue(testPlan.recommendations);
     vi.spyOn(bridge, "listPullRequests").mockResolvedValue([]);
+    vi.spyOn(bridge, "getPlanGit").mockResolvedValue(planGit());
   });
 
   afterEach(() => {
@@ -213,5 +221,79 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
     await waitFor(() => expect(screen.getByText("Merged")).toBeInTheDocument());
     expect(screen.getByText("tendril/00021-BuildDesktopOperator")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+  });
+
+  it("counts the plan's worktrees, commits and PRs on the Git tab button", async () => {
+    render(<PlanDetailView plan={testPlan} />);
+
+    // One worktree from the fixture, two recorded commits and one PR from testPlan.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^Git \(4\)$/ })).toBeInTheDocument(),
+    );
+  });
+
+  it("renders the worktree section and its commits when the Git tab is opened", async () => {
+    render(<PlanDetailView plan={testPlan} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^Git \(/ })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Git \(/ }));
+
+    expect(screen.getByText("Worktrees")).toBeInTheDocument();
+    // Scoped to the section's own copy-path control: the worktree is named after the
+    // repo, which the header badge already renders.
+    expect(screen.getByRole("button", { name: "Copy path to Tendril-App" })).toBeInTheDocument();
+    expect(screen.getByText("Add the plan Git tab")).toBeInTheDocument();
+    expect(screen.getByText("tendril/00021-BuildDesktopOperator@abc1234")).toBeInTheDocument();
+  });
+
+  // The badge is the whole point of fetching on mount: a warning that only appears
+  // once you have clicked into the tab is not a warning. Asserted without clicking.
+  it("badges the Git tab button when a commit is reachable from no ref", async () => {
+    const lost = commitRow({ hash: "f".repeat(40), title: "Work held by nothing" });
+    vi.spyOn(bridge, "getPlanGit").mockResolvedValue(
+      planGit({
+        unassociatedCommits: [lost],
+        unassociatedCommitRefStatus: { [lost.hash]: "unreachable" },
+      }),
+    );
+
+    render(<PlanDetailView plan={testPlan} />);
+
+    const badge = await waitFor(() => screen.getByTestId("git-tab-at-risk"));
+    expect(badge).toHaveAttribute("aria-label", "1 commit is at risk of being lost");
+    expect(screen.queryByTestId("commits-at-risk")).not.toBeInTheDocument();
+  });
+
+  it("leaves the Git tab button unbadged when every commit is reachable", async () => {
+    vi.spyOn(bridge, "getPlanGit").mockResolvedValue(
+      planGit({ worktrees: [worktreeSection()], unassociatedCommits: [] }),
+    );
+
+    render(<PlanDetailView plan={testPlan} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^Git \(/ })).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("git-tab-at-risk")).not.toBeInTheDocument();
+  });
+
+  it("keeps the other tabs working when the Git fetch is rejected", async () => {
+    vi.spyOn(bridge, "getPlanGit").mockRejectedValue(
+      bridgeError({ message: "The daemon is unreachable" }),
+    );
+
+    render(<PlanDetailView plan={testPlan} />);
+
+    // The other tabs are unaffected, and the action banner stays clear.
+    fireEvent.click(screen.getByRole("button", { name: /metadata & history/i }));
+    expect(screen.getByText("Repositories")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-action-error")).not.toBeInTheDocument();
+
+    // The Git tab reports the failure in its own body, and carries no count.
+    fireEvent.click(screen.getByRole("button", { name: /^Git$/ }));
+    await waitFor(() => expect(screen.getByTestId("git-tab-error")).toBeInTheDocument());
+    expect(screen.getByTestId("git-tab-error")).toHaveTextContent(/daemon is unreachable/);
   });
 });

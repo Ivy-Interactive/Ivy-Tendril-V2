@@ -70,6 +70,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/plans/:id/repo-status",
             get(plans::repo_status_handler),
         )
+        .route("/api/plans/:id/git", get(plans::plan_git_handler))
         .route(
             "/api/plans/:id/revisions",
             get(plans::get_revision_handler).post(plans::write_revision_handler),

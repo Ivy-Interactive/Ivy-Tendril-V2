@@ -116,6 +116,12 @@ pub fn redact_secrets(value: &str) -> String {
 /// Sanitizes one MCP server: arguments by pattern, environment values by key *and* pattern.
 ///
 /// `command` is left untouched — it is a path to an executable, not a credential.
+///
+/// `extra` (the unmodeled-key catch-all) is deliberately **dropped** rather than carried through.
+/// This is an outbound export path, not a `config.yaml` write, and redaction cannot inspect a shape
+/// it does not model — passing arbitrary unknown values through unredacted risks exporting a
+/// credential. Nothing downstream of here writes back to the operator's config, so this drop cannot
+/// lose data from it.
 pub fn sanitize_mcp_server(server: &ProjectMcpServerRef) -> ProjectMcpServerRef {
     ProjectMcpServerRef {
         name: server.name.clone(),
@@ -123,6 +129,7 @@ pub fn sanitize_mcp_server(server: &ProjectMcpServerRef) -> ProjectMcpServerRef 
         arguments: server.arguments.iter().map(|a| redact_secrets(a)).collect(),
         environment: sanitize_environment_map(&server.environment),
         disabled: server.disabled,
+        extra: Default::default(),
     }
 }
 

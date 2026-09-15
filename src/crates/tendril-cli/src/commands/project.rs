@@ -433,6 +433,7 @@ fn add_mcp_server(
         arguments: arguments.to_vec(),
         environment: parse_env_entries(environment),
         disabled: false,
+        extra: Default::default(),
     });
     Ok(())
 }
@@ -473,6 +474,7 @@ fn add_project_skill(
         path: blank_to_none(path),
         instructions: blank_to_none(instructions),
         disabled: false,
+        extra: Default::default(),
     });
     Ok(())
 }
@@ -1532,6 +1534,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 proj.repos.push(RepoRef {
                     path: path.clone(),
                     base_branch: None,
+                    extra: Default::default(),
                 });
                 save_config(&cfg_path, &settings)?;
             }
@@ -1572,6 +1575,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                     ProjectVerificationRef {
                         name: verification.clone(),
                         required: !optional,
+                        extra: Default::default(),
                     },
                     after.as_deref(),
                 )?;
@@ -1658,6 +1662,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                     condition: condition.clone(),
                     command: command.clone(),
                     paths: paths.clone(),
+                    extra: Default::default(),
                 },
             );
             save_config(&cfg_path, &settings)?;
@@ -1915,6 +1920,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                 promptwares: promptwares.clone(),
                 condition: condition.clone(),
                 action: action.clone(),
+                extra: Default::default(),
             });
             save_config(&cfg_path, &settings)?;
             println!("Hook '{}' added to project '{}'.", hook, name);
@@ -2022,6 +2028,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                         ProjectPortConfig {
                             default_port,
                             description: description.clone(),
+                            extra: Default::default(),
                         },
                     )
                     .is_some();
@@ -2090,6 +2097,7 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
                     path: path.clone(),
                     template: template.filter(|t| !t.trim().is_empty()),
                     overrides: parsed,
+                    extra: Default::default(),
                 });
                 save_config(&cfg_path, &settings)?;
                 println!(

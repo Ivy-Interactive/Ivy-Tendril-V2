@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
+import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
 import { plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
+import { notificationsStore } from "./state/notificationsStore";
 import { serviceStore } from "./state/serviceStore";
 import { bridge } from "./api/bridge";
 import {
@@ -36,6 +38,17 @@ import type { ReviewActionTarget } from "./views/ReviewActionView";
 const NoProjectsDialog = React.lazy(() =>
   import("./views/dialogs/NoProjectsDialog").then((m) => ({ default: m.NoProjectsDialog })),
 );
+
+// Lazy for the same reason, and it is the whole point of `notificationsStore` reaching `toast`
+// through a dynamic import too: the toast viewport is mounted from the start of the session, but
+// the chunk it lives in is fetched alongside the first view rather than blocking the entry chunk.
+const Toaster = React.lazy(() =>
+  import("@ivy-interactive/components/ui").then((m) => ({ default: m.Toaster })),
+);
+
+/** How often the job list is re-read to spot exits. Short enough that a finished job is announced
+ *  while the operator still has it in mind, long enough to be a rounding error on the daemon. */
+const JOB_POLL_INTERVAL_MS = 5000;
 
 const DashboardView = React.lazy(() =>
   import("./views/DashboardView").then((m) => ({ default: m.DashboardView })),
@@ -215,50 +228,71 @@ export const App: React.FC = () => {
       .then((unsub) => (unsubChangeStatus = unsub))
       .catch(() => {});
 
+    // Notifications: read the setting, ask for OS permission if it is on, then announce every job
+    // that exits. The daemon's WebSocket carries chat and PR events but not job lifecycle ones, so
+    // the exits have to be noticed by polling the list — `jobsStore` diffs each snapshot and only
+    // reports transitions, so the tick costs one request and raises nothing when nothing changed.
+    notificationsStore.init().catch(() => {});
+    const unsubExit = jobsStore.onJobExit((notification) =>
+      notificationsStore.notifyJobExit(notification),
+    );
+    const pollTimer = window.setInterval(() => {
+      if (serviceStore.getState().status !== "online") return;
+      jobsStore.fetchJobs().catch(() => {});
+    }, JOB_POLL_INTERVAL_MS);
+
     return () => {
       if (unsubStatus) unsubStatus();
       if (unsubJob) unsubJob();
       if (unsubPlan) unsubPlan();
       if (unsubChange) unsubChange();
       if (unsubChangeStatus) unsubChangeStatus();
+      unsubExit();
+      window.clearInterval(pollTimer);
     };
   }, []);
 
-  // Global Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+  // Global Keyboard Shortcuts. Each one registers with the components package's shortcut registry,
+  // which owns the single window listener, debounces duplicate fires and — because the registry is
+  // enumerable — is what KeyboardShortcutsHelp renders instead of a hardcoded list.
+  useShortcut("app:toggle-sidebar", "Ctrl+B", () => uiStore.toggleSidebar(), {
+    description: "Toggle sidebar collapse",
+  });
+  useShortcut("app:goto-chat", "Ctrl+Shift+C", () => uiStore.setActiveNav("chat"), {
+    description: "Switch to Chat",
+  });
+  useShortcut("app:goto-inbox", "Ctrl+I", () => uiStore.setActiveNav("inbox"), {
+    description: "Open GitHub issue inbox",
+  });
+  useShortcut(
+    "app:new-plan",
+    "Ctrl+N",
+    () => {
+      setNewPlanPrefill({});
+      setIsNewPlanOpen(true);
+    },
+    { description: "Open new plan intake modal" },
+  );
+  // The handler navigates; it does not focus a search field, and the description now says so.
+  useShortcut("app:goto-plans", "Ctrl+K", () => uiStore.setActiveNav("plans"), {
+    description: "Go to Plans",
+  });
+  useShortcut("app:show-shortcuts", "?", () => setIsShortcutsOpen(true), {
+    description: "Show keyboard shortcuts",
+  });
 
-      if (isCmdOrCtrl && e.shiftKey && e.key.toLowerCase() === "c") {
-        e.preventDefault();
-        uiStore.setActiveNav("chat");
-      } else if (isCmdOrCtrl && e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        uiStore.toggleSidebar();
-      } else if (isCmdOrCtrl && e.key.toLowerCase() === "i") {
-        e.preventDefault();
-        uiStore.setActiveNav("inbox");
-      } else if (isCmdOrCtrl && e.key.toLowerCase() === "n") {
-        e.preventDefault();
-        setNewPlanPrefill({});
-        setIsNewPlanOpen(true);
-      } else if (isCmdOrCtrl && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        uiStore.setActiveNav("plans");
-      } else if (
-        e.key === "?" &&
-        !["INPUT", "TEXTAREA"].includes((e.target as HTMLElement).tagName)
-      ) {
-        e.preventDefault();
-        setIsShortcutsOpen(true);
-      } else if (e.key === "Escape") {
-        setIsNewPlanOpen(false);
-        setIsShortcutsOpen(false);
-      }
+  // Escape stays on its own listener: it dismisses two overlays rather than invoking one action, it
+  // is not a discoverable shortcut worth a row in the help panel, and the registry's preventDefault
+  // on every match would fight Radix's own Escape handling.
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setIsNewPlanOpen(false);
+      setIsShortcutsOpen(false);
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, []);
 
   // Handle plan selection (fetches plan detail and opens tab)
@@ -656,6 +690,10 @@ export const App: React.FC = () => {
       />
 
       <KeyboardShortcutsHelp isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+
+      <React.Suspense fallback={null}>
+        <Toaster />
+      </React.Suspense>
     </>
   );
 };

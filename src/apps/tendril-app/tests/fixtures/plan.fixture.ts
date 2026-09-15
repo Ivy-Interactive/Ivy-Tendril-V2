@@ -1,10 +1,13 @@
 import type {
+  PlanCommitRow,
   PlanDetail,
+  PlanGitData,
   PlanSummary,
   PlanVerification,
   PrStatus,
   PrSyncReport,
   VerificationReport,
+  PlanWorktreeSection,
 } from "../../src/types/api";
 
 /**
@@ -84,6 +87,40 @@ export function prStatus(overrides: Partial<PrStatus> = {}): PrStatus {
     project: "Tendril-App",
     cost: 1.23,
     tokens: 160_000,
+    ...overrides,
+  };
+}
+
+export function commitRow(overrides: Partial<PlanCommitRow> = {}): PlanCommitRow {
+  return {
+    hash: "abc1234000000000000000000000000000000000",
+    shortHash: "abc1234",
+    title: "Add the plan Git tab",
+    fileCount: 3,
+    ...overrides,
+  };
+}
+
+export function worktreeSection(overrides: Partial<PlanWorktreeSection> = {}): PlanWorktreeSection {
+  return {
+    name: "Tendril-App",
+    path: "/home/op/.tendril/Plans/00021-BuildDesktopOperator/Worktrees/Tendril-App",
+    branch: "tendril/00021-BuildDesktopOperator",
+    shortHash: "abc1234",
+    hasUncommittedChanges: false,
+    commits: [commitRow()],
+    parentRepoPath: "/repos/Tendril-App",
+    baseBranch: "main",
+    baseShortHash: "9990000",
+    ...overrides,
+  };
+}
+
+export function planGit(overrides: Partial<PlanGitData> = {}): PlanGitData {
+  return {
+    worktrees: [worktreeSection()],
+    unassociatedCommits: [],
+    unassociatedCommitRefStatus: {},
     ...overrides,
   };
 }

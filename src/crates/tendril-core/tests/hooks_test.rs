@@ -38,6 +38,7 @@ fn hook(
         promptwares: promptwares.iter().map(|p| p.to_string()).collect(),
         condition: condition.to_string(),
         action: action.to_string(),
+        extra: Default::default(),
     }
 }
 

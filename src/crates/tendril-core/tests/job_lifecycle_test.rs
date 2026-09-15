@@ -798,6 +798,7 @@ fn hook(name: &str, when: &str, command: &str) -> PromptwareHookConfig {
         promptwares: vec![],
         condition: String::new(),
         action: command.to_string(),
+        extra: Default::default(),
     }
 }
 

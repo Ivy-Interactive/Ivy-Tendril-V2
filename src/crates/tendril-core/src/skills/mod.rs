@@ -241,5 +241,6 @@ pub fn import_skill_to_project(
         )),
         instructions: None,
         disabled: false,
+        extra: Default::default(),
     })
 }

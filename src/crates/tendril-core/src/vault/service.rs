@@ -1555,6 +1555,7 @@ pub async fn import_project_with(
         repos.push(RepoRef {
             path: path.to_string_lossy().to_string(),
             base_branch: repo.base_branch.clone(),
+            extra: Default::default(),
         });
     }
 

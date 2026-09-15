@@ -1,4 +1,9 @@
 import React from "react";
+import {
+  formatShortcut,
+  getPlatformShortcut,
+  getRegisteredShortcuts,
+} from "@ivy-interactive/components/tendril";
 
 interface KeyboardShortcutsHelpProps {
   isOpen: boolean;
@@ -11,17 +16,12 @@ export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const shortcuts = [
-    { key: "Cmd/Ctrl + B", desc: "Toggle sidebar collapse" },
-    { key: "Cmd/Ctrl + Shift + C", desc: "Switch to Chat" },
-    { key: "Cmd/Ctrl + I", desc: "Open GitHub issue inbox" },
-    { key: "Cmd/Ctrl + K", desc: "Focus quick search across plans" },
-    { key: "Cmd/Ctrl + N", desc: "Open new plan intake modal" },
-    { key: "/", desc: "Focus search bar in plans explorer" },
-    { key: "Up / Down", desc: "Navigate through plan items" },
-    { key: "Enter", desc: "Open selected plan" },
-    { key: "Escape", desc: "Close modals or overlays" },
-  ];
+  // Read from the registry on open rather than subscribed to: a shortcut registered by a view is only
+  // live while that view is mounted, so this is the honest answer to "what will actually fire right
+  // now". Sorted by description for a deterministic order the registry's insertion order won't give.
+  const shortcuts = [...getRegisteredShortcuts()].sort((a, b) =>
+    a.description.localeCompare(b.description),
+  );
 
   return (
     <div
@@ -50,14 +50,28 @@ export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
         </div>
 
         <div className="mt-4 space-y-3">
-          {shortcuts.map((s, idx) => (
-            <div key={idx} className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">{s.desc}</span>
-              <kbd className="rounded bg-muted px-2.5 py-1 font-mono text-xs text-foreground border border-border">
-                {s.key}
-              </kbd>
-            </div>
-          ))}
+          {shortcuts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No keyboard shortcuts are active.</p>
+          ) : (
+            shortcuts.map((s) => (
+              <div
+                key={s.id}
+                aria-disabled={s.isActive ? undefined : true}
+                className={`flex items-center justify-between text-sm ${
+                  s.isActive ? "" : "opacity-50"
+                }`}
+              >
+                <span className="text-muted-foreground">{s.description}</span>
+                {/* Platform mapping first, then display formatting: the registry resolves a
+                    `Ctrl+` binding to Command on Mac, so labelling it "Ctrl" there would name a key
+                    that does not fire it. getPlatformShortcut answers ⌘/⌥/⇧ per platform and
+                    formatShortcut glues single-character keys the way the sidebar hints do. */}
+                <kbd className="rounded bg-muted px-2.5 py-1 font-mono text-xs text-foreground border border-border">
+                  {formatShortcut(getPlatformShortcut(s.displayKey).split("+"))}
+                </kbd>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

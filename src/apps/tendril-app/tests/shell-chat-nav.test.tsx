@@ -54,11 +54,18 @@ describe("ShellLayout & App Chat Navigation Integration", () => {
 
     expect(uiStore.getState().activeNav).toBe("dashboard");
 
+    // The shortcut registry resolves "Ctrl+Shift+C" per platform — Command on Mac, Control
+    // elsewhere — so the event has to carry the modifier the host platform actually has. The
+    // previous hand-rolled listener accepted `metaKey || ctrlKey` on every platform, which let this
+    // test press a Command key that does not exist under a non-Mac user agent.
+    const mac = /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
+
     await act(async () => {
       fireEvent.keyDown(window, {
         key: "c",
         code: "KeyC",
-        metaKey: true,
+        metaKey: mac,
+        ctrlKey: !mac,
         shiftKey: true,
       });
     });
