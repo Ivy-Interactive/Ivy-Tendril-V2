@@ -54,4 +54,32 @@ describe("Bundle Exports and Code-Splitting", () => {
     const staticDiagramRenderer = /from\s+["']\.\/(?:Mermaid|Graphviz)Renderer-[\w-]+\.mjs["']/;
     expect(content).not.toMatch(staticDiagramRenderer);
   });
+
+  // echarts is around a megabyte, so the chart components have their own entrypoint. Nothing an
+  // application loads eagerly may reach it.
+  describe("echarts stays on the charts entrypoint", () => {
+    const eagerEntrypoints = ["ui", "tendril", "index", "renderers", "theme", "diagrams"];
+
+    for (const entry of eagerEntrypoints) {
+      it(`dist/${entry}.mjs does not import echarts`, () => {
+        const path = join(repoRoot, "dist", `${entry}.mjs`);
+        expect(existsSync(path), path).toBe(true);
+
+        const content = readFileSync(path, "utf-8");
+        const staticEcharts =
+          /import\s+(?:(?:\*\s+as\s+\w+|\{[^}]*\}|\w+)\s+from\s+)?["']echarts(?:-for-react)?["'];?/g;
+        expect(content).not.toMatch(staticEcharts);
+        // Not even a lazy `import("echarts")` or a re-export should appear here.
+        expect(content).not.toContain("echarts");
+      });
+    }
+
+    it("dist/charts.mjs is where echarts-for-react is imported", () => {
+      const chartsMjsPath = join(repoRoot, "dist", "charts.mjs");
+      expect(existsSync(chartsMjsPath)).toBe(true);
+
+      const content = readFileSync(chartsMjsPath, "utf-8");
+      expect(content).toContain('from "echarts-for-react"');
+    });
+  });
 });
