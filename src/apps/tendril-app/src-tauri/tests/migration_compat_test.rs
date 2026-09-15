@@ -152,7 +152,9 @@ fn test_ivy_config_yaml_preserves_unknown_keys_on_app_mapping() {
             .get("theme")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
-        desktop_notifications: json_val.get("desktopNotifications").and_then(|v| v.as_bool()),
+        desktop_notifications: json_val
+            .get("desktopNotifications")
+            .and_then(|v| v.as_bool()),
         raw: json_val.clone(),
     };
 
