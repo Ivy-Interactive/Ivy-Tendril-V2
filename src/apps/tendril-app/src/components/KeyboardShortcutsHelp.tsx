@@ -1,5 +1,9 @@
 import React from "react";
-import { formatShortcut, getRegisteredShortcuts } from "@ivy-interactive/components/tendril";
+import {
+  formatShortcut,
+  getPlatformShortcut,
+  getRegisteredShortcuts,
+} from "@ivy-interactive/components/tendril";
 
 interface KeyboardShortcutsHelpProps {
   isOpen: boolean;
@@ -58,8 +62,12 @@ export const KeyboardShortcutsHelp: React.FC<KeyboardShortcutsHelpProps> = ({
                 }`}
               >
                 <span className="text-muted-foreground">{s.description}</span>
+                {/* Platform mapping first, then display formatting: the registry resolves a
+                    `Ctrl+` binding to Command on Mac, so labelling it "Ctrl" there would name a key
+                    that does not fire it. getPlatformShortcut answers ⌘/⌥/⇧ per platform and
+                    formatShortcut glues single-character keys the way the sidebar hints do. */}
                 <kbd className="rounded bg-muted px-2.5 py-1 font-mono text-xs text-foreground border border-border">
-                  {formatShortcut(s.displayKey)}
+                  {formatShortcut(getPlatformShortcut(s.displayKey).split("+"))}
                 </kbd>
               </div>
             ))

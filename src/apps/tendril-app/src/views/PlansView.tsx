@@ -97,12 +97,16 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev + 1) % filteredPlans.length);
-        rowFocus.focusNext();
+        // focusIndex, not focusNext: the highlight is the source of truth here, and stepping the
+        // focus walk independently drifts a row behind it on the first press.
+        const next = (selectedIndex + 1) % filteredPlans.length;
+        setSelectedIndex(next);
+        rowFocus.focusIndex(next);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        setSelectedIndex((prev) => (prev <= 0 ? filteredPlans.length - 1 : prev - 1));
-        rowFocus.focusPrevious();
+        const previous = selectedIndex <= 0 ? filteredPlans.length - 1 : selectedIndex - 1;
+        setSelectedIndex(previous);
+        rowFocus.focusIndex(previous);
       } else if (e.key === "Enter" && document.activeElement !== searchInputRef.current) {
         e.preventDefault();
         const selected = filteredPlans[selectedIndex];
