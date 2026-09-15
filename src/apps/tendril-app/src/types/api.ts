@@ -84,6 +84,13 @@ export interface Job {
   completedAt?: string;
   cost?: number;
   tokens?: number;
+  processId?: number;
+  /**
+   * Set once this job's `Running` row was restored across a daemon restart with its process still
+   * alive: it survived the restart but a previous session's daemon is no longer the one watching it.
+   * Absent (rather than `false`) for every job that never went through recovery.
+   */
+  detached?: boolean;
 }
 
 export interface JobDetail extends Job {

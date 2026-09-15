@@ -73,6 +73,7 @@ async fn test_job_completion_cost_extraction() {
         working_directory: None,
         cli_command: None,
         process_id: None,
+        detached: false,
         previous_plan_state: None,
         reported_plan_id: Some("00042".to_string()),
         reported_plan_title: Some("Cost Test Plan".to_string()),
