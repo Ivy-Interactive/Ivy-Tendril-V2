@@ -478,3 +478,93 @@ export interface GitHubIssuesPage {
   perPage: number;
   hasMore: boolean;
 }
+
+// --- dashboard analytics ---
+//
+// `null` is meaningful throughout: it means "unknown", never "zero". An unpriced
+// plan has a null cost because its rows carried tokens without a charge, and a
+// null projection means there was no spend to project from. Rendering either as
+// $0.00 asserts something the data does not say.
+
+export interface DashboardMonthStats {
+  year: number;
+  month: number;
+  plansCreated: number;
+  prsMerged: number;
+  cost: number;
+  tokens: number;
+}
+
+export interface DashboardDailyCost {
+  date: string;
+  cost: number;
+  tokens: number;
+  apiCost: number;
+  apiTokens: number;
+  subsidizedCost: number;
+  subsidizedTokens: number;
+}
+
+export interface DashboardDailyPlans {
+  date: string;
+  count: number;
+}
+
+export interface CostForecast {
+  /** Spend per calendar day times the month's length: the lower bound. */
+  calendarProjection: number | null;
+  calendarDays: number;
+  /** Spend per day that had spend: the upper bound, never below the calendar one. */
+  activityProjection: number | null;
+  activityDays: number;
+  totalSpend: number;
+  daysInMonth: number;
+  apiCalendarProjection: number | null;
+  apiActivityProjection: number | null;
+  totalApiSpend: number;
+  totalSubsidizedSpend: number;
+  totalApiTokens: number;
+  totalSubsidizedTokens: number;
+  subsidizedTokenPercent: number;
+  subsidizedCostPercent: number;
+}
+
+export interface DashboardActivity {
+  months: DashboardMonthStats[];
+  prevWeekAvgCost: number;
+  dailyCosts: DashboardDailyCost[];
+  dailyPlans: DashboardDailyPlans[];
+  /** Earliest day on record, clamped to the window. `null` gates the rolling average off. */
+  dailyDataStart: string | null;
+  forecast: CostForecast;
+}
+
+export interface ShippedFeatureDay {
+  date: string;
+  count: number;
+}
+
+export interface RecentMergedPr {
+  prUrl: string;
+  planId: number;
+  title: string;
+  repo: string | null;
+  updated: string;
+}
+
+export interface RecentPlanCost {
+  planId: number;
+  title: string;
+  state: string;
+  created: string;
+  /** `null` when no row was priced. Renders as a dash, never $0.00. */
+  cost: number | null;
+  tokens: number;
+}
+
+export interface AgentCostBreakdown {
+  agent: string;
+  cost: number;
+  tokens: number;
+  planCount: number;
+}

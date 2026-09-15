@@ -35,6 +35,46 @@ const mockKpis: DashboardKpiDto[] = [
   },
 ];
 
+/** The five drill-down tiles the app supplies, each with the id `OnSelectKpi` reports. */
+const mockDrillDownKpis: DashboardKpiDto[] = [
+  {
+    id: "featuresShipped",
+    label: "Features Shipped",
+    value: "128",
+    hint: "last 60 days",
+    delta: "+22%",
+    direction: "up",
+  },
+  {
+    id: "costPerFeature",
+    label: "Cost / Feature",
+    value: "$3.84",
+    hint: "priced features only",
+    delta: "-9%",
+    direction: "down",
+  },
+  {
+    id: "forecastMonth",
+    label: "Forecast This Month",
+    value: "$620 – $940",
+    hint: "calendar to activity basis",
+  },
+  {
+    id: "avgCostPlan",
+    label: "Average Cost / Plan",
+    value: "$4.12",
+    hint: "vs $4.68 prior week",
+    delta: "-12%",
+    direction: "down",
+  },
+  {
+    id: "tokensConsumed",
+    label: "Tokens Consumed",
+    value: "412M",
+    hint: "38% subsidized",
+  },
+];
+
 const mockTrend: DashboardTrendDto = {
   months: ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"],
   cost: [120, 150, 180, 220, 280, 310, 390, 420, 480, 510, 580, 640],
@@ -95,7 +135,7 @@ type Story = StoryObj<typeof TendrilDashboard>;
 export const Default: Story = {
   args: {
     id: "dashboard-1",
-    events: ["OnDrafts", "OnJobs", "OnReview", "OnJob"],
+    events: ["OnDrafts", "OnJobs", "OnReview", "OnJob", "OnSelectKpi"],
     eventHandler: (eventName, id, args) => {
       console.log("Dashboard event:", eventName, id, args);
     },
@@ -133,5 +173,17 @@ export const EmptyState: Story = {
     pullRequests: [],
     activity: [],
     jobs: [],
+  },
+};
+
+/**
+ * The KPI tiles the app renders: each carries an id, so each is a button that reports
+ * `OnSelectKpi` with that id. The `Default` story's tiles have no ids and stay inert.
+ */
+export const ClickableKpis: Story = {
+  args: {
+    ...Default.args,
+    id: "dashboard-kpis",
+    kpis: mockDrillDownKpis,
   },
 };

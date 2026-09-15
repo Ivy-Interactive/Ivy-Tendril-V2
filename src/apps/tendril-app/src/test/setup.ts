@@ -44,3 +44,22 @@ if (typeof window !== "undefined") {
     window.scroll = vi.fn();
   }
 }
+
+// This environment's window has no matchMedia, so useIsMobile in components-storybook
+// throws "window.matchMedia is not a function" from its effect — which surfaces as a
+// render failure in anything built on the blade container. The stub reports "not
+// matching" and never fires a change event, so useIsMobile falls back to innerWidth
+// (1024 in jsdom) and every blade renders in its expanded, non-collapsed form.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = (query: string): MediaQueryList =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}
