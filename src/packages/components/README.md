@@ -38,13 +38,13 @@ vp install components-storybook
 Import the CSS stylesheet in your application entry point:
 
 ```css
-@import "components-storybook/styles/index.css";
+@import "@ivy-interactive/components/styles/index.css";
 ```
 
 Or in JavaScript/TypeScript:
 
 ```ts
-import "components-storybook/styles/index.css";
+import "@ivy-interactive/components/styles/index.css";
 ```
 
 ## Usage Examples
