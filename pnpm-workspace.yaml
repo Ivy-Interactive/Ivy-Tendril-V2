@@ -1,7 +1,7 @@
 packages:
   - "src/apps/*"
   - "src/packages/*"
-  - "extensions/vscode"
+  - "src/extensions/*"
 
 allowBuilds:
   "@swc/core": false

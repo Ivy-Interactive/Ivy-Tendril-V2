@@ -16,7 +16,7 @@
     "typecheck:extension": "pnpm --filter ivy-tendril typecheck",
     "typecheck": "pnpm -r --if-present run typecheck",
     "test": "pnpm -r test",
-    "test-skills-manifests": "bash scripts/test-skills-manifests.sh",
+    "test-skills-manifests": "bash src/scripts/test-skills-manifests.sh",
     "check": "pnpm -r check",
     "check:links": "lychee --config .lychee.toml README*.md docs/**/*.md src/apps/tendril-docs/content/**/*.md",
     "lint": "pnpm -r lint",

@@ -434,13 +434,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
           if (!open) setSheetRow(null);
         }}
       >
-        {/* `inset-y-0` is repeated from `SheetContent`'s own `side="right"` variant on purpose. The
-            components package's built `style.css` carries the theme and base layers but no utility
-            classes, so a utility named only inside that package is never generated — Tailwind emits
-            utilities from the *app's* sources. `inset-y-0` appears nowhere else in this app, so the
-            sheet had no `top`/`bottom` at all and rendered one viewport below the fold. Naming it
-            here is what brings the rule into existence. */}
-        <SheetContent className="inset-y-0 w-full overflow-y-auto sm:max-w-2xl">
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
             <SheetTitle>
               {sheetRow ? `#${sheetRow.planId} ${sheetRow.planTitle}` : "Plan"}
