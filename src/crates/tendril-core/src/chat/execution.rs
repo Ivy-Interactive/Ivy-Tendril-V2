@@ -821,6 +821,11 @@ impl ChatExecutionManager {
         }
     }
 
+    /// Persists the turn's final content, falling back to a synthesized report when the agent
+    /// produced no text — a tool error with no follow-up delta, or a process exit with no output at
+    /// all — so a turn is never shown as an empty bubble. The report is emitted as a `StreamDelta`
+    /// too, since the frontend renders a message from the stream it received, not from a later
+    /// re-read of `content`.
     async fn finalize_message(
         &self,
         session_id: &str,
@@ -828,11 +833,23 @@ impl ChatExecutionManager {
         content: String,
         raw_lines: Vec<String>,
     ) {
+        let final_content = if content.trim().is_empty() {
+            let report = generate_chat_report(&raw_lines);
+            let _ = self.event_tx.send(ChatEvent::StreamDelta {
+                session_id: session_id.to_string(),
+                message_id: message_id.to_string(),
+                delta: report.clone(),
+            });
+            report
+        } else {
+            content
+        };
+
         let mut sessions_map = self.sessions.write().await;
         if let Some(s) = sessions_map.get_mut(session_id) {
             for m in &mut s.messages {
                 if m.id == message_id {
-                    m.content = content.clone();
+                    m.content = final_content.clone();
                     m.raw_stream = Some(raw_lines.join("\n"));
                     break;
                 }
@@ -874,6 +891,237 @@ fn extract_delta(line: &str, is_stderr: bool) -> String {
     }
 
     format!("{}\n", line)
+}
+
+/// Synthesizes a markdown report from a turn's raw stream when the agent produced no assistant
+/// text, so `finalize_message` never leaves a turn empty. Reads both wire shapes emitted onto
+/// `raw_lines`: the normalised eventwire form (`{"kind":"tool_call",…}` / `{"kind":"tool_result",…}`)
+/// and the provider's own form (`{"type":"assistant",…}` / `{"type":"user",…}` with `tool_use` /
+/// `tool_result` content blocks) — same two shapes [`crate::agents::reconcile`] and
+/// [`crate::jobs::failure_analysis`] read.
+fn generate_chat_report(raw_lines: &[String]) -> String {
+    let mut call_order: Vec<String> = Vec::new();
+    let mut call_names: HashMap<String, String> = HashMap::new();
+    let mut call_inputs: HashMap<String, String> = HashMap::new();
+    let mut call_results: HashMap<String, (bool, String)> = HashMap::new();
+
+    for line in raw_lines {
+        let Some(v) = crate::jobs::failure_analysis::parse_json_object(line) else {
+            continue;
+        };
+        record_report_call(&v, &mut call_order, &mut call_names, &mut call_inputs);
+        record_report_result(&v, &mut call_results);
+    }
+
+    if call_order.is_empty() {
+        return match crate::jobs::try_extract_error_event(raw_lines) {
+            Some(reason) => format!(
+                "The agent exited without producing a response.\n\n**Reason:** {}",
+                reason
+            ),
+            None => {
+                "The agent exited without producing a response, and no failure reason was found in \
+                 its output."
+                    .to_string()
+            }
+        };
+    }
+
+    let mut actions = String::new();
+    let mut failures = String::new();
+    for id in &call_order {
+        let name = call_names.get(id).map(String::as_str).unwrap_or("unknown");
+        let label = match call_inputs.get(id) {
+            Some(input) if !input.is_empty() => format!("{} ({})", name, input),
+            _ => name.to_string(),
+        };
+
+        match call_results.get(id) {
+            Some((is_error, output)) if is_failed_tool_output(*is_error, output) => {
+                actions.push_str(&format!("- **{}** — failed\n", label));
+                let detail = if output.trim().is_empty() {
+                    "(no output)".to_string()
+                } else {
+                    crate::jobs::sanitize_for_display(output)
+                };
+                failures.push_str(&format!("- **{}**: {}\n", label, detail));
+            }
+            Some(_) => {
+                actions.push_str(&format!("- **{}** — completed\n", label));
+            }
+            None => {
+                actions.push_str(&format!("- **{}** — no result recorded\n", label));
+            }
+        }
+    }
+
+    let mut report = String::from("### Summary of Actions\n\n");
+    report.push_str(&actions);
+
+    if !failures.is_empty() {
+        report.push_str("\n### Failures\n\n");
+        report.push_str(&failures);
+    }
+
+    report
+}
+
+/// True for an explicit `is_error`, and for the synthetic outputs
+/// [`crate::agents::reconcile::build_missing_result_lines`] writes for a tool call the stream never
+/// closed — those already carry `is_error: true`, but a provider could in principle emit the same
+/// marker text itself without the flag, so the text is checked either way.
+fn is_failed_tool_output(is_error: bool, output: &str) -> bool {
+    is_error
+        || matches!(
+            output.trim(),
+            "[Cancelled]" | "[Timed out]" | "[No output received]"
+        )
+}
+
+fn record_report_call(
+    v: &serde_json::Value,
+    order: &mut Vec<String>,
+    names: &mut HashMap<String, String>,
+    inputs: &mut HashMap<String, String>,
+) {
+    // Eventwire form.
+    if v.get("kind").and_then(|k| k.as_str()) == Some("tool_call") {
+        if let Some(id) = v.get("tool_use_id").and_then(|i| i.as_str()) {
+            note_report_call(
+                id,
+                v.get("tool_name"),
+                v.get("input").or_else(|| v.get("arguments")),
+                order,
+                names,
+                inputs,
+            );
+        }
+        return;
+    }
+
+    // Provider form: an assistant message with tool_use content blocks.
+    if v.get("type").and_then(|t| t.as_str()) == Some("assistant") {
+        let Some(blocks) = v
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
+        else {
+            return;
+        };
+        for block in blocks {
+            if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+                continue;
+            }
+            if let Some(id) = block.get("id").and_then(|i| i.as_str()) {
+                note_report_call(
+                    id,
+                    block.get("name"),
+                    block.get("input"),
+                    order,
+                    names,
+                    inputs,
+                );
+            }
+        }
+    }
+}
+
+fn note_report_call(
+    id: &str,
+    name: Option<&serde_json::Value>,
+    input: Option<&serde_json::Value>,
+    order: &mut Vec<String>,
+    names: &mut HashMap<String, String>,
+    inputs: &mut HashMap<String, String>,
+) {
+    if !names.contains_key(id) {
+        order.push(id.to_string());
+    }
+    names.insert(
+        id.to_string(),
+        name.and_then(|n| n.as_str())
+            .unwrap_or("unknown")
+            .to_string(),
+    );
+    if let Some(input) = input {
+        let summary = summarize_tool_input(input);
+        if !summary.is_empty() {
+            inputs.insert(id.to_string(), summary);
+        }
+    }
+}
+
+/// A short human-readable rendering of a tool call's arguments for the "Summary of Actions" line —
+/// the first few keys of an object input, or the string itself for a bare-string input.
+fn summarize_tool_input(input: &serde_json::Value) -> String {
+    match input {
+        serde_json::Value::Object(map) if !map.is_empty() => {
+            let mut parts: Vec<String> = map
+                .iter()
+                .take(3)
+                .map(|(k, v)| {
+                    let rendered = match v {
+                        serde_json::Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    format!("{}: {}", k, rendered)
+                })
+                .collect();
+            parts.sort();
+            parts.join(", ")
+        }
+        serde_json::Value::String(s) => s.clone(),
+        _ => String::new(),
+    }
+}
+
+fn record_report_result(v: &serde_json::Value, results: &mut HashMap<String, (bool, String)>) {
+    // Eventwire form.
+    if v.get("kind").and_then(|k| k.as_str()) == Some("tool_result") {
+        if let Some(id) = v.get("tool_use_id").and_then(|i| i.as_str()) {
+            let is_error = v.get("is_error").and_then(|b| b.as_bool()).unwrap_or(false);
+            let output = v
+                .get("output")
+                .and_then(|o| o.as_str())
+                .unwrap_or("")
+                .to_string();
+            results.insert(id.to_string(), (is_error, output));
+        }
+        return;
+    }
+
+    // Provider form: a user message whose content blocks are tool results.
+    if v.get("type").and_then(|t| t.as_str()) == Some("user") {
+        let Some(blocks) = v
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array())
+        else {
+            return;
+        };
+        for block in blocks {
+            if block.get("type").and_then(|t| t.as_str()) != Some("tool_result") {
+                continue;
+            }
+            let Some(id) = block.get("tool_use_id").and_then(|i| i.as_str()) else {
+                continue;
+            };
+            let is_error = block
+                .get("is_error")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false);
+            let output = match block.get("content") {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(serde_json::Value::Array(items)) => items
+                    .iter()
+                    .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                _ => String::new(),
+            };
+            results.insert(id.to_string(), (is_error, output));
+        }
+    }
 }
 
 /// True for the placeholder title a session is created with, and for anything blank —

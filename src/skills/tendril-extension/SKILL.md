@@ -11,7 +11,7 @@ This skill provides procedures and helper scripts for building, testing, packagi
 
 ## Directory & Environment
 
-- **Extension Directory**: `extensions/vscode`
+- **Extension Directory**: `src/extensions/vscode`
 - **Antigravity Extensions Directory**: `~/.antigravity-ide/extensions`
 - **Installed Extension Name**: `ivy-interactive.ivy-tendril-0.1.0`
 - **Package Manager**: `pnpm` (fixed versions configured via `.npmrc`)
@@ -25,13 +25,13 @@ This skill provides procedures and helper scripts for building, testing, packagi
 To compile the latest extension bundle and link it live into Antigravity IDE:
 
 ```bash
-skills/tendril-extension/scripts/install-antigravity.sh
+src/skills/tendril-extension/scripts/install-antigravity.sh
 ```
 
 Or manually:
 
 ```bash
-cd extensions/vscode
+cd src/extensions/vscode
 pnpm install
 pnpm run build
 mkdir -p ~/.antigravity-ide/extensions
@@ -50,19 +50,19 @@ After installing/linking:
 To build a standalone VSIX distribution file:
 
 ```bash
-skills/tendril-extension/scripts/package-vsix.sh
+src/skills/tendril-extension/scripts/package-vsix.sh
 ```
 
 Or using the Node.js script:
 
 ```bash
-pnpm tsx skills/tendril-extension/scripts/package.ts
+pnpm tsx src/skills/tendril-extension/scripts/package.ts
 ```
 
 Or manually:
 
 ```bash
-cd extensions/vscode
+cd src/extensions/vscode
 pnpm install
 pnpm run build
 npx @vscode/vsce package --no-dependencies
@@ -78,13 +78,13 @@ npx @vscode/vsce package --no-dependencies
 To verify extension integrity and TypeScript compliance:
 
 ```bash
-pnpm tsx skills/tendril-extension/scripts/verify.ts
+pnpm tsx src/skills/tendril-extension/scripts/verify.ts
 ```
 
 Or manually:
 
 ```bash
-cd extensions/vscode
+cd src/extensions/vscode
 pnpm run typecheck
 pnpm test
 ```
@@ -96,7 +96,7 @@ pnpm test
 To remove the extension from Antigravity IDE:
 
 ```bash
-skills/tendril-extension/scripts/uninstall-antigravity.sh
+src/skills/tendril-extension/scripts/uninstall-antigravity.sh
 ```
 
 Or manually:

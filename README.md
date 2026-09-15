@@ -291,14 +291,20 @@ tendril --web
 Ivy-Tendril-V2/
 ├── src/
 │   ├── apps/
-│   │   └── tendril-app/            # Tauri desktop app + React frontend
+│   │   ├── tendril-app/            # Tauri desktop app + React frontend
+│   │   └── tendril-docs/           # Documentation site
 │   ├── packages/
 │   │   └── components/             # @ivy-interactive/components + Storybook
 │   ├── crates/
 │   │   ├── tendril-core/           # Core domain models, SQLite database, worktree engine
 │   │   ├── tendril-server/         # Axum REST & WebSocket HTTP server daemon
 │   │   └── tendril-cli/            # Command-line interface ("tendril")
-│   └── promptwares/                # Promptware agent definitions & firmware
+│   ├── extensions/
+│   │   └── vscode/                 # VS Code / Antigravity IDE extension
+│   ├── promptwares/                # Promptware agent definitions & firmware
+│   ├── skills/                     # Agent workflow skills
+│   └── scripts/                    # Repository setup & test validation scripts
+├── docs/                           # Documentation content
 ├── Cargo.toml                      # Unified Cargo workspace
 ├── pnpm-workspace.yaml             # Unified pnpm workspace
 └── package.json                    # Workspace root scripts

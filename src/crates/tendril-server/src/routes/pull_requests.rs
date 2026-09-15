@@ -197,6 +197,8 @@ pub async fn sync_pull_requests(State(state): State<Arc<AppState>>) -> impl Into
         &state.plans_dir,
         &state.pr_sync_running,
         &state.ws_tx,
+        &state.ring_buffer,
+        &state.seq_counter,
     )
     .await;
 

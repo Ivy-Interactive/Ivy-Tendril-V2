@@ -1,4 +1,6 @@
-use tendril_core::config::{load_config, save_config, update_config_raw, TendrilSettings};
+use tendril_core::config::{
+    load_config, save_config, update_config_raw, LlmConfig, TendrilSettings,
+};
 use tendril_core::models::{
     OutsideFileAccessPolicy, SandboxMode, SecurityPreset, TerminalAutoExecution,
 };
@@ -89,8 +91,21 @@ fn test_config_unknown_keys_survive_load_and_save() {
         Some(&serde_json::json!("anthropic"))
     );
     assert_eq!(llm.model, "claude-3-7-sonnet");
-    assert!(settings.extra.contains_key("auth"));
-    assert!(settings.extra.contains_key("api"));
+    // `auth`, `api` and `security` are modeled fields now, so `#[serde(flatten)] extra` can no
+    // longer claim them — the same migration `codingAgents` and `llm` went through. Each record's own
+    // nested `extra` is what keeps the unmodeled inner keys alive.
+    assert!(!settings.extra.contains_key("auth"));
+    assert!(!settings.extra.contains_key("api"));
+    let auth = settings.auth.clone().expect("auth section is modeled");
+    assert!(auth.extra.contains_key("enabled"));
+    assert!(auth.extra.contains_key("tokenExpiry"));
+    // The fixture's `auth` block carries no hash, so password auth must stay inert: an inherited
+    // config like this one must not lock anybody out.
+    assert!(!auth.is_active());
+    let api = settings.api.clone().expect("api section is modeled");
+    assert!(api.extra.contains_key("baseUrl"));
+    assert!(api.extra.contains_key("timeout"));
+    assert!(api.api_key.is_none());
     assert!(settings.extra.contains_key("tunnel"));
     assert!(settings.extra.contains_key("vault"));
     assert!(settings.extra.contains_key("vaults"));
@@ -133,6 +148,20 @@ fn test_config_unknown_keys_survive_load_and_save() {
     );
     assert_eq!(reloaded.extra.get("vault"), settings.extra.get("vault"));
     assert_eq!(reloaded.extra.get("editor"), settings.extra.get("editor"));
+
+    // The nested unknown keys under the now-modeled `auth` / `api` sections survive too.
+    let reloaded_auth = reloaded.auth.expect("auth survives the round-trip");
+    assert_eq!(
+        reloaded_auth.extra.get("enabled"),
+        auth.extra.get("enabled")
+    );
+    assert_eq!(
+        reloaded_auth.extra.get("tokenExpiry"),
+        auth.extra.get("tokenExpiry")
+    );
+    let reloaded_api = reloaded.api.expect("api survives the round-trip");
+    assert_eq!(reloaded_api.extra.get("baseUrl"), api.extra.get("baseUrl"));
+    assert_eq!(reloaded_api.extra.get("timeout"), api.extra.get("timeout"));
 
     // Clean up
     let _ = std::fs::remove_dir_all(&temp_dir);
@@ -718,6 +747,98 @@ levels: []
     assert_eq!(p.repos[0].base_branch.as_deref(), Some("main"));
     assert_eq!(p.ports["backend"].default_port, 3001);
     assert_eq!(p.env_files[0].path, ".env");
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Top-level modeled-field mutation never duplicates a key on save.
+//
+// This is the model-layer guard for the bug `tendril config set` had: any call site (CLI, HTTP
+// handler, future code) that mutates a modeled `TendrilSettings` field directly and saves must
+// never end up with that field's key written twice, which is what makes `config.yaml`
+// unparseable (`serde_yaml` then fails with "duplicate field '<key>'").
+// ---------------------------------------------------------------------------------------------
+
+/// Mutates every scalar/JSON-ish modeled field `tendril config set` now supports and saves once.
+/// Each key must appear exactly once in the emitted YAML, and reloading must succeed.
+#[test]
+fn test_modeled_fields_never_duplicate_on_save() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "tendril-test-modeled-no-duplicate-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&temp_dir).unwrap();
+    let config_path = temp_dir.join("config.yaml");
+    std::fs::write(&config_path, SAMPLE_IVY_CONFIG).unwrap();
+
+    let mut settings = load_config(&config_path).expect("load_config should succeed");
+    settings.telemetry = Some(false);
+    settings.beta = true;
+    settings.desktop_notifications = false;
+    settings.daemon_request_timeout = 9;
+    settings.worktree_reaper_interval = 5;
+    settings.worktree_reaper_grace = 5;
+    settings.worktree_branch_delete_mode = "Force".to_string();
+    settings.enrich_models = false;
+    settings.model_enrichment_interval_hours = 2;
+    settings.model_cache_warn_age_days = 1;
+    settings.model_cache_max_age_days = 1;
+    settings.plan_folder = Some("/custom/plans".to_string());
+    settings.promptware_overlay = Some("/overlay".to_string());
+    settings.llm = Some(LlmConfig {
+        model: "gpt-4".to_string(),
+        ..Default::default()
+    });
+
+    save_config(&config_path, &settings).expect("save_config should succeed");
+
+    let raw = std::fs::read_to_string(&config_path).unwrap();
+    for key in [
+        "telemetry",
+        "beta",
+        "desktopNotifications",
+        "daemonRequestTimeout",
+        "worktreeReaperInterval",
+        "worktreeReaperGrace",
+        "worktreeBranchDeleteMode",
+        "enrichModels",
+        "modelEnrichmentIntervalHours",
+        "modelCacheWarnAgeDays",
+        "modelCacheMaxAgeDays",
+        "planFolder",
+        "promptwareOverlay",
+        "llm",
+    ] {
+        let needle = format!("{key}:");
+        let count = raw.lines().filter(|l| l.starts_with(&needle)).count();
+        assert_eq!(
+            count, 1,
+            "key '{key}' must appear exactly once in config.yaml, found {count}:\n{raw}"
+        );
+    }
+
+    // The critical assertion: a duplicated key makes serde_yaml fail with "duplicate field
+    // '<key>'" on reload, exactly the corruption described in the plan.
+    let reloaded =
+        load_config(&config_path).expect("reload must not raise a duplicate-field error");
+    assert_eq!(reloaded.telemetry, Some(false));
+    assert!(reloaded.beta);
+    assert!(!reloaded.desktop_notifications);
+    assert_eq!(reloaded.daemon_request_timeout, 9);
+    assert_eq!(reloaded.worktree_reaper_interval, 5);
+    assert_eq!(reloaded.worktree_reaper_grace, 5);
+    assert_eq!(reloaded.worktree_branch_delete_mode, "Force");
+    assert!(!reloaded.enrich_models);
+    assert_eq!(reloaded.model_enrichment_interval_hours, 2);
+    assert_eq!(reloaded.model_cache_warn_age_days, 1);
+    assert_eq!(reloaded.model_cache_max_age_days, 1);
+    assert_eq!(reloaded.plan_folder.as_deref(), Some("/custom/plans"));
+    assert_eq!(reloaded.promptware_overlay.as_deref(), Some("/overlay"));
+    assert_eq!(
+        reloaded.llm.as_ref().map(|l| l.model.as_str()),
+        Some("gpt-4")
+    );
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
