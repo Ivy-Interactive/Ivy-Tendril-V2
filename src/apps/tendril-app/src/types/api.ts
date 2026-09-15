@@ -283,6 +283,26 @@ export interface RepoStatus {
   error?: string;
 }
 
+/**
+ * The Git tab's shapes, from `cmd_get_plan_git`.
+ *
+ * `PlanGitView` in the components package owns these declarations, because it is
+ * the component that renders them and it cannot import from the app. Re-exported
+ * here so the rest of the app keeps reaching for its types in one place.
+ *
+ * `unreachable` and `missing` are lost work: the commit's worktree and branch are
+ * gone, so nothing but the object store is keeping it, and the next `git gc` in
+ * that repo prunes it. Commits listed under a worktree section are ancestors of
+ * that worktree's HEAD and so reachable by definition; only the unassociated ones
+ * carry a status, because those are the ones that can be reachable from nothing.
+ */
+export type {
+  CommitRefStatus,
+  PlanCommitRow,
+  PlanWorktreeSection,
+  PlanGitData,
+} from "@ivy-interactive/components/tendril";
+
 /** Options the Create PR dialog passes through to the `CreatePr` job. */
 export interface CreatePrOptions {
   solveMergeConflicts?: boolean;
