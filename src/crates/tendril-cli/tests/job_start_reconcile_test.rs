@@ -80,6 +80,10 @@ fn job_start_args(job_type: &str, plan_id: &str) -> JobStartArgs {
         repo_path: None,
         base_branch: None,
         untracked_policy: None,
+        // Unkeyed, which is the case reconciliation exists for: with no `--idempotency-key` the
+        // helper still mints one per submission, so the POST it makes is safe to replay, but the
+        // caller has no key to retry with — hence the job-list scan.
+        idempotency_key: None,
     }
 }
 

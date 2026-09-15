@@ -44,8 +44,19 @@ const KATEX = inPackage("katex");
 const REACT = inPackage("react|react-dom");
 
 export default defineConfig({
+  /** `docs/migration/parity-matrix.md` is a 7-column table ~1230 characters wide, and Oxfmt pads
+   * every column to its widest cell — so editing one cell re-pads all 18 table lines. Four separate
+   * plans (00604, 00613, 00619, 00650) have broken `main`'s Frontend checks by appending a row
+   * without re-running the formatter, because a markdown-only edit does not read as "an affected
+   * JavaScript or TypeScript package" to the NpmLint gate that would have caught it. Padding in a
+   * doc nobody reads as source is not worth a red `main`, so the file is exempt. */
   fmt: {
-    ignorePatterns: ["dist/**", "src-tauri/target/**", "node_modules/**"],
+    ignorePatterns: [
+      "dist/**",
+      "src-tauri/target/**",
+      "node_modules/**",
+      "docs/migration/parity-matrix.md",
+    ],
   },
   lint: {
     ignorePatterns: ["dist/**", "src-tauri/target/**", "node_modules/**"],

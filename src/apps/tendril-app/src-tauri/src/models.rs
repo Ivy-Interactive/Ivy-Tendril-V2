@@ -657,3 +657,13 @@ pub struct AgentOptionDto {
     #[serde(default, alias = "Efforts")]
     pub efforts: Vec<EffortOptionDto>,
 }
+
+/// Mirrors `tendril_core::newsletter::SubscribeOutcome`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubscribeOutcomeDto {
+    #[serde(default)]
+    pub subscribed: bool,
+    #[serde(default)]
+    pub error: Option<String>,
+}

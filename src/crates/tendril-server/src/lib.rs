@@ -50,6 +50,14 @@ pub async fn run_server(
         );
     }
 
+    if let Err(e) = tendril_core::config::ensure_home_directories(&tendril_home) {
+        tracing::warn!(
+            "Could not create Tendril home directories under {}: {}",
+            tendril_home.display(),
+            e
+        );
+    }
+
     // Loaded before anything claims the port or writes `.master`: an unreadable certificate should
     // stop the daemon, not leave a half-announced server behind.
     let tls_config = match &tls {

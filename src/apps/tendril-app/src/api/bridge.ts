@@ -27,6 +27,7 @@ import type {
   ServiceInfo,
   StartJobArgs,
   StartJobResponse,
+  SubscribeOutcome,
   SweepReport,
   TendrilConfig,
   VaultCatalog,
@@ -328,6 +329,10 @@ export const bridge = {
 
   async dismissOnboarding(this: void): Promise<void> {
     return invoke<void>("cmd_dismiss_onboarding");
+  },
+
+  async subscribeNewsletter(this: void, email: string): Promise<SubscribeOutcome> {
+    return invoke<SubscribeOutcome>("cmd_subscribe_newsletter", { email });
   },
 
   async runDoctor(this: void): Promise<DoctorCheck[]> {
