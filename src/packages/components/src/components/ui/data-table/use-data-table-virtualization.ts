@@ -17,14 +17,35 @@ export const DATA_TABLE_MAX_BODY_HEIGHT = 480;
 export const DATA_TABLE_OVERSCAN = 8;
 
 /**
- * First-paint row-height estimates per density. Real heights come from `measureElement`, so these
- * only decide how honest the scrollbar is before a row has been measured. Tighter than the list
- * primitive's map because table rows have no vertical gap.
+ * First-paint row-height estimates per density — the height a `<tr>` of this table *actually* renders
+ * at, which is `2 × cell padding + line-height + 1px border`:
+ *
+ * | Density | padding (`tableCellSizeVariant`) | line-height (`densityText`) | border | total |
+ * |---|---|---|---|---|
+ * | Small  | `p-1` → 4px  | `text-xs` → 16px  | 1 | 25 |
+ * | Medium | `p-2` → 8px  | `text-sm` → 20px  | 1 | 37 |
+ * | Large  | `p-3` → 12px | `text-base` → 24px | 1 | 49 |
+ *
+ * They were 36/44/52, which is 11/7/3px more than anything the table can render. That is not cosmetic:
+ * the estimate is what the scrollbar and `thresholdRows × rowHeight` are computed from before a row has
+ * been measured, so an overshoot makes a fresh table's scroll height a lie and its load-more threshold
+ * fire early. `measureElement` corrects each row as it mounts, which is why the drift was survivable and
+ * invisible.
+ *
+ * For reference, the framework's canvas grid draws to `DENSITY_CONFIG.rowHeight`
+ * (`widgets/dataTables/dataTableEditor/constants.ts`) of **30 / 38 / 48** at the same
+ * `cellVerticalPadding` of 4 / 8 / 12 — so V2's real rows are already the framework's height at Medium
+ * and Large, and tighter at Small. The vertical space this table used to waste was chrome, not rows: a
+ * second `<thead>` row of per-column filter controls (now one toolbar expression) and a header cell a
+ * density step taller than its own rows (see `data-table.css`).
+ *
+ * `data-table.virtualization.test.tsx` ties these numbers to the padding they are derived from, because
+ * an estimate that silently stops matching what renders is exactly the kind of thing that rots.
  */
 export const DATA_TABLE_ROW_HEIGHT_ESTIMATES: Record<Densities, number> = {
-  [Densities.Small]: 36,
-  [Densities.Medium]: 44,
-  [Densities.Large]: 52,
+  [Densities.Small]: 17,
+  [Densities.Medium]: 25,
+  [Densities.Large]: 33,
 };
 
 export interface UseDataTableVirtualizationOptions {
