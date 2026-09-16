@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { PlanGitView, PlanMarkdown } from "@ivy-interactive/components/tendril";
 import {
   describeBridgeError,
+  type Annotation,
   type Job,
   type PlanDetail,
   type PlanGitData,
@@ -13,13 +14,14 @@ import {
   type StartJobResponse,
 } from "../types/api";
 import { bridge } from "../api/bridge";
+import { onPlanEvent } from "../api/events";
 import { PlanActionsController } from "../controllers/plan_actions";
 import { PlanPullRequests } from "./PlanPullRequests";
 import { draftActions, type DraftAction } from "../controllers/draft_actions";
 import { collectExecuteGuards, type ExecuteGuard } from "../controllers/execute_guards";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
-import { formatPlanId, parseProjects, planStateBadgeClass } from "./PlansView";
+import { formatPlanId, normalizePlanState, parseProjects, planStateBadgeClass } from "./PlansView";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { CreateIssueDialog } from "./dialogs/CreateIssueDialog";
@@ -35,6 +37,24 @@ import { UnansweredQuestionsDialog } from "./dialogs/UnansweredQuestionsDialog";
 import { UpdatePlanDialog } from "./dialogs/UpdatePlanDialog";
 
 type PlanDetailTab = "plan" | "details" | "diff" | "verifications" | "recommendations" | "git";
+
+/**
+ * The job statuses V1 counts as "a job already holds this plan"
+ * (`ContentView.HasActiveJob<TArgs>`: `Running or Queued or Pending`). `Blocked` is deliberately not
+ * one of them there, so it is not one here either: a blocked job is waiting on another job and V1
+ * lets the second dispatch queue behind it.
+ */
+const IN_FLIGHT_JOB_STATUSES: ReadonlyArray<Job["status"]> = ["Running", "Queued", "Pending"];
+
+/**
+ * The plan states in which a job owns the plan folder.
+ *
+ * V1 never has to name these on the Drafts page because `PlansApp.Build` only ever hands it plans
+ * that are `Draft` or `Blocked` **and** have no active job, so no mid-flight plan reaches the action
+ * bar at all. V2's detail view is reachable for every plan, so the same exclusion has to be stated
+ * here or the page offers Execute on a plan that is already executing.
+ */
+const IN_FLIGHT_PLAN_STATES: ReadonlyArray<string> = ["Creating", "Updating", "Executing"];
 
 /**
  * `PlanModels.cs`: `IsPullRequestSource => SourceUrl?.Contains("/pull/") == true`. The workspace
@@ -75,10 +95,21 @@ const buildMeta = (plan: PlanDetail, allPlans: PlanSummary[]): string | null => 
  * so the callout names the verifications and points at their reports rather than inventing a
  * summary. With no failed verification at all it falls back to V1's log wording.
  */
-const ExecutionFailedCallout: React.FC<{ plan: PlanDetail }> = ({ plan }) => {
+const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }> = ({ plan, jobs }) => {
   const failed = (plan.verifications ?? []).filter(
     (v) => v.status === "Fail" || v.status === "Pending",
   );
+  // V1's second branch, `BuildLogFailureCallout`, reads the plan's last job log and quotes its
+  // "Final Output" section. V2 has no log reader here, but the daemon already reports the same thing
+  // on the job row, so the last failed job for this plan is the nearest equivalent — and it is a far
+  // better answer than "check the logs".
+  const lastFailure = [...jobs]
+    .filter((j) => j.planId === plan.id && (j.status === "Failed" || j.status === "Timeout"))
+    .sort((a, b) =>
+      (a.completedAt ?? a.startedAt ?? "").localeCompare(b.completedAt ?? b.startedAt ?? ""),
+    )
+    .pop();
+  const reason = lastFailure?.statusMessage?.trim();
   return (
     <div
       role="alert"
@@ -96,7 +127,9 @@ const ExecutionFailedCallout: React.FC<{ plan: PlanDetail }> = ({ plan }) => {
           ))}
         </ul>
       ) : (
-        <p className="mt-1">No details available. Check the job logs.</p>
+        <p className="mt-1" data-testid="plan-failure-reason">
+          {reason || "No details available. Check the job logs."}
+        </p>
       )}
     </div>
   );
@@ -176,6 +209,64 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   // `onExecute` fires only after the last one has been passed.
   const [guards, setGuards] = useState<ExecuteGuard[]>([]);
   const [guardIndex, setGuardIndex] = useState(0);
+  /**
+   * True while the pre-execution checks are running.
+   *
+   * V1 has this as `isCheckingPreflight` from `Context.UsePreflightCheck()` and spends it on the
+   * Execute button: `disabled: isCheckingPreflight, loading: isCheckingPreflight`
+   * (`ContentView.Build`). The checks shell out to git in every repo of the plan's project, so
+   * without it a second click during the first check runs the whole chain twice and can dispatch
+   * two ExecutePlan jobs.
+   */
+  const [isCheckingPreflight, setIsCheckingPreflight] = useState(false);
+  /**
+   * V1's `TransitionPlanOptimistically`: the state the plan is *about* to be in, shown until the
+   * service confirms it. `JobService.StartJob` owns the authoritative transition, so this exists
+   * purely so the badge and the action set stop offering Execute the instant it was pressed.
+   *
+   * Cleared whenever the plan prop's own state moves, which is the confirmation arriving.
+   */
+  const [optimisticState, setOptimisticState] = useState<string | null>(null);
+  /**
+   * Verification statuses this page has written but not yet seen come back on the plan.
+   *
+   * V1 does not need this: `VerificationsPanelView` writes through `planService` and the whole view
+   * rebuilds off the refreshed `PlanFile`. Here the plan arrives as a prop, so without carrying the
+   * write forward the header's Create PR / Accept Partial Delivery gates would keep reading the
+   * statuses from before the toggle.
+   */
+  const [verificationOverrides, setVerificationOverrides] = useState<
+    Record<string, PlanDetail["verifications"][number]["status"]>
+  >({});
+
+  /**
+   * Everything a plan switch has to forget, mirroring `ContentView.Build`'s plan-change block.
+   *
+   * Keyed on the plan's id and not on the prop's identity, exactly as V1 keys it: "every refresh
+   * hands the state a fresh PlanFile instance of the same plan, and that must not throw the reader
+   * back to the first tab". The open dialogs matter most — V1 spells out why it closes the questions
+   * dialog here: "Left open across a switch, 'Execute Anyway' would run the new plan on a
+   * confirmation the user gave for the old one."
+   */
+  useEffect(() => {
+    setActiveSubTab("plan");
+    setActiveDialog(null);
+    setActiveNoteDialog(null);
+    setGuards([]);
+    setGuardIndex(0);
+    setIsCheckingPreflight(false);
+    setActionError(null);
+    setPendingAction(null);
+    setOptimisticState(null);
+    setVerificationOverrides({});
+  }, [plan.id]);
+
+  // The service has spoken, so the guess is spent. Comparing against the raw prop rather than the
+  // normalised value keeps a legacy-named state from looking like a change on every render.
+  useEffect(() => {
+    setOptimisticState(null);
+    setVerificationOverrides({});
+  }, [plan.state, plan.updated]);
 
   useEffect(() => {
     setRecommendations(plan.recommendations || []);
@@ -195,6 +286,117 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     };
   }, [plan.id, plan.recommendations]);
 
+  /**
+   * The plan's inline annotations, which is what `PlanMarkdown` needs to render its highlights and
+   * what the PendingAnnotations execute guard counts.
+   *
+   * Reloaded when the revision text changes, because V1 does exactly that and says why:
+   * "Annotation offsets anchor to the plan text; drop them if the content changed underneath (plan
+   * updated, edited, or revised)" (`ContentView.Build`).
+   */
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+
+  const loadAnnotations = useCallback(() => {
+    let cancelled = false;
+    bridge
+      .listAnnotations(plan.id)
+      .then((list) => {
+        if (!cancelled) setAnnotations(list);
+      })
+      .catch(() => {
+        // An unreadable list is an empty one: the guard degrades to "nothing known", never to a
+        // page that will not render.
+        if (!cancelled) setAnnotations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plan.id]);
+
+  useEffect(
+    () => loadAnnotations(),
+    // `latestRevisionContent` is in here on purpose: see the note above.
+    [loadAnnotations, plan.latestRevisionContent],
+  );
+
+  /**
+   * Another window, or a job, can rewrite this plan's annotations. V1 subscribes to
+   * `IPlanAnnotationService.AnnotationsChanged` for the same reason and filters on the folder path
+   * (`ContentView.Build`); the daemon's equivalent is the `plan.annotations_changed` broadcast.
+   */
+  useEffect(() => {
+    const signal = { cancelled: false };
+    let unlisten: (() => void) | undefined;
+
+    void onPlanEvent((payload) => {
+      const event = payload as { type?: string; planId?: string } | null;
+      if (event?.type !== "plan.annotations_changed") return;
+      // Every plan shares the one channel, so another plan's change is not ours.
+      if (event.planId !== plan.id) return;
+      loadAnnotations();
+    })
+      .then((fn) => {
+        if (signal.cancelled) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+      })
+      .catch(() => {
+        // Without the stream the highlights are merely not live; every write still replaces the list
+        // from what the service persisted.
+      });
+
+    return () => {
+      signal.cancelled = true;
+      unlisten?.();
+    };
+  }, [plan.id, loadAnnotations]);
+
+  /**
+   * Persist an annotation edit.
+   *
+   * `PlanMarkdown` reports the whole array rather than the one thing that changed, exactly as V1's
+   * `OnAnnotationsChange` does — V1 can hand that straight to
+   * `IPlanAnnotationService.SaveAnnotationsAsync`, which takes a list. The bridge here is
+   * per-annotation, so the array is diffed against what we had: anything new or changed is upserted,
+   * anything gone is deleted. The persisted list is what lands in state, so a rejected write leaves
+   * the highlights showing what is actually on disk.
+   */
+  const handleAnnotationsChange = (next: Annotation[]) => {
+    const previous = annotations;
+    setAnnotations(next);
+
+    const byId = new Map(previous.map((a) => [a.id, a]));
+    const writes: (() => Promise<Annotation[]>)[] = [];
+    for (const annotation of next) {
+      const before = byId.get(annotation.id);
+      if (!before || JSON.stringify(before) !== JSON.stringify(annotation)) {
+        writes.push(() => bridge.upsertAnnotation(plan.id, annotation));
+      }
+    }
+    const keptIds = new Set(next.map((a) => a.id));
+    for (const annotation of previous) {
+      if (!keptIds.has(annotation.id)) {
+        writes.push(() => bridge.deleteAnnotation(plan.id, annotation.id));
+      }
+    }
+    if (writes.length === 0) return;
+
+    // Sequenced as thunks, not fired off together: each call answers with the plan's whole list, so
+    // overlapping writes would race to be the one whose snapshot sticks.
+    void writes
+      .reduce<Promise<Annotation[]>>(
+        (chain, write) => chain.then(() => write()),
+        Promise.resolve(next),
+      )
+      .then(setAnnotations)
+      .catch((err: unknown) => {
+        setAnnotations(previous);
+        setActionError(`Failed to save annotation: ${describeBridgeError(err)}`);
+      });
+  };
+
   // Fetched on mount rather than when the Git tab is opened: the at-risk badge on
   // the tab button is the whole point of the feature, and a warning you only see
   // once you have clicked into the tab is not a warning. A rejection is confined to
@@ -202,8 +404,27 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const [gitData, setGitData] = useState<PlanGitData | null>(null);
   const [gitError, setGitError] = useState<string | null>(null);
 
+  /**
+   * What the git read is keyed on.
+   *
+   * `plan.id` alone is not enough. V1 makes this point explicitly where it revalidates the plan
+   * content query on a watcher event (`ContentView.Build`): "Without this the query key (the folder
+   * path) never changes while a plan is open, so the cached content - commits, git changes,
+   * artifacts - is served for the life of the view even while a job is executing the plan." A refetch
+   * of the plan hands us a new object with the same id, so the worktrees, the commit reachability
+   * verdicts and the at-risk badge would all be frozen at whatever they were when the tab opened.
+   *
+   * `updated` is bumped by every `plan.yaml` write, so it is the change signal; the commit and PR
+   * counts are included because they are what the Git tab actually renders.
+   */
+  const gitQueryKey = `${plan.id}|${plan.updated ?? ""}|${plan.state}|${
+    plan.commits?.length ?? 0
+  }|${plan.prs?.length ?? 0}`;
+
   useEffect(() => {
-    setGitData(null);
+    // The last-known-good data stays on screen across a revalidation. V1 makes the same call for the
+    // same reason (`ContentView.ShouldShowLoadingPlaceholder`: "a revalidation keeps the
+    // last-known-good content"), and only a plan switch is allowed to blank it.
     setGitError(null);
     let cancelled = false;
     bridge
@@ -221,6 +442,12 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     return () => {
       cancelled = true;
     };
+  }, [plan.id, gitQueryKey]);
+
+  // A plan switch, on the other hand, must not show the previous plan's git state while the new
+  // one loads.
+  useEffect(() => {
+    setGitData(null);
   }, [plan.id]);
 
   // Legacy's CountGitItems: worktrees + recorded commits + pull requests.
@@ -259,33 +486,87 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 
   const meta = buildMeta(plan, allPlans);
 
-  // Gating checks
-  const canExec = PlanActionsController.canExecute(plan, allPlans);
-  const canPr = PlanActionsController.canCreatePr(plan);
-  const canRetryPlan = PlanActionsController.canRetry(plan);
-  const canDiscardPlan = PlanActionsController.canDiscard(plan);
-  const canResetPlan = PlanActionsController.canReset(plan);
-  const canPartial = PlanActionsController.canCompletePartial(plan);
+  /**
+   * The plan as this page currently believes it to be: the prop, plus the state it has optimistically
+   * moved and the verification statuses it has written.
+   *
+   * Every gate below reads this rather than the prop, which is what makes an action stop offering
+   * itself the moment it has been taken — V1 gets the same effect by writing the optimistic plan
+   * straight into `selectedPlanState` (`ContentView.TransitionPlanOptimistically`).
+   *
+   * `state` is also normalised here, so a plan still recorded under a legacy name is gated as the
+   * state it actually is: without this a `ReadyForReview` plan is not `"Review"`, so Create PR,
+   * Retry Plan and Accept Partial Delivery all silently vanish from a plan sitting in review.
+   */
+  const effectivePlan: PlanDetail = React.useMemo(() => {
+    const state = (optimisticState ?? normalizePlanState(plan.state)) as PlanDetail["state"];
+    const overrides = Object.keys(verificationOverrides);
+    const verifications =
+      overrides.length === 0
+        ? plan.verifications
+        : (plan.verifications ?? []).map((v) =>
+            v.name in verificationOverrides ? { ...v, status: verificationOverrides[v.name] } : v,
+          );
+    if (state === plan.state && verifications === plan.verifications) return plan;
+    return { ...plan, state, verifications };
+  }, [plan, optimisticState, verificationOverrides]);
 
-  const noop = () => {};
+  /**
+   * Whether a job of this type already holds the plan, mirroring `ContentView.HasActiveJob<TArgs>`.
+   *
+   * V1 spends this on `DraftActions`: `Expand` and `Split` are handed
+   * `disabled: ctx.HasActiveExpandJob` / `HasActiveSplitJob`, and their handlers open with
+   * `if (ctx.HasActiveSplitJob) return;` — the guard is stated twice because a disabled button that
+   * still fires is how a plan gets two agents rewriting it at once.
+   */
+  const hasActiveJob = (type: string): boolean =>
+    jobs.some(
+      (job) =>
+        job.type === type && job.planId === plan.id && IN_FLIGHT_JOB_STATUSES.includes(job.status),
+    );
+
+  /**
+   * True while a job owns the plan folder.
+   *
+   * V1 never shows the draft action bar in this situation at all: `PlansApp.Build` filters the list
+   * to `Draft`/`Blocked` plans that have no active job, so a plan mid-flight is simply not on the
+   * page. V2's detail view is reachable for any plan, so the same rule has to be applied here.
+   */
+  const isPlanInFlight =
+    IN_FLIGHT_PLAN_STATES.includes(effectivePlan.state) ||
+    hasActiveJob("ExecutePlan") ||
+    hasActiveJob("RetryPlan");
+
+  // Gating checks
+  const canExec = PlanActionsController.canExecute(effectivePlan, allPlans);
+  const canPr = PlanActionsController.canCreatePr(effectivePlan);
+  const canRetryPlan = PlanActionsController.canRetry(effectivePlan);
+  const canDiscardPlan = PlanActionsController.canDiscard(effectivePlan);
+  const canResetPlan = PlanActionsController.canReset(effectivePlan);
+  const canPartial = PlanActionsController.canCompletePartial(effectivePlan);
 
   /**
    * Run a lifecycle action, reporting any rejection in the banner. Every one of
    * these ends up starting a promptware job on the service, which can refuse
    * (dependency not met, plan in the wrong state, daemon down): so the
    * rejection is the operator's only signal that nothing happened.
+   *
+   * Returns whether the action went through, so a caller that made an optimistic guess can take it
+   * back. No action supplied counts as not going through: nothing happened.
    */
   const runAction = async (
     label: string,
     action: ((planId: string) => void | Promise<void>) | undefined,
-  ) => {
-    if (!action) return;
+  ): Promise<boolean> => {
+    if (!action) return false;
     setActionError(null);
     setPendingAction(label);
     try {
       await action(plan.id);
+      return true;
     } catch (err) {
       setActionError(`${label} failed: ${describeBridgeError(err)}`);
+      return false;
     } finally {
       setPendingAction(null);
     }
@@ -301,38 +582,65 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * execution forever.
    */
   const handleExecute = async () => {
+    // V1's Execute button is `disabled: isCheckingPreflight` while the check runs. Re-entering here
+    // would run the whole git sweep twice and, worse, could open a second guard chain over the
+    // first, so the click is dropped rather than queued.
+    if (isCheckingPreflight || isPlanInFlight) return;
     setActionError(null);
+    setIsCheckingPreflight(true);
 
-    let repoStatus: RepoStatus[] | undefined;
     try {
-      repoStatus = await bridge.getRepoStatus(plan.id);
-    } catch {
-      repoStatus = undefined;
-    }
+      let repoStatus: RepoStatus[] | undefined;
+      try {
+        repoStatus = await bridge.getRepoStatus(plan.id);
+      } catch {
+        repoStatus = undefined;
+      }
 
-    // Only unresolved annotations block: a resolved one needs no UpdatePlan run.
-    let annotationCount: number | undefined;
-    try {
-      annotationCount = (await bridge.listAnnotations(plan.id)).filter((a) => !a.isResolved).length;
-    } catch {
-      annotationCount = undefined;
-    }
+      // Only unresolved annotations block: a resolved one needs no UpdatePlan run. Re-read on the
+      // click rather than trusting what was loaded on render, as V1 re-reads its own state here.
+      let annotationCount: number | undefined;
+      try {
+        annotationCount = (await bridge.listAnnotations(plan.id)).filter(
+          (a) => !a.isResolved,
+        ).length;
+      } catch {
+        annotationCount = undefined;
+      }
 
-    let collected: ExecuteGuard[] = [];
-    try {
-      collected = collectExecuteGuards({ plan, repoStatus, annotationCount });
-    } catch {
-      // A guard that cannot be collected must not swallow the click.
-      collected = [];
-    }
+      let collected: ExecuteGuard[] = [];
+      try {
+        collected = collectExecuteGuards({ plan: effectivePlan, repoStatus, annotationCount });
+      } catch {
+        // A guard that cannot be collected must not swallow the click.
+        collected = [];
+      }
 
-    if (collected.length === 0) {
-      await runAction("Execute Plan", onExecute);
-      return;
-    }
+      if (collected.length === 0) {
+        await dispatchExecute();
+        return;
+      }
 
-    setGuards(collected);
-    setGuardIndex(0);
+      setGuards(collected);
+      setGuardIndex(0);
+    } finally {
+      setIsCheckingPreflight(false);
+    }
+  };
+
+  /**
+   * The dispatch itself, once every guard has been passed.
+   *
+   * V1's `ContentView.LaunchExecute` moves the plan to `Creating` before starting the job and
+   * comments that `JobService.StartJob` owns the real transition — the optimistic move exists so the
+   * page stops offering Execute the instant it was pressed. The guess is rolled back if the dispatch
+   * is refused, because a refused job leaves the plan exactly where it was.
+   */
+  const dispatchExecute = async () => {
+    setOptimisticState("Creating");
+    if (!(await runAction("Execute Plan", onExecute))) {
+      setOptimisticState(null);
+    }
   };
 
   const clearGuards = () => {
@@ -346,7 +654,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       return;
     }
     clearGuards();
-    await runAction("Execute Plan", onExecute);
+    await dispatchExecute();
   };
 
   const handleGuardUpdatePlan = () => {
@@ -368,15 +676,31 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       case "update":
         setActiveDialog("update");
         return;
+      // `DraftActions.StartExpand` / `StartSplit` both open with an early return on their own active
+      // job, and both move the plan optimistically before starting: Expand to `Creating`, Split to
+      // `Updating`. The early return is not belt-and-braces — a keyboard shortcut reaches the handler
+      // without going through the disabled button.
       case "expand":
-        await runAction("Expand Plan", async () => {
-          handleJobStarted(await PlanActionsController.expandPlan(plan));
-        });
+        if (hasActiveJob("ExpandPlan")) return;
+        setOptimisticState("Creating");
+        if (
+          !(await runAction("Expand Plan", async () => {
+            handleJobStarted(await PlanActionsController.expandPlan(effectivePlan));
+          }))
+        ) {
+          setOptimisticState(null);
+        }
         return;
       case "split":
-        await runAction("Split Plan", async () => {
-          handleJobStarted(await PlanActionsController.splitPlan(plan));
-        });
+        if (hasActiveJob("SplitPlan")) return;
+        setOptimisticState("Updating");
+        if (
+          !(await runAction("Split Plan", async () => {
+            handleJobStarted(await PlanActionsController.splitPlan(effectivePlan));
+          }))
+        ) {
+          setOptimisticState(null);
+        }
         return;
       case "createIssue":
         setActiveDialog("createIssue");
@@ -462,10 +786,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             <span
               data-testid="plan-state-badge"
               className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${planStateBadgeClass(
-                plan.state,
+                effectivePlan.state,
               )}`}
             >
-              {plan.state}
+              {effectivePlan.state}
             </span>
             {parseProjects(plan.project).map((project) => (
               <span
@@ -502,7 +826,20 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 
         {/* Action Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
-          {plan.state === "Review" && (
+          {/* A plan a job already owns offers nothing but a note saying so. V1 reaches the same
+              outcome by never listing such a plan on the page (`PlansApp.Build`), and its Review page
+              likewise only lists `Review`/`Failed` plans. Everything below writes to the plan folder,
+              which is exactly what the running job is doing. */}
+          {isPlanInFlight && (
+            <span
+              data-testid="plan-in-flight-notice"
+              className="rounded-lg border border-info/40 bg-info/10 px-4 py-2 text-xs font-medium text-info"
+            >
+              A job is running on this plan.
+            </span>
+          )}
+
+          {!isPlanInFlight && effectivePlan.state === "Review" && (
             <>
               <button
                 type="button"
@@ -542,32 +879,56 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             </>
           )}
 
-          {plan.state !== "Review" &&
-            plan.state !== "Completed" &&
+          {!isPlanInFlight &&
+            effectivePlan.state !== "Review" &&
+            effectivePlan.state !== "Completed" &&
             draftActions()
-              .filter((action) => action.isAvailable(plan))
-              .map((action) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  disabled={pendingAction !== null || (action.id === "execute" && !canExec.allowed)}
-                  title={action.id === "execute" ? canExec.reason : undefined}
-                  onClick={() => void handleDraftAction(action)}
-                  className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
-                    action.variant === "primary"
-                      ? "bg-info text-info-foreground hover:bg-info/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground/70"
-                      : action.variant === "destructive"
-                        ? "bg-destructive/20 text-destructive hover:bg-destructive/30"
-                        : "bg-muted text-muted-foreground hover:bg-accent"
-                  }`}
-                >
-                  {action.id === "execute" && pendingAction === "Execute Plan"
-                    ? "Starting..."
-                    : action.label}
-                </button>
-              ))}
+              .filter((action) => action.isAvailable(effectivePlan))
+              .map((action) => {
+                // `DraftActions` disables Expand and Split on their own active job and nothing else;
+                // Execute additionally goes dead while the preflight check runs
+                // (`disabled: isCheckingPreflight`).
+                const busyJob =
+                  (action.id === "expand" && hasActiveJob("ExpandPlan")) ||
+                  (action.id === "split" && hasActiveJob("SplitPlan")) ||
+                  (action.id === "update" && hasActiveJob("UpdatePlan"));
+                const checking = action.id === "execute" && isCheckingPreflight;
+                const disabled =
+                  pendingAction !== null ||
+                  busyJob ||
+                  checking ||
+                  (action.id === "execute" && !canExec.allowed);
+                return (
+                  <button
+                    key={action.id}
+                    type="button"
+                    disabled={disabled}
+                    title={
+                      busyJob
+                        ? `${action.label} is already running for this plan.`
+                        : action.id === "execute"
+                          ? canExec.reason
+                          : undefined
+                    }
+                    onClick={() => void handleDraftAction(action)}
+                    className={`rounded-lg px-4 py-2 text-xs font-medium transition ${
+                      action.variant === "primary"
+                        ? "bg-info text-info-foreground hover:bg-info/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground/70"
+                        : action.variant === "destructive"
+                          ? "bg-destructive/20 text-destructive hover:bg-destructive/30 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground/70"
+                          : "bg-muted text-muted-foreground hover:bg-accent disabled:cursor-not-allowed disabled:text-muted-foreground/70"
+                    }`}
+                  >
+                    {action.id === "execute" && checking
+                      ? "Checking..."
+                      : action.id === "execute" && pendingAction === "Execute Plan"
+                        ? "Starting..."
+                        : action.label}
+                  </button>
+                );
+              })}
 
-          {canResetPlan.allowed && (
+          {!isPlanInFlight && canResetPlan.allowed && (
             <button
               type="button"
               onClick={() => setActiveDialog("reset")}
@@ -576,7 +937,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               Reset to Draft…
             </button>
           )}
-          {canDiscardPlan.allowed && (
+          {!isPlanInFlight && canDiscardPlan.allowed && (
             <button
               type="button"
               onClick={() => setActiveDialog("discard")}
@@ -631,11 +992,30 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         {effectiveTab === "plan" && (
           <div className="rounded-xl border border-border bg-card/40 p-6">
             {/* `PlanTabView.Build`: a failed plan leads with why, above the plan itself. */}
-            {plan.state === "Failed" && <ExecutionFailedCallout plan={plan} />}
+            {effectivePlan.state === "Failed" && (
+              <ExecutionFailedCallout plan={effectivePlan} jobs={jobs} />
+            )}
+            {/* `PlanTabView.Build` composes this as
+                `new PlanMarkdown(annotatedContent).Article().DangerouslyAllowLocalFiles()
+                 .Annotations(...).OnAnnotationsChange(...)`. The two flags were never passed here, so
+                the plan rendered without the article measure and with every local file link inert;
+                `OnAnnotationsChange` was never wired, which left the whole annotation subsystem —
+                selection toolbar, popovers, highlights — unreachable, and with it the
+                PendingAnnotations execute guard, which had nothing that could ever create an
+                annotation to count. */}
             <PlanMarkdown
               id="plan-markdown"
               content={plan.latestRevisionContent || "# No revision content available"}
-              eventHandler={noop}
+              article
+              dangerouslyAllowLocalFiles
+              annotations={annotations}
+              events={["OnAnnotationsChange"]}
+              eventHandler={(evt: string, _id: string, args?: unknown[]) => {
+                if (evt !== "OnAnnotationsChange") return;
+                const next = args?.[0];
+                if (!Array.isArray(next)) return;
+                handleAnnotationsChange(next as Annotation[]);
+              }}
             />
           </div>
         )}
@@ -649,10 +1029,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         {effectiveTab === "verifications" && (
           <div className="rounded-xl border border-border bg-card/40 p-6">
             <h3 className="text-sm font-semibold text-foreground mb-3">Plan Verifications</h3>
+            {/* `project` is what lets the list be presented in the project's own run order, as V1's
+                `VerificationsPanelView` does; `onVerificationChange` carries the write back so the
+                header's Create PR and Accept Partial Delivery gates re-read it. */}
             <PlanVerifications
               planId={plan.id}
-              verifications={plan.verifications || []}
-              planState={plan.state}
+              project={plan.project}
+              verifications={effectivePlan.verifications || []}
+              planState={effectivePlan.state}
+              onVerificationChange={(name, status) =>
+                setVerificationOverrides((prev) => ({ ...prev, [name]: status }))
+              }
             />
           </div>
         )}
@@ -695,7 +1082,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               <PlanGitView
                 data={gitData}
                 prs={plan.prs ?? []}
-                planState={plan.state}
+                planState={effectivePlan.state}
                 onOpenUrl={(url) => void openPath(url)}
               />
             ) : (
@@ -772,7 +1159,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               <DetailRow label="Project" empty={!plan.project}>
                 {plan.project}
               </DetailRow>
-              <DetailRow label="State">{plan.state}</DetailRow>
+              <DetailRow label="State">{effectivePlan.state}</DetailRow>
             </dl>
 
             {/* Repos and commits have no row of their own in V1's Details tab; they are kept here

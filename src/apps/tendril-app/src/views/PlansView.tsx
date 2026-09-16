@@ -45,6 +45,45 @@ const LIFECYCLE_OPTIONS: BadgeSelectOption[] = [
 ];
 
 /**
+ * The V1 state names that were renamed, mapped to what they were renamed to.
+ *
+ * `Building` became `Creating` and `ReadyForReview` became `Review`. A `plan.yaml` written before the
+ * rename still carries the old spelling, and nothing rewrites one on read, so every read point has to
+ * accept both or a legacy plan arrives as a state this UI knows nothing about: no badge colour, absent
+ * from the state filter, and — worse — not `"Review"`, so the Review-only actions never appear on a
+ * plan that is sitting in review.
+ */
+const LEGACY_LIFECYCLE_STATES: Record<string, string> = {
+  Building: "Creating",
+  ReadyForReview: "Review",
+};
+
+/**
+ * A plan's state under its current name. Anything already current, or unrecognised, passes through
+ * unchanged so an unknown state still renders as itself rather than disappearing.
+ */
+export const normalizePlanState = (state: string | undefined): string =>
+  state ? (LEGACY_LIFECYCLE_STATES[state] ?? state) : "";
+
+/**
+ * Whether a key event belongs to something being typed into rather than to the list.
+ *
+ * Checked on the event target and on the focused element both: a listener bound to `window` sees the
+ * target only when the event was dispatched on the field itself.
+ */
+const isTextEntry = (target: EventTarget | null): boolean => {
+  const candidates = [target, typeof document === "undefined" ? null : document.activeElement];
+  for (const candidate of candidates) {
+    if (!candidate || !(candidate instanceof HTMLElement)) continue;
+    const tag = candidate.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || candidate.isContentEditable) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
  * Plan state to badge classes, mirroring `Constants.PlanStatusBadgeVariants` in V1
  * (`src/Ivy.Tendril/Constants.cs`): the three in-flight states are Info, Review and
  * Completed are Success, Failed is Destructive, Blocked is Warning, and the three
@@ -67,7 +106,8 @@ export const PLAN_STATE_BADGE_CLASS: Record<string, string> = {
 };
 
 export const planStateBadgeClass = (state: string): string =>
-  PLAN_STATE_BADGE_CLASS[state] ?? "border-border bg-transparent text-muted-foreground";
+  PLAN_STATE_BADGE_CLASS[normalizePlanState(state)] ??
+  "border-border bg-transparent text-muted-foreground";
 
 /**
  * Verification status to dot colour, from `Constants.VerificationStatusBadgeVariants`
@@ -136,13 +176,13 @@ const PlanRow: React.FC<{
 const PlanRowBadges: React.FC<{ plan: PlanSummary }> = ({ plan }) => (
   <>
     {/* Draft carries no state badge: it is where every plan starts, so saying so is not news. */}
-    {plan.state !== "Draft" && (
+    {normalizePlanState(plan.state) !== "Draft" && (
       <span
         className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${planStateBadgeClass(
           plan.state,
         )}`}
       >
-        {plan.state}
+        {normalizePlanState(plan.state)}
       </span>
     )}
     {parseProjects(plan.project).map((project) => (
@@ -195,7 +235,9 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
 
   const filteredPlans = useMemo(() => {
     const matching = plans.filter((p) => {
-      if (selectedStates.length > 0 && !selectedStates.includes(p.state)) {
+      // Matched on the current name, so filtering by "Review" also finds a plan still recorded as
+      // `ReadyForReview`.
+      if (selectedStates.length > 0 && !selectedStates.includes(normalizePlanState(p.state))) {
         return false;
       }
       if (search) {
@@ -213,12 +255,31 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
     return matching.sort((a, b) => planIdOrder(b.id) - planIdOrder(a.id));
   }, [plans, selectedStates, search]);
 
+  /**
+   * Keep the highlight on a row that still exists.
+   *
+   * V1 does this in `PlanSelectionHelper.ResolveSelection`: a selection whose plan has left the list
+   * falls back to whatever now occupies the same position, `Math.Min(oldIndex, count - 1)`, and to
+   * the first row when there is no position to keep. Without it, filtering or deleting the last plan
+   * leaves the index past the end and Enter silently does nothing.
+   */
+  useEffect(() => {
+    setSelectedIndex((prev) => {
+      if (filteredPlans.length === 0) return 0;
+      return Math.min(Math.max(prev, 0), filteredPlans.length - 1);
+    });
+  }, [filteredPlans.length]);
+
   // Arrow key navigation. This stays on its own listener — it drives a selection index, not a single
   // discoverable action — but the arrows now move DOM focus alongside the highlight, so a screen
   // reader and the focus ring follow the selection instead of staying on whatever was last clicked.
   useEffect(() => {
     const handleNavigation = (e: KeyboardEvent) => {
       if (filteredPlans.length === 0) return;
+      // Arrows belong to whatever is being typed into. The registry's `skipInInputs` already does
+      // this for "/" above; this listener predates it and has to say so itself, otherwise the search
+      // box cannot move its own caret.
+      if (isTextEntry(e.target)) return;
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -232,7 +293,9 @@ export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNew
         const previous = selectedIndex <= 0 ? filteredPlans.length - 1 : selectedIndex - 1;
         setSelectedIndex(previous);
         rowFocus.focusIndex(previous);
-      } else if (e.key === "Enter" && document.activeElement !== searchInputRef.current) {
+      } else if (e.key === "Enter") {
+        // The text-entry guard above already excludes the search box, so Enter typed there is a
+        // newline in a search string rather than a request to open the highlighted plan.
         e.preventDefault();
         const selected = filteredPlans[selectedIndex];
         if (selected) {

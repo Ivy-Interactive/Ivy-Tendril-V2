@@ -167,12 +167,19 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
       aria-modal="true"
       aria-labelledby="new-plan-title"
       data-testid="new-plan-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+      /* Bottom-anchored below `sm`, centred above it: V1 swaps the whole surface at
+         `Breakpoint.Mobile` for `new Sheet(...).Side(SheetSide.Bottom).Height(Size.Fit())` and keeps
+         the `Dialog` elsewhere (`CreatePlanDialog.Build`). Both surfaces dismiss the same three ways
+         and carry the same title, so the swap is a placement change and is expressed as one here
+         rather than as a second component. */
+      className="fixed inset-0 z-50 flex items-end justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
-      {/* `.Width(Size.Rem(30))` on V1's dialog. */}
+      {/* `.Width(Size.Rem(30))` on V1's dialog; `Size.Fit()` height on the mobile sheet, which is
+          what `h-auto` with a capped max height amounts to. */}
       <div
-        className="w-full max-w-[30rem] rounded-2xl border border-border bg-card p-6 shadow-2xl"
+        data-testid="new-plan-surface"
+        className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-border bg-card p-6 shadow-2xl sm:max-h-none sm:max-w-[30rem] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border pb-4">
