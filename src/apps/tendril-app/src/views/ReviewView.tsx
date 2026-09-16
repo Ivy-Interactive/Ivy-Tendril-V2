@@ -847,7 +847,13 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
   if (reviewPlans.length === 0) {
     return (
-      <div data-testid="review-view">
+      <div
+        data-testid="review-view"
+        /* Review is a full-bleed app, so the shell pads this page not at all and the empty state
+           insets itself - V1 returns `NoContentView` before the `.RemoveParentPadding()` workspace
+           branch, so it keeps the host's 16px and `Height(Size.Full())` centres it. */
+        className="flex h-full min-h-0 items-center justify-center p-4"
+      >
         {/* `NoContentView("No plans to review", "Completed plans will appear here for review")`. */}
         <EmptyState
           title="No plans to review"

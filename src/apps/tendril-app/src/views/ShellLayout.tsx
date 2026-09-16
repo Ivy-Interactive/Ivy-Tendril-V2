@@ -37,13 +37,34 @@ import { ServiceStatusBanner } from "../components/service";
 import { UpdateNotice } from "../components/UpdateNotice";
 import { firstStringArg } from "../utils/eventArgs";
 import { pageTabTitle, usesSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
-import { appDescriptor, type SessionPane } from "../state/navigation";
+import { appDescriptor, isFullBleedApp, type SessionPane } from "../state/navigation";
 
 /**
  * V1 `TendrilAppShell.PageTabId`. Identifies the strip's leading tab, which reveals the page behind
  * the session panes; V1 gives it a `$` prefix so it cannot collide with a session id.
  */
 export const PAGE_TAB_ID = "$page";
+
+/**
+ * The shell's content container, and the one place an app's outer padding is decided.
+ *
+ * V1's host pads every app by 16px and owns its vertical scroll
+ * (`Ivy-Framework/.../AppHostWidget.tsx`: `<div className="w-full h-full p-4 overflow-y-auto">`);
+ * an app opts out by putting `RemoveParentPadding()` on its root layout, which zeroes the *parent's*
+ * padding outright - `padding: 0`, never a reduced padding. {@link CONTENT_PADDED_CLASS} is that
+ * default and {@link CONTENT_FULL_BLEED_CLASS} is that opt-out, chosen per page from
+ * `AppDescriptor.fullBleed` so views carry no outer padding of their own.
+ *
+ * Both keep the scroll *inside* the frame rather than on the page. `.tsh-frame-pane` is
+ * `position: absolute; inset: 0` with `display: flex; flex-direction: column`, so `flex-1` gives this
+ * element a definite height either way - which is what lets a view bound its own scroll viewport
+ * (`JobsView`'s `fillHeight` table: a `shrink-0` toolbar over a `flex-1 min-h-0` body) and keep its
+ * `position: sticky` header working. A page-level scroll container would break both.
+ */
+export const CONTENT_PADDED_CLASS = "flex-1 overflow-y-auto p-4";
+
+/** The full-bleed content container: no padding, and the app owns every scroll inside it. */
+export const CONTENT_FULL_BLEED_CLASS = "flex min-h-0 flex-1 flex-col overflow-hidden";
 
 /**
  * V1 `AppBrand`, which is where the Help menu's three destinations come from
@@ -439,6 +460,9 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
 
   const pageNavId = pageNav ?? activeNav;
   const pageAppTitle = appDescriptor(pageNavId)?.title ?? pageNavId;
+  /* The page behind the session panes is what the content container pads, not the session on top:
+     a pane is its own `.tsh-frame-pane` and never passes through this container. */
+  const isPageFullBleed = isFullBleedApp(pageNavId);
   /* V1 `PageTabDisplay` / `PageTabTitle`: the page tab is named after the selected sidebar row, so
      the strip reads "#74 Draft" rather than the generic "Plans", falling back to the app's own
      title. V1 restricts that to the list's own app (`published.AppId == pageAppId`). */
@@ -589,7 +613,18 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                 />
               </>
             ),
-            Content: <main className="flex-1 overflow-y-auto p-6">{children}</main>,
+            /* The 16px default, or nothing at all for a full-bleed app. Deciding it here - once,
+               from the registry - is what keeps it checkable; a view that wants the frame's edges
+               says so in `APP_DESCRIPTORS`, not with classes on its root `<div>`. */
+            Content: (
+              <main
+                data-testid="shell-content"
+                data-full-bleed={isPageFullBleed}
+                className={isPageFullBleed ? CONTENT_FULL_BLEED_CLASS : CONTENT_PADDED_CLASS}
+              >
+                {children}
+              </main>
+            ),
             /* V1's `sessionContents`: every session pane stays mounted and only the active one is
                visible, so a review action's terminal keeps its buffer - and keeps running - while
                the reviewer goes back to the plan behind it. */

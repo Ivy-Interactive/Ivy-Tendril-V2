@@ -336,7 +336,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const now = new Date();
 
   return (
-    <div data-testid="dashboard-view">
+    // `TendrilDashboard` is full-bleed and sizes itself to `height: 100%` with its own `overflow-y`,
+    // so this wrapper has to pass the frame's height through rather than collapsing to its content -
+    // otherwise `.tdb-root`'s 100% has nothing to resolve against and the dashboard never scrolls.
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="dashboard-view">
       <TendrilDashboard
         id="tendril-dashboard"
         dateText={formatDateText(now)}

@@ -334,7 +334,13 @@ export const PlansView: React.FC<PlansViewProps> = ({
           for the same reason, and kept here for the same reason: it is what a list with a selection
           the host has not applied yet shows. */}
       {listPlans.length === 0 ? (
-        <EmptyState title="No plans" description="Plans you create will appear here" />
+        /* Plans is a full-bleed app (V1's `.RemoveParentPadding()` on the workspace), so the shell
+           gives this page no padding and the empty state has to inset itself. V1 reaches
+           `NoContentView` *before* the workspace branch, so the empty case keeps the host's 16px and
+           `Height(Size.Full())` centres it. */
+        <div className="flex h-full min-h-0 items-center justify-center p-4">
+          <EmptyState title="No plans" description="Plans you create will appear here" />
+        </div>
       ) : (
         <div
           data-testid="plans-no-selection"

@@ -37,6 +37,36 @@ export interface AppDescriptor {
   title: string;
   /** V1's `[App(allowDuplicateTabs: true)]`: this app opens as a session pane, not as the page. */
   allowDuplicateTabs?: boolean;
+  /**
+   * This app draws to the frame's edges, so the shell's content container gives it no padding.
+   *
+   * V1 spells the same decision inside the widget tree: the host pads every app by 16px
+   * (`AppHostWidget.tsx`: `p-4`) and an app opts out by putting `RemoveParentPadding()` on its root
+   * layout, which the `:has(> .remove-parent-padding)` rules in the framework's `index.css` turn into
+   * `padding: 0 !important` on the *parent*. It is all-or-nothing there, and all-or-nothing here.
+   *
+   * V2 has no widget tree and no `AppHostWidget`, so the equivalent has to be declared where the
+   * shell can read it before it renders the page - which is here, beside the other two facts the
+   * shell needs about an app. Keeping it in the registry rather than on each view's root `<div>` is
+   * the point: one default, one explicit opt-out list, and {@link isFullBleedApp} as the single
+   * question the shell asks. Scattered `p-*` classes on view roots are what made the padding
+   * inconsistent in the first place.
+   *
+   * Note that several components ported from V1 still carry the literal `remove-parent-padding`
+   * class on their root - `TendrilShell`, `PlanWorkspace`, `TendrilDashboard`, `WebViewer` - and
+   * **it does nothing in V2**: no stylesheet here implements the `:has()` rules that give it meaning
+   * in the framework. That inert class is why the drift went unnoticed; those components declared
+   * themselves full-bleed and nothing was listening. This flag is what listens now.
+   *
+   * The set is V1's, verified against `Ivy-Tendril/src/Ivy.Tendril/Apps`. Chat, Plans (list and
+   * detail), Review, ReviewAction and Agent say so with `RemoveParentPadding()`. Dashboard and
+   * Settings say so implicitly, because the root widget each returns already carries the class
+   * (`TendrilDashboard`'s `.tdb-root`, and `SidebarLayoutWidget` for `new SidebarLayout(...)`), and
+   * each then re-applies an inset of its own inside. Jobs, Inbox, Recommendations, Pull Requests and
+   * Icebox sit inside the 16px default - see the test in `tests/shell-content-padding.test.tsx` for
+   * why V1's `HeaderLayout`/`FooterLayout` opt-outs do not change that.
+   */
+  fullBleed?: boolean;
 }
 
 /**
@@ -49,18 +79,32 @@ export interface AppDescriptor {
  * when V2 grows one.
  */
 export const APP_DESCRIPTORS: Record<string, AppDescriptor> = {
-  dashboard: { id: "dashboard", title: "Dashboard" },
-  plans: { id: "plans", title: "Plans" },
-  review: { id: "review", title: "Review" },
+  // Full-bleed for the same reason V1's is: `TendrilDashboard` is a full-bleed widget that owns its
+  // own scroll (`.tdb-root { height: 100%; overflow-y: auto }`) and re-applies the host's inset
+  // itself (`.tdb-inner { padding: 16px 16px 24px }`). Padding it here padded it twice and nested a
+  // second scroll container inside the first.
+  dashboard: { id: "dashboard", title: "Dashboard", fullBleed: true },
+  plans: { id: "plans", title: "Plans", fullBleed: true },
+  review: { id: "review", title: "Review", fullBleed: true },
   recommendations: { id: "recommendations", title: "Recommendations" },
   jobs: { id: "jobs", title: "Jobs" },
-  chat: { id: "chat", title: "Chat" },
+  chat: { id: "chat", title: "Chat", fullBleed: true },
   inbox: { id: "inbox", title: "Inbox" },
-  settings: { id: "settings", title: "Settings" },
+  // V1 builds Settings as `new SidebarLayout(content, sidebar)`, and `SidebarLayoutWidget` carries
+  // `remove-parent-padding` on its own root - so the section rail's `border-r` runs the full height
+  // of the frame and the content pane supplies its own inset (`SettingsApp.cs:203`: `.Padding(4)`).
+  // V2's view is built the same way and already pads its content pane, so padding the page as well
+  // both doubled that inset and left the rail's divider floating off the frame's edges.
+  settings: { id: "settings", title: "Settings", fullBleed: true },
   "pull-requests": { id: "pull-requests", title: "Pull Requests" },
   icebox: { id: "icebox", title: "Icebox" },
-  "review-action": { id: "review-action", title: "Review Action", allowDuplicateTabs: true },
-  agent: { id: "agent", title: "Agent", allowDuplicateTabs: true },
+  "review-action": {
+    id: "review-action",
+    title: "Review Action",
+    allowDuplicateTabs: true,
+    fullBleed: true,
+  },
+  agent: { id: "agent", title: "Agent", allowDuplicateTabs: true, fullBleed: true },
 };
 
 /** Where the shell starts, and where an address with no app leaves it. */
@@ -77,13 +121,24 @@ export const appDescriptor = (appId: string | null | undefined): AppDescriptor |
   const known = APP_DESCRIPTORS[appId];
   if (known) return known;
   if (appId.startsWith("plan-")) {
-    return { id: appId, title: `Plan ${appId.slice("plan-".length)}` };
+    // A plan page *is* V1's `PlansApp` with args, so it inherits `PlansApp`'s full-bleed frame:
+    // `PlanWorkspace` draws its own topbar, tab strip and insets to the edges.
+    return { id: appId, title: `Plan ${appId.slice("plan-".length)}`, fullBleed: true };
   }
   if (appId.startsWith("job-")) {
+    // Not full-bleed: V1 shows a job's output in a sheet over the Jobs table, and a sheet is inset.
     return { id: appId, title: `Job ${appId.slice("job-".length)}` };
   }
   return undefined;
 };
+
+/**
+ * Whether the shell's content container hands this app the frame's full area, unpadded - V1's
+ * `RemoveParentPadding()`. See {@link AppDescriptor.fullBleed}. An unknown app is padded, which is
+ * the host's default in both versions.
+ */
+export const isFullBleedApp = (appId: string | null | undefined): boolean =>
+  appDescriptor(appId)?.fullBleed === true;
 
 /**
  * Args as they travel in the address: flat and string-valued, because a search string is what they

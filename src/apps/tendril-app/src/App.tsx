@@ -611,7 +611,9 @@ export const App: React.FC = () => {
 
       if (!detail) {
         return (
-          <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+          // A plan page is full-bleed, so this placeholder centres itself in the frame rather than
+          // relying on the content container's padding to keep it off the edge.
+          <div className="flex h-full min-h-0 items-center justify-center p-4 text-sm text-muted-foreground">
             Loading plan {planId}...
           </div>
         );

@@ -684,7 +684,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
         {showsProject && selectedProject ? (
-          <div className="min-h-0 flex-1">
+          // The same inset and the same scroll owner as the section branch below. Settings is a
+          // full-bleed page (V1's `SidebarLayout`), so the content pane is what supplies both;
+          // leaving this branch bare made it the one settings section that took its padding from the
+          // shell and scrolled the whole page instead of itself.
+          <div className="min-h-0 flex-1 overflow-auto p-4">
             <ProjectSettingsView
               key={selectedProject.name}
               project={selectedProject}
