@@ -307,6 +307,31 @@ pub struct JobDto {
     pub cost: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tokens: Option<i64>,
+    // The usage breakdown and the provenance of `cost`. All optional: a run on a subscription plan
+    // reports tokens and no charge, and a genuinely absent cost has to stay distinguishable from
+    // zero. Dropping these was why the daemon's cost figures could not reach the UI at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<i64>,
+    /// Set only for a job whose process survived a daemon restart. Absent rather than `false`
+    /// otherwise, matching the daemon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detached: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -337,6 +362,29 @@ pub struct JobDetailDto {
     pub tokens: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reported_failure_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detached: Option<bool>,
+    /// What the agent asked to do and was refused. Present on the detail only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub permission_denials: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

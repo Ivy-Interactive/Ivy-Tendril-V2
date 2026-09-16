@@ -40,12 +40,24 @@ const NoProjectsDialog = React.lazy(() =>
   import("./views/dialogs/NoProjectsDialog").then((m) => ({ default: m.NoProjectsDialog })),
 );
 
+// Same reasoning, by module rather than the barrel: the two job sweeps are the only confirms the
+// shell itself owns, and both are rare.
+const ConfirmDialog = React.lazy(() =>
+  import("./views/dialogs/ConfirmDialog").then((m) => ({ default: m.ConfirmDialog })),
+);
+
 // Lazy for the same reason, and it is the whole point of `notificationsStore` reaching `toast`
 // through a dynamic import too: the toast viewport is mounted from the start of the session, but
 // the chunk it lives in is fetched alongside the first view rather than blocking the entry chunk.
 const Toaster = React.lazy(() =>
   import("@ivy-interactive/components/ui").then((m) => ({ default: m.Toaster })),
 );
+
+/** An outline button, written out rather than imported: pulling `components/ui` into App.tsx for
+ *  two buttons is what the lazy dialogs above exist to avoid. */
+const JOB_SWEEP_BUTTON_CLASS =
+  "inline-flex h-8 items-center rounded-md border border-border bg-transparent px-3 text-sm " +
+  "font-medium text-foreground transition hover:bg-muted disabled:pointer-events-none disabled:opacity-50";
 
 /** How often the job list is re-read to spot exits. Short enough that a finished job is announced
  *  while the operator still has it in mind, long enough to be a rounding error on the daemon. */
@@ -104,6 +116,11 @@ export const App: React.FC = () => {
   // so the new-plan flow does not flash the empty state on startup.
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [isNewPlanOpen, setIsNewPlanOpen] = useState(false);
+  // The two bulk job sweeps. Confirmed because both kill work in flight.
+  const [stopQueuedOpen, setStopQueuedOpen] = useState(false);
+  const [stopAllOpen, setStopAllOpen] = useState(false);
+  const [stopBusy, setStopBusy] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const [newPlanPrefill, setNewPlanPrefill] = useState<{
     title?: string;
     description?: string;
@@ -609,7 +626,35 @@ export const App: React.FC = () => {
       case "jobs":
         return (
           <div className="space-y-4">
-            <h1 className="text-2xl font-bold text-foreground">Jobs Activity</h1>
+            {/* V1's header actions (`JobsApp.DataTable`): the counts are in the labels, and each is
+                hidden when it would read `(0)`. Stop All Queued deliberately leaves running jobs
+                alone — its confirm copy promises that, which is also why neither is built on the
+                daemon's stop-all route. */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h1 className="text-2xl font-bold text-foreground">Jobs Activity</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                {jobsStore.queuedJobCount() > 0 && (
+                  <button
+                    type="button"
+                    className={JOB_SWEEP_BUTTON_CLASS}
+                    data-testid="jobs-stop-all-queued"
+                    onClick={() => setStopQueuedOpen(true)}
+                  >
+                    Stop All Queued ({jobsStore.queuedJobCount()})
+                  </button>
+                )}
+                {jobsStore.activeJobCount() > 0 && (
+                  <button
+                    type="button"
+                    className={JOB_SWEEP_BUTTON_CLASS}
+                    data-testid="jobs-stop-all"
+                    onClick={() => setStopAllOpen(true)}
+                  >
+                    Stop All ({jobsStore.activeJobCount()})
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="grid gap-3">
               {jobsState.jobs.map((j) => (
                 <div
@@ -793,6 +838,78 @@ export const App: React.FC = () => {
           uiStore.setActiveNav("settings");
         }}
       />
+
+      {/* The two job sweeps, with V1's copy verbatim (`JobsApp.DataTable`). Mounted only while open,
+          so the dialog chunk is fetched at that moment. Both report how many they actually stopped:
+          the count is re-snapshotted as jobs are cancelled, so it can differ from the label. */}
+      {stopQueuedOpen && (
+        <React.Suspense fallback={null}>
+          <ConfirmDialog
+            isOpen
+            onClose={() => {
+              setStopQueuedOpen(false);
+              setStopError(null);
+            }}
+            title="Stop Queued Jobs"
+            body={`Stop all ${jobsStore.queuedJobCount()} queued jobs? Running jobs are not affected.`}
+            confirmLabel="Stop All"
+            confirmVariant="destructive"
+            isBusy={stopBusy}
+            error={stopError}
+            testId="stop-queued-dialog"
+            onConfirm={async () => {
+              setStopBusy(true);
+              setStopError(null);
+              try {
+                const stopped = await jobsStore.stopQueuedJobs();
+                const { toast } = await import("@ivy-interactive/components");
+                toast({ title: "Jobs", description: `Stopped ${stopped} queued job(s).` });
+                setStopQueuedOpen(false);
+              } catch (err) {
+                setStopError(describeBridgeError(err));
+              } finally {
+                setStopBusy(false);
+              }
+            }}
+          />
+        </React.Suspense>
+      )}
+
+      {stopAllOpen && (
+        <React.Suspense fallback={null}>
+          <ConfirmDialog
+            isOpen
+            onClose={() => {
+              setStopAllOpen(false);
+              setStopError(null);
+            }}
+            title="Stop All Jobs"
+            body={`Stop all ${jobsStore.activeJobCount()} active job(s)? Running agents are killed and their plans revert to their previous state. This cannot be undone.`}
+            confirmLabel="Stop All"
+            confirmVariant="destructive"
+            isBusy={stopBusy}
+            error={stopError}
+            testId="stop-all-dialog"
+            onConfirm={async () => {
+              setStopBusy(true);
+              setStopError(null);
+              try {
+                const stopped = await jobsStore.stopAllJobs();
+                const { toast } = await import("@ivy-interactive/components");
+                toast({
+                  title: "Jobs Stopped",
+                  description: `Stopped ${stopped} job${stopped === 1 ? "" : "s"}`,
+                });
+                setStopAllOpen(false);
+              } catch (err) {
+                setStopError(describeBridgeError(err));
+              } finally {
+                setStopBusy(false);
+              }
+            }}
+          />
+        </React.Suspense>
+      )}
 
       <KeyboardShortcutsHelp isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
 

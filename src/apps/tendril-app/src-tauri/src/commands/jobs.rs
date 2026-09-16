@@ -28,3 +28,13 @@ pub async fn cmd_cancel_job(id: String, message: Option<String>) -> Result<(), B
         .cancel_job(&id, message.as_deref())
         .await
 }
+
+#[tauri::command]
+pub async fn cmd_delete_job(id: String) -> Result<(), BridgeError> {
+    get_client_from_master()?.delete_job(&id).await
+}
+
+#[tauri::command]
+pub async fn cmd_force_start_job(id: String) -> Result<(), BridgeError> {
+    get_client_from_master()?.force_start_job(&id).await
+}

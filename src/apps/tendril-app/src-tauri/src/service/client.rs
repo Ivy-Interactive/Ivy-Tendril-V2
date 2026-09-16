@@ -539,6 +539,7 @@ impl TendrilClient {
                     .map(|s| s.to_string());
                 let cost = val.get("cost").and_then(|v| v.as_f64());
                 let tokens = val.get("tokens").and_then(|v| v.as_i64());
+                let num = |key: &str| val.get(key).and_then(|v| v.as_i64());
 
                 JobDto {
                     id,
@@ -552,6 +553,24 @@ impl TendrilClient {
                     completed_at,
                     cost,
                     tokens,
+                    cost_source: val
+                        .get("costSource")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    duration_seconds: num("durationSeconds"),
+                    input_tokens: num("inputTokens"),
+                    output_tokens: num("outputTokens"),
+                    cache_read_tokens: num("cacheReadTokens"),
+                    cache_write_tokens: num("cacheWriteTokens"),
+                    reasoning_tokens: num("reasoningTokens"),
+                    model: val
+                        .get("model")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    process_id: num("processId"),
+                    // Absent rather than `false` when the daemon does not say, so "not detached" and
+                    // "the list endpoint cannot tell" stay distinguishable.
+                    detached: val.get("detached").and_then(|v| v.as_bool()),
                 }
             })
             .collect();
@@ -626,6 +645,7 @@ impl TendrilClient {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         let cost = details.get("cost").and_then(|v| v.as_f64());
+        let detail_num = |key: &str| details.get(key).and_then(|v| v.as_i64());
         let tokens = details.get("tokens").and_then(|v| v.as_i64());
         let reported_failure_reason = details
             .get("reportedFailureReason")
@@ -647,7 +667,73 @@ impl TendrilClient {
             cost,
             tokens,
             reported_failure_reason,
+            cost_source: details
+                .get("costSource")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            duration_seconds: detail_num("durationSeconds"),
+            input_tokens: detail_num("inputTokens"),
+            output_tokens: detail_num("outputTokens"),
+            cache_read_tokens: detail_num("cacheReadTokens"),
+            cache_write_tokens: detail_num("cacheWriteTokens"),
+            reasoning_tokens: detail_num("reasoningTokens"),
+            model: details
+                .get("model")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            process_id: detail_num("processId"),
+            detached: details.get("detached").and_then(|v| v.as_bool()),
+            permission_denials: details
+                .get("permissionDenials")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
         })
+    }
+
+    /// Removes a job from the list and the database. The daemon keeps its log artifacts.
+    pub async fn delete_job(&self, job_id: &str) -> Result<(), BridgeError> {
+        let url = format!("{}/api/jobs/{}", self.base_url, urlencoding(job_id));
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "DELETE_JOB_FAILED",
+                format!("Failed to delete job '{job_id}' ({status}): {text}"),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Promotes a blocked or queued job past its gates so it runs next.
+    pub async fn force_start_job(&self, job_id: &str) -> Result<(), BridgeError> {
+        let url = format!(
+            "{}/api/jobs/{}/force-start",
+            self.base_url,
+            urlencoding(job_id)
+        );
+        let resp = self.client.post(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "FORCE_START_JOB_FAILED",
+                format!("Failed to force-start job '{job_id}' ({status}): {text}"),
+            ));
+        }
+        Ok(())
     }
 
     pub async fn start_job(

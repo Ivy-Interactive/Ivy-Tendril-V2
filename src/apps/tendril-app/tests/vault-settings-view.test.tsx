@@ -339,7 +339,6 @@ describe("VaultSettingsView", () => {
     });
     vi.spyOn(bridge, "deleteVaultProject").mockResolvedValue({
       success: true,
-      message: "",
       branchName: "vault/delete-Alpha",
     });
 

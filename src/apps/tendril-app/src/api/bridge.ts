@@ -562,6 +562,16 @@ const tauriClient = {
     return invoke<void>("cmd_cancel_job", { id, message });
   },
 
+  /** Drops a job from the list and the database. The daemon keeps its log artifacts. */
+  async deleteJob(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_delete_job", { id });
+  },
+
+  /** Promotes a blocked or queued job past its gates so it runs next. */
+  async forceStartJob(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_force_start_job", { id });
+  },
+
   async listProjects(this: void): Promise<ProjectSummary[]> {
     return invoke<ProjectSummary[]>("cmd_list_projects");
   },

@@ -91,9 +91,28 @@ export interface Job {
    * Absent (rather than `false`) for every job that never went through recovery.
    */
   detached?: boolean;
+  /**
+   * The agent's own figure when it reported one (`"agent"`), otherwise ours (`"estimated"`).
+   * Absent means neither, which is not the same as a cost of zero: a run on a subscription plan
+   * reports tokens and no charge.
+   */
+  costSource?: string;
+  durationSeconds?: number;
+  /**
+   * The usage breakdown. `cacheReadTokens` dominates the bill on any long run, so a UI that shows
+   * only `tokens` understates it by an order of magnitude.
+   */
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  model?: string;
 }
 
 export interface JobDetail extends Job {
+  /** What the agent asked to do and was refused. Detail only. */
+  permissionDenials?: string[];
   args?: string;
   workingDirectory?: string;
   reportedFailureReason?: string;
