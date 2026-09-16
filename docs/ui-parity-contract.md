@@ -171,3 +171,39 @@ three locally, so extracting them is a prerequisite rather than a nicety.
 If V1 put something in the shell, put it in the shell. A view that renders its own list, its own
 nav, or its own table where V1 published to the shell or used a `DataTable` is a structural
 divergence even when every label and behaviour inside it is right.
+
+### Routing: a hybrid shell, not a tab bar
+
+`AppShell/AppShellRouter.cs` (127 lines) states the architecture in its own doc comment:
+
+> Routing for the hybrid shell: regular apps render as the single page inside the content frame,
+> while session apps (AllowDuplicateTabs — agent terminals and review actions) open as tabs in the
+> bottom session strip.
+
+So there are two destinations, and which one a navigation reaches is a *routing decision*, not a
+caller's choice. `Route(navigateArgs, navigationMode, defaultAppId, sessionTabs, appDescriptor)`
+returns one of five actions — `OpenPage`, `SwitchToExistingTab`, `CreateNewTab`, `Error`, `Noop` —
+by these rules, in order:
+
+1. **A `TabId` means restoring an existing session tab**, e.g. from browser history. Found → switch to
+   it. Not found *and* the navigation is a history `Pop` → `Error("Tab no longer exists.")`, because
+   silently opening something else would rewrite the user's history under them.
+2. **No `AppId` → `Noop`.**
+3. **`AllowDuplicateTabs` app → a session tab.** But first: a terminal session's pane is keyed by its
+   session id, so reopening the same session **reveals the existing pane rather than spawning a second
+   agent**. Only then `CreateNewTab`.
+4. **Everything else → `OpenPage`.** One page in the content frame. A page is never a tab.
+
+What this requires of navigation, and what V2 does not have:
+
+- **`NavigateArgs` carries `{ appId, appArgs, tabId?, historyOp? }`.** V2's navigation is a bare
+  string (`uiStore.setActiveNav(nav)`), which is why the sidebar contract's `buildSelectArgs` has
+  nowhere to deliver its args and every publisher has to apply the selection itself as a side effect.
+  That is a workaround for a missing router, not a design.
+- **History**, including `replaceHistory` and the `HistoryOp.Pop` distinction above.
+- **A `defaultAppId`**, used when a navigation names no app.
+
+V2 additionally does the opposite of rule 4: `uiStore.setActiveNav` pushes every nav into
+`activeTabIds`, and `setSelectedPlanId` pushes a `plan-<id>` tab, so ordinary pages accumulate in the
+session strip. `Apps/Jobs/Sheets/OutputSheet.cs` is the reminder that not everything even wants a
+page: job output is a **sheet** over the jobs table in V1, and V2 made it a tab.
