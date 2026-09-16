@@ -97,3 +97,77 @@ the V1 C# is the authority on all of it:
 
 Report behavioural divergence even where you cannot fix it in files you own — that is the most valuable
 thing you can produce.
+
+## Structural parity (third pass): the shell owns the lists
+
+The first pass matched composition inside a view; the second matched behaviour. Both missed the level
+above: **V1's information architecture**. V2 currently renders, in the content area, lists that V1 puts
+in the shell sidebar — which makes the app read as a set of standalone pages rather than one shell with
+a contextual sidebar.
+
+### The sidebar contextual list
+
+In V1, five apps do **not** render their own list. They publish one into the shell sidebar and the
+shell renders it, routing a click back as a normal navigation:
+
+- `AppShell/ShellSidebarListSignal.cs` — the contract. The active app publishes `ShellSidebarListState`
+  **on every build**; the shell renders it and routes item clicks through `BuildSelectArgs`.
+- `AppShell/TendrilAppShell.cs`'s `SidebarSectionAppIds` names them: **`review`, `plans`, `drafts`,
+  `recommendations`, `chat`**.
+- `PageTabTitle` makes the page tab's title the *selected sidebar row*, not the app name.
+- `UsesSidebarList` keeps a published list visible while the user is on any sidebar-section app, so
+  moving between them does not blank the sidebar.
+
+V2 already has the whole widget family forked and **unused**:
+`packages/components/src/components/Shell/` — `ShellSidebarSection`, `ShellSectionItems`,
+`ShellRailFlyout`, `ShellSidebarHeader`. `ShellSectionItemDto` in `Shell/types.ts` is already
+field-for-field identical to V1's `ShellDtos.cs`. Nothing in `apps/tendril-app/src` renders any of it.
+
+**The contract to implement, mirroring `ShellSidebarListState` exactly.** One owner implements the
+shell side; the five apps publish against this and nothing else:
+
+```ts
+export interface ShellSidebarList {
+  appId: string;                 // "review" | "plans" | "drafts" | "recommendations" | "chat"
+  title: string;
+  items: ShellSectionItemDto[];  // already exists in Shell/types.ts — do not redefine it
+  selectedId: string | null;
+  /** A click becomes a navigation to `appId` with these args. */
+  buildSelectArgs: (id: string) => unknown;
+  searchable?: boolean;          // default true
+  onSearch?: () => void;         // null/absent means the plan search dialog
+  searchLabel?: string;          // absent reads "Search plans"
+  onNew?: () => void;
+  newLabel?: string;
+  /** Folds the collapsed rail's list into one flyout button instead of narrow id chips. */
+  collapsedMenu?: boolean;
+  onRename?: (id: string, title: string) => void;
+  onDelete?: (id: string) => void;
+  onTogglePin?: (id: string) => void;
+}
+```
+
+Two rules follow from V1 and are easy to get wrong: a published list must survive navigation between
+sidebar-section apps, and the page tab title follows the selected row.
+
+### Tables are tables
+
+V1 renders collections with `ToDataTable`. V2 has a full `DataTable` under
+`packages/components/src/components/ui/data-table/` — row actions, inline cell edit, column visibility
+— and `InboxView` already uses it. Anything V1 renders as a table must use it rather than a
+hand-rolled card grid. `Apps/Jobs/JobsApp.DataTable.cs` is the reference for columns, ordering, row
+menu and its live per-cell update stream.
+
+### Nested navigation
+
+`Apps/Settings/SettingsApp.cs` is a **nested sidebar** of `SidebarListRow` rows, one of which
+(`Projects`) is expandable with a sub-item per project plus "Add Project", and it opens editors as
+**blades** (`Apps/Settings/Blades/`). It is not a flat stack of cards. Note `SidebarListRow.Build` /
+`BuildExpandable` / `BuildSubItem` currently has no shared V2 component — `InboxView` reimplemented all
+three locally, so extracting them is a prerequisite rather than a nicety.
+
+### Rule for this pass
+
+If V1 put something in the shell, put it in the shell. A view that renders its own list, its own
+nav, or its own table where V1 published to the shell or used a `DataTable` is a structural
+divergence even when every label and behaviour inside it is right.
