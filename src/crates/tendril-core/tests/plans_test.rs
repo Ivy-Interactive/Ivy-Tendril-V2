@@ -5,11 +5,11 @@ use tendril_core::models::{
 };
 use tendril_core::plans::{
     accept_recommendation, add_plan_verification, add_recommendation, allocate_plan_id,
-    create_plan, decline_recommendation, get_revision, list_plan_verifications,
-    list_recommendations, read_plan_file, remove_plan_verification, remove_recommendation,
-    rename_project_in_plans, rename_verification_in_plans, set_plan_verification_status,
-    set_recommendation_field, set_recommendation_state, to_safe_title, write_revision,
-    CreatePlanOptions, PlanCompletionGuard,
+    create_plan, decline_recommendation, get_revision, introduced_question_errors,
+    list_plan_verifications, list_recommendations, read_plan_file, remove_plan_verification,
+    remove_recommendation, rename_project_in_plans, rename_verification_in_plans,
+    set_plan_verification_status, set_recommendation_field, set_recommendation_state,
+    to_safe_title, update_latest_revision, write_revision, CreatePlanOptions, PlanCompletionGuard,
 };
 
 #[test]
@@ -183,6 +183,266 @@ fn test_write_revision_polish_survives_no_question_check() {
     let latest = get_revision(plan_folder, None).expect("Failed to get revision");
     assert!(latest.contains(&format!("Plan [{sibling_id}](plan://{sibling_id}).")));
     assert!(latest.contains(fence));
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// Answering a question fills in a blank the plan left; it is not a new revision of the plan.
+///
+/// The `revision_count` assertion is the load-bearing one. An append would inflate it, and the app's
+/// unfolded-answer execute guard is defined as `state === "Draft" && revisionCount === 1` — so a
+/// single answer arriving as a new revision would silently switch that guard off, and the operator
+/// would never be warned that their answer had not been folded into the plan.
+#[test]
+fn test_update_latest_revision_fills_the_same_revision_in_place() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plan-update-latest-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let plan = create_plan(&test_dir, bare_create_plan_options("Answerable Plan"))
+        .expect("Failed to create plan");
+    let plan_folder = Path::new(&plan.folder_path);
+
+    let unanswered = "# Answerable Plan\n\n```questions\nquestions:\n  - id: store\n    title: Which store?\n    options:\n      - title: SQLite\n        value: sqlite\n      - title: Files\n        value: files\n```\n";
+    assert_eq!(
+        write_revision(plan_folder, unanswered, true).expect("write rev 1"),
+        1
+    );
+    assert_eq!(
+        write_revision(plan_folder, unanswered, true).expect("write rev 2"),
+        2
+    );
+    let before = read_plan_file(plan_folder).expect("read plan");
+    assert_eq!(before.revision_count, 2);
+
+    let answered = unanswered.replace(
+        "    title: Which store?",
+        "    title: Which store?\n    answer: sqlite",
+    );
+    let rev = update_latest_revision(plan_folder, &answered).expect("update latest revision");
+
+    // The number did not move, and neither did the count.
+    assert_eq!(rev, 2);
+    let after = read_plan_file(plan_folder).expect("reload plan");
+    assert_eq!(
+        after.revision_count, 2,
+        "an answer must not append a revision"
+    );
+    assert!(after.latest_revision_content.contains("answer: sqlite"));
+
+    // The revision it overwrote is the newest one, and the older one is untouched.
+    assert!(get_revision(plan_folder, Some(2))
+        .expect("read rev 2")
+        .contains("answer: sqlite"));
+    assert!(!get_revision(plan_folder, Some(1))
+        .expect("read rev 1")
+        .contains("answer: sqlite"));
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// Links are polished on this path too, so a revision does not change shape depending on which door
+/// it came through — and a malformed merge is refused rather than persisted, because an answer is
+/// written *into* a fence.
+#[test]
+fn test_update_latest_revision_polishes_links_and_refuses_a_broken_fence() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plan-update-latest-guard-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let sibling = create_plan(&test_dir, bare_create_plan_options("Sibling Plan"))
+        .expect("Failed to create sibling plan");
+    let sibling_id = format!("{:05}", sibling.metadata.id);
+    let plan = create_plan(&test_dir, bare_create_plan_options("Main Plan"))
+        .expect("Failed to create plan");
+    let plan_folder = Path::new(&plan.folder_path);
+
+    write_revision(plan_folder, "# Main Plan\n", true).expect("write rev 1");
+
+    update_latest_revision(
+        plan_folder,
+        &format!("See Plan {sibling_id} for details.\n"),
+    )
+    .expect("update latest revision");
+    assert!(get_revision(plan_folder, None)
+        .expect("read latest")
+        .contains(&format!("[{sibling_id}](plan://{sibling_id})")));
+
+    // A fence whose YAML does not parse must not land: the document on disk had no question-block
+    // error, so this write is the thing that introduced one.
+    let broken =
+        "# Main Plan\n\n```questions\nquestions:\n  - id: q1\n    options: not-a-list\n```\n";
+    assert!(update_latest_revision(plan_folder, broken).is_err());
+    assert!(!get_revision(plan_folder, None)
+        .expect("read latest")
+        .contains("not-a-list"));
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// A block with one option, which an agent is perfectly capable of writing. Two of these in one
+/// document give the multi-block `block N:` prefixes the refusal used to blame.
+const ONE_OPTION_BLOCK: &str = "```questions\nquestions:\n  - id: rollout\n    title: How should this roll out?\n    options:\n      - title: All at once\n        value: all-at-once\n```\n";
+
+/// A well-formed block beside it, whose question is the one being answered.
+const VALID_BLOCK: &str = "```questions\nquestions:\n  - id: store\n    title: Which store?\n    options:\n      - title: SQLite\n        value: sqlite\n      - title: Files\n        value: files\n```\n";
+
+fn with_answer(block: &str) -> String {
+    block.replace(
+        "    title: Which store?",
+        "    title: Which store?\n    answer: sqlite",
+    )
+}
+
+/// The bug this guards against: **a defect an agent left elsewhere in the plan must not make every
+/// question in that plan unanswerable.**
+///
+/// The plan below carries a one-option question, which the validator rejects, in a block nobody is
+/// touching. Validating the whole document refused the write and blamed `block 2: question 1` — a
+/// block the operator had never seen. V1 has no such failure mode: its `UpdateLatestRevision` does not
+/// validate at all. So the floor is that this write lands.
+#[test]
+fn test_update_latest_revision_ignores_a_pre_existing_defect_in_another_block() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plan-update-latest-preexisting-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let plan = create_plan(&test_dir, bare_create_plan_options("Defective Plan"))
+        .expect("Failed to create plan");
+    let plan_folder = Path::new(&plan.folder_path);
+
+    // Written with the question check off, which is how such a revision reaches disk: the agent that
+    // wrote it was not required to pass validation.
+    let before = format!("# Defective Plan\n\n{VALID_BLOCK}\n{ONE_OPTION_BLOCK}");
+    write_revision(plan_folder, &before, false).expect("write rev 1");
+
+    let after = format!(
+        "# Defective Plan\n\n{}\n{ONE_OPTION_BLOCK}",
+        with_answer(VALID_BLOCK)
+    );
+    update_latest_revision(plan_folder, &after)
+        .expect("a defect in another block must not block an answer");
+
+    let latest = get_revision(plan_folder, None).expect("read latest");
+    assert!(latest.contains("answer: sqlite"));
+    // And the defect is still there, untouched — this path fixes nothing, it only declines to be
+    // blocked by it.
+    assert!(latest.contains("value: all-at-once"));
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// The other half of the difference: an already-defective plan does not become a free-for-all. A write
+/// that adds an error on top of the existing one is still refused, and the refusal says which is which
+/// — a message that listed both without distinction would read as "your answer broke all of this".
+#[test]
+fn test_update_latest_revision_still_refuses_an_error_it_introduces() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plan-update-latest-introduced-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let plan = create_plan(&test_dir, bare_create_plan_options("Defective Plan"))
+        .expect("Failed to create plan");
+    let plan_folder = Path::new(&plan.folder_path);
+
+    let before = format!("# Defective Plan\n\n{VALID_BLOCK}\n{ONE_OPTION_BLOCK}");
+    write_revision(plan_folder, &before, false).expect("write rev 1");
+
+    // The previously valid block loses an option, which is what a mangled answer serialisation would
+    // look like on the wire.
+    let mangled = VALID_BLOCK.replace("      - title: Files\n        value: files\n", "");
+    let after = format!("# Defective Plan\n\n{mangled}\n{ONE_OPTION_BLOCK}");
+
+    let err = update_latest_revision(plan_folder, &after)
+        .expect_err("a write that breaks a block that was fine must be refused");
+    let message = err.to_string();
+
+    assert!(message.contains("would introduce"), "{message}");
+    // The block the write broke is named as introduced...
+    assert!(message.contains("block 1: question 1"), "{message}");
+    // ...and the one that was already wrong is named as pre-existing rather than blamed.
+    assert!(message.contains("pre-existing"), "{message}");
+    assert!(message.contains("block 2: question 1"), "{message}");
+    let introduced_at = message.find("would introduce").expect("introduced section");
+    let pre_existing_at = message.find("pre-existing").expect("pre-existing section");
+    assert!(
+        message.find("block 2: question 1").expect("block 2") > pre_existing_at,
+        "block 2 belongs under the pre-existing heading: {message}"
+    );
+    assert!(introduced_at < pre_existing_at);
+
+    // And nothing landed.
+    assert_eq!(
+        get_revision(plan_folder, None).expect("read latest"),
+        before
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// `introduced_question_errors` on its own, including the case its parse-error clause exists for: a
+/// block that already failed to parse reports different coordinates once a line lands above it, and
+/// that must not read as a newly introduced error.
+#[test]
+fn test_introduced_question_errors_compares_documents_not_documents_absolutely() {
+    let valid = format!("# Plan\n\n{VALID_BLOCK}");
+    let answered = format!("# Plan\n\n{}", with_answer(VALID_BLOCK));
+
+    // Nothing wrong before, nothing wrong after.
+    assert!(introduced_question_errors(&valid, &answered).is_empty());
+
+    // Wrong before, the same wrong after.
+    let defective = format!("# Plan\n\n{VALID_BLOCK}\n{ONE_OPTION_BLOCK}");
+    let defective_answered = format!("# Plan\n\n{}\n{ONE_OPTION_BLOCK}", with_answer(VALID_BLOCK));
+    assert!(introduced_question_errors(&defective, &defective_answered).is_empty());
+
+    // Right before, wrong after.
+    let broken = "# Plan\n\n```questions\nquestions:\n  - id: q1\n    options: not-a-list\n```\n";
+    assert_eq!(introduced_question_errors(&valid, broken).len(), 1);
+
+    // A block that could not be parsed either side. The answer line shifts the parser's coordinates,
+    // so the message is not byte-identical — and comparing messages alone would call that new.
+    let unparseable_before =
+        "# Plan\n\n```questions\nquestions:\n  - id: q1\n    options: not-a-list\n```\n";
+    let unparseable_after =
+        "# Plan\n\n```questions\nquestions:\n  - id: q1\n    answer: x\n    options: not-a-list\n```\n";
+    assert!(
+        introduced_question_errors(unparseable_before, unparseable_after).is_empty(),
+        "a block that was already unparseable must not be reported as newly broken"
+    );
+}
+
+/// A plan with no revisions has no blank to fill in. Creating `001.md` here would hide a caller that
+/// meant `write_revision`.
+#[test]
+fn test_update_latest_revision_refuses_a_plan_with_no_revision() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-plan-update-latest-empty-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let plan = create_plan(&test_dir, bare_create_plan_options("Empty Plan"))
+        .expect("Failed to create plan");
+    let plan_folder = Path::new(&plan.folder_path);
+
+    let err = update_latest_revision(plan_folder, "# Anything\n")
+        .expect_err("a plan with no revision must not be given one here");
+    assert!(err.to_string().contains("no revision to update"));
+    assert_eq!(
+        read_plan_file(plan_folder)
+            .expect("read plan")
+            .revision_count,
+        0
+    );
 
     let _ = std::fs::remove_dir_all(test_dir);
 }

@@ -127,6 +127,25 @@ async fn spawn_mock_service(secret: &'static str) -> (SocketAddr, tokio::task::J
                 (StatusCode::OK, Json(json!({ "revision": 2, "message": "Revision 002 written" })))
             }),
         )
+        // The in-place write answering a plan question needs. Registered separately from the `POST`
+        // above so a client that used the appending route by mistake fails to reach this one at all.
+        .route(
+            "/api/plans/{id}/revisions/latest",
+            axum::routing::put(move |headers: HeaderMap, Path(_id): Path<String>, Json(body): Json<serde_json::Value>| async move {
+                if !auth_check(&headers) {
+                    return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "unauthorized" })));
+                }
+                // The daemon answers `400` when there is no revision to fill in, which is the one
+                // failure this route has that the appending one does not.
+                if body.get("content").and_then(|c| c.as_str()).unwrap_or_default().is_empty() {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({ "error": "Plan has no revision to update" })),
+                    );
+                }
+                (StatusCode::OK, Json(json!({ "revision": 2, "message": "Revision 002 updated" })))
+            }),
+        )
         .route(
             "/api/jobs",
             get(move |headers: HeaderMap| async move {
@@ -198,8 +217,17 @@ async fn spawn_mock_service(secret: &'static str) -> (SocketAddr, tokio::task::J
                     Json(json!([
                         {
                             "name": "DemoApp",
+                            "color": "Blue",
                             "repos": ["/repos/demo"],
                             "verifications": ["RustBuild"]
+                        },
+                        // An unconfigured colour reaches the bridge as `""`, which the projection
+                        // must drop rather than pass on as a colour nobody chose.
+                        {
+                            "name": "Uncoloured",
+                            "color": "",
+                            "repos": ["/repos/plain"],
+                            "verifications": []
                         }
                     ])),
                 )
@@ -268,6 +296,16 @@ async fn test_client_authentication_and_methods() {
         .expect("write rev");
     assert_eq!(rev_res.revision, 2);
 
+    // Update the latest revision in place — the write answering a plan question needs. The revision
+    // number comes back unchanged, which is the whole point: an answer is not a new revision of the
+    // plan, and an inflated `revisionCount` would switch the app's unfolded-answer guard off.
+    let updated = client
+        .update_latest_revision("00001", "# Same rev, one blank filled in")
+        .await
+        .expect("update latest revision");
+    assert_eq!(updated.revision, 2);
+    assert_eq!(updated.message, "Revision 002 updated");
+
     // Update field
     client
         .update_plan_field("00001", "state", "Review", false)
@@ -297,8 +335,10 @@ async fn test_client_authentication_and_methods() {
 
     // List projects
     let projects = client.list_projects().await.expect("list projects");
-    assert_eq!(projects.len(), 1);
+    assert_eq!(projects.len(), 2);
     assert_eq!(projects[0].name, "DemoApp");
+    assert_eq!(projects[0].color.as_deref(), Some("Blue"));
+    assert_eq!(projects[1].color, None);
 
     // 2. Client with invalid secret: verify error propagation
     let invalid_client = TendrilClient::new(base_url, Some("bad-secret".to_string()));
@@ -306,4 +346,38 @@ async fn test_client_authentication_and_methods() {
     assert!(auth_error.is_err());
     let err_str = auth_error.unwrap_err().to_string();
     assert!(err_str.contains("401") || err_str.contains("LIST_PLANS_FAILED"));
+}
+
+/// A refused in-place write has to reach the operator as a refusal.
+///
+/// The page rolls the answer back off the document when this rejects, so a rejection swallowed here
+/// would leave an answer on screen that is not on disk — counted by the Update Plan badge and by the
+/// execute guard as though it were.
+#[tokio::test]
+async fn a_refused_in_place_revision_write_is_reported_rather_than_swallowed() {
+    let secret = "valid-test-secret-999";
+    let (addr, _server) = spawn_mock_service(secret).await;
+    let base_url = format!("http://127.0.0.1:{}", addr.port());
+
+    let client = TendrilClient::new(base_url.clone(), Some(secret.to_string()));
+    let err = client
+        .update_latest_revision("00001", "")
+        .await
+        .expect_err("a plan with no revision to update must not report success");
+    assert_eq!(err.code, "UPDATE_LATEST_REVISION_FAILED");
+    // The daemon's own sentence is carried through, not replaced with a generic failure.
+    assert!(
+        err.details
+            .as_deref()
+            .unwrap_or_default()
+            .contains("no revision to update"),
+        "expected the service's message in the details, got {:?}",
+        err.details
+    );
+
+    let unauthorized = TendrilClient::new(base_url, Some("bad-secret".to_string()));
+    assert!(unauthorized
+        .update_latest_revision("00001", "# Anything")
+        .await
+        .is_err());
 }

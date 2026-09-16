@@ -1,12 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
-import {
-  PlanDetailView,
-  extractPlanHeadings,
-  findPlanChatSession,
-} from "../src/views/PlanDetailView";
+import { PlanDetailView, findPlanChatSession } from "../src/views/PlanDetailView";
 import { bridge } from "../src/api/bridge";
 import { chatApi } from "../src/api/chatApi";
+import { job } from "./fixtures/job.fixture";
 import { planDetail, planGit, verification } from "./fixtures/plan.fixture";
 import type { PlanDetail } from "../src/types/api";
 import type { ChatSession } from "../src/types/chat";
@@ -184,6 +181,64 @@ describe("the workspace topbar", () => {
     );
   });
 
+  /** `if (activeAnnotationCount > 0 || answeredQuestions > 0)` — the button only exists to clear work. */
+  it("has no secondary Update Plan button when there is no pending work", async () => {
+    const { container } = render(<PlanDetailView plan={plan()} />);
+
+    // The annotation list is fetched on mount, so let it land before concluding there is none.
+    await waitFor(() => expect(bridge.listAnnotations).toHaveBeenCalled());
+    expect(container.querySelector('.pws-btn--secondary[data-tag="UpdatePlan"]')).toBeNull();
+  });
+
+  /**
+   * An answer picked on the page counts towards the badge immediately, because it is written back into
+   * the same revision on the click — the badge is not waiting for a refetch to tell it what happened.
+   */
+  it("takes an answer into the badge as soon as it is written", async () => {
+    vi.spyOn(bridge, "updateLatestRevision").mockResolvedValue({
+      revision: 2,
+      message: "Revision 002 updated",
+    });
+    const withoutAnswers = QUESTIONS_PLAN.replace("    answer: revisions/latest\n", "");
+    const { container } = render(
+      <PlanDetailView plan={plan({ latestRevisionContent: withoutAnswers })} />,
+    );
+
+    await waitFor(() => expect(bridge.listAnnotations).toHaveBeenCalled());
+    expect(container.querySelector('.pws-btn--secondary[data-tag="UpdatePlan"]')).toBeNull();
+
+    fireEvent.click(await waitFor(() => screen.getByText("SQLite")));
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('.pws-btn--secondary[data-tag="UpdatePlan"]')?.textContent,
+      ).toContain("1"),
+    );
+  });
+
+  /**
+   * `disabled: HasActiveJob<UpdatePlanArgs>()` — "the guard is stated twice because a disabled button
+   * that still fires is how a plan gets two agents rewriting it at once". An UpdatePlan job does not
+   * make the plan in-flight, so the button stays on screen; it is only refused.
+   */
+  it("disables the Update Plan button while an UpdatePlan job is already running", async () => {
+    const { container } = render(
+      <PlanDetailView
+        plan={plan({ latestRevisionContent: QUESTIONS_PLAN })}
+        jobs={[job({ id: "00200", type: "UpdatePlan", status: "Running" })]}
+      />,
+    );
+
+    const secondary = await waitFor(() => {
+      const found = container.querySelector('.pws-btn--secondary[data-tag="UpdatePlan"]');
+      expect(found).not.toBeNull();
+      return found as HTMLButtonElement;
+    });
+    expect(secondary).toBeDisabled();
+    // And the icon action that opens the same dialog is refused for the same reason.
+    expect(screen.getByRole("button", { name: "Update Plan…" })).toBeDisabled();
+  });
+
   it("offers no plan-writing action while a job holds the plan", () => {
     const { container } = render(<PlanDetailView plan={plan({ state: "Executing" })} />);
 
@@ -215,61 +270,35 @@ describe("the workspace tab strip", () => {
   });
 });
 
-describe("the contents panel", () => {
-  /**
-   * `PlanMarkdown`'s `StickyContent` slot, which `PlanMarkdown.cs` documents as "pinned in place and
-   * unaffected by the [markdown] scroll" and the widget's own sample names "table of contents" as the
-   * first use for.
-   */
-  it("lists the plan's headings inside PlanMarkdown's pinned slot", () => {
+/**
+ * The plan document has no table of contents, and `PlanMarkdown`'s pinned `StickyContent` slot is left
+ * empty — which is what V1 does: `Apps/Plans/ContentView.Build` never fills it.
+ *
+ * A contents panel lived in that slot earlier, added at the user's request when the plan page had no
+ * navigation, questions or chat at all. They then asked for it back out: it took width from the chat
+ * beside it, which is the surface that earns it. This test is inverted rather than deleted so that
+ * re-adding it is a deliberate act with a failing test attached, not drift.
+ */
+describe("the pinned StickyContent slot", () => {
+  it("is left empty, as V1 leaves it", () => {
     const { container } = render(
       <PlanDetailView plan={plan({ latestRevisionContent: QUESTIONS_PLAN })} />,
     );
 
-    const toc = screen.getByTestId("plan-toc");
-    expect(container.querySelector(".pmv-sticky")?.contains(toc)).toBe(true);
-    expect(screen.getByRole("button", { name: "Problem" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approach" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
-    // The `# ` title is the page's own, so it is not a place to navigate to.
-    expect(
-      screen.queryByRole("button", { name: "Build Desktop Operator Experience" }),
-    ).not.toBeInTheDocument();
-    // A heading inside a fence is documentation, not structure.
-    expect(screen.queryByRole("button", { name: "Not A Real Heading" })).not.toBeInTheDocument();
-  });
-
-  it("is absent from a plan with nothing but its title", () => {
-    render(<PlanDetailView plan={plan({ latestRevisionContent: "# Only A Title\n" })} />);
-
     expect(screen.queryByTestId("plan-toc")).not.toBeInTheDocument();
-  });
-});
-
-describe("extractPlanHeadings", () => {
-  it("keeps document order, records levels, and skips fenced code", () => {
-    expect(extractPlanHeadings("# A\n\n## B\n\n```\n## C\n```\n\n### D\n")).toEqual([
-      { level: 1, text: "A", occurrence: 0 },
-      { level: 2, text: "B", occurrence: 0 },
-      { level: 3, text: "D", occurrence: 0 },
-    ]);
+    expect(screen.queryByRole("navigation", { name: "Plan contents" })).not.toBeInTheDocument();
+    // Nothing is pinned beside the document, so the chat keeps the width.
+    expect(container.querySelector(".pmv-sticky")?.textContent ?? "").toBe("");
   });
 
-  it("reduces inline markdown to the text that will be rendered", () => {
-    expect(extractPlanHeadings("## The `answer` **key**\n")[0].text).toBe("The answer key");
-    expect(extractPlanHeadings("## See [the route](http://x)\n")[0].text).toBe("See the route");
-  });
+  /** The widget's own slot stays: V1 has it too and simply passes nothing to it. */
+  it("still renders the plan document itself", () => {
+    const { container } = render(
+      <PlanDetailView plan={plan({ latestRevisionContent: QUESTIONS_PLAN })} />,
+    );
 
-  it("numbers repeated headings so two `## Problem`s stay distinguishable", () => {
-    expect(extractPlanHeadings("## Problem\n\n## Problem\n").map((e) => e.occurrence)).toEqual([
-      0, 1,
-    ]);
-  });
-
-  it("closes a fence only on a run at least as long as its opener", () => {
-    expect(extractPlanHeadings("````\n```\n## Inside\n````\n\n## Outside\n")).toEqual([
-      { level: 2, text: "Outside", occurrence: 0 },
-    ]);
+    expect(container.querySelector(".pmv-markdown")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Problem" })).toBeInTheDocument();
   });
 });
 
@@ -326,15 +355,28 @@ describe("the Questions slot", () => {
 describe("answering a question", () => {
   /**
    * V1's `ContentView.ApplyAnswer` merges the answer into the same revision and writes it back with
-   * `UpdateLatestRevision`. There is no route for that write, so the merge happens and the page says
-   * so — what it must never do is fall back to `writeRevision`, which appends.
+   * `UpdateLatestRevision`. The in-place write is the whole point: falling back to `writeRevision`
+   * would **append**, which claims the agent produced a new plan and inflates `revisionCount` — the
+   * term `execute_guards.unfoldedAnswerCount` reads as `revisionCount === 1`, so a single answer would
+   * switch that guard off.
    */
-  it("merges the answer into the revision, reports that it did not persist, and never appends a revision", async () => {
+  it("writes the answer back into the same revision, and never appends one", async () => {
     const writeRevision = vi.spyOn(bridge, "writeRevision");
+    const update = vi
+      .spyOn(bridge, "updateLatestRevision")
+      .mockResolvedValue({ revision: 2, message: "Revision 002 updated" });
     render(<PlanDetailView plan={plan({ latestRevisionContent: QUESTIONS_PLAN })} />);
 
     const sqlite = await waitFor(() => screen.getByText("SQLite"));
     fireEvent.click(sqlite);
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const [planId, written] = update.mock.calls[0];
+    expect(planId).toBe("00021");
+    // Only the addressed question's `answer` key moved; the rest of the document is untouched.
+    expect(written).toContain('answer: "sqlite"');
+    expect(written).toContain("answer: revisions/latest");
+    expect(written).toContain("## Approach");
 
     // The index has taken the answer: two answered of three.
     fireEvent.click(screen.getByRole("button", { name: /^Questions/ }));
@@ -342,38 +384,84 @@ describe("answering a question", () => {
       expect(screen.getByTestId("plan-questions-panel").textContent).toContain("2 of 3 answered"),
     );
     expect(screen.getByTestId("plan-question-store")).toHaveClass("line-through");
-    expect(screen.getByText("not saved")).toBeInTheDocument();
 
-    // And says plainly that it is only on the page, naming the route it needs.
-    const error = screen.getByTestId("plan-action-error");
-    expect(error).toHaveTextContent(/no route that writes an answer back into the same revision/);
-    expect(error).toHaveTextContent(/revisions\/latest/);
-
+    // Nothing was appended, and nothing failed.
     expect(writeRevision).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("plan-action-error")).not.toBeInTheDocument();
+  });
+
+  /** The revision number the service reports back is the one that did not move. */
+  it("keeps the revision count where it was", async () => {
+    const update = vi
+      .spyOn(bridge, "updateLatestRevision")
+      .mockResolvedValue({ revision: 2, message: "Revision 002 updated" });
+    render(
+      <PlanDetailView plan={plan({ revisionCount: 2, latestRevisionContent: QUESTIONS_PLAN })} />,
+    );
+
+    fireEvent.click(await waitFor(() => screen.getByText("SQLite")));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    await expect(update.mock.results[0].value).resolves.toMatchObject({ revision: 2 });
+  });
+
+  /** The dot and the label follow the answer, as V1's do: both read the revision the page holds. */
+  it("drops the unanswered count as soon as the answer lands", async () => {
+    vi.spyOn(bridge, "updateLatestRevision").mockResolvedValue({
+      revision: 2,
+      message: "Revision 002 updated",
+    });
+    render(<PlanDetailView plan={plan({ latestRevisionContent: QUESTIONS_PLAN })} />);
+
+    expect(screen.getByRole("button", { name: "Questions (2 unanswered)" })).toBeInTheDocument();
+
+    fireEvent.click(await waitFor(() => screen.getByText("SQLite")));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Questions (1 unanswered)" })).toBeInTheDocument(),
+    );
   });
 
   /**
-   * The dot and the label follow the *persisted* revision: an answer the page could not write has not
-   * settled anything as far as the execute guard is concerned.
+   * A refused write is rolled back. An answer left on the page after the service said no would be
+   * counted by the Update Plan badge and by the execute guard as though it were on disk.
    */
-  it("leaves the unanswered count where it was, because nothing reached the service", async () => {
+  it("rolls the answer back and says why when the write is refused", async () => {
+    vi.spyOn(bridge, "updateLatestRevision").mockRejectedValue(new Error("daemon unreachable"));
     render(<PlanDetailView plan={plan({ latestRevisionContent: QUESTIONS_PLAN })} />);
 
     fireEvent.click(await waitFor(() => screen.getByText("SQLite")));
 
+    await waitFor(() =>
+      expect(screen.getByTestId("plan-action-error")).toHaveTextContent(/Failed to save answer/),
+    );
+    // Back to one of three, and the entry is live again.
     expect(screen.getByRole("button", { name: "Questions (2 unanswered)" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Questions/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId("plan-questions-panel").textContent).toContain("1 of 3 answered"),
+    );
   });
 });
 
 describe("the Chat slot", () => {
-  /** `isShareMode ? null : new PlanChatView(selectedPlan)`, under `PlanChatView.Headline`. */
-  it("renders the plan's chat beside it, with V1's headline and a composer", () => {
+  /**
+   * `isShareMode ? null : new PlanChatView(selectedPlan)`, under `PlanChatView.Headline`.
+   *
+   * The panel is `Chat.ContentView(embedded: true)` — the real chat view — so these assertions are
+   * about what V1's embedded mode shows, and the chat's own behaviour is covered by every
+   * `ChatView` test there already is.
+   */
+  it("renders the plan's chat beside it, with V1's headline and a composer", async () => {
     const { container } = render(<PlanDetailView plan={plan()} />);
 
     const aside = container.querySelector(".pws-chat");
     expect(aside).not.toBeNull();
     expect(aside?.getAttribute("aria-label")).toBe("Plan chat");
+    expect(await screen.findByTestId("embedded-chat-view")).toBeInTheDocument();
     expect(screen.getByText("Ask Tendril to Change Anything")).toBeInTheDocument();
+    // The plan's own name, which is `ContentView`'s `greeting` in embedded mode.
+    expect(screen.getByText("#21 Build Desktop Operator Experience")).toBeInTheDocument();
     expect(container.querySelector(".pws-chat textarea")).not.toBeNull();
     // V1's resizer, which `chatWidth.ts` persists.
     expect(screen.getByRole("separator", { name: "Resize chat" })).toBeInTheDocument();
@@ -431,35 +519,78 @@ describe("the Chat slot", () => {
     );
   });
 
-  it("says why a send cannot go anywhere while the plan has no session", async () => {
+  /**
+   * `PlanChatView`: "The session is created on the first message, so opening the panel to look leaves
+   * nothing behind." `planFolderName` is what attaches it, per `PlanChatSessions.CreateForPlan`, and it
+   * is the only thing that lets the panel find the conversation again next time.
+   */
+  it("creates the plan's session on the first message, attached to the plan", async () => {
+    const created = session({ id: "sess-new", messages: [] });
+    const createSession = vi.spyOn(chatApi, "createSession").mockResolvedValue(created);
+    const executeTurn = vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(created);
+
     const { container } = render(<PlanDetailView plan={plan()} />);
+
+    // Nothing is created merely by opening the panel.
+    await waitFor(() => expect(chatApi.listSessions).toHaveBeenCalled());
+    expect(createSession).not.toHaveBeenCalled();
 
     const composer = container.querySelector<HTMLTextAreaElement>(".pws-chat textarea")!;
     fireEvent.change(composer, { target: { value: "Tighten the approach" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     await waitFor(() =>
-      expect(screen.getByTestId("plan-action-error")).toHaveTextContent(
-        /takes no `planFolderName`/,
+      expect(createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // `$"#{plan.Id} {plan.Title}"`, so the session is recognisable in the Chat app's own list.
+          title: "#21 Build Desktop Operator Experience",
+          planFolderName: "00021-BuildDesktopOperator",
+        }),
+      ),
+    );
+    // And the message goes into the session that was just made, not nowhere.
+    await waitFor(() =>
+      expect(executeTurn).toHaveBeenCalledWith(
+        "sess-new",
+        expect.objectContaining({ prompt: "Tighten the approach" }),
       ),
     );
   });
 
-  it("sends into the plan's session when it has one", async () => {
+  it("sends into the plan's session when it has one, without creating another", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([session()]);
     const getSession = vi.spyOn(chatApi, "getSession").mockResolvedValue(session());
     const executeTurn = vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
+    const createSession = vi.spyOn(chatApi, "createSession");
 
     const { container } = render(<PlanDetailView plan={plan()} />);
     await waitFor(() => expect(getSession).toHaveBeenCalledWith("sess-1"));
 
     const composer = container.querySelector<HTMLTextAreaElement>(".pws-chat textarea")!;
     fireEvent.change(composer, { target: { value: "Tighten the approach" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     await waitFor(() =>
-      expect(executeTurn).toHaveBeenCalledWith("sess-1", { prompt: "Tighten the approach" }),
+      expect(executeTurn).toHaveBeenCalledWith(
+        "sess-1",
+        expect.objectContaining({ prompt: "Tighten the approach" }),
+      ),
     );
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  /** `ChatStore.sendMessage` reports a refused turn in the chat's own error banner. */
+  it("reports a refused session creation rather than losing the message silently", async () => {
+    vi.spyOn(chatApi, "createSession").mockRejectedValue(new Error("daemon unreachable"));
+    const { container } = render(<PlanDetailView plan={plan()} />);
+    await waitFor(() => expect(chatApi.listSessions).toHaveBeenCalled());
+
+    const composer = container.querySelector<HTMLTextAreaElement>(".pws-chat textarea")!;
+    fireEvent.change(composer, { target: { value: "Tighten the approach" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    await waitFor(() => expect(screen.getByText("daemon unreachable")).toBeInTheDocument());
   });
 });
 

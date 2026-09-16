@@ -170,6 +170,95 @@ Suffix text`;
   });
 });
 
+/**
+ * Answering a plan question writes the merged document straight back over the same revision
+ * (`PlanDetailView.applyAnswer` → `bridge.updateLatestRevision`), and the daemon refuses a write that
+ * introduces a question-block error. So the merge must be *surgical*: the only thing it may change is
+ * the addressed question's `answer` key.
+ *
+ * The option count is the assertion that matters, because "question must have between 2 and 4 options"
+ * is the rule a merge that ate a list item would trip — and it would trip it on the very block the
+ * operator was answering, which is exactly the failure that would look like the daemon being wrong.
+ */
+describe("patchQuestionsMarkdown round-trips a question without disturbing its options", () => {
+  const question = (id: string, indentedOptions: string) =>
+    [`  - id: ${id}`, `    title: Which ${id}?`, "    options:", indentedOptions].join("\n");
+
+  /** Options nested under `options:`, the form the promptware writes. */
+  const NESTED = [
+    "      - title: SQLite",
+    "        value: sqlite",
+    "      - title: Files",
+    "        value: files",
+    "      - title: Postgres",
+    "        value: postgres",
+  ].join("\n");
+
+  /** Options at the parent's indent, which YAML allows and agents do emit.  */
+  const FLUSH = [
+    "    - title: SQLite",
+    "      value: sqlite",
+    "    - title: Files",
+    "      value: files",
+  ].join("\n");
+
+  const optionCount = (markdown: string, id: string): number => {
+    const found = extractPlanQuestions(markdown).find((q) => q.id === id);
+    if (!found) throw new Error(`question ${id} vanished from the document`);
+    return found.options?.length ?? 0;
+  };
+
+  for (const [name, options, count] of [
+    ["nested options", NESTED, 3],
+    ["flush options", FLUSH, 2],
+  ] as const) {
+    it(`keeps every option when answering a question with ${name}`, () => {
+      const md = ["```questions", "questions:", question("store", options), "```"].join("\n");
+      expect(optionCount(md, "store")).toBe(count);
+
+      const answered = patchQuestionsMarkdown(md, { store: ["sqlite"] });
+      expect(answered).toContain('answer: "sqlite"');
+      expect(optionCount(answered, "store")).toBe(count);
+
+      // Answering twice, and then clearing, must be just as inert.
+      const reanswered = patchQuestionsMarkdown(answered, { store: ["files"] });
+      expect(optionCount(reanswered, "store")).toBe(count);
+      const cleared = patchQuestionsMarkdown(reanswered, { store: [] });
+      expect(cleared).not.toContain("answer:");
+      expect(optionCount(cleared, "store")).toBe(count);
+    });
+  }
+
+  it("leaves a neighbouring question in the same block untouched", () => {
+    const md = [
+      "```questions",
+      "questions:",
+      question("store", NESTED),
+      question("rollout", FLUSH),
+      "```",
+    ].join("\n");
+
+    const answered = patchQuestionsMarkdown(md, { store: ["sqlite"] });
+
+    expect(optionCount(answered, "store")).toBe(3);
+    expect(optionCount(answered, "rollout")).toBe(2);
+    const rollout = extractPlanQuestions(answered).find((q) => q.id === "rollout");
+    expect(rollout?.answerPresent).toBe(false);
+  });
+
+  it("leaves a second block entirely alone", () => {
+    const block = (id: string, options: string) =>
+      ["```questions", "questions:", question(id, options), "```"].join("\n");
+    const md = `${block("store", NESTED)}\n\nSome prose.\n\n${block("rollout", FLUSH)}`;
+
+    const answered = patchQuestionsMarkdown(md, { store: ["sqlite"] });
+
+    expect(optionCount(answered, "rollout")).toBe(2);
+    // Byte-for-byte: the second fence is not re-serialised, it is copied.
+    expect(answered).toContain(block("rollout", FLUSH));
+  });
+});
+
 describe("detectPendingQuestions", () => {
   it("validates detection of unanswered question blocks in assistant messages", () => {
     const messages: ChatMessage[] = [

@@ -5,15 +5,24 @@ import {
   buildJobRowActions,
   buildJobRows,
   buildStatusSegments,
-  extractJobNumber,
   formatJobCost,
   formatTokens,
+  projectColor,
   truncatePrompt,
   jobStatusMessage,
+  agentOutputLabel,
+  AGENT_OUTPUT_STARTING,
+  JOB_STATUS_COLOR,
+  JOB_TYPE_COLOR,
   RERUN_UNAVAILABLE_REASON,
   type JobRowActionCapabilities,
 } from "../src/views/JobsView";
 import { bridge } from "../src/api/bridge";
+import {
+  resetTableQueryTransport,
+  setTableQueryTransport,
+  type TableQueryTransport,
+} from "../src/api/tableQuery";
 import { jobsStore } from "../src/state/jobsStore";
 import type { Job, JobStatus } from "../src/types/api";
 
@@ -47,79 +56,142 @@ function menuTags(status: JobStatus, capabilities = ALL_CAPS): string[] {
   return (actions[0].children ?? []).map((child) => child.tag);
 }
 
-/**
- * The table now reads its rows through the daemon's jobs listing rather than off the `jobs` prop,
- * because that is what infinite scroll needs: `jobsStore` holds only the newest fifty and replaces
- * them on every poll, so a scrolled-open window could not survive one. The prop stays as the *live*
- * overlay (V1's per-cell update stream) and as the source of the header's counts and progress bar, so
- * every test below hands the same jobs to both.
- */
-function renderJobs(jobs: Job[]) {
-  vi.spyOn(bridge, "listJobs").mockImplementation((_status?: string, limit?: number) =>
-    Promise.resolve(jobs.slice(0, limit ?? jobs.length)),
-  );
-  return render(<JobsView jobs={jobs} onStopAllQueued={() => {}} onStopAll={() => {}} />);
+/** One request the table made, so a test can assert on what reached the daemon. */
+interface Recorded {
+  path: string;
+  body: Record<string, unknown>;
 }
+
+/**
+ * A daemon serving `POST /api/jobs/query` and `POST /api/tables/jobs/values`.
+ *
+ * Deliberately **not** a client-side implementation of the query: it slices by `offset`/`limit` and
+ * otherwise hands back `jobs` in the order given, ignoring `sort` and `filter`. That is what makes the
+ * assertions below meaningful — if the table re-sorted or re-filtered the rows it received, the DOM and
+ * this array would disagree.
+ */
+function installDaemon(jobs: Job[], values: Record<string, string[]> = {}): Recorded[] {
+  const calls: Recorded[] = [];
+  const transport: TableQueryTransport = (path, body) => {
+    calls.push({ path, body });
+
+    if (path === "/api/tables/jobs/values") {
+      const column = String((body as { column?: unknown }).column ?? "");
+      const list = values[column] ?? [];
+      return Promise.resolve({ column, values: list, totalValues: list.length });
+    }
+
+    const offset = Number(body.offset ?? 0);
+    const limit = Number(body.limit ?? 50);
+    const rows = jobs.slice(offset, offset + limit);
+    return Promise.resolve({
+      encoding: "application/json",
+      rows,
+      offset,
+      rowCount: rows.length,
+      // The *filtered* total, over the whole table — which is what makes the row count irrelevant to
+      // the client.
+      totalRows: jobs.length,
+      limit,
+    });
+  };
+  setTableQueryTransport(transport);
+  return calls;
+}
+
+/**
+ * The table reads its rows from the daemon's server-paged query route rather than off the `jobs` prop:
+ * `jobsStore` holds only the newest fifty and replaces them on every poll, so a scrolled-open window
+ * could not survive one. The prop stays as the *live* overlay (V1's per-cell update stream) and as the
+ * source of the header's counts and progress bar, so every test below hands the same jobs to both.
+ */
+function renderJobs(jobs: Job[], values: Record<string, string[]> = {}) {
+  const calls = installDaemon(jobs, values);
+  const result = render(<JobsView jobs={jobs} onStopAllQueued={() => {}} onStopAll={() => {}} />);
+  return { ...result, calls };
+}
+
+/** The bodies of the window requests, in order. Facet lookups are not window requests. */
+function queries(calls: Recorded[]): Record<string, unknown>[] {
+  return calls.filter((call) => call.path === "/api/jobs/query").map((call) => call.body);
+}
+
+/** Expands the toolbar's filter option and commits an expression, the way a user does. */
+async function commitFilter(expression: string) {
+  if (!screen.queryByRole("textbox", { name: "Filter expression" })) {
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  }
+  const box = screen.getByRole("textbox", { name: "Filter expression" });
+  fireEvent.change(box, { target: { value: expression } });
+  fireEvent.keyDown(box, { key: "Enter" });
+  return box;
+}
+
+afterEach(() => {
+  resetTableQueryTransport();
+});
 
 /** Resolves once the table has painted a row for every job served. */
 async function waitForRows(count: number) {
   await waitFor(() => expect(document.querySelectorAll("tbody [data-row-id]")).toHaveLength(count));
 }
 
-describe("extractJobNumber", () => {
-  // `JobsApp.Helpers.cs` `ExtractJobNumber`, which mirrors `int.TryParse` then a dash split.
-  it("reads a padded id, a bare number and a suffixed one", () => {
-    expect(extractJobNumber("00458")).toBe(458);
-    expect(extractJobNumber("458")).toBe(458);
-    expect(extractJobNumber(" 7 ")).toBe(7);
-    expect(extractJobNumber("00458-ExecutePlan")).toBe(458);
-    expect(extractJobNumber("ExecutePlan-00458")).toBe(458);
-  });
-
-  it("reports 0 for an id carrying no number at all", () => {
-    expect(extractJobNumber("")).toBe(0);
-    expect(extractJobNumber("legacy")).toBe(0);
-    // Not `12`: `int.TryParse("12abc")` fails and there is no dash to split on.
-    expect(extractJobNumber("12abc")).toBe(0);
-  });
-});
-
+/**
+ * The order is the daemon's now, not the client's.
+ *
+ * V1 sorts the rows it holds (`OrderByDescending(ExtractJobNumber(r.Id))`) because it holds all of them.
+ * This table holds one window, so the order has to be an `ORDER BY` — and re-sorting the window would
+ * shuffle fifty rows inside an order the *other* windows were chosen by, which is how a paged table
+ * starts showing a row twice.
+ */
 describe("job row ordering", () => {
-  /**
-   * `JobsApp.Data.cs:40`: `.OrderByDescending(r => ExtractJobNumber(r.Id))`. Numeric, which is the
-   * whole point of the helper - a lexicographic sort puts `999` above `1000`, so an unpadded id (or
-   * one that outgrew five digits) would file the newest job in the middle of the list.
-   */
-  it("orders by job number descending, not lexicographically", () => {
-    const rows = buildJobRows([
-      job("999", "Completed"),
-      job("00021", "Completed"),
-      job("1000", "Running"),
-      job("100000", "Queued"),
-    ]);
+  it("asks the daemon for V1's declared sort", async () => {
+    const { calls } = renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
 
-    expect(rows.map((row) => row.id)).toEqual(["100000", "1000", "999", "00021"]);
+    // `.SortDirection(t => t.Id, SortDirection.Descending)` (`JobsApp.DataTable.cs:85`).
+    expect(queries(calls)[0]).toMatchObject({
+      sort: [{ column: "id", direction: "Descending" }],
+      limit: 50,
+    });
   });
 
-  it("keeps a suffixed or unnumbered id in its numeric place", () => {
-    const rows = buildJobRows([
-      job("legacy", "Completed"),
-      job("00007", "Completed"),
-      job("00458-ExecutePlan", "Failed"),
-    ]);
-
-    // `legacy` extracts 0, so it sorts last rather than being dropped or floated to the top.
-    expect(rows.map((row) => row.id)).toEqual(["00458-ExecutePlan", "00007", "legacy"]);
-  });
-
-  it("renders the rows in that order", async () => {
+  it("renders the order the daemon answered with, and does not re-sort it", async () => {
+    // Deliberately not job-number order: a client-side sort would show `1000` first.
     renderJobs([job("999", "Completed"), job("1000", "Running"), job("00021", "Queued")]);
 
     await waitForRows(3);
     const ids = Array.from(document.querySelectorAll("tbody [data-row-id]")).map((row) =>
       row.getAttribute("data-row-id"),
     );
-    expect(ids).toEqual(["1000", "999", "00021"]);
+    expect(ids).toEqual(["999", "1000", "00021"]);
+  });
+
+  it("builds rows without reordering them", () => {
+    const rows = buildJobRows([job("999", "Completed"), job("1000", "Running")]);
+    expect(rows.map((row) => row.id)).toEqual(["999", "1000"]);
+  });
+
+  it("sends a header click to the daemon, under the daemon's own column name", async () => {
+    const { calls } = renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    // Timer is derived from `StartedAt`; `DurationSeconds` is the column the database can order by.
+    fireEvent.click(screen.getByRole("button", { name: /Timer/ }));
+    await waitFor(() => expect(queries(calls)).toHaveLength(2));
+    expect(queries(calls)[1]).toMatchObject({
+      sort: [{ column: "durationSeconds", direction: "Ascending" }],
+      // A new order is a new sequence, so the scroll starts again from the top.
+      limit: 50,
+    });
+    expect(queries(calls)[1].offset).toBeUndefined();
+
+    // And a display column whose stored name differs is translated too.
+    fireEvent.click(screen.getByRole("button", { name: /Plan Id/ }));
+    await waitFor(() => expect(queries(calls)).toHaveLength(3));
+    expect(queries(calls)[2]).toMatchObject({
+      sort: [{ column: "planFile", direction: "Ascending" }],
+    });
   });
 });
 
@@ -136,12 +208,37 @@ describe("row menu gating", () => {
 
   // `:195`: Force Start exists to skip a dependency gate, and only a Blocked job has one.
   it("offers Force Start for a Blocked job only, and only when the bridge can", () => {
-    expect(menuTags("Blocked")).toEqual(["stop-job", "force-start-job", "delete-job"]);
+    expect(menuTags("Blocked")).toEqual(["stop-job", "force-start-job", "debug-job", "delete-job"]);
     expect(menuTags("Queued")).not.toContain("force-start-job");
     expect(menuTags("Blocked", { canDelete: true, canForceStart: false })).toEqual([
       "stop-job",
+      "debug-job",
       "delete-job",
     ]);
+  });
+
+  /**
+   * `:201`: V1 adds Debug whenever it was passed a `showDebug`, and `JobsApp.cs:113` always passes one
+   * — so the gate has no false case and there is none here either. It needs no bridge capability: the
+   * sheet reads the job detail the store already fetches.
+   */
+  it("offers Debug on every status, unconditionally", () => {
+    const statuses: JobStatus[] = [
+      "Pending",
+      "Queued",
+      "Running",
+      "Completed",
+      "Failed",
+      "Timeout",
+      "Stopped",
+      "Blocked",
+    ];
+    for (const status of statuses) {
+      expect(menuTags(status), status).toContain("debug-job");
+      expect(menuTags(status, { canDelete: false, canForceStart: false }), status).toContain(
+        "debug-job",
+      );
+    }
   });
 
   /**
@@ -163,7 +260,7 @@ describe("row menu gating", () => {
   });
 
   it("offers no Rerun on a Completed job, since its args cannot be shown to support feedback", () => {
-    expect(menuTags("Completed")).toEqual(["delete-job"]);
+    expect(menuTags("Completed")).toEqual(["debug-job", "delete-job"]);
   });
 
   // `:207`: V1 adds Delete unconditionally, terminal rows included.
@@ -182,16 +279,17 @@ describe("row menu gating", () => {
       expect(menuTags(status)).toContain("delete-job");
     }
 
+    // Debug survives every capability being off, so the menu is never empty. That is V1's shape too —
+    // its Delete is unconditional — and it is why the Jobs table always has an actions column.
     const withoutDelete = { canDelete: false, canForceStart: false };
-    expect(menuTags("Completed", withoutDelete)).toEqual([]);
-    // A Running job still has Stop, so the menu is not empty.
-    expect(menuTags("Running", withoutDelete)).toEqual(["stop-job"]);
+    expect(menuTags("Completed", withoutDelete)).toEqual(["debug-job"]);
+    expect(menuTags("Running", withoutDelete)).toEqual(["stop-job", "debug-job"]);
   });
 
-  // V1's order: Stop, Rerun, Force Start, (Debug), Delete.
+  // V1's order: Stop, Rerun, Force Start, Debug, Delete.
   it("keeps V1's order", () => {
-    expect(menuTags("Stopped")).toEqual(["rerun-job", "delete-job"]);
-    expect(menuTags("Blocked")).toEqual(["stop-job", "force-start-job", "delete-job"]);
+    expect(menuTags("Stopped")).toEqual(["rerun-job", "debug-job", "delete-job"]);
+    expect(menuTags("Blocked")).toEqual(["stop-job", "force-start-job", "debug-job", "delete-job"]);
   });
 });
 
@@ -289,6 +387,75 @@ describe("cell formatters", () => {
     expect(jobStatusMessage({ status: "Running" })).toBe("");
   });
 
+  /**
+   * `FormatAgentOutput`. The Agent Output column is a **staleness gauge**, not a second status line: a
+   * running job shows how long since the agent last wrote a line, and "Starting..." is only the
+   * before-first-output case. The status message has its own column, exactly as in V1.
+   */
+  it("shows the silence since the last agent line, not a permanent Starting...", () => {
+    const now = Date.parse("2026-01-01T00:02:00Z");
+
+    // 80 seconds since the last line, in `FormatTimeSpan`'s shape.
+    expect(agentOutputLabel({ status: "Running", lastOutputAt: "2026-01-01T00:00:40Z" }, now)).toBe(
+      "1m 20s",
+    );
+    // Sub-minute drops the minutes; over an hour drops the seconds.
+    expect(agentOutputLabel({ status: "Running", lastOutputAt: "2026-01-01T00:01:53Z" }, now)).toBe(
+      "7s",
+    );
+    expect(agentOutputLabel({ status: "Running", lastOutputAt: "2025-12-31T22:00:00Z" }, now)).toBe(
+      "2h 02m",
+    );
+
+    // No stamp yet is V1's own fallback, and so is a stamp the daemon served unparseably.
+    expect(agentOutputLabel({ status: "Running" }, now)).toBe(AGENT_OUTPUT_STARTING);
+    expect(agentOutputLabel({ status: "Running", lastOutputAt: "not a date" }, now)).toBe(
+      AGENT_OUTPUT_STARTING,
+    );
+
+    // The other two of V1's three states. A terminal job's stamp is not counted from: the agent is not
+    // silent, it is finished.
+    expect(
+      agentOutputLabel({ status: "Completed", lastOutputAt: "2026-01-01T00:00:40Z" }, now),
+    ).toBe("Done");
+    for (const status of [
+      "Queued",
+      "Pending",
+      "Failed",
+      "Timeout",
+      "Stopped",
+      "Blocked",
+    ] as const) {
+      expect(agentOutputLabel({ status, lastOutputAt: "2026-01-01T00:00:40Z" }, now)).toBe("-");
+    }
+  });
+
+  it("builds the Agent Output state and its label from the same clock as the Timer", () => {
+    const now = Date.parse("2026-01-01T00:05:00Z");
+    const [running, starting, done, queued] = buildJobRows(
+      [
+        job("00001", "Running", {
+          startedAt: "2026-01-01T00:00:00Z",
+          lastOutputAt: "2026-01-01T00:04:30Z",
+        }),
+        job("00002", "Running", { startedAt: "2026-01-01T00:04:59Z" }),
+        job("00003", "Completed", { durationSeconds: 12 }),
+        job("00004", "Queued"),
+      ],
+      { now },
+    );
+
+    expect([running.agentOutput, running.agentOutputLabel]).toEqual(["running", "30s"]);
+    // Five minutes of run time, thirty seconds of silence: the two columns are different questions.
+    expect(running.timerSeconds).toBe(300);
+    expect([starting.agentOutput, starting.agentOutputLabel]).toEqual([
+      "running",
+      AGENT_OUTPUT_STARTING,
+    ]);
+    expect([done.agentOutput, done.agentOutputLabel]).toEqual(["done", "Done"]);
+    expect([queued.agentOutput, queued.agentOutputLabel]).toEqual(["idle", "-"]);
+  });
+
   // `JobsApp.Data.cs` `BuildStatusProgress`: one segment per status, largest first.
   it("builds the header's status segments largest first", () => {
     const segments = buildStatusSegments([
@@ -376,29 +543,43 @@ describe("JobsView chrome", () => {
   });
 
   /**
-   * That the menu is *reachable*, which the parity contract calls out specifically: a row menu
-   * nobody can open is the same as no row menu.
+   * That the menu is *reachable*, which the parity contract calls out specifically: a row menu nobody
+   * can open is the same as no row menu — and it has been exactly that twice, first laid out leftwards
+   * over the previous cell by a collapsed column and then pushed past the right edge of the scroll
+   * viewport by a real one. jsdom does no layout, so what can be asserted here is the DOM half: the
+   * menu exists on every row, and it is in the cell the stylesheet pins to the viewport's right edge
+   * (`ivy-data-table-fit-actions` — see `data-table.css` and its own tests for the pinning).
    *
-   * Only its presence is asserted here. Radix's `DropdownMenu` does not open under this jsdom setup
-   * at all - it gates its trigger on a `PointerEvent` jsdom does not implement - so the items
-   * themselves are covered by `buildJobRowActions` above and the action each one performs by
-   * `jobsStore`'s guarded-path tests in `job-actions.test.tsx`.
+   * The items themselves are covered by `buildJobRowActions` above, and the action each one performs by
+   * `jobsStore`'s guarded-path tests in `job-actions.test.tsx`. Opening the menu is possible — Radix's
+   * trigger ignores a synthesised `pointerDown` because jsdom implements no `PointerEvent`, but it opens
+   * on `Enter`, which `job-debug-sheet.test.tsx` uses to drive the Debug entry end to end. It is not done
+   * here because an open Radix layer over this table costs seconds of jsdom per test, and these are the
+   * table's timing-sensitive ones.
    */
-  it("gives every row a reachable actions menu, and none to a row with no actions", async () => {
-    const noCaps = renderJobs([job("00021", "Completed")]);
-    await waitForRows(1);
-    // The bridge can delete, so even a terminal row has a menu.
-    expect(jobsStore.canDeleteJob()).toBe(true);
-    expect(screen.getByRole("button", { name: "Job actions" })).toBeInTheDocument();
-    noCaps.unmount();
+  it("gives every row a menu, in the cell the stylesheet pins on screen", async () => {
+    renderJobs([job("00021", "Completed"), job("00022", "Running")]);
+    await waitForRows(2);
 
-    // With neither capability a Completed row has nothing to offer, and the cell renders nothing
-    // rather than an empty menu.
+    const triggers = screen.getAllByRole("button", { name: "Job actions" });
+    expect(triggers).toHaveLength(2);
+    for (const trigger of triggers) {
+      expect(trigger.closest("td")).toHaveClass("ivy-data-table-fit-actions");
+    }
+    // The header reserves the same column, which is what makes the width bind under `table-fixed`.
+    expect(document.querySelector("thead th.ivy-data-table-fit-actions")).toBeInTheDocument();
+  });
+
+  /**
+   * Every capability off and the menu is still there, because Debug needs none. V1's own menu can never
+   * be empty either — its Delete is unconditional — so the Jobs table always has an actions column.
+   */
+  it("keeps the menu when the bridge can neither delete nor force start", async () => {
     vi.spyOn(jobsStore, "canDeleteJob").mockReturnValue(false);
     vi.spyOn(jobsStore, "canForceStartJob").mockReturnValue(false);
     renderJobs([job("00022", "Completed")]);
     await waitForRows(1);
-    expect(screen.queryByRole("button", { name: "Job actions" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Job actions" })).toBeInTheDocument();
   });
 });
 
@@ -410,15 +591,30 @@ describe("jobsStore.clearJobs", () => {
   });
 
   afterEach(() => {
-    delete (bridge as OptionalBridge).clearJobs;
     vi.restoreAllMocks();
   });
 
   // `JobsApp.DataTable.cs:279-289` (`Clear Completed` / `Clear Failed`) over the daemon's one route,
   // `POST /api/jobs/clear` with a scope.
-  it("is not offered until the bridge can perform it", async () => {
-    expect(jobsStore.canClearJobs()).toBe(false);
-    await expect(jobsStore.clearJobs("completed")).rejects.toThrow(/bridge.clearJobs/);
+  it("is offered now that the bridge carries it", () => {
+    expect(bridge.clearJobs).toBeTypeOf("function");
+    expect(jobsStore.canClearJobs()).toBe(true);
+  });
+
+  /**
+   * The capability gate still has a job to do: an older shell whose Rust side predates
+   * `cmd_clear_jobs` has no wrapper, and the menu must not offer a control that throws. Simulated by
+   * removing the method for one test rather than by relying on it being absent, which it no longer is.
+   */
+  it("is not offered by a shell whose bridge cannot perform it", async () => {
+    const real = bridge.clearJobs;
+    delete (bridge as OptionalBridge).clearJobs;
+    try {
+      expect(jobsStore.canClearJobs()).toBe(false);
+      await expect(jobsStore.clearJobs("completed")).rejects.toThrow(/bridge.clearJobs/);
+    } finally {
+      (bridge as OptionalBridge).clearJobs = real;
+    }
   });
 
   it("clears by scope, reports the count and re-reads the list", async () => {
@@ -478,40 +674,31 @@ describe("Jobs infinite scroll", () => {
     );
   }
 
-  it("asks the daemon for a wider window until the table is fully loaded", async () => {
-    const all = history(120);
-    const listJobs = vi
-      .spyOn(bridge, "listJobs")
-      .mockImplementation((_status?: string, limit?: number) =>
-        Promise.resolve(all.slice(0, limit ?? all.length)),
-      );
+  it("asks for each window by offset, never re-reading from the top", async () => {
+    const calls = installDaemon(history(120));
 
     render(<JobsView jobs={[]} onStopAllQueued={() => {}} onStopAll={() => {}} />);
 
-    // 50, then 100, then 150 - which comes back short at 120, and a short window is the end of the
-    // table. `cmd_list_jobs` takes a limit and no offset, so each window is read from the top; the
-    // limits are what say how far the scroll has reached.
-    await waitFor(() => expect(listJobs.mock.calls.map((call) => call[1])).toEqual([50, 100, 150]));
+    // 0, 50, 100 — three windows of fifty for a 120-row table, and the third comes back short. The
+    // bytes on the wire are 120 rows in total; the listing this replaced would have read 270.
+    await waitFor(() =>
+      expect(queries(calls).map((body) => body.offset ?? 0)).toEqual([0, 50, 100]),
+    );
     await waitForRows(120);
 
     // Accumulated, not replaced: the first window's rows are still there under the last window's.
     expect(document.querySelector('tbody [data-row-id="20000"]')).toBeInTheDocument();
     expect(document.querySelector('tbody [data-row-id="19881"]')).toBeInTheDocument();
-    // And it stops rather than asking for a window past the end.
-    expect(listJobs).toHaveBeenCalledTimes(3);
+    // And it stops rather than asking for a window past the end, because the reply carried the total.
+    expect(queries(calls)).toHaveLength(3);
   });
 
   it("stops after one window when that window is the whole table", async () => {
-    const all = history(12);
-    const listJobs = vi
-      .spyOn(bridge, "listJobs")
-      .mockImplementation((_status?: string, limit?: number) =>
-        Promise.resolve(all.slice(0, limit ?? all.length)),
-      );
+    const calls = installDaemon(history(12));
 
     render(<JobsView jobs={[]} onStopAllQueued={() => {}} onStopAll={() => {}} />);
     await waitForRows(12);
-    expect(listJobs).toHaveBeenCalledTimes(1);
+    expect(queries(calls)).toHaveLength(1);
   });
 
   it("has no pager, because scrolling is the pager", async () => {
@@ -525,106 +712,430 @@ describe("Jobs infinite scroll", () => {
 });
 
 /**
- * `c.AllowFiltering = true` with `c.ShowSearch = false` (`JobsApp.DataTable.cs:88-90`), reached through
- * a control per column in the sticky header rather than the framework's CodeMirror expression editor.
- * See `column-filters.ts` for why the payload is the same one either way.
+ * `c.AllowFiltering = true` with `c.ShowSearch = false` (`JobsApp.DataTable.cs:88-90`): **one** filter
+ * expression at the top-left of the toolbar, which is where the framework's grid renders its only filter
+ * affordance and what V1's config asks for. No control per column, and no search box.
+ *
+ * The filter runs in SQLite. So what is asserted here is that the *expression reaches the daemon* — the
+ * fake daemon ignores `filter` entirely, which is exactly why these tests can tell the difference between
+ * a filter that was sent and one that was applied to the rows on screen.
  */
-describe("Jobs header filters", () => {
+describe("Jobs filter expression", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("puts a filter row in the header, with a control only on the columns V1 can filter", async () => {
+  it("puts one filter control in the toolbar, and no filter row in the header", async () => {
     renderJobs([job("00021", "Running")]);
     await waitForRows(1);
 
-    const headerRows = document.querySelectorAll("thead tr");
-    expect(headerRows).toHaveLength(2);
-    expect(headerRows[1]).toHaveAttribute("data-slot", "data-table-filter-row");
+    // One header row: the labels.
+    expect(document.querySelectorAll("thead tr")).toHaveLength(1);
+    expect(document.querySelector('[data-slot="data-table-filter-row"]')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="data-table-filter"]')).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter" })).toBeInTheDocument();
 
-    expect(screen.getByRole("button", { name: "Filter by Status" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Filter by Type" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Filter by Project" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Filter by Prompt" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Filter by Plan Id" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Filter by Status Message" })).toBeInTheDocument();
-
-    // `.Filterable(t => t.Id, false)`, and `ShowSearch = false` - no free-text box over the table.
-    expect(screen.queryByRole("textbox", { name: "Filter by Id" })).not.toBeInTheDocument();
+    // `ShowSearch = false`: no search box over the table, and no per-column controls either.
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Filter by Status" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Filter by Prompt" })).not.toBeInTheDocument();
   });
 
-  it("filters free text on Enter, and says so when nothing matches", async () => {
-    renderJobs([
+  it("sends the filter to the daemon rather than narrowing the rows on screen", async () => {
+    const { calls } = renderJobs([
       job("00021", "Failed", { statusMessage: "npm install failed" }),
       job("00022", "Failed", { statusMessage: "timed out waiting for review" }),
     ]);
     await waitForRows(2);
 
-    const box = screen.getByRole("textbox", { name: "Filter by Status Message" });
-    fireEvent.change(box, { target: { value: "npm" } });
-    // Typing is not filtering: the framework's editor commits on Enter and so does this.
-    expect(document.querySelectorAll("tbody [data-row-id]")).toHaveLength(2);
+    const box = await commitFilter('[Status Message] contains "npm"');
 
-    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(queries(calls)).toHaveLength(2));
+    expect(queries(calls)[1]).toMatchObject({
+      filter: { condition: { column: "statusMessage", function: "contains", args: ["npm"] } },
+    });
+    // Both rows are still rendered, because this fake daemon ignores the filter — which is the point:
+    // nothing on this side narrowed anything.
+    await waitForRows(2);
+    expect(box).toHaveValue('[Status Message] contains "npm"');
+  });
+
+  it("commits on Enter and not on every keystroke", async () => {
+    const { calls } = renderJobs([job("00021", "Failed")]);
     await waitForRows(1);
-    expect(document.querySelector('tbody [data-row-id="00021"]')).toBeInTheDocument();
 
-    // Case-insensitive, because the daemon's `contains` compiles to SQLite `LIKE`.
-    fireEvent.change(box, { target: { value: "NPM" } });
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    const box = screen.getByRole("textbox", { name: "Filter expression" });
+    fireEvent.change(box, { target: { value: '[Status] = "F' } });
+    fireEvent.change(box, { target: { value: '[Status] = "Fa' } });
+    fireEvent.change(box, { target: { value: '[Status] = "Failed"' } });
+    // A server-side filter is exactly where one request per keystroke is unaffordable.
+    expect(queries(calls)).toHaveLength(1);
+
     fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(queries(calls)).toHaveLength(2));
+  });
+
+  it("translates a display column to the daemon's own column", async () => {
+    const { calls } = renderJobs([job("00021", "Running", { planId: "00638" })]);
     await waitForRows(1);
 
-    fireEvent.change(box, { target: { value: "no such thing" } });
-    fireEvent.keyDown(box, { key: "Enter" });
+    // The cell shows a plan id; the daemon's column is `PlanFile`, whose value only *starts* with it —
+    // which is why V1's condition here is `contains`.
+    await commitFilter('[Plan Id] contains "007"');
+
+    await waitFor(() => expect(queries(calls)).toHaveLength(2));
+    expect(queries(calls)[1]).toMatchObject({
+      filter: { condition: { column: "planFile", function: "contains", args: ["007"] } },
+    });
+  });
+
+  it("ORs across columns, which a control per column could not express", async () => {
+    const { calls } = renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    await commitFilter('[Status] = "Failed" OR [Status] = "Timeout"');
+
+    await waitFor(() => expect(queries(calls)).toHaveLength(2));
+    expect(queries(calls)[1].filter).toEqual({
+      group: {
+        op: "or",
+        filters: [
+          { condition: { column: "status", function: "equals", args: ["Failed"] } },
+          { condition: { column: "status", function: "equals", args: ["Timeout"] } },
+        ],
+      },
+    });
+  });
+
+  it("refuses a column V1 does not filter on, without asking the daemon", async () => {
+    const { calls } = renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    // `.Filterable(t => t.Id, false)` (`:83`), and Timer/Cost/Tokens/Timestamp/Agent Output declare no
+    // filter either — two are derived and three are numeric, so a `contains` over the *formatted* value
+    // would filter the rendering rather than the figure.
+    for (const column of ["Id", "Timer", "Cost", "Tokens", "Timestamp", "Agent Output"]) {
+      await commitFilter(`[${column}] is not blank`);
+      expect(screen.getByTestId("data-table-filter-error"), column).toHaveTextContent(
+        `Unknown column '${column}'`,
+      );
+    }
+    // Nothing was sent: a 400 the operator cannot read would empty the table for no visible reason.
+    expect(queries(calls)).toHaveLength(1);
+  });
+
+  it("says a filter is narrowing when the table comes back empty", async () => {
+    const { calls } = renderJobs([]);
+    await waitFor(() => expect(screen.getByTestId("jobs-empty")).toBeInTheDocument());
+
+    await commitFilter('[Status] = "Nothing"');
+    await waitFor(() => expect(queries(calls)).toHaveLength(2));
+
     // Filtered to nothing reads differently from empty, and must: they look identical and mean
     // opposite things.
     await waitFor(() => expect(screen.getByTestId("jobs-empty-filtered")).toBeInTheDocument());
     expect(screen.queryByTestId("jobs-empty")).not.toBeInTheDocument();
   });
+});
 
-  it("filters Plan Id by what it contains, not by equality", async () => {
-    renderJobs([
-      job("00021", "Running", { planId: "00638" }),
-      job("00022", "Running", { planId: "00712" }),
-    ]);
-    await waitForRows(2);
+/**
+ * The filter vocabulary comes from `POST /api/tables/jobs/values`, not from the rows in hand.
+ *
+ * A list built from the loaded window offers the values on screen, and the value a user wants is usually
+ * not one of them — which is the whole reason this moved once the filter went to the daemon.
+ */
+describe("Jobs filter facets", () => {
+  afterEach(() => vi.restoreAllMocks());
 
-    const box = screen.getByRole("textbox", { name: "Filter by Plan Id" });
-    // A plan id is typed a digit at a time, and the daemon's column is `PlanFile`, whose value only
-    // *starts* with the id - so `contains` is the only condition that can work here.
-    fireEvent.change(box, { target: { value: "007" } });
-    fireEvent.keyDown(box, { key: "Enter" });
-
+  it("asks the daemon for each closed-set column's values", async () => {
+    const { calls } = renderJobs([job("00021", "Running")], {
+      status: ["Completed", "Failed", "Running"],
+      type: ["CreatePlan", "ExecutePlan"],
+      project: ["Ivy-Tendril-V2, docs", "web"],
+    });
     await waitForRows(1);
-    expect(document.querySelector('tbody [data-row-id="00022"]')).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(
+        calls.filter((call) => call.path === "/api/tables/jobs/values").map((call) => call.body),
+      ).toEqual([{ column: "status" }, { column: "type" }, { column: "project" }]),
+    );
   });
 
-  /**
-   * The three facet columns' *narrowing* is asserted where the popover can actually be opened, in
-   * `packages/components`' `data-table.infinite-scroll.test.tsx` — Radix's popover and dropdown both
-   * gate on pointer events this jsdom setup does not implement, which is the same reason the row menu
-   * above is only asserted to be reachable. What is checked here is that the controls exist and carry
-   * the conditions V1's columns imply; `matchesColumnFilters` and `columnFiltersToRemoteFilter` are
-   * unit-tested against the daemon's semantics in the components package.
-   */
-  it("offers a facet only for the columns whose values are a closed set", async () => {
+  it("offers the daemon's values, and splits a joined Project value into its parts", async () => {
+    renderJobs([job("00021", "Running")], {
+      status: ["Completed", "Running"],
+      type: ["ExecutePlan"],
+      // `SELECT DISTINCT Project` answers a *joined* list as one value; the facet has to offer both.
+      project: ["Ivy-Tendril-V2, docs"],
+    });
+    await waitForRows(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+    await waitFor(() => expect(screen.getByLabelText("Filter syntax")).toBeInTheDocument());
+
+    // Radix's popover does not open under this jsdom setup (it gates on pointer events), so the values
+    // are asserted through the column declarations the help panel reads — the same list, one hop
+    // earlier. That the *request* was made is the assertion above.
+    expect(screen.getByRole("textbox", { name: "Filter expression" })).toHaveAttribute(
+      "placeholder",
+      '[Status] contains "…"',
+    );
+  });
+});
+
+/**
+ * V1's badge columns, colour for colour: `Constants.JobStatusColors` on Status, `JobTypeColors` on Type
+ * and a per-project colour on Project, all rendered by `LabelsDisplayRenderer`'s `BadgeColorMapping`
+ * (`JobsApp.DataTable.cs:61-78`). The colour is how the table is read at a glance, so a status must have
+ * the colour it has in V1 and not the nearest semantic token.
+ */
+describe("Jobs badge colours", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** The hue a badge was tinted from, read back off the element's inline custom property. */
+  function tint(element: HTMLElement | null): string | null {
+    const value = element?.style.getPropertyValue("--badge-tint-bg-light") ?? "";
+    return /var\(--([a-z-]+)/.exec(value)?.[1] ?? null;
+  }
+
+  function badgeWithText(text: string): HTMLElement | null {
+    return (
+      Array.from(document.querySelectorAll<HTMLElement>("tbody .badge-tinted")).find(
+        (element) => element.textContent?.trim() === text,
+      ) ?? null
+    );
+  }
+
+  it("maps every status to V1's own colour", () => {
+    // `Constants.JobStatusColors:54-64`, verbatim. Amber and Orange are *different* colours in V1 and
+    // stay different here, which no semantic token could have expressed.
+    expect(JOB_STATUS_COLOR).toEqual({
+      Running: "Blue",
+      Completed: "Green",
+      Failed: "Red",
+      Timeout: "Red",
+      Queued: "Amber",
+      Pending: "Amber",
+      Stopped: "Gray",
+      Blocked: "Orange",
+    });
+  });
+
+  it("maps every job type to V1's own colour", () => {
+    // `Constants.JobTypeColors:66-79`, all eleven.
+    expect(JOB_TYPE_COLOR).toEqual({
+      CreatePlan: "Purple",
+      ExecutePlan: "Blue",
+      UpdatePlan: "Cyan",
+      ExpandPlan: "Teal",
+      SplitPlan: "Indigo",
+      CreatePr: "Green",
+      CreateIssue: "Rose",
+      RetryPlan: "Orange",
+      SetupProject: "Slate",
+      SyncRepo: "Amber",
+      AddProject: "Purple",
+    });
+  });
+
+  it("renders the Status badge in the status's colour", async () => {
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+    expect(tint(badgeWithText("Running"))).toBe("blue");
+  });
+
+  it("renders the Type badge in the type's colour, and an unknown type on the fallback", async () => {
     renderJobs([
-      job("00021", "Running", { project: "web, api" }),
-      job("00022", "Completed", { type: "CreatePlan", project: "docs" }),
+      job("00021", "Completed", { type: "CreatePlan" }),
+      job("00022", "Completed", { type: "SomethingNew" }),
     ]);
     await waitForRows(2);
 
-    for (const column of ["Status", "Type", "Project"]) {
-      expect(screen.getByRole("button", { name: `Filter by ${column}` })).toBeEnabled();
+    expect(tint(badgeWithText("CreatePlan"))).toBe("purple");
+    // V1's renderer leaves a value outside its mapping neutral rather than borrowing another's colour.
+    expect(tint(badgeWithText("SomethingNew"))).toBe("slate");
+  });
+
+  it("gives each project its own colour, stably", async () => {
+    renderJobs([job("00021", "Running", { project: "web, api" })]);
+    await waitForRows(1);
+
+    const web = tint(badgeWithText("web"));
+    const api = tint(badgeWithText("api"));
+    expect(web).not.toBeNull();
+    expect(api).not.toBeNull();
+    expect(web).not.toBe(api);
+    // Derived from the name, so it is the same colour on every render and in every view.
+    expect(projectColor("web")).toBe(projectColor("web"));
+    expect(web).toBe(projectColor("web").toLowerCase());
+  });
+});
+
+/** A daemon that refuses the query, or is not there at all. */
+describe("Jobs table errors", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("says the query failed rather than showing an empty table", async () => {
+    setTableQueryTransport((path) =>
+      path === "/api/jobs/query"
+        ? Promise.reject(new Error("unknown column 'costt' for table 'Jobs'"))
+        : Promise.resolve({ column: "", values: [], totalValues: 0 }),
+    );
+
+    render(<JobsView jobs={[]} onStopAllQueued={() => {}} onStopAll={() => {}} />);
+
+    // The daemon's 400 names what was wrong, which is the only thing that helps whoever typed it.
+    await waitFor(() => expect(screen.getByTestId("jobs-table-error")).toBeInTheDocument());
+    expect(screen.getByTestId("jobs-table-error")).toHaveTextContent("unknown column 'costt'");
+  });
+});
+
+/**
+ * A clickable cell says so, and a cell that *navigates* says so differently.
+ *
+ * The framework's grid draws a cell with a click handler at `cursor: pointer` and a plain one at
+ * `cursor: default` (`widgets/dataTables/utils/cellContent.ts:583`, `:459`), and reserves blue underlined
+ * text for a **link** cell (`utils/customRenderers.ts:526`, `utils/canvasText.ts:103`). V1's Jobs table has
+ * four cell actions; two survive in V2, and they are one of each kind.
+ */
+describe("Jobs clickable cells", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("marks the cells that do something, and leaves the rest alone", async () => {
+    installDaemon([job("00021", "Running")]);
+    render(
+      <JobsView
+        jobs={[job("00021", "Running")]}
+        onSelectPlan={() => {}}
+        onStopAllQueued={() => {}}
+        onStopAll={() => {}}
+      />,
+    );
+    await waitForRows(1);
+
+    const clickable = Array.from(
+      document.querySelectorAll<HTMLElement>('tbody td[data-clickable="true"]'),
+    );
+    // Plan Id (navigates) and Agent Output (opens the sheet). Not Status, Prompt, Type, Project, Timer,
+    // Cost, Tokens, Timestamp or Status Message — none of those has a cell action in V2.
+    expect(clickable).toHaveLength(2);
+    for (const element of clickable) {
+      expect(element).toHaveClass("cursor-pointer");
     }
-    // Timer, Agent Output, Cost, Tokens and Timestamp are filterable in V1 because every `JobItemRow`
-    // property is a string there. Two of them are derived rather than stored and the other three are
-    // numeric, so none gets a text box: a `contains` over a formatted number would filter the
-    // rendering rather than the value.
-    for (const column of ["Timer", "Agent Output", "Cost", "Tokens", "Timestamp"]) {
-      expect(screen.queryByRole("button", { name: `Filter by ${column}` })).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("textbox", { name: `Filter by ${column}` }),
-      ).not.toBeInTheDocument();
-    }
+  });
+
+  it("draws the Plan Id cell as a link, because it navigates", async () => {
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+    // Rendered without `onSelectPlan` there is nowhere to go, so it is text rather than a link.
+    expect(screen.queryByTestId("job-plan-00021")).not.toBeInTheDocument();
+  });
+
+  it("gives the Plan Id link the framework's blue underline once there is somewhere to go", async () => {
+    installDaemon([job("00021", "Running")]);
+    render(
+      <JobsView
+        jobs={[job("00021", "Running")]}
+        onSelectPlan={() => {}}
+        onStopAllQueued={() => {}}
+        onStopAll={() => {}}
+      />,
+    );
+    await waitForRows(1);
+
+    const link = screen.getByTestId("job-plan-00021");
+    expect(link.className).toContain("text-info");
+    // Underlined always, not on hover: an affordance nobody can see until they point at it is not one.
+    expect(link.className).toContain("underline");
+  });
+
+  it("does not make the Agent Output cell a link, because it opens a sheet rather than navigating", async () => {
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+    const button = screen.getByTestId("job-output-00021");
+    expect(button.className).not.toContain("underline");
+    // The affordance is the cell's cursor.
+    expect(button.closest("td")).toHaveAttribute("data-clickable", "true");
+  });
+});
+
+/**
+ * The Agent Output cell in the table, and the thing V1's per-cell update stream exists for: the passage
+ * of time. No job event fires while an agent is merely quiet, so the cell has to advance on a clock — and
+ * it has to do that *without* refetching, because a refetch drops every accumulated window and returns
+ * the reader to the top of the table.
+ */
+describe("Jobs Agent Output cell", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("renders the silence for a running job and Starting... only before its first line", async () => {
+    const jobs = [
+      job("00021", "Running", { lastOutputAt: new Date(Date.now() - 95_000).toISOString() }),
+      job("00022", "Running"),
+      job("00023", "Completed"),
+      job("00024", "Failed"),
+    ];
+    renderJobs(jobs);
+    await waitForRows(4);
+
+    expect(screen.getByTestId("job-output-00021")).toHaveTextContent(/^1m 3[0-9]s$/);
+    expect(screen.getByTestId("job-output-00021")).not.toHaveTextContent("Starting");
+    expect(screen.getByTestId("job-output-00022")).toHaveTextContent(AGENT_OUTPUT_STARTING);
+    expect(screen.getByTestId("job-output-00023")).toHaveTextContent("Done");
+    expect(screen.getByTestId("job-output-00024")).toHaveTextContent("-");
+  });
+
+  it("advances as time passes, and never refetches to do it", async () => {
+    // Ten seconds of silence, so the first paint is unambiguous and the next tick is a visible change.
+    const lastOutputAt = new Date(Date.now() - 10_000).toISOString();
+    const running = [job("00021", "Running", { lastOutputAt })];
+    const calls = installDaemon(running);
+    render(<JobsView jobs={running} onStopAllQueued={() => {}} onStopAll={() => {}} />);
+    await waitForRows(1);
+
+    const cell = screen.getByTestId("job-output-00021");
+    expect(cell).toHaveTextContent("10s");
+    const windowsFetched = queries(calls).length;
+
+    // The `jobs` prop never changes here and no job event fires, so the only thing moving is the clock —
+    // which is exactly the case V1 runs a one-second interval for.
+    await waitFor(() => expect(cell).toHaveTextContent(/^1[1-9]s$/), { timeout: 4_000 });
+
+    // The whole point: the cell counts from a timestamp the daemon already served, so a tick is a
+    // re-render. One more window request and the reader's accumulated scroll would be gone.
+    expect(queries(calls)).toHaveLength(windowsFetched);
+  });
+});
+
+/**
+ * The output sheet uses the framework's header layout (`widgets/layouts/HeaderLayoutWidget.tsx`): a title
+ * that stays put, a body that scrolls under it, and `min-h-0` on the scroller — without which the panel
+ * grows past the sheet and the "fixed" title scrolls away with the content.
+ */
+describe("Jobs output sheet layout", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("opens the sheet inside a header layout, with the title in the fixed header", async () => {
+    vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue({ ...job("00021", "Running") });
+    vi.spyOn(jobsStore, "subscribeToJob").mockReturnValue(() => {});
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    fireEvent.click(screen.getByTestId("job-output-00021"));
+
+    const sheet = await waitFor(() => screen.getByTestId("job-output-sheet"));
+    const layout = sheet.querySelector('[data-slot="header-layout"]');
+    expect(layout).toBeInTheDocument();
+    expect(layout).toHaveClass("flex", "h-full", "flex-col");
+
+    const header = sheet.querySelector('[data-slot="header-layout-header"]');
+    expect(header).toHaveClass("flex-none");
+    expect(header?.textContent).toContain("ExecutePlan 00638");
+
+    // The scroller takes the remaining height and is allowed to shrink below its content.
+    expect(header?.nextElementSibling).toHaveClass("flex-1", "min-h-0", "overflow-hidden");
+    // The sheet itself no longer scrolls; the layout owns it, and owns the padding too.
+    expect(sheet.className).toContain("overflow-hidden");
+    expect(sheet.className).toContain("p-0");
   });
 });
