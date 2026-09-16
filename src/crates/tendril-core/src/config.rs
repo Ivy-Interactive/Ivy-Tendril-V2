@@ -1372,14 +1372,151 @@ mod master_info_tests {
     }
 }
 
-pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
-    let master_file = tendril_home.join(".master");
-    if !master_file.exists() {
-        return None;
+/// The `.master` document as the daemon writes it: a [`MasterInfo`] plus the two fields only the
+/// mastership lifecycle needs.
+///
+/// Kept as a separate struct rather than more fields on `MasterInfo` because `MasterInfo` is the
+/// wire shape every client (CLI, app, extension) already parses, and serde ignores keys it does not
+/// know: an older reader sees exactly what it saw before, and a reader that needs the lifecycle
+/// fields asks for them explicitly through [`read_master_claim`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MasterClaim {
+    #[serde(flatten)]
+    pub info: MasterInfo,
+
+    /// When the owning process last asserted this claim — written at acquire, when the bound port is
+    /// published, and on every re-assert. Diagnostic only: liveness is decided by the pid and
+    /// `/api/ping`, never by this timestamp, so a clock jump cannot unseat a running daemon.
+    #[serde(
+        rename = "heartbeatAt",
+        alias = "heartbeat_at",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub heartbeat_at: Option<String>,
+
+    /// The kernel's start time for `info.pid` as of the moment the claim was written.
+    ///
+    /// This is the PID-reuse guard: a bare `kill(pid, 0)` reports a recycled pid as alive, which
+    /// wedges the claim forever (the only escape today is `TENDRIL_ALLOW_MASTER_TAKEOVER=1`). When
+    /// the token recorded here differs from the pid's current one, the pid belongs to some other
+    /// process and the claim is stale. `None` — a claim written by an older build, or a platform
+    /// where the token cannot be read — means "cannot tell", and the check is skipped.
+    #[serde(
+        rename = "pidStartedAt",
+        alias = "pid_started_at",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub pid_started_at: Option<String>,
+}
+
+impl MasterClaim {
+    /// A claim describing this process, stamped with its own start token.
+    pub fn for_this_process(port: u16, secret: &str, host: &str, scheme: &str) -> Self {
+        let pid = std::process::id();
+        let now = chrono::Utc::now().to_rfc3339();
+        Self {
+            info: MasterInfo {
+                port,
+                pid,
+                secret: secret.to_string(),
+                started_at: now.clone(),
+                host: host.to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                api_version: 1,
+                capabilities: default_capabilities(),
+                scheme: scheme.to_string(),
+            },
+            heartbeat_at: Some(now),
+            pid_started_at: process_start_token(pid),
+        }
     }
 
+    /// True when the process this claim names is still the process that wrote it.
+    ///
+    /// Deliberately conservative: an unreadable start token, or a claim written before the token
+    /// existed, falls back to the plain pid check, so this can only ever be *more* correct than
+    /// `is_process_running` — never more eager to declare a live master dead.
+    pub fn owner_is_running(&self) -> bool {
+        if !is_process_running(self.info.pid) {
+            return false;
+        }
+        match (&self.pid_started_at, process_start_token(self.info.pid)) {
+            (Some(recorded), Some(current)) => recorded == &current,
+            _ => true,
+        }
+    }
+}
+
+/// A per-process token that changes when a pid is recycled: the kernel's recorded start time.
+///
+/// Read through `ps` rather than a crate so this needs no new dependency, and only ever compared
+/// against a token produced the same way on the same machine — the format is irrelevant as long as
+/// it is stable for the life of a process. `None` on any failure, which callers must read as
+/// "cannot tell" rather than "not running": `kill_tree` signals a whole process group, so a
+/// wrongly-negative liveness answer is not harmless.
+#[cfg(unix)]
+pub fn process_start_token(pid: u32) -> Option<String> {
+    if pid == 0 {
+        return None;
+    }
+    let output = std::process::Command::new("ps")
+        .args(["-o", "lstart=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if token.is_empty() {
+        None
+    } else {
+        Some(token)
+    }
+}
+
+/// Windows has no cheap equivalent of `ps -o lstart=` (`tasklist`, which [`is_process_running`]
+/// uses, does not report a start time), so the PID-reuse guard is a no-op there and mastership falls
+/// back to the plain pid check.
+#[cfg(not(unix))]
+pub fn process_start_token(_pid: u32) -> Option<String> {
+    None
+}
+
+pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
+    read_master_claim(tendril_home).map(|claim| claim.info)
+}
+
+/// [`read_master`] plus the lifecycle fields. `None` when there is no claim or it cannot be parsed.
+pub fn read_master_claim(tendril_home: &Path) -> Option<MasterClaim> {
+    let master_file = tendril_home.join(".master");
     let content = std::fs::read_to_string(&master_file).ok()?;
     serde_json::from_str(&content).ok()
+}
+
+/// [`read_master_claim`], retried briefly.
+///
+/// [`try_claim_master`] creates the file and then writes it, so a racing daemon can catch it empty.
+/// Treating that as "unreadable, discard it" would hand mastership to both of them, which is the
+/// whole thing the exclusive create exists to prevent — so an unreadable claim is only believed once
+/// it has stayed unreadable.
+fn read_master_claim_settled(tendril_home: &Path) -> Option<MasterClaim> {
+    const ATTEMPTS: u32 = 3;
+    const INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
+    for attempt in 0..ATTEMPTS {
+        if let Some(claim) = read_master_claim(tendril_home) {
+            return Some(claim);
+        }
+        if !tendril_home.join(".master").exists() {
+            return None;
+        }
+        if attempt + 1 < ATTEMPTS {
+            std::thread::sleep(INTERVAL);
+        }
+    }
+    None
 }
 
 /// True when this process owns the `.master` file. [`MasterGuard::acquire`] wrote our pid there;
@@ -1393,11 +1530,69 @@ pub fn is_master(tendril_home: &Path) -> bool {
     read_master(tendril_home).is_some_and(|m| m.pid == std::process::id())
 }
 
-pub fn write_master_info(tendril_home: &Path, info: &MasterInfo) -> Result<()> {
-    let tmp_file = tendril_home.join(format!(".master.tmp.{}", info.pid));
-    let master_file = tendril_home.join(".master");
+/// Claims `.master` for `claim`, or reports that somebody else already holds it.
+///
+/// `create_new` is the whole point, and it is why this is not a tmp-file-plus-rename like
+/// [`write_master_claim`]: `rename` silently overwrites, so two daemons racing through a
+/// read-then-write both "win" and both start the master-only subsystems. `create_new` is one
+/// syscall that exactly one racer can win.
+///
+/// `Ok(false)` means the file already existed — the caller decides whether that claim is live (leave
+/// it alone) or stale (clear it and retry). `Err` is a real filesystem failure.
+pub fn try_claim_master(tendril_home: &Path, claim: &MasterClaim) -> Result<bool> {
+    use std::io::Write;
 
-    let json = serde_json::to_string_pretty(info)?;
+    // `ensure_home_directories` normally got here first, but a daemon must not fail to claim just
+    // because it did not.
+    std::fs::create_dir_all(tendril_home)?;
+
+    let master_file = tendril_home.join(".master");
+    let json = serde_json::to_string_pretty(claim)?;
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+
+    let mut file = match options.open(&master_file) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Ok(false),
+        Err(e) => return Err(TendrilError::Io(e)),
+    };
+
+    // A claim that could not be written is worse than no claim: it would read as a foreign,
+    // unparseable one and block every later attempt until something cleaned it up.
+    if let Err(e) = file.write_all(json.as_bytes()).and_then(|_| file.flush()) {
+        drop(file);
+        let _ = std::fs::remove_file(&master_file);
+        return Err(TendrilError::Io(e));
+    }
+
+    Ok(true)
+}
+
+/// Overwrites `.master` with `claim`, atomically from a reader's point of view.
+///
+/// Only for a process that has already won the claim (republishing its bound port, or re-asserting a
+/// claim that vanished). Use [`try_claim_master`] to take it in the first place.
+pub fn write_master_claim(tendril_home: &Path, claim: &MasterClaim) -> Result<()> {
+    write_master_document(
+        tendril_home,
+        claim.info.pid,
+        &serde_json::to_string_pretty(claim)?,
+    )
+}
+
+pub fn write_master_info(tendril_home: &Path, info: &MasterInfo) -> Result<()> {
+    write_master_document(tendril_home, info.pid, &serde_json::to_string_pretty(info)?)
+}
+
+fn write_master_document(tendril_home: &Path, pid: u32, json: &str) -> Result<()> {
+    let tmp_file = tendril_home.join(format!(".master.tmp.{}", pid));
+    let master_file = tendril_home.join(".master");
 
     if let Err(e) = std::fs::write(&tmp_file, json) {
         let _ = std::fs::remove_file(&tmp_file);
@@ -1450,9 +1645,45 @@ pub fn delete_master(tendril_home: &Path) {
     }
 }
 
+/// Removes `.master` only if it still names `pid`, and only if that pid is not the live owner.
+///
+/// The pid re-check is what keeps a stale-cleanup from deleting a *third* process's claim: between
+/// deciding "this one is stale" and acting on it, the rightful owner may already have replaced it.
+/// Returns true when a file was removed.
+pub fn delete_master_if_pid(tendril_home: &Path, pid: u32) -> bool {
+    match read_master_claim(tendril_home) {
+        Some(claim) if claim.info.pid == pid => {
+            let master_file = tendril_home.join(".master");
+            std::fs::remove_file(master_file).is_ok()
+        }
+        // Unparseable is deleted too: nothing can be learned from it, and it blocks every claim.
+        None if tendril_home.join(".master").exists() => {
+            std::fs::remove_file(tendril_home.join(".master")).is_ok()
+        }
+        _ => false,
+    }
+}
+
 pub struct MasterGuard {
     tendril_home: PathBuf,
     pid: u32,
+    /// What this process wrote, so it can be republished with the bound port or re-asserted after
+    /// something deleted it. Behind a `Mutex` so the guard can live in an `Arc` and be beaten on
+    /// from a background task while `run_server` holds it for the process lifetime.
+    claim: std::sync::Mutex<MasterClaim>,
+}
+
+/// What [`MasterGuard::check_and_reassert`] found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MasterCheck {
+    /// The claim is ours and unchanged. Nothing was written.
+    Intact,
+    /// The claim had gone (deleted by a repair tool, a `tendril reset`, or a stale sweep) or was held
+    /// by a pid that is no longer running, and has been rewritten in this process's name.
+    Reasserted,
+    /// Another live process holds the claim. This process is no longer the master and must not
+    /// re-take it: that is the collision the election exists to prevent.
+    Superseded { pid: u32 },
 }
 
 /// Number of `/api/ping` attempts before a running master is declared unresponsive.
@@ -1476,7 +1707,19 @@ fn master_takeover_allowed() -> bool {
     std::env::var("TENDRIL_ALLOW_MASTER_TAKEOVER").as_deref() == Ok("1")
 }
 
+/// How many times [`MasterGuard::acquire`] will re-try the exclusive create after clearing a claim it
+/// proved stale. More than one because clearing and re-creating is not one atomic step: a sibling can
+/// win the gap, and then the loser has to inspect *its* claim rather than assume the file is free.
+const MASTER_CLAIM_ATTEMPTS: u32 = 3;
+
 impl MasterGuard {
+    /// Claims mastership of `tendril_home`, or fails.
+    ///
+    /// Call this **before** binding the port: the claim is what serialises two daemons against one
+    /// home, so announcing a bound port before holding it is how both of them end up running the
+    /// master-only subsystems. The claim records `port`; once the listener is up, call
+    /// [`MasterGuard::publish_port`] with the port that was actually bound (which is the only thing
+    /// that differs when `--port 0` asked for an ephemeral one).
     pub fn acquire(
         tendril_home: &Path,
         port: u16,
@@ -1486,20 +1729,42 @@ impl MasterGuard {
     ) -> Result<Self> {
         ensure_not_real_home(tendril_home)?;
 
-        if let Some(existing) = read_master(tendril_home) {
-            if is_process_running(existing.pid) {
+        let claim = MasterClaim::for_this_process(port, secret, host, scheme);
+
+        for _ in 0..MASTER_CLAIM_ATTEMPTS {
+            if try_claim_master(tendril_home, &claim)? {
+                return Ok(Self {
+                    tendril_home: tendril_home.to_path_buf(),
+                    pid: claim.info.pid,
+                    claim: std::sync::Mutex::new(claim),
+                });
+            }
+
+            // Somebody got here first. Either they are alive — in which case this daemon must not
+            // start — or the claim is a leftover and can be cleared for one more attempt.
+            let Some(existing) = read_master_claim_settled(tendril_home) else {
+                // Either it vanished between the create and this read — in which case the next
+                // attempt simply wins it — or it is genuinely unreadable, which tells us nothing and
+                // blocks every future claim, so it goes. `read_master_claim_settled` is what keeps
+                // this from mistaking a sibling's half-written claim for garbage.
+                tracing::warn!(
+                    "Discarding an unreadable {}/.master",
+                    tendril_home.display()
+                );
+                delete_master(tendril_home);
+                continue;
+            };
+
+            let info = &existing.info;
+            if existing.owner_is_running() {
                 // `probe_health` speaks plaintext HTTP, so it cannot tell a live TLS server from a
                 // dead one; for those, the pid check above is the whole answer.
-                let responding = existing.scheme.eq_ignore_ascii_case("https")
-                    || probe_health_with_retries(
-                        &existing.host,
-                        existing.port,
-                        HEALTH_PROBE_ATTEMPTS,
-                    );
+                let responding = info.scheme.eq_ignore_ascii_case("https")
+                    || probe_health_with_retries(&info.host, info.port, HEALTH_PROBE_ATTEMPTS);
                 if responding {
                     return Err(TendrilError::Other(format!(
                         "Another Tendril instance is running with PID {} on port {}",
-                        existing.pid, existing.port
+                        info.pid, info.port
                     )));
                 }
 
@@ -1509,8 +1774,8 @@ impl MasterGuard {
                          {}/.master: the process is alive but did not answer /api/ping after {} \
                          probes. Stop that instance, or start this one with a different \
                          TENDRIL_HOME.",
-                        existing.pid,
-                        existing.port,
+                        info.pid,
+                        info.port,
                         tendril_home.display(),
                         HEALTH_PROBE_ATTEMPTS
                     )));
@@ -1518,29 +1783,115 @@ impl MasterGuard {
 
                 tracing::warn!(
                     "TENDRIL_ALLOW_MASTER_TAKEOVER=1: evicting live but unresponsive master PID {} on port {}",
-                    existing.pid,
-                    existing.port
+                    info.pid,
+                    info.port
                 );
-                delete_master(tendril_home);
+            } else if is_process_running(info.pid) {
+                // The pid is in use, but by something that started after the claim was written: the
+                // original daemon is gone and its pid was recycled. Without this the claim would be
+                // unbreakable except through TENDRIL_ALLOW_MASTER_TAKEOVER=1.
+                tracing::warn!(
+                    "Cleaning up stale .master file from PID {} on port {} (that pid has been \
+                     recycled: it started after the claim was written)",
+                    info.pid,
+                    info.port
+                );
             } else {
                 tracing::warn!(
                     "Cleaning up stale .master file from PID {} on port {} (process is not running)",
-                    existing.pid,
-                    existing.port
+                    info.pid,
+                    info.port
                 );
-                delete_master(tendril_home);
             }
+
+            delete_master_if_pid(tendril_home, info.pid);
         }
 
-        write_master(tendril_home, port, secret, host, scheme)?;
-        Ok(Self {
-            tendril_home: tendril_home.to_path_buf(),
-            pid: std::process::id(),
-        })
+        Err(TendrilError::Other(format!(
+            "Could not claim mastership of {}/.master after {} attempts: another process keeps \
+             winning the race. Retry, or start this one with a different TENDRIL_HOME.",
+            tendril_home.display(),
+            MASTER_CLAIM_ATTEMPTS
+        )))
     }
 
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+
+    /// The claim as it currently stands on disk from this process's point of view.
+    pub fn claim(&self) -> MasterClaim {
+        self.claim.lock().expect("master claim mutex").clone()
+    }
+
+    /// Republishes the claim with the port the listener actually bound.
+    ///
+    /// Needed because the claim is taken before the bind: with `--port 0` the recorded port would
+    /// otherwise stay 0 and every client would fail to connect. A no-op when the port is unchanged,
+    /// and it refuses to write if this process no longer owns the claim.
+    pub fn publish_port(&self, port: u16) -> Result<()> {
+        let mut claim = self.claim.lock().expect("master claim mutex");
+        if claim.info.port == port {
+            return Ok(());
+        }
+
+        if !read_master(&self.tendril_home).is_some_and(|info| info.pid == self.pid) {
+            return Err(TendrilError::Other(format!(
+                "Not publishing port {}: {}/.master is no longer held by pid {}",
+                port,
+                self.tendril_home.display(),
+                self.pid
+            )));
+        }
+
+        claim.info.port = port;
+        claim.heartbeat_at = Some(chrono::Utc::now().to_rfc3339());
+        write_master_claim(&self.tendril_home, &claim)
+    }
+
+    /// Re-asserts this process's claim if it has gone missing, and reports what it found.
+    ///
+    /// A claim that vanishes while its daemon is alive is not a hypothetical: the app's "Repair
+    /// service" button deleted it unconditionally, and `is_master` then reads false for the rest of
+    /// the process's life, silently switching off every master-only subsystem. Repairing the file is
+    /// the correct response — surrendering mastership because a file disappeared is not.
+    ///
+    /// A *live* foreign claim is never taken back: that daemon won the election, and re-taking it
+    /// would give the home two masters.
+    pub fn check_and_reassert(&self) -> MasterCheck {
+        let claim = self.claim.lock().expect("master claim mutex");
+
+        match read_master_claim(&self.tendril_home) {
+            Some(existing) if existing.info.pid == self.pid => MasterCheck::Intact,
+            Some(existing) if existing.owner_is_running() => MasterCheck::Superseded {
+                pid: existing.info.pid,
+            },
+            existing => {
+                if let Some(existing) = &existing {
+                    tracing::warn!(
+                        "Re-asserting mastership over .master: it names pid {}, which is not running",
+                        existing.info.pid
+                    );
+                } else {
+                    tracing::warn!(
+                        "Re-asserting mastership: {}/.master vanished while this daemon (pid {}) was \
+                         running",
+                        self.tendril_home.display(),
+                        self.pid
+                    );
+                }
+
+                let mut reasserted = claim.clone();
+                reasserted.heartbeat_at = Some(chrono::Utc::now().to_rfc3339());
+                match write_master_claim(&self.tendril_home, &reasserted) {
+                    Ok(()) => MasterCheck::Reasserted,
+                    Err(e) => {
+                        tracing::warn!("Could not re-assert .master: {}", e);
+                        MasterCheck::Intact
+                    }
+                }
+            }
+        }
     }
 }
 

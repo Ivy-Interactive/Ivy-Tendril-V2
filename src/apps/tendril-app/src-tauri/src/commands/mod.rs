@@ -75,18 +75,46 @@ pub async fn cmd_restart_service() -> Result<ServiceInfoDto, BridgeError> {
     Ok(discovery.get_service_info().await)
 }
 
+/// Clears the leftovers that can stop the app reaching a daemon: a stale `.master`, an orphaned
+/// managed-service lock, and a tripped circuit breaker.
+///
+/// It does **not** unregister a daemon that is alive and answering. Deleting a live daemon's `.master`
+/// is what broke every client in the 2026-09-14 incident: the daemon keeps running but reads
+/// `is_master()` as false forever, so its master-only sweeps stop, every client reports "not running",
+/// and a second daemon can claim the same home. Repair is for wreckage, not for running processes.
 #[tauri::command]
 pub async fn cmd_repair_service() -> Result<String, BridgeError> {
+    use crate::service::supervisor::MasterReclaim;
+
     let home = resolve_tendril_home();
     let mut supervisor = crate::service::ServiceSupervisor::new(home.clone(), None);
-    let cleaned = supervisor.atomic_remove_stale_master().unwrap_or(false);
-    supervisor.remove_lock_file();
+    let reclaim = supervisor
+        .repair_master()
+        .await
+        .map_err(BridgeError::internal)?;
+
+    // The lock file and the breaker are the app's own state, so they are always safe to reset — but
+    // not while the daemon they describe is still the one running.
+    if !matches!(reclaim, MasterReclaim::RefusedLive { .. }) {
+        supervisor.remove_lock_file();
+    }
     supervisor.circuit_breaker.reset();
 
-    Ok(format!(
-        "Service repair completed successfully. (Cleaned stale master: {})",
-        cleaned
-    ))
+    Ok(match reclaim {
+        MasterReclaim::NoClaim => {
+            "Service repair completed. (No daemon registration to clean up.)".to_string()
+        }
+        MasterReclaim::Removed { pid: Some(pid) } => format!(
+            "Service repair completed. (Cleaned a stale registration left by PID {pid}.)"
+        ),
+        MasterReclaim::Removed { pid: None } => {
+            "Service repair completed. (Cleaned an unreadable daemon registration.)".to_string()
+        }
+        MasterReclaim::RefusedLive { pid, port } => format!(
+            "Nothing to repair: the daemon on port {port} (PID {pid}) is running and answering, so \
+             its registration was left intact. Stop it if you want it replaced."
+        ),
+    })
 }
 
 #[tauri::command]
