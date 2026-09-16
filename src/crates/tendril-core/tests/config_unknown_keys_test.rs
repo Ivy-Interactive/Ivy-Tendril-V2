@@ -117,8 +117,12 @@ fn test_config_unknown_keys_survive_load_and_save() {
     // Modeled now, for the same reason as `codingAgents` and `llm` above.
     assert!(!settings.extra.contains_key("desktopNotifications"));
     assert!(settings.desktop_notifications);
-    assert!(settings.extra.contains_key("sidebarOpen"));
-    assert!(settings.extra.contains_key("themeMode"));
+    // Modeled now, for the same reason as `desktopNotifications` above: the Appearance pane writes
+    // both, and the webview reads them back at start-up.
+    assert!(!settings.extra.contains_key("sidebarOpen"));
+    assert!(!settings.sidebar_open);
+    assert!(!settings.extra.contains_key("themeMode"));
+    assert_eq!(settings.theme_mode, "dark");
     assert!(settings.extra.contains_key("dismissedUpdateVersion"));
     assert!(settings.extra.contains_key("customSetting1"));
     assert!(settings.extra.contains_key("customSetting2"));

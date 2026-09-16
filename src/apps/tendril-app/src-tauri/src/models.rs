@@ -759,6 +759,11 @@ pub struct ModelOptionDto {
     pub id: String,
     #[serde(alias = "DisplayName")]
     pub display_name: String,
+    /// The effort ladder this model offers under its agent, which is not always the agent's own:
+    /// V1 declares `SupportedEfforts` per model row, so Copilot on `claude-opus-5` offers Claude's
+    /// levels and on `gpt-5.4` its own. Absent when the agent takes no effort argument at all.
+    #[serde(default, alias = "Efforts", skip_serializing_if = "Vec::is_empty")]
+    pub efforts: Vec<EffortOptionDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -777,6 +782,10 @@ pub struct AgentOptionDto {
     pub id: String,
     #[serde(alias = "Label")]
     pub label: String,
+    /// The `Icons` enum name the webview's `BrandIcon` resolves, from V1's `AgentBranding.IconFor`.
+    /// Empty from a daemon old enough not to send one.
+    #[serde(default, alias = "Icon")]
+    pub icon: String,
     #[serde(default, alias = "Models")]
     pub models: Vec<ModelOptionDto>,
     #[serde(default, alias = "SupportsEffort")]

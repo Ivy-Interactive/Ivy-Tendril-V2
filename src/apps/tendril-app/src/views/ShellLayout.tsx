@@ -1,5 +1,7 @@
 import React from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  BrandIcon,
   TendrilShell,
   ShellSidebarHeader,
   ShellNav,
@@ -15,9 +17,20 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@ivy-interactive/components/ui";
+import {
+  Bug,
+  CircleArrowUp,
+  CircleHelp,
+  Construction,
+  ExternalLink,
+  GitPullRequest,
+  Snowflake,
+} from "lucide-react";
 import type { ServiceInfo, VersionInfo } from "../types/api";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceStatusBanner } from "../components/service";
@@ -31,6 +44,15 @@ import { appDescriptor, type SessionPane } from "../state/navigation";
  * the session panes; V1 gives it a `$` prefix so it cannot collide with a session id.
  */
 export const PAGE_TAB_ID = "$page";
+
+/**
+ * V1 `AppBrand`, which is where the Help menu's three destinations come from
+ * (`Constants.DocsUrl` / `DiscordUrl` / `IssuesUrl`). The issue tracker is V2's own repository:
+ * the decision is "Report Issue files against the app you are running", not the literal V1 URL.
+ */
+const DOCS_URL = "https://tendril.ivy.app";
+const DISCORD_URL = "https://discord.gg/FHgxkDga3y";
+const ISSUES_URL = "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues/new";
 
 /**
  * The `[App]` icon of the app a nav id names, which is the glyph V1's `$page` tab carries
@@ -66,6 +88,144 @@ const pageIcon = (navId: string): string | undefined => {
       return "File";
   }
 };
+
+/**
+ * The nav's badge counts, keyed by the app id V1 keys them by in
+ * `TendrilAppShell.BuildMenuItems`'s `badges` dictionary. Dashboard has no key there, so it never
+ * carries one; `icebox`, `chat` and `agent` do, but none of the three is a nav row.
+ */
+export interface ShellNavBadges {
+  plans?: number;
+  review?: number;
+  recommendations?: number;
+  jobs?: number;
+}
+
+/**
+ * V1 `TendrilAppShell.BuildNavItems`: the sidebar nav is the visible `[App(group: ["Apps"])]` set
+ * in `Constants` order - Dashboard 10, Plans 20, Review 30, Recommendations 40, Jobs 50 - minus the
+ * entries it drops. Chat (75) and Agent (80) are dropped because the dedicated Chat row above the
+ * nav reaches them; Inbox (65) is dropped into the footer by `footerAppIds`; Pull Requests (60),
+ * Icebox (70) and Configuration are `isVisible: false` and live in the footer's settings menu. So
+ * these five, in this order, are the whole nav.
+ *
+ * A count of zero shows no badge, as V1's `ShouldShowBadge` requires (`count > 0`).
+ */
+export const buildNavItems = (
+  activeNav: string,
+  badges: ShellNavBadges = {},
+): ShellNavItemDto[] => {
+  const badge = (count: number | undefined) =>
+    count !== undefined && count > 0 ? String(count) : undefined;
+
+  return [
+    { id: "dashboard", label: "Dashboard", icon: "ChartBar" },
+    { id: "plans", label: "Plans", icon: "Feather", badge: badge(badges.plans) },
+    { id: "review", label: "Review", icon: "ThumbsUp", badge: badge(badges.review) },
+    {
+      id: "recommendations",
+      label: "Recommendations",
+      icon: "Lightbulb",
+      badge: badge(badges.recommendations),
+    },
+    { id: "jobs", label: "Jobs", icon: "Activity", badge: badge(badges.jobs) },
+  ].map((item) => ({ ...item, isActive: item.id === activeNav }));
+};
+
+/**
+ * One row of the sidebar footer's settings menu, standing in for V1's `MenuItem`: a label, a glyph,
+ * and either an action or a submenu.
+ */
+export interface ShellMenuItemDto {
+  label: string;
+  icon: React.ReactNode;
+  onSelect?: () => void;
+  children?: ShellMenuItemDto[];
+}
+
+/**
+ * V1 `TendrilAppShell.settingsMenuItems`, row for row and in order, with the Help submenu from
+ * `BuildHelpMenuItems`. Two deliberate omissions, both because V2 has nothing to point them at:
+ * V1's `#if DEBUG` "Debug > Onboarding" row (V2 has no onboarding route) and the `isBeta` "About"
+ * row (V2 has no About view). V1 has no "Keyboard Shortcuts" row and neither does this.
+ */
+export const buildSettingsMenuItems = ({
+  onSelectNav,
+  onCheckForUpdates,
+}: {
+  onSelectNav: (navId: string) => void;
+  onCheckForUpdates?: () => void;
+}): ShellMenuItemDto[] => {
+  const items: ShellMenuItemDto[] = [
+    {
+      label: "Configuration",
+      icon: <Construction aria-hidden="true" />,
+      onSelect: () => onSelectNav("settings"),
+    },
+    {
+      label: "Pull Requests",
+      icon: <GitPullRequest aria-hidden="true" />,
+      onSelect: () => onSelectNav("pull-requests"),
+    },
+    {
+      label: "Icebox",
+      icon: <Snowflake aria-hidden="true" />,
+      onSelect: () => onSelectNav("icebox"),
+    },
+  ];
+
+  // V1 always has an update check; V2's host supplies one only where it can perform it.
+  if (onCheckForUpdates) {
+    items.push({
+      label: "Check for Updates",
+      icon: <CircleArrowUp aria-hidden="true" />,
+      onSelect: onCheckForUpdates,
+    });
+  }
+
+  items.push({
+    label: "Help",
+    icon: <CircleHelp aria-hidden="true" />,
+    children: [
+      {
+        label: "Documentation",
+        icon: <ExternalLink aria-hidden="true" />,
+        onSelect: () => void openUrl(DOCS_URL),
+      },
+      {
+        label: "Discord",
+        icon: <BrandIcon name="Discord" />,
+        onSelect: () => void openUrl(DISCORD_URL),
+      },
+      {
+        label: "Report Issue",
+        icon: <Bug aria-hidden="true" />,
+        onSelect: () => void openUrl(ISSUES_URL),
+      },
+    ],
+  });
+
+  return items;
+};
+
+/** Renders {@link buildSettingsMenuItems} the way V1's `DropDownMenu.Items(...)` renders `MenuItem`s. */
+const renderMenuItems = (items: ShellMenuItemDto[]): React.ReactNode =>
+  items.map((item) =>
+    item.children ? (
+      <DropdownMenuSub key={item.label}>
+        <DropdownMenuSubTrigger>
+          {item.icon}
+          {item.label}
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent>{renderMenuItems(item.children)}</DropdownMenuSubContent>
+      </DropdownMenuSub>
+    ) : (
+      <DropdownMenuItem key={item.label} onSelect={item.onSelect}>
+        {item.icon}
+        {item.label}
+      </DropdownMenuItem>
+    ),
+  );
 
 interface ShellLayoutProps {
   activeNav: string;
@@ -105,7 +265,6 @@ interface ShellLayoutProps {
   /** V1 `ShowPage`: the `$page` tab was picked, so reveal the page and leave the panes mounted. */
   onShowPage?: () => void;
   onNewPlan: () => void;
-  onOpenShortcuts: () => void;
   onReconnect: () => void;
   onRestartService?: () => void;
   onRepairService?: () => void;
@@ -134,6 +293,12 @@ interface ShellLayoutProps {
   onSelectSidebarItem?: (appId: string, itemId: string, args: unknown) => void;
   /** V1's `showPlanSearchDialog`: what the section's search does when a list supplies no `onSearch`. */
   onPlanSearch?: () => void;
+  /**
+   * V1's `StartNewChat`, bound to the Chat row unconditionally (`TendrilAppShell.cs:1085`:
+   * `.OnNewChat(StartNewChat)`), and only *overridden* by a published list's own `OnNew` when that
+   * list is a collapsed rail flyout (`.OnNewChat(chatList.OnNew ?? StartNewChat)`).
+   */
+  onNewChat?: () => void;
   children: React.ReactNode;
 }
 
@@ -162,7 +327,6 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   onCloseTab,
   onShowPage,
   onNewPlan,
-  onOpenShortcuts,
   onReconnect,
   onRestartService,
   onRepairService,
@@ -180,6 +344,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   sidebarList = null,
   onSelectSidebarItem,
   onPlanSearch,
+  onNewChat,
   children,
 }) => {
   /* V1 `TendrilAppShell.Build()` line-for-line: a published list is rendered while
@@ -201,10 +366,13 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
     if (list.onTogglePin) sectionEvents.push("OnTogglePinItem");
   }
 
-  const chatEvents = ["OnOpen"];
+  /* `OnNewChat` is unconditional, as in V1: the Chat row's "New Chat" chord has to work from
+     Dashboard, Jobs and every other page, not only from the pages that publish a collapsed list.
+     Gating it on `railFlyoutList.onNew` left the chord, and the flyout's own button, inert
+     everywhere else. */
+  const chatEvents = ["OnOpen", "OnNewChat"];
   if (railFlyoutList) {
     chatEvents.push("OnSelectItem");
-    if (railFlyoutList.onNew) chatEvents.push("OnNewChat");
     if (railFlyoutList.onRename) chatEvents.push("OnRenameItem");
     if (railFlyoutList.onDelete) chatEvents.push("OnDeleteItem");
     if (railFlyoutList.onTogglePin) chatEvents.push("OnTogglePinItem");
@@ -218,8 +386,13 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
         (source?.onSearch ?? onPlanSearch)?.();
         return;
       case "OnNew":
-      case "OnNewChat":
+        // The section's own affordance, only ever present when the list supplies it.
         source?.onNew?.();
+        return;
+      case "OnNewChat":
+        // V1's `chatList.OnNew ?? StartNewChat`: the flyout list may override, but the shell's
+        // handler is what makes the row work on a page that publishes no list at all.
+        (source?.onNew ?? onNewChat)?.();
         return;
       case "OnSelectItem": {
         const itemId = firstStringArg(args);
@@ -249,45 +422,14 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
     }
   };
 
-  /* V1's visible "Apps" group in `Constants` order (Dashboard 10, Plans 20, Review 30,
-     Recommendations 40, Jobs 50), minus the entries `BuildNavItems` excludes. */
-  const navItems: ShellNavItemDto[] = [
-    {
-      id: "dashboard",
-      label: "Dashboard",
-      icon: "ChartBar",
-      isActive: activeNav === "dashboard",
-    },
-    {
-      id: "plans",
-      label: "Plans",
-      icon: "Feather",
-      badge: draftCount && draftCount > 0 ? String(draftCount) : undefined,
-      isActive: activeNav === "plans",
-    },
-    {
-      id: "review",
-      label: "Review",
-      icon: "ThumbsUp",
-      badge: reviewCount && reviewCount > 0 ? String(reviewCount) : undefined,
-      isActive: activeNav === "review",
-    },
-    {
-      id: "recommendations",
-      label: "Recommendations",
-      icon: "Lightbulb",
-      badge:
-        recommendationsCount && recommendationsCount > 0 ? String(recommendationsCount) : undefined,
-      isActive: activeNav === "recommendations",
-    },
-    {
-      id: "jobs",
-      label: "Jobs",
-      icon: "Activity",
-      badge: jobCount && jobCount > 0 ? String(jobCount) : undefined,
-      isActive: activeNav === "jobs",
-    },
-  ];
+  const navItems = buildNavItems(activeNav, {
+    plans: draftCount,
+    review: reviewCount,
+    recommendations: recommendationsCount,
+    jobs: jobCount,
+  });
+
+  const settingsMenuItems = buildSettingsMenuItems({ onSelectNav, onCheckForUpdates });
 
   /* V1 `BuildStripTabs`: the strip is one non-closable `$page` tab, which reveals the page behind
      the session panes, followed by the session tabs. Nothing else is ever in it - a page is not a
@@ -433,24 +575,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                     />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="top" align="start">
-                    <DropdownMenuItem onSelect={() => onSelectNav("settings")}>
-                      Configuration
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onSelectNav("pull-requests")}>
-                      Pull Requests
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onSelectNav("icebox")}>
-                      Icebox
-                    </DropdownMenuItem>
-                    {onCheckForUpdates && (
-                      <DropdownMenuItem onSelect={onCheckForUpdates}>
-                        Check for Updates
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={onOpenShortcuts}>
-                      Keyboard Shortcuts
-                    </DropdownMenuItem>
+                    {renderMenuItems(settingsMenuItems)}
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <ShellSettingsButton

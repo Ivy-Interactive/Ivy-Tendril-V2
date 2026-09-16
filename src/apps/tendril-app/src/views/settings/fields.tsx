@@ -173,6 +173,50 @@ export const SelectField: React.FC<{
   </div>
 );
 
+/**
+ * A labelled **native** select, for the lists whose contents come from a catalog: the theme presets,
+ * and each profile's model and effort.
+ *
+ * Native rather than the layered `SelectField` for the reasons `AgentPicker`'s own `PickerSelect`
+ * gives - the option list floats over its container instead of growing it, and its keyboard handling
+ * and labelling come from the platform. It also keeps V1's `extraOptions` behaviour honest: a value
+ * the catalog does not offer (a model id typed by hand into `config.yaml`, a preset from a vault this
+ * build cannot see) is listed as its own option rather than silently reading as the first entry.
+ */
+export const NativeSelectField: React.FC<{
+  id: string;
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  hint?: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}> = ({ id, label, value, options, hint, disabled, onChange }) => (
+  <div className="space-y-1">
+    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+      {label}
+    </Label>
+    <select
+      id={id}
+      aria-label={label}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-9 w-full rounded-fields border border-input bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {!options.some((option) => option.value === value) && (
+        <option value={value}>{value || "Default"}</option>
+      )}
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+    {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+  </div>
+);
+
 /** A labelled multiline field, for the newline-separated lists V1 edits with `ToCodeInput`. */
 export const LinesField: React.FC<{
   id: string;

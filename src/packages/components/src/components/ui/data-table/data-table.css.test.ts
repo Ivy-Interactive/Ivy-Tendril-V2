@@ -25,6 +25,20 @@ describe("data-table.css", () => {
     expect(block).toMatch(/background:\s*var\(--background\)/);
   });
 
+  it("pins the whole header section, so the filter row travels with the labels", () => {
+    // The section rather than its cells: two header rows of `th` each stuck at `top: 0` would stack on
+    // top of one another, and no per-density offset can be written down here.
+    const block = ruleBody(".ivy-data-table thead {");
+    expect(block).toMatch(/position:\s*sticky/);
+    expect(block).toMatch(/top:\s*0/);
+    expect(block).toMatch(/background:\s*var\(--background\)/);
+  });
+
+  it("keeps the filter row's cells unstuck, so they cannot pin over the labels", () => {
+    const block = ruleBody('.ivy-data-table thead tr[data-slot="data-table-filter-row"] th');
+    expect(block).toMatch(/position:\s*static/);
+  });
+
   it("pins column widths while windowed, so scrolling does not resize columns", () => {
     const block = ruleBody(".ivy-data-table.ivy-data-table-virtualized");
     expect(block).toMatch(/table-layout:\s*fixed/);

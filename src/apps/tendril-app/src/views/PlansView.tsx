@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useShortcut, type ShellBadgeDto } from "@ivy-interactive/components/tendril";
 import type { Job, PlanSummary } from "../types/api";
 import { EmptyState } from "../components/EmptyState";
@@ -108,6 +108,30 @@ const planIdOrder = (id: string): number => {
 const PLANS_LIST_STATES = ["Draft", "Blocked"];
 
 /**
+ * The states V1's **Review** app owns, from `ReviewApp.Build`:
+ * `.Where(p => p.Status is PlanStatus.Review or PlanStatus.Failed)`. A failed execution needs the
+ * same decision a passing one does, so V1 triages both on that page.
+ *
+ * `AppShell/Dialogs/PlanSearchDialog.ResolveTarget` states the same partition from the other side,
+ * and it is the authority for which surfaces a plan gets:
+ *
+ * ```csharp
+ * PlanStatus.Draft or PlanStatus.Blocked => (typeof(PlansApp),  new PlansAppArgs(plan.FolderName)),
+ * PlanStatus.Review or PlanStatus.Failed => (typeof(ReviewApp), new ReviewAppArgs(plan.FolderName)),
+ * PlanStatus.Icebox                      => (typeof(IceboxApp), null),
+ * _                                      => null
+ * ```
+ *
+ * Lives here rather than in `ReviewView` because the plan page reads it too, and importing it from
+ * there would pull that whole view (and its dialogs) into the plan page's chunk.
+ */
+export const REVIEW_QUEUE_STATES = ["Review", "Failed"] as const;
+
+/** Whether a plan belongs to V1's Review app, under {@link normalizePlanState}'s current name. */
+export const isReviewState = (state: string | undefined): boolean =>
+  (REVIEW_QUEUE_STATES as readonly string[]).includes(normalizePlanState(state));
+
+/**
  * `PlansApp.Build`'s `activePlanFolders`/`activeCreatePlanIds`: a job in one of these still holds
  * the plan, so V1 drops it from the list rather than offering a second write on top of the agent's.
  */
@@ -131,6 +155,59 @@ export const draftQueueFor = (plans: PlanSummary[], jobs?: Job[]): PlanSummary[]
   return plans
     .filter((p) => PLANS_LIST_STATES.includes(normalizePlanState(p.state)) && !held.has(p.id))
     .sort((a, b) => planIdOrder(b.id) - planIdOrder(a.id));
+};
+
+/**
+ * Whether `plan` is the plan `id` names.
+ *
+ * `PlanSelectionHelper.ResolveSelection` accepts three spellings of the same plan, because the id
+ * reaches it from three places: `p.FolderName.Equals(saved)`, `p.Id.ToString() == saved` and
+ * `p.FolderName.StartsWith(saved + "-")` — an app's args carry `00021-SomePlan`, a row carries the
+ * folder and a link carries the bare number. The numeric comparison here covers all three, since
+ * `parseInt` reads the leading id off a folder name.
+ */
+const isPlanId = (plan: PlanSummary, id: string): boolean => {
+  if (plan.id.toLowerCase() === id.toLowerCase()) return true;
+  const left = Number.parseInt(plan.id, 10);
+  const right = Number.parseInt(id, 10);
+  return !Number.isNaN(left) && !Number.isNaN(right) && left === right;
+};
+
+/**
+ * Which plan an app opens on, ported from V1's `Helpers/PlanSelectionHelper.cs`.
+ *
+ * V1 calls this on **every** `Build()` of both `PlansApp` and `ReviewApp` — it is not a mount-time
+ * seed — and its three branches are, in order:
+ *
+ * 1. the saved plan, if it is still in the list
+ *    (`currentPlans.FirstOrDefault(p => p.FolderName.Equals(selected.FolderName) || p.Id == selected.Id)`);
+ * 2. failing that, whatever now sits at the **same index** it used to
+ *    (`var newIndex = oldIndex >= 0 ? Math.Min(oldIndex, currentPlans.Count - 1) : 0`), so clearing a
+ *    queue works down it instead of bouncing back to the top after every decision;
+ * 3. and with nothing saved at all, the first plan:
+ *    `if (currentSelected == null && currentPlans.Count > 0 && ...) return (currentPlans[0], ...)`.
+ *
+ * Both callers order the list `.OrderByDescending(p => p.Id)`, so "the first plan" is the **highest
+ * id**: the latest plan, not the most recently touched one. An empty list selects nothing, which is
+ * what puts V1 on its `NoContentView`.
+ *
+ * @param plans the app's own filtered, newest-first list.
+ * @param savedId the plan the app already had selected, or the one its args named.
+ * @param previousPlans the list as it was on the previous build, for branch 2.
+ */
+export const resolvePlanSelection = (
+  plans: PlanSummary[],
+  savedId: string | null | undefined,
+  previousPlans: readonly PlanSummary[] = [],
+): PlanSummary | null => {
+  if (plans.length === 0) return null;
+  if (!savedId) return plans[0];
+
+  const match = plans.find((plan) => isPlanId(plan, savedId));
+  if (match) return match;
+
+  const oldIndex = previousPlans.findIndex((plan) => isPlanId(plan, savedId));
+  return plans[oldIndex >= 0 ? Math.min(oldIndex, plans.length - 1) : 0];
 };
 
 /**
@@ -213,6 +290,28 @@ export const PlansView: React.FC<PlansViewProps> = ({
 
   const listPlans = useMemo(() => draftQueueFor(plans, jobs), [plans, jobs]);
 
+  /**
+   * The plan this page opens on, which V1 opens **without being asked**: `PlansApp.Build` runs
+   * `PlanSelectionHelper.ResolveSelection` on every build and hands the result to its `ContentView`,
+   * so arriving on the page with nothing saved lands on `plans[0]` — the newest Draft/Blocked plan —
+   * rather than on an empty pane.
+   *
+   * V2 renders the plan under its own `plan-<id>` page instead of inside this one, so "select it" is
+   * the same navigation a sidebar row performs. The ref keeps that to once per resolved plan:
+   * `onSelectPlan` is a fresh closure on every host render, and re-running it would push a duplicate
+   * history entry each time.
+   */
+  const defaultSelection = resolvePlanSelection(listPlans, selectedId);
+  const autoOpenedId = useRef<string | null>(null);
+
+  useEffect(() => {
+    const target = defaultSelection?.id;
+    if (!target || autoOpenedId.current === target) return;
+    autoOpenedId.current = target;
+    setOpenedPlanId(target);
+    onSelectPlan(target);
+  }, [defaultSelection?.id, onSelectPlan]);
+
   const sidebarList = useMemo(
     () =>
       buildPlansSidebarList(listPlans, selectedId, (planId) => {
@@ -230,7 +329,10 @@ export const PlansView: React.FC<PlansViewProps> = ({
     <div className="h-full" data-testid="plans-view">
       {/* `ContentView.BuildNoSelectionView`, which V1 keeps as two separate cases: an empty list is
           `NoContentView("No plans", "Plans you create will appear here")`, and a list with nothing
-          selected is the one muted line pointing at the sidebar. */}
+          selected is the one muted line pointing at the sidebar. The second is unreachable in a
+          running app now that a non-empty list always resolves a selection — it is unreachable in V1
+          for the same reason, and kept here for the same reason: it is what a list with a selection
+          the host has not applied yet shows. */}
       {listPlans.length === 0 ? (
         <EmptyState title="No plans" description="Plans you create will appear here" />
       ) : (

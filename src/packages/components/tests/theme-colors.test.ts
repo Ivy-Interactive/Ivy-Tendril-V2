@@ -29,6 +29,18 @@ const REPRESENTATIVE_TOKENS = [
   "slate",
 ] as const;
 
+/** The representative tokens that are deliberately the *same* in light and dark.
+ *
+ * `primary` is the brand green (#00cc92), which is chosen to read on both backgrounds and is
+ * mode-invariant on purpose; `mutedForeground` is a mid-grey (#8f8f8f) picked for the same reason.
+ * The dark-palette test below asserts that a token actually changes with the mode, which is a real
+ * guard — a dark class that silently failed to apply would leave every value at its light reading —
+ * but applying it to these two asserts a divergence `tokens.css` never intended. */
+const MODE_INVARIANT_TOKENS = new Set<(typeof REPRESENTATIVE_TOKENS)[number]>([
+  "primary",
+  "mutedForeground",
+]);
+
 const HEX = /^#[0-9a-f]{3,8}$/i;
 
 function injectTokenStylesheet(): HTMLStyleElement {
@@ -68,8 +80,14 @@ describe("theme colors", () => {
 
     for (const token of REPRESENTATIVE_TOKENS) {
       expect(dark[token], token).toMatch(HEX);
-      expect(dark[token], token).not.toBe(light[token]);
+      if (!MODE_INVARIANT_TOKENS.has(token)) {
+        expect(dark[token], token).not.toBe(light[token]);
+      }
     }
+
+    // The point of the loop above is that the dark class took effect at all, so assert that
+    // directly rather than relying on it falling out of the per-token comparisons.
+    expect(dark).not.toEqual(light);
   });
 
   it("resolves non-colour tokens such as the radius", () => {

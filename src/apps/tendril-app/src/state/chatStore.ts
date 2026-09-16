@@ -221,6 +221,8 @@ export class ChatStore {
 
   private listeners: Set<() => void> = new Set();
   private eventUnsubscribe: EventUnsubscribe | null = null;
+  /** In-flight (or settled) `init()`, so concurrent callers share one subscription. */
+  private initPromise: Promise<void> | null = null;
   private storageListenerAttached = false;
   private draftOwners: Record<string, string> = loadStoredDraftOwners();
   private pinnedSessions: Record<string, string> = loadStoredPinnedSessions();
@@ -310,7 +312,29 @@ export class ChatStore {
     this.listeners.forEach((l) => l());
   }
 
-  public async init(): Promise<void> {
+  /**
+   * Loads drafts, the agent catalog, the event subscription and the session list, at most once.
+   *
+   * The in-flight promise is stored **synchronously**, because the `eventUnsubscribe` guard inside
+   * `runInit` is only reached after two awaits: two overlapping calls (React StrictMode invokes
+   * `ChatView`'s mount effect twice) both got past it while the first was still awaiting, and the
+   * store ended up with two `chat-event` listeners. `chat.stream_delta` is the one handler that is
+   * not idempotent — it *appends* to the message it names — so every streamed chunk, and the
+   * synthesized report a failed turn ends with, was written into the message twice.
+   *
+   * A failed init clears the memo so the next caller can retry.
+   */
+  public init(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.runInit().catch((err) => {
+        this.initPromise = null;
+        throw err;
+      });
+    }
+    return this.initPromise;
+  }
+
+  private async runInit(): Promise<void> {
     this.state.inProgressAnswers = loadStoredInProgressAnswers();
     this.draftOwners = loadStoredDraftOwners();
     this.pinnedSessions = loadStoredPinnedSessions();
@@ -590,6 +614,11 @@ export class ChatStore {
     this.completedSessionIds = new Set();
     this.turnEndWaiters = new Map();
     this.optimisticMessageIds = new Set();
+    // Drop the event subscription and the `init()` memo together: a test that reset the store and
+    // called `init()` again would otherwise keep the previous test's listener and skip the reload.
+    this.eventUnsubscribe?.();
+    this.eventUnsubscribe = null;
+    this.initPromise = null;
     try {
       const legacyStorage =
         typeof sessionStorage !== "undefined"
@@ -726,7 +755,15 @@ export class ChatStore {
         const messages = this.state.activeSession.messages;
         const index = messages.findIndex((m) => m.id === event.message.id);
         if (index >= 0) {
-          messages[index] = event.message;
+          // An upsert, which is what makes the daemon's copy of a finished turn safe to apply more
+          // than once. Fields the frame leaves off are kept: the raw stream is omitted from the
+          // finalize frame (it is a whole run's worth of JSON) and attachments only exist locally.
+          const existing = messages[index];
+          messages[index] = {
+            ...event.message,
+            rawStream: event.message.rawStream ?? existing.rawStream,
+            attachments: event.message.attachments ?? existing.attachments,
+          };
         } else {
           // The daemon's copy of a message this client already showed replaces it rather than
           // doubling it up. Prefix match, not equality: the prompt that reaches the agent carries

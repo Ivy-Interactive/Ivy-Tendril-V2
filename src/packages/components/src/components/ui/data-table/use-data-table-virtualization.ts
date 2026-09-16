@@ -5,6 +5,7 @@ import type { Range, VirtualItem } from "@tanstack/react-virtual";
 import { Densities } from "@/types/density";
 
 import type { DataTableVirtualized } from "./types";
+import { isRowIdentityAppend, rowIdentity } from "./utils";
 
 /** Row count above which `virtualized="auto"` starts windowing. */
 export const DATA_TABLE_VIRTUALIZATION_THRESHOLD = 50;
@@ -78,9 +79,10 @@ export interface UseDataTableVirtualizationResult {
  * Row windowing for `DataTable`, kept out of the component the same way sorting, pagination and
  * column visibility are.
  *
- * Runs *after* sort and pagination: sort → page → window. A change to the page's row identities
+ * Runs *after* sort and pagination: sort → page → window. A *replacement* of the page's row identities
  * (a re-sort, a filter, a page change) drops the measurement cache and returns the viewport to the
- * top, so a re-sort never leaves you mid-list at a stale offset.
+ * top, so a re-sort never leaves you mid-list at a stale offset. An *append* — infinite scroll's next
+ * window — does neither, because the rows on screen have not moved.
  */
 export function useDataTableVirtualization({
   containerRef,
@@ -132,12 +134,17 @@ export function useDataTableVirtualization({
   // Row identity, not array identity: a call site passing an inline `getRowId` produces a fresh
   // `rowIds` array on every render, and resetting the viewport on each of those would make the
   // table unscrollable.
-  const identity = React.useMemo(() => rowIds.join("\u0000"), [rowIds]);
+  const identity = React.useMemo(() => rowIdentity(rowIds), [rowIds]);
   const lastIdentity = React.useRef(identity);
   React.useEffect(() => {
     if (lastIdentity.current === identity) return;
+    /* An *appended* window is not a new row set. The rows already scrolled through are still there,
+       in the same order, with the same measured heights, so neither dropping the measurement cache nor
+       returning to the top is right — and the latter would undo the very scroll that asked for the
+       window. Telling the two apart is what makes infinite scroll usable. */
+    const appended = isRowIdentityAppend(lastIdentity.current, identity);
     lastIdentity.current = identity;
-    if (!active) return;
+    if (!active || appended) return;
     virtualizer.measure();
     // `scrollToOffset`, not `element.scrollTop = 0`: assigning scrollTop leaves the virtualizer's
     // own offset stale until a scroll event happens to arrive, so the window would keep rendering

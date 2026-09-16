@@ -1,5 +1,7 @@
 import type * as React from "react";
 
+import type { DataTableColumnFilter } from "./column-filters";
+
 export type DataTableAlign = "Left" | "Center" | "Right";
 export type DataTableSortDirection = "Ascending" | "Descending";
 
@@ -37,6 +39,13 @@ export interface DataTableColumn<TRow> {
   editable?: boolean;
   /** Comparator override; defaults to the shared value comparator in utils.ts. */
   compare?: (a: unknown, b: unknown) => number;
+  /**
+   * Header filter for this column, rendered in the table's filter row when `showColumnFilters`.
+   *
+   * Absent means unfilterable, which is the legacy `.Filterable(false)` — V1's Jobs table applies it
+   * to the hidden `Id` and `ErrorContext` columns and to nothing else.
+   */
+  filter?: DataTableColumnFilter;
 }
 
 export interface DataTableRowAction<TRow> {

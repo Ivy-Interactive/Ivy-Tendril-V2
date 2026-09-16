@@ -38,12 +38,18 @@ pub struct PostMessageRequest {
     pub role: Option<String>,
 }
 
+/// The body of `POST /api/chat/sessions/:id/execute`.
+///
+/// Both spellings are accepted, as `CreateSessionRequest` already does: the desktop app's
+/// `ExecuteTurnDto` posts camelCase and `tendril chat send` posts snake_case. Without the aliases the
+/// CLI's `--agent` / `--model` / `--effort` were silently dropped and the turn ran on the session's
+/// defaults instead.
 #[derive(Debug, Deserialize, Default)]
 pub struct ExecuteTurnRequest {
     pub prompt: Option<String>,
-    #[serde(rename = "agentId")]
+    #[serde(rename = "agentId", alias = "agent_id")]
     pub agent_id: Option<String>,
-    #[serde(rename = "modelId")]
+    #[serde(rename = "modelId", alias = "model_id")]
     pub model_id: Option<String>,
     pub effort: Option<String>,
 }
@@ -291,4 +297,34 @@ pub async fn delete_queued_item_handler(
         .remove_queued_message(&session_id, &item_id)
         .await;
     (StatusCode::OK, Json(json!({ "deleted": deleted })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExecuteTurnRequest;
+
+    /// Both clients' spellings have to reach the turn: the app posts camelCase, `tendril chat send`
+    /// posts snake_case, and a body whose keys do not match is dropped field by field rather than
+    /// rejected — so the selected agent and model were silently ignored.
+    #[test]
+    fn test_execute_turn_request_accepts_both_spellings() {
+        let camel: ExecuteTurnRequest = serde_json::from_str(
+            r#"{"prompt":"hi","agentId":"codex","modelId":"gpt-5.6-sol","effort":"high"}"#,
+        )
+        .expect("camelCase body");
+        assert_eq!(camel.agent_id.as_deref(), Some("codex"));
+        assert_eq!(camel.model_id.as_deref(), Some("gpt-5.6-sol"));
+
+        let snake: ExecuteTurnRequest = serde_json::from_str(
+            r#"{"prompt":"hi","agent_id":"codex","model_id":"gpt-5.6-sol","effort":"high"}"#,
+        )
+        .expect("snake_case body");
+        assert_eq!(snake.agent_id.as_deref(), Some("codex"));
+        assert_eq!(snake.model_id.as_deref(), Some("gpt-5.6-sol"));
+        assert_eq!(snake.effort.as_deref(), Some("high"));
+
+        // An omitted body is still a valid turn on the session's own defaults.
+        let bare: ExecuteTurnRequest = serde_json::from_str("{}").expect("empty body");
+        assert!(bare.prompt.is_none() && bare.agent_id.is_none() && bare.model_id.is_none());
+    }
 }

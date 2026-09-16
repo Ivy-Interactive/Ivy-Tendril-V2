@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
+import { initAppearance } from "./state/appearance";
 import { sidebarListStore, usePublishedSidebarList } from "./state/sidebarListStore";
 import { toAddressArgs } from "./state/navigation";
 import { plansStore } from "./state/plansStore";
@@ -190,6 +191,10 @@ export const App: React.FC = () => {
     );
 
     void uiStore.init();
+    // V1's shell applies the saved theme and theme mode on every session start
+    // (`TendrilThemes.ApplyTheme` / `ApplyThemeMode`), so a preset chosen in Appearance survives a
+    // restart instead of lasting only for the session that chose it.
+    void initAppearance();
     serviceStore.refreshInfo().catch(() => {});
     plansStore.fetchPlans().catch(() => {});
     jobsStore.fetchJobs().catch(() => {});
@@ -518,10 +523,23 @@ export const App: React.FC = () => {
    * under its own `plan-<id>` nav), `{ sessionId }` selects that chat session, and anything else is
    * a plain navigation to the publishing app. `chatStore` is imported dynamically because App.tsx
    * is the shell's only eager module and the chat store is a lazy view's dependency.
+   *
+   * Review is the exception, because in V1 every list navigates to *its own publisher*: each
+   * `ShellSidebarListState` carries its own args factory, and Review's is
+   * `planId => new ReviewAppArgs(planId)` (`Apps/Review/ReviewApp.cs:37`), so a row click stays in
+   * `ReviewApp`. V2 can collapse the others onto the shared `plan-<id>` page because
+   * `PlanDetailView` now gates the Changes and Recommendations surfaces on the plan's state, which
+   * reproduces V1's two tab sets without needing two pages. Review cannot be collapsed: `ReviewView`
+   * renders its own `PlanWorkspace` topbar with the triage actions, and routing its rows away
+   * replaces that with the generic plan page — the missing-contextual-actions symptom.
    */
   const handleSelectSidebarItem = (appId: string, itemId: string, args: unknown) => {
     const planId = selectArgField(args, "planId");
     if (planId) {
+      if (appId === "review") {
+        uiStore.navigate({ appId, args: toAddressArgs(args) });
+        return;
+      }
       void handleSelectPlan(planId);
       return;
     }
@@ -615,10 +633,10 @@ export const App: React.FC = () => {
           }}
           onPlanDeleted={() => {
             plansStore.fetchPlans().catch(() => {});
-            // A plan is a page, not a tab, so there is nothing to close - just go back to Plans.
+            // A plan is a page, not a tab, so there is nothing to close - just go back to Plans,
+            // which resolves its own next selection (`PlanSelectionHelper.ResolveSelection`).
             uiStore.setActiveNav("plans");
           }}
-          onBack={() => uiStore.setActiveNav("plans")}
         />
       );
     }
@@ -718,6 +736,9 @@ export const App: React.FC = () => {
             // Create PR on work an agent has not finished — a retry that is only Queued or Blocked
             // still leaves its plan recorded in Review.
             jobs={jobsState.jobs}
+            // V1's `ReviewAppArgs.PlanId`: the address names the plan to triage, and the page falls
+            // back to the newest one in the queue when it names none.
+            selectedPlanId={uiState.pageArgs.planId ?? null}
             onSelectPlan={handleSelectPlan}
             onOpenReviewAction={handleOpenReviewAction}
             onJobStarted={(res) => handleSelectJob(res.jobId)}
@@ -850,7 +871,6 @@ export const App: React.FC = () => {
           setNewPlanPrefill({});
           setIsNewPlanOpen(true);
         }}
-        onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onReconnect={() => serviceStore.checkHealth()}
         onRestartService={() => {
           setShellError(null);
@@ -885,6 +905,14 @@ export const App: React.FC = () => {
         // navigation to Plans: that page's list is Draft and Blocked only, so a Completed, Skipped or
         // in-flight plan is reachable through nothing else in the UI.
         onPlanSearch={() => setIsPlanSearchOpen(true)}
+        /* V1's `StartNewChat` -> `ChatLauncher.StartNew`, which navigates to the chat target and
+           lets the page open the session. V2 has no terminal chat kind, so the target is always the
+           chat app; creating the session here is what `ChatView`'s own "New chat" does, so both
+           affordances land in the same place. */
+        onNewChat={() => {
+          uiStore.navigate({ appId: "chat" });
+          void import("./state/chatStore").then((m) => m.chatStore.createSession("New Chat"));
+        }}
       >
         {/* V1's `RouteAction.Error` reaches `client.Error(...)`; here it shares the shell's own
             error banner, which is the only place the shell reports its own failures. */}

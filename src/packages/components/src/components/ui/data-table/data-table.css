@@ -1,11 +1,40 @@
 /* Rules Tailwind utilities cannot express for the data table. Everything else lives in the TSX. */
 @layer base {
-  /* Sticky header: survives the scroll container `Table` wraps every table in. */
+  /*
+   * Sticky header, pinned as a *block*.
+   *
+   * `<thead>` rather than its cells, because the header is two rows once `showColumnFilters` is on
+   * (labels, then filter controls) and two rows of `th` each stuck at `top: 0` would stack on top of
+   * one another. Sticking the section keeps them in order and needs no per-density offset. Everything
+   * V2 runs in — Chromium and WKWebView — has supported this for years.
+   */
+  .ivy-data-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--background);
+  }
+
+  /* The label row's cells, still sticky in their own right: harmless under a pinned `<thead>`, and the
+     fallback that keeps the labels pinned anywhere `position: sticky` on a table section is ignored. */
   .ivy-data-table thead th {
     position: sticky;
     top: 0;
     z-index: 1;
     background: var(--background);
+  }
+
+  /*
+   * The filter row must NOT be sticky per-cell: at `top: 0` it would pin over the labels rather than
+   * below them. The pinned `<thead>` already carries it.
+   */
+  .ivy-data-table thead tr[data-slot="data-table-filter-row"] th {
+    position: static;
+    padding-top: 0;
+    /* A filter control is interactive, so it needs the header's full width and none of the label
+       row's text alignment. */
+    text-align: left;
+    vertical-align: middle;
   }
 
   /* wrapText: false (the default) — single line, ellipsis on overflow. */

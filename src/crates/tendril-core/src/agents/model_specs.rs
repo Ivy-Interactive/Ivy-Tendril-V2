@@ -33,6 +33,16 @@ impl ModelSpec {
 pub static SPECS: &[ModelSpec] = &[
     // Anthropic
     ModelSpec {
+        model_id: Cow::Borrowed("claude-fable-5-1"),
+        display_name: Cow::Borrowed("Claude Fable 5.1"),
+        context_window: 1_000_000,
+        max_output_tokens: 128_000,
+        input_per_million: 10.0,
+        output_per_million: 50.0,
+        cache_read_per_million: 1.0,
+        cache_write_per_million: 12.50,
+    },
+    ModelSpec {
         model_id: Cow::Borrowed("claude-3-7-sonnet"),
         display_name: Cow::Borrowed("Claude 3.7 Sonnet"),
         context_window: 200_000,
@@ -115,6 +125,16 @@ pub static SPECS: &[ModelSpec] = &[
     ModelSpec {
         model_id: Cow::Borrowed("claude-haiku-5-1"),
         display_name: Cow::Borrowed("Claude Haiku 5.1"),
+        context_window: 200_000,
+        max_output_tokens: 64_000,
+        input_per_million: 1.0,
+        output_per_million: 5.0,
+        cache_read_per_million: 0.10,
+        cache_write_per_million: 1.25,
+    },
+    ModelSpec {
+        model_id: Cow::Borrowed("claude-haiku-4-5-20251001"),
+        display_name: Cow::Borrowed("Claude Haiku 4.5"),
         context_window: 200_000,
         max_output_tokens: 64_000,
         input_per_million: 1.0,

@@ -1,6 +1,8 @@
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
 use crate::agents::reconcile::build_missing_result_lines;
-use crate::agents::runner::{run_agent_process, AgentOutputEvent, TerminationReason};
+use crate::agents::runner::{
+    run_agent_process, AgentOutputEvent, AgentRunOutcome, TerminationReason,
+};
 use crate::chat::models::{ChatMessage, ChatQueuedItem, ChatSession};
 use crate::chat::storage::{
     delete_session as storage_delete, load_all_sessions, load_session,
@@ -375,6 +377,11 @@ impl ChatExecutionManager {
         let mut session = self.get_session(session_id).await?;
         let now = Utc::now();
 
+        // Snapshotted before this turn's own messages are appended: the agent prompt replays the
+        // conversation *so far*, exactly as `ChatExecutionService` builds it, and the current
+        // request is added separately below.
+        let history_before = session.messages.clone();
+
         // If title is still default, write a synchronous snippet immediately (so the sidebar
         // never flashes "New Chat") and remember it so the naming task below can tell an
         // auto-generated title apart from a user rename that lands during its 30s budget.
@@ -472,6 +479,7 @@ impl ChatExecutionManager {
         // Spawn async runner task
         tokio::spawn(async move {
             let mut current_prompt = initial_prompt;
+            let mut current_history = history_before;
             let mut current_assistant_msg_id = initial_assistant_msg_id;
             let current_options = options;
             let mut is_first_turn = true;
@@ -493,15 +501,27 @@ impl ChatExecutionManager {
                     new_cancel_rx
                 };
 
+                // No `session_id`: it renders as `claude --session-id <uuid>`, and Claude Code
+                // refuses an id it has already opened ("Error: Session ID <uuid> is already in
+                // use."), so reusing the chat session's id killed every turn after the first —
+                // on stderr, which is not part of the response stream, so the turn surfaced as a
+                // response that never arrived. V1's chat launch leaves `SessionId` unset for the
+                // same reason and carries the conversation in the prompt instead
+                // (`AgentLaunchHelper.PrepareResolutionContext`). The chat session's id still
+                // reaches the agent, as the environment variable V1 sets, so `tendril job start
+                // --chat-session $TENDRIL_CHAT_SESSION_ID` keeps working.
                 let launch_config = AgentLaunchConfig {
-                    prompt: current_prompt.clone(),
+                    prompt: build_chat_agent_prompt(&current_history, &current_prompt, &s_id),
                     working_directory: current_options
                         .working_directory
                         .clone()
                         .unwrap_or_else(|| mgr.tendril_home.clone()),
                     model: current_options.model_id.clone(),
                     effort: current_options.effort.clone(),
-                    session_id: Some(s_id.clone()),
+                    environment_variables: HashMap::from([(
+                        "TENDRIL_CHAT_SESSION_ID".to_string(),
+                        s_id.clone(),
+                    )]),
                     ..Default::default()
                 };
 
@@ -524,6 +544,7 @@ impl ChatExecutionManager {
 
                 let mut accumulated_text = String::new();
                 let mut raw_stream_lines = Vec::new();
+                let mut stderr_tail: Vec<String> = Vec::new();
                 let mut is_dirty = false;
                 let mut persist_ticker = tokio::time::interval(persist_interval);
                 persist_ticker.tick().await; // consume initial tick
@@ -534,6 +555,20 @@ impl ChatExecutionManager {
                             match opt_evt {
                                 Some(evt) => {
                                     raw_stream_lines.push(evt.raw_line.clone());
+
+                                    // Where a CLI writes its own refusals ("Session ID … is
+                                    // already in use", an auth failure, an unknown flag). Kept so
+                                    // a turn that produced no response can say why instead of
+                                    // reporting that no reason was found.
+                                    if evt.is_stderr {
+                                        let text = evt.raw_line.trim();
+                                        if !text.is_empty() {
+                                            if stderr_tail.len() == STDERR_TAIL_LINES {
+                                                stderr_tail.remove(0);
+                                            }
+                                            stderr_tail.push(text.to_string());
+                                        }
+                                    }
 
                                     // Check for spawned job IDs
                                     if let Some(ref re) = job_regex {
@@ -592,20 +627,10 @@ impl ChatExecutionManager {
                 // before the message is persisted. This runs only here, after the loop: the
                 // periodic `persist_in_flight_message` tick above must never reconcile, since a
                 // tool that is genuinely still running would get a fake result written over it.
-                let run_result = run_handle.await;
-                let synthetic_output = match &run_result {
-                    Ok(Ok(outcome)) => match outcome.terminated {
-                        TerminationReason::Cancelled => "[Cancelled]",
-                        TerminationReason::TimedOut => "[Timed out]",
-                        TerminationReason::Exited | TerminationReason::PostResultGraceExceeded => {
-                            "[No output received]"
-                        }
-                    },
-                    _ => "[No output received]",
-                };
+                let outcome = TurnOutcome::from_run(run_handle.await, stderr_tail);
                 raw_stream_lines.extend(build_missing_result_lines(
                     &raw_stream_lines,
-                    synthetic_output,
+                    outcome.synthetic_tool_output(),
                     true,
                 ));
 
@@ -615,6 +640,7 @@ impl ChatExecutionManager {
                     &current_assistant_msg_id,
                     accumulated_text,
                     raw_stream_lines,
+                    &outcome,
                 )
                 .await;
 
@@ -651,6 +677,10 @@ impl ChatExecutionManager {
                     {
                         let mut sessions_map = mgr.sessions.write().await;
                         if let Some(s) = sessions_map.get_mut(&s_id) {
+                            // The turn that just finished is part of the history this one replays,
+                            // which is the only thing carrying the conversation forward now that a
+                            // chat turn no longer reuses an agent session id.
+                            current_history = s.messages.clone();
                             s.messages.push(next_user_msg.clone());
                             s.messages.push(next_assistant_msg.clone());
                             s.updated_at = Utc::now();
@@ -821,45 +851,278 @@ impl ChatExecutionManager {
         }
     }
 
-    /// Persists the turn's final content, falling back to a synthesized report when the agent
-    /// produced no text — a tool error with no follow-up delta, or a process exit with no output at
-    /// all — so a turn is never shown as an empty bubble. The report is emitted as a `StreamDelta`
-    /// too, since the frontend renders a message from the stream it received, not from a later
-    /// re-read of `content`.
+    /// Persists the turn's final content and republishes the finished message.
+    ///
+    /// The content is composed by [`compose_turn_content`], so a turn is never an empty bubble and
+    /// never claims that no failure reason was found when the process told us one.
+    ///
+    /// The finished message goes out as a [`ChatEvent::MessageAdded`] rather than as a synthetic
+    /// `StreamDelta`. A delta is *appended* to whatever the client already has, so delivering the
+    /// final text that way is only correct exactly once — and any client that had already seen the
+    /// persisted content (or that received the frame twice) ended up rendering the same sentence
+    /// twice. `MessageAdded` replaces the message by id, which is idempotent, and is the same
+    /// "re-read the finished message" shape V1's `UpdateMessage` + `StreamUpdated` pair has.
     async fn finalize_message(
         &self,
         session_id: &str,
         message_id: &str,
         content: String,
         raw_lines: Vec<String>,
+        outcome: &TurnOutcome,
     ) {
-        let final_content = if content.trim().is_empty() {
-            let report = generate_chat_report(&raw_lines);
-            let _ = self.event_tx.send(ChatEvent::StreamDelta {
-                session_id: session_id.to_string(),
-                message_id: message_id.to_string(),
-                delta: report.clone(),
-            });
-            report
-        } else {
-            content
-        };
+        let final_content = compose_turn_content(&content, &raw_lines, outcome);
 
-        let mut sessions_map = self.sessions.write().await;
-        if let Some(s) = sessions_map.get_mut(session_id) {
-            for m in &mut s.messages {
-                if m.id == message_id {
-                    m.content = final_content.clone();
-                    m.raw_stream = Some(raw_lines.join("\n"));
-                    break;
+        let mut finalized: Option<ChatMessage> = None;
+        {
+            let mut sessions_map = self.sessions.write().await;
+            if let Some(s) = sessions_map.get_mut(session_id) {
+                for m in &mut s.messages {
+                    if m.id == message_id {
+                        m.content = final_content.clone();
+                        m.raw_stream = Some(raw_lines.join("\n"));
+                        finalized = Some(m.clone());
+                        break;
+                    }
                 }
+                s.updated_at = Utc::now();
+                let _ = save_session(&self.tendril_home, s);
             }
-            s.updated_at = Utc::now();
-            let _ = save_session(&self.tendril_home, s);
+        }
+
+        if let Some(mut message) = finalized {
+            // The raw stream is a whole run's worth of JSON and every subscriber re-reads the
+            // session as soon as the turn ends anyway, so it is left off the broadcast frame.
+            message.raw_stream = None;
+            let _ = self.event_tx.send(ChatEvent::MessageAdded {
+                session_id: session_id.to_string(),
+                message,
+            });
         }
     }
 }
 
+/// How many trailing stderr lines a turn keeps to explain a failure with.
+const STDERR_TAIL_LINES: usize = 5;
+
+/// Why a turn's agent process stopped, in the terms the finished message needs.
+///
+/// V1 reads the same three things off `AgentRunResult` (`Response`, `IsSuccess`, `Error`) before it
+/// decides what to persist; the stderr tail is added because a CLI that refuses to start writes its
+/// reason there and nowhere else.
+#[derive(Debug, Default)]
+struct TurnOutcome {
+    /// Set when the process could not be spawned or waited on at all — a missing agent binary is
+    /// the common case, and it is invisible in the output stream because there is no stream.
+    launch_error: Option<String>,
+    terminated: Option<TerminationReason>,
+    exit_code: Option<i32>,
+    /// `false` when the agent's own terminal result event reported failure, whatever it exited with.
+    result_success: Option<bool>,
+    stderr_tail: Vec<String>,
+}
+
+impl TurnOutcome {
+    fn from_run(
+        run_result: std::result::Result<Result<AgentRunOutcome>, tokio::task::JoinError>,
+        stderr_tail: Vec<String>,
+    ) -> Self {
+        match run_result {
+            Ok(Ok(outcome)) => Self {
+                launch_error: None,
+                terminated: Some(outcome.terminated),
+                exit_code: outcome.exit_code,
+                result_success: outcome.result_outcome.map(|r| r.is_success),
+                stderr_tail,
+            },
+            Ok(Err(err)) => Self {
+                launch_error: Some(err.to_string()),
+                stderr_tail,
+                ..Default::default()
+            },
+            Err(err) => Self {
+                launch_error: Some(format!("The agent task did not complete: {}", err)),
+                stderr_tail,
+                ..Default::default()
+            },
+        }
+    }
+
+    /// Whether the turn is one the user should be shown a failure reason for.
+    ///
+    /// A process that never started, or that we killed, always failed. Otherwise the agent's own
+    /// terminal result event decides, as it does in V1 (`ClaudeEventParser.BuildResult` takes
+    /// `IsSuccess` from the event and only borrows the exit code); the exit code is the answer only
+    /// when the agent emitted no such event. `Some(0)` specifically, not "not an error": a `None`
+    /// code means the process died from a signal, which is not a success.
+    fn is_success(&self) -> bool {
+        if self.launch_error.is_some() {
+            return false;
+        }
+        if !matches!(
+            self.terminated,
+            Some(TerminationReason::Exited) | Some(TerminationReason::PostResultGraceExceeded)
+        ) {
+            return false;
+        }
+        match self.result_success {
+            Some(success) => success,
+            None => self.exit_code == Some(0),
+        }
+    }
+
+    /// The output written into a `tool_result` the stream never closed.
+    fn synthetic_tool_output(&self) -> &'static str {
+        match self.terminated {
+            Some(TerminationReason::Cancelled) => "[Cancelled]",
+            Some(TerminationReason::TimedOut) => "[Timed out]",
+            _ => "[No output received]",
+        }
+    }
+
+    /// What to tell the user went wrong, as a headline and the detail behind it.
+    ///
+    /// Most specific source first: the spawn failure, then the reason we stopped it, then the agent's
+    /// own structured error event, then its stderr, and only then the bare exit code (V1's
+    /// `"Agent execution completed with status code …"` floor). The detail is returned separately so a
+    /// caller can drop it when the agent already said the same thing out loud.
+    fn failure_parts(&self, raw_lines: &[String]) -> (String, Option<String>) {
+        if let Some(err) = &self.launch_error {
+            return (err.clone(), None);
+        }
+
+        match self.terminated {
+            Some(TerminationReason::Cancelled) => {
+                return ("Execution was cancelled.".to_string(), None)
+            }
+            Some(TerminationReason::TimedOut) => {
+                return (
+                    "Agent execution timed out before it produced a response.".to_string(),
+                    None,
+                )
+            }
+            _ => {}
+        }
+
+        let status = match self.exit_code {
+            Some(code) => format!("Agent execution completed with status code {}", code),
+            None => "Agent execution completed with an unknown status code".to_string(),
+        };
+
+        if let Some(reason) = crate::jobs::try_extract_error_event(raw_lines) {
+            return (status, Some(reason));
+        }
+
+        let tail = self
+            .stderr_tail
+            .iter()
+            .map(|line| crate::jobs::sanitize_for_display(line))
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join(" | ");
+        if !tail.is_empty() {
+            return (status, Some(tail));
+        }
+
+        (status, None)
+    }
+
+    fn failure_text(&self, raw_lines: &[String]) -> String {
+        match self.failure_parts(raw_lines) {
+            (headline, Some(detail)) => format!("{}: {}", headline, detail),
+            (headline, None) => headline,
+        }
+    }
+}
+
+/// What a finished turn's message says, following `ChatExecutionService`'s order: the agent's own
+/// text if it produced any, then the terminal result's response, then a summary of what the turn
+/// actually did, and a failure reason appended (or standing alone) whenever the run failed.
+fn compose_turn_content(text: &str, raw_lines: &[String], outcome: &TurnOutcome) -> String {
+    let success = outcome.is_success();
+    let with_failure = |body: String| -> String {
+        if success {
+            return body;
+        }
+        let (headline, detail) = outcome.failure_parts(raw_lines);
+        if body.trim().is_empty() {
+            return match detail {
+                Some(detail) => format!("{}: {}", headline, detail),
+                None => headline,
+            };
+        }
+        // An agent that printed its own error (a bad model, an auth failure) has already said the
+        // detail; repeating it under the headline reads as the same message twice.
+        let already_said = detail
+            .as_deref()
+            .is_some_and(|detail| body.contains(detail.trim()));
+        match detail {
+            Some(detail) if !already_said => format!("{}\n\n{}: {}", body, headline, detail),
+            _ => format!("{}\n\n{}", body, headline),
+        }
+    };
+
+    if !text.trim().is_empty() {
+        return with_failure(text.to_string());
+    }
+
+    // A provider that streams nothing but a terminal result event (and Claude's `--print` result
+    // event always repeats the final answer) still answered the question.
+    if let Some(response) = terminal_result_response(raw_lines) {
+        return with_failure(response);
+    }
+
+    if let Some(report) = summarize_tool_calls(raw_lines) {
+        return with_failure(report);
+    }
+
+    if success {
+        // V1's wording for a run that succeeded without saying anything.
+        "Task completed successfully.".to_string()
+    } else {
+        outcome.failure_text(raw_lines)
+    }
+}
+
+/// The response text carried by the last terminal result event in the stream, in either wire shape.
+fn terminal_result_response(raw_lines: &[String]) -> Option<String> {
+    for line in raw_lines.iter().rev() {
+        let Some(v) = crate::jobs::failure_analysis::parse_json_object(line) else {
+            continue;
+        };
+        let is_result = matches!(
+            v.get("kind").and_then(|k| k.as_str()),
+            Some("result") | Some("turn.completed")
+        ) || matches!(
+            v.get("type").and_then(|t| t.as_str()),
+            Some("result") | Some("turn.completed")
+        );
+        if !is_result {
+            continue;
+        }
+        for field in ["response", "result"] {
+            if let Some(text) = v.get(field).and_then(|t| t.as_str()) {
+                if !text.trim().is_empty() {
+                    return Some(text.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The assistant prose carried by one output line, or `""` for a line that carries none.
+///
+/// Every provider Tendril launches streams structured JSON, and the text is nested differently in
+/// each — so the shapes have to be read by name. Guessing from top-level `text` / `content` /
+/// `message` keys (which is all this used to do) reaches none of them: Claude Code's `stream-json`
+/// puts a turn's prose at `message.content[].text` of a `{"type":"assistant"}` line, so *every*
+/// chat turn accumulated an empty response and fell through to the "no response" report, however
+/// well the agent had actually answered.
+///
+/// The shapes, and where each is defined: the eventwire form Tendril's own logs use
+/// (`{"kind":"text","text":…}`), Claude / Antigravity (`ClaudeEventParser.ParseAssistant`), Codex
+/// (`CodexEventParser.ParseAgentMessage`) and Gemini (`GeminiEventParser.ParseMessage`). A line that
+/// is not JSON at all is prose from a provider that streams plain text, and is passed through.
 fn extract_delta(line: &str, is_stderr: bool) -> String {
     if is_stderr {
         return String::new();
@@ -868,38 +1131,111 @@ fn extract_delta(line: &str, is_stderr: bool) -> String {
     let trimmed = line.trim();
     if trimmed.starts_with('{') && trimmed.ends_with('}') {
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            // Claude stream-json format
-            if let Some(delta_obj) = val.get("delta") {
-                if let Some(t) = delta_obj.get("text").and_then(|v| v.as_str()) {
-                    return t.to_string();
-                }
-                if let Some(s) = delta_obj.as_str() {
-                    return s.to_string();
-                }
-            }
-            if let Some(t) = val.get("text").and_then(|v| v.as_str()) {
-                return t.to_string();
-            }
-            if let Some(c) = val.get("content").and_then(|v| v.as_str()) {
-                return c.to_string();
-            }
-            if let Some(m) = val.get("message").and_then(|v| v.as_str()) {
-                return m.to_string();
-            }
-            return String::new();
+            return extract_json_delta(&val);
         }
     }
 
     format!("{}\n", line)
 }
 
-/// Synthesizes a markdown report from a turn's raw stream when the agent produced no assistant
-/// text, so `finalize_message` never leaves a turn empty. Reads both wire shapes emitted onto
-/// `raw_lines`: the normalised eventwire form (`{"kind":"tool_call",…}` / `{"kind":"tool_result",…}`)
-/// and the provider's own form (`{"type":"assistant",…}` / `{"type":"user",…}` with `tool_use` /
-/// `tool_result` content blocks) — same two shapes [`crate::agents::reconcile`] and
-/// [`crate::jobs::failure_analysis`] read.
-fn generate_chat_report(raw_lines: &[String]) -> String {
+fn extract_json_delta(val: &serde_json::Value) -> String {
+    // The eventwire form, which is authoritative when present: any other `kind` (`tool_call`,
+    // `tool_result`, `result`, `error`, …) is deliberately not prose.
+    if let Some(kind) = val.get("kind").and_then(|k| k.as_str()) {
+        if kind == "text" {
+            return val
+                .get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or_default()
+                .to_string();
+        }
+        return String::new();
+    }
+
+    match val.get("type").and_then(|t| t.as_str()) {
+        // Claude / Antigravity: text and thinking blocks of an assistant message. `tool_use` blocks
+        // on the same line are not prose and are reported by `TurnActivity` from the raw stream.
+        Some("assistant") => {
+            let Some(blocks) = val
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+            else {
+                return String::new();
+            };
+            return blocks
+                .iter()
+                .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("text"))
+                .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                .collect::<Vec<_>>()
+                .join("");
+        }
+        // Gemini: one assistant message per line. A `user` role is the CLI echoing the prompt back.
+        Some("message") => {
+            if val.get("role").and_then(|r| r.as_str()) == Some("user") {
+                return String::new();
+            }
+            return val
+                .get("content")
+                .and_then(|c| c.as_str())
+                .unwrap_or_default()
+                .to_string();
+        }
+        // Codex: prose arrives as a completed `agent_message` item.
+        Some("item.completed") | Some("item.updated") => {
+            let Some(item) = val.get("item") else {
+                return String::new();
+            };
+            if item.get("type").and_then(|t| t.as_str()) != Some("agent_message") {
+                return String::new();
+            }
+            return item
+                .get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or_default()
+                .to_string();
+        }
+        // `user` lines carry tool results, `system` lines carry session metadata, and a terminal
+        // `result` repeats prose that has already been streamed — appending it would double the
+        // answer. `compose_turn_content` reads the result line for its response only when nothing
+        // was streamed at all.
+        Some("user") | Some("system") | Some("result") | Some("turn.completed") | Some("error") => {
+            return String::new()
+        }
+        _ => {}
+    }
+
+    // Simple `{"delta": …}` / `{"text": …}` shapes, which is what a wrapper or a test harness emits.
+    if let Some(delta_obj) = val.get("delta") {
+        if let Some(t) = delta_obj.get("text").and_then(|v| v.as_str()) {
+            return t.to_string();
+        }
+        if let Some(s) = delta_obj.as_str() {
+            return s.to_string();
+        }
+    }
+    if let Some(t) = val.get("text").and_then(|v| v.as_str()) {
+        return t.to_string();
+    }
+    if let Some(c) = val.get("content").and_then(|v| v.as_str()) {
+        return c.to_string();
+    }
+    if let Some(m) = val.get("message").and_then(|v| v.as_str()) {
+        return m.to_string();
+    }
+    String::new()
+}
+
+/// Synthesizes a markdown summary of the tools a turn called, for a turn that did the work but never
+/// said anything about it — so `finalize_message` never leaves a turn empty. `None` when the turn
+/// called no tools, which leaves the caller free to say *why* there was nothing to report rather
+/// than asserting that no reason could be found.
+///
+/// Reads both wire shapes emitted onto `raw_lines`: the normalised eventwire form
+/// (`{"kind":"tool_call",…}` / `{"kind":"tool_result",…}`) and the provider's own form
+/// (`{"type":"assistant",…}` / `{"type":"user",…}` with `tool_use` / `tool_result` content blocks) —
+/// same two shapes [`crate::agents::reconcile`] and [`crate::jobs::failure_analysis`] read.
+fn summarize_tool_calls(raw_lines: &[String]) -> Option<String> {
     let mut call_order: Vec<String> = Vec::new();
     let mut call_names: HashMap<String, String> = HashMap::new();
     let mut call_inputs: HashMap<String, String> = HashMap::new();
@@ -914,17 +1250,7 @@ fn generate_chat_report(raw_lines: &[String]) -> String {
     }
 
     if call_order.is_empty() {
-        return match crate::jobs::try_extract_error_event(raw_lines) {
-            Some(reason) => format!(
-                "The agent exited without producing a response.\n\n**Reason:** {}",
-                reason
-            ),
-            None => {
-                "The agent exited without producing a response, and no failure reason was found in \
-                 its output."
-                    .to_string()
-            }
-        };
+        return None;
     }
 
     let mut actions = String::new();
@@ -963,7 +1289,7 @@ fn generate_chat_report(raw_lines: &[String]) -> String {
         report.push_str(&failures);
     }
 
-    report
+    Some(report)
 }
 
 /// True for an explicit `is_error`, and for the synthetic outputs
@@ -1132,6 +1458,53 @@ pub fn is_default_chat_title(title: &str) -> bool {
     trimmed.is_empty() || trimmed.eq_ignore_ascii_case("New Chat")
 }
 
+/// The prompt one chat turn hands the agent: the conversation so far, the chat session's id, and the
+/// current request. Port of `ChatExecutionService.SendMessageAsync`'s `agentPromptBuilder`.
+///
+/// `history` is the session's messages *before* this turn's own user message and assistant stub were
+/// appended, which is the same slice V1 replays (`history.Take(history.Count - 1)`).
+///
+/// Replaying the conversation is what carries it forward: a chat turn is a fresh agent session, so
+/// nothing else remembers the previous turns. Empty messages are skipped, because an assistant stub
+/// that a turn never filled in has nothing to contribute.
+pub fn build_chat_agent_prompt(history: &[ChatMessage], prompt: &str, session_id: &str) -> String {
+    let mut out = String::new();
+
+    let prior: Vec<&ChatMessage> = history
+        .iter()
+        .filter(|m| !m.content.trim().is_empty())
+        .collect();
+    if !prior.is_empty() {
+        out.push_str("# Previous Conversation Discussion History\n");
+        out.push_str(
+            "The following is the previous conversation history in this chat session:\n\n",
+        );
+        for msg in prior {
+            let label = match msg.role.to_ascii_lowercase().as_str() {
+                "user" => "User",
+                "system" => "System Event",
+                _ => "Assistant",
+            };
+            out.push_str(&format!("### {}\n{}\n\n", label, msg.content));
+        }
+        out.push_str("---\n\n");
+    }
+
+    out.push_str("# Current Chat Session\n");
+    out.push_str(&format!("Chat Session ID: {}\n", session_id));
+    out.push_str(&format!(
+        "When starting jobs using `tendril job start`, always include `--chat-session {}` so the job is tracked in this chat session.\n",
+        session_id
+    ));
+    out.push_str("---\n\n");
+
+    out.push_str("# Current User Request\n");
+    out.push_str(prompt);
+    out.push('\n');
+
+    out
+}
+
 /// Verbatim port of `ChatSessionNamingService.BuildPrompt` (legacy C#).
 pub fn build_title_prompt(user_prompt: &str) -> String {
     format!(
@@ -1246,5 +1619,205 @@ pub fn clean_generated_title(raw: &str) -> Option<String> {
         None
     } else {
         Some(title)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The shape that was silently dropped: Claude Code's `--output-format stream-json` puts a
+    /// turn's prose at `message.content[].text`, and the terminal `result` line repeats it.
+    #[test]
+    fn test_extract_delta_reads_claude_stream_json() {
+        let assistant = r#"{"type":"assistant","message":{"model":"claude-opus-5","content":[{"type":"text","text":"Hello"},{"type":"text","text":" world"}]},"session_id":"s"}"#;
+        assert_eq!(extract_delta(assistant, false), "Hello world");
+
+        // Metadata, tool traffic and the result echo carry no new prose.
+        for line in [
+            r#"{"type":"system","subtype":"init","session_id":"s","tools":["Bash"]}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}"#,
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"Hello world"}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{}}]}}"#,
+        ] {
+            assert_eq!(extract_delta(line, false), "", "line: {}", line);
+        }
+    }
+
+    #[test]
+    fn test_extract_delta_reads_other_provider_shapes() {
+        // Tendril's own eventwire form.
+        assert_eq!(
+            extract_delta(r#"{"kind":"text","text":"eventwire"}"#, false),
+            "eventwire"
+        );
+        assert_eq!(
+            extract_delta(
+                r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"Bash"}"#,
+                false
+            ),
+            ""
+        );
+        // Codex.
+        assert_eq!(
+            extract_delta(
+                r#"{"type":"item.completed","item":{"type":"agent_message","id":"i1","text":"codex says"}}"#,
+                false
+            ),
+            "codex says"
+        );
+        assert_eq!(
+            extract_delta(
+                r#"{"type":"item.completed","item":{"type":"command_execution","id":"i1","command":"ls"}}"#,
+                false
+            ),
+            ""
+        );
+        // Gemini, whose user lines are the CLI echoing the prompt back.
+        assert_eq!(
+            extract_delta(
+                r#"{"type":"message","role":"assistant","content":"gemini says"}"#,
+                false
+            ),
+            "gemini says"
+        );
+        assert_eq!(
+            extract_delta(
+                r#"{"type":"message","role":"user","content":"my prompt"}"#,
+                false
+            ),
+            ""
+        );
+        // A plain-text line is prose, and stderr never is.
+        assert_eq!(extract_delta("just words", false), "just words\n");
+        assert_eq!(extract_delta("Error: boom", true), "");
+    }
+
+    fn outcome(exit_code: Option<i32>, terminated: TerminationReason) -> TurnOutcome {
+        TurnOutcome {
+            launch_error: None,
+            terminated: Some(terminated),
+            exit_code,
+            result_success: None,
+            stderr_tail: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn test_compose_turn_content_prefers_the_agents_own_words() {
+        let ok = outcome(Some(0), TerminationReason::Exited);
+        assert_eq!(compose_turn_content("the answer", &[], &ok), "the answer");
+
+        // Nothing streamed, but the terminal result carried the answer.
+        let result_line = vec![
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"from the result"}"#
+                .to_string(),
+        ];
+        assert_eq!(
+            compose_turn_content("", &result_line, &ok),
+            "from the result"
+        );
+
+        // Nothing at all, and the run succeeded: V1's wording, not a failure report.
+        assert_eq!(
+            compose_turn_content("", &[], &ok),
+            "Task completed successfully."
+        );
+    }
+
+    #[test]
+    fn test_compose_turn_content_always_explains_a_failure() {
+        let mut failed = outcome(Some(1), TerminationReason::Exited);
+        failed.stderr_tail = vec!["Error: Session ID abc is already in use.".to_string()];
+        let reported = compose_turn_content("", &[], &failed);
+        assert!(reported.contains("status code 1"), "got: {}", reported);
+        assert!(
+            reported.contains("Session ID abc is already in use"),
+            "got: {}",
+            reported
+        );
+
+        // Partial prose is kept and the reason appended, rather than one replacing the other.
+        let with_text = compose_turn_content("got partway", &[], &failed);
+        assert!(with_text.starts_with("got partway"), "got: {}", with_text);
+        assert!(with_text.contains("status code 1"), "got: {}", with_text);
+        assert!(
+            with_text.contains("Session ID abc is already in use"),
+            "got: {}",
+            with_text
+        );
+
+        // An agent that already printed the reason itself gets the headline only, not the same
+        // sentence a second time — the shape the duplicated report in the UI had.
+        let echoed = compose_turn_content("Error: Session ID abc is already in use.", &[], &failed);
+        assert_eq!(
+            echoed,
+            "Error: Session ID abc is already in use.\n\nAgent execution completed with status code 1"
+        );
+
+        // A signal death reports no exit code, and is not a success.
+        let signalled = compose_turn_content("", &[], &outcome(None, TerminationReason::Exited));
+        assert!(
+            signalled.contains("unknown status code"),
+            "got: {}",
+            signalled
+        );
+
+        // The agent's own result event outranks the exit code, in both directions.
+        let mut said_ok = outcome(Some(1), TerminationReason::Exited);
+        said_ok.result_success = Some(true);
+        assert_eq!(compose_turn_content("fine", &[], &said_ok), "fine");
+        let mut said_failed = outcome(Some(0), TerminationReason::Exited);
+        said_failed.result_success = Some(false);
+        assert!(compose_turn_content("hmm", &[], &said_failed).contains("status code 0"));
+
+        let cancelled = compose_turn_content("", &[], &outcome(None, TerminationReason::Cancelled));
+        assert_eq!(cancelled, "Execution was cancelled.");
+
+        let timed_out = compose_turn_content("", &[], &outcome(None, TerminationReason::TimedOut));
+        assert!(timed_out.contains("timed out"), "got: {}", timed_out);
+
+        let unlaunchable = TurnOutcome {
+            launch_error: Some("Failed to spawn agent 'claude': No such file or directory".into()),
+            ..Default::default()
+        };
+        assert!(compose_turn_content("", &[], &unlaunchable).contains("Failed to spawn agent"));
+    }
+
+    #[test]
+    fn test_build_chat_agent_prompt_replays_history() {
+        let msg = |role: &str, content: &str| ChatMessage {
+            id: Uuid::new_v4().to_string(),
+            role: role.to_string(),
+            content: content.to_string(),
+            timestamp: Utc::now(),
+            agent_id: None,
+            model_id: None,
+            raw_stream: None,
+            effort: None,
+        };
+
+        let first = build_chat_agent_prompt(&[], "what is broken?", "sess-1");
+        assert!(!first.contains("Previous Conversation"));
+        assert!(first.contains("Chat Session ID: sess-1"));
+        assert!(first.contains("--chat-session sess-1"));
+        assert!(first.contains("what is broken?"));
+
+        let history = vec![
+            msg("user", "what is broken?"),
+            msg("assistant", "the chat path"),
+            // An assistant stub a turn never filled in has nothing to replay.
+            msg("assistant", "   "),
+        ];
+        let second = build_chat_agent_prompt(&history, "fix it", "sess-1");
+        assert!(second.contains("# Previous Conversation Discussion History"));
+        assert!(second.contains("### User\nwhat is broken?"));
+        assert!(second.contains("### Assistant\nthe chat path"));
+        assert!(second.contains("fix it"));
+        assert_eq!(
+            second.matches("### Assistant").count(),
+            1,
+            "an empty message must not be replayed"
+        );
     }
 }

@@ -146,7 +146,7 @@ describe("buildWeeklyPullRequests", () => {
       // Epoch day 0 is a Thursday, so a correct Monday is what makes this pass.
       expect(new Date(`${week.date}T00:00:00Z`).getUTCDay()).toBe(1);
     }
-    expect(weeks.map((w) => w.date)).toEqual([...weeks.map((w) => w.date)].sort());
+    expect(weeks.map((w) => w.date)).toEqual(weeks.map((w) => w.date).sort());
   });
 
   it("buckets a merged PR into the week containing its merge date", () => {

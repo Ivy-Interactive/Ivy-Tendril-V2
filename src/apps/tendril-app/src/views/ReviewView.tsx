@@ -26,7 +26,7 @@ import { EmptyState } from "../components/EmptyState";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
-import { formatPlanId, parseProjects } from "./PlansView";
+import { formatPlanId, isReviewState, parseProjects, resolvePlanSelection } from "./PlansView";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import type { ReviewActionTarget } from "./ReviewActionView";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
@@ -37,14 +37,6 @@ import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
 
 /** The triage dialogs this view owns, at most one open at a time. */
 type TriageDialog = "createPr" | "suggestChanges" | "discard" | "reset" | "partialDelivery";
-
-/**
- * The queue, exactly as `ReviewApp.Build` selects it: a plan waiting on a human is one in Review
- * **or Failed**, newest first (`.Where(p => p.Status is PlanStatus.Review or PlanStatus.Failed)
- * .OrderByDescending(p => p.Id)`). A failed execution needs the same decision a passing one does -
- * retry, reset or discard - so V1 triages both on this page.
- */
-const REVIEW_QUEUE_STATES: PlanSummary["state"][] = ["Review", "Failed"];
 
 /**
  * `ReviewApp.Build`'s `activePlanFolders`: a job in one of these still holds the plan's worktree, so
@@ -71,14 +63,19 @@ const queueFor = (plans: PlanSummary[], jobs?: Job[]): PlanSummary[] => {
       .filter((id): id is string => !!id),
   );
 
-  return plans
-    .filter((p) => REVIEW_QUEUE_STATES.includes(p.state) && !held.has(p.id))
-    .sort((a, b) => {
-      const left = Number.parseInt(a.id, 10);
-      const right = Number.parseInt(b.id, 10);
-      if (Number.isNaN(left) || Number.isNaN(right)) return b.id.localeCompare(a.id);
-      return right - left;
-    });
+  return (
+    plans
+      // `isReviewState` normalises, so a plan still recorded as `ReadyForReview` is in the queue it
+      // belongs to. Comparing the raw state dropped exactly those plans out of the page that triages
+      // them - the same trap `LEGACY_LIFECYCLE_STATES` documents.
+      .filter((p) => isReviewState(p.state) && !held.has(p.id))
+      .sort((a, b) => {
+        const left = Number.parseInt(a.id, 10);
+        const right = Number.parseInt(b.id, 10);
+        if (Number.isNaN(left) || Number.isNaN(right)) return b.id.localeCompare(a.id);
+        return right - left;
+      })
+  );
 };
 
 /**
@@ -194,6 +191,12 @@ interface ReviewViewProps {
    * state-filtered queue rather than an empty page.
    */
   jobs?: Job[];
+  /**
+   * The plan the address names, which is V1's `ReviewAppArgs.PlanId`: `ReviewApp.Build` seeds its
+   * selection from `args?.PlanId` and re-resolves it on every build. Absent means "whatever this page
+   * last selected", which is what leaves the default selection to {@link resolvePlanSelection}.
+   */
+  selectedPlanId?: string | null;
   onSelectPlan: (planId: string) => void;
   /** A job a triage dialog started, so the shell can open its session tab. */
   onJobStarted?: (response: StartJobResponse) => void;
@@ -211,6 +214,7 @@ interface ReviewViewProps {
 export const ReviewView: React.FC<ReviewViewProps> = ({
   plans,
   jobs,
+  selectedPlanId: addressedPlanId = null,
   onSelectPlan,
   onJobStarted,
   onPlanChanged,
@@ -221,14 +225,16 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const [activeDialog, setActiveDialog] = useState<TriageDialog | null>(null);
 
   /**
-   * `PlanSelectionHelper.ResolveSelection`, which re-resolves on every build: an explicit
-   * selection wins while it is still in the queue, and otherwise the queue's first plan is
-   * selected. Deriving it rather than only seeding state at mount is what makes a queue that
-   * arrives after the first render land on a plan instead of on nothing.
+   * `PlanSelectionHelper.ResolveSelection`, re-resolved on every render as V1 re-resolves it on every
+   * build: the plan this page already had wins while it is still in the queue, the plan the address
+   * names (V1's `ReviewAppArgs.PlanId`) is what seeds that on arrival, and with neither the queue's
+   * **first** plan is selected — which, on a list ordered `.OrderByDescending(p => p.Id)`, is the
+   * latest plan waiting for review. Deriving it rather than only seeding state at mount is what makes
+   * a queue that arrives after the first render land on a plan instead of on nothing.
    */
-  const explicitIndex = selectedPlanId ? reviewPlans.findIndex((p) => p.id === selectedPlanId) : -1;
-  const selectedIndex = explicitIndex >= 0 ? explicitIndex : reviewPlans.length > 0 ? 0 : -1;
-  const selectedPlan = selectedIndex >= 0 ? reviewPlans[selectedIndex] : undefined;
+  const selectedPlan =
+    resolvePlanSelection(reviewPlans, selectedPlanId ?? addressedPlanId) ?? undefined;
+  const selectedIndex = selectedPlan ? reviewPlans.indexOf(selectedPlan) : -1;
   const selectedId = selectedPlan?.id;
 
   /**

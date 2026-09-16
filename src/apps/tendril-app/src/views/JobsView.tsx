@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { EllipsisVertical, Loader2, Pause, RotateCw, Trash, Zap } from "lucide-react";
 import {
   Badge,
@@ -8,18 +8,24 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  hasActiveColumnFilters,
+  matchesColumnFilters,
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   StackedProgress,
+  useRemoteDataTable,
   type DataTableColumn,
+  type DataTableColumnFilters,
+  type DataTableFilterOption,
   type DataTableRowAction,
   type StackedProgressColor,
   type StackedProgressSegment,
   Densities,
 } from "@ivy-interactive/components/ui";
-import { BadgeSelect, type BadgeSelectOption } from "@ivy-interactive/components/tendril";
+import { bridge } from "../api/bridge";
+import { createJobsListFetcher } from "../api/tableQuery";
 import { describeBridgeError, type Job, type JobDetail, type JobStatus } from "../types/api";
 import { isActiveStatus, jobsStore } from "../state/jobsStore";
 import { ConfirmDialog } from "./dialogs";
@@ -49,7 +55,14 @@ const JobOutput = React.lazy(() =>
 /** Ceiling on the Prompt cell, from `JobsApp.Helpers.cs` `PromptDisplayMaxLength`. */
 const PROMPT_DISPLAY_MAX_LENGTH = 500;
 
-/** `JobsApp.DataTable.cs:93`: `c.BatchSize = 50`. A job list is long and mostly history. */
+/**
+ * `JobsApp.DataTable.cs:93`: `c.BatchSize = 50`. A job list is long and mostly history.
+ *
+ * In V1 this is the *infinite scroll* window, not a page: the framework's grid fetches fifty rows and
+ * appends fifty more each time the visible region comes within ten of the end
+ * (`widgets/dataTables/hooks/useDataLoading.ts`), and `LoadAllRows` is never set. V2's table does the
+ * same through `useRemoteDataTable({ infinite: true })` and `DataTable`'s `onLoadMore`.
+ */
 const JOBS_PAGE_SIZE = 50;
 
 /**
@@ -492,9 +505,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
    * in it; navigating away to a page was the structural divergence this replaces.
    */
   const [openJobId, setOpenJobId] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [typeFilter, setTypeFilter] = useState<string[]>([]);
-  const [projectFilter, setProjectFilter] = useState<string[]>([]);
+  /**
+   * The header filter row's state, `c.AllowFiltering = true`.
+   *
+   * One object keyed by column name, which is the shape `columnFiltersToRemoteFilter` turns into the
+   * daemon's `Filter` tree and `matchesColumnFilters` evaluates in the client. Both readings exist and
+   * they agree by construction; which one runs depends only on whether the transport can filter, and
+   * today it cannot — see {@link createJobsListFetcher}.
+   */
+  const [columnFilters, setColumnFilters] = useState<DataTableColumnFilters>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteJobId, setDeleteJobId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -522,38 +541,96 @@ export const JobsView: React.FC<JobsViewProps> = ({
     return () => clearInterval(timer);
   }, [hasRunningJob]);
 
-  const rows = useMemo(
-    () => buildJobRows(jobs, { details: jobDetails }),
-    // `tick` is a dependency in substance: it is what makes a Running row's Timer advance.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [jobs, jobDetails, tick],
+  /**
+   * The table's rows, a window at a time.
+   *
+   * This is V1's `c.BatchSize = 50` infinite scroll: fifty jobs arrive, fifty more when the reader
+   * comes within ten rows of the end, and the table never holds history nobody has scrolled to. The
+   * `jobs` prop is no longer the row source — it could not be, because `jobsStore` holds only the
+   * newest fifty and every poll replaces them, so a scrolled-open window would collapse every five
+   * seconds. It is still the *live* source; see the overlay below.
+   *
+   * `createJobsListFetcher` rather than `queryJobsPage`, and the difference is reachability rather than
+   * preference: that route is finished but needs a `cmd_query_table` the shell does not have yet.
+   * Swapping them is this one line, and it is what moves the sort and the filter to SQLite.
+   */
+  const fetchJobsPage = useMemo(() => createJobsListFetcher(bridge.listJobs), []);
+  const table = useRemoteDataTable<Job>({
+    fetchPage: fetchJobsPage,
+    pageSize: JOBS_PAGE_SIZE,
+    infinite: true,
+    getRowKey: (job) => job.id,
+  });
+
+  /**
+   * V1's `BuildDataTableUpdates` (`JobsApp.DataTable.cs:361-394`), which streams six cells a second —
+   * `Timer, Cost, Tokens, AgentOutput, Status, StatusMessage` — for jobs that are moving, instead of
+   * rebuilding the table.
+   *
+   * The `jobs` prop is exactly that stream: `jobsStore` re-reads the newest fifty on every job event
+   * and on a 5s poll, which is the set that can have changed. Overlaying it by id is what keeps a
+   * Running row's cost and status live without refetching the window under the reader's scroll.
+   */
+  const liveJobs = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs]);
+  const windowJobs = useMemo(
+    () => table.rows.map((row) => liveJobs.get(row.id) ?? row),
+    [table.rows, liveJobs],
   );
 
-  const statusOptions = useMemo<BadgeSelectOption[]>(
+  /**
+   * V1's `ComputeStructuralSignature` gate (`JobsApp.Hooks.cs:66-68`): `Id;Status;PlanFile;
+   * ReportedPlanId;Type;Project` per job, and a rebuild only when it differs from what is rendered.
+   *
+   * A cell that changed (a cost, a token count, a status message) is handled by the overlay above and
+   * must not refetch, because refetching drops the accumulated windows and returns the reader to the
+   * top. A *structural* change — a new job, a status transition — genuinely changes which rows exist
+   * and where, and is the one case V1 rebuilds for too.
+   */
+  const structuralSignature = useMemo(
+    () =>
+      jobs
+        .map(
+          (job) => `${job.id};${job.status};${job.planId ?? ""};${job.type};${job.project ?? ""}`,
+        )
+        .join("|"),
+    [jobs],
+  );
+  const lastSignature = useRef<string | null>(null);
+  const refreshTable = table.refresh;
+  useEffect(() => {
+    const previous = lastSignature.current;
+    lastSignature.current = structuralSignature;
+    // The first sighting only records a baseline: the table's own first window is already in flight.
+    if (previous === null || previous === structuralSignature) return;
+    refreshTable();
+  }, [structuralSignature, refreshTable]);
+
+  const rows = useMemo(
+    () => buildJobRows(windowJobs, { details: jobDetails }),
+    // `tick` is a dependency in substance: it is what makes a Running row's Timer advance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [windowJobs, jobDetails, tick],
+  );
+
+  /**
+   * Facet options from the rows in hand.
+   *
+   * Right for as long as the filter is evaluated in the client, and only for that long: the two agree
+   * about which values exist because they read the same rows. The moment the filter goes to the daemon,
+   * these must come from `POST /api/tables/jobs/values` instead — a facet built from loaded rows offers
+   * a user the values on screen, and the value they want is usually not one of them.
+   */
+  const statusOptions = useMemo<DataTableFilterOption[]>(
     () => distinctOptions(rows.map((row) => row.status)),
     [rows],
   );
-  const typeOptions = useMemo<BadgeSelectOption[]>(
+  const typeOptions = useMemo<DataTableFilterOption[]>(
     () => distinctOptions(rows.map((row) => row.type)),
     [rows],
   );
-  const projectOptions = useMemo<BadgeSelectOption[]>(
+  const projectOptions = useMemo<DataTableFilterOption[]>(
     () => distinctOptions(rows.flatMap((row) => parseProjects(row.project))),
     [rows],
-  );
-
-  const filteredRows = useMemo(
-    () =>
-      rows.filter((row) => {
-        if (statusFilter.length > 0 && !statusFilter.includes(row.status)) return false;
-        if (typeFilter.length > 0 && !typeFilter.includes(row.type)) return false;
-        if (projectFilter.length > 0) {
-          const projects = parseProjects(row.project);
-          if (!projects.some((project) => projectFilter.includes(project))) return false;
-        }
-        return true;
-      }),
-    [rows, statusFilter, typeFilter, projectFilter],
   );
 
   const capabilities: JobRowActionCapabilities = {
@@ -606,11 +683,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
    */
   const columns = useMemo<DataTableColumn<JobRow>[]>(
     () => [
+      // `.Filterable(t => t.Id, false)` (`:83`) as well as `.Hidden(...)`: no filter control.
       { name: "id", header: "Id", width: "90px", hidden: true },
       {
         name: "status",
         header: "Status",
         width: "100px",
+        // A closed set, so a checklist rather than V1's `[Status] = "Running"`. `inSet`, which is the
+        // one condition the framework's editor cannot type but its proto has had all along.
+        filter: { kind: "select", options: statusOptions, placeholder: "All" },
         accessor: (row) => row.status,
         cell: (_value, row) => (
           <div className="flex items-center gap-1">
@@ -637,6 +718,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "planId",
         header: "Plan Id",
         width: "80px",
+        // `contains`, not `equals`: a plan id is typed a digit at a time, and the daemon's column is
+        // `PlanFile`, whose value only *starts* with the id.
+        filter: { kind: "text", column: "planFile", placeholder: "Id…" },
         accessor: (row) => row.planId,
         cell: (_value, row) =>
           row.planId ? (
@@ -661,6 +745,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "prompt",
         header: "Prompt",
         width: "250px",
+        // V1's free-text `[Prompt] contains "…"`, as a box. The daemon's column is
+        // `ReportedPlanTitle`, which is where the cell's text comes from.
+        filter: { kind: "text", column: "reportedPlanTitle" },
         accessor: (row) => row.prompt,
         // V1's Prompt cell action opens a `PromptSheet` with the untruncated prompt
         // (`JobsApp.cs:51`), resolved from the job's typed args or the plan's `InitialPrompt`.
@@ -676,6 +763,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "type",
         header: "Type",
         width: "100px",
+        filter: { kind: "select", options: typeOptions, placeholder: "All" },
         accessor: (row) => row.type,
         // V1 colours this from `Constants.JobTypeColors` (eleven hues) and Project from the project
         // palette. The design system has six semantic colours and no decorative ramp, and the
@@ -691,6 +779,14 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "project",
         header: "Project",
         width: "150px",
+        // `contains`, because a job can name several projects and the cell (and the column) holds them
+        // joined: "web, api" is equal to neither "web" nor "api".
+        filter: {
+          kind: "select",
+          options: projectOptions,
+          placeholder: "All",
+          function: "contains",
+        },
         accessor: (row) => row.project,
         cell: (_value, row) => (
           <div className="flex flex-wrap items-center gap-1">
@@ -796,6 +892,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "statusMessage",
         header: "Status Message",
         width: "auto",
+        filter: { kind: "text" },
         accessor: (row) => row.statusMessage,
         cell: (_value, row) => (
           <span className="text-xs text-muted-foreground" title={row.statusMessage || undefined}>
@@ -804,9 +901,22 @@ export const JobsView: React.FC<JobsViewProps> = ({
         ),
       },
     ],
-    // `onSelectPlan` and the sheet opener are the only closures the cells capture.
+    // `onSelectPlan` and the sheet opener are the only closures the cells capture; the three option
+    // lists are the only other thing a column declaration reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onSelectPlan],
+    [onSelectPlan, statusOptions, typeOptions, projectOptions],
+  );
+
+  /**
+   * V1's filtering, and V1's scope: `AllowFiltering` narrows the rows the app holds
+   * (`jobService.GetJobs()`), not the database. `matchesColumnFilters` is the daemon's own condition
+   * semantics evaluated here — case-insensitive `contains`, case-sensitive `inSet` — so a filter means
+   * the same thing whichever side runs it, and moving it to the daemon changes nothing a user sees
+   * except how many rows it can see.
+   */
+  const filteredRows = useMemo(
+    () => rows.filter((row) => matchesColumnFilters(columns, columnFilters, row)),
+    [rows, columns, columnFilters],
   );
 
   const queuedCount = jobs.filter((job) => job.status === "Queued").length;
@@ -858,16 +968,39 @@ export const JobsView: React.FC<JobsViewProps> = ({
         columns={columns}
         rows={filteredRows}
         getRowId={(row) => row.id}
-        loading={isLoading && jobs.length === 0}
+        loading={(isLoading || table.loading) && table.rows.length === 0}
+        /* Infinite scroll, `c.BatchSize = 50`. `paginated={false}` because V1's table has no pager at
+           all: scrolling is the pager, and `hasMore` is what says whether there is anything left to
+           scroll to. `fillHeight` is `.Height(Size.Full())` — it is also what makes the header sticky
+           mean anything, by giving the body its own bounded scroll viewport instead of scrolling the
+           page. Windowing is left on its `"auto"` default, which engages past fifty rendered rows -
+           i.e. from the second window on, which is exactly when the DOM needs bounding. */
+        paginated={false}
+        hasMore={table.hasMore}
+        loadingMore={table.loadingMore}
+        onLoadMore={table.loadMore}
+        fillHeight
         // `c.AllowSorting = true`, and `.SortDirection(t => t.Id, Descending)` with rows already
         // ordered by `ExtractJobNumber` descending: no initial sort override is needed, because that
         // *is* the order `buildJobRows` returns, and a header click takes over from there.
+        //
+        // `manualSorting` stays off deliberately: the sort is the table's, over the windows loaded,
+        // because the interim transport has nowhere to put one. That is V1's scope exactly (it sorts
+        // the in-memory job dictionary), and it is the second thing `queryJobsPage` would move to
+        // SQLite.
         allowSorting
         defaultSort={null}
         // `c.ShowIndexColumn = false` and `c.SelectionMode = SelectionModes.None`: neither the row
         // number nor a checkbox column. `selectable` defaults to false, and no index column exists.
         selectable={false}
-        defaultPageSize={JOBS_PAGE_SIZE}
+        /* `c.AllowFiltering = true` with `c.ShowSearch = false`: a filter per filterable column and
+           deliberately no search box. V1 renders one expression editor in the toolbar instead of
+           per-column controls; see `column-filters.ts` for why a control per column reaches the same
+           payload, and why the editor itself is not portable. The filter row is part of the sticky
+           header, so it stays put while the rows scroll under it. */
+        showColumnFilters
+        columnFilters={columnFilters}
+        onColumnFiltersChange={setColumnFilters}
         showColumnOptions
         rowActions={(row) => buildJobRowActions(row, capabilities)}
         onRowAction={({ tag, row }) => {
@@ -888,71 +1021,23 @@ export const JobsView: React.FC<JobsViewProps> = ({
         // cell keeps its own, different destination.
         onRowClick={(row) => openJobOutput(row.id)}
         emptyState={
-          jobs.length === 0 ? (
-            <span className="text-muted-foreground" data-testid="jobs-empty">
-              No jobs yet. Starting a plan, a retry or a PR creates one.
-            </span>
-          ) : (
+          /* Which of the two it is turns on whether a filter is narrowing anything, not on the row
+             count: a filtered-to-nothing table and an empty one look identical and mean opposite
+             things. V1 supplies no empty state at all - the framework's `EmptyView` slot is declared
+             and never rendered - so an empty Jobs table there is a collapsed header. */
+          hasActiveColumnFilters(columnFilters) ? (
             <span className="text-muted-foreground" data-testid="jobs-empty-filtered">
               No jobs match the current filters.
+            </span>
+          ) : (
+            <span className="text-muted-foreground" data-testid="jobs-empty">
+              No jobs yet. Starting a plan, a retry or a PR creates one.
             </span>
           )
         }
         toolbar={{
-          // `c.AllowFiltering = true` with `c.ShowSearch = false`: Ivy gives every filterable column
-          // a filter and deliberately no search box. V2's DataTable has no per-column filter, so the
-          // three columns whose values form a closed set get the `BadgeSelect` filter `InboxView`
-          // and `PullRequestsView` already use for the same `AllowFiltering` flag. The free-text
-          // columns (Prompt, Status Message) have none, and no search box is added.
-          left: (
-            <div className="flex flex-wrap items-center gap-2">
-              {statusOptions.length > 0 && (
-                <div className="min-w-[160px]">
-                  <BadgeSelect
-                    id="jobs-status-filter"
-                    options={statusOptions}
-                    value={statusFilter}
-                    placeholder="Filter by status..."
-                    multiple
-                    events={["OnChange"]}
-                    eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-                      if (args && Array.isArray(args[0])) setStatusFilter(args[0] as string[]);
-                    }}
-                  />
-                </div>
-              )}
-              {typeOptions.length > 0 && (
-                <div className="min-w-[160px]">
-                  <BadgeSelect
-                    id="jobs-type-filter"
-                    options={typeOptions}
-                    value={typeFilter}
-                    placeholder="Filter by type..."
-                    multiple
-                    events={["OnChange"]}
-                    eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-                      if (args && Array.isArray(args[0])) setTypeFilter(args[0] as string[]);
-                    }}
-                  />
-                </div>
-              )}
-              {projectOptions.length > 0 && (
-                <div className="min-w-[160px]">
-                  <BadgeSelect
-                    id="jobs-project-filter"
-                    options={projectOptions}
-                    value={projectFilter}
-                    placeholder="Filter by project..."
-                    multiple
-                    events={["OnChange"]}
-                    eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-                      if (args && Array.isArray(args[0])) setProjectFilter(args[0] as string[]);
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          ),
+          /* V1's `HeaderLeft` is empty: the filter editor is the framework's own toolbar row, and the
+             per-column filters that replaced it live in the header. Nothing else belongs here. */
           // `.HeaderRight(...)`: the status progress bar, then one ghost overflow menu holding the
           // two sweeps and the two clears. These were four loose buttons in the page header before;
           // V1 puts them here, so here is where they are.
@@ -1102,7 +1187,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
 };
 
 /** Sorted, de-duplicated filter options for one column. */
-function distinctOptions(values: readonly string[]): BadgeSelectOption[] {
+function distinctOptions(values: readonly string[]): DataTableFilterOption[] {
   return Array.from(new Set(values.filter((value) => value.length > 0)))
     .sort((a, b) => a.localeCompare(b))
     .map((value) => ({ value, label: value }));

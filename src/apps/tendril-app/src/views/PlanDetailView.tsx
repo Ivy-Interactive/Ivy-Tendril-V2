@@ -31,7 +31,13 @@ import { draftActions, type DraftAction } from "../controllers/draft_actions";
 import { collectExecuteGuards, type ExecuteGuard } from "../controllers/execute_guards";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
-import { formatPlanId, normalizePlanState, parseProjects, planStateBadgeClass } from "./PlansView";
+import {
+  formatPlanId,
+  isReviewState,
+  normalizePlanState,
+  parseProjects,
+  planStateBadgeClass,
+} from "./PlansView";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { CreateIssueDialog } from "./dialogs/CreateIssueDialog";
@@ -547,7 +553,6 @@ interface PlanDetailViewProps {
   /** The plan's state changed on the service; the caller should re-fetch it. */
   onPlanChanged?: (planId: string) => void;
   onPlanDeleted?: (planId: string) => void;
-  onBack?: () => void;
 }
 
 export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
@@ -559,7 +564,6 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   onJobStarted,
   onPlanChanged,
   onPlanDeleted,
-  onBack,
 }) => {
   // V1's tab ids (`ContentView.PlanTab` / `DetailsTab` / `GitTab`), plus the three tabs V2
   // adds. Order matters: see the tab strip below.
@@ -969,9 +973,53 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const tabs: { id: PlanDetailTab; label: string; badge?: string }[] = [
     { id: "plan", label: "Plan" },
     { id: "details", label: "Details" },
-    { id: "diff", label: "Diff View" },
-    { id: "recommendations", label: `Recommendations (${recommendations.length})` },
   ];
+
+  /**
+   * Whether this plan gets the surfaces V1 keeps on its **Review** page.
+   *
+   * V1 has two plan pages, not one, and the diff and the recommendations belong to only one of them.
+   * `Apps/Plans/ContentView.Build` — the page a Draft or Blocked plan opens on — builds exactly
+   * `var tabs = new List<PlanTabDto> { new(PlanTab, "Plan"), new(DetailsTab, "Details") };` and adds
+   * only Git to it. `Apps/Review/ContentView.BuildPage` is where Changes and Recommendations exist at
+   * all, and `ReviewApp.Build` only ever hands it plans that are `Review` or `Failed`.
+   *
+   * So the gate is the plan's state, not a preference: a draft has no execution to diff and nothing
+   * has recommended anything about it yet.
+   *
+   * Read off the optimistic state for the same reason every other gate below reads `effectivePlan`
+   * (which is assembled further down, after the tab strip): a plan that has just been sent to execute
+   * must stop offering the review surfaces at once.
+   */
+  const showsReviewSurfaces = isReviewState(optimisticState ?? plan.state);
+
+  /**
+   * `BuildPage`'s own gate on the diff, with V1's reason quoted: "Only surface the Changes tab once
+   * there are actual file changes — no point showing an empty 'No commits yet.' tab before any work
+   * has landed" (`var changesCount = planData.AllChanges?.Files.Count ?? 0; if (changesCount > 0)`).
+   *
+   * V2's diff is between two **revisions of the plan**, so its equivalent of "nothing to show" is a
+   * plan with a single revision — which is exactly the case `PlanRevisionDiff` answers with its
+   * `diff-single-revision` empty state. An absent count is V1's `?? 0`: unknown is not something to
+   * show a tab for.
+   */
+  const comparableRevisions = (plan.revisionCount ?? 0) > 1;
+
+  if (showsReviewSurfaces && comparableRevisions) tabs.push({ id: "diff", label: "Diff View" });
+
+  /**
+   * `if (pendingRecs.Count > 0) tabs.Add(new PlanTabDto(RecommendationsTab, "Recommendations", ...))`.
+   *
+   * Deliberately counting **every** recommendation rather than only the pending ones, which is the one
+   * place this diverges from `BuildPage`. V1's tab is a selectable list plus Implement; the triage
+   * itself (Accept / Decline, with a note) happens in the Recommendations app. Here the triage is on
+   * this tab, so gating on the pending count would make the tab disappear the moment its last
+   * decision was taken, leaving the operator nothing to check the decision by. Same reasoning, and the
+   * same wording, as `ReviewView`'s decided rows.
+   */
+  if (showsReviewSurfaces)
+    tabs.push({ id: "recommendations", label: `Recommendations (${recommendations.length})` });
+
   if (gitItemCount === null || gitItemCount > 0) {
     // The at-risk warning used to be a bare dot with an `aria-label`; a `PlanTabDto` carries only a
     // label and a badge, so the count becomes the badge (`new PlanTabDto(GitTab, "Git", count)` is how
@@ -1761,18 +1809,6 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
            * is where the slot renders.
            */
           Toolbar: [
-            ...(onBack
-              ? [
-                  <button
-                    key="back"
-                    type="button"
-                    onClick={onBack}
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    ← Back to plans
-                  </button>,
-                ]
-              : []),
             ...(isPlanInFlight
               ? [
                   <span

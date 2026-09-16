@@ -91,15 +91,32 @@ describe("SettingsView", () => {
     vi.restoreAllMocks();
   });
 
-  it("offers every agent `build_agent_spec` can launch, in V1's order", async () => {
+  /**
+   * `CodingAgentSetupView` composes **two** grids: `Agents` and, under "Bring your own LLM",
+   * `byoAgents`. Before the appearance/coding-agent parity pass only the first was rendered, which is
+   * why this test used to expect six cards in total.
+   */
+  it("offers every agent `build_agent_spec` can launch, then V1's BYO providers", async () => {
     await renderSettings();
 
     const labels = Array.from(
       screen.getByTestId("coding-agent-card").querySelectorAll("[data-testid^='coding-agent-']"),
     ).map((el) => el.textContent?.trim());
 
-    expect(labels).toEqual(["Claude", "Copilot", "Codex", "Gemini", "Antigravity", "OpenCode"]);
+    expect(labels).toEqual([
+      "Claude",
+      "Copilot",
+      "Codex",
+      "Gemini",
+      "Antigravity",
+      "OpenCode",
+      "OpenAI",
+      "Anthropic",
+      "Berget AI",
+    ]);
     expect(screen.getByTestId("coding-agent-claude")).toHaveAttribute("aria-pressed", "true");
+    // The BYO block only asks for credentials once one of its cards is selected.
+    expect(screen.queryByTestId("byo-credentials")).not.toBeInTheDocument();
   });
 
   it("writes a changed field to config.yaml via putConfig, never saveUiState", async () => {

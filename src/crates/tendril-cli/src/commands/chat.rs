@@ -372,6 +372,7 @@ async fn stream_via_server(
         anyhow::bail!("Failed to start chat turn on server: {}", err_text);
     }
 
+    let mut streamed = String::new();
     while let Some(msg_res) = read.next().await {
         match msg_res {
             Ok(WsMessage::Text(txt)) => {
@@ -382,8 +383,15 @@ async fn stream_via_server(
                             delta,
                             ..
                         } if sid == session_id => {
+                            streamed.push_str(&delta);
                             print!("{}", delta);
                             std::io::stdout().flush().ok();
+                        }
+                        ChatEvent::MessageAdded {
+                            session_id: sid,
+                            message,
+                        } if sid == session_id && message.role == "assistant" => {
+                            print_finalized_tail(&streamed, &message.content);
                         }
                         ChatEvent::GeneratingState {
                             session_id: sid,
@@ -428,6 +436,7 @@ async fn stream_via_local(
             .await
     });
 
+    let mut streamed = String::new();
     while let Ok(event) = rx.recv().await {
         match event {
             ChatEvent::StreamDelta {
@@ -435,8 +444,15 @@ async fn stream_via_local(
                 delta,
                 ..
             } if sid == target_session_id => {
+                streamed.push_str(&delta);
                 print!("{}", delta);
                 std::io::stdout().flush().ok();
+            }
+            ChatEvent::MessageAdded {
+                session_id: sid,
+                message,
+            } if sid == target_session_id && message.role == "assistant" => {
+                print_finalized_tail(&streamed, &message.content);
             }
             ChatEvent::GeneratingState {
                 session_id: sid,
@@ -452,6 +468,64 @@ async fn stream_via_local(
     let res = turn_handle.await?;
     res?;
     Ok(())
+}
+
+/// What a finished turn's content still owes the terminal, given everything the deltas already
+/// printed. `None` when there is nothing new to show.
+///
+/// A turn's final content is not always the concatenation of its deltas: a turn that produced no
+/// prose is finalized with a synthesized report, and a failed turn has its reason appended. The
+/// daemon publishes that final copy as a `chat.message_added` upsert rather than as another delta —
+/// a delta is only correct when applied exactly once — so a streaming client renders the difference.
+pub(crate) fn finalized_tail(streamed: &str, content: &str) -> Option<String> {
+    // An empty assistant stub is published at the top of the turn too; nothing to print for it.
+    if content.is_empty() || content == streamed {
+        return None;
+    }
+    Some(match content.strip_prefix(streamed) {
+        Some(tail) => tail.to_string(),
+        // The final copy is not an extension of what was streamed (prose replaced by a report, say),
+        // so it is shown in full on its own line.
+        None => format!("\n{}", content),
+    })
+}
+
+fn print_finalized_tail(streamed: &str, content: &str) {
+    if let Some(tail) = finalized_tail(streamed, content) {
+        print!("{}", tail);
+        std::io::stdout().flush().ok();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::finalized_tail;
+
+    #[test]
+    fn test_finalized_tail_only_reports_what_is_new() {
+        // Nothing streamed: the whole report is new.
+        assert_eq!(
+            finalized_tail("", "Agent execution completed with status code 1: it broke").as_deref(),
+            Some("Agent execution completed with status code 1: it broke")
+        );
+        // The failure reason was appended to prose that already streamed.
+        assert_eq!(
+            finalized_tail(
+                "partial answer",
+                "partial answer\n\nExecution was cancelled."
+            )
+            .as_deref(),
+            Some("\n\nExecution was cancelled.")
+        );
+        // Already fully printed, and the empty stub.
+        assert_eq!(finalized_tail("all of it", "all of it"), None);
+        assert_eq!(finalized_tail("", ""), None);
+        // A final copy that is not an extension of the stream is shown on its own line.
+        assert_eq!(
+            finalized_tail("streamed", "something else").as_deref(),
+            Some("\nsomething else")
+        );
+    }
 }
 
 async fn resolve_session(tendril_home: &Path, id_or_prefix: &str) -> anyhow::Result<ChatSession> {

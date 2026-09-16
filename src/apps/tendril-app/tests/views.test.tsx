@@ -341,7 +341,10 @@ describe("Operator Views Component & Accessibility Tests", () => {
       // buttons before the page adopted the widget. Order is `ContentView.Build`'s: Plan, Details.
       expect(screen.getByRole("tab", { name: "Plan" })).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "Details" })).toBeInTheDocument();
-      expect(screen.getByRole("tab", { name: "Diff View" })).toBeInTheDocument();
+      // ...and nothing else on a Draft plan: `Apps/Plans/ContentView.Build` builds exactly
+      // `{ new(PlanTab, "Plan"), new(DetailsTab, "Details") }`, and the diff and recommendations only
+      // exist on the Review page. See `plan-review-surfaces.test.tsx`.
+      expect(screen.queryByRole("tab", { name: "Diff View" })).not.toBeInTheDocument();
       // Verifications is no longer a tab: V1 puts it in the tab strip's corner dropdown
       // (`VerificationsPanelView` in the workspace's `Verifications` slot).
       expect(screen.queryByRole("tab", { name: /Verifications/ })).not.toBeInTheDocument();
@@ -423,7 +426,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={() => {}}
           onCloseTab={() => {}}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
         >
           <div>Inbox View Content</div>
@@ -447,7 +449,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={() => {}}
           onCloseTab={() => {}}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
         >
           <div>Dashboard View Content</div>
@@ -471,7 +472,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={() => {}}
           onCloseTab={() => {}}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
         >
           <div>Pull Requests View Content</div>
@@ -501,7 +501,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={() => {}}
           onCloseTab={() => {}}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
         >
           <div>Dashboard View Content</div>
@@ -528,7 +527,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={() => {}}
           onCloseTab={() => {}}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
           onCheckForUpdates={handleCheckForUpdates}
         >
@@ -556,7 +554,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={() => {}}
           onCloseTab={() => {}}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
           draftCount={3}
           reviewCount={5}
@@ -599,7 +596,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={handleSelectTab}
           onCloseTab={handleCloseTab}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
         >
           <div>Plans View Content</div>

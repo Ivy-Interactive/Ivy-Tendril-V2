@@ -20,10 +20,12 @@ import { getPageCount } from "./utils";
  * clamp) are invisible until a user is on page nine of a filtered table. This is those eighty lines,
  * once.
  *
- * What it does *not* do is hold rows. `rows` is one page, replaced on every fetch, which is what makes
- * a table of any size cost the same. It is also why this hook is the answer to "millions of rows" and
- * Arrow is not: Arrow would make each page's bytes smaller and faster to decode, but a client that
- * paged this way over plain JSON already never touches row a million.
+ * What it does *not* do is hold the table. In the default (paged) mode `rows` is one page, replaced on
+ * every fetch, which is what makes a table of any size cost the same. Under [`infinite`] it holds the
+ * windows the user has actually scrolled through and nothing beyond them, which is the same claim with
+ * a different upper bound. It is also why this hook is the answer to "millions of rows" and Arrow is
+ * not: Arrow would make each window's bytes smaller and faster to decode, but a client that pages this
+ * way over plain JSON already never touches row a million.
  */
 export interface UseRemoteDataTableOptions<TRow> {
   /** Performs one request. Injected, so this hook knows nothing about HTTP, Tauri or encodings. */
@@ -45,6 +47,31 @@ export interface UseRemoteDataTableOptions<TRow> {
   enabled?: boolean;
   /** Called on a failed fetch. The error is also exposed as `error`. */
   onError?: (error: unknown) => void;
+
+  /**
+   * Infinite scroll rather than pages.
+   *
+   * The request discipline is identical — the same windows, the same offsets, the same race guard —
+   * and the only difference is what happens to the window that arrives: a paged table replaces its
+   * rows with it, an infinite one appends. So a page number stops being something a user picks and
+   * becomes "how far down have I scrolled", which is what [`loadMore`] advances and what
+   * [`UseRemoteDataTableResult.hasMore`] answers.
+   *
+   * The framework's grid reaches the same place from the other side: it keeps a sparse, LRU-evicted
+   * cache of chunks because its grid asks for arbitrary cell ranges. A `<table>` windowed by
+   * `useDataTableVirtualization` only ever renders a contiguous run, so a dense append is the same
+   * behaviour without the cache — and, unlike an LRU, it cannot evict a row the user is looking at.
+   */
+  infinite?: boolean;
+  /**
+   * Row identity, used only to drop a row an appended window repeats.
+   *
+   * A live table shifts under a reader: a job finishing while page two is in flight moves a row from
+   * one window into the next, and the same row would arrive twice. Without this the duplicate reaches
+   * React as a duplicate key; with it, the first sighting wins. Optional because a static table cannot
+   * shift, but pass it for anything the server is still writing to.
+   */
+  getRowKey?: (row: TRow) => string;
 }
 
 /** Props to spread onto [`DataTable`], plus the state a view needs around it. */
@@ -52,6 +79,11 @@ export interface UseRemoteDataTableResult<TRow> {
   /**
    * Spread these onto `DataTable`. `columns`, `getRowId` and everything presentational stay the call
    * site's business.
+   *
+   * The infinite-scroll props are present in both modes rather than in a second, narrower object: a
+   * paged table gets `paginated: true`, `hasMore: false` and no `onLoadMore`, which is exactly what
+   * `DataTable` defaults to, so one spread serves both and switching `infinite` on needs no change at
+   * the call site.
    */
   tableProps: {
     rows: TRow[];
@@ -65,23 +97,43 @@ export interface UseRemoteDataTableResult<TRow> {
     onPageChange: (page: number) => void;
     onPageSizeChange: (pageSize: number) => void;
     onSortChange: (sort: DataTableSort | null) => void;
+    /** `false` under `infinite`: scrolling replaces the footer's pager. */
+    paginated: boolean;
+    hasMore: boolean;
+    loadingMore: boolean;
+    onLoadMore?: () => void;
   };
-  /** The current page's rows. Same array as `tableProps.rows`. */
+  /** The rows the table holds: one page, or every window scrolled through under `infinite`. */
   rows: TRow[];
   /** Rows matching the filter across the whole table. */
   total: number;
   page: number;
   pageSize: number;
   sort: DataTableSort | null;
-  /** True while a request is in flight. The previous page stays visible underneath. */
+  /**
+   * True while a request is in flight. The rows already fetched stay visible underneath — which is
+   * what `tableProps.loading` narrows to "and there are none yet", so appending a window never
+   * replaces the table with a skeleton.
+   */
   loading: boolean;
+  /** True while an *appended* window is in flight, i.e. `infinite` and past the first one. */
+  loadingMore: boolean;
+  /** Whether a further window exists. Always false when not `infinite`. */
+  hasMore: boolean;
   /** `undefined` once a fetch succeeds. */
   error: unknown;
   /** The daemon's "rows moved under you" flag for the last response. */
   stale: boolean;
   aggregations: RemoteTableAggregationResult[];
-  /** Refetches the current page. */
+  /**
+   * Refetches. In paged mode that is the current page; under `infinite` it is the *first* window, and
+   * the accumulated ones are dropped — the alternative is refetching every window a long scroll has
+   * loaded, which is a burst of requests nobody asked for. A live table should keep itself current by
+   * patching the rows it holds, not by rebuilding the scroll.
+   */
   refresh: () => void;
+  /** Requests the next window. No-op unless `infinite`, and while one is already in flight. */
+  loadMore: () => void;
   setPage: (page: number) => void;
   setPageSize: (pageSize: number) => void;
   setSort: (sort: DataTableSort | null) => void;
@@ -98,6 +150,8 @@ export function useRemoteDataTable<TRow>({
   aggregations,
   enabled = true,
   onError,
+  infinite = false,
+  getRowKey,
 }: UseRemoteDataTableOptions<TRow>): UseRemoteDataTableResult<TRow> {
   const [page, setPageState] = React.useState(1);
   const [pageSize, setPageSizeState] = React.useState(initialPageSize);
@@ -148,8 +202,15 @@ export function useRemoteDataTable<TRow>({
 
   /* Latest values, read inside the effect. Keeping them out of the dependency list is what lets
      `requestKey` be the single source of "the query changed". */
-  const latest = React.useRef({ fetchPage, filter, selectColumns, aggregations, onError });
-  latest.current = { fetchPage, filter, selectColumns, aggregations, onError };
+  const latest = React.useRef({
+    fetchPage,
+    filter,
+    selectColumns,
+    aggregations,
+    onError,
+    getRowKey,
+  });
+  latest.current = { fetchPage, filter, selectColumns, aggregations, onError, getRowKey };
 
   React.useEffect(() => {
     if (!enabled) {
@@ -160,6 +221,10 @@ export function useRemoteDataTable<TRow>({
     const seq = ++requestSeq.current;
     const controller = new AbortController();
     setLoading(true);
+    /* Page 1 is the only window that *replaces* the rows, in either mode. Under `infinite` that makes
+       one rule cover all three ways a table starts over — a new filter, a new sort and `refresh` — and
+       nothing else has to know it happened, because all three reset the page first. */
+    const append = infinite && page > 1;
 
     const run = async () => {
       const {
@@ -168,6 +233,7 @@ export function useRemoteDataTable<TRow>({
         selectColumns: columns,
         aggregations: aggs,
         onError: reportError,
+        getRowKey: rowKey,
       } = latest.current;
       try {
         const result = await fetcher({
@@ -183,7 +249,7 @@ export function useRemoteDataTable<TRow>({
         if (seq !== requestSeq.current) return;
 
         versionTokenRef.current = result.versionToken;
-        setRows(result.rows);
+        setRows((previous) => (append ? appendRows(previous, result.rows, rowKey) : result.rows));
         setTotal(result.totalRows);
         setStale(Boolean(result.stale));
         setAggregationResults(result.aggregations ?? []);
@@ -201,7 +267,7 @@ export function useRemoteDataTable<TRow>({
     return () => {
       controller.abort();
     };
-  }, [enabled, page, pageSize, requestKey, reloadNonce, sort]);
+  }, [enabled, infinite, page, pageSize, requestKey, reloadNonce, sort]);
 
   /* The page a filter left behind. Narrowing a result set while the user is on page nine asks the
      server for an offset past the end, and the honest answer is an empty page — so the table would
@@ -230,8 +296,28 @@ export function useRemoteDataTable<TRow>({
   }, []);
 
   const refresh = React.useCallback(() => {
+    setPageState(1);
     setReloadNonce((nonce) => nonce + 1);
   }, []);
+
+  /* `loadMore` fires from a scroll handler, which can run several times between two renders, so its
+     guards read a ref rather than the closed-over render values. Two calls in the same frame both
+     compute the same next page, so the extra one is a no-op rather than a skipped window. */
+  const loadMoreState = React.useRef({ infinite, loading, page, pageSize, total });
+  loadMoreState.current = { infinite, loading, page, pageSize, total };
+
+  const loadMore = React.useCallback(() => {
+    const state = loadMoreState.current;
+    if (!state.infinite || state.loading) return;
+    if (state.page * state.pageSize >= state.total) return;
+    setPageState(state.page + 1);
+  }, []);
+
+  /* Measured against windows requested rather than rows held: a live table can hand back a window
+     whose rows `getRowKey` already de-duplicated away, and `rows.length < total` would then read as
+     "more to come" forever, re-requesting the same tail. */
+  const hasMore = infinite && total > 0 && page * pageSize < total;
+  const loadingMore = infinite && loading && page > 1;
 
   return {
     tableProps: {
@@ -242,10 +328,16 @@ export function useRemoteDataTable<TRow>({
       page,
       pageSize,
       sort,
-      loading,
+      // The skeleton body replaces the table, so it is only honest before there is a table to
+      // replace. An appended window shows `loadingMore` under the rows already on screen instead.
+      loading: infinite ? loading && rows.length === 0 : loading,
       onPageChange: setPage,
       onPageSizeChange: setPageSize,
       onSortChange: setSort,
+      paginated: !infinite,
+      hasMore,
+      loadingMore,
+      onLoadMore: infinite ? loadMore : undefined,
     },
     rows,
     total,
@@ -253,12 +345,34 @@ export function useRemoteDataTable<TRow>({
     pageSize,
     sort,
     loading,
+    loadingMore,
+    hasMore,
     error,
     stale,
     aggregations: aggregationResults,
     refresh,
+    loadMore,
     setPage,
     setPageSize,
     setSort,
   };
+}
+
+/**
+ * `previous` followed by the rows of `next` it does not already hold.
+ *
+ * Without `key` this is a plain concatenation, which is the framework's behaviour
+ * (`useDataLoading.ts` appends record batches unconditionally). The de-duplication is the addition:
+ * the framework's grid addresses rows by index and tolerates a repeat, a keyed `<tbody>` does not.
+ */
+function appendRows<TRow>(
+  previous: TRow[],
+  next: TRow[],
+  key: ((row: TRow) => string) | undefined,
+): TRow[] {
+  if (next.length === 0) return previous;
+  if (!key) return [...previous, ...next];
+  const seen = new Set(previous.map(key));
+  const added = next.filter((row) => !seen.has(key(row)));
+  return added.length === 0 ? previous : [...previous, ...added];
 }

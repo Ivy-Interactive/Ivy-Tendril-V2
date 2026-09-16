@@ -21,3 +21,13 @@ export {
   isDarkMode,
   type ThemeColors,
 } from "./lib/theme";
+export {
+  applyThemePreset,
+  getThemePreset,
+  themePresetCss,
+  DEFAULT_THEME_PRESET_ID,
+  THEME_PRESETS,
+  THEME_PRESET_STYLE_ID,
+  type ThemePreset,
+  type ThemePresetColors,
+} from "./lib/theme-presets";

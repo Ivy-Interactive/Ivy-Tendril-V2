@@ -23,7 +23,10 @@ import type { Densities } from "@/types/density";
 
 import "./data-table.css";
 
+import type { DataTableColumnFilters } from "./column-filters";
+import { setColumnFilter } from "./column-filters";
 import { DataTableCellEditor } from "./data-table-cell-editor";
+import { DataTableColumnFilterControl } from "./data-table-column-filter";
 import { DataTableColumnHeader } from "./data-table-column-header";
 import { DataTableColumnOptions } from "./data-table-column-options";
 import { DataTablePagination, DEFAULT_PAGE_SIZE_OPTIONS } from "./data-table-pagination";
@@ -40,6 +43,10 @@ import type {
   DataTableVirtualized,
 } from "./types";
 import { useColumnVisibility } from "./use-column-visibility";
+import {
+  DATA_TABLE_LOAD_MORE_THRESHOLD_ROWS,
+  useDataTableInfiniteScroll,
+} from "./use-data-table-infinite-scroll";
 import { useDataTablePagination } from "./use-data-table-pagination";
 import { useDataTableRowFocus } from "./use-data-table-row-focus";
 import { useDataTableSort } from "./use-data-table-sort";
@@ -51,7 +58,13 @@ import {
   useDataTableVirtualization,
 } from "./use-data-table-virtualization";
 import { useInlineCellEdit } from "./use-inline-cell-edit";
-import { getCellValue, getRenderableActions, toDisplayString } from "./utils";
+import {
+  getCellValue,
+  getRenderableActions,
+  isRowIdentityAppend,
+  rowIdentity,
+  toDisplayString,
+} from "./utils";
 import { dataTableCellAlignVariant, dataTableRowVariant } from "./variant";
 
 export interface DataTableProps<TRow> extends Omit<
@@ -96,6 +109,21 @@ export interface DataTableProps<TRow> extends Omit<
   /** Renders the column-options trigger in the toolbar. Defaults to false. */
   showColumnOptions?: boolean;
 
+  /**
+   * A second, sticky header row carrying one filter control per column that declares `column.filter`
+   * — the legacy `config.AllowFiltering`. Defaults to false.
+   *
+   * The table never filters `rows` itself. It reports the state and the caller decides what that
+   * means, which for a server-paged table is the only correct answer: with rows arriving a window at a
+   * time, a client-side predicate would filter the fifty rows on screen and quietly claim the rest of
+   * the table matched nothing. See `columnFiltersToRemoteFilter` for the state as a wire filter.
+   */
+  showColumnFilters?: boolean;
+  /** Controlled filter state, keyed by column `name`. */
+  columnFilters?: DataTableColumnFilters;
+  defaultColumnFilters?: DataTableColumnFilters;
+  onColumnFiltersChange?: (filters: DataTableColumnFilters) => void;
+
   /** Row selection with a header select-all checkbox. Defaults to false. */
   selectable?: boolean;
   selectedRowIds?: string[];
@@ -135,6 +163,44 @@ export interface DataTableProps<TRow> extends Omit<
   virtualized?: DataTableVirtualized;
   /** Rendered-row count above which `virtualized="auto"` engages. Defaults to 50. */
   virtualizationThreshold?: number;
+
+  /**
+   * Infinite scroll: called when the viewport comes within `loadMoreThreshold` rows of the end and
+   * `hasMore` is true. Absent means the table does not scroll-load.
+   *
+   * This is the framework's row-loading model rather than a pager
+   * (`widgets/dataTables/hooks/useDataLoading.ts`), and V1's Jobs table is one of its users —
+   * `c.BatchSize = 50` with no `LoadAllRows`, so rows arrive fifty at a time as the operator scrolls
+   * and the table never holds a history it has not been asked for. Pair it with
+   * `useRemoteDataTable({ infinite: true })`, whose `tableProps` supply all three props below.
+   *
+   * Windowing (`virtualized`) and this are independent and complementary: windowing bounds what is in
+   * the *DOM*, this bounds what is in *memory*. A table wants both.
+   */
+  onLoadMore?: () => void;
+  /** Whether a further window exists. Without it `onLoadMore` is never called. */
+  hasMore?: boolean;
+  /** True while an appended window is in flight. Renders a "loading more" row and guards re-entry. */
+  loadingMore?: boolean;
+  /** Rows from the end at which `onLoadMore` fires. Defaults to 10, the framework's threshold. */
+  loadMoreThreshold?: number;
+  /**
+   * Makes the table fill its parent's height, scrolling its own body, instead of growing to fit its
+   * rows. Defaults to false.
+   *
+   * This is what "sticky header" means in practice, and it is the layout the framework's widget uses:
+   * a `shrink-0` toolbar above a `flex: 1; min-height: 0; overflow: hidden` grid
+   * (`widgets/dataTables/DataTableHeader.tsx`, `styles/style.ts`), which is why V1's filter row,
+   * status progress bar and header menu stay put while rows scroll under them. Without it the whole
+   * table scrolls inside the page and the header scrolls away with it, however sticky the `<th>` is —
+   * `position: sticky` pins an element inside *its* scroll container, and if that container is the
+   * page there is nothing to pin against.
+   *
+   * Requires the parent to be a bounded flex column (`flex h-full min-h-0 flex-col` or similar). It
+   * also replaces `maxBodyHeight`, since the bound comes from the parent rather than a fixed pixel
+   * height.
+   */
+  fillHeight?: boolean;
   /**
    * `max-height` of the table's scroll container while windowing is active (a number is px).
    * Defaults to 480. Windowing needs a bounded viewport — without one every row is "visible".
@@ -190,6 +256,10 @@ function DataTableInner<TRow>(
     defaultColumnVisibility,
     onColumnVisibilityChange,
     showColumnOptions = false,
+    showColumnFilters = false,
+    columnFilters,
+    defaultColumnFilters,
+    onColumnFiltersChange,
     selectable = false,
     selectedRowIds,
     defaultSelectedRowIds,
@@ -204,6 +274,11 @@ function DataTableInner<TRow>(
     maxBodyHeight = DATA_TABLE_MAX_BODY_HEIGHT,
     estimateRowHeight,
     overscan = DATA_TABLE_OVERSCAN,
+    onLoadMore,
+    hasMore = false,
+    loadingMore = false,
+    loadMoreThreshold = DATA_TABLE_LOAD_MORE_THRESHOLD_ROWS,
+    fillHeight = false,
     loading = false,
     emptyState,
     toolbar,
@@ -311,6 +386,22 @@ function DataTableInner<TRow>(
   const columnCount = visibleColumns.length + (selectable ? 1 : 0) + (hasActionsColumn ? 1 : 0);
   const showToolbar = Boolean(toolbar?.left || toolbar?.right || showColumnOptions);
 
+  /* Controlled-or-not, the same shape as `columnVisibility` above it. A filter row is only rendered
+     when some *visible* column declares one: hiding the only filterable column should take the row
+     away with it rather than leave an empty stripe under the headers. */
+  const isFiltersControlled = columnFilters !== undefined;
+  const [internalFilters, setInternalFilters] = React.useState<DataTableColumnFilters>(
+    defaultColumnFilters ?? {},
+  );
+  const activeFilters = isFiltersControlled ? columnFilters : internalFilters;
+  const commitFilter = (name: string, values: string[]) => {
+    const next = setColumnFilter(activeFilters, name, values);
+    if (next === activeFilters) return;
+    if (!isFiltersControlled) setInternalFilters(next);
+    onColumnFiltersChange?.(next);
+  };
+  const hasFilterRow = showColumnFilters && visibleColumns.some((column) => Boolean(column.filter));
+
   // Windowing and roving row focus are mutually dependent — the virtualizer pins the focused row
   // into its rendered range, and moving focus scrolls through the virtualizer — so the scroll
   // container ref lives here and `scrollToIndex` is reached through a ref rather than a closure.
@@ -340,6 +431,43 @@ function DataTableInner<TRow>(
     enabled: !loading,
   });
   scrollToIndexRef.current = virtualization.scrollToIndex;
+
+  /**
+   * A *replaced* row set returns the scroll viewport to the top; an appended one does not.
+   *
+   * Windowing already does this through the virtualizer, which is the only correct way to do it while
+   * active. This covers the unwindowed case, and it is not cosmetic under infinite scroll: a filter
+   * that drops forty accumulated rows back to twenty leaves the viewport scrolled past the new end, so
+   * the load-more check reads "at the bottom" and immediately re-requests the windows the filter just
+   * discarded.
+   */
+  const currentRowIdentity = rowIdentity(pageRowIds);
+  const lastRowIdentity = React.useRef(currentRowIdentity);
+  const virtualizationActiveRef = React.useRef(virtualization.active);
+  virtualizationActiveRef.current = virtualization.active;
+  React.useEffect(() => {
+    const previous = lastRowIdentity.current;
+    lastRowIdentity.current = currentRowIdentity;
+    if (previous === currentRowIdentity || isRowIdentityAppend(previous, currentRowIdentity))
+      return;
+    // While windowed, assigning `scrollTop` would leave the virtualizer's own offset stale; its effect
+    // has already run `scrollToOffset(0)` for exactly this case.
+    if (virtualizationActiveRef.current) return;
+    const container = scrollContainerRef.current;
+    if (container && container.scrollTop !== 0) container.scrollTop = 0;
+  }, [currentRowIdentity]);
+
+  useDataTableInfiniteScroll({
+    containerRef: scrollContainerRef,
+    hasMore,
+    // The skeleton body and an appended window are both "a request is in flight"; neither may trigger
+    // a second one.
+    loading: loading || loadingMore,
+    onLoadMore,
+    thresholdRows: loadMoreThreshold,
+    rowHeight: estimateRowHeight ?? DATA_TABLE_ROW_HEIGHT_ESTIMATES[density],
+    rowCount: pageRows.length,
+  });
 
   /**
    * Under `table-layout: fixed` a `w-0` utility is taken literally, collapsing the selection and
@@ -565,10 +693,34 @@ function DataTableInner<TRow>(
     return rendered;
   })();
 
+  /**
+   * The tail of an infinite-scroll body while the next window is in flight.
+   *
+   * The framework shows nothing here — rows past the loaded count are blank filler cells
+   * (`dataTableEditor/hooks/useCellContent.ts`), so a slow window looks like the end of the table.
+   * A skeleton row says "there is more, it is coming", which is the one thing a reader at the bottom of
+   * an infinite list needs to know. `aria-live` rather than `aria-busy`: the table itself is not busy,
+   * every row it claims to have is present and readable.
+   */
+  const loadMoreRow =
+    loadingMore && pageRows.length > 0 ? (
+      <TableRow key="data-table-load-more" data-slot="data-table-load-more" aria-live="polite">
+        <TableCell colSpan={Math.max(1, columnCount)}>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 flex-1" />
+            <span className="shrink-0 text-xs text-muted-foreground">Loading more…</span>
+          </div>
+        </TableCell>
+      </TableRow>
+    ) : null;
+
   return (
-    <div className={cn("flex w-full flex-col gap-2", className)}>
+    <div className={cn("flex w-full flex-col gap-2", fillHeight && "min-h-0", className)}>
+      {/* `shrink-0`, so the toolbar — the filters, the progress bar, the header menu — is the part of
+          the table that does not scroll. This is `DataTableHeader.tsx`'s own class list. */}
       {showToolbar ? (
         <DataTableToolbar
+          className={fillHeight ? "shrink-0" : undefined}
           density={density}
           left={toolbar?.left}
           right={
@@ -580,7 +732,14 @@ function DataTableInner<TRow>(
         />
       ) : null}
 
-      <div className="rounded-box border border-border bg-background">
+      <div
+        className={cn(
+          "rounded-box border border-border bg-background",
+          // The chain a bounded scroll viewport needs: this box takes the remaining height, and
+          // `min-h-0` is what stops a flex item from refusing to shrink below its content.
+          fillHeight && "flex min-h-0 flex-1 flex-col overflow-hidden",
+        )}
+      >
         <Table
           ref={ref}
           density={density}
@@ -592,7 +751,10 @@ function DataTableInner<TRow>(
           onKeyDown={rowFocus.handleKeyDown}
           className={cn("ivy-data-table", virtualization.active && "ivy-data-table-virtualized")}
           containerRef={scrollContainerRef}
-          containerStyle={virtualization.containerStyle}
+          containerClassName={fillHeight ? "min-h-0 flex-1" : undefined}
+          // `fillHeight` takes its bound from the parent, so a fixed `max-height` on top of it would
+          // be a second, smaller bound and the table would stop short of the pane it was told to fill.
+          containerStyle={fillHeight ? undefined : virtualization.containerStyle}
           {...tableProps}
         >
           {caption ? <TableCaption>{caption}</TableCaption> : null}
@@ -629,9 +791,39 @@ function DataTableInner<TRow>(
                 </TableHead>
               ) : null}
             </TableRow>
+
+            {/* The filter row, `config.AllowFiltering`. A second `<tr>` inside `<thead>` rather than a
+                band above the table, so each control sits under the column it filters and inherits its
+                width — and so `thead`'s sticky rule pins the labels and the filters as one block. */}
+            {hasFilterRow ? (
+              <TableRow data-slot="data-table-filter-row">
+                {selectable ? <TableHead className={fitColumnClass("select")} /> : null}
+                {visibleColumns.map((column) => (
+                  <TableHead
+                    key={column.name}
+                    className="ivy-data-table-filter-cell"
+                    style={column.width ? { width: column.width } : undefined}
+                  >
+                    {column.filter ? (
+                      <DataTableColumnFilterControl
+                        label={column.header ?? column.name}
+                        filter={column.filter}
+                        value={activeFilters[column.name] ?? []}
+                        onChange={(values) => commitFilter(column.name, values)}
+                        density={density}
+                      />
+                    ) : null}
+                  </TableHead>
+                ))}
+                {hasActionsColumn ? <TableHead className={fitColumnClass("actions")} /> : null}
+              </TableRow>
+            ) : null}
           </TableHeader>
 
-          <TableBody>{body}</TableBody>
+          <TableBody>
+            {body}
+            {loadMoreRow}
+          </TableBody>
 
           {hasFooter ? (
             <TableFooter>

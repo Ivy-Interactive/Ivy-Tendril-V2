@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { setThemeGlobal, type Theme } from "@ivy-interactive/components/theme";
-import { BrandIcon } from "@ivy-interactive/components/tendril";
 import {
   Button,
-  Callout,
   Input,
   Label,
   Select,
@@ -14,10 +11,12 @@ import {
   SelectValue,
   Switch,
   Textarea,
+  Callout,
 } from "@ivy-interactive/components/ui";
-import { Check, Moon, Plus, Sun, SunMoon } from "lucide-react";
+import { Plus } from "lucide-react";
 import { bridge } from "../api/bridge";
 import { notificationsStore } from "../state/notificationsStore";
+import { readAppearance } from "../state/appearance";
 import { describeBridgeError, type ServiceInfo, type TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
 import { NewsletterSignup } from "../components/NewsletterSignup";
@@ -41,22 +40,13 @@ import {
   SelectField,
   asOptions,
 } from "./settings/fields";
-import {
-  asRecord,
-  asString,
-  asStringMap,
-  formatEnvLines,
-  parseEnvLines,
-  parseLines,
-} from "./settings/configValues";
-import {
-  normalizeAgentName,
-  readLevels,
-  readProjectEntries,
-  readVerificationDefs,
-} from "./settings/projectConfig";
+import { asRecord, asString, parseLines } from "./settings/configValues";
+import { readLevels, readProjectEntries, readVerificationDefs } from "./settings/projectConfig";
+import { PROFILE_TIERS, readAgentEntries } from "./settings/codingAgents";
 import { ProjectSettingsView } from "./settings/ProjectSettingsView";
 import { AddProjectView } from "./settings/AddProjectView";
+import { AppearanceSection } from "./settings/AppearanceSection";
+import { CodingAgentSection } from "./settings/CodingAgentSection";
 import { LevelsSection } from "./settings/LevelsSection";
 import { SecurityTunnelingSection } from "./settings/SecurityTunnelingSection";
 
@@ -71,19 +61,6 @@ interface SettingsViewProps {
    */
   initialSection?: string;
 }
-
-/**
- * The agents the card grid offers, in `CodingAgentSetupView.Agents` order with its labels and its
- * `AgentBranding.IconFor` mapping. Every id is one `build_agent_spec` can launch.
- */
-const CODING_AGENTS: { id: string; label: string; icon: string }[] = [
-  { id: "claude", label: "Claude", icon: "ClaudeCode" },
-  { id: "copilot", label: "Copilot", icon: "Copilot" },
-  { id: "codex", label: "Codex", icon: "OpenAI" },
-  { id: "gemini", label: "Gemini", icon: "Gemini" },
-  { id: "antigravity", label: "Antigravity", icon: "Antigravity" },
-  { id: "opencode", label: "OpenCode", icon: "OpenCode" },
-];
 
 /**
  * The bounds `ConfigCommand.ApplyField` enforces and `ConfigService.ValidateSettings` re-checks on
@@ -107,158 +84,6 @@ function boundsError(key: keyof SettingsForm, value: unknown): string | null {
   }
   if (value < min || value > max) return `${key} must be between ${min} and ${max}, got ${value}.`;
   return null;
-}
-
-/** `ConfigCommand.ValidateCodingAgent`'s refusal, with the same sorted valid-agent list. */
-const unknownAgentMessage = (value: string): string =>
-  `Unknown coding agent '${value}'. Valid agents: ${CODING_AGENTS.map((a) => a.id)
-    .slice()
-    .sort()
-    .join(", ")}`;
-
-/** The three tiers `apply_profile` maps by name, in `CodingAgentSetupView`'s order. */
-const PROFILE_TIERS = ["deep", "balanced", "quick"] as const;
-type ProfileTier = (typeof PROFILE_TIERS)[number];
-
-/**
- * `resolution.rs`'s `default_profiles`, so an empty field can show what the tier falls back to
- * rather than looking like "nothing will be passed".
- */
-const TIER_DEFAULTS: Record<string, Record<ProfileTier, { model: string; effort: string }>> = {
-  claude: {
-    deep: { model: "opus", effort: "max" },
-    balanced: { model: "sonnet", effort: "high" },
-    quick: { model: "haiku", effort: "low" },
-  },
-  codex: {
-    deep: { model: "gpt-5.6-sol", effort: "high" },
-    balanced: { model: "gpt-5.6-terra", effort: "medium" },
-    quick: { model: "gpt-5.6-luna", effort: "low" },
-  },
-  gemini: {
-    deep: { model: "gemini-3.7-flash", effort: "" },
-    balanced: { model: "gemini-3.7-flash", effort: "" },
-    quick: { model: "gemini-3.7-flash", effort: "" },
-  },
-  opencode: {
-    deep: { model: "default", effort: "high" },
-    balanced: { model: "default", effort: "medium" },
-    quick: { model: "default", effort: "low" },
-  },
-  copilot: {
-    deep: { model: "", effort: "high" },
-    balanced: { model: "", effort: "medium" },
-    quick: { model: "", effort: "low" },
-  },
-  antigravity: {
-    deep: { model: "gemini-3.7-flash", effort: "medium" },
-    balanced: { model: "gemini-3.7-flash", effort: "medium" },
-    quick: { model: "gemini-3.7-flash", effort: "medium" },
-  },
-};
-
-const tierDefaults = (agent: string) =>
-  TIER_DEFAULTS[normalizeAgentName(agent)] ?? TIER_DEFAULTS.claude;
-
-/** `agent_capabilities`: Gemini's CLI has no effort argument, so an effort field there is inert. */
-const supportsEffort = (agent: string): boolean => normalizeAgentName(agent) !== "gemini";
-
-/** `Default` plus the efforts `default_profiles` actually uses. `default` means "leave it unset". */
-const EFFORT_OPTIONS = ["default", "low", "medium", "high", "max"];
-
-/** One `codingAgents` entry, with every key it also carried preserved for the write-back. */
-interface AgentEntry {
-  name: string;
-  arguments: string;
-  environmentVariables: Record<string, string>;
-  profiles: Record<string, unknown>[];
-  rest: Record<string, unknown>;
-}
-
-/**
- * Reads `codingAgents` out of the raw config, tolerating both shapes `deserialize_coding_agents`
- * accepts: a sequence of entries, or a mapping of agent name to entry.
- */
-function readAgentEntries(cfg: TendrilConfig | null): AgentEntry[] {
-  const raw = cfg?.raw?.codingAgents;
-  const entries: [string, Record<string, unknown>][] = Array.isArray(raw)
-    ? raw.map((item) => [asString(asRecord(item).name), asRecord(item)])
-    : Object.entries(asRecord(raw)).map(([key, value]) => [
-        asString(asRecord(value).name) || key,
-        asRecord(value),
-      ]);
-
-  return entries
-    .filter(([name]) => name !== "")
-    .map(([name, entry]) => {
-      const { name: _n, arguments: _a, environmentVariables: _e, profiles: _p, ...rest } = entry;
-      return {
-        name,
-        arguments: asString(entry.arguments),
-        environmentVariables: asStringMap(entry.environmentVariables),
-        profiles: Array.isArray(entry.profiles) ? entry.profiles.map(asRecord) : [],
-        rest,
-      };
-    });
-}
-
-/** `CodingAgentSetupView.GetProfileModel`: an unset model reads back as the literal `default`. */
-function profileValue(entry: AgentEntry | undefined, tier: ProfileTier, field: "model" | "effort") {
-  const profile = entry?.profiles.find((p) => asString(p.name).toLowerCase() === tier);
-  const value = asString(profile?.[field]);
-  return value.trim() === "" ? "default" : field === "effort" ? value.toLowerCase() : value;
-}
-
-/**
- * The `codingAgents` array to write, with `agent`'s three tier profiles set and every other agent
- * (and every unmodeled key) left exactly as it was. The whole array has to be sent because
- * `merge_config_value` replaces sequences rather than merging them.
- */
-function withProfiles(
-  entries: AgentEntry[],
-  agent: string,
-  profiles: Record<ProfileTier, { model: string; effort: string }>,
-  extraArguments: string,
-  environmentVariables: Record<string, string>,
-): Record<string, unknown>[] {
-  const id = normalizeAgentName(agent);
-  const known = entries.some((e) => normalizeAgentName(e.name) === id);
-  const target: AgentEntry[] = known
-    ? entries
-    : [...entries, { name: id, arguments: "", environmentVariables: {}, profiles: [], rest: {} }];
-
-  return target.map((entry) => {
-    const serialized: Record<string, unknown> = {
-      ...entry.rest,
-      name: entry.name,
-      arguments: entry.arguments,
-      environmentVariables: entry.environmentVariables,
-      profiles: entry.profiles,
-    };
-    if (normalizeAgentName(entry.name) !== id) return serialized;
-
-    // `SetProfile` upserts by name and normalises `default`/blank effort to the empty string, which
-    // is what `is_set` in `resolution.rs` treats as "leave it to the CLI".
-    const nextProfiles = entry.profiles.map((p) => ({ ...p }));
-    for (const tier of PROFILE_TIERS) {
-      const model = profiles[tier].model.trim();
-      const effort = profiles[tier].effort.trim();
-      const next = {
-        model: model.toLowerCase() === "default" ? "" : model,
-        effort: effort.toLowerCase() === "default" ? "" : effort.toLowerCase(),
-      };
-      const index = nextProfiles.findIndex((p) => asString(p.name).toLowerCase() === tier);
-      if (index >= 0) nextProfiles[index] = { ...nextProfiles[index], ...next };
-      else nextProfiles.push({ name: tier, ...next });
-    }
-
-    return {
-      ...serialized,
-      arguments: extraArguments,
-      environmentVariables,
-      profiles: nextProfiles,
-    };
-  });
 }
 
 /**
@@ -301,13 +126,6 @@ function readPromptwares(cfg: TendrilConfig | null): PromptwareEntry[] {
   });
 }
 
-/** `AppearanceSetupView`'s button row: Light, Dark, System, with its icons and its toast wording. */
-const THEME_MODES: { value: Theme; label: string; icon: React.ReactNode }[] = [
-  { value: "light", label: "Light", icon: <Sun className="size-4" aria-hidden="true" /> },
-  { value: "dark", label: "Dark", icon: <Moon className="size-4" aria-hidden="true" /> },
-  { value: "system", label: "System", icon: <SunMoon className="size-4" aria-hidden="true" /> },
-];
-
 /**
  * Every editable key on this screen. The field names are the `config.yaml` keys verbatim, so a save
  * can write `putConfig(key, form[key])` without a translation table.
@@ -315,7 +133,6 @@ const THEME_MODES: { value: Theme; label: string; icon: React.ReactNode }[] = [
 interface SettingsForm {
   codingAgent: string;
   planTemplate: string;
-  themeMode: string;
   desktopNotifications: boolean;
   jobTimeout: number;
   staleOutputTimeout: number;
@@ -325,12 +142,12 @@ interface SettingsForm {
 
 /**
  * `TendrilSettings`' own defaults, so an absent key reads the same here as it does daemon-side.
- * `desktopNotifications` absent means on, and `themeMode` absent means system.
+ * `desktopNotifications` absent means on. The appearance keys have their own defaults in
+ * `state/appearance.ts`, because the pane that owns them applies them rather than form-editing them.
  */
 const DEFAULTS: SettingsForm = {
   codingAgent: "claude",
   planTemplate: "",
-  themeMode: "system",
   desktopNotifications: true,
   jobTimeout: 30,
   staleOutputTimeout: 10,
@@ -339,19 +156,17 @@ const DEFAULTS: SettingsForm = {
 };
 
 /**
- * `themeMode`, `staleOutputTimeout` and `beta` are not on `TendrilConfigDto`, so they are read out of
- * the untouched `raw` config the daemon returns alongside it.
+ * `staleOutputTimeout` and `beta` are not on `TendrilConfigDto`, so they are read out of the
+ * untouched `raw` config the daemon returns alongside it.
  */
 const rawOf = (cfg: TendrilConfig | null, key: string): unknown => cfg?.raw?.[key];
 
 const formOf = (cfg: TendrilConfig | null): SettingsForm => {
-  const themeMode = rawOf(cfg, "themeMode");
   const staleOutputTimeout = rawOf(cfg, "staleOutputTimeout");
   const beta = rawOf(cfg, "beta");
   return {
     codingAgent: cfg?.codingAgent || DEFAULTS.codingAgent,
     planTemplate: cfg?.planTemplate ?? DEFAULTS.planTemplate,
-    themeMode: typeof themeMode === "string" && themeMode ? themeMode : DEFAULTS.themeMode,
     desktopNotifications: cfg?.desktopNotifications ?? DEFAULTS.desktopNotifications,
     // A present number is shown as-is, including `0` and anything out of bounds. Substituting the
     // default would show a timeout the daemon is not using: V2 reads `jobTimeout <= 0` as "no
@@ -572,13 +387,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [pingResult, setPingResult] = useState<string | null>(null);
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string | null>>({});
-  const [profiles, setProfiles] = useState<Record<ProfileTier, { model: string; effort: string }>>({
-    deep: { model: "default", effort: "default" },
-    balanced: { model: "default", effort: "default" },
-    quick: { model: "default", effort: "default" },
-  });
-  const [agentArguments, setAgentArguments] = useState("");
-  const [agentEnv, setAgentEnv] = useState("");
 
   const set = <K extends keyof SettingsForm>(key: K, value: SettingsForm[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -605,32 +413,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }, []);
 
   const agentEntries = React.useMemo(() => readAgentEntries(config), [config]);
-  const selectedAgentEntry = agentEntries.find(
-    (entry) => normalizeAgentName(entry.name) === normalizeAgentName(form.codingAgent),
-  );
-  const savedProfiles = React.useMemo(
-    () =>
-      Object.fromEntries(
-        PROFILE_TIERS.map((tier) => [
-          tier,
-          {
-            model: profileValue(selectedAgentEntry, tier, "model"),
-            effort: profileValue(selectedAgentEntry, tier, "effort"),
-          },
-        ]),
-      ) as Record<ProfileTier, { model: string; effort: string }>,
-    [selectedAgentEntry],
-  );
-  const savedAgentArguments = selectedAgentEntry?.arguments ?? "";
-  const savedAgentEnv = formatEnvLines(selectedAgentEntry?.environmentVariables ?? {});
-
-  // `CodingAgentSetupView` re-seeds every profile field from config when the selected agent changes,
-  // so switching cards shows that agent's profiles rather than the previous agent's.
-  useEffect(() => {
-    setProfiles(savedProfiles);
-    setAgentArguments(savedAgentArguments);
-    setAgentEnv(savedAgentEnv);
-  }, [savedProfiles, savedAgentArguments, savedAgentEnv]);
+  /** The three appearance keys, for the pane that applies them. */
+  const appearance = React.useMemo(() => readAppearance(config), [config]);
 
   /**
    * One section's Save. Only changed keys are written: a full-object overwrite would clobber a
@@ -677,23 +461,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     applyConfig(await bridge.getConfig());
   };
 
-  /**
-   * V1's appearance buttons apply and persist on the click, with no form to submit: the theme is a
-   * preference you judge by looking at it, so it cannot wait behind a Save.
-   */
-  const handleThemeMode = async (mode: Theme, label: string) => {
-    set("themeMode", mode);
-    setThemeGlobal(mode);
-    setError("appearance", null);
-    try {
-      await bridge.putConfig("themeMode", mode);
-      setSaved((prev) => ({ ...prev, themeMode: mode }));
-      notificationsStore.notifySuccess("Saved", `Appearance set to ${label}`);
-    } catch (err) {
-      setError("appearance", `Failed to save: ${describeBridgeError(err)}`);
-    }
-  };
-
   const handlePing = async () => {
     setIsPinging(true);
     const start = Date.now();
@@ -705,54 +472,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setPingResult(`Ping failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsPinging(false);
-    }
-  };
-
-  const agentIdChanged = form.codingAgent !== saved.codingAgent;
-  const profilesChanged = JSON.stringify(profiles) !== JSON.stringify(savedProfiles);
-  const agentDetailsChanged = agentArguments !== savedAgentArguments || agentEnv !== savedAgentEnv;
-  // `CodingAgentSetupView.hasChanges` is the union of the agent id, its profiles and its credentials,
-  // and the one Save writes all of them together.
-  const agentChanged = agentIdChanged || profilesChanged || agentDetailsChanged;
-  // A `config.yaml` naming an agent no build of Tendril can launch leaves the grid with nothing
-  // selected, which on its own reads as "not configured yet" rather than "misconfigured".
-  const unknownAgent =
-    saved.codingAgent !== "" &&
-    !CODING_AGENTS.some((agent) => agent.id === normalizeAgentName(saved.codingAgent))
-      ? saved.codingAgent
-      : null;
-  const effortSupported = supportsEffort(form.codingAgent);
-  const defaults = tierDefaults(form.codingAgent);
-
-  /** `CodingAgentSetupView`'s Save: the agent id and its profiles in one write. */
-  const saveCodingAgent = async () => {
-    setSavingSection("codingAgent");
-    setError("codingAgent", null);
-    try {
-      if (agentIdChanged) await bridge.putConfig("codingAgent", form.codingAgent);
-      // Deliberately narrower than `CodingAgentSetupView`, which calls `SaveProfiles` on every save
-      // and so materialises an `AgentConfig` with three blank profiles for any agent you merely
-      // select. That is not inert in V2: `apply_profile` returns nothing at all when the agent has no
-      // config entry, but falls back to the `balanced` tier once an entry exists, so writing the
-      // empty entry would quietly change which model a job runs with.
-      if (profilesChanged || agentDetailsChanged) {
-        await bridge.putConfig(
-          "codingAgents",
-          withProfiles(
-            agentEntries,
-            form.codingAgent,
-            profiles,
-            agentArguments,
-            parseEnvLines(agentEnv),
-          ),
-        );
-      }
-      applyConfig(await bridge.getConfig());
-      notificationsStore.notifySuccess("Saved", "Coding agent settings saved");
-    } catch (err) {
-      setError("codingAgent", `Failed to save: ${describeBridgeError(err)}`);
-    } finally {
-      setSavingSection(null);
     }
   };
 
@@ -986,156 +705,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 Advanced, Newsletter, then the "Open config.yaml" action row. */}
             {showCodingAgent && (
               <>
-                <SectionCard
-                  title="Coding Agent"
-                  hint="Tendril connects to your configured AI coding agent or bundled open source engines like OpenCode."
-                  testId="coding-agent-card"
-                >
-                  <form
-                    className="max-w-170 space-y-4"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void saveCodingAgent();
-                    }}
-                  >
-                    {unknownAgent && (
-                      <Callout.Error data-testid="unknown-coding-agent">
-                        {unknownAgentMessage(unknownAgent)}
-                      </Callout.Error>
-                    )}
+                <CodingAgentSection
+                  config={config}
+                  savedAgent={saved.codingAgent}
+                  onSaveRaw={saveRawKey}
+                />
 
-                    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                      {CODING_AGENTS.map((agent) => {
-                        const selected = normalizeAgentName(form.codingAgent) === agent.id;
-                        return (
-                          <button
-                            key={agent.id}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => set("codingAgent", agent.id)}
-                            data-testid={`coding-agent-${agent.id}`}
-                            className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
-                              selected
-                                ? "border-primary bg-primary/10"
-                                : "border-border bg-card hover:bg-muted/50"
-                            }`}
-                          >
-                            <BrandIcon name={agent.icon} size={32} className="text-foreground" />
-                            <span className="text-sm font-medium text-foreground">
-                              {agent.label}
-                            </span>
-                            {selected && (
-                              <Check className="ml-auto size-4 text-primary" aria-hidden="true" />
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* `CodingAgentSetupView`'s "Profile Models" block. `deep`, `balanced` and `quick` are the
-              three tiers `apply_profile` maps by name; anything left as Default falls through to the
-              agent's built-in tier default, which the placeholder names. */}
-                    <div className="space-y-3 border-t border-border pt-4">
-                      <h3 className="text-sm font-semibold text-foreground">Profile Models</h3>
-                      <p className="text-xs text-muted-foreground">
-                        The model and effort each execution profile runs with.
-                        {effortSupported
-                          ? ""
-                          : " This agent's CLI takes no effort argument, so effort is ignored."}
-                      </p>
-                      {PROFILE_TIERS.map((tier) => (
-                        <div key={tier} className="flex flex-wrap items-end gap-2">
-                          <div className="min-w-56 flex-1 space-y-1">
-                            <Label
-                              htmlFor={`profile-model-${tier}`}
-                              className="text-xs font-medium text-muted-foreground capitalize"
-                            >
-                              {tier}
-                            </Label>
-                            <Input
-                              id={`profile-model-${tier}`}
-                              value={profiles[tier].model === "default" ? "" : profiles[tier].model}
-                              placeholder={defaults[tier].model || "default"}
-                              onChange={(e) =>
-                                setProfiles((prev) => ({
-                                  ...prev,
-                                  [tier]: {
-                                    ...prev[tier],
-                                    model:
-                                      e.target.value.trim() === "" ? "default" : e.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </div>
-                          <div className="w-36">
-                            <SelectField
-                              id={`profile-effort-${tier}`}
-                              label="Effort"
-                              value={profiles[tier].effort}
-                              options={EFFORT_OPTIONS.map((effort) => ({
-                                value: effort,
-                                label: effort === "default" ? "Default" : effort,
-                              }))}
-                              disabled={!effortSupported}
-                              onChange={(value) =>
-                                setProfiles((prev) => ({
-                                  ...prev,
-                                  [tier]: { ...prev[tier], effort: value },
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* `AgentConfig.arguments` and `AgentConfig.environmentVariables`: both are read by
-              `resolve_agent_config` for every launch and were previously only settable by hand. */}
-                    <div className="space-y-3 border-t border-border pt-4">
-                      <h3 className="text-sm font-semibold text-foreground">
-                        Extra Arguments &amp; Environment
-                      </h3>
-                      <div className="space-y-1">
-                        <Label
-                          htmlFor="agent-arguments"
-                          className="text-xs font-medium text-muted-foreground"
-                        >
-                          Extra Arguments
-                        </Label>
-                        <Input
-                          id="agent-arguments"
-                          value={agentArguments}
-                          placeholder="e.g. --verbose"
-                          onChange={(e) => setAgentArguments(e.target.value)}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Split on whitespace and appended to every launch of this agent.
-                        </p>
-                      </div>
-                      <LinesField
-                        id="agent-environment"
-                        label="Environment Variables"
-                        value={agentEnv}
-                        placeholder={"ANTHROPIC_API_KEY=sk-..."}
-                        hint="One KEY=value per line. Lines starting with # are ignored."
-                        onChange={setAgentEnv}
-                      />
-                    </div>
-
-                    <SaveError message={errors.codingAgent ?? null} />
-
-                    <Button
-                      type="submit"
-                      disabled={!agentChanged || savingSection === "codingAgent"}
-                    >
-                      {savingSection === "codingAgent" ? "Saving..." : "Save"}
-                    </Button>
-                  </form>
-                </SectionCard>
-
-                {/* No V1 counterpart: V2 resolves models itself, and the catalogue governs which model the
-          agent above is launched with, so it sits inside that row rather than as its own. */}
+                {/* No V1 counterpart: V2 resolves models itself, and the catalogue governs which model
+                    the agent above is launched with, so it sits inside that row rather than as its own. */}
                 <ModelCatalogCard />
               </>
             )}
@@ -1179,30 +756,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
 
             {on(SettingsTag.Appearance) && (
-              <SectionCard
-                title="Appearance"
-                hint="Choose how Tendril appears. System matches your OS setting."
-                testId="appearance-card"
-              >
-                <div className="max-w-120 space-y-4">
-                  <div className="flex flex-wrap gap-2">
-                    {THEME_MODES.map((mode) => (
-                      <Button
-                        key={mode.value}
-                        type="button"
-                        variant={form.themeMode === mode.value ? "default" : "outline"}
-                        aria-pressed={form.themeMode === mode.value}
-                        onClick={() => void handleThemeMode(mode.value, mode.label)}
-                      >
-                        {mode.icon}
-                        {mode.label}
-                      </Button>
-                    ))}
-                  </div>
-
-                  <SaveError message={errors.appearance ?? null} />
-                </div>
-              </SectionCard>
+              <AppearanceSection settings={appearance} onSaveRaw={saveRawKey} />
             )}
 
             {/* `if (isBeta) rows.Add(("Team Vault", ...))`: gated, and labelled as V1 labels it. */}

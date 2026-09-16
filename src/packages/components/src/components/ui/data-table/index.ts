@@ -1,5 +1,20 @@
 export { DataTable, type DataTableComponent, type DataTableProps } from "./data-table";
+export {
+  clearColumnFilter,
+  columnFiltersToRemoteFilter,
+  hasActiveColumnFilters,
+  matchesColumnFilters,
+  setColumnFilter,
+  type DataTableColumnFilter,
+  type DataTableColumnFilters,
+  type DataTableFilterKind,
+  type DataTableFilterOption,
+} from "./column-filters";
 export { DataTableCellEditor, type DataTableCellEditorProps } from "./data-table-cell-editor";
+export {
+  DataTableColumnFilterControl,
+  type DataTableColumnFilterProps,
+} from "./data-table-column-filter";
 export {
   DataTableColumnHeader,
   type DataTableColumnHeaderComponent,
@@ -65,6 +80,12 @@ export {
   type UseColumnVisibilityResult,
 } from "./use-column-visibility";
 export {
+  DATA_TABLE_LOAD_MORE_THRESHOLD_ROWS,
+  useDataTableInfiniteScroll,
+  type UseDataTableInfiniteScrollOptions,
+  type UseDataTableInfiniteScrollResult,
+} from "./use-data-table-infinite-scroll";
+export {
   useDataTablePagination,
   type UseDataTablePaginationOptions,
   type UseDataTablePaginationResult,
@@ -105,7 +126,9 @@ export {
   getRenderableActions,
   getVisibleColumns,
   isColumnVisible,
+  isRowIdentityAppend,
   nextSortDirection,
+  rowIdentity,
   sortRows,
   toDisplayString,
 } from "./utils";

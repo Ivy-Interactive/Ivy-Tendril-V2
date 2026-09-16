@@ -60,10 +60,13 @@ export const NEW_CHAT_SHORTCUT_KEY = "A";
 export const isModKey = (e: KeyboardEvent): boolean => (isMac() ? e.metaKey : e.ctrlKey);
 
 export const isEditableTarget = (e: KeyboardEvent): boolean => {
-  const t = e.target as HTMLElement | null;
-  if (!t) return false;
+  // Not `as HTMLElement | null`: that cast was a lie the `!t` guard could not catch. A keydown
+  // dispatched at `window` or `document` has a non-null target with no `closest`, so the last
+  // clause threw a TypeError out of every shell chord handler that consults this.
+  const t = e.target;
+  if (!(t instanceof Element)) return false;
   return (
-    t.isContentEditable ||
+    (t as HTMLElement).isContentEditable === true ||
     t.tagName === "INPUT" ||
     t.tagName === "TEXTAREA" ||
     t.tagName === "SELECT" ||

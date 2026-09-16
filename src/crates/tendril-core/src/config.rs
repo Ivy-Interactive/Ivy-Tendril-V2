@@ -80,8 +80,24 @@ pub struct TendrilSettings {
     #[serde(rename = "desktopNotifications", default = "default_true")]
     pub desktop_notifications: bool,
 
+    /// The colour-scheme preset Appearance applies, spelled as one of
+    /// `packages/components/src/lib/theme-presets.ts`'s ids (`default`, `dracula`, ...). An id no
+    /// preset matches resolves to `default` in the UI rather than failing the load, which is what
+    /// `TendrilThemes.GetTheme` does with an unknown id.
     #[serde(default = "default_theme")]
     pub theme: String,
+
+    /// `light`, `dark` or `system`, mirroring the original's `TendrilSettings.ThemeMode`. Read by the
+    /// webview at start-up, which is why it is modeled rather than left in [`Self::extra`]: an
+    /// unmodeled key still round-trips, but a mistyped value would then reach the client unvalidated.
+    #[serde(rename = "themeMode", default = "default_theme_mode")]
+    pub theme_mode: String,
+
+    /// Whether the main sidebar starts expanded, for **new client sessions** — the original reads it
+    /// once per shell build (`UseState(() => config.Settings.SidebarOpen)`) and does not write a
+    /// runtime toggle back, so this is a default, not live state.
+    #[serde(rename = "sidebarOpen", default = "default_true")]
+    pub sidebar_open: bool,
 
     /// Minutes between worktree reaper passes. `0` or negative disables the reaper entirely.
     #[serde(
@@ -516,6 +532,10 @@ fn default_true() -> bool {
 fn default_theme() -> String {
     "default".to_string()
 }
+/// `TendrilSettings.ThemeMode`'s default: follow the OS.
+fn default_theme_mode() -> String {
+    "system".to_string()
+}
 fn default_check_interval_minutes() -> i32 {
     15
 }
@@ -596,6 +616,8 @@ impl Default for TendrilSettings {
             llm: None,
             desktop_notifications: true,
             theme: default_theme(),
+            theme_mode: default_theme_mode(),
+            sidebar_open: true,
             worktree_reaper_interval: default_worktree_reaper_interval(),
             worktree_reaper_grace: default_worktree_reaper_grace(),
             worktree_branch_delete_mode: default_worktree_branch_delete_mode(),

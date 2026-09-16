@@ -1,4 +1,5 @@
 import { bridge } from "../api/bridge";
+import { readAppearance } from "./appearance";
 import {
   navigation,
   toAddressArgs,
@@ -111,6 +112,17 @@ class UiStore {
       }
     } catch {
       // Fall back to memory state
+    }
+
+    // `config.yaml`'s `sidebarOpen` is the *session* default, so it is read here and it wins over the
+    // persisted flag: V1's shell does `UseState(() => config.Settings.SidebarOpen)` on every build
+    // and never writes a runtime toggle back, so a toggle lasts as long as the session and Appearance
+    // decides where the next one starts. A failed read leaves the persisted value alone.
+    try {
+      const sidebarOpen = readAppearance(await bridge.getConfig()).sidebarOpen;
+      this.prefs.sidebarCollapsed = !sidebarOpen;
+    } catch {
+      // Keep whatever was persisted.
     }
 
     // The address is where navigation lives, so it wins; the persisted page is only the fallback for

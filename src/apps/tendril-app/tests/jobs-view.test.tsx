@@ -47,8 +47,23 @@ function menuTags(status: JobStatus, capabilities = ALL_CAPS): string[] {
   return (actions[0].children ?? []).map((child) => child.tag);
 }
 
+/**
+ * The table now reads its rows through the daemon's jobs listing rather than off the `jobs` prop,
+ * because that is what infinite scroll needs: `jobsStore` holds only the newest fifty and replaces
+ * them on every poll, so a scrolled-open window could not survive one. The prop stays as the *live*
+ * overlay (V1's per-cell update stream) and as the source of the header's counts and progress bar, so
+ * every test below hands the same jobs to both.
+ */
 function renderJobs(jobs: Job[]) {
+  vi.spyOn(bridge, "listJobs").mockImplementation((_status?: string, limit?: number) =>
+    Promise.resolve(jobs.slice(0, limit ?? jobs.length)),
+  );
   return render(<JobsView jobs={jobs} onStopAllQueued={() => {}} onStopAll={() => {}} />);
+}
+
+/** Resolves once the table has painted a row for every job served. */
+async function waitForRows(count: number) {
+  await waitFor(() => expect(document.querySelectorAll("tbody [data-row-id]")).toHaveLength(count));
 }
 
 describe("extractJobNumber", () => {
@@ -100,7 +115,7 @@ describe("job row ordering", () => {
   it("renders the rows in that order", async () => {
     renderJobs([job("999", "Completed"), job("1000", "Running"), job("00021", "Queued")]);
 
-    await waitFor(() => expect(screen.getByTestId("jobs-table")).toBeInTheDocument());
+    await waitForRows(3);
     const ids = Array.from(document.querySelectorAll("tbody [data-row-id]")).map((row) =>
       row.getAttribute("data-row-id"),
     );
@@ -371,7 +386,7 @@ describe("JobsView chrome", () => {
    */
   it("gives every row a reachable actions menu, and none to a row with no actions", async () => {
     const noCaps = renderJobs([job("00021", "Completed")]);
-    await waitFor(() => expect(screen.getByTestId("jobs-table")).toBeInTheDocument());
+    await waitForRows(1);
     // The bridge can delete, so even a terminal row has a menu.
     expect(jobsStore.canDeleteJob()).toBe(true);
     expect(screen.getByRole("button", { name: "Job actions" })).toBeInTheDocument();
@@ -382,7 +397,7 @@ describe("JobsView chrome", () => {
     vi.spyOn(jobsStore, "canDeleteJob").mockReturnValue(false);
     vi.spyOn(jobsStore, "canForceStartJob").mockReturnValue(false);
     renderJobs([job("00022", "Completed")]);
-    await waitFor(() => expect(screen.getByTestId("jobs-table")).toBeInTheDocument());
+    await waitForRows(1);
     expect(screen.queryByRole("button", { name: "Job actions" })).not.toBeInTheDocument();
   });
 });
@@ -414,5 +429,202 @@ describe("jobsStore.clearJobs", () => {
     expect(await jobsStore.clearJobs("failed")).toBe(3);
     expect(clear).toHaveBeenCalledWith("failed");
     expect(bridge.listJobs).toHaveBeenCalled();
+  });
+});
+
+/**
+ * V1's `c.BatchSize = 50` (`JobsApp.DataTable.cs:93`) with no `LoadAllRows` and no pager: the framework
+ * fetches fifty rows and appends fifty more when the visible region comes within ten of the end
+ * (`widgets/dataTables/hooks/useDataLoading.ts`). What is asserted here is the *window arithmetic* and
+ * that it terminates — that windows are requested in sequence, that they accumulate rather than
+ * replace, and that a short window is the end of the table rather than a reason to ask again.
+ */
+describe("Jobs infinite scroll", () => {
+  const ROW_HEIGHT = 44;
+  /* Tall enough that every loaded row is inside the virtualizer's range, so the DOM can be asserted
+     against. jsdom does no layout, so both halves of the load-more check have to be supplied. */
+  const VIEWPORT_HEIGHT = 10_000;
+
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.hasAttribute("data-index")) return ROW_HEIGHT;
+        return this.classList.contains("overflow-auto") ? VIEWPORT_HEIGHT : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains("overflow-auto") ? VIEWPORT_HEIGHT : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    // @ts-expect-error - restoring jsdom's own getters
+    delete HTMLElement.prototype.offsetHeight;
+    // @ts-expect-error - as above
+    delete HTMLElement.prototype.clientHeight;
+    vi.restoreAllMocks();
+  });
+
+  /** `count` jobs, newest id first, as the daemon's listing would answer them. */
+  function history(count: number): Job[] {
+    return Array.from({ length: count }, (_, index) =>
+      job(String(20_000 - index).padStart(5, "0"), "Completed", {
+        completedAt: "2026-01-01T00:00:00Z",
+      }),
+    );
+  }
+
+  it("asks the daemon for a wider window until the table is fully loaded", async () => {
+    const all = history(120);
+    const listJobs = vi
+      .spyOn(bridge, "listJobs")
+      .mockImplementation((_status?: string, limit?: number) =>
+        Promise.resolve(all.slice(0, limit ?? all.length)),
+      );
+
+    render(<JobsView jobs={[]} onStopAllQueued={() => {}} onStopAll={() => {}} />);
+
+    // 50, then 100, then 150 - which comes back short at 120, and a short window is the end of the
+    // table. `cmd_list_jobs` takes a limit and no offset, so each window is read from the top; the
+    // limits are what say how far the scroll has reached.
+    await waitFor(() => expect(listJobs.mock.calls.map((call) => call[1])).toEqual([50, 100, 150]));
+    await waitForRows(120);
+
+    // Accumulated, not replaced: the first window's rows are still there under the last window's.
+    expect(document.querySelector('tbody [data-row-id="20000"]')).toBeInTheDocument();
+    expect(document.querySelector('tbody [data-row-id="19881"]')).toBeInTheDocument();
+    // And it stops rather than asking for a window past the end.
+    expect(listJobs).toHaveBeenCalledTimes(3);
+  });
+
+  it("stops after one window when that window is the whole table", async () => {
+    const all = history(12);
+    const listJobs = vi
+      .spyOn(bridge, "listJobs")
+      .mockImplementation((_status?: string, limit?: number) =>
+        Promise.resolve(all.slice(0, limit ?? all.length)),
+      );
+
+    render(<JobsView jobs={[]} onStopAllQueued={() => {}} onStopAll={() => {}} />);
+    await waitForRows(12);
+    expect(listJobs).toHaveBeenCalledTimes(1);
+  });
+
+  it("has no pager, because scrolling is the pager", async () => {
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+    // `c.BatchSize` with no `LoadAllRows` is infinite scroll; V1's table renders no pagination footer
+    // and neither does this one.
+    expect(screen.queryByRole("button", { name: /next page/i })).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="data-table-pagination"]')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * `c.AllowFiltering = true` with `c.ShowSearch = false` (`JobsApp.DataTable.cs:88-90`), reached through
+ * a control per column in the sticky header rather than the framework's CodeMirror expression editor.
+ * See `column-filters.ts` for why the payload is the same one either way.
+ */
+describe("Jobs header filters", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("puts a filter row in the header, with a control only on the columns V1 can filter", async () => {
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    const headerRows = document.querySelectorAll("thead tr");
+    expect(headerRows).toHaveLength(2);
+    expect(headerRows[1]).toHaveAttribute("data-slot", "data-table-filter-row");
+
+    expect(screen.getByRole("button", { name: "Filter by Status" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter by Type" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Filter by Project" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Filter by Prompt" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Filter by Plan Id" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Filter by Status Message" })).toBeInTheDocument();
+
+    // `.Filterable(t => t.Id, false)`, and `ShowSearch = false` - no free-text box over the table.
+    expect(screen.queryByRole("textbox", { name: "Filter by Id" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+  });
+
+  it("filters free text on Enter, and says so when nothing matches", async () => {
+    renderJobs([
+      job("00021", "Failed", { statusMessage: "npm install failed" }),
+      job("00022", "Failed", { statusMessage: "timed out waiting for review" }),
+    ]);
+    await waitForRows(2);
+
+    const box = screen.getByRole("textbox", { name: "Filter by Status Message" });
+    fireEvent.change(box, { target: { value: "npm" } });
+    // Typing is not filtering: the framework's editor commits on Enter and so does this.
+    expect(document.querySelectorAll("tbody [data-row-id]")).toHaveLength(2);
+
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitForRows(1);
+    expect(document.querySelector('tbody [data-row-id="00021"]')).toBeInTheDocument();
+
+    // Case-insensitive, because the daemon's `contains` compiles to SQLite `LIKE`.
+    fireEvent.change(box, { target: { value: "NPM" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitForRows(1);
+
+    fireEvent.change(box, { target: { value: "no such thing" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    // Filtered to nothing reads differently from empty, and must: they look identical and mean
+    // opposite things.
+    await waitFor(() => expect(screen.getByTestId("jobs-empty-filtered")).toBeInTheDocument());
+    expect(screen.queryByTestId("jobs-empty")).not.toBeInTheDocument();
+  });
+
+  it("filters Plan Id by what it contains, not by equality", async () => {
+    renderJobs([
+      job("00021", "Running", { planId: "00638" }),
+      job("00022", "Running", { planId: "00712" }),
+    ]);
+    await waitForRows(2);
+
+    const box = screen.getByRole("textbox", { name: "Filter by Plan Id" });
+    // A plan id is typed a digit at a time, and the daemon's column is `PlanFile`, whose value only
+    // *starts* with the id - so `contains` is the only condition that can work here.
+    fireEvent.change(box, { target: { value: "007" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await waitForRows(1);
+    expect(document.querySelector('tbody [data-row-id="00022"]')).toBeInTheDocument();
+  });
+
+  /**
+   * The three facet columns' *narrowing* is asserted where the popover can actually be opened, in
+   * `packages/components`' `data-table.infinite-scroll.test.tsx` — Radix's popover and dropdown both
+   * gate on pointer events this jsdom setup does not implement, which is the same reason the row menu
+   * above is only asserted to be reachable. What is checked here is that the controls exist and carry
+   * the conditions V1's columns imply; `matchesColumnFilters` and `columnFiltersToRemoteFilter` are
+   * unit-tested against the daemon's semantics in the components package.
+   */
+  it("offers a facet only for the columns whose values are a closed set", async () => {
+    renderJobs([
+      job("00021", "Running", { project: "web, api" }),
+      job("00022", "Completed", { type: "CreatePlan", project: "docs" }),
+    ]);
+    await waitForRows(2);
+
+    for (const column of ["Status", "Type", "Project"]) {
+      expect(screen.getByRole("button", { name: `Filter by ${column}` })).toBeEnabled();
+    }
+    // Timer, Agent Output, Cost, Tokens and Timestamp are filterable in V1 because every `JobItemRow`
+    // property is a string there. Two of them are derived rather than stored and the other three are
+    // numeric, so none gets a text box: a `contains` over a formatted number would filter the
+    // rendering rather than the value.
+    for (const column of ["Timer", "Agent Output", "Cost", "Tokens", "Timestamp"]) {
+      expect(screen.queryByRole("button", { name: `Filter by ${column}` })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("textbox", { name: `Filter by ${column}` }),
+      ).not.toBeInTheDocument();
+    }
   });
 });

@@ -50,7 +50,6 @@ const renderShell = (props: Partial<React.ComponentProps<typeof ShellLayout>> = 
       onSelectTab={() => {}}
       onCloseTab={() => {}}
       onNewPlan={() => {}}
-      onOpenShortcuts={() => {}}
       onReconnect={() => {}}
       {...props}
     >
@@ -254,7 +253,6 @@ describe("ShellLayout sidebar list", () => {
         onSelectTab={() => {}}
         onCloseTab={() => {}}
         onNewPlan={() => {}}
-        onOpenShortcuts={() => {}}
         onReconnect={() => {}}
         sidebarList={plansList()}
       >

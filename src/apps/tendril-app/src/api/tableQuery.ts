@@ -36,7 +36,11 @@
  * changes at all; that is the part that makes a million-row table work, and it works now.
  */
 
-import type { RemoteTablePage, RemoteTableRequest } from "@ivy-interactive/components/ui";
+import type {
+  RemoteTableFetcher,
+  RemoteTablePage,
+  RemoteTableRequest,
+} from "@ivy-interactive/components/ui";
 import { invoke } from "@tauri-apps/api/core";
 
 import type { Job } from "../types/api";
@@ -191,6 +195,70 @@ export async function queryTablePath<TRow>(
  */
 export function queryJobsPage(request: RemoteTableRequest): Promise<RemoteTablePage<Job>> {
   return queryTablePath<Job>("/api/jobs/query", request);
+}
+
+/** `bridge.listJobs`: "the newest `limit` jobs", optionally narrowed to one status. */
+export type JobLister = (status?: string, limit?: number) => Promise<Job[]>;
+
+/**
+ * One window of the Jobs table over `cmd_list_jobs` — the transport that is actually reachable from
+ * the desktop shell today.
+ *
+ * ## Why this exists rather than [`queryJobsPage`]
+ *
+ * `POST /api/jobs/query` is the right route and it is finished server-side, but it cannot be called
+ * from the packaged app: the webview has no bearer secret, so only a `#[tauri::command]` can
+ * authenticate, and `cmd_query_table` does not exist yet (see the note on the transport above). A
+ * relative `fetch("/api/jobs/query")` inside the shell resolves against the asset origin, not the
+ * daemon. Wiring the Jobs table straight to it would leave the table permanently empty in the one
+ * place it matters, which the parity contract calls out by name: wiring nobody can reach is the same
+ * as the feature being absent.
+ *
+ * So this adapts the one jobs listing that *is* reachable to the same [`RemoteTableFetcher`] contract,
+ * and every consumer — `useRemoteDataTable`, `DataTable`, the infinite scroll — is identical either
+ * way. Swapping it for [`queryJobsPage`] is one line at the call site.
+ *
+ * ## What it gives up, precisely
+ *
+ * - **It re-reads from the top.** `cmd_list_jobs` takes a limit and no offset, so window *n* is
+ *   `listJobs(offset + limit)` sliced. The rows come back in the daemon's own total order
+ *   (`JOBS_DEFAULT_ORDER` then `Id DESC`), so the slices are consistent windows of one sequence and no
+ *   row can be shown twice or skipped — but the bytes for a long scroll grow quadratically. At a jobs
+ *   list's scale that is a few hundred rows; it is not a model for a million.
+ * - **No server-side sort or filter.** The request's `sort` and `filter` are ignored, because the
+ *   listing has nowhere to put them. A caller must therefore sort and filter client-side, over the
+ *   rows it has loaded — which is exactly what V1's Jobs table does (it filters and sorts the
+ *   in-memory `JobService.GetJobs()` dictionary, not the database), so no behaviour is lost relative to
+ *   V1. It is lost relative to the daemon, which can do both over the whole table.
+ * - **No total.** `totalRows` is a *lower bound*, inferred the way the framework infers `hasMore`
+ *   (`widgets/dataTables/utils/tableDataMapper.ts`: `hasMore = numRows === requestedCount`) — a full
+ *   window means at least one more row exists, a short one means these are all of them. That is enough
+ *   for infinite scroll, which only ever asks "is there more", and not enough for a pager, which is
+ *   part of why V1's table has none.
+ * - **No cancellation.** `invoke` has no abort, so `request.signal` cannot be honoured. The hook's own
+ *   sequence guard still discards a superseded response, so a stale window cannot win a race; it is
+ *   only the wasted work that is unavoidable.
+ *
+ * @param maxRows Ceiling on how far a scroll may go, matching the daemon's own `MAX_LIMIT`. Reaching it
+ *   reports no further rows rather than asking for a window the daemon would clamp anyway.
+ */
+export function createJobsListFetcher(
+  listJobs: JobLister,
+  maxRows = 5_000,
+): RemoteTableFetcher<Job> {
+  return async (request) => {
+    const end = Math.min(request.offset + request.limit, maxRows);
+    const all = await listJobs(undefined, end);
+    const rows = all.slice(request.offset);
+    const full = all.length >= end && end < maxRows;
+    return {
+      rows,
+      totalRows: all.length + (full ? 1 : 0),
+      offset: request.offset,
+      rowCount: rows.length,
+      limit: request.limit,
+    };
+  };
 }
 
 /**
