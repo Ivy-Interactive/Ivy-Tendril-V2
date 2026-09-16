@@ -27,11 +27,14 @@ export function scanQuestionsFences(markdown: string): QuestionsFence[] {
   let openLineIndex = -1;
   let openLine = "";
   let currentBody: string[] = [];
+  /** An open fence that is not a `questions` one. Its contents are skipped entirely. */
+  let skipChar = "";
+  let skipLength = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    if (!inFence) {
+    if (!inFence && !skipChar) {
       // CommonMark: 0-3 spaces/tabs indentation, 3+ backticks or tildes
       const match = line.match(/^([ \t]{0,3})(`{3,}|~{3,})(.*)$/);
       if (match) {
@@ -48,7 +51,21 @@ export function scanQuestionsFences(markdown: string): QuestionsFence[] {
           currentBody = [];
           continue;
         }
+        /* A fence that is *not* `questions` still has to be entered and skipped, or a `questions`
+           sample nested inside a documentation fence is read as a live question block. V1's
+           `QuestionBlockParser` and the Rust scanner both ignore it; this one used to walk straight
+           into it. Only the delimiter and length are kept — the body is discarded. */
+        skipChar = char;
+        skipLength = delim.length;
+        continue;
       }
+    } else if (skipChar) {
+      const closeMatch = line.match(/^([ \t]{0,3})(`{3,}|~{3,})[ \t]*$/);
+      if (closeMatch && closeMatch[2][0] === skipChar && closeMatch[2].length >= skipLength) {
+        skipChar = "";
+        skipLength = 0;
+      }
+      continue;
     } else {
       // Closing fence: 0-3 spaces/tabs indentation, same delimiter character, length >= opening fence length
       const closeMatch = line.match(/^([ \t]{0,3})(`{3,}|~{3,})[ \t]*$/);
