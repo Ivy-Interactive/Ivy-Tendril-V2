@@ -258,11 +258,12 @@ questions:
     const sendBtn = screen.getByTitle("Send message");
     fireEvent.click(sendBtn);
 
-    // The turn itself carries only the prompt and the agent selection — the attachments live on
-    // the optimistic message, which is where the thread renders them from.
+    // The turn carries the attachment paths appended to the prompt, which is the only channel the
+    // agent process has for them (`ChatExecutionService.SendMessageAsync`'s `promptWithAttachments`).
+    // The optimistic message keeps them as structured chips for the thread to render.
     await waitFor(() => {
       expect(executeSpy).toHaveBeenCalledWith("session-10", {
-        prompt: "Review this file",
+        prompt: "Review this file\n\n[Attached Files]:\n- /data/payload.txt",
         agentId: "claude",
         modelId: undefined,
         effort: undefined,

@@ -15,6 +15,7 @@ import { isWriteInAnswer, patchQuestionsMarkdown } from "../utils/questionMarkdo
 import { formatSystemEvent } from "../utils/systemEvents";
 import { resolveJobState, type JobDisplayState } from "../utils/jobStatus";
 import type { LightboxImage } from "../components/chat/ImageLightbox";
+import { TurnActivity } from "../components/chat/TurnActivity";
 
 export interface ChatMessageRowProps {
   message: ChatMessage;
@@ -36,6 +37,33 @@ export interface ChatMessageRowProps {
 }
 
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
+
+const ATTACHED_FILES_HEADING = "[Attached Files]:";
+
+/**
+ * Splits the `[Attached Files]:` block back out of a user message. The prompt that reaches the
+ * agent carries the attachment paths appended under that heading (`ChatExecutionService`'s
+ * `promptWithAttachments`), and the daemon does not persist attachments as structured data, so a
+ * prompt re-read from disk would otherwise show its paths as prose. V1's `parseUserMessageContent`
+ * does the same split for the same reason.
+ */
+export function parseUserMessageContent(content: string): {
+  prompt: string;
+  attachments: ChatAttachment[];
+} {
+  const index = content.indexOf(ATTACHED_FILES_HEADING);
+  if (index < 0) return { prompt: content, attachments: [] };
+  const prompt = content.slice(0, index).trimEnd();
+  const attachments = content
+    .slice(index + ATTACHED_FILES_HEADING.length)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "))
+    .map((line) => line.slice(2).trim())
+    .filter((path) => path.length > 0)
+    .map((path) => ({ name: path.split(/[/\\]/).pop() || path, path }));
+  return { prompt, attachments };
+}
 
 /** An attachment worth showing as a thumbnail rather than as a paperclip chip. */
 export const isImageAttachment = (attachment: ChatAttachment): boolean =>
@@ -151,10 +179,19 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   const isSubmitting = isUser
     ? false
     : (propIsSubmittingAnswer ?? chatStore.isSubmittingAnswer(message.id));
+  const userContent = useMemo(
+    () => (isUser ? parseUserMessageContent(currentMessage.content) : null),
+    [isUser, currentMessage.content],
+  );
   const content = useMemo(() => {
-    if (isUser || !inProgressAnswers) return currentMessage.content;
+    if (isUser) return userContent?.prompt ?? currentMessage.content;
+    if (!inProgressAnswers) return currentMessage.content;
     return patchQuestionsMarkdown(currentMessage.content, inProgressAnswers);
-  }, [isUser, currentMessage.content, inProgressAnswers]);
+  }, [isUser, userContent, currentMessage.content, inProgressAnswers]);
+  const attachments =
+    message.attachments && message.attachments.length > 0
+      ? message.attachments
+      : (userContent?.attachments ?? []);
 
   const systemEvent = useMemo(
     () => (isSystem ? formatSystemEvent(currentMessage.content) : null),
@@ -246,9 +283,11 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
           title={isUser ? message.timestamp : undefined}
         >
           {isUser ? (
-            <div className="self-stretch whitespace-pre-wrap">{message.content}</div>
+            <div className="self-stretch whitespace-pre-wrap">{content}</div>
           ) : (
             <div>
+              {/* What the turn did, ahead of what it said, as `AssistantTurn` orders it. */}
+              <TurnActivity rawStream={currentMessage.rawStream} />
               <PlanMarkdown
                 id={`chat-msg-${message.id}`}
                 content={content}
@@ -267,14 +306,14 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
             </div>
           )}
 
-          {message.attachments && message.attachments.length > 0 && (
+          {attachments.length > 0 && (
             <div
               data-testid="message-attachments"
               className={`flex max-w-full flex-wrap gap-1.5 ${
                 isUser ? "justify-end" : "mt-2 justify-start"
               }`}
             >
-              {message.attachments.map((att, idx) =>
+              {attachments.map((att, idx) =>
                 onOpenImage && isImageAttachment(att) ? (
                   <button
                     key={`${att.path}-${idx}`}
