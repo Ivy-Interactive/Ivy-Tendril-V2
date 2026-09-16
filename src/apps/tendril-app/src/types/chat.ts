@@ -53,6 +53,20 @@ export interface ChatStreamDeltaEvent {
   delta: string;
 }
 
+/**
+ * One eventwire line of a turn in flight, so its tool calls render while they happen.
+ *
+ * `line` is a single `{"kind":…}` JSON event — the shape `parseEventWireStream` reads — and is
+ * appended to the named message's `rawStream`. V1's equivalent is `ChatExecutionService`'s
+ * `StreamLineEmitted`.
+ */
+export interface ChatStreamEventEvent {
+  type: "chat.stream_event";
+  sessionId: string;
+  messageId: string;
+  line: string;
+}
+
 export interface ChatGeneratingStateEvent {
   type: "chat.generating_state";
   sessionId: string;
@@ -81,6 +95,7 @@ export interface ChatSessionRenamedEvent {
 export type ChatEvent =
   | ChatMessageAddedEvent
   | ChatStreamDeltaEvent
+  | ChatStreamEventEvent
   | ChatGeneratingStateEvent
   | ChatQuestionAnsweredEvent
   | ChatJobSpawnedEvent

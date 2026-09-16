@@ -136,23 +136,6 @@ export class PlanActionsController {
   }
 
   /**
-   * Check if the plan may be discarded (moved to Skipped).
-   * Refused for finished plans and for plans a job is still running.
-   */
-  public static canDiscard(plan: PlanDetail | PlanSummary): ActionGatingResult {
-    if (TERMINAL_STATES.includes(plan.state)) {
-      return { allowed: false, reason: `Plan is already ${plan.state}.` };
-    }
-    if (IN_FLIGHT_STATES.includes(plan.state)) {
-      return {
-        allowed: false,
-        reason: `Cannot discard a plan while it is ${plan.state} — cancel the job first.`,
-      };
-    }
-    return { allowed: true };
-  }
-
-  /**
    * Check if the plan may be sent back to Draft.
    * Only meaningful for a plan that has been executed and stalled: Review,
    * Failed or Blocked.

@@ -187,9 +187,13 @@ describe("Settings / Appearance", () => {
       themeMode: "system",
       theme: "default",
       sidebarOpen: true,
+      // `TendrilSettings.ChatMode`'s default: the Chat button opens the chat view.
+      chatMode: "chat",
     });
     // `ValidateSettings` falls back to `system` for anything but light or dark.
     expect(readAppearance({ raw: { themeMode: "solarized" } }).themeMode).toBe("system");
+    // `ChatModes.Normalize` does the same for anything but the exact `terminal` opt-in.
+    expect(readAppearance({ raw: { chatMode: "pty" } }).chatMode).toBe("chat");
   });
 
   /**

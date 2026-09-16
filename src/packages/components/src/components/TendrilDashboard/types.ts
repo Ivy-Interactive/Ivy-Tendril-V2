@@ -86,6 +86,20 @@ export interface TendrilDashboardProps {
   pullRequestsWeekly?: DashboardMonthValueDto[];
   activity?: DashboardActivityMonthDto[];
   jobs?: DashboardJobDto[];
+  /**
+   * True while the analytics behind the KPI, trend, Git Activity and Pull Requests cards have never
+   * arrived. Those four regions render `Skeleton` placeholders of their own shape instead, which is
+   * the framework's answer to a pending region (`Ivy/Widgets/Primitives/Skeleton.cs`).
+   *
+   * It means "no figure exists yet", not "a request is in flight": a *refresh* must leave the last
+   * numbers on screen, so a caller that still holds a previous snapshot passes false throughout. That
+   * distinction is the whole point — the alternative is a tile that drops to a dash and back on every
+   * poll, which is the flicker this prop exists to remove.
+   *
+   * The status strip and Active Jobs take no placeholder: their counts come from the plan and job
+   * stores, which keep the previous list across a refresh and so never have nothing to show.
+   */
+  loading?: boolean;
   slots?: {
     ProcessViewer?: React.ReactNode;
     UpdateNotice?: React.ReactNode;

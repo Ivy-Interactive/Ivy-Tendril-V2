@@ -167,3 +167,38 @@ export function sortToRemote(
 ): RemoteTableSort[] {
   return sort ? [{ column: sort.column, direction: sort.direction }] : [];
 }
+
+/**
+ * The subset of a column declaration that says what the server calls it.
+ *
+ * A `DataTableColumn` satisfies this, and so does a bare `{ name, sortColumn }` list — which is what a
+ * view wants when the mapping belongs next to its column declarations but the fetcher is built before
+ * them.
+ */
+export interface RemoteSortColumn {
+  name: string;
+  sortColumn?: string;
+  filter?: { column?: string };
+}
+
+/**
+ * A sort list with each column renamed to what the *server* calls it.
+ *
+ * A header emits `column.name`, which is a key in the row type the table renders — and a row type is
+ * not a schema. `sortColumn ?? filter.column ?? name` is the chain, so a column that already declared a
+ * rename for filtering needs nothing further, and only a genuinely derived column (a timer counting up
+ * from a start time, ordered by the recorded duration) has to say so twice.
+ *
+ * Apply it in the fetcher, not in the hook: the hook has no columns, and a table whose transport is a
+ * stub in a test should see exactly what the header emitted.
+ */
+export function resolveRemoteSort(
+  columns: readonly RemoteSortColumn[],
+  sort: readonly RemoteTableSort[],
+): RemoteTableSort[] {
+  return sort.map((entry) => {
+    const column = columns.find((candidate) => candidate.name === entry.column);
+    const resolved = column?.sortColumn ?? column?.filter?.column ?? entry.column;
+    return resolved === entry.column ? entry : { ...entry, column: resolved };
+  });
+}

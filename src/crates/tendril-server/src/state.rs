@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64};
 // The settings snapshot is read from synchronous middleware, so it uses the std lock; `version_info`
 // is awaited and uses tokio's. Both names would be `RwLock`, hence the alias.
@@ -71,6 +71,120 @@ pub fn spawn_event_forwarder<T>(
     });
 }
 
+/// Turns a finished job into an event in the chat sessions that are watching its plan, and lets the
+/// agent react to it.
+///
+/// This is the other half of V1's job→chat channel. The daemon could already *store* a system message
+/// into a plan's chats (`chat::storage::broadcast_system_message_to_plan_sessions`, used for the
+/// pull-request case), but nothing ran a turn afterwards, so the agent never saw the event. Here the
+/// event goes through `ChatExecutionManager::notify_event`, which stores it as a `system` message *and*
+/// runs a turn under the `# Current Event Notification` framing — the thing that makes the agent treat
+/// it as something to advise on rather than answer.
+///
+/// It listens on the job manager's own broadcast rather than living inside
+/// [`tendril_core::jobs::manager`]: a job's completion path should not have to know that chats exist,
+/// and the events it already publishes carry everything needed (the outcome, the plan folder, the
+/// status message). Only terminal events are acted on — a `job.status_changed` per transition would
+/// start a turn for every step of a job's life.
+fn spawn_chat_job_notifier(
+    tendril_home: PathBuf,
+    plans_dir: PathBuf,
+    chat_manager: Arc<ChatExecutionManager>,
+    mut rx: broadcast::Receiver<tendril_core::jobs::manager::JobEvent>,
+) {
+    tokio::spawn(async move {
+        loop {
+            let event = match rx.recv().await {
+                Ok(event) => event,
+                // A lag is not fatal, for the same reason `spawn_event_forwarder` says it is not: the
+                // events dropped are unrecoverable but the next one is not.
+                Err(broadcast::error::RecvError::Lagged(dropped)) => {
+                    tracing::warn!(
+                        "chat job notifier lagged by {dropped} events; continuing with the next one"
+                    );
+                    continue;
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            };
+
+            if !matches!(
+                event.event_type.as_str(),
+                tendril_core::jobs::manager::JOB_EVENT_COMPLETED
+                    | tendril_core::jobs::manager::JOB_EVENT_FAILED
+            ) {
+                continue;
+            }
+            let Some(folder_name) = event.plan_folder.clone() else {
+                // A job with no plan has no chat to report to; V2 has no per-job chat association.
+                continue;
+            };
+
+            let message = describe_job_event(&event, &plans_dir, &folder_name);
+            let plan_chat_session_id =
+                tendril_core::plans::reader::read_plan_yaml(&plans_dir.join(&folder_name))
+                    .ok()
+                    .and_then(|(plan, _)| plan.chat_session_id.clone());
+
+            // The same recipient rule the pull-request case uses: every session attached to the plan's
+            // folder, plus the plan's own chat.
+            let recipients = match tendril_core::chat::storage::plan_session_recipients(
+                &tendril_home,
+                &folder_name,
+                plan_chat_session_id.as_deref(),
+            ) {
+                Ok(recipients) => recipients,
+                Err(err) => {
+                    tracing::debug!("Could not resolve chat recipients for {folder_name}: {err}");
+                    continue;
+                }
+            };
+
+            for session_id in recipients {
+                if let Err(err) = chat_manager.notify_event(&session_id, &message).await {
+                    tracing::debug!("Could not notify chat session {session_id}: {err}");
+                }
+            }
+        }
+    });
+}
+
+/// The sentence a job event becomes in a chat, in the shape V1's injected events take: an
+/// `[System Event]` prefix, the job and what it was, the plan it was for, and the reason when it failed.
+fn describe_job_event(
+    event: &tendril_core::jobs::manager::JobEvent,
+    plans_dir: &Path,
+    folder_name: &str,
+) -> String {
+    let plan_id: u32 = folder_name
+        .split('-')
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let title = tendril_core::plans::reader::read_plan_yaml(&plans_dir.join(folder_name))
+        .ok()
+        .map(|(plan, _)| plan.title.clone())
+        .filter(|t| !t.trim().is_empty());
+    let plan = match title {
+        Some(title) => format!(" for plan '{}' (#{:05})", title, plan_id),
+        None => format!(" for plan #{:05}", plan_id),
+    };
+
+    let outcome = if event.event_type == tendril_core::jobs::manager::JOB_EVENT_COMPLETED {
+        "completed".to_string()
+    } else {
+        format!("ended as {:?}", event.status)
+    };
+    let reason = match &event.status_message {
+        Some(message) if !message.trim().is_empty() => format!(" Reason: {}.", message.trim()),
+        _ => String::new(),
+    };
+
+    format!(
+        "[System Event] Job {} ({}) {}{}.{}",
+        event.job_id, event.job_type, outcome, plan, reason
+    )
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub tendril_home: PathBuf,
@@ -97,9 +211,13 @@ pub struct AppState {
     /// Settings snapshot behind an mtime check — the V2 equivalent of the original's
     /// `SettingsReloaded` event, and it also catches an edit made directly to `config.yaml`.
     pub settings_cache: Arc<StdRwLock<Option<Arc<CachedSettings>>>>,
-    /// Password credentials from `config.yaml`'s `auth` block, or `None` when there is no such block
-    /// — which is the norm, and means the bearer token stays the only accepted credential. Resolved
-    /// once here rather than per request, so authentication never reads the config off disk.
+    /// Password credentials as of startup, or `None` when `config.yaml` has no `auth` block — which is
+    /// the norm, and means the bearer token stays the only accepted credential.
+    ///
+    /// **This is a snapshot, not the live credential.** `auth_middleware` reads the Basic-auth config
+    /// from [`AppState::settings_snapshot`] instead, so that `PUT /api/auth/password` takes effect
+    /// without a daemon restart. Kept for callers that want to know how the daemon started up, and
+    /// because `settings_snapshot` is the one place that should be doing config reads.
     pub basic_auth: Option<crate::auth::BasicAuthConfig>,
     /// Held for the duration of a PR reconciliation pass, so the periodic driver and a manual
     /// `POST /api/pull-requests/sync` can never run concurrently.
@@ -208,6 +326,14 @@ impl AppState {
             ws_tx.clone(),
         );
 
+        // A finished job becomes an event in the chats watching its plan, and the agent advises on it.
+        spawn_chat_job_notifier(
+            tendril_home.clone(),
+            plans_dir.clone(),
+            Arc::clone(&chat_manager),
+            job_manager.subscribe_events(),
+        );
+
         // Reconcile tracked pull requests on a timer. The task captures clones rather than the
         // `AppState` it is being constructed inside, so nothing here has to be `Arc`ed early.
         let pr_sync_running = Arc::new(AtomicBool::new(false));
@@ -310,5 +436,80 @@ impl AppState {
     /// replay and the REST backfill endpoint both see it too.
     pub fn dispatch_ws_event(&self, event: serde_json::Value) -> WSEventEnvelope {
         event_buffer::dispatch_event(&self.seq_counter, &self.ring_buffer, &self.ws_tx, event)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::describe_job_event;
+    use tendril_core::jobs::manager::{JobEvent, JOB_EVENT_COMPLETED, JOB_EVENT_FAILED};
+    use tendril_core::models::JobStatus;
+
+    fn event(event_type: &str, status: JobStatus, status_message: Option<&str>) -> JobEvent {
+        JobEvent {
+            event_type: event_type.to_string(),
+            job_id: "00042".to_string(),
+            job_type: "ExecutePlan".to_string(),
+            status,
+            status_message: status_message.map(str::to_string),
+            plan_folder: Some("00007-PortTheChat".to_string()),
+        }
+    }
+
+    /// The sentence a job event becomes in a chat. The `[System Event]` prefix is what V1's injected
+    /// events carry, and the plan id is the padded form a plan is known by everywhere else.
+    #[test]
+    fn a_finished_job_reads_as_an_event_naming_its_plan() {
+        // No plan on disk here, so the title is absent and the id alone identifies it.
+        let dir = std::path::Path::new("/nonexistent-plans-dir");
+
+        let completed = describe_job_event(
+            &event(JOB_EVENT_COMPLETED, JobStatus::Completed, None),
+            dir,
+            "00007-PortTheChat",
+        );
+        assert_eq!(
+            completed,
+            "[System Event] Job 00042 (ExecutePlan) completed for plan #00007."
+        );
+
+        // A failure names the outcome and carries the reason, which is the whole value of the event.
+        let failed = describe_job_event(
+            &event(
+                JOB_EVENT_FAILED,
+                JobStatus::Failed,
+                Some("verification failed"),
+            ),
+            dir,
+            "00007-PortTheChat",
+        );
+        assert_eq!(
+            failed,
+            "[System Event] Job 00042 (ExecutePlan) ended as Failed for plan #00007. Reason: verification failed."
+        );
+
+        // Timeout and Stopped are failures too, and say which they were rather than "failed".
+        let timed_out = describe_job_event(
+            &event(JOB_EVENT_FAILED, JobStatus::Timeout, None),
+            dir,
+            "00007-PortTheChat",
+        );
+        assert!(timed_out.contains("ended as Timeout"), "got: {}", timed_out);
+
+        // A blank status message adds no dangling "Reason:".
+        let blank = describe_job_event(
+            &event(JOB_EVENT_FAILED, JobStatus::Failed, Some("   ")),
+            dir,
+            "00007-PortTheChat",
+        );
+        assert!(!blank.contains("Reason:"), "got: {}", blank);
+
+        // An unparseable folder still produces a sentence rather than nothing.
+        let odd = describe_job_event(
+            &event(JOB_EVENT_COMPLETED, JobStatus::Completed, None),
+            dir,
+            "not-a-plan-folder",
+        );
+        assert!(odd.contains("#00000"), "got: {}", odd);
     }
 }

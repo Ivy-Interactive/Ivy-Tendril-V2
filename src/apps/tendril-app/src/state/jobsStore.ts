@@ -268,23 +268,29 @@ class JobsStore {
     return typeof optionalBridge().forceStartJob === "function";
   }
 
-  /** Whether `Clear Completed` / `Clear Failed` can be offered. See {@link OptionalJobBridge}. */
+  /** Whether the bulk clears can be offered at all. See {@link OptionalJobBridge}. */
   public canClearJobs(): boolean {
     return typeof optionalBridge().clearJobs === "function";
   }
 
   /**
-   * The Jobs table header's `Clear Completed` and `Clear Failed`
-   * (`JobsApp.DataTable.cs:279-289`): `JobService.ClearCompletedJobs` / `ClearFailedJobs`, each
-   * followed by a refresh. The daemon exposes both through one route, `POST /api/jobs/clear`, whose
-   * scope is `completed`, `failed` or `all` (`routes/jobs.rs:293-329`) - `all` has no V1 counterpart
-   * and no caller here.
+   * The Jobs table header's bulk clears (`JobsApp.DataTable.cs:279-289`), each followed by a refresh.
+   *
+   * One daemon route, `POST /api/jobs/clear`, and `scope` is its `status` field: `all`, or the name of
+   * one terminal status — `Completed`, `Failed`, `Timeout` or `Stopped`. V1's menu exposes two of those,
+   * but its service was always a generic predicate clear (`JobService.ClearJobsByStatus`), so the rest
+   * are that primitive's remaining uses rather than new behaviour. See `JOB_CLEAR_SCOPES` in
+   * `JobsView.tsx` for the list the menu offers.
+   *
+   * A scope naming a *non-terminal* status is refused by the daemon with a 400, and refused again
+   * inside `JobManager::clear_jobs`: a clear only ever removes finished work, and that guarantee is the
+   * daemon's rather than this caller's.
    *
    * Returns how many rows the daemon says it removed, which is what a toast can quote. The list is
-   * re-read rather than filtered locally: `clear_completed_jobs` decides what "completed" means, and
-   * a client-side guess at that would drift from it.
+   * re-read rather than filtered locally: the daemon decides what each scope means, and a client-side
+   * guess at that would drift from it.
    */
-  public async clearJobs(scope: "completed" | "failed"): Promise<number> {
+  public async clearJobs(scope: string): Promise<number> {
     const clearViaBridge = optionalBridge().clearJobs;
     if (!clearViaBridge) {
       throw new Error(

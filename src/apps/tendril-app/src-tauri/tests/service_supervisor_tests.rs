@@ -288,3 +288,140 @@ fn test_sensitive_token_redaction() {
     assert!(!redacted2.contains("my_super_secret_master_token"));
     assert!(redacted2.contains("[REDACTED_SECRET]"));
 }
+
+/// The other half of issue #129, and the one the V1 CLI actually tripped: a `.master` the app *cannot
+/// read* used to be deleted, on the reasoning that it names no pid and so blocks every client for
+/// nothing. It names no pid we recognise — which is not the same as naming nobody. V1's
+/// `MasterLock.ReadLiveMaster` deleted a live V2 claim on exactly that reasoning and took the daemon
+/// off the air, so the app now leaves it standing and says so.
+#[tokio::test]
+async fn repair_leaves_a_registration_it_cannot_read_standing() {
+    for (label, content, schema_version) in [
+        // A newer daemon's claim: readable JSON, self-declared schema this build does not know.
+        (
+            "a newer schema",
+            json!({ "port": 5010, "pid": 1, "secret": "s", "version": "9.9.9", "schemaVersion": 99 })
+                .to_string(),
+            Some(99),
+        ),
+        // Structured, and nothing this build can make a claim out of.
+        ("an unknown shape", json!({ "hello": "world" }).to_string(), None),
+    ] {
+        let temp = tempdir().expect("tempdir");
+        let tendril_home = temp.path().to_path_buf();
+        std::fs::write(tendril_home.join(".master"), &content).expect("write master");
+
+        let supervisor = ServiceSupervisor::new(tendril_home.clone(), None);
+        assert_eq!(
+            supervisor.repair_master().await.expect("repair"),
+            MasterReclaim::RefusedUnreadable { schema_version },
+            "{label}"
+        );
+        assert_eq!(
+            supervisor.remove_master_if_stale().expect("sync path"),
+            MasterReclaim::RefusedUnreadable { schema_version },
+            "{label}: the synchronous path must agree"
+        );
+        assert_eq!(
+            std::fs::read_to_string(tendril_home.join(".master")).expect("still there"),
+            content,
+            "{label}: the file must be untouched, not merely present"
+        );
+    }
+}
+
+/// The recovery that must keep working: a file that is not a JSON document at all is a truncated or
+/// half-finished write. It carries no information about anybody, and it blocks every future claim, so
+/// it is still cleared — otherwise a crashed daemon would leave a home no daemon could ever claim.
+#[tokio::test]
+async fn repair_still_clears_a_truncated_registration() {
+    for (label, content) in [
+        ("empty", ""),
+        ("truncated", "{\"port\": 50"),
+        ("not json", "nope"),
+    ] {
+        let temp = tempdir().expect("tempdir");
+        let tendril_home = temp.path().to_path_buf();
+        std::fs::write(tendril_home.join(".master"), content).expect("write master");
+
+        let supervisor = ServiceSupervisor::new(tendril_home.clone(), None);
+        assert_eq!(
+            supervisor.repair_master().await.expect("repair"),
+            MasterReclaim::Removed { pid: None },
+            "{label}"
+        );
+        assert!(!tendril_home.join(".master").exists(), "{label}");
+    }
+}
+
+/// And the app refuses to spawn over a registration it cannot read, rather than launching a daemon
+/// whose own `MasterGuard::acquire` will refuse the same file into a log nobody opens.
+#[tokio::test]
+async fn starting_a_managed_daemon_refuses_a_registration_it_cannot_read() {
+    let temp = tempdir().expect("tempdir");
+    let tendril_home = temp.path().to_path_buf();
+    let content = json!({ "port": 5010, "pid": 1, "schemaVersion": 99 }).to_string();
+    std::fs::write(tendril_home.join(".master"), &content).expect("write master");
+
+    let mock_bin = temp.path().join("mock_daemon.sh");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut f = File::create(&mock_bin).expect("create mock daemon");
+        writeln!(f, "#!/bin/sh\nsleep 5").expect("write script");
+        let mut perms = f.metadata().expect("meta").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&mock_bin, perms).expect("chmod");
+    }
+
+    let mut supervisor = ServiceSupervisor::new(tendril_home.clone(), Some(mock_bin.clone()));
+    let err = supervisor
+        .start_managed_service(&mock_bin, &[])
+        .expect_err("must refuse to start over a claim it cannot read");
+    assert!(
+        err.contains("not a registration this build can read"),
+        "got: {err}"
+    );
+    assert!(err.contains("schemaVersion 99"), "got: {err}");
+    assert_eq!(
+        std::fs::read_to_string(tendril_home.join(".master")).expect("still there"),
+        content
+    );
+    assert!(!tendril_home.join(".managed_service.lock").exists());
+}
+
+/// A claim naming a pid that has been recycled — alive, but a different process than the one that
+/// wrote the claim — is still reclaimable, which is what `MasterClaim::owner_is_running` adds over a
+/// bare `kill(pid, 0)`.
+#[cfg(unix)]
+#[tokio::test]
+async fn repair_clears_a_claim_whose_pid_was_recycled() {
+    let temp = tempdir().expect("tempdir");
+    let tendril_home = temp.path().to_path_buf();
+
+    // This very process, stamped with a start token that cannot be ours.
+    let content = json!({
+        "port": 5010,
+        "pid": std::process::id(),
+        "secret": "s",
+        "startedAt": "2026-09-06T12:00:00Z",
+        "host": "127.0.0.1",
+        "scheme": "http",
+        "version": "0.1.0",
+        "apiVersion": 1,
+        "capabilities": [],
+        "schemaVersion": 2,
+        "pidStartedAt": "Thu Jan  1 00:00:00 1970"
+    })
+    .to_string();
+    std::fs::write(tendril_home.join(".master"), content).expect("write master");
+
+    let supervisor = ServiceSupervisor::new(tendril_home.clone(), None);
+    assert_eq!(
+        supervisor.remove_master_if_stale().expect("reclaim"),
+        MasterReclaim::Removed {
+            pid: Some(std::process::id())
+        }
+    );
+    assert!(!tendril_home.join(".master").exists());
+}

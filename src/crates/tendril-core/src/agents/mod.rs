@@ -1,4 +1,8 @@
 pub mod catalog;
+// Deliberately not re-exported below: `eventwire::text_event` and `eventwire::event_wire_text` are
+// too generically named to live in `agents::*` alongside everything else. Use
+// `agents::eventwire::EventWireNormalizer`.
+pub mod eventwire;
 // Deliberately not re-exported below: `instructions::compile` and `instructions::TEMPLATE` are too
 // generically named to live in `agents::*` alongside everything else.
 pub mod instructions;
@@ -8,6 +12,9 @@ pub mod model_cache;
 pub mod model_sorting;
 pub mod model_specs;
 pub mod pricing;
+// Deliberately not re-exported below: `provider_models::redact` and `select_model` are too generically
+// named to live in `agents::*` alongside everything else. Use `agents::provider_models::*`.
+pub mod provider_models;
 pub mod providers;
 pub mod reconcile;
 pub mod resolution;

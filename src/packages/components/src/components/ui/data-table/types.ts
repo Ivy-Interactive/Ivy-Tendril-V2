@@ -35,17 +35,45 @@ export interface DataTableColumn<TRow> {
   footer?: React.ReactNode;
   /** Defaults to false — cells truncate with an ellipsis unless set. */
   wrapText?: boolean;
+  /**
+   * This column's cells do something when clicked, so they say so.
+   *
+   * The framework's grid distinguishes exactly this: a cell with a click handler is drawn with
+   * `cursor: "pointer"` and a plain one with `cursor: "default"`
+   * (`widgets/dataTables/utils/cellContent.ts:583` and `:459`). It reserves its second treatment — blue
+   * text with an underline (`customRenderers.ts:526`, `canvasText.ts:103`) — for a *link* cell, i.e. one
+   * that navigates. So a cell that opens a sheet gets the cursor; a cell that goes somewhere gets
+   * [`dataTableLinkClass`] as well.
+   *
+   * Set it on the column rather than on the element inside the cell, so the whole cell is the affordance
+   * and not just the few characters the value happens to occupy.
+   */
+  clickable?: boolean;
   /** Cell becomes editable when the table is `editable`. Defaults to false. */
   editable?: boolean;
   /** Comparator override; defaults to the shared value comparator in utils.ts. */
   compare?: (a: unknown, b: unknown) => number;
   /**
-   * Header filter for this column, rendered in the table's filter row when `showColumnFilters`.
+   * Whether this column can appear in the table's filter expression, and what it is called on the wire
+   * when it can — the legacy `.Filterable(column, …)`. V1's Jobs table opts out the hidden `Id` and
+   * `ErrorContext` columns and nothing else.
    *
-   * Absent means unfilterable, which is the legacy `.Filterable(false)` — V1's Jobs table applies it
-   * to the hidden `Id` and `ErrorContext` columns and to nothing else.
+   * Absent means unfilterable: the expression editor refuses the name, naming the columns it does
+   * accept.
    */
   filter?: DataTableColumnFilter;
+  /**
+   * The server's name for this column when sorting, where it differs from the displayed one.
+   *
+   * Only meaningful under `manualSorting`, where the sort is executed by whoever holds the rows. A
+   * *derived* column is the case that needs it: V1's Jobs table shows a Timer that counts up from
+   * `StartedAt`, and the closest thing the database can order by is `DurationSeconds`. Falls back to
+   * `filter.column` (the same rename, already declared for filtering) and then to `name`.
+   *
+   * A column the server cannot order by at all should set `sortable: false` rather than a wrong name
+   * here.
+   */
+  sortColumn?: string;
 }
 
 export interface DataTableRowAction<TRow> {

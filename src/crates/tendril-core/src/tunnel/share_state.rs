@@ -133,20 +133,23 @@ pub fn tokens_match(expected: &str, presented: &str) -> bool {
 /// pid that was killed, for logging and for the tests.
 pub fn reap_orphan(tendril_home: &Path) -> Option<u32> {
     let session = read(tendril_home)?;
-    let pid = session.pid;
-    let killed =
-        if pid != 0 && crate::config::is_process_running(pid) && looks_like_cloudflared(pid) {
-            tracing::warn!(
-                "Killing a cloudflared left behind by a previous daemon (pid {pid}, {})",
-                session.url
-            );
-            crate::jobs::process_tree::kill_tree(pid, std::time::Duration::from_secs(3));
-            Some(pid)
-        } else {
-            None
-        };
+    let killed = reap_orphan_pid(session.pid, &session.url);
     clear(tendril_home);
     killed
+}
+
+/// The pid half of [`reap_orphan`], without the state file, so [`super::full_state`] reaps its own
+/// record through the same two guards rather than reimplementing them.
+///
+/// `url` is only used to make the log line identifiable.
+pub fn reap_orphan_pid(pid: u32, url: &str) -> Option<u32> {
+    if pid != 0 && crate::config::is_process_running(pid) && looks_like_cloudflared(pid) {
+        tracing::warn!("Killing a cloudflared left behind by a previous daemon (pid {pid}, {url})");
+        crate::jobs::process_tree::kill_tree(pid, std::time::Duration::from_secs(3));
+        Some(pid)
+    } else {
+        None
+    }
 }
 
 /// Whether `pid` is executing something called cloudflared. `ps` is used rather than a new

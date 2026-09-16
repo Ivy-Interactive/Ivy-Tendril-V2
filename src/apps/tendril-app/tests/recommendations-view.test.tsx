@@ -81,10 +81,11 @@ describe("RecommendationsView source-plan gate", () => {
 
     renderView();
 
-    // V1's `NoContentView` copy, and unconditional: this page has no filters to blame.
+    // V1's `NoContentView` copy, and unconditional: this page has no filters to blame. Written
+    // exactly as `Apps/Recommendations/ContentView.cs` writes it, i.e. without a full stop.
     await waitFor(() =>
       expect(
-        screen.getByText("Recommendations from completed plans will appear here."),
+        screen.getByText("Recommendations from completed plans will appear here"),
       ).toBeInTheDocument(),
     );
   });

@@ -25,7 +25,12 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 tokio-tungstenite = "0.29"
 futures-util = "0.3"
 anyhow = "1"
+base64 = "0.22"
 url = "2"
+# Only for the `.master` lifecycle: the app deletes that file, so it classifies it with the daemon's own
+# `inspect_master_file`/`MasterClaim` rather than a second implementation that can drift from it. The
+# rest of the app still talks to the daemon over HTTP and shares no types with it.
+tendril-core = { path = "../../../crates/tendril-core" }
 sysinfo = "0.33"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
@@ -39,4 +44,11 @@ tempfile = "3"
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors"] }
 futures-util = "0.3"
+base64 = "0.22"
+# Tests only: the file-preview command's whole claim is that the daemon's `local_file_guard` is what
+# decides which paths may be read, and that claim can only be tested against the real router.
+tendril-server = { path = "../../../crates/tendril-server" }
+# The daemon's router is built on the workspace's axum 0.7, so serving it needs that version's `serve`.
+# The app's own mock daemons are on 0.8, hence the alias rather than a downgrade.
+axum07 = { package = "axum", version = "0.7" }
 

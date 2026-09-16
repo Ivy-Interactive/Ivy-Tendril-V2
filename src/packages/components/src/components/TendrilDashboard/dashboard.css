@@ -266,18 +266,41 @@ button.tdb-kpi:focus-visible {
   margin-bottom: 10px;
 }
 
+/* The value and its delta share this row, and at the narrow end of the KPI grid they do not both
+   fit: a card's content box is only about 137px across when four of them sit in a full-width main
+   column at a ~870px container. `flex-wrap` lets the delta drop to a second line instead. Without
+   it the row overflowed into `.tdb-root { overflow-x: hidden }`, which does not spill a figure, it
+   cuts one in half — a half-visible number is worse than a tall card, because it still reads as a
+   number. */
 .tdb-kpi-row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
+/* Wrappable on purpose, which is what keeps the Forecast card's range (`$1.2k – $3.4k`) inside a
+   narrow card: it breaks after the dash and sets the two bounds on two lines rather than running
+   past the edge. Three things make that work and none is decorative —
+     - `min-width: 0` undoes a flex item's `min-width: auto`, which is min-content and so refuses to
+       shrink below the widest unbreakable run;
+     - `white-space: normal` (this used to be `nowrap`) supplies the break opportunity, and there is
+       exactly one, because the caller's `RANGE_SEPARATOR` (`tendril-app`, `utils/dashboardMetrics`,
+       which also caps each figure at five characters) glues the dash to the lower bound with a non-breaking
+       space — otherwise a line could begin with `– $3.4k`, which reads as a negative amount;
+     - `overflow-wrap: break-word` is the floor. It never fires at any width this card reaches, since
+       a compact figure is at most five characters (`$999k`, about 89px), but if one ever did not fit
+       its own line the digits would wrap rather than be clipped away.
+   No `overflow: hidden` and no `text-overflow: ellipsis` here, deliberately: an ellipsized cost is
+   indistinguishable from a smaller cost. */
 .tdb-kpi-value {
   font-size: 30px;
   line-height: 36px;
   font-weight: 600;
-  white-space: nowrap;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .tdb-kpi-subvalue {
@@ -629,11 +652,18 @@ button.tdb-kpi:focus-visible {
   padding-bottom: 36px;
 }
 
+/* min-width: 0 is load-bearing, not defensive. A flex item defaults to
+   min-width: auto, which refuses to shrink below its content, so the plot could
+   push itself past the side card's inner width and the bars and their labels were
+   clipped by .tdb-side-block's overflow: hidden. Zero lets the track take the width
+   the card has and hand it to the bars, which are themselves flexible. Clipping the
+   overflow instead would hide data; this fits it. */
 .tdb-bars-plot {
   flex: 1;
   display: flex;
   align-items: flex-end;
   gap: 8px;
+  min-width: 0;
 }
 
 .tdb-bar-item {
@@ -788,6 +818,64 @@ button.tdb-kpi:focus-visible {
   padding-top: 3.5rem;
   padding-bottom: 1.5rem;
   font-family: inherit;
+}
+
+/* ---------- Loading skeletons ---------- */
+
+/* Sizing only. The tint, the radius and the pulse come from the shared Skeleton
+   primitive (packages/components/src/components/ui/skeleton.tsx), which is what
+   data-table and the sidebar already use; these rules exist to give it the
+   framework's `.Height()`/`.Width()` treatment, i.e. the dimensions of the real
+   content, so the box a placeholder holds is the box the number lands in and
+   nothing on the page moves when it does. */
+
+.tdb-skel {
+  display: block;
+}
+
+/* Matches .tdb-kpi-label's 14px line and 10px gap. */
+.tdb-skel-kpi-label {
+  height: 14px;
+  width: 60%;
+  margin-bottom: 10px;
+}
+
+/* Matches .tdb-kpi-value's 36px line box, at the width a currency figure takes. */
+.tdb-skel-kpi-value {
+  height: 30px;
+  width: 45%;
+}
+
+/* Matches .tdb-kpi-hint's 15px line and 8px offset. */
+.tdb-skel-kpi-hint {
+  height: 11px;
+  width: 75%;
+  margin-top: 8px;
+}
+
+/* The silhouette of a chart: bars anchored to the baseline, filling the card's
+   width whatever it is. Same flex/min-width rule as .tdb-bar-item, so a
+   placeholder can never be the thing that overflows the card. */
+.tdb-skel-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 166px;
+}
+
+.tdb-skel-chart-bar {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 29px;
+  display: flex;
+}
+
+.tdb-skel-fill {
+  width: 100%;
+  height: 100%;
 }
 
 /* ---------- Responsive ---------- */

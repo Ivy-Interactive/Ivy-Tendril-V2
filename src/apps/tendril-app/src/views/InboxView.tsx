@@ -30,10 +30,11 @@ import {
   PlanMarkdown,
   type BadgeSelectOption,
 } from "@ivy-interactive/components/tendril";
+import { ivyColorVar } from "@ivy-interactive/components";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 import type { GitHubIssue, InboxProposal, ProjectSummary, SweepReport } from "../types/api";
-import { EmptyState } from "../components/EmptyState";
+import { NoContentView } from "../components/NoContentView";
 import { AutoAcceptSettingsDialog } from "./dialogs/AutoAcceptSettingsDialog";
 
 export type InboxCategory = "my-issues" | "review-requests" | "project-issues";
@@ -264,15 +265,28 @@ const RailExpander: React.FC<{
 
 /**
  * V1 `SidebarListRow.BuildSubItem`: a 1rem indent, then either an icon or a small colour box, then
- * the label. V1 colours the box per project (`config.GetProjectColor`); `ProjectSummary` carries no
- * colour, so the marker stays a neutral token rather than an invented palette.
+ * the label. Icon *or* colour, never both — which is why the "No projects in settings" row keeps its
+ * folder icon and gets no dot.
+ *
+ * The colour box is V1's, literally: `new Box().Background(color).BorderRadius(BorderRadius.Rounded)
+ * .Width(Size.Units(3)).Height(Size.Units(3))` — a 0.75rem square at Ivy's `Rounded` radius, which
+ * resolves to 0.5rem, so it reads as a dot without being a circle. That is why this is
+ * `size-3 rounded-[0.5rem]` and not `size-2 rounded-full`, and it is the same marker the Settings
+ * sidebar draws (`views/settings/SidebarListRow.tsx`) for the same projects.
+ *
+ * `color` is an Ivy `Colors` name, resolved through the package's `ivyColorVar` — the one
+ * name-to-token mapping in the codebase, shared with `Badge` and `TuiBadge`. A row with neither an
+ * icon nor a colour keeps the old neutral marker.
  */
 const RailSubItem: React.FC<{
   label: string;
   icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  /** An Ivy `Colors` name, e.g. the project's configured colour. */
+  color?: string;
   selected?: boolean;
   onClick?: () => void;
-}> = ({ label, icon: IconCmp, selected = false, onClick }) => {
+  testId?: string;
+}> = ({ label, icon: IconCmp, color, selected = false, onClick, testId }) => {
   const shared = `flex w-full items-center gap-2 rounded-field py-1.5 pl-4 pr-2 text-left text-xs transition-colors ${
     selected
       ? "bg-secondary text-secondary-foreground"
@@ -281,6 +295,14 @@ const RailSubItem: React.FC<{
 
   const marker = IconCmp ? (
     <IconCmp className="size-4 shrink-0" aria-hidden />
+  ) : color ? (
+    <span
+      aria-hidden
+      data-testid={testId ? `${testId}-dot` : undefined}
+      data-color={color}
+      className="size-3 shrink-0 rounded-[0.5rem]"
+      style={{ backgroundColor: ivyColorVar(color) }}
+    />
   ) : (
     <span
       aria-hidden
@@ -290,7 +312,7 @@ const RailSubItem: React.FC<{
 
   if (!onClick) {
     return (
-      <span className={`${shared} cursor-default`}>
+      <span className={`${shared} cursor-default`} data-testid={testId}>
         {marker}
         <span className="truncate">{label}</span>
       </span>
@@ -298,7 +320,14 @@ const RailSubItem: React.FC<{
   }
 
   return (
-    <button type="button" role="tab" aria-selected={selected} onClick={onClick} className={shared}>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      data-testid={testId}
+      onClick={onClick}
+      className={shared}
+    >
       {marker}
       <span className="truncate">{label}</span>
     </button>
@@ -1059,14 +1088,21 @@ export const InboxView: React.FC<InboxViewProps> = ({
       );
 
   return (
-    <div data-testid="inbox-view" className="flex min-h-0 gap-4">
+    /* `h-full min-h-0` is the top of the height chain the issues table needs: the shell hands this
+       view a content frame of definite height (`CONTENT_PADDED_CLASS` in `ShellLayout`, a `flex-1`
+       child of an absolutely-positioned pane), so `h-full` resolves, and `min-h-0` on this and every
+       scrolling descendant is what lets them shrink below their content — a flex child's default
+       `min-height: auto` is precisely how a bounded table turns into a page that scrolls. */
+    <div data-testid="inbox-view" className="flex h-full min-h-0 gap-4">
       {/* V1 composes the inbox as `new SidebarLayout(content, sidebar)`; `SidebarView` builds these
           rows. Categories are a rail, not a row of pills. */}
       <div
         role="tablist"
         aria-orientation="vertical"
         aria-label="Inbox categories"
-        className="flex w-48 shrink-0 flex-col gap-1"
+        /* The rail scrolls itself once a config has more projects than fit, as the Settings section
+           rail does, rather than being the thing that grows the frame. */
+        className="flex w-48 shrink-0 flex-col gap-1 overflow-y-auto"
       >
         <RailRow
           icon={CircleDot}
@@ -1092,12 +1128,23 @@ export const InboxView: React.FC<InboxViewProps> = ({
         />
         {isProjectsExpanded &&
           (projects.length === 0 ? (
-            <RailSubItem label="No projects in settings" icon={FolderClosed} />
+            <RailSubItem
+              label="No projects in settings"
+              icon={FolderClosed}
+              testId="inbox-no-projects"
+            />
           ) : (
             projects.map((proj) => (
               <RailSubItem
                 key={proj.name}
                 label={proj.name}
+                /*
+                 * `SettingsApp.cs:120-121` reduces to "the configured colour, else `Colors.Slate`" —
+                 * the unset case is a neutral dot, not the absence of one. Same rule as the Settings
+                 * project rail, so a project reads as the same colour in both places.
+                 */
+                color={proj.color?.trim() || "Slate"}
+                testId={`inbox-project-${proj.name}`}
                 selected={selectedCategory === "project-issues" && selectedProject === proj.name}
                 onClick={() => {
                   setSelectedProject(proj.name);
@@ -1109,7 +1156,9 @@ export const InboxView: React.FC<InboxViewProps> = ({
           ))}
       </div>
 
-      <div className="min-w-0 flex-1 space-y-4">
+      {/* A column, not a `space-y` block: the header, filter bar and proposals keep their intrinsic
+          heights while the table below takes what is left, which is what `fillHeight` needs. */}
+      <div data-testid="inbox-content" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         {/* Header: title, refresh and the Auto-Accept state on the left; the bulk actions on the
             right, in V1's order (`ContentView.BuildIssuesView`). */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
@@ -1418,14 +1467,15 @@ export const InboxView: React.FC<InboxViewProps> = ({
           </div>
         ) : filteredIssues.length === 0 && issues.length === 0 && page === 1 ? (
           <div data-testid="inbox-empty">
-            {/* V1's `NoContentView` strings, per category. */}
+            {/* V1's `NoContentView` strings, per category, and V1 passes neither of them a `cta`:
+                `BuildReviewsView`/`BuildIssuesView` return the header above a bare `NoContentView`. */}
             {isReviews ? (
-              <EmptyState
+              <NoContentView
                 title="All Caught Up!"
                 description="No pull requests currently require your review."
               />
             ) : (
-              <EmptyState
+              <NoContentView
                 title="No Issues Found"
                 description="No issues match the selected view."
               />
@@ -1436,12 +1486,19 @@ export const InboxView: React.FC<InboxViewProps> = ({
             data-testid="inbox-issue-table"
             // See `PullRequestsView`: fixed layout is what makes the declared widths binding and
             // keeps the row-actions column on screen instead of overflowing to the right.
-            className="[&_table.ivy-data-table]:table-fixed [&_table.ivy-data-table_th:last-child]:w-28"
+            // `min-h-0 flex-1` claims the leftover height of the column above; with `fillHeight`
+            // below, that is the bound the table's own viewport scrolls inside.
+            className="min-h-0 flex-1 [&_table.ivy-data-table]:table-fixed [&_table.ivy-data-table_th:last-child]:w-28"
             columns={isReviews ? reviewColumns : issueColumns}
             rows={filteredIssues}
             getRowId={(row) => String(row.number)}
             allowSorting
             showColumnOptions
+            /* As `JobsView` does: a `shrink-0` toolbar over a `flex-1 min-h-0` scroll viewport, so
+               the rows scroll inside the table and the sticky header stays put. Without it the table
+               grows to its row count and the page's scroller is the one that moves — which is the
+               whole view scrolling to read a list. */
+            fillHeight
             // V1 hand-rolls a 45px `Selected` column because the bulk buttons act on it; the
             // table's own selection column is that, plus a select-all in the header.
             selectable={!isReviews}

@@ -59,6 +59,7 @@ async fn spawn_mock_chat_service(
                         "agentId": body.agent_id,
                         "modelId": body.model_id,
                         "effort": body.effort,
+                        "planFolderName": body.plan_folder_name,
                         "messages": [],
                         "spawnedJobIds": []
                     })),
@@ -250,12 +251,33 @@ async fn test_chat_client_crud_and_queue_methods() {
             agent_id: Some("claude".to_string()),
             model_id: Some("sonnet".to_string()),
             effort: Some("high".to_string()),
+            // The plan this session belongs to. `PlanChatSessions.BelongsTo` is defined on it, so it has
+            // to reach the daemon on the way out *and* come back on the way in: the plan page finds its
+            // own conversation by this field and nothing else, and a session that lost it would look
+            // like no session at all, so the next message would attach a second one to the same plan.
+            plan_folder_name: Some("00021-BuildDesktopOperator".to_string()),
         })
         .await
         .expect("create_chat_session");
     assert_eq!(created.id, "session-new");
     assert_eq!(created.title, "My New Chat");
     assert_eq!(created.agent_id.as_deref(), Some("claude"));
+    assert_eq!(
+        created.plan_folder_name.as_deref(),
+        Some("00021-BuildDesktopOperator"),
+        "the plan attachment must survive the round trip"
+    );
+
+    // And a session with no plan carries no attachment rather than an empty one, which is what keeps
+    // "belongs to no plan" distinguishable from "belongs to a plan called nothing".
+    let plain = client
+        .create_chat_session(CreateSessionDto {
+            title: Some("Just A Chat".to_string()),
+            ..Default::default()
+        })
+        .await
+        .expect("create_chat_session");
+    assert_eq!(plain.plan_folder_name, None);
 
     // 3. Get session
     let fetched = client

@@ -452,3 +452,47 @@ export const WithRichPlanLogs: Story = {
     visual: { disable: true },
   },
 };
+
+/**
+ * A run whose provider reported tokens but no charge, so Tendril priced it from the model's list rate.
+ *
+ * The point of the story is the pair of footers: this one and `CompletedSuccess`, which shows a cost the
+ * agent actually billed. Same line, same layout, and the estimate is dimmer, italic and prefixed "~".
+ */
+const mockEstimatedCostLines = [
+  mockSessionInit,
+  JSON.stringify({
+    kind: "text",
+    timestamp: "2026-09-05T08:30:02Z",
+    text: "Reviewed the four call sites and left the third one alone.",
+    delta: false,
+  }),
+  JSON.stringify({
+    kind: "result",
+    timestamp: "2026-09-05T08:34:41Z",
+    is_success: true,
+    duration_ms: 281_000,
+    usage: {
+      input_tokens: 120,
+      output_tokens: 4200,
+      cache_read_tokens: 640_000,
+      cache_write_tokens: 4459,
+      reasoning_tokens: 0,
+      cost_usd: 0.9412,
+      cost_source: "estimated",
+      model: "claude-3-7-sonnet",
+    },
+    response: "Reviewed the four call sites and left the third one alone.",
+  }),
+].join("\n");
+
+export const EstimatedCost: Story = {
+  args: {
+    id: "agent-viewer-estimated-cost",
+    jsonStream: mockEstimatedCostLines,
+    autoScroll: false,
+    showSystemEvents: true,
+    height: "px:320",
+    eventHandler: () => {},
+  },
+};

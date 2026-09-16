@@ -10,8 +10,8 @@ use crate::agents::model_specs;
 use crate::agents::providers::agent_command;
 use crate::agents::resolution::{default_profiles, normalize_agent_name};
 use crate::config::{
-    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config, read_master,
-    TendrilSettings,
+    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
+    MasterFileKind, TendrilSettings,
 };
 use crate::db::{check_plan_search, get_last_sync_time, open_database, PlanSearchHealth};
 use crate::git::{
@@ -673,9 +673,14 @@ pub fn plan_search_checks(
 
 /// What `.master` says the running server is, including which scheme it serves: a client that
 /// guesses wrong gets a connection error rather than a redirect, so this is worth stating plainly.
+///
+/// A file that is present but unreadable is its own answer, and not "not running": nothing deletes it
+/// on a guess any more (see [`crate::config::inspect_master_file`]), so `doctor` is where an operator
+/// finds out it is there and that a daemon is refusing to start because of it.
 fn server_check(tendril_home: &Path) -> CheckResult {
-    match read_master(tendril_home) {
-        Some(master) => {
+    match crate::config::inspect_master_file(tendril_home) {
+        MasterFileKind::Claim(claim) => {
+            let master = claim.info;
             let note = if master.scheme.eq_ignore_ascii_case("https") {
                 "TLS"
             } else {
@@ -692,10 +697,32 @@ fn server_check(tendril_home: &Path) -> CheckResult {
                 ),
             )
         }
-        None => CheckResult::environment(
+        MasterFileKind::Missing => CheckResult::environment(
             "Server",
             CheckStatus::Ok,
             "Server: not running (no .master file)".to_string(),
+        ),
+        MasterFileKind::Garbage => CheckResult::environment(
+            "Server",
+            CheckStatus::Warn,
+            format!(
+                "Server: {}/.master is not a JSON document — a daemon starting here will discard it",
+                tendril_home.display()
+            ),
+        ),
+        MasterFileKind::Foreign { schema_version } => CheckResult::environment(
+            "Server",
+            CheckStatus::Warn,
+            format!(
+                "Server: {}/.master was written by a Tendril this build does not understand (schema \
+                 version {}, this build writes {}). It is left untouched, and a daemon will refuse to \
+                 start on this home until it is gone.",
+                tendril_home.display(),
+                schema_version
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unmarked".to_string()),
+                crate::config::MASTER_SCHEMA_VERSION
+            ),
         ),
     }
 }
@@ -1214,6 +1241,42 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{}-{}", name, uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// `doctor` is where an operator learns that a `.master` nothing will delete is what is stopping a
+    /// daemon from starting. "Not running" would be the wrong report, and it is what this used to say
+    /// for any file it could not parse.
+    #[test]
+    fn the_server_check_names_a_master_file_it_cannot_read() {
+        let home = scratch_dir("tendril-doctor-master");
+
+        assert_eq!(server_check(&home).status, CheckStatus::Ok);
+        assert!(server_check(&home).message.contains("not running"));
+
+        std::fs::write(home.join(".master"), r#"{"schemaVersion":99}"#).unwrap();
+        let foreign = server_check(&home);
+        assert_eq!(foreign.status, CheckStatus::Warn);
+        assert!(
+            foreign.message.contains("does not understand") && foreign.message.contains("99"),
+            "got: {}",
+            foreign.message
+        );
+
+        std::fs::write(home.join(".master"), "").unwrap();
+        let garbage = server_check(&home);
+        assert_eq!(garbage.status, CheckStatus::Warn);
+        assert!(
+            garbage.message.contains("not a JSON document"),
+            "got: {}",
+            garbage.message
+        );
+
+        crate::config::write_master(&home, 5010, "s", "127.0.0.1", "https").unwrap();
+        let claim = server_check(&home);
+        assert_eq!(claim.status, CheckStatus::Ok);
+        assert!(claim.message.contains("https://127.0.0.1:5010"));
+
+        let _ = std::fs::remove_dir_all(home);
     }
 
     #[test]

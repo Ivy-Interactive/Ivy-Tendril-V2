@@ -146,7 +146,21 @@ pub async fn reconcile_jobs_with(
                 }
                 report.queued_jobs.push(job.id.clone());
             }
-            // Blocked jobs are handled wholesale by `unblock_satisfied_plans` below.
+            // A blocked job's gate is re-run by the maintenance sweeps rather than here, so its row
+            // is left as it stands — but it has to be handed to the manager all the same. Every
+            // path that can release one (both blocked sweeps in `run_maintenance_pass_with`, and
+            // `release_wait_dependents` when a dependency finishes) filters the in-memory map, which
+            // a restart empties, so a row left out of it is released by nothing. See
+            // [`JobManager::restore_blocked`].
+            //
+            // `unblock_satisfied_plans` below is not a substitute: it moves *plans* out of `Blocked`
+            // on disk and never looks at a job row, so on its own it leaves the job blocked behind a
+            // plan that is no longer waiting for anything.
+            JobStatus::Blocked => {
+                if let Some(manager) = job_manager {
+                    manager.restore_blocked(job.clone()).await;
+                }
+            }
             _ => {}
         }
     }

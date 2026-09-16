@@ -23,15 +23,14 @@ import type { Densities } from "@/types/density";
 
 import "./data-table.css";
 
-import type { DataTableColumnFilters } from "./column-filters";
-import { setColumnFilter } from "./column-filters";
 import { DataTableCellEditor } from "./data-table-cell-editor";
-import { DataTableColumnFilterControl } from "./data-table-column-filter";
 import { DataTableColumnHeader } from "./data-table-column-header";
+import { DataTableFilterExpression } from "./data-table-filter-expression";
 import { DataTableColumnOptions } from "./data-table-column-options";
 import { DataTablePagination, DEFAULT_PAGE_SIZE_OPTIONS } from "./data-table-pagination";
 import { DataTableRowActions } from "./data-table-row-actions";
 import { DataTableToolbar } from "./data-table-toolbar";
+import type { RemoteTableFilter } from "./remote-query";
 import type {
   DataTableCellCommitEvent,
   DataTableColumn,
@@ -110,19 +109,28 @@ export interface DataTableProps<TRow> extends Omit<
   showColumnOptions?: boolean;
 
   /**
-   * A second, sticky header row carrying one filter control per column that declares `column.filter`
-   * — the legacy `config.AllowFiltering`. Defaults to false.
+   * The filter control at the top-left of the toolbar — the legacy `config.AllowFiltering`. Defaults to
+   * false.
    *
-   * The table never filters `rows` itself. It reports the state and the caller decides what that
-   * means, which for a server-paged table is the only correct answer: with rows arriving a window at a
-   * time, a client-side predicate would filter the fifty rows on screen and quietly claim the rest of
-   * the table matched nothing. See `columnFiltersToRemoteFilter` for the state as a wire filter.
+   * One expression over every column that declares `column.filter`, which is where the framework's grid
+   * puts its only filter affordance (`widgets/dataTables/DataTableWidget.tsx` renders it as the first
+   * child of the header's left group) and what `.Filterable(column, false)` opts a column out of. See
+   * `data-table-filter-expression.tsx` for the control and `filter-expression.ts` for the grammar.
+   *
+   * The table never filters `rows` itself. It reports the expression and the filter it parsed to, and
+   * the caller decides what that means — which for a server-paged table is the only correct answer:
+   * with rows arriving a window at a time, a client-side predicate would filter the fifty rows on
+   * screen and quietly claim the rest of the table matched nothing.
    */
-  showColumnFilters?: boolean;
-  /** Controlled filter state, keyed by column `name`. */
-  columnFilters?: DataTableColumnFilters;
-  defaultColumnFilters?: DataTableColumnFilters;
-  onColumnFiltersChange?: (filters: DataTableColumnFilters) => void;
+  showFilter?: boolean;
+  /** Controlled filter expression. `""` means no filter. */
+  filterExpression?: string;
+  defaultFilterExpression?: string;
+  /**
+   * Called on a committed expression, with the text and the wire filter it parsed to (`null` when the
+   * box was cleared). An expression that does not parse is never committed, so this never reports one.
+   */
+  onFilterExpressionChange?: (expression: string, filter: RemoteTableFilter | null) => void;
 
   /** Row selection with a header select-all checkbox. Defaults to false. */
   selectable?: boolean;
@@ -256,10 +264,10 @@ function DataTableInner<TRow>(
     defaultColumnVisibility,
     onColumnVisibilityChange,
     showColumnOptions = false,
-    showColumnFilters = false,
-    columnFilters,
-    defaultColumnFilters,
-    onColumnFiltersChange,
+    showFilter = false,
+    filterExpression,
+    defaultFilterExpression,
+    onFilterExpressionChange,
     selectable = false,
     selectedRowIds,
     defaultSelectedRowIds,
@@ -384,23 +392,30 @@ function DataTableInner<TRow>(
 
   const hasFooter = visibleColumns.some((column) => column.footer !== undefined);
   const columnCount = visibleColumns.length + (selectable ? 1 : 0) + (hasActionsColumn ? 1 : 0);
-  const showToolbar = Boolean(toolbar?.left || toolbar?.right || showColumnOptions);
 
-  /* Controlled-or-not, the same shape as `columnVisibility` above it. A filter row is only rendered
-     when some *visible* column declares one: hiding the only filterable column should take the row
-     away with it rather than leave an empty stripe under the headers. */
-  const isFiltersControlled = columnFilters !== undefined;
-  const [internalFilters, setInternalFilters] = React.useState<DataTableColumnFilters>(
-    defaultColumnFilters ?? {},
-  );
-  const activeFilters = isFiltersControlled ? columnFilters : internalFilters;
-  const commitFilter = (name: string, values: string[]) => {
-    const next = setColumnFilter(activeFilters, name, values);
-    if (next === activeFilters) return;
-    if (!isFiltersControlled) setInternalFilters(next);
-    onColumnFiltersChange?.(next);
+  /* Controlled-or-not, the same shape as `columnVisibility` above it. The expression is read against
+     *every* declared column rather than the visible ones: hiding a column is about what is on screen,
+     and a filter that stopped applying because a column was hidden would change which rows exist. */
+  const isFilterControlled = filterExpression !== undefined;
+  const [internalFilter, setInternalFilter] = React.useState(defaultFilterExpression ?? "");
+  const activeFilterExpression = isFilterControlled ? filterExpression : internalFilter;
+  const commitFilterExpression = (next: string, filter: RemoteTableFilter | null) => {
+    if (!isFilterControlled) setInternalFilter(next);
+    onFilterExpressionChange?.(next, filter);
   };
-  const hasFilterRow = showColumnFilters && visibleColumns.some((column) => Boolean(column.filter));
+
+  const filterControl = showFilter ? (
+    <DataTableFilterExpression
+      columns={columns}
+      value={activeFilterExpression}
+      onCommit={commitFilterExpression}
+      density={density}
+    />
+  ) : null;
+
+  const showToolbar = Boolean(
+    toolbar?.left || toolbar?.right || showColumnOptions || filterControl,
+  );
 
   // Windowing and roving row focus are mutually dependent — the virtualizer pins the focused row
   // into its rendered range, and moving focus scrolls through the virtualizer — so the scroll
@@ -470,12 +485,18 @@ function DataTableInner<TRow>(
   });
 
   /**
-   * Under `table-layout: fixed` a `w-0` utility is taken literally, collapsing the selection and
-   * row-action columns and painting their controls over the neighbouring cell. Swap in real widths
-   * for the windowed variant; auto layout keeps `w-0`'s shrink-to-fit behaviour.
+   * The selection and row-action columns' width.
+   *
+   * A real width, always — never the `w-0` shrink-to-fit this used to be outside the windowed variant.
+   * Under `table-layout: fixed` (the windowed variant sets it, and a call site can set it too, as V1's
+   * Jobs table does with `table-fixed` so its declared column widths bind) `width: 0` is taken
+   * literally: the cell collapses, and its `justify-end` flex row then lays its buttons out *ending* at
+   * x = 0, i.e. overflowing leftwards across the previous cell. A ghost button has no fill, so the
+   * neighbouring cell's text reads straight through the row actions — which is what "the row actions
+   * render under the row" looks like. See `data-table.css` for the widths and for the stacking rule
+   * that keeps the controls above any content that does overflow.
    */
-  const fitColumnClass = (kind: "select" | "actions") =>
-    virtualization.active ? `ivy-data-table-fit-${kind}` : "w-0";
+  const fitColumnClass = (kind: "select" | "actions") => `ivy-data-table-fit-${kind}`;
 
   /** 1-based absolute position, so paging and windowing both report true `aria-rowindex` values. */
   const absoluteRowIndex = (rowIndex: number) =>
@@ -645,7 +666,10 @@ function DataTableInner<TRow>(
               className={cn(
                 dataTableCellAlignVariant({ align: column.align ?? "Left" }),
                 column.wrapText ? "ivy-data-table-wrap" : "ivy-data-table-nowrap",
+                // `cellContent.ts:583`: a cell with a click handler is drawn with `cursor: pointer`.
+                column.clickable && "cursor-pointer",
               )}
+              data-clickable={column.clickable ? "true" : undefined}
               style={column.width ? { width: column.width } : undefined}
             >
               {renderCellContent(column, row, rowId, rowIndex)}
@@ -722,7 +746,14 @@ function DataTableInner<TRow>(
         <DataTableToolbar
           className={fillHeight ? "shrink-0" : undefined}
           density={density}
-          left={toolbar?.left}
+          // The filter first, then the caller's own content — the framework's own left-group order
+          // (`DataTableWidget.tsx`: the filter option, then `slots.HeaderLeft`).
+          left={
+            <>
+              {filterControl}
+              {toolbar?.left}
+            </>
+          }
           right={
             <>
               {toolbar?.right}
@@ -791,33 +822,9 @@ function DataTableInner<TRow>(
                 </TableHead>
               ) : null}
             </TableRow>
-
-            {/* The filter row, `config.AllowFiltering`. A second `<tr>` inside `<thead>` rather than a
-                band above the table, so each control sits under the column it filters and inherits its
-                width — and so `thead`'s sticky rule pins the labels and the filters as one block. */}
-            {hasFilterRow ? (
-              <TableRow data-slot="data-table-filter-row">
-                {selectable ? <TableHead className={fitColumnClass("select")} /> : null}
-                {visibleColumns.map((column) => (
-                  <TableHead
-                    key={column.name}
-                    className="ivy-data-table-filter-cell"
-                    style={column.width ? { width: column.width } : undefined}
-                  >
-                    {column.filter ? (
-                      <DataTableColumnFilterControl
-                        label={column.header ?? column.name}
-                        filter={column.filter}
-                        value={activeFilters[column.name] ?? []}
-                        onChange={(values) => commitFilter(column.name, values)}
-                        density={density}
-                      />
-                    ) : null}
-                  </TableHead>
-                ))}
-                {hasActionsColumn ? <TableHead className={fitColumnClass("actions")} /> : null}
-              </TableRow>
-            ) : null}
+            {/* One header row, always. The filter is a toolbar affordance rather than a band of
+                per-column controls, which is where the framework's grid puts its only one — see
+                `showFilter`. */}
           </TableHeader>
 
           <TableBody>

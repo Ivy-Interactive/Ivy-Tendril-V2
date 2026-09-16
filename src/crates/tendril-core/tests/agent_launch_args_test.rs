@@ -432,3 +432,101 @@ fn openai_proxy_delegates_to_opencode() {
         ])
     );
 }
+
+/// The interactive command line, which is not the one-shot one: an agent that draws its own terminal
+/// takes different flags, and V1 keeps a separate `IAgentPty.BuildPtySpec` per provider for exactly
+/// that reason.
+#[test]
+fn test_interactive_pty_specs_match_v1() {
+    use tendril_core::agents::providers::{build_agent_pty_spec, AgentPtyConfig};
+
+    let with_prompt = |agent: &str| {
+        build_agent_pty_spec(
+            agent,
+            &AgentPtyConfig {
+                model: Some("default".to_string()),
+                initial_prompt: Some("fix the queue".to_string()),
+                ..Default::default()
+            },
+        )
+        .argv
+    };
+
+    // `ClaudePty`: full bypass, because `--permission-mode dontAsk` still stops to ask before running
+    // a command, and the initial task is the trailing positional argument Claude auto-submits.
+    assert_eq!(
+        with_prompt("claude"),
+        vec!["claude", "--dangerously-skip-permissions", "fix the queue"]
+    );
+    // `default` is not a model, so it is not passed as one.
+    assert!(!with_prompt("claude").contains(&"--model".to_string()));
+    // An unknown agent is Claude, the default provider.
+    assert_eq!(with_prompt("nonesuch")[0], "claude");
+
+    // `AntigravityPty`: `-i` runs the prompt and stays interactive.
+    assert_eq!(
+        with_prompt("antigravity"),
+        vec![
+            "agy",
+            "--dangerously-skip-permissions",
+            "-i",
+            "fix the queue"
+        ]
+    );
+
+    // `CodexPty`: sandboxed with approvals off, prompt trailing.
+    let codex = with_prompt("codex");
+    assert_eq!(codex[0], "codex");
+    assert!(codex
+        .windows(2)
+        .any(|w| w == ["--ask-for-approval", "never"]));
+    assert_eq!(codex.last().map(String::as_str), Some("fix the queue"));
+
+    // `GeminiPty`: `--yolo --skip-trust`, prompt behind `-i`.
+    let gemini = with_prompt("gemini");
+    assert!(gemini.contains(&"--yolo".to_string()));
+    assert!(gemini.contains(&"--skip-trust".to_string()));
+    assert!(gemini.windows(2).any(|w| w == ["-i", "fix the queue"]));
+
+    // A real model reaches the command line, normalised the way the one-shot path normalises it.
+    let claude_opus = build_agent_pty_spec(
+        "claude",
+        &AgentPtyConfig {
+            model: Some("claude-opus-5".to_string()),
+            ..Default::default()
+        },
+    )
+    .argv;
+    assert!(claude_opus.windows(2).any(|w| w == ["--model", "opus"]));
+
+    // No prompt means no trailing argument and no flag left dangling.
+    let bare = build_agent_pty_spec("antigravity", &AgentPtyConfig::default()).argv;
+    assert_eq!(bare, vec!["agy", "--dangerously-skip-permissions"]);
+
+    // `TERM=dumb` / `CI=true` are what tell a CLI it is being scraped; an interactive session must
+    // not carry them, or the agent stops drawing the interface the pane exists to show.
+    let env = build_agent_pty_spec("claude", &AgentPtyConfig::default()).environment;
+    assert!(!env.contains_key("TERM"));
+    assert!(!env.contains_key("CI"));
+    assert_eq!(
+        env.get("BASH_DEFAULT_TIMEOUT_MS").map(String::as_str),
+        Some("300000")
+    );
+
+    // A caller's variables win, and reach the agent.
+    let env = build_agent_pty_spec(
+        "claude",
+        &AgentPtyConfig {
+            environment_variables: std::collections::HashMap::from([(
+                "TENDRIL_CHAT_SESSION_ID".to_string(),
+                "sess-1".to_string(),
+            )]),
+            ..Default::default()
+        },
+    )
+    .environment;
+    assert_eq!(
+        env.get("TENDRIL_CHAT_SESSION_ID").map(String::as_str),
+        Some("sess-1")
+    );
+}

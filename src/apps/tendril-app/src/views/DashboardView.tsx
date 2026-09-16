@@ -9,7 +9,7 @@ import {
 } from "@ivy-interactive/components/tendril";
 import { BladeContainer } from "@ivy-interactive/components/ui";
 import { X } from "lucide-react";
-import type { DashboardActivity, PlanSummary, Job, JobStatus, RecentMergedPr } from "../types/api";
+import type { DashboardActivity, PlanSummary, Job, RecentMergedPr } from "../types/api";
 import { firstStringArg } from "../utils/eventArgs";
 import { useDashboardAnalytics } from "../hooks/useDashboardAnalytics";
 import {
@@ -19,6 +19,9 @@ import {
   buildPullRequests,
 } from "../utils/dashboardMetrics";
 import { rollingAverage, toDayNumber, toIsoDate, todayDayNumber } from "../utils/rollingAverage";
+/* The pipeline counts moved out of this view when the Plans and Review wallpapers started rendering
+   the same widget: V1 computes them once in `TendrilProcessStatusService` for exactly that reason. */
+import { ACTIVE_JOB_STATUSES, computeProcessStatus } from "../utils/processStatus";
 import { buildKpiBlade, isKpiBreakdownId } from "./KpiBreakdown";
 
 interface DashboardViewProps {
@@ -36,13 +39,6 @@ const NAV_BY_EVENT: Record<string, string> = {
   OnJobs: "jobs",
 };
 
-/**
- * A job in one of these statuses has not finished, so its plan is still mid-flight. The set is
- * `TendrilProcessStatusService.Compute`'s `activeJobs` filter, which is also what
- * `DashboardApp.BuildActiveJobs` lists and what the status strip's In Progress count reports.
- */
-const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["Pending", "Queued", "Running", "Blocked"];
-
 /** Rows the Active Jobs card shows, from `DashboardApp.ActiveJobsShown`. */
 const ACTIVE_JOBS_SHOWN = 8;
 
@@ -51,72 +47,6 @@ const TREND_DAILY_WINDOW_DAYS = 28;
 
 /** Weeks the Pull Requests card's Week tab plots, from `DashboardApp.BuildWeeklyPullRequests`. */
 const PR_WEEKS_SHOWN = 6;
-
-/**
- * The three promptware types `TendrilProcessStatusService.Compute` folds into one Updating counter.
- * A plan being expanded or split is being rewritten just as much as one being updated, and the
- * process viewer has one loop arrow for all three.
- */
-const UPDATING_JOB_TYPES = ["UpdatePlan", "ExpandPlan", "SplitPlan"];
-
-/**
- * Unfinished jobs of the given promptware type.
- *
- * Counted per *job*, not per distinct plan: that is what `TendrilProcessStatusService.Compute` does
- * (`activeJobs.Count(j => j.Type == ...)`), and it is the honest number for a strip that reads
- * "how much work is in flight". Two retries queued against one plan are two runs to wait for, and
- * collapsing them to 1 understates the queue.
- */
-const activeJobCountForType = (jobs: Job[], types: readonly string[]): number =>
-  jobs.filter((j) => types.includes(j.type) && ACTIVE_JOB_STATUSES.includes(j.status)).length;
-
-/**
- * Plan states the Plans box counts, and the states the Review box counts
- * (`TendrilProcessStatusService.Compute`). Blocked plans sit with the drafts because a plan waiting
- * on a dependency is still a plan nobody has run; Failed plans sit with Review because a failure is
- * what the Review app exists to triage. This is also what the shell's own nav badges count
- * (`TendrilAppShell.BuildMenuItems`), so the strip and the badge beside it cannot disagree.
- */
-const DRAFT_PLAN_STATES = ["Draft", "Blocked"];
-const REVIEW_PLAN_STATES = ["Review", "Failed"];
-
-/**
- * The two counts the status strip and the process viewer share, with V1's premature-state
- * correction applied (`TendrilProcessStatusService.Compute`).
- *
- * A plan whose job is still running has not necessarily had its `plan.yaml` state advanced yet, so
- * for a moment it reads as a Draft nobody has run or a Review nobody has looked at. V1 subtracts
- * those from both boxes rather than inviting the operator to act on a plan an agent is holding.
- *
- * V1 matches plan to job on the job's plan folder (and, for CreatePlan, on its allocated id). V2's
- * job DTO carries neither: `Job.planId` is the daemon's `reportedPlanId`, which only exists once an
- * agent has reported it. So this matches on what there is, and a job that has not reported its plan
- * simply corrects nothing — the pre-correction count, which is what V2 showed before.
- */
-function planStateCounts(
-  plans: PlanSummary[],
-  jobs: Job[],
-): { draftCount: number; reviewCount: number } {
-  const activePlanIds = new Set(
-    jobs
-      .filter((j) => ACTIVE_JOB_STATUSES.includes(j.status))
-      .map((j) => j.planId)
-      .filter((id): id is string => id != null && id !== ""),
-  );
-
-  let draftCount = 0;
-  let reviewCount = 0;
-  for (const plan of plans) {
-    const isDraft = DRAFT_PLAN_STATES.includes(plan.state);
-    const isReview = REVIEW_PLAN_STATES.includes(plan.state);
-    if (!isDraft && !isReview) continue;
-    if (activePlanIds.has(plan.id)) continue;
-    if (isDraft) draftCount += 1;
-    else reviewCount += 1;
-  }
-
-  return { draftCount, reviewCount };
-}
 
 /** "1st", "2nd", "3rd", "4th"... as `DashboardApp.Ordinal` writes them. */
 const ordinal = (day: number): string => {
@@ -240,11 +170,16 @@ export function buildWeeklyPullRequests(
 const KPI_IDS = ["featuresShipped", "costPerFeature", "forecastMonth", "avgCostPlan"];
 
 /**
- * The same four cards while the daemon has told us nothing, carrying V1's own no-data vocabulary
- * (`DashboardApp.BuildKpis`, `BuildForecastKpi`): an unknown figure is a dash or "n/a" with a hint
- * saying why, never a zero. None carries an `id`, so nothing is clickable while there is no data
- * behind the drill-down. An offline daemon must degrade the page, never blank it or change which
+ * The same four cards once the daemon has answered and had nothing to say, carrying V1's own no-data
+ * vocabulary (`DashboardApp.BuildKpis`, `BuildForecastKpi`): an unknown figure is a dash or "n/a" with
+ * a hint saying why, never a zero. None carries an `id`, so nothing is clickable while there is no
+ * data behind the drill-down. An offline daemon must degrade the page, never blank it or change which
  * cards it has.
+ *
+ * This is the *settled* no-data state only. It used to double as the loading state, because the view
+ * read `activity == null` — which is equally true of a fetch still in flight — and that conflation is
+ * where the flash of dashes and "n/a" on every visit to the Dashboard came from. A figure nobody has
+ * fetched yet is not an unknown figure; it gets a skeleton.
  */
 const FALLBACK_KPIS: DashboardKpiDto[] = [
   {
@@ -273,29 +208,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const completedJobCount = jobs.filter((j) => j.status === "Completed").length;
   const failedJobCount = jobs.filter((j) => j.status === "Failed").length;
 
-  // Plan-state counts, which the Plans and Review boxes carry.
-  const { draftCount, reviewCount } = planStateCounts(plans, jobs);
-
-  // The arrows between the boxes are *jobs in flight*, not plans in a state: V1 derives all five
-  // from the active job list by promptware type (`TendrilProcessStatusService.Compute`). Reading a
-  // plan's state instead misses the whole transient window this widget exists to show — a plan is
-  // only ever `Creating` for the moments between the job starting and the write landing, and a
-  // CreatePlan job has no plan to be in a state at all until it produces one.
-  const creatingCount = activeJobCountForType(jobs, ["CreatePlan"]);
-  const updatingCount = activeJobCountForType(jobs, UPDATING_JOB_TYPES);
-  const executingCount = activeJobCountForType(jobs, ["ExecutePlan"]);
-  const retryingPlansCount = activeJobCountForType(jobs, ["RetryPlan"]);
-  const creatingPrCount = activeJobCountForType(jobs, ["CreatePr"]);
+  // The plan-state counts the Plans and Review boxes carry, and the in-flight job counts its arrows
+  // carry: one `TendrilProcessStatusService.Compute` snapshot, shared with the Plans and Review
+  // wallpapers so the two surfaces cannot disagree.
+  const {
+    draftCount,
+    reviewCount,
+    creatingPlansCount: creatingCount,
+    updatingPlansCount: updatingCount,
+    executingPlansCount: executingCount,
+    retryingPlansCount,
+    creatingPrCount,
+  } = computeProcessStatus(plans, jobs);
 
   const { activity } = analytics;
+
+  /**
+   * No analytics have ever arrived — neither from this mount's fetch nor from a cached earlier one.
+   *
+   * The three states this splits apart, which the view used to collapse into two:
+   *  - pending: nothing to state yet, so the cards, the trend and the two side charts render
+   *    skeletons and the operator sees the dashboard's shape rather than a row of dashes;
+   *  - settled with data: the real figures;
+   *  - settled without data: {@link FALLBACK_KPIS}, V1's honest "we looked and there is nothing".
+   *
+   * A *refresh* is none of these: `useDashboardAnalytics` keeps the last snapshot across a poll, a
+   * failed poll and a remount, so `activity` stays non-null and the numbers on screen never blink.
+   */
+  const analyticsPending = analytics.loading && activity == null;
+
   const kpis =
-    activity == null
-      ? FALLBACK_KPIS
-      : buildKpis({
+    activity != null
+      ? buildKpis({
           activity,
           shippedFeatures: analytics.shippedFeatures,
           planCosts: analytics.planCosts,
-        }).filter((kpi) => kpi.id != null && KPI_IDS.includes(kpi.id));
+        }).filter((kpi) => kpi.id != null && KPI_IDS.includes(kpi.id))
+      : analyticsPending
+        ? []
+        : FALLBACK_KPIS;
 
   const blade =
     selectedKpi == null
@@ -366,6 +317,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           if (nav) onNavigate?.(nav);
         }}
         kpis={kpis}
+        loading={analyticsPending}
         // The 28-day series goes in as `trendWeekly`, which is the slot V1 puts its own 28-day
         // window in (`DashboardApp.BuildWeeklyTrend`); `trend` is V1's 365-day range, which V2's
         // daemon does not return. The widget prefers `trendWeekly` either way, so naming the slot

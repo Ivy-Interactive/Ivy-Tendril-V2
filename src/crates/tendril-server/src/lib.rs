@@ -34,14 +34,18 @@ const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(60);
 /// which is what leaves a stale `.master` behind on every restart.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 
-/// How often the master re-checks that `.master` still names it.
+/// How often the master re-checks that `.master` still names it, and beats its heartbeat.
 ///
 /// The claim can disappear under a running daemon — the app's "Repair service" used to delete it
-/// unconditionally, and `tendril reset` removes the home — and `is_master` then reads false forever,
-/// silently switching off cost backfill, the issue importer and job maintenance. Nothing is written
-/// unless the claim is actually missing, so this costs one `read` a minute and never churns a file
-/// that clients poll.
-const MASTER_REASSERT_INTERVAL: Duration = Duration::from_secs(60);
+/// unconditionally, `tendril reset` removes the home, and a V1 CLI on a developer's PATH deletes it
+/// outright — and `is_master` then reads false forever, silently switching off cost backfill, the issue
+/// importer and job maintenance.
+///
+/// 30s, not the 60s this started at, because the beat has to stay well inside the 90s window the
+/// shipped V1 CLI treats as a hung server before deleting the file (`MasterLock.StaleAfter`): three
+/// beats of margin, on the same reasoning V1 itself used to pick 90. One atomic rename of a 600-byte
+/// file every 30s, which no `.master` reader can observe as anything but a complete document.
+const MASTER_REASSERT_INTERVAL: Duration = Duration::from_secs(30);
 
 /// PEM certificate and key for a TLS listener — what `tendril generate-certs` writes.
 #[derive(Debug, Clone)]
@@ -75,6 +79,19 @@ pub async fn run_server(
             tendril_home.display(),
             e
         );
+    }
+
+    // Staged attachments have no owner that would delete them: a chat message may never be sent and a
+    // plan may never be created, and neither path cleans up after itself. V1 bounds the directory the
+    // same way, in `ConfigService.CleanStaleAttachmentsDirectory` — on startup, 24 hours, best effort.
+    // Safe to run before the master claim below: nothing under a day old is touched, so it cannot take
+    // a live upload out from under a daemon that is already running.
+    let swept = tendril_core::jobs::attachments::clean_stale_attachment_sessions(
+        &tendril_home,
+        tendril_core::jobs::attachments::STALE_ATTACHMENT_AGE,
+    );
+    if swept > 0 {
+        tracing::info!("Removed {} stale attachment session directory(ies)", swept);
     }
 
     // Every job compiles its prompt out of `Promptwares/<JobType>/`, so a home that has never had
@@ -293,10 +310,23 @@ fn spawn_master_reassert(master: &Arc<tendril_core::config::MasterGuard>) {
                 break;
             };
 
-            // Touches the filesystem, but only a read in the common case.
-            let check = tokio::task::spawn_blocking(move || master.check_and_reassert()).await;
+            // A read, then a heartbeat write while the claim is still ours: see `MasterGuard::beat`
+            // for why the timestamp has to keep moving even though nothing in V2 reads it.
+            let check = tokio::task::spawn_blocking(move || {
+                let check = master.check_and_reassert();
+                if check == MasterCheck::Intact {
+                    master.beat();
+                }
+                check
+            })
+            .await;
             match check {
                 Ok(MasterCheck::Intact) => {}
+                Ok(MasterCheck::Foreign) => {
+                    tracing::warn!(
+                        ".master holds a claim this build cannot read; leaving it untouched"
+                    );
+                }
                 Ok(MasterCheck::Reasserted) => {
                     tracing::warn!("Re-asserted this daemon's claim on .master");
                 }

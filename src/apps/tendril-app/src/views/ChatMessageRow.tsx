@@ -6,8 +6,8 @@ import {
   ChatBubbleActionWrapper,
 } from "@ivy-interactive/components/renderers";
 import { PlanMarkdown } from "@ivy-interactive/components/tendril";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { CheckCheck, Copy, FilePlus, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
+import { bridge } from "../api/bridge";
 import { chatStore } from "../state/chatStore";
 import type { ChatAttachment, ChatMessage, InProgressQuestionAnswers } from "../types/chat";
 import type { Job } from "../types/api";
@@ -69,13 +69,127 @@ export function parseUserMessageContent(content: string): {
 export const isImageAttachment = (attachment: ChatAttachment): boolean =>
   attachment.mimeType?.startsWith("image/") === true || IMAGE_EXTENSIONS.test(attachment.path);
 
-/** The webview cannot load a bare filesystem path; Tauri's asset protocol can. */
-const imageSrc = (path: string): string => {
-  try {
-    return convertFileSrc(path);
-  } catch {
-    return path;
+/**
+ * Previews already resolved, keyed by path, so a thumbnail survives the re-render a streaming turn
+ * causes and two rows showing the same file read it once.
+ *
+ * A rejection is remembered as well: the daemon's answer for a given path — outside the local-file
+ * roots, or not an allow-listed image — does not change while the app is running, and retrying it on
+ * every re-render would be a request per frame for a file that is never coming.
+ */
+const previewCache = new Map<string, Promise<string>>();
+
+const loadPreview = (path: string): Promise<string> => {
+  const cached = previewCache.get(path);
+  if (cached) return cached;
+  const pending = bridge.getLocalFilePreview(path);
+  previewCache.set(path, pending);
+  return pending;
+};
+
+/** Forgets the resolved previews. Tests use it so one case's stub cannot answer the next one's. */
+export function resetAttachmentPreviewsForTesting(): void {
+  previewCache.clear();
+}
+
+/**
+ * The `data:` URL for an image attachment, or `failed` when the daemon will not serve it.
+ *
+ * The webview cannot load a bare filesystem path — `file://` is blocked from the app's own origin — so
+ * the bytes come from the daemon's guarded `GET /ivy/local-file`, which is the endpoint V1 points its
+ * attachment `<img>` tags at. It is fetched natively rather than linked because that route takes its
+ * credential in the query string and the app's only credential is the bearer secret the webview never
+ * holds; see `src-tauri/src/commands/local_file.rs`.
+ */
+function useAttachmentPreview(
+  path: string,
+  enabled: boolean,
+): { url: string | null; failed: boolean } {
+  const [state, setState] = useState<{ url: string | null; failed: boolean }>({
+    url: null,
+    failed: false,
+  });
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    setState({ url: null, failed: false });
+    loadPreview(path).then(
+      (url) => {
+        if (active) setState({ url, failed: false });
+      },
+      () => {
+        if (active) setState({ url: null, failed: true });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [path, enabled]);
+
+  return state;
+}
+
+/** The paperclip form: a document, or an image the daemon would not serve. */
+const AttachmentChip: React.FC<{ attachment: ChatAttachment; isUser: boolean }> = ({
+  attachment,
+  isUser,
+}) => (
+  <div
+    className={`flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 ${
+      isUser ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+    }`}
+    title={attachment.path}
+  >
+    <Paperclip className="size-4 shrink-0 opacity-85" />
+    <span className="max-w-[220px] truncate">{attachment.name}</span>
+  </div>
+);
+
+/**
+ * One attachment inside a bubble: a thumbnail that opens the lightbox for an image the daemon serves,
+ * a chip for everything else.
+ *
+ * A refused image falls back to the chip rather than to a broken-image icon — the file is still part of
+ * the message, and the daemon deliberately does not say whether it was outside the allowed roots or
+ * simply gone, so there is nothing more honest to show.
+ */
+const MessageAttachment: React.FC<{
+  attachment: ChatAttachment;
+  isUser: boolean;
+  onOpenImage?: (image: LightboxImage) => void;
+}> = ({ attachment, isUser, onOpenImage }) => {
+  const isImage = Boolean(onOpenImage) && isImageAttachment(attachment);
+  const { url, failed } = useAttachmentPreview(attachment.path, isImage);
+
+  if (!isImage || failed) {
+    return <AttachmentChip attachment={attachment} isUser={isUser} />;
   }
+
+  if (!url) {
+    return (
+      <div
+        data-testid="attachment-thumbnail-pending"
+        className="size-16 animate-pulse rounded-md bg-muted"
+        title={attachment.name}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      data-testid="attachment-thumbnail"
+      onClick={() => onOpenImage?.({ url, title: attachment.name })}
+      title={`Open ${attachment.name}`}
+      aria-label={`Open ${attachment.name}`}
+      className={`overflow-hidden rounded-md transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 ${
+        isUser ? "focus-visible:ring-primary-foreground" : "focus-visible:ring-ring"
+      }`}
+    >
+      <img src={url} alt={attachment.name} className="size-16 object-cover" loading="lazy" />
+    </button>
+  );
 };
 
 /**
@@ -313,41 +427,14 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                 isUser ? "justify-end" : "mt-2 justify-start"
               }`}
             >
-              {attachments.map((att, idx) =>
-                onOpenImage && isImageAttachment(att) ? (
-                  <button
-                    key={`${att.path}-${idx}`}
-                    type="button"
-                    data-testid="attachment-thumbnail"
-                    onClick={() => onOpenImage({ url: imageSrc(att.path), title: att.name })}
-                    title={`Open ${att.name}`}
-                    aria-label={`Open ${att.name}`}
-                    className={`overflow-hidden rounded-md transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 ${
-                      isUser ? "focus-visible:ring-primary-foreground" : "focus-visible:ring-ring"
-                    }`}
-                  >
-                    <img
-                      src={imageSrc(att.path)}
-                      alt={att.name}
-                      className="size-16 object-cover"
-                      loading="lazy"
-                    />
-                  </button>
-                ) : (
-                  <div
-                    key={`${att.path}-${idx}`}
-                    className={`flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 ${
-                      isUser
-                        ? "bg-primary-foreground/20 text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                    title={att.path}
-                  >
-                    <Paperclip className="size-4 shrink-0 opacity-85" />
-                    <span className="max-w-[220px] truncate">{att.name}</span>
-                  </div>
-                ),
-              )}
+              {attachments.map((att, idx) => (
+                <MessageAttachment
+                  key={`${att.path}-${idx}`}
+                  attachment={att}
+                  isUser={isUser}
+                  onOpenImage={onOpenImage}
+                />
+              ))}
             </div>
           )}
         </ChatBubbleMessage>

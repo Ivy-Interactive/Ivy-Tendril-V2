@@ -1,6 +1,13 @@
 import { render } from "@testing-library/react";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeAll, describe, expect, it } from "vite-plus/test";
+import { loadRehypeKatex } from "../src/lib/math";
 import { MarkdownRenderer, normalizeNestedFences } from "../src/components/MarkdownRenderer";
+
+// KaTeX is loaded on demand (see `src/lib/math.ts`); resolving the import up front lets the maths
+// assertion below stay synchronous. Everything else in this file is unaffected.
+beforeAll(async () => {
+  await loadRehypeKatex();
+});
 
 describe("MarkdownRenderer", () => {
   it("renders headers, lists, and bold text", () => {

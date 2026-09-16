@@ -25,16 +25,21 @@
   }
 
   /*
-   * The filter row must NOT be sticky per-cell: at `top: 0` it would pin over the labels rather than
-   * below them. The pinned `<thead>` already carries it.
+   * The header is one row tall, like its rows.
+   *
+   * The shared `TableHead` takes its height from `densityHeight` (h-8 / h-10 / h-12 = 32 / 40 / 48px),
+   * a step above what a `TableCell` of the same density renders at (25 / 37 / 49). In a table whose
+   * whole point is rows, that difference is chrome — and the framework's grid draws its header at
+   * exactly `DENSITY_CONFIG.rowHeight`, the same height as a row
+   * (`widgets/dataTables/dataTableEditor/constants.ts`). `height: auto` hands the height back to the
+   * padding, and the padding is a body cell's.
+   *
+   * Scoped to `.ivy-data-table` so a plain `Table` elsewhere in the app is untouched.
    */
-  .ivy-data-table thead tr[data-slot="data-table-filter-row"] th {
-    position: static;
-    padding-top: 0;
-    /* A filter control is interactive, so it needs the header's full width and none of the label
-       row's text alignment. */
-    text-align: left;
-    vertical-align: middle;
+  .ivy-data-table thead th {
+    height: auto;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
   }
 
   /* wrapText: false (the default) — single line, ellipsis on overflow. */
@@ -60,19 +65,86 @@
   }
 
   /*
-   * Fixed layout takes the `w-0` utility literally, so the selection and row-action columns need
-   * real widths — the TSX swaps `w-0` for these classes while windowing. Fixed layout reads column
-   * widths from the first row, so sizing the `<th>` is enough; the `<td>` rules only matter for a
-   * table rendered without a header.
+   * The selection column's width, and the actions column's below it.
+   *
+   * Unconditional, not scoped to the windowed variant. `table-layout: fixed` takes a `width: 0`
+   * literally, and a collapsed cell lays its `justify-end` contents out overflowing *leftwards* across
+   * the previous cell, where a ghost button's transparent fill lets that cell's text read straight
+   * through the controls. Fixed layout is set by the windowed variant and by any call site that wants
+   * its declared column widths to bind (V1's Jobs table is one), so the width cannot be conditional on
+   * windowing. Fixed layout reads column widths from the first row, so sizing the `<th>` is what binds;
+   * the `<td>` rules cover a table rendered without a header.
    */
-  .ivy-data-table.ivy-data-table-virtualized th.ivy-data-table-fit-select,
-  .ivy-data-table.ivy-data-table-virtualized td.ivy-data-table-fit-select {
+  .ivy-data-table th.ivy-data-table-fit-select,
+  .ivy-data-table td.ivy-data-table-fit-select {
     width: 2.75rem;
   }
 
-  .ivy-data-table.ivy-data-table-virtualized th.ivy-data-table-fit-actions,
-  .ivy-data-table.ivy-data-table-virtualized td.ivy-data-table-fit-actions {
+  /*
+   * The row actions ride the right edge of the **scroll viewport**, not of the table.
+   *
+   * This is the one place a DOM table has to work differently from the framework's grid to reach the
+   * same result. That grid is canvas, so its `ActionRenderer` output is an *overlay* positioned over the
+   * row (`widgets/rowAction/ActionRenderer.tsx`) and competes for no width at all; here the actions are
+   * a real column, and a real column in a `table-layout: fixed` table has to be given width out of the
+   * same budget as every other one. Once a call site's declared widths exceed the container — V1's Jobs
+   * table declares 1130px of columns, so any window narrower than about 1450px — the table overflows its
+   * `overflow-auto` wrapper and the *last* column is the one that lands past the right edge. Measured on
+   * a 1440px window: a 1234px table in a 1148px viewport, actions at x = 1131…1211. The controls were
+   * not mis-stacked, they were off-screen, and nothing but a horizontal scroll could reach them.
+   *
+   * Sticking the cell to `right: 0` restores the framework's behaviour under the constraint: the column
+   * still reserves its width (so nothing lays itself out leftwards over the previous cell, which is the
+   * separate bug the widths above fixed), and the controls stay where the reader can press them however
+   * far the table is scrolled.
+   *
+   * The background has to be opaque, for the same reason the pinned header's does: the cells passing
+   * underneath would otherwise read straight through the buttons. A `<tr>` carries no background of its
+   * own, so this cannot be `inherit` — the row's hover and selected tints are translucent and painted on
+   * the row, below every cell, so they are re-applied over this opaque base below.
+   *
+   * `z-index` keeps the ordering that was already here and needed: above the row's own cells, because a
+   * neighbouring cell whose text overflows (a long unbroken token, a cell mid-transition) would
+   * otherwise interleave with the buttons; and below the pinned `<thead>` (z-index 2), so a scrolled row
+   * passes under the header rather than over it. The header's own actions cell is pinned in both axes
+   * and takes the top level *within* `<thead>`'s stacking context, which leaves it under nothing.
+   *
+   * The menu itself is portalled to `document.body` by Radix, so it is not clipped by this cell and is
+   * not what these rules are for.
+   */
+  .ivy-data-table th.ivy-data-table-fit-actions,
+  .ivy-data-table td.ivy-data-table-fit-actions {
+    /* The reserved width, from the block above: a `width: 0` under fixed layout collapses the cell and
+       sends its `justify-end` buttons leftwards over the previous cell. Declared here rather than
+       separately so the column's width and its pinning cannot drift apart. */
     width: var(--ivy-data-table-actions-width, 5rem);
+    position: sticky;
+    right: 0;
+    background: var(--background);
+  }
+
+  .ivy-data-table td.ivy-data-table-fit-actions {
+    z-index: 1;
+  }
+
+  .ivy-data-table thead th.ivy-data-table-fit-actions {
+    z-index: 2;
+  }
+
+  /*
+   * The row tints, re-applied over the opaque base above.
+   *
+   * `hover:bg-muted/50` and `data-[state=selected]:bg-muted` are `TableRow`'s, painted on the `<tr>` and
+   * therefore behind every cell — including one that has had to become opaque to be sticky. Without
+   * these the actions cell stays background-coloured while the rest of its row lights up, which reads as
+   * a hole in the row. The 50% mix is `bg-muted/50` composited against what is actually behind it.
+   */
+  .ivy-data-table tbody tr:hover > td.ivy-data-table-fit-actions {
+    background: color-mix(in srgb, var(--muted) 50%, var(--background));
+  }
+
+  .ivy-data-table tbody tr[data-state="selected"] > td.ivy-data-table-fit-actions {
+    background: var(--muted);
   }
 
   /* Spacer rows stand in for the unrendered rows above and below the window. */

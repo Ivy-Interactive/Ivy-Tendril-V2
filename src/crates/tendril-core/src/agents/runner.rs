@@ -321,7 +321,28 @@ pub fn parse_terminal_result_event(line: &str) -> Option<TerminalResultOutcome> 
         || v.get("type").and_then(|t| t.as_str()) == Some("result")
         || v.get("type").and_then(|t| t.as_str()) == Some("turn.completed");
 
+    // Antigravity nests its terminal event: `{"event":"result","result":{"status":"SUCCESS",…}}`.
+    // Without this its runs had no terminal result at all, so the post-result grace period never
+    // started and a turn's success was inferred from the exit code alone.
     if !is_result {
+        if v.get("event").and_then(|e| e.as_str()) == Some("result") {
+            let result = v.get("result")?;
+            let status = result
+                .get("status")
+                .and_then(|s| s.as_str())
+                .unwrap_or("SUCCESS");
+            let has_response = result
+                .get("response")
+                .and_then(|r| r.as_str())
+                .is_some_and(|r| !r.trim().is_empty());
+            // A recovered mid-turn tool error is reported as `ERROR` on a turn that did answer, so a
+            // response outranks the status — the same rule `AntigravityEventParser.ParseResult` uses.
+            let is_success = !status.eq_ignore_ascii_case("ERROR") || has_response;
+            return Some(TerminalResultOutcome {
+                is_success,
+                exit_code: None,
+            });
+        }
         return None;
     }
 
@@ -386,6 +407,30 @@ mod tests {
         let res5 = parse_terminal_result_event(line5).expect("parse line5");
         assert!(!res5.is_success);
         assert_eq!(res5.exit_code, None);
+
+        // Antigravity's nested shape, captured from a real `agy` run.
+        let agy_ok = r#"{"event":"result","result":{"status":"SUCCESS","response":"Yes, I'm alive","duration_seconds":3.88,"num_turns":1}}"#;
+        let res_agy = parse_terminal_result_event(agy_ok).expect("parse antigravity result");
+        assert!(res_agy.is_success);
+        let agy_err = r#"{"event":"result","result":{"status":"ERROR","error":"tool loop"}}"#;
+        assert!(
+            !parse_terminal_result_event(agy_err)
+                .expect("parse antigravity error")
+                .is_success
+        );
+        // An `ERROR` status on a turn that answered is a recovered mid-turn tool failure.
+        let agy_recovered =
+            r#"{"event":"result","result":{"status":"ERROR","error":"x","response":"here"}}"#;
+        assert!(
+            parse_terminal_result_event(agy_recovered)
+                .expect("parse recovered")
+                .is_success
+        );
+        // Antigravity's other events are not terminal.
+        assert_eq!(
+            parse_terminal_result_event(r#"{"event":"step_update","step_update":{}}"#),
+            None
+        );
 
         let non_result = r#"{"type":"text","text":"hello"}"#;
         assert_eq!(parse_terminal_result_event(non_result), None);

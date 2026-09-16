@@ -290,11 +290,11 @@ describe("SettingsView", () => {
       });
       await renderSettings();
 
-      expect(screen.getByLabelText("deep")).toHaveValue("opus-4");
+      expect(screen.getByLabelText("Deep")).toHaveValue("opus-4");
       // An unset tier is blank with the `default_profiles` value as its placeholder, rather than
       // looking like nothing at all will be passed.
-      expect(screen.getByLabelText("balanced")).toHaveValue("");
-      expect(screen.getByLabelText("balanced")).toHaveAttribute("placeholder", "sonnet");
+      expect(screen.getByLabelText("Balanced")).toHaveValue("");
+      expect(screen.getByLabelText("Balanced")).toHaveAttribute("placeholder", "sonnet");
     });
 
     it("writes the whole codingAgents array, since a config PUT replaces sequences", async () => {
@@ -310,7 +310,7 @@ describe("SettingsView", () => {
       });
       await renderSettings();
 
-      fireEvent.change(screen.getByLabelText("quick"), { target: { value: "haiku-4" } });
+      fireEvent.change(screen.getByLabelText("Quick"), { target: { value: "haiku-4" } });
       await submitIn("coding-agent-card");
 
       expect(putConfig).toHaveBeenCalledTimes(1);

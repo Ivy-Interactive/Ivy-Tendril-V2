@@ -3,6 +3,7 @@ import { act, render, screen, fireEvent, waitFor, within } from "@testing-librar
 import { ReviewView } from "../src/views/ReviewView";
 import { sidebarListStore } from "../src/state/sidebarListStore";
 import { bridge } from "../src/api/bridge";
+import { chatApi } from "../src/api/chatApi";
 import { planDetail, planSummary, verificationReport } from "./fixtures/plan.fixture";
 import { bridgeError, recommendation } from "./fixtures/recommendation.fixture";
 import type { DraftComment, Job } from "../src/types/api";
@@ -479,7 +480,7 @@ describe("ReviewView sidebar list", () => {
 
 /**
  * `ContentView.AddPrimaryAction`, whose three branches are a plan with commits (PR), a plan whose
- * completion is blocked (Skip Plan) and everything else (Complete Plan).
+ * completion is blocked (Skip Plan in V1, Delete Plan here) and everything else (Complete Plan).
  */
 describe("ReviewView primary action", () => {
   it("pushes a PR update directly rather than opening the Create PR dialog", async () => {
@@ -517,7 +518,7 @@ describe("ReviewView primary action", () => {
     expect(screen.queryByTestId("create-pr-dialog")).not.toBeInTheDocument();
   });
 
-  it("offers Skip Plan and says why when pre-execution rejected the plan's premise", async () => {
+  it("offers Delete Plan and says why when pre-execution rejected the plan's premise", async () => {
     vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
     vi.spyOn(bridge, "getPlan").mockResolvedValue(
       planDetail({ id: "00021", state: "Review", commits: [], prs: [] }),
@@ -528,11 +529,14 @@ describe("ReviewView primary action", () => {
 
     render(<ReviewView plans={[reviewPlan]} onSelectPlan={() => {}} />);
 
-    expect(await screen.findByRole("button", { name: /skip plan/i })).toBeInTheDocument();
+    // V1's CTA here is Skip Plan, which opened the discard dialog; with Discard gone the branch
+    // offers the delete confirm, whose first alternative is still "Move to Skipped".
+    expect(await screen.findByRole("button", { name: /delete plan/i })).toBeInTheDocument();
     expect(
       screen.getByText(/Pre-execution validation found no changes needed/),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /complete plan/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /skip plan/i })).not.toBeInTheDocument();
   });
 
   it("does not block a plan that delivered something, even after a pre-execution Fail", async () => {
@@ -666,16 +670,18 @@ describe("ReviewView workspace topbar", () => {
     expect(await screen.findByRole("button", { name: /request changes/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
     const menu = screen.getByRole("menu", { name: "More actions" });
-    // `ReviewActions.Build`'s menu order: Reset to Draft, then Discard, which is the danger item.
+    // `ReviewActions.Build`'s menu order: Reset to Draft, then the danger item. V1's is Discard;
+    // Discard has been removed, so Delete Plan takes the slot.
     const items = within(menu)
       .getAllByRole("menuitem")
       .map((item) => item.textContent);
     expect(items[0]).toMatch(/Reset to Draft/);
-    expect(items[1]).toMatch(/Discard/);
-    expect(within(menu).getByRole("menuitem", { name: /Discard/ })).toHaveAttribute(
+    expect(items[1]).toMatch(/Delete Plan/);
+    expect(within(menu).getByRole("menuitem", { name: /Delete Plan/ })).toHaveAttribute(
       "data-danger",
       "true",
     );
+    expect(within(menu).queryByRole("menuitem", { name: /Discard/ })).not.toBeInTheDocument();
   });
 
   it("opens the reset dialog from the overflow menu, not from a button on the page", async () => {
@@ -797,5 +803,61 @@ describe("ReviewView implement selected recommendations", () => {
     );
     expect(startJob).not.toHaveBeenCalled();
     expect(list).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * `Apps/Review/ContentView.cs:328`: `isShareMode ? null : new PlanChatView(selectedPlan)`. The review
+ * page gets the same chat panel as the plan page — the same slot, the same component, and the same
+ * conversation, because it is the same plan.
+ */
+describe("ReviewView's chat panel", () => {
+  it("renders the plan's chat in the workspace's chat slot", async () => {
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
+
+    const { container } = renderReview();
+
+    expect(await screen.findByTestId("embedded-chat-view")).toBeInTheDocument();
+    const aside = container.querySelector(".pws-chat");
+    expect(aside?.getAttribute("aria-label")).toBe("Plan chat");
+    // V1's `greeting`, which is where the embedded chat shows the plan's name.
+    expect(screen.getByText(`#21 ${reviewPlan.title}`)).toBeInTheDocument();
+    expect(screen.getByText("Ask Tendril to Change Anything")).toBeInTheDocument();
+  });
+
+  /**
+   * The queue row is a summary and carries no `folderPath`, so the panel is fed the detail record
+   * once it lands — the folder is what a session records as its owner.
+   */
+  it("attaches a new session to the plan's folder, from the detail record", async () => {
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
+    vi.spyOn(bridge, "getPlan").mockResolvedValue(
+      planDetail({ id: "00021", title: reviewPlan.title, folderPath: "/t/Plans/00021-Review-Me" }),
+    );
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
+    const createSession = vi.spyOn(chatApi, "createSession").mockResolvedValue({
+      id: "sess-new",
+      title: `#21 ${reviewPlan.title}`,
+      createdAt: "2026-09-07T10:00:00Z",
+      updatedAt: "2026-09-07T10:00:00Z",
+      messages: [],
+      spawnedJobIds: [],
+      planFolderName: "00021-Review-Me",
+    });
+    vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
+
+    const { container } = renderReview();
+    await waitFor(() => expect(bridge.getPlan).toHaveBeenCalledWith("00021"));
+
+    const composer = container.querySelector<HTMLTextAreaElement>(".pws-chat textarea")!;
+    fireEvent.change(composer, { target: { value: "Is this safe to merge?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+    await waitFor(() =>
+      expect(createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ planFolderName: "00021-Review-Me" }),
+      ),
+    );
   });
 });

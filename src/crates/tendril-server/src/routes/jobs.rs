@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tendril_core::error::TendrilError;
 use tendril_core::jobs::{
     find_log_file, read_eventwire_log, read_job_log, read_lines_from, read_raw_log, StartOptions,
+    CLEARABLE_STATUSES,
 };
 use tendril_core::models::{JobArgs, JobItem, JobStatus};
 
@@ -38,15 +39,20 @@ pub async fn list_jobs(
 /// `POST /api/jobs/query` — one window of the Jobs table under a caller's sort, filter and offset.
 ///
 /// The body is `TableQuery` (`sort`, a recursive `filter`, `offset`, `limit`, `selectColumns`,
-/// `aggregations`, `versionToken`) and `{}` means "the first page in the server's order", which is
-/// exactly what `GET /api/jobs` returns. The rows are the same `Job` objects that route sends, so a
-/// view can move onto this one without a second DTO.
+/// `aggregations`, `versionToken`) and `{}` means "the first page in the server's order", which is the
+/// order `GET /api/jobs` lists in.
 ///
 /// Why it exists next to `GET /api/jobs`: that route can only answer "the newest N", so a table built
 /// on it has to hold every row it might display and do its own sorting and paging — which stops
 /// working somewhere in the tens of thousands of jobs and gets slower every day the daemon runs. Here
 /// SQLite does the sort, the filter and the window, and the response carries `totalRows`, so the
 /// client holds one page and the footer still knows the true count.
+///
+/// The rows are the **client-facing job shape** — see [`job_row`] — rather than a raw `JobItem`,
+/// because this route exists for one caller: a table widget that has to display a window and nothing
+/// else. `GET /api/jobs` and `GET /api/jobs/:id` still serve `JobItem`, and
+/// `POST /api/tables/jobs/query` serves the raw columns, so nothing that wants the whole record lost a
+/// way to ask for it.
 ///
 /// See `routes::tables` for the generic form of this API, the `Accept`-based encoding negotiation and
 /// the Arrow story.
@@ -77,14 +83,14 @@ pub async fn query_jobs_handler(
     match result {
         Ok(Ok(page)) => {
             // `selectColumns` is applied to the serialized rows rather than to the `SELECT`, because
-            // the rows are `Job` DTOs whose fields are not one-to-one with columns (`typedArgs` is
-            // rehydrated from `Args`, `waitForJobIds` is parsed out of a JSON column). It is still a
-            // real saving on the wire — a jobs table showing six columns need not carry 36 — and the
-            // names were already validated against the schema, so a typo was a 400.
+            // the rows are job DTOs whose fields are not one-to-one with columns (`planId` comes from
+            // `ReportedPlanId`, and `detached` has no column at all). It is still a real saving on the
+            // wire — a jobs table showing six columns need not carry twenty-one — and the names were
+            // already validated against the schema, so a typo was a 400.
             let rows: Vec<serde_json::Value> = page
                 .rows
                 .iter()
-                .map(|job| project_job(job, &select_columns))
+                .map(|job| job_row(job, &select_columns))
                 .collect();
             Json(json!({
                 "encoding": "application/json",
@@ -115,45 +121,110 @@ pub async fn query_jobs_handler(
     }
 }
 
-/// Serializes a job, keeping only the requested fields. An empty request keeps all of them.
+/// The client-facing job shape: one response field per row, the `JobItem` field it is read from, and
+/// the `Jobs` column behind it.
 ///
-/// Matching is by response-field name, loosely: `completedAt`, `CompletedAt` and `completed_at` all
-/// name the same field, so a caller can send the column names it read from
-/// `GET /api/tables/jobs/schema` or the field names it sees in a row. `id` is always kept — it is the
-/// row identity every table needs, and a projection that dropped it would produce rows a client
-/// cannot key.
+/// This is the app's `Job` (`apps/tendril-app/src/types/api.ts`), which is `JobDto`
+/// (`src-tauri/src/models.rs`) — the shape every job that reaches a view already has, because the
+/// desktop bridge maps `GET /api/jobs` into it on the way through. A table paging this route has to
+/// receive rows in *that* shape or its columns come back empty, and the only two fields where the two
+/// disagree are the ones a Jobs table leans on hardest: `planId` and `planTitle`, which a `JobItem`
+/// calls `reportedPlanId` and `reportedPlanTitle`.
 ///
-/// The names to send are *column* names, because that is what the query processor validates against —
-/// so a typo is a 400 rather than a silently missing field. Nearly every response field is one: the
-/// exceptions are `typedArgs`, which is rehydrated from the `Args` column, and `detached`, which is
-/// runtime state with no column at all. Neither can be selected by name; ask for `args` instead, or
-/// omit `selectColumns` and take the whole row.
-fn project_job(job: &JobItem, select: &[String]) -> serde_json::Value {
+/// Doing the mapping here rather than in the caller is what keeps the transport a pass-through: the
+/// desktop shell reaches this route through one generic `cmd_query_table(path, body)` command that
+/// hands the reply back untouched, so it stays reusable for `/api/tables/{table}/query` and stays the
+/// single place an Arrow encoding would land. A per-route row mapper wedged into that command would
+/// undo both.
+///
+/// `JobItem` fields with no counterpart in `Job` — `planFile`, `args`, `typedArgs`, `provider`,
+/// `effort`, `priority`, `waitForJobIds`, `permissionDenials`, `cliCommand` and the rest — are not on
+/// these rows. `POST /api/tables/jobs/query` returns every column raw, and `GET /api/jobs/:id` returns
+/// the whole `JobItem`, so neither is unreachable; they are simply not what a list window is for.
+const JOB_ROW_FIELDS: &[(&str, &str, &str)] = &[
+    ("id", "id", "Id"),
+    ("type", "type", "Type"),
+    // The two renames. V1's Plan Id cell and its Prompt cell are the whole reason this route is worth
+    // paging: leaving them under the daemon's names is how a moved table renders two blank columns.
+    ("planId", "reportedPlanId", "ReportedPlanId"),
+    ("planTitle", "reportedPlanTitle", "ReportedPlanTitle"),
+    ("project", "project", "Project"),
+    ("status", "status", "Status"),
+    ("statusMessage", "statusMessage", "StatusMessage"),
+    ("startedAt", "startedAt", "StartedAt"),
+    // The Agent Output cell is a staleness gauge, not a status line: V1's `FormatAgentOutput`
+    // (`JobsApp.Helpers.cs:63`) renders the time since the agent last wrote a line, and falls back to
+    // "Starting…" only while there is no such time. Absent from this projection, every running row took
+    // that fallback forever. Written by `note_agent_output` at most once per five seconds, so it is a
+    // cheap column to carry and a stale one by at most that much.
+    ("lastOutputAt", "lastOutputAt", "LastOutputAt"),
+    ("completedAt", "completedAt", "CompletedAt"),
+    ("durationSeconds", "durationSeconds", "DurationSeconds"),
+    ("cost", "cost", "Cost"),
+    ("costSource", "costSource", "CostSource"),
+    ("tokens", "tokens", "Tokens"),
+    ("inputTokens", "inputTokens", "InputTokens"),
+    ("outputTokens", "outputTokens", "OutputTokens"),
+    ("cacheReadTokens", "cacheReadTokens", "CacheReadTokens"),
+    ("cacheWriteTokens", "cacheWriteTokens", "CacheWriteTokens"),
+    ("reasoningTokens", "reasoningTokens", "ReasoningTokens"),
+    ("model", "model", "Model"),
+    ("processId", "processId", "ProcessId"),
+    // Runtime state with no column: `JobManager::supervise_detached` rehydrates it in memory, so a row
+    // read from SQLite cannot know. Sent only when true, never as `false` — the app reads
+    // `job.detached ?? details[id]?.detached`, so a `false` from here would suppress the one source
+    // that does know.
+    ("detached", "detached", ""),
+];
+
+/// A job as a row of [`JOB_ROW_FIELDS`], keeping only the requested fields. An empty request keeps all
+/// of them.
+///
+/// Matching is loose: `completedAt`, `CompletedAt` and `completed_at` all name the same field, and both
+/// the response field name and the column behind it are accepted, so a caller can send what it read
+/// from `GET /api/tables/jobs/schema` or what it sees in a row. `id` is always kept — it is the row
+/// identity every table needs, and a projection that dropped it would produce rows a client cannot key.
+///
+/// The names to send are *column* names, because that is what the query processor validates against, so
+/// a typo is a 400 rather than a silently missing field. `planId` and `planTitle` are the two names
+/// that are not columns: ask for `reportedPlanId` and `reportedPlanTitle`, which is what a schema
+/// reader would send anyway. `detached` has no column either, and no way to be selected — omit
+/// `selectColumns` to get it.
+fn job_row(job: &JobItem, select: &[String]) -> serde_json::Value {
     let serialized = json!(job);
-    if select.is_empty() {
-        return serialized;
+    let source = serialized.as_object();
+    let wanted: Vec<String> = select.iter().map(|name| normalize_field(name)).collect();
+
+    let mut row = serde_json::Map::with_capacity(JOB_ROW_FIELDS.len());
+    for (field, item_field, column) in JOB_ROW_FIELDS {
+        let keep = wanted.is_empty()
+            || *field == "id"
+            || wanted.contains(&normalize_field(field))
+            || (!column.is_empty() && wanted.contains(&normalize_field(column)));
+        if !keep {
+            continue;
+        }
+
+        // An absent or null source field stays absent, matching `JobDto`'s own
+        // `skip_serializing_if = "Option::is_none"`: a job that reported no cost must not present
+        // itself as one that cost nothing.
+        let Some(value) = source.and_then(|object| object.get(*item_field)) else {
+            continue;
+        };
+        if value.is_null() || (*field == "detached" && value == &serde_json::Value::Bool(false)) {
+            continue;
+        }
+        row.insert((*field).to_string(), value.clone());
     }
-    let Some(object) = serialized.as_object() else {
-        return serialized;
-    };
+    serde_json::Value::Object(row)
+}
 
-    let normalize = |name: &str| -> String {
-        name.chars()
-            .filter(|c| c.is_ascii_alphanumeric())
-            .flat_map(|c| c.to_lowercase())
-            .collect()
-    };
-    let wanted: Vec<String> = select.iter().map(|name| normalize(name)).collect();
-
-    let kept = object
-        .iter()
-        .filter(|(key, _)| {
-            let normalized = normalize(key);
-            normalized == "id" || wanted.contains(&normalized)
-        })
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect::<serde_json::Map<_, _>>();
-    serde_json::Value::Object(kept)
+/// Case-, underscore- and dash-insensitive form of a field or column name.
+fn normalize_field(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
 }
 
 /// A job start. The args are flattened, so the current bare-`JobArgs` body keeps working and the new
@@ -413,11 +484,37 @@ pub async fn stop_all_jobs(State(state): State<Arc<AppState>>) -> impl IntoRespo
 
 #[derive(Debug, Deserialize)]
 pub struct ClearJobsRequest {
-    /// `completed` (the default), `failed` or `all`.
+    /// `all`, or the name of one terminal status. Absent means `completed`.
     pub status: Option<String>,
 }
 
-/// Bulk-deletes jobs by status.
+/// The statuses `status` may name, as [`CLEARABLE_STATUSES`] spells them, for an error message that
+/// tells the caller what to send instead of making them guess.
+fn clearable_scope_list() -> String {
+    let mut names: Vec<&str> = vec!["all"];
+    names.extend(CLEARABLE_STATUSES.iter().map(JobStatus::as_str));
+    names.join(", ")
+}
+
+/// Resolves a clear scope to the statuses it removes, or `None` for one this route will not perform.
+///
+/// Every terminal status is nameable, not just the two V1's menu happened to expose: V1's service is
+/// already a generic predicate clear (`ClearJobsByStatus`) and only wires up two of its uses, so a
+/// per-status scope is an extension of its own primitive rather than a new mechanism.
+///
+/// `Running`, `Queued`, `Pending` and `Blocked` are matched by [`JobStatus::from_str_loose`] and then
+/// refused here, so asking to clear them is a 400 that says why rather than a silent no-op. The
+/// manager filters them again — see [`CLEARABLE_STATUSES`] — because that guarantee belongs to the
+/// primitive, not to this route.
+fn resolve_clear_scope(scope: &str) -> Option<Vec<JobStatus>> {
+    if scope.eq_ignore_ascii_case("all") {
+        return Some(CLEARABLE_STATUSES.to_vec());
+    }
+    let status = JobStatus::from_str_loose(scope)?;
+    CLEARABLE_STATUSES.contains(&status).then(|| vec![status])
+}
+
+/// Bulk-deletes jobs by status. Only ever finished ones; see [`resolve_clear_scope`].
 pub async fn clear_jobs(
     State(state): State<Arc<AppState>>,
     Json(req): Json<Option<ClearJobsRequest>>,
@@ -426,21 +523,20 @@ pub async fn clear_jobs(
         .and_then(|r| r.status)
         .unwrap_or_else(|| "completed".to_string());
 
-    let result = match scope.to_ascii_lowercase().as_str() {
-        "completed" => state.job_manager.clear_completed_jobs().await,
-        "failed" => state.job_manager.clear_failed_jobs().await,
-        "all" => state.job_manager.clear_all_jobs().await,
-        other => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": format!("Unknown clear scope '{}'; expected completed, failed or all", other)
-                })),
-            );
-        }
+    let Some(statuses) = resolve_clear_scope(&scope) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!(
+                    "Cannot clear '{}'; a clear only removes finished jobs. Expected one of: {}",
+                    scope,
+                    clearable_scope_list()
+                )
+            })),
+        );
     };
 
-    match result {
+    match state.job_manager.clear_jobs(&statuses).await {
         Ok(cleared) => (StatusCode::OK, Json(json!({ "cleared": cleared }))),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -970,6 +1066,62 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
+
+    /// The clear scopes `POST /api/jobs/clear` accepts, and the ones it will not.
+    ///
+    /// V1's menu exposes two of its service's generic predicate clear; the user wants one per status,
+    /// so every terminal status is nameable here. What must never be nameable is work in flight.
+    #[test]
+    fn a_clear_scope_names_a_terminal_status_or_all_and_nothing_else() {
+        // Every terminal status on its own, under V2's own name for it — which is the name the Status
+        // column shows, so the menu label and the wire value agree.
+        for status in CLEARABLE_STATUSES {
+            assert_eq!(
+                resolve_clear_scope(status.as_str()),
+                Some(vec![*status]),
+                "{status} must be clearable by name"
+            );
+        }
+        // Case-insensitively, because the CLI sends lower case and the app sends the status name.
+        assert_eq!(
+            resolve_clear_scope("completed"),
+            Some(vec![JobStatus::Completed])
+        );
+        assert_eq!(
+            resolve_clear_scope("TIMEOUT"),
+            Some(vec![JobStatus::Timeout])
+        );
+
+        // `all` is the whole clearable set, and `ALL` too.
+        assert_eq!(
+            resolve_clear_scope("all"),
+            Some(CLEARABLE_STATUSES.to_vec())
+        );
+        assert_eq!(
+            resolve_clear_scope("ALL"),
+            Some(CLEARABLE_STATUSES.to_vec())
+        );
+
+        // Work in flight is a 400, not a silent no-op: a caller asking for it has misunderstood, and
+        // the reply should say so. `Pending` and `Blocked` are here for the reason `CLEARABLE_STATUSES`
+        // gives — a blocked job is waiting on a dependency, not history.
+        for refused in ["running", "queued", "pending", "blocked", "", "everything"] {
+            assert_eq!(
+                resolve_clear_scope(refused),
+                None,
+                "{refused:?} must not be clearable"
+            );
+        }
+
+        // And the error names what to send instead.
+        let listed = clearable_scope_list();
+        assert!(listed.starts_with("all, "), "{listed}");
+        for status in CLEARABLE_STATUSES {
+            assert!(listed.contains(status.as_str()), "{listed}");
+        }
+        assert!(!listed.contains("Running"), "{listed}");
+        assert!(!listed.contains("Queued"), "{listed}");
+    }
 
     fn temp_home(label: &str) -> std::path::PathBuf {
         let home = std::env::temp_dir().join(format!(

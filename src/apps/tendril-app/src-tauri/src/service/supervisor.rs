@@ -8,6 +8,10 @@ use crate::daemon::{
     is_pid_alive, parse_master_json, probe_daemon_health, DaemonConnectionState, MasterInfo,
 };
 use crate::service::compatibility::ServiceCompatibilityManager;
+// The `.master` classifier comes from the daemon's own crate on purpose: the app deletes that file, and
+// a second implementation of "can this be read as a claim?" is how the two ends come to disagree about
+// whether a running daemon's registration is wreckage.
+use tendril_core::config::{inspect_master_file, MasterFileKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -41,22 +45,45 @@ pub struct SupervisorStateInfo {
 
 /// The outcome of trying to clear `.master`.
 ///
-/// A distinct `RefusedLive` rather than a bare bool because "there was nothing to clean up" and "I
-/// refused to unregister a running daemon" are different answers, and the operator clicking Repair
-/// has to be told which one happened.
+/// Distinct refusals rather than a bare bool because "there was nothing to clean up", "I refused to
+/// unregister a running daemon" and "I cannot read this file, so I refuse to guess" are three
+/// different answers, and the operator clicking Repair has to be told which one happened.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MasterReclaim {
     /// No `.master` file at all.
     NoClaim,
-    /// The claim was stale and has been removed. `pid` is what it named, when it was parseable.
+    /// The claim was stale and has been removed. `pid` is what it named; `None` for a file that was not
+    /// a JSON document at all — a truncated or half-finished write, which names nobody.
     Removed { pid: Option<u32> },
     /// The claim belongs to a daemon that is still there, and was left untouched.
     RefusedLive { pid: u32, port: u16 },
+    /// A JSON document that is not a claim this build understands — another Tendril's registration, or
+    /// one written to a newer `.master` schema. Left untouched.
+    ///
+    /// This is the case that used to be *deleted*, on the reasoning that an unreadable claim names no
+    /// pid and so can teach us nothing. It teaches us nothing about whether a daemon is alive either,
+    /// which is exactly why it must stand: deleting a registration it could not parse is what V1's CLI
+    /// did to a live V2 daemon (`MasterLock.ReadLiveMaster`), taking it off the air for the rest of its
+    /// life. `tendril_core::config::inspect_master_file` draws the line between this and a truncated
+    /// write, and that is deliberately the daemon's own classifier rather than a second copy here.
+    RefusedUnreadable {
+        /// The `schemaVersion` the file declares, when it declares one.
+        schema_version: Option<u32>,
+    },
 }
 
 impl MasterReclaim {
     pub fn removed(&self) -> bool {
         matches!(self, MasterReclaim::Removed { .. })
+    }
+
+    /// Whether the claim was left standing. The lock file and the circuit breaker describe the daemon
+    /// the claim names, so neither may be reset while it might still be running.
+    pub fn refused(&self) -> bool {
+        matches!(
+            self,
+            MasterReclaim::RefusedLive { .. } | MasterReclaim::RefusedUnreadable { .. }
+        )
     }
 }
 
@@ -149,78 +176,93 @@ impl ServiceSupervisor {
         self.tendril_home.join("Logs").join("service.log")
     }
 
-    /// Removes `.master` only when the daemon it names is gone.
+    /// Removes `.master` only when there is positive evidence the daemon it named is gone.
     ///
     /// The claim is a live daemon's registration, not a lock file, and deleting one that is very much
     /// alive unregisters it permanently: `is_master()` reads false for the rest of that process's
     /// life, so its cost backfill, issue importer and job maintenance go silently dead, every client
-    /// reports "not running", and a second daemon can claim the home and run jobs concurrently. So
-    /// liveness is checked first, and this is the only path that removes a foreign claim.
+    /// reports "not running", and a second daemon can claim the home and run jobs concurrently.
     ///
-    /// Synchronous, so it can only test the pid — that is enough for the callers that just need to
+    /// So the file is classified before anything is deleted, by
+    /// [`tendril_core::config::inspect_master_file`] — the daemon's own classifier, so there is one
+    /// definition of "unreadable" rather than two that can drift. Only two shapes are ever removed:
+    /// a document that is not JSON at all (a truncated or half-finished write, which names nobody and
+    /// blocks every future claim) and a claim whose owning process is gone. A JSON document this build
+    /// cannot read as a claim is left standing: it is somebody's registration, and being unable to
+    /// identify its owner is not evidence that its owner is dead.
+    ///
+    /// Synchronous, so it can only test the process — that is enough for the callers that just need to
     /// clear a leftover. [`ServiceSupervisor::repair_master`] is the variant that also asks the
     /// daemon whether it is answering, which is what "Repair service" needs.
     pub fn remove_master_if_stale(&self) -> Result<MasterReclaim, String> {
-        let path = self.master_file_path();
-        if !path.exists() {
-            return Ok(MasterReclaim::NoClaim);
-        }
-
-        let recorded = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|content| parse_master_json(&content).ok());
-
-        // An unparseable claim names no pid, so nothing can be learned from it and it blocks every
-        // client: that one is cleared. A parseable claim whose pid is alive is left alone.
-        if let Some(info) = &recorded {
-            if is_pid_alive(info.pid) {
-                return Ok(MasterReclaim::RefusedLive {
-                    pid: info.pid,
-                    port: info.port,
-                });
+        match inspect_master_file(&self.tendril_home) {
+            MasterFileKind::Missing => Ok(MasterReclaim::NoClaim),
+            MasterFileKind::Garbage => self.clear_unreadable_write(),
+            MasterFileKind::Foreign { schema_version } => {
+                Ok(MasterReclaim::RefusedUnreadable { schema_version })
+            }
+            MasterFileKind::Claim(claim) => {
+                // `owner_is_running` is the pid *and* its start token, so a recycled pid does not wedge
+                // the claim forever the way a bare `kill(pid, 0)` does.
+                if claim.owner_is_running() {
+                    return Ok(MasterReclaim::RefusedLive {
+                        pid: claim.info.pid,
+                        port: claim.info.port,
+                    });
+                }
+                self.force_remove_master()?;
+                Ok(MasterReclaim::Removed {
+                    pid: Some(claim.info.pid),
+                })
             }
         }
-
-        self.force_remove_master()?;
-        Ok(MasterReclaim::Removed {
-            pid: recorded.map(|info| info.pid),
-        })
     }
 
     /// What "Repair service" runs: clears the claim unless the daemon it names is both alive **and**
-    /// answering.
+    /// answering, and never touches a claim it cannot read.
     ///
     /// A pid that is alive but not answering is precisely the wedged claim an operator cannot
     /// otherwise escape (the only other way out is the undocumented `TENDRIL_ALLOW_MASTER_TAKEOVER=1`
     /// env var), so that one is cleared — and reported, because clearing it while the process is
     /// somehow still serving would be the incident this guard exists to prevent.
+    ///
+    /// A file that is not a claim this build understands is the one case Repair cannot fix, because
+    /// there is no one to ask whether it is answering. It is reported rather than removed; see
+    /// [`MasterReclaim::RefusedUnreadable`].
     pub async fn repair_master(&self) -> Result<MasterReclaim, String> {
-        let path = self.master_file_path();
-        if !path.exists() {
-            return Ok(MasterReclaim::NoClaim);
-        }
-
-        let recorded = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|content| parse_master_json(&content).ok());
-
-        if let Some(info) = &recorded {
-            if is_pid_alive(info.pid)
-                && probe_daemon_health(&info.scheme, &info.host, info.port, &info.secret)
-                    .await
-                    .is_ok()
-            {
-                return Ok(MasterReclaim::RefusedLive {
-                    pid: info.pid,
-                    port: info.port,
-                });
+        match inspect_master_file(&self.tendril_home) {
+            MasterFileKind::Missing => Ok(MasterReclaim::NoClaim),
+            MasterFileKind::Garbage => self.clear_unreadable_write(),
+            MasterFileKind::Foreign { schema_version } => {
+                Ok(MasterReclaim::RefusedUnreadable { schema_version })
+            }
+            MasterFileKind::Claim(claim) => {
+                let info = &claim.info;
+                if claim.owner_is_running()
+                    && probe_daemon_health(&info.scheme, &info.host, info.port, &info.secret)
+                        .await
+                        .is_ok()
+                {
+                    return Ok(MasterReclaim::RefusedLive {
+                        pid: info.pid,
+                        port: info.port,
+                    });
+                }
+                self.force_remove_master()?;
+                Ok(MasterReclaim::Removed {
+                    pid: Some(info.pid),
+                })
             }
         }
+    }
 
+    /// Clears a `.master` that is not a JSON document — the one shape that carries no information
+    /// about anybody. A daemon caught between creating the file and writing it looks like this for
+    /// microseconds, which is why the daemon's own claim path re-reads before believing it; the app
+    /// only ever gets here on an explicit repair or before spawning, long after that window.
+    fn clear_unreadable_write(&self) -> Result<MasterReclaim, String> {
         self.force_remove_master()?;
-        Ok(MasterReclaim::Removed {
-            pid: recorded.map(|info| info.pid),
-        })
+        Ok(MasterReclaim::Removed { pid: None })
     }
 
     /// Deletes the claim with no liveness check whatsoever. Private on purpose: every caller has to
@@ -380,6 +422,19 @@ impl ServiceSupervisor {
                     "Not starting a managed daemon: {} is claimed by a running daemon (PID {pid}, \
                      port {port}). Stop it first, or adopt it.",
                     self.master_file_path().display()
+                ));
+            }
+            // Said rather than swallowed: the child's own `MasterGuard::acquire` would refuse this file
+            // too, and it would do it after spawning, from a log the operator never opens.
+            Ok(MasterReclaim::RefusedUnreadable { schema_version }) => {
+                return Err(format!(
+                    "Not starting a managed daemon: {} is not a registration this build can read{}. \
+                     It may belong to a running daemon, so it was left alone — stop that daemon, or \
+                     move the file aside once you are sure nothing is using it.",
+                    self.master_file_path().display(),
+                    schema_version
+                        .map(|v| format!(" (schemaVersion {v})"))
+                        .unwrap_or_default()
                 ));
             }
             Ok(_) => {}

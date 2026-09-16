@@ -82,6 +82,15 @@ export interface Job {
   statusMessage?: string;
   startedAt?: string;
   completedAt?: string;
+  /**
+   * When the agent last wrote a line, RFC 3339. The Jobs table's Agent Output column is the time
+   * since this rather than a status line (`JobsApp.Helpers.cs` `FormatAgentOutput`), and absent means
+   * a job that has not said anything yet — which is what V1 renders as "Starting...".
+   *
+   * The daemon stamps it at most once every five seconds however loud the agent is, so it lags real
+   * output by up to that much. Invisible in a cell whose smallest unit is a second.
+   */
+  lastOutputAt?: string;
   cost?: number;
   tokens?: number;
   processId?: number;
@@ -116,6 +125,17 @@ export interface JobDetail extends Job {
   args?: string;
   workingDirectory?: string;
   reportedFailureReason?: string;
+  /** Which agent ran it (`claude`, `codex`, …). V1's `Provider`. */
+  provider?: string;
+  /** The command line the agent was launched with. V1's `CliCommand`, labelled `Arguments` there. */
+  cliCommand?: string;
+  /** The plan folder the job ran against. V1's `PlanFolder`. */
+  planFolder?: string;
+  /** The artifacts the run left on this machine, each present only when the file exists. */
+  jobLogPath?: string;
+  jobPromptPath?: string;
+  jobRawLogPath?: string;
+  jobEventwirePath?: string;
 }
 
 export interface ServiceHealth {
@@ -151,6 +171,12 @@ export interface ReviewActionConfig {
 
 export interface ProjectSummary {
   name: string;
+  /**
+   * The project's configured colour as an Ivy `Colors` name (`Blue`, `Amber`, ...), resolved to a CSS
+   * variable with `ivyColorVar`. Absent when `config.yaml` leaves it blank — the bridge drops the
+   * empty string — which is what a sidebar marker reads as "fall back to the neutral colour".
+   */
+  color?: string;
   repos: string[];
   verifications: string[];
   reviewActions?: ReviewActionConfig[];

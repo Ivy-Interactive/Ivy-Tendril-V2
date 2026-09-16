@@ -187,6 +187,9 @@ describe("TendrilDashboard git activity and pull requests side cards", () => {
         eventHandler={vi.fn()}
         activity={[{ label: "Jan", weeks: [1] }]}
         pullRequests={[{ label: "Jan", value: 3 }]}
+        // The card opens on its Week range, so the weekly series is the one that has to be fed for
+        // the bars to be on screen at all.
+        pullRequestsWeekly={[{ label: "Jan 5", value: 3 }]}
       />,
     );
 
@@ -323,7 +326,9 @@ describe("TendrilDashboard pull requests week/month toggle", () => {
     { label: "Sep 7", value: 2 },
   ];
 
-  it("defaults to month view and displays monthly pull requests", () => {
+  // Weeks, not months: the card's question is "are we shipping this week", and a week bar's label
+  // also fits the 280px side column that a month's does not.
+  it("defaults to week view and displays weekly pull requests", () => {
     render(
       <TendrilDashboard
         id="dash"
@@ -336,43 +341,79 @@ describe("TendrilDashboard pull requests week/month toggle", () => {
     const monthBtn = screen.getByRole("button", { name: "Month" });
     const weekBtn = screen.getByRole("button", { name: "Week" });
 
-    expect(monthBtn).toHaveAttribute("data-active", "true");
-    expect(weekBtn).toHaveAttribute("data-active", "false");
-
-    expect(screen.getByText("Apr")).toBeInTheDocument();
-    expect(screen.getByText("Sep")).toBeInTheDocument();
-    expect(screen.queryByText("Aug 24")).not.toBeInTheDocument();
-  });
-
-  it("switches to week view on click and restores month view when clicked again", () => {
-    render(
-      <TendrilDashboard
-        id="dash"
-        eventHandler={vi.fn()}
-        pullRequests={monthlyPrs}
-        pullRequestsWeekly={weeklyPrs}
-      />,
-    );
-
-    const monthBtn = screen.getByRole("button", { name: "Month" });
-    const weekBtn = screen.getByRole("button", { name: "Week" });
-
-    // Switch to Week
-    fireEvent.click(weekBtn);
     expect(weekBtn).toHaveAttribute("data-active", "true");
     expect(monthBtn).toHaveAttribute("data-active", "false");
 
     expect(screen.getByText("Aug 24")).toBeInTheDocument();
     expect(screen.getByText("Sep 7")).toBeInTheDocument();
     expect(screen.queryByText("Apr")).not.toBeInTheDocument();
+  });
 
-    // Switch back to Month
+  it("switches to month view on click and restores week view when clicked again", () => {
+    render(
+      <TendrilDashboard
+        id="dash"
+        eventHandler={vi.fn()}
+        pullRequests={monthlyPrs}
+        pullRequestsWeekly={weeklyPrs}
+      />,
+    );
+
+    const monthBtn = screen.getByRole("button", { name: "Month" });
+    const weekBtn = screen.getByRole("button", { name: "Week" });
+
+    // Switch to Month
     fireEvent.click(monthBtn);
     expect(monthBtn).toHaveAttribute("data-active", "true");
     expect(weekBtn).toHaveAttribute("data-active", "false");
 
     expect(screen.getByText("Apr")).toBeInTheDocument();
+    expect(screen.getByText("Sep")).toBeInTheDocument();
     expect(screen.queryByText("Aug 24")).not.toBeInTheDocument();
+
+    // Switch back to Week
+    fireEvent.click(weekBtn);
+    expect(weekBtn).toHaveAttribute("data-active", "true");
+    expect(monthBtn).toHaveAttribute("data-active", "false");
+
+    expect(screen.getByText("Aug 24")).toBeInTheDocument();
+    expect(screen.queryByText("Apr")).not.toBeInTheDocument();
+  });
+
+  /**
+   * The month range's width, which is the half of the fit that markup can hold.
+   *
+   * jsdom lays nothing out, so "does not overflow" cannot be measured here; what makes it true is
+   * two things that can be. One is the bar count — `buildPullRequests` plots V1's six months rather
+   * than twelve, which is asserted in the app's own dashboard tests. The other is that every level
+   * between the card and a bar is free to shrink: `.tdb-bars-plot` and `.tdb-bar-item` both declare
+   * `min-width: 0`, without which a flex item's `min-width: auto` refuses to go below its content
+   * and pushes the track past the card (see dashboard.css.test.ts). This case pins the third part:
+   * the bars are flexible, so six of them share whatever width the card has instead of claiming a
+   * fixed one.
+   */
+  it("gives the month range no more bars than it has data, each one flexible", () => {
+    const { container } = render(
+      <TendrilDashboard
+        id="dash"
+        eventHandler={vi.fn()}
+        pullRequests={monthlyPrs}
+        pullRequestsWeekly={weeklyPrs}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Month" }));
+
+    const bars = container.querySelectorAll<HTMLElement>(".tdb-bar-item");
+    expect(bars).toHaveLength(monthlyPrs.length);
+    // No inline width anywhere on the track or its items: width is the stylesheet's flexible
+    // `flex: 1` / `min-width: 0`, never a hard number the card cannot honour.
+    expect(container.querySelector<HTMLElement>(".tdb-bars-plot")!.style.width).toBe("");
+    for (const bar of bars) expect(bar.style.width).toBe("");
+    // The bar's own height is the only inline geometry, and it is a percentage of its track.
+    for (const fill of container.querySelectorAll<HTMLElement>(".tdb-bar")) {
+      expect(fill.style.height).toMatch(/%$/);
+    }
   });
 
   it("renders weekly labels with formatted two-line date wrapping while remaining accessible", () => {
@@ -420,6 +461,8 @@ describe("TendrilDashboard pull requests week/month toggle", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Month" }));
+
     expect(screen.getByLabelText("August 2026: 15 pull requests merged")).toBeInTheDocument();
     expect(screen.getByLabelText("September 2026: 1 pull request merged")).toBeInTheDocument();
 
@@ -443,10 +486,82 @@ describe("TendrilDashboard pull requests week/month toggle", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Aug: 20 pull requests merged")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Week" }));
-
     expect(screen.getByLabelText("Aug 24: 5 pull requests merged")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Month" }));
+
+    expect(screen.getByLabelText("Aug: 20 pull requests merged")).toBeInTheDocument();
+  });
+});
+
+/**
+ * The loading state, which is the framework's `Skeleton` idiom rather than V1's
+ * `Text.Muted("Loading Dashboard Data...")` blanking of the whole page.
+ *
+ * The contract these pin is narrow and worth stating: while `loading` is set the dashboard states no
+ * figure at all, not even an honest "unknown" one. A dash or an "n/a" is a claim about the data, and
+ * the caller has not looked yet.
+ */
+describe("TendrilDashboard loading placeholders", () => {
+  const renderLoading = (loading: boolean) =>
+    render(
+      <TendrilDashboard
+        id="dash"
+        eventHandler={vi.fn()}
+        loading={loading}
+        draftCount={3}
+        inProgressCount={1}
+        // What a caller with nothing fetched would pass, i.e. the shape of a first paint.
+        kpis={[]}
+        trendWeekly={null}
+        pullRequests={[]}
+        pullRequestsWeekly={[]}
+        activity={[]}
+      />,
+    );
+
+  it("blocks out four KPI tiles instead of stating an unknown figure", () => {
+    const { container } = renderLoading(true);
+
+    expect(screen.getByTestId("tdb-kpis-skeleton")).toBeInTheDocument();
+    expect(container.querySelectorAll(".tdb-kpi")).toHaveLength(4);
+    // The tones cycle exactly as the real tiles' do, so no card changes colour on arrival.
+    expect(
+      Array.from(container.querySelectorAll(".tdb-kpi")).map((el) => el.getAttribute("data-tone")),
+    ).toEqual(["0", "1", "2", "3"]);
+    // Not one of the no-data vocabularies, in any casing.
+    expect(container.textContent).not.toMatch(/n\/a/i);
+    expect(container.textContent).not.toContain("—");
+  });
+
+  it("reserves the trend card and both side charts so nothing moves when the data lands", () => {
+    const { container } = renderLoading(true);
+
+    // The trend block is skipped entirely when there is no series, so its frame is what stops the
+    // whole left column reflowing later.
+    expect(container.querySelector(".tdb-trend")).not.toBeNull();
+    // One placeholder each for the trend, Git Activity and Pull Requests.
+    expect(screen.getAllByTestId("tdb-chart-skeleton")).toHaveLength(3);
+    // The real empty notes belong to a settled empty state, not to this one.
+    expect(screen.queryByText("No merged pull requests yet")).not.toBeInTheDocument();
+  });
+
+  it("leaves the status strip and Active Jobs alone, whose counts survive a refresh", () => {
+    renderLoading(true);
+
+    // Those come from the plan and job stores, which keep the previous list; inventing a placeholder
+    // for a number that is already correct would be the flicker in reverse.
+    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(screen.getByText("No jobs running")).toBeInTheDocument();
+  });
+
+  it("draws no placeholder once the figures exist, however empty they are", () => {
+    renderLoading(false);
+
+    expect(screen.queryByTestId("tdb-kpis-skeleton")).not.toBeInTheDocument();
+    expect(screen.queryAllByTestId("tdb-chart-skeleton")).toHaveLength(0);
+    // A settled empty range says so — one note per side card — which is a statement the loading
+    // state must not make.
+    expect(screen.getAllByText("No merged pull requests yet")).toHaveLength(2);
   });
 });

@@ -398,3 +398,73 @@ async fn test_chat_websocket_broadcast() {
         "Should receive chat.generating_state over WS"
     );
 }
+
+/// The terminal half of V1's chat modes. Two things matter here and neither is about the agent: the
+/// session id is what authorises the spawn, and the stream announces the pty before any output — a
+/// client cannot type into a session it has no id for.
+#[tokio::test]
+async fn test_chat_terminal_requires_a_real_session() {
+    let server = start_test_server().await;
+    let client = reqwest::Client::new();
+    let base_url = format!("http://{}:{}", server.host, server.port);
+
+    // An unknown session is a 404 and spawns nothing. This is the whole of the authorisation: a route
+    // carrying the daemon's authority must not become a way to run a process of the caller's choosing.
+    let resp = client
+        .post(format!(
+            "{}/api/chat/sessions/not-a-session/terminal",
+            base_url
+        ))
+        .header(AUTHORIZATION, format!("Bearer {}", server.secret))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+
+    // Input and resize for a pty that never existed are 404s rather than panics, which is what a
+    // client racing the `end` frame will see.
+    let create = client
+        .post(format!("{}/api/chat/sessions", base_url))
+        .header(AUTHORIZATION, format!("Bearer {}", server.secret))
+        .json(&json!({ "title": "Terminal", "agentId": "claude" }))
+        .send()
+        .await
+        .unwrap();
+    let session: serde_json::Value = create.json().await.unwrap();
+    let session_id = session["id"].as_str().unwrap();
+
+    for endpoint in ["terminal/input", "terminal/resize"] {
+        let resp = client
+            .post(format!(
+                "{}/api/chat/sessions/{}/{}",
+                base_url, session_id, endpoint
+            ))
+            .header(AUTHORIZATION, format!("Bearer {}", server.secret))
+            .json(&json!({ "sessionId": "no-such-pty", "data": "", "rows": 24, "cols": 80 }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            reqwest::StatusCode::NOT_FOUND,
+            "endpoint: {}",
+            endpoint
+        );
+    }
+
+    // Closing a pty that is already gone is not an error: a pane unmounting twice must not raise.
+    let resp = client
+        .delete(format!(
+            "{}/api/chat/sessions/{}/terminal",
+            base_url, session_id
+        ))
+        .header(AUTHORIZATION, format!("Bearer {}", server.secret))
+        .json(&json!({ "sessionId": "no-such-pty" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["closed"], false);
+}

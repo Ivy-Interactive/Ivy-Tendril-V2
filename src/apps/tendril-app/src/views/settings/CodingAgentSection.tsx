@@ -3,9 +3,15 @@ import { BrandIcon } from "@ivy-interactive/components/tendril";
 import { Button, Callout, Input, Label, Switch } from "@ivy-interactive/components/ui";
 import { Check } from "lucide-react";
 import { agentsApi } from "../../api/agentsApi";
+import { providerModelsApi } from "../../api/providerModelsApi";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError, type TendrilConfig } from "../../types/api";
-import { DEFAULT_OPTION_ID, type AgentOption } from "../../types/agents";
+import {
+  DEFAULT_OPTION_ID,
+  type AgentOption,
+  type DiscoveredModel,
+  type ProfileDefaults,
+} from "../../types/agents";
 import { formatEnvLines, parseEnvLines } from "./configValues";
 import { normalizeAgentName } from "./projectConfig";
 import {
@@ -37,6 +43,7 @@ import {
   withAgentSettings,
   withByoCredentials,
   type Profiles,
+  type ProfileTier,
 } from "./codingAgents";
 
 /**
@@ -54,6 +61,13 @@ import {
 
 /** `EffortLevels.Claude`, V1's fallback when neither the model nor the descriptor names any. */
 const FALLBACK_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+
+/** `.Label("Deep")` / `.Label("Balanced")` / `.Label("Quick")`, the labels V1 gives the three rows. */
+const TIER_LABELS: Record<ProfileTier, string> = {
+  deep: "Deep",
+  balanced: "Balanced",
+  quick: "Quick",
+};
 
 const effortLabel = (id: string): string =>
   ({
@@ -118,6 +132,20 @@ export const CodingAgentSection: React.FC<{
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Live discovery (`POST /api/agents/models`). `discovered` is per endpoint rather than global: it is
+  // what *this* URL answered, and switching cards discards it.
+  const [discovered, setDiscovered] = React.useState<DiscoveredModel[] | null>(null);
+  const [discoveryNote, setDiscoveryNote] = React.useState<string | null>(null);
+  const [apiKeyError, setApiKeyError] = React.useState<string | null>(null);
+  const [baseUrlError, setBaseUrlError] = React.useState<string | null>(null);
+  const [isFetchingModels, setIsFetchingModels] = React.useState(false);
+  /**
+   * Which (agent, URL) pairs have already been tried unprompted. V1 fetches on an explicit Continue;
+   * this pane also tries once when it opens onto a card whose key is already saved, and this is what
+   * keeps "once" true — a keystroke in the key or URL field must not fire a request.
+   */
+  const attempted = React.useRef<Set<string>>(new Set());
+
   const configuredBaseUrl = initialBaseUrl(entries, savedAgent);
   const baseUrl = typedBaseUrl ?? configuredBaseUrl;
   const card = chosenCard ?? initialCard(savedAgent, configuredBaseUrl);
@@ -172,19 +200,74 @@ export const CodingAgentSection: React.FC<{
       catalogAgentFor(
         finalAgent,
         agents.map((a) => a.id),
+        baseUrl,
       ),
   );
-  const modelOptions = (catalogAgent?.models ?? []).map((model) => ({
-    value: model.id,
-    label: model.displayName,
-  }));
-  const effortOptions = (
-    catalogAgent?.supportsEffort
-      ? catalogAgent.efforts.map((effort) => effort.id)
-      : catalogAgent
-        ? []
-        : [DEFAULT_OPTION_ID, ...FALLBACK_EFFORTS]
-  ).map((id) => ({ value: id, label: effortLabel(id) }));
+  const catalogModels = catalogAgent?.models ?? [];
+
+  /**
+   * What the selects offer: the endpoint's own list when it gave one, else the declared catalogue.
+   *
+   * That order is V1's `OpenAiProxyModelCatalog.GetModelsAsync` — dynamic when the fetch returned
+   * anything, static otherwise. Discovered rows are used here and nowhere else: they are not merged into
+   * `catalog.rs`'s declared lists, so no agent starts offering a model because some endpoint mentioned
+   * it. The consequence is that a discovered row has no effort ladder of its own and falls back to the
+   * agent's, which is what `effortOptionsFor` already does for an id it does not recognise.
+   */
+  const modelOptions =
+    discovered && discovered.length > 0
+      ? discovered.map((model) => ({ value: model.id, label: model.displayName }))
+      : catalogModels.map((model) => ({ value: model.id, label: model.displayName }));
+
+  /**
+   * What a tier shows when nothing has been chosen for it.
+   *
+   * `config.yaml` spells "no opinion" as an absent value, which `readProfiles` reads back as the
+   * sentinel `default` - and a select cannot honestly render that, which is the whole complaint. V1 does
+   * not try: `ResolveAgentModelsAndEffort` (`CodingAgentSetupView.cs:521-545`) replaces the sentinel with
+   * a concrete model before the select ever sees it, choosing it with `ModelProfileSelector`. So does
+   * this, from the three answers available in order of authority: what the endpoint's own list resolved
+   * to, the tier table `resolution.rs` actually falls back to, and the agent's `IsDefault` model.
+   *
+   * Displayed, not stored. The tier stays unset in `profiles` until the operator picks something, because
+   * writing a concrete id would flip `apply_profile` from "no opinion" to a pinned model - and an unset
+   * tier is a different thing from a bogus `default` *model*, which is what was removed.
+   */
+  const resolvedTierModel = (tier: ProfileTier): string => {
+    const offers = (id: string) => id !== "" && modelOptions.some((option) => option.value === id);
+    const fromTierTable = tierDefaults(finalAgent, baseUrl)[tier].model;
+    if (offers(fromTierTable)) return fromTierTable;
+    if (catalogAgent?.defaultModel && offers(catalogAgent.defaultModel)) {
+      return catalogAgent.defaultModel;
+    }
+    return modelOptions[0]?.value ?? "";
+  };
+
+  /** `default`, or an absent value, is "unset" - never a model. */
+  const isTierUnset = (value: string) => value.trim() === "" || value === DEFAULT_VALUE;
+
+  const shownTierModel = (tier: ProfileTier): string =>
+    isTierUnset(profiles[tier].model) ? resolvedTierModel(tier) : profiles[tier].model;
+
+  /**
+   * `GetEffortOptions(modelId)`: the ladder belongs to the **model** first and to the agent second,
+   * because V1 declares `SupportedEfforts` on every catalogue row - Copilot on `claude-opus-5` offers
+   * Claude's five levels and on `gpt-5.4` its own four. Each profile's effort select is therefore
+   * built from the model chosen beside it, not from the agent. V1's last resort when neither names
+   * one is `EffortLevels.Claude`, which is also what an unreachable daemon gets here.
+   */
+  const effortOptionsFor = (modelId: string): { value: string; label: string }[] => {
+    const model = catalogModels.find((candidate) => candidate.id === modelId);
+    const ladder =
+      model?.efforts && model.efforts.length > 0
+        ? model.efforts.map((effort) => effort.id)
+        : (catalogAgent?.efforts ?? []).length > 0
+          ? catalogAgent!.efforts.map((effort) => effort.id)
+          : catalogAgent
+            ? []
+            : [DEFAULT_OPTION_ID, ...FALLBACK_EFFORTS];
+    return ladder.map((id) => ({ value: id, label: effortLabel(id) }));
+  };
 
   const isByo = isByoCard(card);
   /**
@@ -194,15 +277,150 @@ export const CodingAgentSection: React.FC<{
    * is worse than one that accepts an id V2 has not heard of.
    */
   const isCustomMode = modelOptions.length === 0 || (isByo && customNames);
-  const effortEnabled = supportsEffort(finalAgent) && effortOptions.length > 0;
+  /**
+   * `supportsEffort` is the descriptor's `EffortControl` capability, which is a property of the agent
+   * rather than of the model beside it: V1 keeps or drops the whole effort column on it, and only then
+   * asks each row's model what its levels are.
+   */
+  const effortEnabled = catalogAgent
+    ? catalogAgent.supportsEffort
+    : supportsEffort(finalAgent) && effortOptionsFor(DEFAULT_OPTION_ID).length > 0;
   const defaults = tierDefaults(finalAgent, baseUrl);
 
   const chooseCard = (next: string) => {
     setChosenCard(next);
+    // A discovered list belongs to the endpoint it came from, so leaving that endpoint discards it
+    // along with whatever it had to say about the key and the URL.
+    setDiscovered(null);
+    setDiscoveryNote(null);
+    setApiKeyError(null);
+    setBaseUrlError(null);
     // `byoGrid`'s click handler corrects a URL belonging to the provider you just left, and leaves one
     // that already belongs to this provider alone.
     if (isByoCard(next)) setTypedBaseUrl(baseUrlForCard(next, baseUrl));
   };
+
+  /**
+   * V1 `CodingAgentStepView.cs:436-447`: a tier whose saved model is blank, or is not one of the models
+   * this endpoint just listed, is reset to that tier's computed default.
+   *
+   * This is the "match them with what we have" half. A select cannot represent an id that is not in its
+   * options, so a stale saved model would otherwise sit there looking chosen while the endpoint has
+   * never heard of it. The reset marks the pane dirty, which is correct - the corrected value has to be
+   * saved to take effect.
+   */
+  const applyDiscoveredDefaults = React.useCallback(
+    (models: DiscoveredModel[], fetchedDefaults: ProfileDefaults) => {
+      const offered = (id: string) =>
+        id === DEFAULT_VALUE || models.some((model) => model.id.toLowerCase() === id.toLowerCase());
+      setProfiles((prev) => ({
+        deep: {
+          ...prev.deep,
+          model: offered(prev.deep.model) ? prev.deep.model : fetchedDefaults.deep,
+        },
+        balanced: {
+          ...prev.balanced,
+          model: offered(prev.balanced.model) ? prev.balanced.model : fetchedDefaults.balanced,
+        },
+        quick: {
+          ...prev.quick,
+          model: offered(prev.quick.model) ? prev.quick.model : fetchedDefaults.quick,
+        },
+      }));
+    },
+    [],
+  );
+
+  /**
+   * V1's Continue handler, as one action: ask the endpoint what it serves and route the answer.
+   *
+   * The key is sent only when it has been typed and not yet saved; otherwise it is omitted and the
+   * daemon uses the one in `config.yaml`, which is what makes this work for a key the operator gave
+   * some other day. Each of the three failures lands on the field it is about.
+   */
+  const fetchModels = React.useCallback(
+    async (agent: string, url: string, typedKey: string | null) => {
+      setIsFetchingModels(true);
+      setApiKeyError(null);
+      setBaseUrlError(null);
+      setDiscoveryNote(null);
+      try {
+        const outcome = await providerModelsApi.fetch({
+          agent,
+          baseUrl: url,
+          ...(typedKey && typedKey.trim() !== "" ? { apiKey: typedKey } : {}),
+        });
+
+        switch (outcome.status) {
+          case "models":
+            setDiscovered(outcome.models);
+            // A successful fetch is what puts the pane in select mode - V1 sets
+            // `useCustomModelNames` to false right here.
+            setCustomNames(false);
+            setDiscoveryNote(
+              `Found ${outcome.models.length} model${outcome.models.length === 1 ? "" : "s"} at this endpoint.`,
+            );
+            applyDiscoveredDefaults(outcome.models, outcome.defaults);
+            break;
+          case "customNames":
+            // The endpoint answered a real prompt but lists no models, so there is nothing to select
+            // from and the names have to be typed. V1 prefills them with the provider's defaults.
+            setDiscovered([]);
+            setCustomNames(true);
+            setDiscoveryNote(
+              "This endpoint serves no model list, so model names have to be entered by hand.",
+            );
+            // V1 prefills only an unset field (`IsNullOrWhiteSpace`). An unset tier reads back here as
+            // the literal `default`, which is this pane's spelling of the same thing.
+            setProfiles((prev) => {
+              const prefill = (current: string, fallback: string) =>
+                current.trim() === "" || current === DEFAULT_VALUE ? fallback : current;
+              return {
+                deep: { ...prev.deep, model: prefill(prev.deep.model, outcome.defaults.deep) },
+                balanced: {
+                  ...prev.balanced,
+                  model: prefill(prev.balanced.model, outcome.defaults.balanced),
+                },
+                quick: { ...prev.quick, model: prefill(prev.quick.model, outcome.defaults.quick) },
+              };
+            });
+            break;
+          case "apiKeyError":
+            // Deliberately no fallback to free text: a refused key has told us nothing about whether
+            // the endpoint lists models.
+            setApiKeyError(outcome.message);
+            break;
+          case "baseUrlError":
+            setBaseUrlError(outcome.message);
+            break;
+        }
+      } catch (err) {
+        setDiscoveryNote(`Could not reach the daemon to fetch models: ${describeBridgeError(err)}`);
+      } finally {
+        setIsFetchingModels(false);
+      }
+    },
+    [applyDiscoveredDefaults],
+  );
+
+  /**
+   * "If the user already gave the key": one unprompted attempt per (agent, URL) when a key is already
+   * on disk, so opening the pane on a configured provider shows its real models without being asked to
+   * press anything.
+   *
+   * Keyed on the *saved* credentials only, and guarded by `attempted`, so typing in either field fires
+   * nothing. The pane renders before, during and after this - it is never awaited on the render path.
+   */
+  React.useEffect(() => {
+    if (!isByo || savedApiKey === "" || baseUrl.trim() === "") return;
+    const attemptKey = `${finalAgent}|${baseUrl}`;
+    if (attempted.current.has(attemptKey)) return;
+    attempted.current.add(attemptKey);
+    void fetchModels(finalAgent, baseUrl, null);
+    // `apiKey`/`typedBaseUrl` are deliberately absent: this reacts to what is configured, not to what
+    // is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isByo, finalAgent, savedApiKey, savedBaseUrl]);
 
   const agentIdChanged = finalAgent !== normalizeAgentName(savedAgent || "claude");
   const profilesChanged = JSON.stringify(profiles) !== JSON.stringify(savedProfiles);
@@ -314,25 +532,59 @@ export const CodingAgentSection: React.FC<{
                       ? "https://api.anthropic.com/v1"
                       : "https://api.openai.com"
                   }
-                  onChange={setTypedBaseUrl}
+                  /* The third of V1's three destinations for one failure: nothing answered here. */
+                  error={baseUrlError}
+                  onChange={(value) => {
+                    setTypedBaseUrl(value);
+                    setBaseUrlError(null);
+                  }}
                 />
               )}
               <div className="space-y-1">
                 <Label htmlFor="byo-api-key" className="text-xs font-medium text-muted-foreground">
                   API Key
                 </Label>
-                <Input
-                  id="byo-api-key"
-                  type="password"
-                  value={apiKey}
-                  placeholder="sk-..."
-                  onChange={(e) => setTypedApiKey(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Stored as {finalAgent === "ivy" ? "IVY_API_KEY, " : ""}ANTHROPIC_API_KEY and
-                  OPENAI_API_KEY on the {finalAgent} agent, which is the environment every launch
-                  gets.
-                </p>
+                <div className="flex items-start gap-2">
+                  <Input
+                    id="byo-api-key"
+                    type="password"
+                    value={apiKey}
+                    placeholder="sk-..."
+                    aria-invalid={apiKeyError ? true : undefined}
+                    onChange={(e) => {
+                      setTypedApiKey(e.target.value);
+                      setApiKeyError(null);
+                    }}
+                  />
+                  {/* V1 fetches on Continue; a settings pane has no Continue, so the same call is an
+                      explicit action. It needs no key typed here: one already saved is read by the
+                      daemon, which is the only side allowed to read it. */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-testid="fetch-provider-models"
+                    disabled={isFetchingModels || apiKey.trim() === ""}
+                    onClick={() => void fetchModels(finalAgent, baseUrl, typedApiKey)}
+                  >
+                    {isFetchingModels ? "Fetching..." : "Fetch models"}
+                  </Button>
+                </div>
+                {apiKeyError ? (
+                  <p className="text-xs text-destructive" data-testid="byo-api-key-error">
+                    {apiKeyError}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Stored as {finalAgent === "ivy" ? "IVY_API_KEY, " : ""}ANTHROPIC_API_KEY and
+                    OPENAI_API_KEY on the {finalAgent} agent, which is the environment every launch
+                    gets.
+                  </p>
+                )}
+                {discoveryNote && (
+                  <p className="text-xs text-muted-foreground" data-testid="model-discovery-note">
+                    {discoveryNote}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -346,7 +598,10 @@ export const CodingAgentSection: React.FC<{
           hint={
             isCustomMode
               ? "Specify custom model names and effort level to use for each profile."
-              : "Promptwares are configured to use different profiles depending on the complexity of the task. You can specify what model and effort level to use for each profile."
+              : discovered && discovered.length > 0
+                ? // `CodingAgentStepView`'s wording for the same block once its fetch has come back.
+                  "Select models from your endpoint for each profile level."
+                : "Promptwares are configured to use different profiles depending on the complexity of the task. You can specify what model and effort level to use for each profile."
           }
           testId="profile-models-block"
         >
@@ -372,40 +627,40 @@ export const CodingAgentSection: React.FC<{
           <div className="space-y-3">
             {PROFILE_TIERS.map((tier) => (
               <div key={tier} className="flex flex-wrap items-end gap-2">
-                {/* `Width(Size.Fraction(0.65f))` against the effort select's `0.35f`. */}
-                <div className={effortEnabled ? "min-w-56 grow basis-2/3" : "min-w-56 grow"}>
+                {/* `Width(Size.Fraction(0.65f))` against the effort select's `0.35f`, and the whole
+                    row when there is no effort select to sit beside. */}
+                <div
+                  className={
+                    effortEnabled ? "min-w-56 grow basis-[65%]" : "min-w-56 grow basis-full"
+                  }
+                >
                   {isCustomMode ? (
-                    <div className="space-y-1">
-                      <Label
-                        htmlFor={`profile-model-${tier}`}
-                        className="text-xs font-medium text-muted-foreground capitalize"
-                      >
-                        {tier}
-                      </Label>
-                      <Input
-                        id={`profile-model-${tier}`}
-                        value={profiles[tier].model === DEFAULT_VALUE ? "" : profiles[tier].model}
-                        placeholder={defaults[tier].model || DEFAULT_VALUE}
-                        onChange={(e) =>
-                          setProfiles((prev) => ({
-                            ...prev,
-                            [tier]: {
-                              ...prev[tier],
-                              model: e.target.value.trim() === "" ? DEFAULT_VALUE : e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
+                    <TextField
+                      id={`profile-model-${tier}`}
+                      label={TIER_LABELS[tier]}
+                      value={profiles[tier].model === DEFAULT_VALUE ? "" : profiles[tier].model}
+                      placeholder={defaults[tier].model || DEFAULT_VALUE}
+                      onChange={(value) =>
+                        setProfiles((prev) => ({
+                          ...prev,
+                          [tier]: {
+                            ...prev[tier],
+                            model: value.trim() === "" ? DEFAULT_VALUE : value,
+                          },
+                        }))
+                      }
+                    />
                   ) : (
                     <NativeSelectField
                       id={`profile-model-${tier}`}
-                      label={tier}
-                      value={profiles[tier].model}
+                      label={TIER_LABELS[tier]}
+                      /* The resolved model rather than the sentinel: a select shows a model or it shows
+                         nothing sensible. */
+                      value={shownTierModel(tier)}
                       options={modelOptions}
                       hint={
-                        profiles[tier].model === DEFAULT_VALUE && defaults[tier].model !== ""
-                          ? `Default: ${defaults[tier].model}`
+                        isTierUnset(profiles[tier].model)
+                          ? "Not set — this is the built-in default for this tier."
                           : undefined
                       }
                       onChange={(value) =>
@@ -418,14 +673,15 @@ export const CodingAgentSection: React.FC<{
                   )}
                 </div>
                 {/* No effort column at all when the CLI takes no effort argument, which is V1's own
-                    branch rather than a disabled control that would still look settable. */}
+                    branch rather than a disabled control that would still look settable. Its options
+                    are `GetEffortOptions(<this row's model>)`, so they follow the select beside them. */}
                 {effortEnabled && (
-                  <div className="min-w-32 basis-1/3">
+                  <div className="min-w-32 basis-[35%]">
                     <NativeSelectField
                       id={`profile-effort-${tier}`}
                       label="Effort"
                       value={profiles[tier].effort}
-                      options={effortOptions}
+                      options={effortOptionsFor(shownTierModel(tier))}
                       onChange={(value) =>
                         setProfiles((prev) => ({
                           ...prev,

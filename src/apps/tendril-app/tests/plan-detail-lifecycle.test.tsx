@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { PlanDetailView } from "../src/views/PlanDetailView";
 import { bridge } from "../src/api/bridge";
 import { chatApi } from "../src/api/chatApi";
@@ -318,5 +318,76 @@ describe("git state", () => {
     rerender(<PlanDetailView plan={{ ...plan }} />);
 
     expect(getPlanGit).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Discard is gone. It was one of two near-identical "get rid of this plan" actions and the
+ * confusing one: it read as a delete but only wrote `state: Skipped`. Delete is the one that stays,
+ * and the Skipped transition survives inside its dialog as "Move to Skipped".
+ */
+describe("the discard action is gone", () => {
+  it("offers no Discard anywhere in a Draft plan's actions", () => {
+    render(<PlanDetailView plan={draft()} />);
+    openWorkspaceMenu();
+
+    expect(screen.queryByRole("menuitem", { name: /Discard/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Discard/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("discard-plan-dialog")).not.toBeInTheDocument();
+  });
+
+  it("offers no Discard for a plan in Review either, where V1 puts it", () => {
+    render(<PlanDetailView plan={draft({ state: "Review" })} />);
+    openWorkspaceMenu();
+
+    expect(screen.queryByRole("menuitem", { name: /Discard/i })).not.toBeInTheDocument();
+  });
+
+  it("reaches Skipped through the delete dialog instead", async () => {
+    const updateField = vi.spyOn(bridge, "updatePlanField").mockResolvedValue(undefined);
+    render(<PlanDetailView plan={draft()} />);
+    openWorkspaceMenu();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete Plan/ }));
+    const dialog = await screen.findByTestId("delete-plan-dialog");
+    fireEvent.click(within(dialog).getByTestId("dialog-skip"));
+
+    await waitFor(() => expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped"));
+  });
+});
+
+/**
+ * `Apps/Review/ReviewActions.cs`: `.Menu("ResetToDraft", "Reset to Draft", Icons.RotateCcw, ..., "r")`
+ * then the danger item. V1's danger item is Discard; with that removed, Delete takes the slot — which
+ * is what the Review page is asked to offer alongside Reset to Draft.
+ */
+describe("a plan in Review", () => {
+  it("offers Reset to Draft and Delete Plan, in that order, with Delete as the danger item", async () => {
+    render(<PlanDetailView plan={draft({ state: "Review" })} />);
+    openWorkspaceMenu();
+
+    const items = screen.getAllByRole("menuitem").map((i) => i.textContent ?? "");
+    const reset = items.findIndex((label) => /Reset to Draft/.test(label));
+    const del = items.findIndex((label) => /Delete Plan/.test(label));
+    expect(reset).toBeGreaterThanOrEqual(0);
+    expect(del).toBeGreaterThan(reset);
+  });
+
+  it("opens the delete confirm from the Review menu", async () => {
+    render(<PlanDetailView plan={draft({ state: "Review" })} />);
+    openWorkspaceMenu();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete Plan/ }));
+
+    expect(await screen.findByTestId("delete-plan-dialog")).toBeInTheDocument();
+  });
+
+  it("opens the Reset to Draft confirm from the Review menu", async () => {
+    render(<PlanDetailView plan={draft({ state: "Review" })} />);
+    openWorkspaceMenu();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Reset to Draft/ }));
+
+    expect(await screen.findByTestId("reset-to-draft-dialog")).toBeInTheDocument();
   });
 });

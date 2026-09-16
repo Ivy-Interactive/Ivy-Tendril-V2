@@ -320,6 +320,12 @@ interface ShellLayoutProps {
    * list is a collapsed rail flyout (`.OnNewChat(chatList.OnNew ?? StartNewChat)`).
    */
   onNewChat?: () => void;
+  /**
+   * V1's `OpenChat`, which is `ChatLauncher.TargetFor` and therefore consults `chatMode`: the Chat
+   * button opens either the chat view or the agent's own terminal. Absent falls back to navigating the
+   * chat page, which is the right answer for any host that has no terminal pane to offer.
+   */
+  onOpenChat?: () => void;
   children: React.ReactNode;
 }
 
@@ -366,6 +372,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   onSelectSidebarItem,
   onPlanSearch,
   onNewChat,
+  onOpenChat,
   children,
 }) => {
   /* V1 `TendrilAppShell.Build()` line-for-line: a published list is rendered while
@@ -548,14 +555,16 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                   label="Chat"
                   icon="MessageCircle"
                   badge={chatCount && chatCount > 0 ? String(chatCount) : undefined}
-                  isActive={activeNav === "chat"}
+                  isActive={activeNav === "chat" || activeNav === "agent"}
                   listTitle={railFlyoutList?.title}
                   items={railFlyoutList?.items}
                   selectedId={railFlyoutList?.selectedId ?? undefined}
                   events={chatEvents}
                   eventHandler={(evt: string, _id: string, args?: unknown[]) => {
                     if (evt === "OnOpen") {
-                      onSelectNav("chat");
+                      // The host decides *what* Chat opens; the shell only reports the press.
+                      if (onOpenChat) onOpenChat();
+                      else onSelectNav("chat");
                       return;
                     }
                     handleListEvent(railFlyoutList, evt, args);

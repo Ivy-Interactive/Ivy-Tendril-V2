@@ -1,13 +1,32 @@
 //! `POST /api/auth/login` and `GET /api/auth/status` — the password path from
-//! `Auth/TendrilAuthProvider.cs`.
+//! `Auth/TendrilAuthProvider.cs` — plus `PUT`/`DELETE /api/auth/password`, the write side that the
+//! original does in-process from `Apps/Settings/SecuritySetupView.cs`.
 //!
-//! Both routes are unauthenticated by necessity (a caller with no credential is exactly who logs in),
-//! so login is rate-limited with the original's exponential backoff and says as little as possible:
+//! Login and status are unauthenticated by necessity (a caller with no credential is exactly who logs
+//! in), so login is rate-limited with the original's exponential backoff and says as little as possible:
 //! a wrong username and a wrong password produce the same `401` with the same body.
 //!
 //! An install with no `auth` block, or one carrying an inherited `auth: {enabled: true}` with no
 //! password, has password auth *unavailable* rather than open — `AuthConfig::is_active()` is what
 //! decides, and the bearer secret keeps working regardless, so nobody is locked out.
+//!
+//! # Setting a password is the opposite kind of route
+//!
+//! [`set_password_handler`] and [`clear_password_handler`] are owner-only in three independent ways, and
+//! `routes::mod` is where the first two are wired:
+//!
+//! 1. They are on a bearer-credentialled router, like the tunnel's own routes. A share visitor's
+//!    capability token does not authorise them —
+//!    [`tendril_core::share::policy::share_token_allows`] refuses every method but `GET` and `POST`, and
+//!    refuses this path under all of them.
+//! 2. They are refused when the request arrived over *either* tunnel
+//!    (`share_exposure::refuse_on_any_tunnel_host`). Changing the credential that gates a public tunnel,
+//!    over that same public tunnel, is not a thing to leave possible.
+//! 3. Changing or clearing an existing password requires presenting the current one, exactly as
+//!    `SecuritySetupView` does.
+//!
+//! Nothing here logs, echoes or returns a password. The success bodies carry a boolean and a message;
+//! the plaintext goes into [`tendril_core::auth::credentials`] and stops there.
 
 use crate::auth::{issue_session_token, SESSION_TOKEN_TTL_SECONDS};
 use crate::state::AppState;
@@ -21,6 +40,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tendril_core::auth::credentials::{self, CredentialError};
 use tendril_core::auth::password::verify_password;
 use tendril_core::auth::rate_limit::GLOBAL_KEY;
 use tendril_core::config::AuthConfig;
@@ -157,4 +177,124 @@ pub async fn status_handler(State(state): State<Arc<AppState>>) -> Response {
         .is_some_and(|auth| auth.is_active());
 
     Json(json!({ "passwordAuthEnabled": enabled })).into_response()
+}
+
+/// The body of `PUT /api/auth/password`, and — with `newPassword` unused — of `DELETE`.
+///
+/// `#[serde(default)]` on both so a `DELETE` with no body at all still deserialises: an install with no
+/// password configured has no current password to send.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetPasswordRequest {
+    /// Required whenever a usable password is already configured. V1's "Current Password" field.
+    #[serde(default)]
+    pub current_password: Option<String>,
+    #[serde(default)]
+    pub new_password: String,
+}
+
+/// `PUT /api/auth/password` — sets or changes the session password.
+///
+/// Writes an Argon2 PHC string and a fresh base64 pepper into `auth` in `config.yaml` through
+/// [`tendril_core::auth::credentials::set_password`], which is the same hasher
+/// [`login_handler`] verifies against and the same one the original C# app reads. The plaintext is not
+/// logged, not echoed and not stored.
+///
+/// A successful write invalidates every session token issued under the old password, because the pepper
+/// is also the token signing key. That is intentional; see the module docs on
+/// [`tendril_core::auth::credentials`].
+pub async fn set_password_handler(
+    State(state): State<Arc<AppState>>,
+    body: Option<Json<SetPasswordRequest>>,
+) -> Response {
+    let Some(Json(body)) = body else {
+        return credential_error(CredentialError::NewPasswordEmpty);
+    };
+    let outcome = credentials::set_password(
+        &state.config_path,
+        body.current_password.as_deref(),
+        &body.new_password,
+    );
+    // Dropped whatever the outcome, for the same reason `put_config_handler` does it: a partial write
+    // still changes what the next request must see, and mtime granularity means a same-tick write can
+    // look identical to the cached snapshot.
+    state.invalidate_settings_cache();
+
+    match outcome {
+        Ok(()) => {
+            // Deliberately says *that* it happened and nothing about what was set.
+            tracing::info!("Session password updated via PUT /api/auth/password");
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "passwordAuthEnabled": true,
+                    "message": "Password protection enabled",
+                })),
+            )
+                .into_response()
+        }
+        Err(err) => credential_error(err),
+    }
+}
+
+/// `DELETE /api/auth/password` — removes password protection, V1's `config.Settings.Auth = null`.
+///
+/// The current password is still required, so somebody at an unlocked session cannot turn the lock off
+/// without knowing it. A full-access tunnel that is *running* blocks this: clearing the password while
+/// the whole daemon is published would leave it published with no credential at all.
+pub async fn clear_password_handler(
+    State(state): State<Arc<AppState>>,
+    body: Option<Json<SetPasswordRequest>>,
+) -> Response {
+    if tendril_core::tunnel::full_state::read(&state.tendril_home).is_some() {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "A full-access tunnel is running. Stop it before removing password \
+            protection, or it would be publishing this daemon with no credential at all.",
+            })),
+        )
+            .into_response();
+    }
+
+    let current = body.and_then(|Json(body)| body.current_password);
+    let outcome = credentials::clear_password(&state.config_path, current.as_deref());
+    state.invalidate_settings_cache();
+
+    match outcome {
+        Ok(()) => {
+            tracing::warn!("Session password removed via DELETE /api/auth/password");
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "passwordAuthEnabled": false,
+                    "message": "Password protection disabled",
+                })),
+            )
+                .into_response()
+        }
+        Err(err) => credential_error(err),
+    }
+}
+
+/// Maps a [`CredentialError`] onto a status code, passing its message through verbatim.
+///
+/// Every message is safe to return to a caller who has already cleared `auth_middleware`: none of them
+/// distinguishes anything `GET /api/auth/status` does not already say, and none quotes the submitted
+/// password. A wrong current password is a `403` rather than a `401`, because the caller *is*
+/// authenticated — they simply have not proved they know the credential they are replacing, and a `401`
+/// would invite a client to go and re-authenticate.
+fn credential_error(err: CredentialError) -> Response {
+    let status = match err {
+        CredentialError::CurrentPasswordRequired | CredentialError::CurrentPasswordIncorrect => {
+            StatusCode::FORBIDDEN
+        }
+        CredentialError::NewPasswordEmpty => StatusCode::BAD_REQUEST,
+        CredentialError::NotConfigured => StatusCode::CONFLICT,
+        CredentialError::Config(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    if matches!(err, CredentialError::Config(_)) {
+        tracing::error!("Could not update the session password: {err}");
+    }
+    (status, Json(json!({ "error": err.to_string() }))).into_response()
 }

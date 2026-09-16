@@ -371,3 +371,88 @@ async fn delete_reports_an_unknown_plan_as_not_found() {
 
     assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
 }
+
+/// Waits for a background reclaim to land, since `update_plan_field` answers 200 without awaiting it.
+async fn wait_gone(path: &Path) -> bool {
+    for _ in 0..100 {
+        if !path.exists() {
+            return true;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    !path.exists()
+}
+
+/// V1's `DiscardPlanDialog` reclaimed the worktree the moment a plan went to `Skipped`, rather than
+/// leaving it for the reaper's grace window: "Discard is an explicit 'I don't want this'." Discard is
+/// gone from the UI, so the behaviour now hangs off the transition itself and covers every caller.
+#[tokio::test]
+async fn moving_a_plan_to_skipped_reclaims_its_worktrees() {
+    let server = start_test_server().await;
+    let folder = make_plan(&server, "Skip Me", vec![]);
+    let name = folder_name(&folder);
+
+    let worktrees = folder.join("Worktrees").join("some-repo");
+    std::fs::create_dir_all(&worktrees).unwrap();
+
+    set_state(&server, &name, "Skipped").await;
+
+    let (plan, _) = read_plan_yaml(&folder).unwrap();
+    assert_eq!(plan.state, "Skipped");
+    assert!(
+        wait_gone(&worktrees).await,
+        "a plan moved to Skipped should not keep holding a checkout"
+    );
+    // Only the checkouts go: the plan itself is a state change, not a deletion.
+    assert!(folder.join("plan.yaml").exists());
+}
+
+/// The reclaim is keyed on the *transition*, not on the plan's current state, so a second write of
+/// the same value is not an excuse to go deleting again — and, more importantly, a state change that
+/// is refused must not reclaim anything at all.
+#[tokio::test]
+async fn a_refused_state_change_reclaims_nothing() {
+    let server = start_test_server().await;
+    let folder = make_plan(&server, "Guarded Plan", vec![]);
+    let name = folder_name(&folder);
+
+    let worktrees = folder.join("Worktrees").join("some-repo");
+    std::fs::create_dir_all(&worktrees).unwrap();
+
+    let resp = reqwest::Client::new()
+        .put(format!(
+            "http://127.0.0.1:{}/api/plans/{}",
+            server.port, name
+        ))
+        .bearer_auth(&server.secret)
+        .json(&json!({ "field": "state", "value": "NotAState" }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    assert!(
+        worktrees.exists(),
+        "a rejected state change must leave the worktrees alone"
+    );
+}
+
+/// Every other field write is untouched: only `Skipped` reclaims.
+#[tokio::test]
+async fn other_state_changes_leave_the_worktrees_alone() {
+    let server = start_test_server().await;
+    let folder = make_plan(&server, "Review Me", vec![]);
+    let name = folder_name(&folder);
+
+    let worktrees = folder.join("Worktrees").join("some-repo");
+    std::fs::create_dir_all(&worktrees).unwrap();
+
+    set_state(&server, &name, "Review").await;
+
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    assert!(
+        worktrees.exists(),
+        "a plan in Review is waiting on a human and must keep its checkout"
+    );
+}

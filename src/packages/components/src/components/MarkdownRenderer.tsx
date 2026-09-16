@@ -3,7 +3,6 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkGemoji from "remark-gemoji";
 import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import type { Options as SanitizeSchema } from "rehype-sanitize";
@@ -19,6 +18,8 @@ import {
   extractAnchorId,
 } from "@/lib/url";
 import { hasRawHtml, rawHtmlSchema } from "@/lib/rawHtml";
+import { getRehypeKatex, loadRehypeKatex } from "@/lib/math";
+import { useMathReady } from "@/hooks/use-math-ready";
 import { useTypography } from "@/contexts/TypographyContext";
 import { CustomEmoji } from "./custom-emojis/CustomEmoji";
 import { remarkCustomEmojiPlugin } from "./custom-emojis/remarkCustomEmojiPlugin";
@@ -295,6 +296,11 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   dangerouslyAllowLocalFiles = false,
 }) => {
   const typography = useTypography();
+  // KaTeX is not imported statically (see `src/lib/math.ts`): 259 kB of maths typesetting in the
+  // initial load of every consumer is too much for a feature most markdown does not use. The plugin
+  // list below therefore starts without it and is rebuilt once the on-demand import resolves, which
+  // is what this subscription is a `useMemo` dependency for.
+  const mathReady = useMathReady();
   const contentFeatures = useMemo(
     () => ({
       hasMath: hasContentFeature(content, /(\$\$|\\\(|\\\[|\\begin\{)/),
@@ -323,11 +329,17 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     // out as `user-content-<slug>` and the anchor handler's getElementById would never find them.
     rehypePlugins.push(rehypeSlug);
     // KaTeX also has to run after sanitising: its output is classed spans, inline styles and MathML
-    // that the allow-list would strip.
-    if (contentFeatures.hasMath) rehypePlugins.push(rehypeKatex);
+    // that the allow-list would strip. It is also the one plugin here that is loaded on demand, so
+    // when the content has maths but the import has not resolved, this starts it and leaves the
+    // plugin out of this pass; `mathReady` brings us back for the pass that includes it.
+    if (contentFeatures.hasMath) {
+      const rehypeKatex = getRehypeKatex();
+      if (rehypeKatex) rehypePlugins.push(rehypeKatex);
+      else void loadRehypeKatex();
+    }
 
     return { remarkPlugins, rehypePlugins };
-  }, [contentFeatures.hasMath, contentFeatures.hasRawHtml]);
+  }, [contentFeatures.hasMath, contentFeatures.hasRawHtml, mathReady]);
 
   const handleLinkClick = useCallback(
     (href: string, event: React.MouseEvent<HTMLAnchorElement>) => {

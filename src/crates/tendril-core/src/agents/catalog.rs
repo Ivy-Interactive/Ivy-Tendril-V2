@@ -13,22 +13,63 @@
 //!   descriptor second — and [`efforts_for`] is that function.
 //! * `Abstractions/ModelCatalog.EffortLevels` declares the ladders themselves.
 //!
-//! Two things are deliberately not V1:
+//! # Why the model set is declared rather than derived
 //!
-//! * **The model set.** V1 declares each agent's models by hand; V2 derives them from
-//!   [`crate::agents::model_specs::all_specs`] filtered by family, so the ids the picker offers and
-//!   the ids that carry pricing can never drift. V1's dead ids (`claude-fable-5`, `claude-5.1`) are
-//!   not resurrected.
-//! * **`IsDefault`.** V1 flags one row per catalogue as the provider's default and pins it first.
-//!   V2 instead prepends a synthetic `default` row to every list, which is the same promise
-//!   ("whatever the provider defaults to") without a second source of truth for what that is.
+//! An earlier V2 built each agent's list by filtering one shared spec table
+//! ([`crate::agents::model_specs`]) on an id prefix — `claude-*` for Claude, `gemini-*` for Gemini —
+//! on the theory that the ids the picker offers and the ids that carry pricing could then never
+//! drift. That inverts V1: `CachedModelCatalogProvider.GetModelsAsync` takes the provider's own
+//! `GetStaticModels()` as the row set and lets models.dev **enrich the prices of those rows only**;
+//! models.dev never adds a row.
+//!
+//! Deriving the rows instead made provenance a property of the id *string*, which is not provenance
+//! at all:
+//!
+//! * `register_dynamic_specs` loads all of models.dev — some 15,000 rows across a hundred providers
+//!   — into the shared table, so every Bedrock, Vertex and OpenRouter spelling of a model
+//!   (`claude-opus-5@eu`, `claude-4.5-sonnet`, `moonshotai/kimi-k3-free`) landed in the picker of
+//!   whichever agent's prefix it happened to match. Claude's list went from 18 rows to 83, most of
+//!   them ids the Claude CLI cannot launch.
+//! * a row whose id matched no prefix was offered by any agent whose filter was `Any` — which the
+//!   proxy pointed at an unrecognised base URL was, so it offered every model in existence,
+//!   including every Gemini, where V1 offers a declared union of five catalogues.
+//!
+//! So the row set is declared here, one list per provider, exactly as V1 declares it
+//! ([`CLAUDE_MODELS`] and friends are `ClaudeModelCatalog.GetStaticModels()` and friends), and
+//! `model_specs` is left to do the one job V1 gives it: price a model once one is chosen. The
+//! no-drift promise is kept by a test instead of by construction —
+//! `every_declared_model_carries_a_pricing_spec` asserts every id here resolves through
+//! `model_specs::find`.
+//!
+//! # The default model is a real model
+//!
+//! V1 has no synthetic `default` row. One row per catalogue carries `ModelInfo.IsDefault`,
+//! `ModelCatalogSorter.Sort(preserveDefault: true)` pins that row **first**, and
+//! `ChatApp.ResolveModel` resolves "the default" to that row's real id. So V1's picker lists real
+//! models, the first of them is the default, and nothing in the UI ever says `default`.
+//!
+//! V2 used to prepend a fake `default` row to every list instead, which put an id in the picker that
+//! named no model and meant something different in each arm of the launcher. [`AgentDef::default_model`]
+//! is V1's flag, [`build_agent`] pins it first, and [`default_model_for`] is `ResolveModel`.
+//!
+//! `default` survives in exactly two places, both of them V1's:
+//!
+//! * **as an effort**, where V1 really does offer a "Default" option and normalises it to `""` on save
+//!   (`CodingAgentSetupView.SetProfile`), and
+//! * **as a config value for a profile's model**, where it is how `config.yaml` spells "no opinion" —
+//!   `resolution::is_set` reads it as unset and the launcher then passes no `--model` at all. Configs
+//!   already hold it, so it keeps that meaning; it is simply no longer offered as something to choose.
+//!
+//! One thing is deliberately not V1: **retired ids**. V1 still declares `claude-fable-5` and
+//! `claude-5.1`, which no longer resolve; V2 declares `claude-fable-5-1` in their place and does not
+//! resurrect the dead ones.
 
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use super::model_sorting::{sort_models, ProviderGroup, SortableModel};
-use super::model_specs::{all_specs, normalize_model_id, ModelSpec};
+use super::model_sorting::{sort_models, SortableModel};
+use super::model_specs::normalize_model_id;
 
 /// A reasoning-effort level a provider's CLI accepts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,13 +110,19 @@ pub struct AgentOption {
     /// `BrandIcon` resolves. Like the label, the proxy's icon follows the provider it points at.
     pub icon: String,
     pub models: Vec<ModelOption>,
+    /// The model this agent launches with when nobody has chosen one — V1 `ModelInfo.IsDefault`,
+    /// resolved by `ChatApp.ResolveModel`. It is a **real id** from [`Self::models`], and because
+    /// `ModelCatalogSorter.Sort(preserveDefault: true)` pins that row first it is always `models[0]`.
+    pub default_model: String,
     pub supports_effort: bool,
     /// The ladder for a model that carries none of its own, and for `default`. V1's
     /// `IAgentDescriptor.SupportedEfforts`.
     pub efforts: Vec<EffortOption>,
 }
 
-/// The id every model and effort list starts with: "whatever the provider defaults to".
+/// The id an **effort** list starts with, and the value `config.yaml` uses for a profile field nobody
+/// has set. V1 offers it as an effort (`GetEffortOptions` prepends it) and `resolution::is_set` reads it
+/// as unset for a model. It is deliberately not a model anyone can pick — see the module docs.
 pub const DEFAULT_OPTION_ID: &str = "default";
 
 // ---------------------------------------------------------------------------
@@ -94,74 +141,160 @@ const OPENCODE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 const IVY_EFFORTS: &[&str] = OPENCODE_EFFORTS;
 
 // ---------------------------------------------------------------------------
-// Model families
+// The provider catalogues — one per V1 `*ModelCatalog.GetStaticModels()`
 // ---------------------------------------------------------------------------
 
-/// How a model id is matched to a family. `Prefix` covers families (`claude-*`) and `Exact` the
-/// handful of ids that carry no family prefix (`o1`, `opus`).
-enum ModelPattern {
-    Prefix(&'static str),
-    Exact(&'static str),
+/// One row of a provider's own catalogue: V1's `ModelInfo`, minus the fields the picker never reads.
+/// Limits and prices are deliberately absent — those come from [`crate::agents::model_specs`], which
+/// is V1's `.WithSpec()`.
+struct CatalogModel {
+    id: &'static str,
+    display_name: &'static str,
+    /// V1 `ModelInfo.SupportedEfforts`, declared per row. Empty falls back to the agent's ladder.
+    efforts: &'static [&'static str],
 }
 
-/// One provider's models, and the group they sort and take their effort ladder from.
-struct ModelFamily {
-    group: ProviderGroup,
-    patterns: &'static [ModelPattern],
+const fn model(
+    id: &'static str,
+    display_name: &'static str,
+    efforts: &'static [&'static str],
+) -> CatalogModel {
+    CatalogModel {
+        id,
+        display_name,
+        efforts,
+    }
 }
 
-static ANTHROPIC: ModelFamily = ModelFamily {
-    group: ProviderGroup::Anthropic,
-    patterns: &[
-        ModelPattern::Prefix("claude-"),
-        // The Claude CLI's own aliases for "the current model of this tier".
-        ModelPattern::Exact("opus"),
-        ModelPattern::Exact("sonnet"),
-        ModelPattern::Exact("haiku"),
-    ],
-};
+/// The row each catalogue flags `IsDefault`, which every picker over that catalogue pins first.
+const CLAUDE_DEFAULT: &str = "claude-opus-5";
+const CODEX_DEFAULT: &str = "gpt-5.6-terra";
+const COPILOT_DEFAULT: &str = "gpt-5.4";
+const GEMINI_DEFAULT: &str = "gemini-3.7-flash";
+const OPENCODE_DEFAULT: &str = "moonshotai/Kimi-K3";
 
-static OPENAI: ModelFamily = ModelFamily {
-    group: ProviderGroup::OpenAi,
-    patterns: &[
-        ModelPattern::Prefix("gpt-"),
-        ModelPattern::Exact("o1"),
-        ModelPattern::Prefix("o3"),
-        ModelPattern::Prefix("o4-"),
-        ModelPattern::Exact("codex-mini"),
-    ],
-};
+/// V1 `ClaudeModelCatalog`. Also the list the proxy serves when pointed at `api.anthropic.com`, and
+/// the first third of `IvyModelCatalog`.
+static CLAUDE_MODELS: &[CatalogModel] = &[
+    model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
+    model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
+    model("claude-opus-5-1", "Claude Opus 5.1", CLAUDE_EFFORTS),
+    model("claude-opus-4-8", "Claude Opus 4.8", CLAUDE_EFFORTS),
+    model("claude-opus-4-7", "Claude Opus 4.7", CLAUDE_EFFORTS),
+    model("claude-opus-4-6", "Claude Opus 4.6", CLAUDE_EFFORTS),
+    model("opus", "Claude Opus", CLAUDE_EFFORTS),
+    model("claude-sonnet-5-1", "Claude Sonnet 5.1", CLAUDE_EFFORTS),
+    model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
+    model("claude-sonnet-4-6", "Claude Sonnet 4.6", CLAUDE_EFFORTS),
+    model("claude-3-7-sonnet", "Claude Sonnet 3.7", CLAUDE_EFFORTS),
+    model("claude-3-5-sonnet", "Claude Sonnet 3.5", CLAUDE_EFFORTS),
+    model("sonnet", "Claude Sonnet", CLAUDE_EFFORTS),
+    model("claude-haiku-5-1", "Claude Haiku 5.1", CLAUDE_EFFORTS),
+    model("claude-haiku-4-5", "Claude Haiku 4.5", CLAUDE_EFFORTS),
+    model("claude-3-5-haiku", "Claude Haiku 3.5", CLAUDE_EFFORTS),
+    model("haiku", "Claude Haiku", CLAUDE_EFFORTS),
+];
 
-static GOOGLE: ModelFamily = ModelFamily {
-    group: ProviderGroup::Google,
-    patterns: &[ModelPattern::Prefix("gemini-")],
-};
+/// V1 `CodexModelCatalog`. Also the list the proxy serves when pointed at `api.openai.com` or at
+/// nothing at all, and the last third of `IvyModelCatalog`.
+static CODEX_MODELS: &[CatalogModel] = &[
+    model("gpt-6-astra", "GPT-6 Astra", CODEX_EFFORTS),
+    model("gpt-5.6-sol", "GPT-5.6-Sol", CODEX_EFFORTS),
+    model("gpt-5.6-terra", "GPT-5.6-Terra", CODEX_EFFORTS),
+    model("gpt-5.6-luna", "GPT-5.6-Luna", CODEX_EFFORTS),
+    model("gpt-5.5", "GPT-5.5", CODEX_EFFORTS),
+    model("gpt-5.4", "GPT-5.4", CODEX_EFFORTS),
+    model("gpt-5.4-mini", "GPT-5.4 Mini", CODEX_EFFORTS),
+    model("gpt-5.3-codex", "GPT-5.3 Codex", CODEX_EFFORTS),
+    model("o3", "O3", CODEX_EFFORTS),
+    model("o4-mini", "O4 Mini", CODEX_EFFORTS),
+    model("gpt-4.1", "GPT-4.1", CODEX_EFFORTS),
+    model("codex-mini", "Codex Mini", CODEX_EFFORTS),
+];
 
-static MOONSHOT: ModelFamily = ModelFamily {
-    group: ProviderGroup::Moonshot,
-    patterns: &[
-        ModelPattern::Prefix("kimi"),
-        ModelPattern::Prefix("moonshot"),
-    ],
-};
+/// V1 `CopilotModelCatalog`: GitHub Copilot really does serve both OpenAI's models and Anthropic's,
+/// and the Claude rows carry Claude's ladder rather than Copilot's — which is where `max`, a level
+/// Copilot's own ladder does not have, comes from.
+static COPILOT_MODELS: &[CatalogModel] = &[
+    model("gpt-5.4", "GPT-5.4", COPILOT_EFFORTS),
+    model("gpt-5.4-mini", "GPT-5.4 Mini", COPILOT_EFFORTS),
+    model("gpt-5.3-codex", "GPT-5.3 Codex", COPILOT_EFFORTS),
+    model("gpt-5.2-codex", "GPT-5.2 Codex", COPILOT_EFFORTS),
+    model("gpt-5.2", "GPT-5.2", COPILOT_EFFORTS),
+    model("gpt-5-mini", "GPT-5 Mini", COPILOT_EFFORTS),
+    model("gpt-4.1", "GPT-4.1", COPILOT_EFFORTS),
+    model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
+    model("claude-opus-5-1", "Claude Opus 5.1", CLAUDE_EFFORTS),
+    model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
+    model("claude-sonnet-5-1", "Claude Sonnet 5.1", CLAUDE_EFFORTS),
+    model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
+    model("claude-sonnet-4-6", "Claude Sonnet 4.6", CLAUDE_EFFORTS),
+    model("claude-sonnet-4-5", "Claude Sonnet 4.5", CLAUDE_EFFORTS),
+    model("claude-haiku-4-5", "Claude Haiku 4.5", CLAUDE_EFFORTS),
+];
 
-static DEEPSEEK: ModelFamily = ModelFamily {
-    group: ProviderGroup::DeepSeek,
-    patterns: &[ModelPattern::Prefix("deepseek")],
-};
+/// V1 `GeminiModelCatalog`. The rows declare Gemini's ladder even though the Gemini agent itself
+/// takes no effort argument, because the same rows are reached through the Ivy proxy, which does.
+static GEMINI_MODELS: &[CatalogModel] = &[
+    model("gemini-3.8-flash", "Gemini 3.8 Flash", GEMINI_EFFORTS),
+    model("gemini-3.7-flash", "Gemini 3.7 Flash", GEMINI_EFFORTS),
+    model("gemini-3.6-flash", "Gemini 3.6 Flash", GEMINI_EFFORTS),
+    model("gemini-3.1-pro", "Gemini 3.1 Pro", GEMINI_EFFORTS),
+    model("gemini-3-pro-preview", "Gemini 3 Pro", GEMINI_EFFORTS),
+    model("gemini-3-flash-preview", "Gemini 3 Flash", GEMINI_EFFORTS),
+];
 
-static QWEN: ModelFamily = ModelFamily {
-    group: ProviderGroup::Qwen,
-    patterns: &[ModelPattern::Prefix("qwen")],
-};
+/// V1 `AntigravityModelCatalog`: Gemini's models, Anthropic's, and one open-weights OpenAI row.
+static ANTIGRAVITY_MODELS: &[CatalogModel] = &[
+    model("gemini-3.8-flash", "Gemini 3.8 Flash", ANTIGRAVITY_EFFORTS),
+    model("gemini-3.7-flash", "Gemini 3.7 Flash", ANTIGRAVITY_EFFORTS),
+    model("gemini-3.6-flash", "Gemini 3.6 Flash", ANTIGRAVITY_EFFORTS),
+    model("gemini-3.1-pro", "Gemini 3.1 Pro", ANTIGRAVITY_EFFORTS),
+    model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
+    model("claude-opus-5-1", "Claude Opus 5.1", CLAUDE_EFFORTS),
+    model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
+    model("claude-opus-4-6", "Claude Opus 4.6", CLAUDE_EFFORTS),
+    model("claude-sonnet-5-1", "Claude Sonnet 5.1", CLAUDE_EFFORTS),
+    model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
+    model("claude-sonnet-4-6", "Claude Sonnet 4.6", CLAUDE_EFFORTS),
+    model("gpt-oss-120b", "GPT-OSS 120B", ANTIGRAVITY_EFFORTS),
+];
 
-/// Which models an agent offers. `Families` lists them in the order V1's own catalogue for that
-/// agent declares its providers, which is the order the picker groups them in; `Any` is the proxy
-/// pointed at a base URL nobody recognises, V1's "unified list" case.
-enum ModelFilter {
-    Any,
-    Families(&'static [&'static ModelFamily]),
-}
+/// V1 `OpenCodeModelCatalog`. Its own `default` row is not declared here because [`build_agent`]
+/// prepends one to every list, and V1's proxy splices this list only after dropping it.
+static OPENCODE_MODELS: &[CatalogModel] = &[
+    model("moonshotai/Kimi-K3", "Kimi k3", OPENCODE_EFFORTS),
+    model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
+    model("claude-opus-5-1", "Claude Opus 5.1", CLAUDE_EFFORTS),
+    model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
+    model("claude-opus-4-7", "Claude Opus 4.7", CLAUDE_EFFORTS),
+    model("claude-sonnet-5-1", "Claude Sonnet 5.1", CLAUDE_EFFORTS),
+    model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
+    model("claude-sonnet-4-6", "Claude Sonnet 4.6", CLAUDE_EFFORTS),
+    model("gpt-5.5", "GPT-5.5", OPENCODE_EFFORTS),
+];
+
+/// The one row V1's `GetModelsForBaseUrl` adds to OpenCode's list for Berget's endpoint.
+static BERGET_MODELS: &[CatalogModel] = &[model(
+    "Qwen/Qwen2.5-Coder-32B-Instruct",
+    "Qwen 2.5 Coder 32B",
+    OPENCODE_EFFORTS,
+)];
+
+/// V1's `IvyModelCatalog` concatenates the Claude, Gemini and Codex catalogues in that order, so the
+/// Ivy proxy offers all three families and each model keeps the ladder of the catalogue it came
+/// from — including Gemini's, which the Gemini agent itself cannot use.
+static IVY_CATALOGUES: &[&[CatalogModel]] = &[CLAUDE_MODELS, GEMINI_MODELS, CODEX_MODELS];
+
+/// V1's fallback for a base URL it does not recognise: the union of the five catalogues it knows,
+/// deduplicated. Not "every model that exists" — a proxy is still only useful for models something
+/// behind it can serve, and this is the set V2 can name a ladder and a price for.
+static CUSTOM_PROXY_CATALOGUES: &[&[CatalogModel]] =
+    &[CODEX_MODELS, CLAUDE_MODELS, GEMINI_MODELS, OPENCODE_MODELS];
+
+// ---------------------------------------------------------------------------
+// The agents
+// ---------------------------------------------------------------------------
 
 struct AgentDef {
     id: &'static str,
@@ -169,13 +302,17 @@ struct AgentDef {
     label: &'static str,
     /// V1 `AgentBranding.IconFor`.
     icon: &'static str,
-    models: ModelFilter,
-    /// The ladder this agent's V1 catalogue attaches to a model of the given family. A family the
-    /// table omits falls back to `efforts`.
-    family_efforts: &'static [(ProviderGroup, &'static [&'static str])],
-    /// V1 `IAgentDescriptor.SupportedEfforts`, the ladder for `default` and for anything
-    /// `family_efforts` does not cover. Empty means the provider has no `EffortControl` capability
-    /// and the picker hides the control.
+    /// The provider catalogues this agent offers, in the order its own V1 catalogue declares them —
+    /// which is the order the picker groups them in, because `ModelCatalogSorter` groups by a
+    /// provider's first appearance in the list it is given.
+    catalogues: &'static [&'static [CatalogModel]],
+    /// The id V1 flags `IsDefault` in the first of those catalogues — `FirstOrDefault(m =>
+    /// m.IsDefault)` over the concatenation — which every picker pins first and
+    /// `ChatApp.ResolveModel` resolves "the default" to.
+    default_model: &'static str,
+    /// V1 `IAgentDescriptor.SupportedEfforts`, the ladder for `default` and for any row that
+    /// declares none. Empty means the provider has no `EffortControl` capability and the picker
+    /// hides the control.
     efforts: &'static [&'static str],
 }
 
@@ -187,77 +324,60 @@ static AGENTS: &[AgentDef] = &[
         id: "antigravity",
         label: "Antigravity",
         icon: "Antigravity",
-        models: ModelFilter::Families(&[&GOOGLE, &ANTHROPIC]),
-        family_efforts: &[
-            (ProviderGroup::Google, ANTIGRAVITY_EFFORTS),
-            (ProviderGroup::Anthropic, CLAUDE_EFFORTS),
-        ],
+        catalogues: &[ANTIGRAVITY_MODELS],
+        default_model: GEMINI_DEFAULT,
         efforts: ANTIGRAVITY_EFFORTS,
     },
     AgentDef {
         id: "claude",
         label: "Claude Code",
         icon: "ClaudeCode",
-        models: ModelFilter::Families(&[&ANTHROPIC]),
-        family_efforts: &[(ProviderGroup::Anthropic, CLAUDE_EFFORTS)],
+        catalogues: &[CLAUDE_MODELS],
+        default_model: CLAUDE_DEFAULT,
         efforts: CLAUDE_EFFORTS,
     },
     AgentDef {
         id: "codex",
         label: "Codex",
         icon: "OpenAI",
-        models: ModelFilter::Families(&[&OPENAI]),
-        family_efforts: &[(ProviderGroup::OpenAi, CODEX_EFFORTS)],
+        catalogues: &[CODEX_MODELS],
+        default_model: CODEX_DEFAULT,
         efforts: CODEX_EFFORTS,
     },
     AgentDef {
         id: "copilot",
         label: "Copilot",
         icon: "Copilot",
-        models: ModelFilter::Families(&[&OPENAI, &ANTHROPIC]),
-        family_efforts: &[
-            (ProviderGroup::OpenAi, COPILOT_EFFORTS),
-            (ProviderGroup::Anthropic, CLAUDE_EFFORTS),
-        ],
+        catalogues: &[COPILOT_MODELS],
+        default_model: COPILOT_DEFAULT,
         efforts: COPILOT_EFFORTS,
     },
     AgentDef {
         id: "gemini",
         label: "Gemini",
         icon: "Gemini",
-        models: ModelFilter::Families(&[&GOOGLE]),
+        catalogues: &[GEMINI_MODELS],
+        default_model: GEMINI_DEFAULT,
         // `GeminiCli.Capabilities` is the one that omits `EffortControl`, so the Gemini agent takes
-        // no effort argument at all. The ladder still exists for Gemini models reached through a
-        // proxy that does — see `IVY_FAMILY_EFFORTS`.
-        family_efforts: &[],
+        // no effort argument at all.
         efforts: &[],
     },
     AgentDef {
         id: "opencode",
         label: "OpenCode",
         icon: "OpenCode",
-        models: ModelFilter::Families(&[&MOONSHOT, &ANTHROPIC, &OPENAI, &DEEPSEEK, &QWEN]),
-        family_efforts: &[(ProviderGroup::Anthropic, CLAUDE_EFFORTS)],
+        catalogues: &[OPENCODE_MODELS],
+        default_model: OPENCODE_DEFAULT,
         efforts: OPENCODE_EFFORTS,
     },
     AgentDef {
         id: "ivy",
         label: "Ivy Agent",
         icon: "IvyCorner",
-        models: ModelFilter::Families(IVY_FAMILIES),
-        family_efforts: IVY_FAMILY_EFFORTS,
+        catalogues: IVY_CATALOGUES,
+        default_model: CLAUDE_DEFAULT,
         efforts: IVY_EFFORTS,
     },
-];
-
-/// V1's `IvyModelCatalog` concatenates the Claude, Gemini and Codex catalogues in that order, so the
-/// Ivy proxy offers all three families and each model keeps the ladder of the catalogue it came
-/// from — including Gemini's, which the Gemini agent itself cannot use.
-static IVY_FAMILIES: &[&ModelFamily] = &[&ANTHROPIC, &GOOGLE, &OPENAI];
-static IVY_FAMILY_EFFORTS: &[(ProviderGroup, &[&str])] = &[
-    (ProviderGroup::Anthropic, CLAUDE_EFFORTS),
-    (ProviderGroup::Google, GEMINI_EFFORTS),
-    (ProviderGroup::OpenAi, CODEX_EFFORTS),
 ];
 
 // ---------------------------------------------------------------------------
@@ -299,8 +419,8 @@ static OPENAI_PROXY_IVY: AgentDef = AgentDef {
     id: OPENAI_PROXY_AGENT_ID,
     label: "OpenAI Proxy",
     icon: "OpenAI",
-    models: ModelFilter::Families(IVY_FAMILIES),
-    family_efforts: IVY_FAMILY_EFFORTS,
+    catalogues: IVY_CATALOGUES,
+    default_model: CLAUDE_DEFAULT,
     efforts: OPENCODE_EFFORTS,
 };
 
@@ -310,8 +430,8 @@ static OPENAI_PROXY_BERGET: AgentDef = AgentDef {
     id: OPENAI_PROXY_AGENT_ID,
     label: "Berget AI",
     icon: "ChevronUp",
-    models: ModelFilter::Families(&[&MOONSHOT, &ANTHROPIC, &OPENAI, &QWEN, &DEEPSEEK]),
-    family_efforts: &[(ProviderGroup::Anthropic, CLAUDE_EFFORTS)],
+    catalogues: &[OPENCODE_MODELS, BERGET_MODELS],
+    default_model: OPENCODE_DEFAULT,
     efforts: OPENCODE_EFFORTS,
 };
 
@@ -319,8 +439,8 @@ static OPENAI_PROXY_ANTHROPIC: AgentDef = AgentDef {
     id: OPENAI_PROXY_AGENT_ID,
     label: "Anthropic",
     icon: "ClaudeCode",
-    models: ModelFilter::Families(&[&ANTHROPIC]),
-    family_efforts: &[(ProviderGroup::Anthropic, CLAUDE_EFFORTS)],
+    catalogues: &[CLAUDE_MODELS],
+    default_model: CLAUDE_DEFAULT,
     efforts: OPENCODE_EFFORTS,
 };
 
@@ -328,8 +448,8 @@ static OPENAI_PROXY_GOOGLE: AgentDef = AgentDef {
     id: OPENAI_PROXY_AGENT_ID,
     label: "OpenAI Proxy",
     icon: "OpenAI",
-    models: ModelFilter::Families(&[&GOOGLE]),
-    family_efforts: &[(ProviderGroup::Google, GEMINI_EFFORTS)],
+    catalogues: &[GEMINI_MODELS],
+    default_model: GEMINI_DEFAULT,
     efforts: OPENCODE_EFFORTS,
 };
 
@@ -337,8 +457,8 @@ static OPENAI_PROXY_OPENAI: AgentDef = AgentDef {
     id: OPENAI_PROXY_AGENT_ID,
     label: "OpenAI Proxy",
     icon: "OpenAI",
-    models: ModelFilter::Families(&[&OPENAI]),
-    family_efforts: &[(ProviderGroup::OpenAi, CODEX_EFFORTS)],
+    catalogues: &[CODEX_MODELS],
+    default_model: CODEX_DEFAULT,
     efforts: OPENCODE_EFFORTS,
 };
 
@@ -346,8 +466,8 @@ static OPENAI_PROXY_CUSTOM: AgentDef = AgentDef {
     id: OPENAI_PROXY_AGENT_ID,
     label: "OpenAI Proxy",
     icon: "OpenAI",
-    models: ModelFilter::Any,
-    family_efforts: IVY_FAMILY_EFFORTS,
+    catalogues: CUSTOM_PROXY_CATALOGUES,
+    default_model: CODEX_DEFAULT,
     efforts: OPENCODE_EFFORTS,
 };
 
@@ -355,48 +475,30 @@ static OPENAI_PROXY_CUSTOM: AgentDef = AgentDef {
 // Building the catalog
 // ---------------------------------------------------------------------------
 
-impl ModelFamily {
-    fn accepts(&self, model_id: &str) -> bool {
-        self.patterns.iter().any(|pattern| match pattern {
-            ModelPattern::Prefix(prefix) => model_id.starts_with(prefix),
-            ModelPattern::Exact(id) => model_id == *id,
-        })
-    }
-}
-
-impl ModelFilter {
-    fn accepts(&self, model_id: &str) -> bool {
-        match self {
-            Self::Any => true,
-            Self::Families(families) => families.iter().any(|family| family.accepts(model_id)),
-        }
-    }
-
-    /// The provider groups in declaration order, which is the order the picker groups models in.
-    fn group_order(&self) -> Vec<ProviderGroup> {
-        match self {
-            Self::Any => Vec::new(),
-            Self::Families(families) => families.iter().map(|family| family.group).collect(),
-        }
-    }
-}
-
 impl AgentDef {
     fn supports_effort(&self) -> bool {
         !self.efforts.is_empty()
     }
 
+    /// The declared row for a model id, matched the way `ModelSpecs.Find` matches: case and
+    /// dot/dash insensitively, so `gpt-5.6-sol` and `gpt-5-6-sol` are the same row.
+    fn row(&self, model_id: &str) -> Option<&'static CatalogModel> {
+        let wanted = normalize_model_id(model_id);
+        self.catalogues
+            .iter()
+            .flat_map(|catalogue| catalogue.iter())
+            .find(|row| normalize_model_id(row.id) == wanted)
+    }
+
     /// V1's per-model `SupportedEfforts`, which each provider's catalogue sets per row.
-    fn efforts_for_model(&self, model_id: &str) -> &'static [&'static str] {
+    fn efforts_for_row(&self, row: Option<&CatalogModel>) -> &'static [&'static str] {
         if !self.supports_effort() {
             return &[];
         }
-        let group = ProviderGroup::of(model_id);
-        self.family_efforts
-            .iter()
-            .find(|(family, _)| *family == group)
-            .map(|(_, efforts)| *efforts)
-            .unwrap_or(self.efforts)
+        match row {
+            Some(row) if !row.efforts.is_empty() => row.efforts,
+            _ => self.efforts,
+        }
     }
 }
 
@@ -428,44 +530,72 @@ fn effort_label(id: &str) -> &str {
     }
 }
 
-fn build_agent(def: &AgentDef, specs: &[ModelSpec]) -> AgentOption {
+fn build_agent(def: &AgentDef) -> AgentOption {
     let agent_efforts = effort_options(def.efforts);
 
-    let mut models = vec![ModelOption {
-        id: DEFAULT_OPTION_ID.to_string(),
-        display_name: "Default".to_string(),
-        efforts: agent_efforts.clone(),
-    }];
-
+    // No synthetic `default` row: V1's picker lists real models and flags one of them. See the module
+    // docs.
+    let mut models: Vec<ModelOption> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
-    seen.insert(DEFAULT_OPTION_ID.to_string());
-    for spec in specs {
-        let model_id = spec.model_id.as_ref();
-        if !def.models.accepts(model_id) {
-            continue;
+    for catalogue in def.catalogues {
+        for row in catalogue.iter() {
+            // Concatenated catalogues overlap — every one of them declares `claude-opus-5` — and V1
+            // splices them with `DistinctBy(m => m.Id)`, first spelling wins.
+            if !seen.insert(normalize_model_id(row.id)) {
+                continue;
+            }
+            models.push(ModelOption {
+                id: row.id.to_string(),
+                display_name: row.display_name.to_string(),
+                efforts: effort_options(def.efforts_for_row(Some(row))),
+            });
         }
-        // The dynamic spec registry can carry the same model under two spellings; the picker must
-        // list it once.
-        if !seen.insert(normalize_model_id(model_id)) {
-            continue;
-        }
-        models.push(ModelOption {
-            id: model_id.to_string(),
-            display_name: spec.display_name.to_string(),
-            efforts: effort_options(def.efforts_for_model(model_id)),
-        });
     }
 
-    sort_models(&mut models, &def.models.group_order(), true);
+    // No group order is supplied: `sort_models` then groups by a provider's first appearance in the
+    // declared list, which is what V1's `ModelCatalogSorter` does to `GetStaticModels()`.
+    sort_models(&mut models, &[], false);
+
+    // `ModelCatalogSorter.Sort(preserveDefault: true)`: the `IsDefault` row is lifted out before the
+    // sort and put back at the head, so "the default" and "the first row" are the same model.
+    let default_model = match models
+        .iter()
+        .position(|model| normalize_model_id(&model.id) == normalize_model_id(def.default_model))
+    {
+        Some(index) => {
+            let row = models.remove(index);
+            let id = row.id.clone();
+            models.insert(0, row);
+            id
+        }
+        // Unreachable while `every_agents_default_is_one_of_its_own_models` passes; falling back to the
+        // first row keeps the invariant "the default is a model this agent offers" true regardless.
+        None => models
+            .first()
+            .map(|model| model.id.clone())
+            .unwrap_or_default(),
+    };
 
     AgentOption {
         id: def.id.to_string(),
         label: def.label.to_string(),
         icon: def.icon.to_string(),
         models,
+        default_model,
         supports_effort: def.supports_effort(),
         efforts: agent_efforts,
     }
+}
+
+/// The model an agent launches with when nobody has chosen one — V1 `ChatApp.ResolveModel`'s
+/// `GetStaticModels().FirstOrDefault(m => m.IsDefault)?.Id`, which is a real id rather than a sentinel.
+///
+/// This is the chat picker's rule. A *profile tier*'s default is a different question with a different
+/// answer — `provider_models::select_defaults`, V1's `ModelProfileSelector` — because a tier is chosen
+/// against the models an endpoint actually offers.
+pub fn default_model_for(agent_id: &str) -> Option<String> {
+    let def = find_agent_def(agent_id)?;
+    Some(build_agent(def).default_model)
 }
 
 /// The full catalog, with the OpenAI proxy pointed wherever [`openai_proxy_def`]'s fallback says —
@@ -478,10 +608,35 @@ pub fn all_agents() -> Vec<AgentOption> {
 
 /// [`all_agents`], with the `openaiproxy` row resolved against `proxy_base_url`.
 pub fn all_agents_for_proxy_base_url(proxy_base_url: Option<&str>) -> Vec<AgentOption> {
-    let specs = all_specs();
-    let mut agents: Vec<AgentOption> = AGENTS.iter().map(|def| build_agent(def, &specs)).collect();
-    agents.push(build_agent(openai_proxy_def(proxy_base_url), &specs));
+    let mut agents: Vec<AgentOption> = AGENTS.iter().map(build_agent).collect();
+    agents.push(build_agent(openai_proxy_def(proxy_base_url)));
     agents
+}
+
+/// Every row any provider declares, for the id-to-name lookup below.
+static ALL_CATALOGUES: &[&[CatalogModel]] = &[
+    CLAUDE_MODELS,
+    CODEX_MODELS,
+    COPILOT_MODELS,
+    GEMINI_MODELS,
+    ANTIGRAVITY_MODELS,
+    OPENCODE_MODELS,
+    BERGET_MODELS,
+];
+
+/// The name a declared row gives a model id, if any provider declares it.
+///
+/// This is V1's `allKnownLookup` in `FetchModelsDetailedAsync`, narrowed to the one field it is safe to
+/// borrow: a model discovered live at an endpoint takes a *label* from the catalogue when the catalogue
+/// knows the id, and nothing else. It does not become a catalogue row, so it carries no effort ladder
+/// and no agent starts offering it.
+pub fn declared_display_name(model_id: &str) -> Option<&'static str> {
+    let wanted = normalize_model_id(model_id);
+    ALL_CATALOGUES
+        .iter()
+        .flat_map(|catalogue| catalogue.iter())
+        .find(|row| normalize_model_id(row.id) == wanted)
+        .map(|row| row.display_name)
 }
 
 fn find_agent_def(agent_id: &str) -> Option<&'static AgentDef> {
@@ -510,7 +665,7 @@ pub fn efforts_for(agent_id: &str, model_id: Option<&str>) -> Vec<EffortOption> 
     };
     match model_id {
         Some(model) if !model.is_empty() && !model.eq_ignore_ascii_case(DEFAULT_OPTION_ID) => {
-            effort_options(def.efforts_for_model(model))
+            effort_options(def.efforts_for_row(def.row(model)))
         }
         _ => effort_options(def.efforts),
     }
@@ -519,6 +674,8 @@ pub fn efforts_for(agent_id: &str, model_id: Option<&str>) -> Vec<EffortOption> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agents::model_sorting::ProviderGroup;
+    use crate::agents::model_specs;
     use crate::agents::providers::{build_agent_spec, AgentLaunchConfig};
 
     fn agents() -> Vec<AgentOption> {
@@ -542,6 +699,18 @@ mod tests {
 
     fn effort_ids(efforts: &[EffortOption]) -> Vec<&str> {
         efforts.iter().map(|e| e.id.as_str()).collect()
+    }
+
+    /// The groups a model list actually draws on, `default` excluded.
+    fn groups_of(agent: &AgentOption) -> Vec<ProviderGroup> {
+        let mut groups: Vec<ProviderGroup> = Vec::new();
+        for model in agent.models.iter() {
+            let group = ProviderGroup::of(&model.id);
+            if !groups.contains(&group) {
+                groups.push(group);
+            }
+        }
+        groups
     }
 
     /// V1 `AgentServiceCollectionExtensions.AddAgentInfrastructure` registers the providers in this
@@ -687,6 +856,13 @@ mod tests {
             vec!["default", "none", "low", "medium", "high", "xhigh"]
         );
 
+        // A row is matched the way `ModelSpecs.Find` matches, so a dotted id and a dashed one are
+        // the same row rather than two.
+        assert_eq!(
+            efforts_for("codex", Some("gpt-5-6-sol")),
+            efforts_for("codex", Some("gpt-5.6-sol"))
+        );
+
         // `default` and an unknown model both fall back to the agent's own ladder.
         assert_eq!(
             effort_ids(&efforts_for("copilot", Some(DEFAULT_OPTION_ID))),
@@ -730,15 +906,63 @@ mod tests {
         }
     }
 
+    /// **The synthetic `default` row is gone.** V1 lists real models and flags one of them; a row whose
+    /// id is `default` named no model, and meant a different thing in each arm of the launcher.
     #[test]
-    fn default_is_first_in_every_model_and_effort_list() {
+    fn no_agents_model_list_contains_a_default_row() {
         for agent in agents() {
-            assert_eq!(
-                agent.models.first().map(|m| m.id.as_str()),
-                Some(DEFAULT_OPTION_ID),
-                "{} model list must start with the default",
-                agent.id
+            assert!(
+                !agent
+                    .models
+                    .iter()
+                    .any(|model| model.id.eq_ignore_ascii_case(DEFAULT_OPTION_ID)),
+                "{} still offers a synthetic default row: {:?}",
+                agent.id,
+                model_ids(&agent)
             );
+        }
+    }
+
+    /// V1 `ChatApp.ResolveModel` + `ModelCatalogSorter.Sort(preserveDefault: true)`: the default is the
+    /// `IsDefault` row, it is a real model the agent offers, and it is pinned first.
+    #[test]
+    fn every_agents_default_is_one_of_its_own_models_and_comes_first() {
+        let expected: &[(&str, &str)] = &[
+            ("antigravity", "gemini-3.7-flash"),
+            ("claude", "claude-opus-5"),
+            ("codex", "gpt-5.6-terra"),
+            ("copilot", "gpt-5.4"),
+            ("gemini", "gemini-3.7-flash"),
+            ("opencode", "moonshotai/Kimi-K3"),
+            // V1's `IvyModelCatalog` splices Claude first, so its `IsDefault` row is Claude's.
+            ("ivy", "claude-opus-5"),
+            ("openaiproxy", "gpt-5.6-terra"),
+        ];
+
+        for (id, default) in expected {
+            let agent = agent(id);
+            assert_eq!(&agent.default_model, default, "{id}'s default model");
+            assert_eq!(
+                agent.models.first().map(|model| model.id.as_str()),
+                Some(*default),
+                "{id} must list its default first"
+            );
+            assert_eq!(default_model_for(id).as_deref(), Some(*default));
+            // A default nobody can be billed for is not a default.
+            assert!(model_specs::find(default).is_some());
+        }
+
+        // Aliases resolve to the same row.
+        assert_eq!(default_model_for("claudecode"), default_model_for("claude"));
+        assert_eq!(default_model_for("agy"), default_model_for("antigravity"));
+        assert_eq!(default_model_for("nonesuch"), None);
+    }
+
+    #[test]
+    fn the_effort_default_is_left_alone() {
+        // V1 really does offer "Default" as an effort (`GetEffortOptions` prepends it) and normalises it
+        // to `""` on save, so the removal above is scoped to models.
+        for agent in agents() {
             if agent.supports_effort {
                 assert_eq!(
                     agent.efforts.first().map(|e| e.id.as_str()),
@@ -768,7 +992,125 @@ mod tests {
     }
 
     #[test]
-    fn model_filters_keep_each_family_with_the_agents_that_can_reach_it() {
+    fn no_model_is_listed_twice() {
+        for agent in agents() {
+            let mut seen: HashSet<String> = HashSet::new();
+            for model in &agent.models {
+                assert!(
+                    seen.insert(normalize_model_id(&model.id)),
+                    "{} lists {} twice",
+                    agent.id,
+                    model.id
+                );
+            }
+        }
+    }
+
+    /// **The bug this file was rewritten for.** An agent must only offer models it can actually
+    /// serve, and the only reason it ever offered another provider's was that provenance was being
+    /// guessed from the id string. Each agent's admissible groups are the providers its V1
+    /// catalogue declares — no more, and no fewer.
+    #[test]
+    fn no_agent_offers_a_model_from_a_provider_it_cannot_serve() {
+        let expected: &[(&str, &[ProviderGroup])] = &[
+            // V1 `AntigravityModelCatalog`: Gemini, Anthropic, and one open-weights OpenAI row.
+            (
+                "antigravity",
+                &[
+                    ProviderGroup::Google,
+                    ProviderGroup::Anthropic,
+                    ProviderGroup::OpenAi,
+                ],
+            ),
+            // The Claude CLI serves Anthropic's models and nothing else.
+            ("claude", &[ProviderGroup::Anthropic]),
+            ("codex", &[ProviderGroup::OpenAi]),
+            // V1 `CopilotModelCatalog`: Copilot really does serve both, so both are correct here.
+            (
+                "copilot",
+                &[ProviderGroup::OpenAi, ProviderGroup::Anthropic],
+            ),
+            ("gemini", &[ProviderGroup::Google]),
+            // V1 `OpenCodeModelCatalog`: Kimi, Anthropic, one OpenAI row.
+            (
+                "opencode",
+                &[
+                    ProviderGroup::Moonshot,
+                    ProviderGroup::Anthropic,
+                    ProviderGroup::OpenAi,
+                ],
+            ),
+            // V1 `IvyModelCatalog` splices all three, so all three are correct here.
+            (
+                "ivy",
+                &[
+                    ProviderGroup::Anthropic,
+                    ProviderGroup::Google,
+                    ProviderGroup::OpenAi,
+                ],
+            ),
+            ("openaiproxy", &[ProviderGroup::OpenAi]),
+        ];
+
+        for (id, allowed) in expected {
+            let agent = agent(id);
+            for model in agent.models.iter() {
+                let group = ProviderGroup::of(&model.id);
+                assert!(
+                    allowed.contains(&group),
+                    "{id} offers {} ({group:?}), which it cannot serve",
+                    model.id
+                );
+            }
+            for group in *allowed {
+                assert!(
+                    groups_of(&agent).contains(group),
+                    "{id} should offer {group:?} models"
+                );
+            }
+        }
+
+        // The report that started this: picking Claude and being shown Gemini.
+        let claude = model_ids(&agent("claude"));
+        assert!(
+            !claude.iter().any(|id| id.contains("gemini")),
+            "the Claude row must offer no Gemini model"
+        );
+        assert!(
+            claude
+                .iter()
+                .all(|id| ProviderGroup::of(id) == ProviderGroup::Anthropic),
+            "the Claude row must offer no OpenAI model"
+        );
+
+        // ...and the two agents that legitimately span providers still do.
+        let copilot = model_ids(&agent("copilot"));
+        assert!(copilot.iter().any(|id| id.starts_with("gpt-")));
+        assert!(copilot.iter().any(|id| id.starts_with("claude-")));
+        let ivy = model_ids(&agent("ivy"));
+        assert!(ivy.iter().any(|id| id.starts_with("claude-")));
+        assert!(ivy.iter().any(|id| id.starts_with("gemini-")));
+        assert!(ivy.iter().any(|id| id.starts_with("gpt-")));
+    }
+
+    /// The other half of the promise the prefix filter was there to keep: a model the picker offers
+    /// is a model V2 can cost. `find` is what the cost path calls, so this is that call.
+    #[test]
+    fn every_declared_model_carries_a_pricing_spec() {
+        for agent in agents() {
+            for model in agent.models.iter() {
+                assert!(
+                    model_specs::find(&model.id).is_some(),
+                    "{}'s {} has no pricing spec",
+                    agent.id,
+                    model.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn each_agents_catalogue_is_the_one_its_provider_declares() {
         let claude = agent("claude");
         let claude_ids = model_ids(&claude);
         assert!(has(&claude_ids, "claude-opus-5"));
@@ -778,20 +1120,16 @@ mod tests {
         let codex = agent("codex");
         let codex_ids = model_ids(&codex);
         assert!(has(&codex_ids, "gpt-5.5"));
-        assert!(has(&codex_ids, "o3-mini"));
+        assert!(has(&codex_ids, "o4-mini"));
         assert!(has(&codex_ids, "codex-mini"));
         assert!(!codex_ids.iter().any(|id| id.contains("claude")));
 
         let gemini = agent("gemini");
-        assert!(gemini
-            .models
-            .iter()
-            .skip(1)
-            .all(|m| m.id.starts_with("gemini-")));
+        assert!(gemini.models.iter().all(|m| m.id.starts_with("gemini-")));
 
         // V1 `CopilotModelCatalog`: GPT and Claude, and nothing else.
         let copilot = agent("copilot");
-        assert!(copilot.models.iter().skip(1).all(|m| matches!(
+        assert!(copilot.models.iter().all(|m| matches!(
             ProviderGroup::of(&m.id),
             ProviderGroup::OpenAi | ProviderGroup::Anthropic
         )));
@@ -806,36 +1144,78 @@ mod tests {
         assert!(has(&ivy_ids, "gemini-3.7-flash"));
         assert!(has(&ivy_ids, "gpt-5.5"));
 
-        // V1 `AntigravityModelCatalog`: Gemini and Claude.
+        // V1 `AntigravityModelCatalog`: Gemini and Claude, plus its one open-weights row.
         let antigravity = agent("antigravity");
-        assert!(antigravity
-            .models
-            .iter()
-            .skip(1)
-            .all(|m| m.id.starts_with("gemini-")
-                || ProviderGroup::of(&m.id) == ProviderGroup::Anthropic));
+        let antigravity_ids = model_ids(&antigravity);
+        assert!(has(&antigravity_ids, "gemini-3.7-flash"));
+        assert!(has(&antigravity_ids, "claude-opus-5"));
+        assert!(has(&antigravity_ids, "gpt-oss-120b"));
+
+        // V1 `OpenCodeModelCatalog`: Kimi in the format the OpenCode CLI accepts.
+        assert!(has(&model_ids(&agent("opencode")), "moonshotai/Kimi-K3"));
     }
 
-    /// V1's `ModelCatalogSorter`, applied to a real catalogue rather than a fixture: newest first
-    /// within a family, families in the order the agent's own catalogue declares them, `default`
-    /// pinned at the head.
+    /// The tier defaults `resolution.rs` falls back to have to be models the picker offers, or the
+    /// pane names a model in its placeholder that its own select cannot select.
+    ///
+    /// `default` is the exception, and deliberately so: as a *config* value it means "no opinion", which
+    /// `is_set` reads as unset and the launcher answers by passing no `--model` at all. That is a
+    /// different thing from a model, which is why it is no longer offered as one.
+    #[test]
+    fn every_tier_default_is_a_model_its_agent_offers() {
+        for agent_id in [
+            "claude",
+            "codex",
+            "gemini",
+            "antigravity",
+            "opencode",
+            "copilot",
+            "ivy",
+        ] {
+            let offered = model_ids(&agent(agent_id));
+            for tier in crate::agents::resolution::default_profiles(agent_id) {
+                let Some(model) = tier.model else { continue };
+                if model.eq_ignore_ascii_case(DEFAULT_OPTION_ID) {
+                    assert!(
+                        !crate::agents::resolution::is_set(model),
+                        "`default` must keep reading as unset"
+                    );
+                    continue;
+                }
+                assert!(
+                    offered
+                        .iter()
+                        .any(|id| normalize_model_id(id) == normalize_model_id(model)),
+                    "{agent_id}'s {} tier defaults to {model}, which it does not offer",
+                    tier.tier
+                );
+            }
+        }
+    }
+
+    /// V1's `ModelCatalogSorter`, applied to a real catalogue rather than a fixture: the `IsDefault` row
+    /// pinned at the head, then newest first within a family, families in the order the agent's own
+    /// catalogue declares them.
     #[test]
     fn models_are_sorted_the_way_v1_sorts_them() {
         let claude = model_ids(&agent("claude"));
-        assert_eq!(claude[0], DEFAULT_OPTION_ID);
+        // The pinned default leads; everything after it is in the sorter's order.
+        assert_eq!(claude[0], CLAUDE_DEFAULT);
+        let rest = &claude[1..];
         // Opus before Sonnet before Haiku, and 5.1 before 5 inside a tier.
-        let position = |id: &str| claude.iter().position(|found| *found == id).unwrap();
-        assert!(position("claude-opus-5-1") < position("claude-opus-5"));
-        assert!(position("claude-opus-5") < position("claude-sonnet-5"));
-        assert!(position("claude-sonnet-5") < position("claude-haiku-5-1"));
+        let position = |id: &str| rest.iter().position(|found| *found == id).unwrap();
+        assert!(position("claude-fable-5-1") < position("claude-opus-5-1"));
+        assert!(position("claude-opus-5-1") < position("claude-opus-4-8"));
+        assert!(position("claude-opus-4-8") < position("claude-sonnet-5-1"));
+        assert!(position("claude-sonnet-5-1") < position("claude-haiku-5-1"));
         // The bare aliases carry no version, so they trail their tier.
-        assert!(position("claude-opus-4") < position("opus"));
+        assert!(position("claude-opus-4-6") < position("opus"));
 
         // Copilot leads with OpenAI because that is what its own catalogue declares first, even
         // though Anthropic outranks OpenAI inside a group.
         let copilot = model_ids(&agent("copilot"));
         assert_eq!(
-            copilot[1..].first().map(|id| ProviderGroup::of(id)),
+            copilot.first().map(|id| ProviderGroup::of(id)),
             Some(ProviderGroup::OpenAi)
         );
         let first_anthropic = copilot
@@ -873,36 +1253,35 @@ mod tests {
         assert!(anthropic
             .models
             .iter()
-            .skip(1)
             .all(|m| ProviderGroup::of(&m.id) == ProviderGroup::Anthropic));
+        // V1 hands the proxy Claude's own catalogue, so the two lists are the same models.
+        assert_eq!(model_ids(&anthropic), model_ids(&agent("claude")));
 
         let berget = proxy(Some("https://api.berget.ai/v1"));
         assert_eq!(berget.label, "Berget AI");
         assert_eq!(berget.icon, "ChevronUp");
-        assert!(model_ids(&berget).iter().any(|id| id.contains("qwen")));
+        assert!(model_ids(&berget)
+            .iter()
+            .any(|id| id.to_ascii_lowercase().contains("qwen")));
 
         let ivy = proxy(Some("https://llmproxy.ivy.app"));
         assert_eq!(ivy.label, "OpenAI Proxy");
         assert_eq!(model_ids(&ivy), model_ids(&agent("ivy")));
 
         let google = proxy(Some("https://generativelanguage.googleapis.com"));
-        assert!(google
-            .models
-            .iter()
-            .skip(1)
-            .all(|m| m.id.starts_with("gemini-")));
+        assert!(google.models.iter().all(|m| m.id.starts_with("gemini-")));
         assert_eq!(
             effort_ids(&google.models[1].efforts),
             vec!["default", "low", "medium", "high"]
         );
 
-        // No base URL, OpenAI's own, and an unrecognised one: OpenAI models, then everything.
+        // No base URL, OpenAI's own, and an unrecognised one: OpenAI models, then V1's declared
+        // union of the catalogues it knows — never every model in existence.
         let openai = proxy(None);
         assert_eq!(openai.label, "OpenAI Proxy");
         assert!(openai
             .models
             .iter()
-            .skip(1)
             .all(|m| ProviderGroup::of(&m.id) == ProviderGroup::OpenAi));
         assert_eq!(
             model_ids(&proxy(Some("https://api.openai.com/v1"))),
@@ -911,6 +1290,15 @@ mod tests {
 
         let custom = proxy(Some("http://localhost:11434/v1"));
         assert!(custom.models.len() > openai.models.len());
+        assert_eq!(
+            groups_of(&custom),
+            vec![
+                ProviderGroup::OpenAi,
+                ProviderGroup::Anthropic,
+                ProviderGroup::Google,
+                ProviderGroup::Moonshot
+            ]
+        );
     }
 
     /// Every advertised effort must be one the provider's own arm recognises. The mapping is lossy
@@ -1027,7 +1415,7 @@ mod tests {
             "claude-opus-5",
             "claude-sonnet-5",
             "claude-fable-5-1",
-            "claude-haiku-4-5-20251001",
+            "claude-haiku-4-5",
         ] {
             assert!(has(&ids, current), "{current} should be offered");
         }

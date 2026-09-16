@@ -5,15 +5,29 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 interface Options {
   onPaths: (paths: string[]) => void;
   onDragStateChange: (isOver: boolean) => void;
+  /**
+   * Whether to register at all, defaulting to yes.
+   *
+   * The listener is on the **webview**, so it answers a drop anywhere in the window rather than only
+   * on the subtree that asked for it. A second consumer therefore is not a second drop target, it is
+   * two handlers for every drop — which is why the chat hosted inside a plan page passes false and
+   * relies on its own React drag handlers instead.
+   */
+  enabled?: boolean;
 }
 
-export function useWebviewFileDrop({ onPaths, onDragStateChange }: Options): boolean {
+export function useWebviewFileDrop({
+  onPaths,
+  onDragStateChange,
+  enabled = true,
+}: Options): boolean {
   const [isActive, setIsActive] = useState(false);
   // Refs keep the effect deps empty so a re-render never re-subscribes.
   const handlers = useRef({ onPaths, onDragStateChange });
   handlers.current = { onPaths, onDragStateChange };
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     let unlisten: UnlistenFn | null = null;
 
@@ -47,7 +61,7 @@ export function useWebviewFileDrop({ onPaths, onDragStateChange }: Options): boo
       setIsActive(false);
       unlisten?.();
     };
-  }, []);
+  }, [enabled]);
 
   return isActive;
 }

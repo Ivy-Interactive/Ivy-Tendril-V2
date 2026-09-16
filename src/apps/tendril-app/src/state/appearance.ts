@@ -22,13 +22,28 @@ export interface AppearanceSettings {
   theme: string;
   /** Whether the main sidebar starts expanded, V1's `SidebarOpen`. */
   sidebarOpen: boolean;
+  /** What the Chat button opens, V1's `ChatMode`: the chat view, or the agent's own terminal. */
+  chatMode: ChatMode;
 }
+
+/** V1's `ChatModes`, whose members are these two strings. */
+export type ChatMode = "chat" | "terminal";
 
 export const APPEARANCE_DEFAULTS: AppearanceSettings = {
   themeMode: "system",
   theme: "default",
   sidebarOpen: true,
+  chatMode: "chat",
 };
+
+/**
+ * `ChatModes.Normalize`: only the exact `terminal` opt-in counts, so an unrecognised value — including
+ * one hand-edited into `config.yaml` — resolves to the chat view rather than to a pane the user may
+ * not know how to leave. `chat_mode_is_terminal` in `crates/tendril-core/src/config.rs` is the same
+ * rule on the daemon's side of the wire.
+ */
+export const asChatMode = (value: unknown): ChatMode =>
+  typeof value === "string" && value.trim().toLowerCase() === "terminal" ? "terminal" : "chat";
 
 /** `ConfigService.ValidateSettings`: anything but `light`/`dark` falls back to `system`. */
 export const asThemeMode = (value: unknown): Theme =>
@@ -47,6 +62,7 @@ export function readAppearance(config: TendrilConfig | null): AppearanceSettings
     themeMode: asThemeMode(raw.themeMode),
     theme: typeof theme === "string" && theme.trim() !== "" ? theme : APPEARANCE_DEFAULTS.theme,
     sidebarOpen: typeof sidebarOpen === "boolean" ? sidebarOpen : APPEARANCE_DEFAULTS.sidebarOpen,
+    chatMode: asChatMode(raw.chatMode),
   };
 }
 
@@ -66,10 +82,13 @@ export function applyAppearance(settings: Pick<AppearanceSettings, "themeMode" |
  * A failure is swallowed: an unreachable daemon must leave the app on `ThemeProvider`'s default
  * rather than blocking the first render behind a config request.
  */
-export async function initAppearance(): Promise<void> {
+export async function initAppearance(): Promise<AppearanceSettings> {
   try {
-    applyAppearance(readAppearance(await bridge.getConfig()));
+    const settings = readAppearance(await bridge.getConfig());
+    applyAppearance(settings);
+    return settings;
   } catch {
     // Keep the provider's default.
+    return APPEARANCE_DEFAULTS;
   }
 }

@@ -53,9 +53,14 @@ export interface DialogShellProps {
  *    `DialogTrigger`, but these dialogs open from controlled state, so the
  *    invoker is captured and restored explicitly.
  * 3. Escape cancels, via Radix's `onOpenChange(false)`. It must never confirm.
- * 4. `role="dialog"`/`aria-modal` come from Radix; a `DialogTitle` is always
+ * 4. A click on the overlay does **not** dismiss, which is Framework's rule for
+ *    every dialog it renders (`DialogWidget.tsx`: `onInteractOutside={(e) =>
+ *    e.preventDefault()}`). A dialog that asks a question has to be answered by
+ *    Cancel, Escape or the header close button, so a misplaced click can neither
+ *    lose typed input nor be mistaken for having declined.
+ * 5. `role="dialog"`/`aria-modal` come from Radix; a `DialogTitle` is always
  *    rendered, since Radix warns without one.
- * 5. `shortcut` is the keyboard half of V1's primary footer button, gated so it
+ * 6. `shortcut` is the keyboard half of V1's primary footer button, gated so it
  *    can only ever fire the *non*-destructive action a dialog nominates.
  */
 export function DialogShell({
@@ -108,6 +113,9 @@ export function DialogShell({
         data-testid={testId}
         className={DIALOG_WIDTH[width]}
         onKeyDown={handleKeyDown}
+        // Framework's own dialog host does exactly this, for every dialog: a click on the overlay is
+        // not an answer to the question the dialog is asking.
+        onInteractOutside={(event) => event.preventDefault()}
         // Radix gives `role="dialog"` and hides the rest of the tree with
         // `aria-hidden`, but this version emits no `aria-modal`, so it is set
         // here. A dialog with only one of the two reads as inert markup to some

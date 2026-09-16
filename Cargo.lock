@@ -5198,7 +5198,9 @@ name = "tendril-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum 0.7.9",
  "axum 0.8.9",
+ "base64 0.22.1",
  "chrono",
  "dirs",
  "futures-util",
@@ -5213,6 +5215,8 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-opener",
  "tempfile",
+ "tendril-core",
+ "tendril-server",
  "tokio",
  "tokio-tungstenite 0.29.0",
  "tower-http 0.6.11",

@@ -99,6 +99,16 @@ pub struct TendrilSettings {
     #[serde(rename = "sidebarOpen", default = "default_true")]
     pub sidebar_open: bool,
 
+    /// What the Chat button opens: `chat` for the chat view, `terminal` for the agent's own terminal.
+    ///
+    /// The original's `TendrilSettings.ChatMode`, read by `ChatLauncher.TargetFor` to decide which app
+    /// a new session goes to. Modeled rather than left in [`Self::extra`] for the same reason
+    /// [`Self::theme_mode`] is: the client reads it to pick a view, so an unrecognised value must
+    /// resolve to the default here rather than reaching the client unvalidated —
+    /// [`chat_mode_is_terminal`] is the single question every consumer asks.
+    #[serde(rename = "chatMode", default = "default_chat_mode")]
+    pub chat_mode: String,
+
     /// Minutes between worktree reaper passes. `0` or negative disables the reaper entirely.
     #[serde(
         rename = "worktreeReaperInterval",
@@ -536,6 +546,22 @@ fn default_theme() -> String {
 fn default_theme_mode() -> String {
     "system".to_string()
 }
+
+/// `ChatModes.Chat`: the Chat button opens the chat view unless it is told otherwise.
+pub const CHAT_MODE_CHAT: &str = "chat";
+/// `ChatModes.Terminal`: the Chat button opens the agent's own terminal.
+pub const CHAT_MODE_TERMINAL: &str = "terminal";
+
+fn default_chat_mode() -> String {
+    CHAT_MODE_CHAT.to_string()
+}
+
+/// Whether a `chatMode` value asks for the terminal. The original's `ChatModes.IsTerminal`: only the
+/// exact `terminal` opt-in counts, so anything unrecognised — including a value hand-edited into
+/// `config.yaml` — falls back to the chat view rather than to a view the user cannot get out of.
+pub fn chat_mode_is_terminal(mode: &str) -> bool {
+    mode.trim().eq_ignore_ascii_case(CHAT_MODE_TERMINAL)
+}
 fn default_check_interval_minutes() -> i32 {
     15
 }
@@ -618,6 +644,7 @@ impl Default for TendrilSettings {
             theme: default_theme(),
             theme_mode: default_theme_mode(),
             sidebar_open: true,
+            chat_mode: default_chat_mode(),
             worktree_reaper_interval: default_worktree_reaper_interval(),
             worktree_reaper_grace: default_worktree_reaper_grace(),
             worktree_branch_delete_mode: default_worktree_branch_delete_mode(),
@@ -1336,7 +1363,7 @@ fn default_scheme() -> String {
     "http".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MasterInfo {
     pub port: u16,
     pub pid: u32,
@@ -1401,21 +1428,38 @@ mod master_info_tests {
 /// wire shape every client (CLI, app, extension) already parses, and serde ignores keys it does not
 /// know: an older reader sees exactly what it saw before, and a reader that needs the lifecycle
 /// fields asks for them explicitly through [`read_master_claim`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MasterClaim {
     #[serde(flatten)]
     pub info: MasterInfo,
 
-    /// When the owning process last asserted this claim — written at acquire, when the bound port is
-    /// published, and on every re-assert. Diagnostic only: liveness is decided by the pid and
-    /// `/api/ping`, never by this timestamp, so a clock jump cannot unseat a running daemon.
+    /// When the owning process last asserted this claim: written at acquire, when the bound port is
+    /// published, on every re-assert, and on every beat of the daemon's master task.
+    ///
+    /// V2 never decides liveness from it — that is the pid, its start token and `/api/ping`, so a
+    /// clock jump cannot unseat a running daemon. It is written for *other* readers, and it is not
+    /// merely diagnostic to them: the shipped V1 CLI (`MasterLock.ReadLiveMaster`) treats a claim whose
+    /// `heartbeat` is more than 90s old as abandoned and **deletes the file**. A V2 daemon that wrote
+    /// no field of that name read as infinitely stale, so one `tendril` call from a developer's V1
+    /// install took the live dev daemon off the air. Hence the wire name `heartbeat` — the name that
+    /// reader looks for — and hence [`MasterGuard::beat`] keeping it inside that window.
+    ///
+    /// UTC with a `Z` suffix, not a numeric offset: a reader that maps an offset onto local time and
+    /// then subtracts from UTC "now" (which is exactly what .NET's `DateTime` does) gets an age that is
+    /// wrong by the machine's timezone, and west of UTC that error is in the direction that deletes.
     #[serde(
-        rename = "heartbeatAt",
+        alias = "heartbeatAt",
         alias = "heartbeat_at",
         default,
         skip_serializing_if = "Option::is_none"
     )]
-    pub heartbeat_at: Option<String>,
+    pub heartbeat: Option<String>,
+
+    /// Which `.master` document format this file is written to; see [`MASTER_SCHEMA_VERSION`].
+    ///
+    /// Absent means 1: every `.master` written before this field existed.
+    #[serde(rename = "schemaVersion", default = "default_schema_version")]
+    pub schema_version: u32,
 
     /// The kernel's start time for `info.pid` as of the moment the claim was written.
     ///
@@ -1437,20 +1481,20 @@ impl MasterClaim {
     /// A claim describing this process, stamped with its own start token.
     pub fn for_this_process(port: u16, secret: &str, host: &str, scheme: &str) -> Self {
         let pid = std::process::id();
-        let now = chrono::Utc::now().to_rfc3339();
         Self {
             info: MasterInfo {
                 port,
                 pid,
                 secret: secret.to_string(),
-                started_at: now.clone(),
+                started_at: chrono::Utc::now().to_rfc3339(),
                 host: host.to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 api_version: 1,
                 capabilities: default_capabilities(),
                 scheme: scheme.to_string(),
             },
-            heartbeat_at: Some(now),
+            heartbeat: Some(heartbeat_now()),
+            schema_version: MASTER_SCHEMA_VERSION,
             pid_started_at: process_start_token(pid),
         }
     }
@@ -1504,6 +1548,77 @@ pub fn process_start_token(pid: u32) -> Option<String> {
 #[cfg(not(unix))]
 pub fn process_start_token(_pid: u32) -> Option<String> {
     None
+}
+
+/// The `.master` document format this build writes, and the highest one it claims to understand.
+///
+/// A reader that finds a higher number is looking at a file written by a Tendril it does not know, and
+/// the only safe thing it can do with it is leave it alone — a claim it cannot interpret is not
+/// evidence that the daemon holding it is dead. V1 wrote no marker at all and had nothing to check,
+/// which is how a V1 CLI came to delete a live V2 daemon's claim; 1 therefore means "unmarked".
+pub const MASTER_SCHEMA_VERSION: u32 = 2;
+
+fn default_schema_version() -> u32 {
+    1
+}
+
+/// A heartbeat stamp: UTC, millisecond precision, `Z`-suffixed. See [`MasterClaim::heartbeat`] for why
+/// the suffix rather than an offset.
+fn heartbeat_now() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+/// What is actually sitting at `<home>/.master`, for the two callers that may otherwise be tempted to
+/// delete it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MasterFileKind {
+    /// No file.
+    Missing,
+    /// Not a JSON document at all: empty, truncated, or half-written. This is what a racing daemon's
+    /// claim looks like for the microseconds between `create_new` and its first write, and it is the
+    /// only shape that carries no information about anybody — so it is the only one safe to discard.
+    Garbage,
+    /// A JSON document this build cannot read as a claim, or one that says it was written to a newer
+    /// schema than [`MASTER_SCHEMA_VERSION`]. Somebody's registration, whose owner we cannot identify:
+    /// never deleted on a guess.
+    Foreign {
+        /// The `schemaVersion` it declares, when it declares one.
+        schema_version: Option<u32>,
+    },
+    /// A claim this build understands. Boxed only because it dwarfs the other three variants.
+    Claim(Box<MasterClaim>),
+}
+
+/// Classifies `<home>/.master` without touching it.
+///
+/// The distinction that matters is *unparseable* versus *unintelligible*: "not JSON" is a broken write
+/// and can be cleared, whereas a JSON document with fields we do not understand is a live claim as far
+/// as anyone can prove, and deleting it is the destructive move this exists to refuse.
+pub fn inspect_master_file(tendril_home: &Path) -> MasterFileKind {
+    let master_file = tendril_home.join(".master");
+    let Ok(content) = std::fs::read_to_string(&master_file) else {
+        return MasterFileKind::Missing;
+    };
+
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return MasterFileKind::Garbage;
+    };
+    if !value.is_object() {
+        return MasterFileKind::Garbage;
+    }
+
+    let schema_version = value
+        .get("schemaVersion")
+        .and_then(serde_json::Value::as_u64)
+        .map(|v| v as u32);
+    if schema_version.is_some_and(|v| v > MASTER_SCHEMA_VERSION) {
+        return MasterFileKind::Foreign { schema_version };
+    }
+
+    match serde_json::from_value::<MasterClaim>(value) {
+        Ok(claim) => MasterFileKind::Claim(Box::new(claim)),
+        Err(_) => MasterFileKind::Foreign { schema_version },
+    }
 }
 
 pub fn read_master(tendril_home: &Path) -> Option<MasterInfo> {
@@ -1672,15 +1787,24 @@ pub fn delete_master(tendril_home: &Path) {
 /// The pid re-check is what keeps a stale-cleanup from deleting a *third* process's claim: between
 /// deciding "this one is stale" and acting on it, the rightful owner may already have replaced it.
 /// Returns true when a file was removed.
+///
+/// A file this build cannot read is **not** removed. It used to be, on the grounds that nothing can be
+/// learned from it — but "I cannot read this" is not "the daemon that wrote it is dead", and acting on
+/// that confusion is precisely how a foreign CLI takes a live daemon off the air. Clearing one is a
+/// deliberate act, and [`MasterGuard::acquire`] is where that decision is made and explained.
 pub fn delete_master_if_pid(tendril_home: &Path, pid: u32) -> bool {
     match read_master_claim(tendril_home) {
         Some(claim) if claim.info.pid == pid => {
             let master_file = tendril_home.join(".master");
             std::fs::remove_file(master_file).is_ok()
         }
-        // Unparseable is deleted too: nothing can be learned from it, and it blocks every claim.
         None if tendril_home.join(".master").exists() => {
-            std::fs::remove_file(tendril_home.join(".master")).is_ok()
+            tracing::warn!(
+                "Leaving {}/.master alone: it no longer reads as a claim this build understands, \
+                 which is not evidence that its owner is gone",
+                tendril_home.display()
+            );
+            false
         }
         _ => false,
     }
@@ -1700,6 +1824,9 @@ pub struct MasterGuard {
 pub enum MasterCheck {
     /// The claim is ours and unchanged. Nothing was written.
     Intact,
+    /// The file is there but is not a claim this build can read. Left exactly as found: it cannot be
+    /// attributed to anybody, so neither re-asserting over it nor deleting it is defensible.
+    Foreign,
     /// The claim had gone (deleted by a repair tool, a `tendril reset`, or a stale sweep) or was held
     /// by a pid that is no longer running, and has been rewritten in this process's name.
     Reasserted,
@@ -1765,16 +1892,54 @@ impl MasterGuard {
             // Somebody got here first. Either they are alive — in which case this daemon must not
             // start — or the claim is a leftover and can be cleared for one more attempt.
             let Some(existing) = read_master_claim_settled(tendril_home) else {
-                // Either it vanished between the create and this read — in which case the next
-                // attempt simply wins it — or it is genuinely unreadable, which tells us nothing and
-                // blocks every future claim, so it goes. `read_master_claim_settled` is what keeps
-                // this from mistaking a sibling's half-written claim for garbage.
-                tracing::warn!(
-                    "Discarding an unreadable {}/.master",
-                    tendril_home.display()
-                );
-                delete_master(tendril_home);
-                continue;
+                // It did not read as a claim. What happens next depends on *why*, because only one of
+                // the reasons says nothing about whether a daemon is alive.
+                // `read_master_claim_settled` has already ruled out a sibling's half-written claim by
+                // re-reading it.
+                match inspect_master_file(tendril_home) {
+                    // Vanished between the create and this read: the next attempt simply wins it.
+                    MasterFileKind::Missing => continue,
+                    // Not JSON at all — an empty or truncated write. It names nobody and blocks every
+                    // future claim, so it goes.
+                    MasterFileKind::Garbage => {
+                        tracing::warn!(
+                            "Discarding a truncated {}/.master: it is not a JSON document",
+                            tendril_home.display()
+                        );
+                        delete_master(tendril_home);
+                        continue;
+                    }
+                    // A structured claim written by something else. It may well be a running daemon
+                    // this build is too old to understand, and there is no way to tell from here — so
+                    // it is left standing and this daemon refuses to start instead. Deleting it is
+                    // what the V1 CLI did to a V2 claim, and that took a live daemon off the air.
+                    MasterFileKind::Foreign { schema_version } => {
+                        if !master_takeover_allowed() {
+                            return Err(TendrilError::Other(format!(
+                                "{}/.master was written by a Tendril this build does not understand \
+                                 (schema version {}, this build writes {}). Refusing to delete it: it \
+                                 may belong to a running daemon. Stop that daemon, start this one with \
+                                 a different TENDRIL_HOME, or set \
+                                 TENDRIL_ALLOW_MASTER_TAKEOVER=1 to clear the claim deliberately.",
+                                tendril_home.display(),
+                                schema_version
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "unmarked".to_string()),
+                                MASTER_SCHEMA_VERSION
+                            )));
+                        }
+                        tracing::warn!(
+                            "TENDRIL_ALLOW_MASTER_TAKEOVER=1: clearing a {}/.master this build cannot \
+                             read",
+                            tendril_home.display()
+                        );
+                        delete_master(tendril_home);
+                        continue;
+                    }
+                    // Readable after all — a claim landed between the two reads. Loop round and judge
+                    // it the normal way.
+                    MasterFileKind::Claim(_) => continue,
+                }
             };
 
             let info = &existing.info;
@@ -1867,8 +2032,33 @@ impl MasterGuard {
         }
 
         claim.info.port = port;
-        claim.heartbeat_at = Some(chrono::Utc::now().to_rfc3339());
+        claim.heartbeat = Some(heartbeat_now());
         write_master_claim(&self.tendril_home, &claim)
+    }
+
+    /// Refreshes the claim's heartbeat, and reports whether it was written.
+    ///
+    /// Nothing in V2 reads the timestamp to decide anything, so this exists for foreign readers: the
+    /// shipped V1 CLI deletes a claim whose `heartbeat` is more than 90s old, and "the daemon has been
+    /// up for two minutes" must not look like that. Cheap enough to do on a timer — one 600-byte
+    /// atomic rename — and it makes the field mean what it says.
+    ///
+    /// Refuses to write unless the claim on disk is still ours, exactly like [`Self::publish_port`]: a
+    /// superseded daemon beating on someone else's claim would be the collision the election prevents.
+    pub fn beat(&self) -> bool {
+        let mut claim = self.claim.lock().expect("master claim mutex");
+        if !read_master(&self.tendril_home).is_some_and(|info| info.pid == self.pid) {
+            return false;
+        }
+
+        claim.heartbeat = Some(heartbeat_now());
+        match write_master_claim(&self.tendril_home, &claim) {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!("Could not write a master heartbeat: {}", e);
+                false
+            }
+        }
     }
 
     /// Re-asserts this process's claim if it has gone missing, and reports what it found.
@@ -1894,6 +2084,18 @@ impl MasterGuard {
                         "Re-asserting mastership over .master: it names pid {}, which is not running",
                         existing.info.pid
                     );
+                } else if matches!(
+                    inspect_master_file(&self.tendril_home),
+                    MasterFileKind::Foreign { .. }
+                ) {
+                    // Overwriting it would be this daemon guessing that an unreadable claim is not a
+                    // live one — the same guess that made a V1 CLI delete a V2 claim.
+                    tracing::warn!(
+                        "Not re-asserting over {}/.master: it holds a claim this build cannot read, \
+                         and it is left untouched",
+                        self.tendril_home.display()
+                    );
+                    return MasterCheck::Foreign;
                 } else {
                     tracing::warn!(
                         "Re-asserting mastership: {}/.master vanished while this daemon (pid {}) was \
@@ -1904,7 +2106,7 @@ impl MasterGuard {
                 }
 
                 let mut reasserted = claim.clone();
-                reasserted.heartbeat_at = Some(chrono::Utc::now().to_rfc3339());
+                reasserted.heartbeat = Some(heartbeat_now());
                 match write_master_claim(&self.tendril_home, &reasserted) {
                     Ok(()) => MasterCheck::Reasserted,
                     Err(e) => {

@@ -10,6 +10,7 @@ import {
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
 import { SaveError, SectionCard, TextField } from "./fields";
+import { useRemovalConfirm } from "./useRemovalConfirm";
 import type { LevelEntry } from "./projectConfig";
 
 /**
@@ -47,6 +48,7 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
   const [draft, setDraft] = React.useState<Draft | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isSaving, setIsSaving] = React.useState(false);
+  const { requestRemoval, removalDialog } = useRemovalConfirm();
 
   const write = async (next: LevelEntry[], message: string) => {
     setIsSaving(true);
@@ -120,10 +122,17 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
             if (tag === "edit") {
               setDraft({ index, name: row.name, color: row.color });
             } else if (tag === "delete") {
-              void write(
-                levels.filter((_, i) => i !== index),
-                `Level '${row.name}' deleted`,
-              );
+              requestRemoval({
+                kind: "level",
+                name: row.name,
+                consequence:
+                  "Plans already categorised at this level keep the name in their plan.yaml; it simply stops being one of the levels offered.",
+                onConfirm: () =>
+                  void write(
+                    levels.filter((_, i) => i !== index),
+                    `Level '${row.name}' deleted`,
+                  ),
+              });
             }
           }}
         />
@@ -172,6 +181,8 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
           Levels are stored in config.yaml and advertised over MCP, but nothing in this app reads
           them yet, so editing them here changes no behaviour you can see.
         </Callout.Warning>
+
+        {removalDialog}
       </div>
     </SectionCard>
   );

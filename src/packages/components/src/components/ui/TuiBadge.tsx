@@ -1,11 +1,8 @@
 import React from "react";
+import { ivyColorVar } from "@/lib/ivy-color";
 import "./ui.css";
 
 export type BadgeKind = "neutral" | "project" | "success" | "warning" | "danger" | "color";
-
-/** An Ivy `Colors` name resolves to the theme variable the framework publishes for it. */
-const ivyColorVar = (name: string): string =>
-  `var(--${name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()}, currentColor)`;
 
 export interface TuiBadgeProps {
   kind?: BadgeKind;

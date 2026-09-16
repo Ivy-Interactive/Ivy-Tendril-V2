@@ -1,7 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import Markdown from "react-markdown";
-import { getMarkdownPlugins, hasMath } from "./math";
+import { getMarkdownPlugins, hasMath, loadRehypeKatex } from "./math";
+
+// `getMarkdownPlugins` is synchronous but `rehype-katex` is loaded on demand, so the plugin list it
+// returns includes KaTeX only once that import has resolved (in the app, `useMathReady` is what
+// re-renders at that point). These tests assert on the resolved state, so they await the load once
+// up front rather than racing the fire-and-forget that a mathful `getMarkdownPlugins` call starts.
+beforeAll(async () => {
+  await loadRehypeKatex();
+});
 
 const render = (content: string) =>
   renderToStaticMarkup(<Markdown {...getMarkdownPlugins(content)}>{content}</Markdown>);

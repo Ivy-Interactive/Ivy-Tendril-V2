@@ -20,31 +20,31 @@ import {
   type RepoStatus,
   type StartJobResponse,
 } from "../types/api";
-import type { ChatMessage, ChatSession } from "../types/chat";
+import type { ChatSession } from "../types/chat";
 import { bridge } from "../api/bridge";
-import { chatApi } from "../api/chatApi";
-import { onChatEvent, onPlanEvent } from "../api/events";
+import { onPlanEvent } from "../api/events";
+import { sessionBelongsToPlan } from "../state/chatStore";
+import { PlanChatPanel, planFolderName } from "../components/chat/PlanChatPanel";
 import { extractPlanQuestions, patchQuestionsMarkdown } from "../utils/questionMarkdown";
 import { PlanActionsController } from "../controllers/plan_actions";
 import { PlanPullRequests } from "./PlanPullRequests";
 import { draftActions, type DraftAction } from "../controllers/draft_actions";
-import { collectExecuteGuards, type ExecuteGuard } from "../controllers/execute_guards";
+import { buildUpdatePrompt } from "../controllers/update_prompt";
+import {
+  collectExecuteGuards,
+  unfoldedAnswerCount,
+  type ExecuteGuard,
+} from "../controllers/execute_guards";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
-import {
-  formatPlanId,
-  isReviewState,
-  normalizePlanState,
-  parseProjects,
-  planStateBadgeClass,
-} from "./PlansView";
+import { formatPlanId, isReviewState, normalizePlanState, planStateBadgeClass } from "./PlansView";
+import { ProjectBadges } from "../components/ProjectBadges";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { CreateIssueDialog } from "./dialogs/CreateIssueDialog";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
 import { DeletePlanDialog } from "./dialogs/DeletePlanDialog";
 import { DirtyRepoDialog } from "./dialogs/DirtyRepoDialog";
-import { DiscardPlanDialog } from "./dialogs/DiscardPlanDialog";
 import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
 import { PendingAnnotationsDialog } from "./dialogs/PendingAnnotationsDialog";
 import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
@@ -165,153 +165,38 @@ const DetailRow: React.FC<{ label: string; children?: React.ReactNode; empty?: b
   );
 
 /**
- * Why answering a question cannot be persisted yet.
- *
- * V1 merges an answer into the **same** revision — `ContentView.ApplyAnswer` calls
- * `IPlanReaderService.UpdateLatestRevision`, on the stated grounds that "answering a question is not
- * a new revision of the plan, it is filling in a blank the plan left". The service exposes no HTTP
- * route for that write: `POST /api/plans/{id}/revisions` (`PlanController.WriteRevision`) is
- * `RevisionWriter.WriteNext`, which **appends**. Using it would inflate `revisionCount`, and the
- * PendingAnnotations guard's own "answers not yet folded in" term is defined as
- * `state === "Draft" && revisionCount === 1` (`execute_guards.unfoldedAnswerCount`), so an append
- * would silently switch that guard off. So the picker works, the answer is held on the page, and this
- * says plainly that it did not reach disk.
- */
-const ANSWER_WRITE_UNAVAILABLE =
-  "Answer recorded on this page only: the service has no route that writes an answer back into the " +
-  "same revision. `POST /api/plans/{id}/revisions` appends a new one, which would break the execute " +
-  "guard's revision test. Needed: an in-place write (`PUT /api/plans/{id}/revisions/latest`) onto " +
-  "`IPlanReaderService.UpdateLatestRevision`.";
-
-/** Why a plan with no chat session yet cannot be given one from here. */
-const PLAN_CHAT_UNAVAILABLE =
-  "This plan has no chat session yet, and one cannot be started here: `cmd_create_chat_session` " +
-  "takes no `planFolderName`, so nothing can create the plan-attached session V1's " +
-  "`PlanChatSessions.CreateForPlan` creates.";
-
-/** `00021-Some-Plan` from the plan's folder path — what a chat session records in `planFolderName`. */
-const planFolderName = (plan: PlanDetail): string | undefined =>
-  plan.folderPath ? plan.folderPath.split(/[/\\]/).pop() || undefined : undefined;
-
-/**
  * The plan's own chat session, mirroring `PlanChatSessions.BelongsTo`: "A session belongs to exactly
  * one plan, recorded on the session itself". Matched case-insensitively as V1 does.
  *
  * V1 also consults `plan.ChatSessionId` first and then falls back to this scan; `PlanDetail` carries
  * no such field, and V1 calls it "a hint whose target must be checked before use" anyway, so the scan
- * is the whole of it here. The id prefix is accepted as a second key because a plan detail fetched
- * without `folderPath` still knows its number, and the folder is `<id>-<slug>`.
+ * is the whole of it here.
+ *
+ * The rule itself now lives in `chatStore` as `sessionBelongsToPlan`, because that is what narrows a
+ * plan-scoped store's session list; this stays as the plan-shaped way in.
  */
 export function findPlanChatSession(
   sessions: ChatSession[],
   plan: PlanDetail,
 ): ChatSession | undefined {
-  const folder = planFolderName(plan)?.toLowerCase();
-  return sessions.find((session) => {
-    const recorded = session.planFolderName?.toLowerCase();
-    if (!recorded) return false;
-    return recorded === folder || recorded.startsWith(`${plan.id.toLowerCase()}-`);
-  });
-}
-
-/** One heading of the plan document, as the contents panel lists it. */
-export interface PlanTocEntry {
-  level: number;
-  text: string;
-  /** Which same-named heading this is, so two `## Problem`s stay distinguishable. */
-  occurrence: number;
-}
-
-/** Inline markdown reduced to the text `PlanMarkdown` will actually render for it. */
-const inlineText = (raw: string): string =>
-  raw
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/(\*\*\*|\*\*|\*|___|__|_|~~)/g, "")
-    .trim();
-
-/**
- * The plan's headings, in document order.
- *
- * V1 has no table-of-contents widget: its plan page never fills `PlanMarkdown`'s `StickyContent`
- * slot. But that slot is V1's own designated place for one — `PlanMarkdown.cs` documents it as
- * "pinned in place and unaffected by the [markdown] scroll", and the widget's sample app names
- * "**Table of contents** — navigate long documents without losing position" as its first use case
- * (`Ivy.Tendril.Widgets/.samples/Apps/DraftMarkdown/StickyContentApp.cs`). So this is V1's mechanism
- * filled in, not a new surface invented beside it.
- *
- * Fenced code is skipped following CommonMark, the same reason `questionsSource.scan` does it: a plan
- * that documents markdown must not have its examples read as its own structure.
- */
-export function extractPlanHeadings(markdown: string | undefined): PlanTocEntry[] {
-  const entries: PlanTocEntry[] = [];
-  if (!markdown) return entries;
-
-  const counts = new Map<string, number>();
-  let openFence: string | null = null;
-
-  for (const line of markdown.split(/\r?\n/)) {
-    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (fence) {
-      const run = fence[1];
-      if (openFence === null) openFence = run;
-      else if (run[0] === openFence[0] && run.length >= openFence.length) openFence = null;
-      continue;
-    }
-    if (openFence !== null) continue;
-
-    const heading = /^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(line);
-    if (!heading) continue;
-    const text = inlineText(heading[2]);
-    if (!text) continue;
-    const occurrence = counts.get(text) ?? 0;
-    counts.set(text, occurrence + 1);
-    entries.push({ level: heading[1].length, text, occurrence });
-  }
-
-  return entries;
+  const scope = {
+    planId: plan.id,
+    folderName: planFolderName(plan),
+    sessionTitle: plan.title,
+  };
+  return sessions.find((session) => sessionBelongsToPlan(session, scope));
 }
 
 /**
- * The contents panel pinned beside the plan, rendered into `PlanMarkdown`'s `StickyContent` slot.
+ * The plan document has no table of contents, and that is deliberate.
  *
- * Indented by heading level and capped in height, because it shares the pane with the document; the
- * top-level `# ` title is dropped, since a contents list whose first row is the page title navigates
- * to where the reader already is.
+ * `PlanMarkdown`'s `StickyContent` slot is left empty here exactly as V1 leaves it: V1's plan page
+ * never fills it. A contents panel was added into that slot earlier at the user's request and then
+ * removed at theirs — it competed with the chat beside it for the width that matters more, and dropping
+ * it returns the page to V1's own layout rather than diverging from it.
+ *
+ * The slot itself stays in the components package. It is V1's own slot, and V1 simply passes nothing.
  */
-const PlanContentsPanel: React.FC<{
-  entries: PlanTocEntry[];
-  onSelect: (entry: PlanTocEntry) => void;
-}> = ({ entries, onSelect }) => {
-  const shown = entries.filter((entry) => entry.level > 1);
-  if (shown.length === 0) return null;
-
-  return (
-    <nav
-      aria-label="Plan contents"
-      data-testid="plan-toc"
-      className="max-h-[60vh] w-52 overflow-y-auto py-4"
-    >
-      <p className="mb-2 text-xs font-semibold text-muted-foreground">Contents</p>
-      <ul className="space-y-0.5">
-        {shown.map((entry) => (
-          <li key={`${entry.level}:${entry.text}:${entry.occurrence}`}>
-            <button
-              type="button"
-              onClick={() => onSelect(entry)}
-              style={{ paddingLeft: `${(entry.level - 2) * 10}px` }}
-              className="block w-full truncate text-left text-xs text-muted-foreground transition hover:text-foreground"
-              title={entry.text}
-            >
-              {entry.text}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-};
 
 /**
  * The Questions dropdown, a port of `QuestionsPanelView`: "an index of every question in the plan,
@@ -323,14 +208,15 @@ const PlanContentsPanel: React.FC<{
  * because "optional means the plan does not wait on it, not that anybody has dealt with it". The
  * label falls back title → header → id.
  *
- * `unsavedIds` is V2's own: an answer that only exists on this page is flagged, since V1's never are
- * (its write lands before the panel re-renders).
+ * `savingIds` is V2's own: V1's write is synchronous, so its panel never renders an answer that is
+ * still on its way to disk. Here `bridge.updateLatestRevision` is awaited, so the in-flight moment
+ * exists and is said out loud rather than looking already settled.
  */
 const PlanQuestionsPanel: React.FC<{
   questions: PlanQuestion[];
-  unsavedIds: ReadonlySet<string>;
+  savingIds: ReadonlySet<string>;
   onSelect: (questionId: string) => void;
-}> = ({ questions, unsavedIds, onSelect }) => {
+}> = ({ questions, savingIds, onSelect }) => {
   const answered = questions.filter((q) => q.answerPresent).length;
   const label = (question: PlanQuestion) => question.title || question.header || question.id;
 
@@ -352,173 +238,12 @@ const PlanQuestionsPanel: React.FC<{
             >
               {question.optional ? `${label(question)} (Optional)` : label(question)}
             </button>
-            {unsavedIds.has(question.id) && (
-              <span className="text-[10px] text-warning">not saved</span>
+            {savingIds.has(question.id) && (
+              <span className="text-[10px] text-muted-foreground">saving…</span>
             )}
           </li>
         ))}
       </ul>
-    </div>
-  );
-};
-
-/**
- * The chat panel beside the plan, V1's `PlanChatView`: "the plan's own session, hosted by the same
- * content view the Chat app uses", under the headline `PlanChatView.Headline`.
- *
- * Deliberately talks to `chatApi` rather than `chatStore`: the store is a singleton with one
- * `activeSessionId`, which the Chat page owns, and selecting this plan's session through it would
- * move the Chat page too. V1 has the same split — `PlanChatView` keeps its own `activeSessionId`
- * state over the shared `IChatHistoryService`.
- */
-const PlanChatPanel: React.FC<{
-  plan: PlanDetail;
-  /** A line the page wants drafted into the composer; a new `token` means "again". */
-  draft: { text: string; token: number };
-  onError: (message: string) => void;
-}> = ({ plan, draft, onError }) => {
-  const [session, setSession] = useState<ChatSession | null>(null);
-  const [prompt, setPrompt] = useState("");
-  const [sending, setSending] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
-
-  // Keyed on the token, not the text, so "Discuss" twice re-drafts the same line over an edited one.
-  useEffect(() => {
-    if (draft.token > 0) setPrompt(draft.text);
-  }, [draft.token, draft.text]);
-
-  const load = useCallback(async () => {
-    const sessions = await chatApi.listSessions();
-    const found = findPlanChatSession(sessions, plan);
-    if (!found) return null;
-    // The list route carries no messages, so the session itself has to be read.
-    const full = await chatApi.getSession(found.id).catch(() => found);
-    return full;
-  }, [plan]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSession(null);
-    void load()
-      .then((found) => {
-        if (!cancelled) setSession(found);
-      })
-      .catch(() => {
-        // No session list is the same as no session: the panel offers its composer and says why a
-        // send cannot go anywhere, rather than refusing to render.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [load]);
-
-  /**
-   * The agent answers out of band, so the panel follows the same stream the Chat page does — V1's
-   * `PlanChatView` subscribes to `StreamUpdated` and `SessionsChanged` for the same reason, and
-   * filters on the session id exactly like this.
-   *
-   * Keyed on the id rather than the session object: a re-read replaces the object, and depending on
-   * it would tear the subscription down and build it up again on every message.
-   */
-  const sessionId = session?.id;
-  useEffect(() => {
-    if (!sessionId) return;
-    const signal = { cancelled: false };
-    let unlisten: (() => void) | undefined;
-
-    void onChatEvent((payload) => {
-      const event = payload as { sessionId?: string } | null;
-      if (event?.sessionId !== sessionId) return;
-      void chatApi
-        .getSession(sessionId)
-        .then((next) => {
-          if (!signal.cancelled) setSession(next);
-        })
-        .catch(() => {});
-    })
-      .then((fn) => {
-        if (signal.cancelled) fn();
-        else unlisten = fn;
-      })
-      .catch(() => {});
-
-    return () => {
-      signal.cancelled = true;
-      unlisten?.();
-    };
-  }, [sessionId]);
-
-  useEffect(() => {
-    const list = listRef.current;
-    if (list) list.scrollTop = list.scrollHeight;
-  }, [session?.messages?.length]);
-
-  const send = async () => {
-    const text = prompt.trim();
-    if (!text || sending) return;
-    if (!session) {
-      onError(PLAN_CHAT_UNAVAILABLE);
-      return;
-    }
-    setSending(true);
-    try {
-      await chatApi.executeTurn(session.id, { prompt: text });
-      setPrompt("");
-      setSession(await chatApi.getSession(session.id).catch(() => session));
-    } catch (err) {
-      onError(`Chat message failed: ${describeBridgeError(err)}`);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const messages: ChatMessage[] = session?.messages ?? [];
-
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4" data-testid="plan-chat">
-      <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto">
-        {messages.length === 0 ? (
-          <p className="pt-6 text-center text-sm font-medium text-muted-foreground">
-            Ask Tendril to Change Anything
-          </p>
-        ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              data-testid={`plan-chat-message-${message.role}`}
-              className={`rounded-lg border border-border p-2 text-xs whitespace-pre-wrap ${
-                message.role === "user" ? "bg-muted text-foreground" : "bg-card text-foreground"
-              }`}
-            >
-              {message.content}
-            </div>
-          ))
-        )}
-      </div>
-      <div className="flex flex-col gap-2">
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-          rows={2}
-          aria-label="Message this plan's chat"
-          placeholder="Ask Tendril anything..."
-          className="w-full resize-none rounded-lg border border-border bg-background p-2 text-xs text-foreground"
-        />
-        <button
-          type="button"
-          disabled={sending || prompt.trim().length === 0}
-          onClick={() => void send()}
-          className="self-end rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground/70"
-        >
-          {sending ? "Sending..." : "Send"}
-        </button>
-      </div>
     </div>
   );
 };
@@ -528,7 +253,6 @@ type LifecycleDialog =
   | "update"
   | "createIssue"
   | "delete"
-  | "discard"
   | "reset"
   | "partialDelivery"
   | "suggestChanges"
@@ -552,6 +276,12 @@ interface PlanDetailViewProps {
   onJobStarted?: (response: StartJobResponse) => void;
   /** The plan's state changed on the service; the caller should re-fetch it. */
   onPlanChanged?: (planId: string) => void;
+  /**
+   * V1's `ContentView` wires `onCreatePlan` into its embedded chat unconditionally, so "create plan
+   * from this message" works there as well as on the Chat page. Threaded through to
+   * {@link PlanChatPanel}; without it that message action is inert.
+   */
+  onCreatePlan?: (initialDescription: string) => void;
   onPlanDeleted?: (planId: string) => void;
 }
 
@@ -561,6 +291,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   projectRepos = [],
   jobs = [],
   onExecute,
+  onCreatePlan,
   onJobStarted,
   onPlanChanged,
   onPlanDeleted,
@@ -582,6 +313,22 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   // `onExecute` fires only after the last one has been passed.
   const [guards, setGuards] = useState<ExecuteGuard[]>([]);
   const [guardIndex, setGuardIndex] = useState(0);
+  /**
+   * How the PendingAnnotations guard's count divides between unresolved annotations and answers no
+   * UpdatePlan run has folded in — V1's two arguments to `PendingAnnotationsDialog`, which the guard
+   * itself reports only as a sum. Collected on the same click, so the dialog's wording describes the
+   * state the guard actually fired on.
+   */
+  const [pendingSplit, setPendingSplit] = useState<{
+    annotations: number;
+    answers: number;
+  } | null>(null);
+  /**
+   * Jobs the ExecutePlan at the end of the chain must wait for — V1's `pendingWaitJobIds`, which it
+   * carries into `DirtyRepoDialog` for the same reason: *Update Plan & Execute* on a dirty repo still
+   * has to ask about the repo, and the update's job id must survive that question.
+   */
+  const [chainedWaitJobIds, setChainedWaitJobIds] = useState<string[]>([]);
   /**
    * True while the pre-execution checks are running.
    *
@@ -621,8 +368,15 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * the same trigger V1 uses to reseed it.
    */
   const [revisionContent, setRevisionContent] = useState(plan.latestRevisionContent ?? "");
-  /** Answers merged into `revisionContent` that never reached the service. See `ANSWER_WRITE_UNAVAILABLE`. */
-  const [unsavedAnswers, setUnsavedAnswers] = useState<ReadonlySet<string>>(new Set());
+  /**
+   * The live revision, readable synchronously.
+   *
+   * Two answers clicked back to back would otherwise both merge into the value captured by the render
+   * that was on screen when the first was clicked, and the second write would erase the first.
+   */
+  const revisionRef = useRef(revisionContent);
+  /** Questions whose in-place write has been sent and not yet answered. */
+  const [savingAnswers, setSavingAnswers] = useState<ReadonlySet<string>>(new Set());
   /**
    * Brings a question into view when its index entry is clicked. V1: "The token is what makes a
    * repeat click work — an unchanged id compares equal and nothing would move."
@@ -630,8 +384,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const [scrollTo, setScrollTo] = useState<{ questionId: string; token: number } | null>(null);
 
   useEffect(() => {
-    setRevisionContent(plan.latestRevisionContent ?? "");
-    setUnsavedAnswers(new Set());
+    const next = plan.latestRevisionContent ?? "";
+    revisionRef.current = next;
+    setRevisionContent(next);
     setScrollTo(null);
   }, [plan.latestRevisionContent]);
 
@@ -648,34 +403,29 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   /**
    * The unanswered count the workspace badges and its dot follow.
    *
-   * Read from the *persisted* revision, not from `revisionContent`: an answer this page is holding
-   * but could not write is not answered as far as the execute guard is concerned, and a dot that went
-   * out on an unsaved answer would be lying. `ContentView.CountUnansweredQuestions` counts every
-   * question without an answer, optional ones included — the badge says how much of the plan is still
-   * blank, which is not the same question as what blocks execution.
+   * `ContentView.CountUnansweredQuestions` counts every question without an answer, optional ones
+   * included — the badge says how much of the plan is still blank, which is not the same question as
+   * what blocks execution.
+   *
+   * Read off `revisionContent`, as V1 reads it off its own `revisionContent` state: an answer is
+   * written back into the same revision the moment it is picked, and a refused write is rolled back,
+   * so the live document is also what is on disk.
    */
-  const unansweredQuestions = useMemo(() => {
-    try {
-      return extractPlanQuestions(plan.latestRevisionContent ?? "").filter((q) => !q.answerPresent)
-        .length;
-    } catch {
-      return 0;
-    }
-  }, [plan.latestRevisionContent]);
+  const unansweredQuestions = useMemo(
+    () => questions.filter((q) => !q.answerPresent).length,
+    [questions],
+  );
 
   /**
-   * Answers already written into the revision on disk. The second term of V1's Update Plan badge
-   * (`activeAnnotationCount + answeredQuestions`), read from the persisted revision because that is
-   * what the UpdatePlan job will read.
+   * Answers written into the revision. The second term of V1's Update Plan badge
+   * (`activeAnnotationCount + answeredQuestions`), which V1 likewise counts off the revision the page
+   * is holding rather than waiting for a refetch — the answer is already on disk for the UpdatePlan
+   * job to read.
    */
-  const answeredQuestionCount = useMemo(() => {
-    try {
-      return extractPlanQuestions(plan.latestRevisionContent ?? "").filter((q) => q.answerPresent)
-        .length;
-    } catch {
-      return 0;
-    }
-  }, [plan.latestRevisionContent]);
+  const answeredQuestionCount = useMemo(
+    () => questions.filter((q) => q.answerPresent).length,
+    [questions],
+  );
 
   /**
    * A line the page wants the chat composer pre-filled with, and a token so asking twice works — the
@@ -686,52 +436,54 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     token: 0,
   });
 
-  /** Where the plan document is mounted, so the contents panel can drive its scroll. */
-  const planPaneRef = useRef<HTMLDivElement>(null);
-
-  const toc = useMemo(() => extractPlanHeadings(revisionContent), [revisionContent]);
-
   /**
-   * Scrolls a heading to the top of the document pane.
+   * V1's `ContentView.ApplyAnswer`.
    *
-   * The same move `PlanMarkdown`'s own `scrollTo` effect makes, and for the reason it gives: "The
-   * widget owns its own scroll, so move that rather than calling scrollIntoView, which would also drag
-   * every scrollable ancestor of the host page along with it."
-   */
-  const scrollToHeading = useCallback((entry: PlanTocEntry) => {
-    const pane = planPaneRef.current;
-    const shell = pane?.querySelector<HTMLElement>(".pmv-shell");
-    const body = pane?.querySelector<HTMLElement>(".pmv-markdown");
-    if (!shell || !body) return;
-    const matching = Array.from(body.querySelectorAll("h1,h2,h3,h4,h5,h6")).filter(
-      (heading) => heading.textContent?.trim() === entry.text,
-    );
-    const target = matching[entry.occurrence] ?? matching[0];
-    if (!target) return;
-    const delta = target.getBoundingClientRect().top - shell.getBoundingClientRect().top - 16;
-    shell.scrollTo({ top: shell.scrollTop + delta, behavior: "smooth" });
-  }, []);
-
-  /**
-   * V1's `ContentView.ApplyAnswer`, minus the write it cannot make.
+   * The merge is the local half of what `QuestionAnswers.TryApply` does: only the addressed question's
+   * `answer` key changes, every other byte of the document is left alone. The write is V1's next line,
+   * `planService.UpdateLatestRevision(...)` — `bridge.updateLatestRevision`, which overwrites the
+   * newest revision **in place**. Not `writeRevision`: that appends, which would claim the agent
+   * produced a new plan and would inflate `revisionCount`, the term
+   * `execute_guards.unfoldedAnswerCount` reads as `revisionCount === 1`.
    *
-   * The merge is the local half of what `QuestionAnswers.TryApply` does server-side: only the
-   * addressed question's `answer` key changes, every other byte of the document is left alone. What
-   * V1 does next — `planService.UpdateLatestRevision(...)` — has no route here, so the answer is held
-   * and said to be held. See `ANSWER_WRITE_UNAVAILABLE`.
+   * A refused write is rolled back rather than left on screen. V1 can leave the question of what a
+   * failure looks like alone because its write is synchronous and in-process; here the daemon can say
+   * no, and an answer that stayed on the page after that would be counted by the Update Plan badge and
+   * by the execute guard as though it were on disk.
    */
   const applyAnswer = useCallback(
-    (questionId: string, answer: string[]) => {
-      // Merged off the current value rather than inside a state updater: an updater must stay pure, and
-      // this one would otherwise raise the banner twice under StrictMode's double invocation.
-      const merged = patchQuestionsMarkdown(revisionContent, { [questionId]: answer });
+    async (questionId: string, answer: string[]) => {
+      // Merged off the ref rather than inside a state updater: an updater must stay pure, and this one
+      // would otherwise fire the write twice under StrictMode's double invocation.
+      const previous = revisionRef.current;
+      const merged = patchQuestionsMarkdown(previous, { [questionId]: answer });
       // `TryApply` "reports a miss instead of throwing … a stale answer is worth ignoring".
-      if (merged === revisionContent) return;
+      if (merged === previous) return;
+
+      revisionRef.current = merged;
       setRevisionContent(merged);
-      setUnsavedAnswers((prev) => new Set(prev).add(questionId));
-      setActionError(ANSWER_WRITE_UNAVAILABLE);
+      setSavingAnswers((prev) => new Set(prev).add(questionId));
+      setActionError(null);
+
+      try {
+        await bridge.updateLatestRevision(plan.id, merged);
+      } catch (err) {
+        // Compare-and-swap: a later answer merged on top of this one owns the document now, and its
+        // own write is what will settle the file, so reverting here would discard it.
+        if (revisionRef.current === merged) {
+          revisionRef.current = previous;
+          setRevisionContent(previous);
+        }
+        setActionError(`Failed to save answer: ${describeBridgeError(err)}`);
+      } finally {
+        setSavingAnswers((prev) => {
+          const next = new Set(prev);
+          next.delete(questionId);
+          return next;
+        });
+      }
     },
-    [revisionContent],
+    [plan.id],
   );
 
   /**
@@ -749,6 +501,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     setActiveNoteDialog(null);
     setGuards([]);
     setGuardIndex(0);
+    setPendingSplit(null);
+    setChainedWaitJobIds([]);
+    setSavingAnswers(new Set());
     setIsCheckingPreflight(false);
     setActionError(null);
     setPendingAction(null);
@@ -1094,7 +849,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const canExec = PlanActionsController.canExecute(effectivePlan, allPlans);
   const canPr = PlanActionsController.canCreatePr(effectivePlan);
   const canRetryPlan = PlanActionsController.canRetry(effectivePlan);
-  const canDiscardPlan = PlanActionsController.canDiscard(effectivePlan);
+  const canDeletePlan = PlanActionsController.canDelete(effectivePlan);
   const canResetPlan = PlanActionsController.canReset(effectivePlan);
   const canPartial = PlanActionsController.canCompletePartial(effectivePlan);
 
@@ -1163,7 +918,15 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 
       let collected: ExecuteGuard[] = [];
       try {
-        collected = collectExecuteGuards({ plan: effectivePlan, repoStatus, annotationCount });
+        // The revision the page is holding, not the one the prop was fetched with: an answer picked a
+        // moment ago is already written back into the same revision, and V1 reads its own
+        // `revisionContent` here for the same reason. Without it, answering and then executing would
+        // skip the "unincorporated answers" warning until something happened to refetch the plan.
+        const livePlan: PlanDetail =
+          revisionContent === (effectivePlan.latestRevisionContent ?? "")
+            ? effectivePlan
+            : { ...effectivePlan, latestRevisionContent: revisionContent };
+        collected = collectExecuteGuards({ plan: livePlan, repoStatus, annotationCount });
       } catch {
         // A guard that cannot be collected must not swallow the click.
         collected = [];
@@ -1174,6 +937,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         return;
       }
 
+      // V1's `PendingAnnotationsDialog` is handed the two counts separately, because the two are not
+      // discarded alike: annotations live only in the UI, answers are already in the revision file and
+      // survive an execute-without-updating. `collectExecuteGuards` reports only their sum, so the
+      // split is carried alongside it.
+      setPendingSplit({
+        annotations: annotationCount ?? 0,
+        answers: unfoldedAnswerCount({
+          ...effectivePlan,
+          latestRevisionContent: revisionContent,
+        }),
+      });
       setGuards(collected);
       setGuardIndex(0);
     } finally {
@@ -1189,7 +963,29 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * page stops offering Execute the instant it was pressed. The guess is rolled back if the dispatch
    * is refused, because a refused job leaves the plan exactly where it was.
    */
-  const dispatchExecute = async () => {
+  const dispatchExecute = async (waitJobIds?: string[]) => {
+    const chained = (waitJobIds ?? []).length > 0;
+
+    if (chained) {
+      // `LaunchExecute`'s own comment: "When chained behind an UpdatePlan job the plan is already
+      // Updating; JobLauncher sets Executing once the blocked ExecutePlan launches." So the optimistic
+      // move is skipped here — guessing `Creating` would undo the `Updating` the update just set.
+      //
+      // Dispatched here rather than through `onExecute`, which takes only a plan id and so cannot carry
+      // `waitForJobs`. `SuggestChangesDialog` bypasses its controller for the same reason and says so.
+      // The parked ExecutePlan is exactly V1's `new ExecutePlanArgs(...) { WaitForJobs = waitJobIds }`.
+      await runAction("Execute Plan", async () => {
+        handleJobStarted(
+          await bridge.startJob({
+            type: "ExecutePlan",
+            folderPath: plan.id,
+            waitForJobs: waitJobIds,
+          }),
+        );
+      });
+      return;
+    }
+
     setOptimisticState("Creating");
     if (!(await runAction("Execute Plan", onExecute))) {
       setOptimisticState(null);
@@ -1199,6 +995,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const clearGuards = () => {
     setGuards([]);
     setGuardIndex(0);
+    setPendingSplit(null);
+    setChainedWaitJobIds([]);
   };
 
   const handleGuardProceed = async () => {
@@ -1206,11 +1004,79 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       setGuardIndex(guardIndex + 1);
       return;
     }
+    const waitJobIds = chainedWaitJobIds;
     clearGuards();
-    await dispatchExecute();
+    await dispatchExecute(waitJobIds);
   };
 
-  const handleGuardUpdatePlan = () => {
+  /**
+   * V1's `SubmitAnnotationsUpdate`: start the UpdatePlan job that folds the pending work into the plan,
+   * and retire the annotations it just quoted.
+   *
+   * Returns the job id, because "update *and* execute" needs something to wait on. A refusal returns
+   * `null` and keeps the annotations: they were never sent, so throwing them away would lose them for
+   * nothing.
+   */
+  const submitAnnotationsUpdate = async (): Promise<string | null> => {
+    const unresolved = annotations.filter((a) => !a.isResolved);
+    const prompt = buildUpdatePrompt(unresolved, answeredQuestionCount);
+
+    setOptimisticState("Updating");
+    let jobId: string | null = null;
+    const started = await runAction("Update Plan", async () => {
+      const response = await PlanActionsController.updatePlan(effectivePlan, prompt);
+      jobId = response.jobId;
+      handleJobStarted(response);
+    });
+    if (!started) {
+      setOptimisticState(null);
+      return null;
+    }
+
+    // The annotations are in the prompt now, so they go — V1 clears them here too. Not awaited into the
+    // failure path: the job has already started, and an annotation that outlived its dispatch is a
+    // smaller problem than reporting failure for a job that ran.
+    setAnnotations([]);
+    for (const annotation of unresolved) {
+      void bridge.deleteAnnotation(plan.id, annotation.id).catch(() => undefined);
+    }
+    return jobId;
+  };
+
+  /** The guard's *Update Plan* button: fold the pending work in, and stop there. */
+  const handleGuardUpdatePlan = async () => {
+    clearGuards();
+    await submitAnnotationsUpdate();
+  };
+
+  /**
+   * The guard's primary, *Update Plan & Execute* — V1's `onUpdateAndExecute`, which is
+   * `ContinueExecute([SubmitAnnotationsUpdate(...)], ...)`: one UpdatePlan job, then an ExecutePlan
+   * parked behind it.
+   *
+   * The unanswered-questions guard is skipped on this path, and V1 says why: "Updating retires the
+   * questions it folds in, so there is nothing left to warn about on this path — the warning would be
+   * about a state the job is on its way to fixing." A dirty repo is still asked about, because the
+   * update does nothing about that.
+   */
+  const handleGuardUpdateAndExecute = async () => {
+    const remainingDirty = guards.slice(guardIndex + 1).find((g) => g.kind === "DirtyRepo");
+    clearGuards();
+
+    const jobId = await submitAnnotationsUpdate();
+    if (!jobId) return;
+
+    if (remainingDirty) {
+      setChainedWaitJobIds([jobId]);
+      setGuards([remainingDirty]);
+      setGuardIndex(0);
+      return;
+    }
+    await dispatchExecute([jobId]);
+  };
+
+  /** Opens the free-text update dialog, which is what the questions guard offers instead. */
+  const handleGuardUpdateDialog = () => {
     clearGuards();
     setActiveDialog("update");
   };
@@ -1455,14 +1321,31 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       });
   }
 
+  // `ReviewActions.Build`: `.Menu("ResetToDraft", "Reset to Draft", Icons.RotateCcw, ..., "r")`,
+  // followed by the danger item. V1's Review puts Discard in that second slot; the app offers Delete
+  // there instead — see `handleWorkspaceAction`.
   if (!isPlanInFlight && canResetPlan.allowed)
-    workspaceMenu.push({ tag: "ResetToDraft", label: "Reset to Draft…", icon: "RotateCcw" });
-  if (!isPlanInFlight && canDiscardPlan.allowed)
     workspaceMenu.push({
-      tag: "DiscardPlan",
-      label: "Discard Plan…",
-      icon: "Ban",
+      tag: "ResetToDraft",
+      label: "Reset to Draft…",
+      icon: "RotateCcw",
+      shortcut: "r",
+    });
+  // The draft block above already carries Delete for every state it covers. Review and Completed are
+  // the two it does not, and both need it: a plan that will never ship is removed from here, and
+  // Discard — which only ever moved it to Skipped — is gone.
+  if (
+    !isPlanInFlight &&
+    canDeletePlan.allowed &&
+    !workspaceMenu.some((item) => item.tag === "delete")
+  )
+    workspaceMenu.push({
+      tag: "delete",
+      label: draftLabel("delete"),
+      icon: "Trash",
+      shortcut: "Backspace",
       danger: true,
+      disabled: pendingAction !== null,
     });
 
   const handleWorkspaceAction = async (tag: string) => {
@@ -1487,8 +1370,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       case "ResetToDraft":
         setActiveDialog("reset");
         return;
-      case "DiscardPlan":
-        setActiveDialog("discard");
+      case "delete":
+        // Reached only for Review and Completed plans: for every other state `delete` is in
+        // `draftSet`, so `handleDraftAction` above has already claimed the tag.
+        setActiveDialog("delete");
         return;
       case "DiscussWithAgent":
         // The workspace has already put the caret in the composer (`focusChat`); this drafts V1's
@@ -1510,11 +1395,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * The plan document pane.
    *
    * Not wrapped in a scroll container of its own: `PlanTabView.Build` notes "PlanMarkdown owns its own
-   * scroll, so the Plan tab is not wrapped in Cap()", and the contents panel is pinned by the widget's
-   * own `StickyContent` slot, which only works inside that scroll.
+   * scroll, so the Plan tab is not wrapped in Cap()".
    */
   const planPane = (
-    <div key="plan-pane" ref={planPaneRef} className="flex min-h-0 flex-1 flex-col">
+    <div key="plan-pane" className="flex min-h-0 flex-1 flex-col">
       {/* `PlanTabView.Build`: a failed plan leads with why, above the plan itself. */}
       {effectivePlan.state === "Failed" && (
         <div className="px-8 pt-6">
@@ -1549,10 +1433,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           const value = Array.isArray(payload.answer)
             ? (payload.answer as unknown[]).map((entry) => String(entry))
             : [];
-          applyAnswer(payload.questionId, value);
-        }}
-        slots={{
-          StickyContent: [<PlanContentsPanel key="toc" entries={toc} onSelect={scrollToHeading} />],
+          void applyAnswer(payload.questionId, value);
         }}
       />
     </div>
@@ -1784,14 +1665,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             >
               {effectivePlan.state}
             </span>,
-            ...parseProjects(plan.project).map((project) => (
-              <span
-                key={project}
-                className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-              >
-                {project}
-              </span>
-            )),
+            <ProjectBadges key="projects" project={plan.project} />,
             ...(plan.level
               ? [
                   <span
@@ -1862,7 +1736,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                   <PlanQuestionsPanel
                     key="questions"
                     questions={questions}
-                    unsavedIds={unsavedAnswers}
+                    savingIds={savingAnswers}
                     onSelect={(questionId) => {
                       setActiveSubTab("plan");
                       setScrollTo({ questionId, token: (scrollTo?.token ?? 0) + 1 });
@@ -1870,13 +1744,11 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                   />,
                 ]
               : undefined,
+          /* `isShareMode ? null : new PlanChatView(selectedPlan)` — the plan's own conversation,
+             hosted by the same view the Chat app is. V2 has no share mode, so there is no null arm
+             yet. */
           Chat: [
-            <PlanChatPanel
-              key="chat"
-              plan={plan}
-              draft={chatDraft}
-              onError={(message) => setActionError(message)}
-            />,
+            <PlanChatPanel key="chat" plan={plan} draft={chatDraft} onCreatePlan={onCreatePlan} />,
           ],
           Content: [effectiveTab === "plan" ? planPane : otherTabsPane],
         }}
@@ -1895,15 +1767,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       <PendingAnnotationsDialog
         isOpen={activeGuard?.kind === "PendingAnnotations"}
         onClose={clearGuards}
-        annotationCount={activeGuard?.annotationCount ?? 0}
-        onUpdatePlan={handleGuardUpdatePlan}
+        annotationCount={pendingSplit?.annotations ?? activeGuard?.annotationCount ?? 0}
+        answeredQuestionCount={pendingSplit?.answers}
+        onUpdatePlan={() => void handleGuardUpdatePlan()}
+        onUpdateAndExecute={() => void handleGuardUpdateAndExecute()}
         onProceed={() => void handleGuardProceed()}
       />
       <UnansweredQuestionsDialog
         isOpen={activeGuard?.kind === "UnansweredQuestions"}
         onClose={clearGuards}
         questions={activeGuard?.questions ?? []}
-        onUpdatePlan={handleGuardUpdatePlan}
+        onUpdatePlan={handleGuardUpdateDialog}
         onProceed={() => void handleGuardProceed()}
       />
       <DirtyRepoDialog
@@ -1934,12 +1808,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         plan={plan}
         onDeleted={(planId) => onPlanDeleted?.(planId)}
         onArchived={(planId) => onPlanChanged?.(planId)}
-      />
-      <DiscardPlanDialog
-        isOpen={activeDialog === "discard"}
-        onClose={() => setActiveDialog(null)}
-        plan={plan}
-        onDiscarded={(planId) => onPlanChanged?.(planId)}
+        onSkipped={(planId) => onPlanChanged?.(planId)}
       />
       <ResetToDraftDialog
         isOpen={activeDialog === "reset"}

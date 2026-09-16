@@ -7,10 +7,18 @@ import {
   type Theme,
 } from "@ivy-interactive/components/theme";
 import { Badge, Button, Callout } from "@ivy-interactive/components/ui";
-import { Moon, PanelLeftClose, PanelLeftOpen, Sun, SunMoon } from "lucide-react";
+import {
+  MessageCircle,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Sun,
+  SunMoon,
+  Terminal,
+} from "lucide-react";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
-import type { AppearanceSettings } from "../../state/appearance";
+import type { AppearanceSettings, ChatMode } from "../../state/appearance";
 import { NativeSelectField, SaveError, SectionCard, SubSection } from "./fields";
 
 /**
@@ -20,8 +28,6 @@ import { NativeSelectField, SaveError, SectionCard, SubSection } from "./fields"
  * preview swatches, the main sidebar default, and the chat mode. Every one of them applies and
  * persists **on the click** - V1 has no Save here, because a look-and-feel setting is judged by
  * looking at it - and each raises its own toast with V1's wording.
- *
- * The chat block is the one thing not ported: see the note at the foot of the pane.
  */
 
 /** V1's button row, with its icons (`Icons.Sun`, `Icons.Moon`, `Icons.SunMoon`) and its labels. */
@@ -61,6 +67,7 @@ export const AppearanceSection: React.FC<{
   const [themeMode, setThemeMode] = React.useState<Theme>(settings.themeMode);
   const [theme, setTheme] = React.useState<string>(settings.theme);
   const [sidebarOpen, setSidebarOpen] = React.useState<boolean>(settings.sidebarOpen);
+  const [chatMode, setChatMode] = React.useState<ChatMode>(settings.chatMode);
   const [error, setError] = React.useState<string | null>(null);
 
   // A config reload (this pane's own write, or an edit to config.yaml) re-seeds the controls.
@@ -68,7 +75,8 @@ export const AppearanceSection: React.FC<{
     setThemeMode(settings.themeMode);
     setTheme(settings.theme);
     setSidebarOpen(settings.sidebarOpen);
-  }, [settings.themeMode, settings.theme, settings.sidebarOpen]);
+    setChatMode(settings.chatMode);
+  }, [settings.themeMode, settings.theme, settings.sidebarOpen, settings.chatMode]);
 
   const write = async (key: string, value: unknown, toast: string, revert: () => void) => {
     setError(null);
@@ -112,6 +120,16 @@ export const AppearanceSection: React.FC<{
       `Sidebar set to ${open ? "expanded" : "collapsed"} by default`,
       () => setSidebarOpen(previous),
     );
+  };
+
+  /**
+   * `SetChatMode`, which is persist plus a toast and nothing else: V1 does not navigate or close tabs
+   * here, so an open pane is left alone and the mode is read the next time Chat is opened.
+   */
+  const chooseChatMode = (mode: ChatMode, label: string) => {
+    const previous = chatMode;
+    setChatMode(mode);
+    void write("chatMode", mode, `Chat opens as ${label}`, () => setChatMode(previous));
   };
 
   const active = getThemePreset(theme);
@@ -196,6 +214,35 @@ export const AppearanceSection: React.FC<{
           </div>
         </SubSection>
 
+        <SubSection
+          title="Chat"
+          hint="Choose how the Chat button talks to your coding agent: the chat view, or the agent's own terminal."
+          testId="chat-mode-block"
+        >
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant={chatMode === "chat" ? "default" : "outline"}
+              aria-pressed={chatMode === "chat"}
+              onClick={() => chooseChatMode("chat", "chat")}
+              data-testid="chat-mode-chat"
+            >
+              <MessageCircle className="size-4" aria-hidden="true" />
+              Chat
+            </Button>
+            <Button
+              type="button"
+              variant={chatMode === "terminal" ? "default" : "outline"}
+              aria-pressed={chatMode === "terminal"}
+              onClick={() => chooseChatMode("terminal", "terminal")}
+              data-testid="chat-mode-terminal"
+            >
+              <Terminal className="size-4" aria-hidden="true" />
+              Terminal
+            </Button>
+          </div>
+        </SubSection>
+
         <SaveError message={error} />
 
         {/* Stated rather than offered, for the reason `SecurityTunnelingSection` states its own gaps:
@@ -203,13 +250,8 @@ export const AppearanceSection: React.FC<{
         <Callout.Info data-testid="appearance-not-wired">
           <div className="space-y-1 text-xs">
             <p>
-              V1&apos;s Chat setting (whether the Chat button opens the chat view or the
-              agent&apos;s own terminal) has no counterpart here: this build has no terminal chat
-              session, so both choices would open the same view.
-            </p>
-            <p>
-              Themes published by a Team Vault are not listed either - the vault theme subsystem is
-              not part of this build, so only the shipped presets are offered.
+              Themes published by a Team Vault are not listed: the vault theme subsystem is not part
+              of this build, so only the shipped presets are offered.
             </p>
           </div>
         </Callout.Info>

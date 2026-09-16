@@ -20,7 +20,6 @@ export { UpdatePlanDialog } from "./UpdatePlanDialog";
 export { CreateIssueDialog } from "./CreateIssueDialog";
 export { NoProjectsDialog } from "./NoProjectsDialog";
 
-export { DiscardPlanDialog } from "./DiscardPlanDialog";
 export { ResetToDraftDialog } from "./ResetToDraftDialog";
 export { PartialDeliveryDialog } from "./PartialDeliveryDialog";
 export { SuggestChangesDialog } from "./SuggestChangesDialog";

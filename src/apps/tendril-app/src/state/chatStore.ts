@@ -11,6 +11,7 @@ import type {
   InProgressQuestionAnswers,
 } from "../types/chat";
 import {
+  AGENT_PREFERENCES_STORAGE_KEY,
   loadStoredAgentPreferences,
   loadStoredSelectedAgent,
   saveStoredAgentPreferences,
@@ -202,7 +203,63 @@ function saveStoredDraftOwners(data: Record<string, string>): void {
   }
 }
 
+/**
+ * The plan a store instance is scoped to, so the chat beside a plan follows that plan's own
+ * conversation and nothing else.
+ *
+ * This is V1's arrangement, not an invention: `PlanChatView` keeps its **own** `activeSessionId`
+ * state over the one shared `IChatHistoryService`, and hands `Chat.ContentView` a `sessionDtos` list
+ * of zero or one session — whatever `PlanChatSessions.FindForPlan` resolves. A second `ChatStore`
+ * carrying a scope is that second `activeSessionId`.
+ */
+export interface ChatStorePlanScope {
+  // The store keeps the object it is handed and reads it live rather than copying the fields out, so
+  // a caller may refine it in place. The review page needs that: it renders the panel from a queue
+  // row and only learns the plan's folder when the detail record lands, and the folder is what a new
+  // session records as its owner.
+
+  /** The plan's id as its folder records it — `00021`. */
+  planId: string;
+  /** `00021-BuildDesktopOperator`, which is the whole of `PlanChatSessions.BelongsTo`. */
+  folderName?: string;
+  /** `#21 Build Desktop Operator`: the title `PlanChatSessions.CreateForPlan` gives a new session. */
+  sessionTitle: string;
+}
+
+/**
+ * `PlanChatSessions.BelongsTo`: "A session belongs to exactly one plan, recorded on the session
+ * itself." Matched case-insensitively, as V1's `StringComparison.OrdinalIgnoreCase` does.
+ *
+ * The id-prefix arm is V2's own. V1 can compare `plan.FolderName` directly because a `PlanFile`
+ * always has one; a `PlanDetail` fetched without `folderPath` does not, and it still knows its
+ * number, so `<id>-<slug>` is accepted as the second key rather than losing the conversation.
+ */
+export function sessionBelongsToPlan(session: ChatSession, scope: ChatStorePlanScope): boolean {
+  const recorded = session.planFolderName?.toLowerCase();
+  if (!recorded) return false;
+  const folder = scope.folderName?.toLowerCase();
+  if (folder && recorded === folder) return true;
+  return recorded.startsWith(`${scope.planId.toLowerCase()}-`);
+}
+
+/**
+ * Every live store in this window, so a write made through one is seen by the others.
+ *
+ * At most two exist: the app-wide store the Chat page owns, and a plan-scoped one behind the chat
+ * beside a plan. See {@link ChatStore.adoptStorageChange} for why the sharing is needed at all.
+ */
+const liveChatStores = new Set<ChatStore>();
+
 export class ChatStore {
+  /**
+   * The plan this instance follows, or null for the app-wide store the Chat page owns.
+   *
+   * Two things follow from it and nothing else does: the session list is narrowed to the plan's own
+   * conversation (so "select the first one" resolves to `FindForPlan`'s answer, or to nothing), and a
+   * session created here records the plan, which is the only way the panel finds it again.
+   */
+  private readonly planScope: ChatStorePlanScope | null;
+
   private state: ChatState = {
     sessions: [],
     activeSessionId: null,
@@ -223,6 +280,15 @@ export class ChatStore {
   private eventUnsubscribe: EventUnsubscribe | null = null;
   /** In-flight (or settled) `init()`, so concurrent callers share one subscription. */
   private initPromise: Promise<void> | null = null;
+  /**
+   * Bumped by {@link destroy}, so an `init()` still in flight knows its work is unwanted.
+   *
+   * `onChatEvent` is awaited, so a store torn down in that window would otherwise have its listener
+   * registered *after* the `destroy()` that was supposed to remove it — and the plan panel is torn
+   * down in exactly that window, because React's strict mode mounts it, unmounts it and mounts it
+   * again before a single await has settled.
+   */
+  private generation = 0;
   private storageListenerAttached = false;
   private draftOwners: Record<string, string> = loadStoredDraftOwners();
   private pinnedSessions: Record<string, string> = loadStoredPinnedSessions();
@@ -245,31 +311,62 @@ export class ChatStore {
    */
   private optimisticMessageIds: Set<string> = new Set();
 
-  constructor() {
+  constructor(planScope?: ChatStorePlanScope) {
+    this.planScope = planScope ?? null;
+    liveChatStores.add(this);
     if (typeof window !== "undefined") {
       this.attachStorageListener();
     }
     this.applyAgentPreference(this.state.selectedAgentId);
   }
 
+  /** Whether this instance follows one plan's conversation rather than the whole history. */
+  public get isPlanScoped(): boolean {
+    return this.planScope !== null;
+  }
+
   private handleStorageEvent = (event: StorageEvent): void => {
-    if (event.key === IN_PROGRESS_ANSWERS_STORAGE_KEY) {
+    this.adoptStorageChange(event.key, event.newValue);
+  };
+
+  /**
+   * Takes on a write to one of this store's persisted maps, whoever made it.
+   *
+   * Two callers: the `storage` event, which is another *window*; and {@link broadcastStorageChange},
+   * which is the other store in **this** window. V1 needs neither, because its `IChatHistoryService`
+   * and `IChatAgentPreferences` are single shared services that both the Chat app and the embedded
+   * `PlanChatView` read straight through. Here each store holds its own in-memory copy of the same
+   * localStorage, so a pin, an in-progress answer or a per-agent model chosen in the plan panel has
+   * to be handed to the store the Chat page reads — otherwise it silently shows the value from before.
+   */
+  private adoptStorageChange(key: string | null, newValue: string | null): void {
+    if (key === IN_PROGRESS_ANSWERS_STORAGE_KEY) {
       try {
-        const next = event.newValue ? JSON.parse(event.newValue) : {};
+        const next = newValue ? JSON.parse(newValue) : {};
         this.state.inProgressAnswers = next;
         this.notify();
       } catch {
         // Ignore malformed external writes
       }
-    } else if (event.key === DRAFT_OWNERS_STORAGE_KEY) {
+    } else if (key === DRAFT_OWNERS_STORAGE_KEY) {
       try {
-        this.draftOwners = event.newValue ? JSON.parse(event.newValue) : {};
+        this.draftOwners = newValue ? JSON.parse(newValue) : {};
       } catch {
         // Ignore malformed external writes
       }
-    } else if (event.key === PINNED_SESSIONS_STORAGE_KEY) {
+    } else if (key === AGENT_PREFERENCES_STORAGE_KEY) {
       try {
-        this.pinnedSessions = event.newValue ? JSON.parse(event.newValue) : {};
+        this.agentPreferences = newValue ? JSON.parse(newValue) : {};
+        // The picker reads the selected agent's model and effort off `state`, so adopting the map is
+        // only half of it: the selection has to be re-resolved against it.
+        this.applyAgentPreference(this.state.selectedAgentId);
+        this.notify();
+      } catch {
+        // Ignore malformed external writes
+      }
+    } else if (key === PINNED_SESSIONS_STORAGE_KEY) {
+      try {
+        this.pinnedSessions = newValue ? JSON.parse(newValue) : {};
         this.state.sessions = this.sortSessions(this.enrichSessionsWithPins(this.state.sessions));
         if (this.state.activeSession) {
           const isPinned = Boolean(this.pinnedSessions[this.state.activeSession.id]);
@@ -283,7 +380,15 @@ export class ChatStore {
         // Ignore malformed external writes
       }
     }
-  };
+  }
+
+  /** Hands a write this store just made to every other live store in this window. */
+  private broadcastStorageChange(key: string, value: unknown): void {
+    const serialized = JSON.stringify(value);
+    for (const other of liveChatStores) {
+      if (other !== this) other.adoptStorageChange(key, serialized);
+    }
+  }
 
   private attachStorageListener(): void {
     if (!this.storageListenerAttached && typeof window !== "undefined") {
@@ -335,20 +440,30 @@ export class ChatStore {
   }
 
   private async runInit(): Promise<void> {
+    const generation = this.generation;
     this.state.inProgressAnswers = loadStoredInProgressAnswers();
     this.draftOwners = loadStoredDraftOwners();
     this.pinnedSessions = loadStoredPinnedSessions();
     this.attachStorageListener();
+    liveChatStores.add(this);
     await this.loadAgents();
     if (!this.eventUnsubscribe) {
       try {
-        this.eventUnsubscribe = await onChatEvent((event) => {
+        const unsubscribe = await onChatEvent((event) => {
           this.handleChatEvent(event);
         });
+        if (generation !== this.generation) {
+          // Destroyed while the subscription was being set up, so it belongs to nobody: drop it
+          // here rather than leave a listener the `destroy()` already went past.
+          unsubscribe();
+          return;
+        }
+        this.eventUnsubscribe = unsubscribe;
       } catch {
         // May fail in mock/testing environments without Tauri runtime
       }
     }
+    if (generation !== this.generation) return;
     await this.fetchSessions();
   }
 
@@ -540,6 +655,7 @@ export class ChatStore {
       [agentId]: { ...this.agentPreferences[agentId], modelId },
     };
     saveStoredAgentPreferences(this.agentPreferences);
+    this.broadcastStorageChange(AGENT_PREFERENCES_STORAGE_KEY, this.agentPreferences);
     if (agentId === this.state.selectedAgentId) {
       this.state.selectedModelId = modelId;
     }
@@ -553,6 +669,7 @@ export class ChatStore {
       [agentId]: { ...this.agentPreferences[agentId], effort },
     };
     saveStoredAgentPreferences(this.agentPreferences);
+    this.broadcastStorageChange(AGENT_PREFERENCES_STORAGE_KEY, this.agentPreferences);
     if (agentId === this.state.selectedAgentId) {
       this.state.selectedEffort = effort;
     }
@@ -578,12 +695,27 @@ export class ChatStore {
     };
   }
 
+  /**
+   * Releases everything this instance holds outside itself: the `storage` listener, the `chat-event`
+   * subscription, and its place in the live set.
+   *
+   * The plan panel's store is destroyed when the panel unmounts, which is what keeps a visit to a
+   * plan page from leaving another `chat-event` listener behind. The `init()` memo goes with it, so a
+   * remount subscribes again rather than believing it already had.
+   */
   public destroy(): void {
+    this.generation += 1;
     this.detachStorageListener();
     if (this.eventUnsubscribe) {
       this.eventUnsubscribe();
       this.eventUnsubscribe = null;
     }
+    // The `init()` memo goes with the subscription it was standing for, so a remount subscribes
+    // again instead of believing it already had. Safe now that `generation` stops the previous
+    // `runInit` from also finishing: exactly one listener survives, however the two interleave.
+    this.initPromise = null;
+    this.listeners.clear();
+    liveChatStores.delete(this);
   }
 
   public resetForTesting(): void {
@@ -669,6 +801,7 @@ export class ChatStore {
       this.pinnedSessions[sessionId] = new Date().toISOString();
     }
     saveStoredPinnedSessions(this.pinnedSessions);
+    this.broadcastStorageChange(PINNED_SESSIONS_STORAGE_KEY, this.pinnedSessions);
 
     if (this.state.activeSession && this.state.activeSession.id === sessionId) {
       this.state.activeSession.isPinned = !isCurrentlyPinned;
@@ -742,6 +875,38 @@ export class ChatStore {
             role: "assistant",
             content: event.delta,
             timestamp: new Date().toISOString(),
+          });
+        }
+        this.notify();
+        break;
+      }
+
+      case "chat.stream_event": {
+        // Same reasoning as the delta above: a stream event proves the session is working.
+        this.setSessionGenerating(event.sessionId, true);
+        if (!this.state.activeSession || this.state.activeSession.id !== event.sessionId) {
+          this.notify();
+          return;
+        }
+        const messages = this.state.activeSession.messages;
+        const targetIndex = messages.findIndex((m) => m.id === event.messageId);
+        // The stream is newline-delimited JSON, which is exactly what `TurnActivity` hands to
+        // `parseEventWireStream`, so appending one line per event makes the tool cards appear as the
+        // turn runs. A duplicate line would only re-render the same tool card, since events are keyed
+        // by `tool_use_id`.
+        if (targetIndex >= 0) {
+          const targetMsg = messages[targetIndex];
+          const rawStream = targetMsg.rawStream
+            ? `${targetMsg.rawStream}\n${event.line}`
+            : event.line;
+          messages[targetIndex] = { ...targetMsg, rawStream };
+        } else {
+          messages.push({
+            id: event.messageId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date().toISOString(),
+            rawStream: event.line,
           });
         }
         this.notify();
@@ -881,6 +1046,8 @@ export class ChatStore {
     this.draftOwners = owners;
     saveStoredInProgressAnswers(drafts);
     saveStoredDraftOwners(owners);
+    this.broadcastStorageChange(DRAFT_OWNERS_STORAGE_KEY, owners);
+    this.broadcastStorageChange(IN_PROGRESS_ANSWERS_STORAGE_KEY, drafts);
   }
 
   private backfillDraftOwners(sessions: ChatSession[]): void {
@@ -938,7 +1105,16 @@ export class ChatStore {
 
     try {
       const sessions = await chatApi.listSessions();
-      const enriched = this.enrichSessionsWithPins(sessions);
+      // A plan-scoped store sees only the plan's own conversation, which is `PlanChatView`'s
+      // `sessionDtos`: `[ToSessionDto(session)]` when `FindForPlan` found one and an empty list when
+      // it did not. Narrowing here rather than at every reader is what keeps the rest of the store
+      // honest — "select the first session" then resolves to the plan's, or to nothing at all, and a
+      // delete cannot fall back onto an unrelated chat.
+      const scope = this.planScope;
+      const scoped = scope
+        ? sessions.filter((session) => sessionBelongsToPlan(session, scope))
+        : sessions;
+      const enriched = this.enrichSessionsWithPins(scoped);
       const sorted = this.sortSessions(enriched);
       this.state.sessions = sorted;
       this.state.isLoading = false;
@@ -968,6 +1144,17 @@ export class ChatStore {
       this.notify();
       return [];
     }
+  }
+
+  /**
+   * Reads one session without making it the active one.
+   *
+   * A terminal pane needs its conversation's title for its header but is not the chat view and must
+   * not take over `activeSession` — `selectSession` would move the chat view's selection and prune the
+   * session it left.
+   */
+  public async fetchSession(id: string): Promise<ChatSession> {
+    return await chatApi.getSession(id);
   }
 
   public async selectSession(id: string): Promise<void> {
@@ -1040,16 +1227,27 @@ export class ChatStore {
       const localMessages = this.state.activeSession?.messages ?? [];
       const mergedMessages = session.messages.map((serverMsg) => {
         const localMsg = localMessages.find((m) => m.id === serverMsg.id);
+        // The daemon persists a turn's stream on a timer, so mid-turn its copy lags the events this
+        // client already received. Keeping the longer one applies to the stream for the same reason it
+        // applies to the content: otherwise a refresh mid-turn drops tool cards that are on screen.
+        const rawStream =
+          preserveLocalLonger &&
+          (localMsg?.rawStream?.length ?? 0) > (serverMsg.rawStream?.length ?? 0)
+            ? localMsg?.rawStream
+            : serverMsg.rawStream;
         if (preserveLocalLonger && localMsg && localMsg.content.length > serverMsg.content.length) {
           return {
             ...localMsg,
             content: mergeConfirmedQuestionsBlock(localMsg.content, serverMsg.content),
+            rawStream,
           };
         }
         // Attachments live only on this client, so a re-read must not drop the chips.
-        return serverMsg.attachments || !localMsg?.attachments
-          ? serverMsg
-          : { ...serverMsg, attachments: localMsg.attachments };
+        return {
+          ...serverMsg,
+          rawStream,
+          attachments: serverMsg.attachments ?? localMsg?.attachments,
+        };
       });
       this.state.activeSession = { ...session, messages: mergedMessages };
       this.state.queuedItems = queue;
@@ -1085,8 +1283,13 @@ export class ChatStore {
       // A session records its agent/model/effort, so the very first turn runs with the current
       // selection rather than the backend's defaults.
       const newSession = await chatApi.createSession({
-        title,
+        // `PlanChatSessions.CreateForPlan`: `title: $"#{plan.Id} {plan.Title}"`, so the plan's chat
+        // is recognisable in the Chat app's own list rather than sitting there as another "New Chat".
+        title: title ?? this.planScope?.sessionTitle,
         ...(args ?? this.turnOptions()),
+        // `planFolderName: plan.FolderName` — the durable record of which plan owns the conversation,
+        // and the only thing that lets the panel find it again on the next visit.
+        ...(this.planScope?.folderName ? { planFolderName: this.planScope.folderName } : {}),
       });
       newSession.isPinned = false;
       newSession.pinnedAt = undefined;

@@ -17,7 +17,7 @@ use std::time::Duration;
 use futures_util::future::BoxFuture;
 use tendril_core::tunnel::service::{ProbeOutcome, TunnelProbe};
 use tendril_core::tunnel::session::{SessionOptions, TunnelSession};
-use tendril_core::tunnel::{share_state, ShareTunnelService, TunnelStatus, TunnelTimings};
+use tendril_core::tunnel::{share_state, TunnelKind, TunnelService, TunnelStatus, TunnelTimings};
 
 struct Fixture {
     home: PathBuf,
@@ -316,7 +316,8 @@ async fn the_service_starts_publishes_and_stops_cleanly() {
         binary.display()
     ));
 
-    let service = Arc::new(ShareTunnelService::with_parts(
+    let service = Arc::new(TunnelService::with_parts(
+        TunnelKind::Share,
         fx.home.clone(),
         fast_timings(),
         Arc::new(AlwaysRoutable),
@@ -390,7 +391,8 @@ async fn starting_twice_is_idempotent() {
         binary.display()
     ));
 
-    let service = Arc::new(ShareTunnelService::with_parts(
+    let service = Arc::new(TunnelService::with_parts(
+        TunnelKind::Share,
         fx.home.clone(),
         fast_timings(),
         Arc::new(AlwaysRoutable),
@@ -428,7 +430,8 @@ async fn a_tunnel_that_never_routes_gives_up_without_leaking() {
         binary.display()
     ));
 
-    let service = Arc::new(ShareTunnelService::with_parts(
+    let service = Arc::new(TunnelService::with_parts(
+        TunnelKind::Share,
         fx.home.clone(),
         fast_timings(),
         Arc::new(NeverRoutable),
@@ -474,7 +477,8 @@ async fn a_registered_tunnel_is_trusted_when_the_local_probe_keeps_failing() {
         binary.display()
     ));
 
-    let service = Arc::new(ShareTunnelService::with_parts(
+    let service = Arc::new(TunnelService::with_parts(
+        TunnelKind::Share,
         fx.home.clone(),
         fast_timings(),
         Arc::new(NeverRoutable),
@@ -530,7 +534,8 @@ async fn a_previous_daemons_orphan_is_reaped_before_a_new_share_starts() {
     assert!(is_running(orphan_pid));
 
     // `looks_like_cloudflared` matches on the command name, and the fake is named for it.
-    let service = Arc::new(ShareTunnelService::with_parts(
+    let service = Arc::new(TunnelService::with_parts(
+        TunnelKind::Share,
         fx.home.clone(),
         fast_timings(),
         Arc::new(AlwaysRoutable),
@@ -558,8 +563,12 @@ async fn a_missing_cloudflared_refuses_the_start_with_an_actionable_error() {
     fx.write_master(5010);
     fx.write_config("shareTunnel:\n  binaryPath: /definitely/not/here/cloudflared\n");
 
-    let service =
-        ShareTunnelService::with_parts(fx.home.clone(), fast_timings(), Arc::new(AlwaysRoutable));
+    let service = TunnelService::with_parts(
+        TunnelKind::Share,
+        fx.home.clone(),
+        fast_timings(),
+        Arc::new(AlwaysRoutable),
+    );
     let err = service.start().await.expect_err("no binary, no share");
     assert!(err.to_string().contains("shareTunnel.binaryPath"), "{err}");
     assert_eq!(
@@ -587,7 +596,7 @@ fn an_enabled_flag_in_config_does_not_start_a_share_by_itself() {
     let config = tendril_core::tunnel::TunnelConfig::from_settings(&settings);
     assert!(config.enabled, "the flag is read");
 
-    let service = ShareTunnelService::new(fx.home.clone());
+    let service = TunnelService::new(TunnelKind::Share, fx.home.clone());
     assert_eq!(
         service.snapshot().status,
         TunnelStatus::Disabled,

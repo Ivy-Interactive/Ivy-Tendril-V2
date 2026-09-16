@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { EllipsisVertical, Loader2, Pause, RotateCw, Trash, Zap } from "lucide-react";
+import { Bug, EllipsisVertical, Loader2, Pause, RotateCw, Trash, Zap } from "lucide-react";
 import {
   Badge,
   Button,
@@ -8,8 +8,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  hasActiveColumnFilters,
-  matchesColumnFilters,
+  HeaderLayout,
+  resolveRemoteSort,
   Sheet,
   SheetContent,
   SheetHeader,
@@ -17,15 +17,19 @@ import {
   StackedProgress,
   useRemoteDataTable,
   type DataTableColumn,
-  type DataTableColumnFilters,
   type DataTableFilterOption,
   type DataTableRowAction,
+  type RemoteSortColumn,
+  type RemoteTableFetcher,
+  type RemoteTableFilter,
   type StackedProgressColor,
   type StackedProgressSegment,
+  dataTableLinkClass,
+  useResponsiveDensity,
+  whereColumn,
   Densities,
 } from "@ivy-interactive/components/ui";
-import { bridge } from "../api/bridge";
-import { createJobsListFetcher } from "../api/tableQuery";
+import { fetchTableColumnValues, queryJobsPage } from "../api/tableQuery";
 import { describeBridgeError, type Job, type JobDetail, type JobStatus } from "../types/api";
 import { isActiveStatus, jobsStore } from "../state/jobsStore";
 import { ConfirmDialog } from "./dialogs";
@@ -40,8 +44,8 @@ import { parseProjects } from "./PlansView";
  * component the structural-parity pass exists to reach ("Tables are tables").
  *
  * What V1 has and V2 cannot yet reach is called out at each site rather than faked: the row menu's
- * Rerun (V1's `RerunJobDialog` needs `JobItem.TypedArgs`, which the Tauri DTO drops), the Debug
- * entry (`JobDebugSheet`), the full-prompt sheet and the Cost & Tokens sheet.
+ * Rerun (V1's `RerunJobDialog` needs `JobItem.TypedArgs`, which the Tauri DTO drops), the full-prompt
+ * sheet and the Cost & Tokens sheet.
  */
 
 /**
@@ -50,6 +54,14 @@ import { parseProjects } from "./PlansView";
  */
 const JobOutput = React.lazy(() =>
   import("./JobSessionView").then((m) => ({ default: m.JobSessionView })),
+);
+
+/**
+ * V1's Job Debug sheet. Lazy for the same reason as the output sheet: it is opened from one row action
+ * and has no business in the table's own chunk.
+ */
+const JobDebug = React.lazy(() =>
+  import("./JobDebugSheet").then((m) => ({ default: m.JobDebugSheet })),
 );
 
 /** Ceiling on the Prompt cell, from `JobsApp.Helpers.cs` `PromptDisplayMaxLength`. */
@@ -90,25 +102,81 @@ const NO_TIME = "-";
 export const RERUN_UNAVAILABLE_REASON = "Cannot rerun: original args were not preserved.";
 
 /**
- * `Constants.JobStatusColors`: Running Blue, Completed Green, Failed and Timeout Red, Queued and
- * Pending Amber, Blocked Orange, Stopped Gray - mapped onto the semantic tokens the design system
- * actually has, exactly as `JobSessionView` maps the same table. Amber and Orange collapse onto
- * `warning`; `--primary` (Ivy green) is never borrowed for a status, since it would read as
- * "succeeded" on a job that has not run.
+ * `Constants.JobStatusColors` (`src/Ivy.Tendril/Constants.cs:54-64`), value for value.
+ *
+ * V1 renders the Status cell through a `LabelsDisplayRenderer` whose `BadgeColorMapping` is this
+ * dictionary (`JobsApp.DataTable.cs:61-67`), so a status's colour *is* its name here. The design system
+ * publishes one token per Ivy colour (`styles/tokens.css`) and `Badge`'s `color` prop tints from it, so
+ * these are V1's colours rather than an approximation of them — including the two that no semantic
+ * token could tell apart: Queued/Pending **Amber** and Blocked **Orange**.
  */
-const JOB_STATUS_BADGE_VARIANT: Record<
-  JobStatus,
-  "info" | "success" | "destructive" | "warning" | "secondary"
-> = {
-  Running: "info",
-  Completed: "success",
-  Failed: "destructive",
-  Timeout: "destructive",
-  Queued: "warning",
-  Pending: "warning",
-  Blocked: "warning",
-  Stopped: "secondary",
+export const JOB_STATUS_COLOR: Record<JobStatus, string> = {
+  Running: "Blue",
+  Completed: "Green",
+  Failed: "Red",
+  Timeout: "Red",
+  Queued: "Amber",
+  Pending: "Amber",
+  Stopped: "Gray",
+  Blocked: "Orange",
 };
+
+/**
+ * `Constants.JobTypeColors` (`Constants.cs:66-79`), the Type column's `BadgeColorMapping`
+ * (`JobsApp.DataTable.cs:68-74`). Eleven job types, eleven hues.
+ *
+ * A type not listed here renders on `Slate`, which is what V1's renderer does with a value its mapping
+ * has no entry for — a new job type gets a neutral chip rather than borrowing another type's colour.
+ */
+export const JOB_TYPE_COLOR: Record<string, string> = {
+  CreatePlan: "Purple",
+  ExecutePlan: "Blue",
+  UpdatePlan: "Cyan",
+  ExpandPlan: "Teal",
+  SplitPlan: "Indigo",
+  CreatePr: "Green",
+  CreateIssue: "Rose",
+  RetryPlan: "Orange",
+  SetupProject: "Slate",
+  SyncRepo: "Amber",
+  AddProject: "Purple",
+};
+
+/** V1's fallback hue for a value outside a `BadgeColorMapping`. */
+const UNMAPPED_COLOR = "Slate";
+
+/**
+ * The Project column's palette.
+ *
+ * V1 colours each project from configuration (`ProjectHelper.BuildColorMapping(config)`, passed as the
+ * Project column's `BadgeColorMapping` at `JobsApp.DataTable.cs:75-78`), so two projects are always
+ * distinguishable at a glance. V2's `ProjectSummary` does not carry the configured colour — the daemon
+ * has one (`bridge.createProject` sets it) and the DTO drops it — so the colour is derived from the
+ * project's name instead: stable, distinct, and the same colour in every view that uses this. Reported
+ * rather than worked around: the moment the DTO carries `color`, this becomes a lookup.
+ */
+const PROJECT_COLORS = [
+  "Blue",
+  "Purple",
+  "Teal",
+  "Amber",
+  "Rose",
+  "Cyan",
+  "Indigo",
+  "Green",
+  "Orange",
+  "Violet",
+];
+
+export function projectColor(project: string): string {
+  let hash = 0;
+  for (let index = 0; index < project.length; index += 1) {
+    // The classic 31-multiplier string hash. Deterministic and stable across runs, which is the only
+    // property that matters: a project whose colour changed between renders would be worse than grey.
+    hash = (hash * 31 + project.charCodeAt(index)) | 0;
+  }
+  return PROJECT_COLORS[Math.abs(hash) % PROJECT_COLORS.length];
+}
 
 /** The same mapping for the header's `StackedProgress` segments (`JobsApp.Data.cs` `GetStatusColor`). */
 const JOB_STATUS_SEGMENT_COLOR: Record<JobStatus, StackedProgressColor> = {
@@ -168,30 +236,53 @@ export function formatJobCost(job: Pick<Job, "cost" | "costSource">): string | n
 }
 
 /**
- * `JobsApp.Helpers.cs` `ExtractJobNumber`, which is what `BuildJobRows` orders by
- * (`OrderByDescending(r => ExtractJobNumber(r.Id))`). Numeric, not lexicographic: `00009` sorts
- * below `00010`, and a suffixed id like `00458-ExecutePlan` still sorts as 458.
+ * The table's initial order, and V1's declared one: `.SortDirection(t => t.Id, SortDirection.Descending)`
+ * (`JobsApp.DataTable.cs:85`) — newest job first.
  *
- * The whole-string parse mirrors `int.TryParse`, which accepts surrounding whitespace and a leading
- * sign and nothing else - notably not `"12abc"`, which must fall through to the dash split.
+ * Executed by SQLite now rather than in the client. V1 reached the same order through
+ * `OrderByDescending(ExtractJobNumber(r.Id))`, a *numeric* extraction, and `ORDER BY Id DESC` is a
+ * *lexicographic* one; they agree for every id the daemon issues, because `allocate_job_id`
+ * (`jobs/manager.rs:414`) formats them as `{:05}` and equal-width numeric strings sort the same either
+ * way. They would diverge past job 99999, where a six-digit id sorts below a five-digit one — a real but
+ * distant divergence, and one no client-side sort could fix now that the client holds a window rather
+ * than the table.
  */
-export function extractJobNumber(jobId: string): number {
-  if (!jobId) return 0;
-  const whole = parseWholeInt(jobId);
-  if (whole !== null) return whole;
-  for (const part of jobId.split("-")) {
-    const parsed = parseWholeInt(part);
-    if (parsed !== null) return parsed;
-  }
-  return 0;
-}
+const JOBS_INITIAL_SORT = { column: "id", direction: "Descending" } as const;
 
-function parseWholeInt(text: string): number | null {
-  const trimmed = text.trim();
-  if (!/^[+-]?\d+$/.test(trimmed)) return null;
-  const parsed = Number.parseInt(trimmed, 10);
-  return Number.isSafeInteger(parsed) ? parsed : null;
-}
+/**
+ * Each column of the table, and the `Jobs` column SQLite must order by when its header is clicked.
+ *
+ * `JobRow`'s field names are a *rendering*, not a schema, so four of them have to say what they mean to
+ * the database. Two are renames the filter already declares (`planId` → `PlanFile`, `prompt` →
+ * `ReportedPlanTitle`) and are repeated here only because `resolveRemoteSort` reads a list of names
+ * rather than the rendered columns — the fetcher is built before them. Two are genuinely derived:
+ *
+ * - **Timer** counts up from `StartedAt` for a running job and shows the recorded duration for a
+ *   finished one, so `DurationSeconds` is the closest total order the table has. Running rows have no
+ *   duration yet, so they group at the `NULL` end rather than interleaving by elapsed time.
+ * - **Agent Output** counts up from `LastOutputAt` for a running job, so the column has no total order
+ *   of its own: `Status` is what groups the three forms the cell takes (an elapsed silence, `Done`,
+ *   `-`). Ordering by `LastOutputAt` instead would be a real order over running rows and meaningless
+ *   over every other row, which is the larger part of any job list. V1 cannot express it either — it
+ *   sorts the rendered string.
+ *
+ * Everything else resolves by name: the daemon matches a column case- and underscore-insensitively, so
+ * `statusMessage` reaches `StatusMessage`.
+ */
+const SORT_COLUMNS: RemoteSortColumn[] = [
+  { name: "id" },
+  { name: "status" },
+  { name: "planId", sortColumn: "planFile" },
+  { name: "prompt", sortColumn: "reportedPlanTitle" },
+  { name: "type" },
+  { name: "project" },
+  { name: "timer", sortColumn: "durationSeconds" },
+  { name: "agentOutput", sortColumn: "status" },
+  { name: "cost" },
+  { name: "tokens" },
+  { name: "timestamp", sortColumn: "completedAt" },
+  { name: "statusMessage" },
+];
 
 /** `JobsApp.Helpers.cs` `CleanPromptText`: newlines become spaces and runs of space collapse. */
 function cleanPromptText(text: string): string {
@@ -242,12 +333,39 @@ export function jobStatusMessage(job: Pick<Job, "status" | "statusMessage">): st
  * The Agent Output cell's three states, from `JobsApp.Helpers.cs` `FormatAgentOutput`:
  * `AnimatedStatusValue.Running(...)` while running, `Done` on completion and `Idle("-")` otherwise.
  *
- * V1's running label is the time since the agent last wrote a line, and falls back to `"Starting..."`
- * when there is no such timestamp yet. `lastOutputAt` exists on the daemon's `JobItem`
- * (`models/job.rs:345`) but not on `JobDto`, so every running row takes V1's own fallback until the
- * DTO carries it.
+ * The state picks the animation and the colour; {@link agentOutputLabel} picks the text. V1 packs both
+ * into one string because `AnimatedStatusValue` is a rendered value on a wire; here they are separate
+ * because the cell is a component and the column still has to sort by something a database can express.
  */
 export type AgentOutputState = "running" | "done" | "idle";
+
+/**
+ * V1's label when a running job has produced no output yet — `FormatAgentOutput`'s own fallback for a
+ * null `LastOutputAt`, which is the state a job is in between its launch and its first line.
+ */
+export const AGENT_OUTPUT_STARTING = "Starting...";
+
+/**
+ * The Agent Output cell's text, `JobsApp.Helpers.cs` `FormatAgentOutput`.
+ *
+ * This column is a **staleness gauge, not a status message**: a running job shows how long it has been
+ * since the agent last wrote a line, so a cell reading `4m 12s` is the signal that something has gone
+ * quiet. The job's own status message has its own column (see {@link jobStatusMessage}), exactly as it
+ * does in V1 — the two answer different questions and V1 streams both.
+ *
+ * `lastOutputAt` is stamped by the daemon at most once every five seconds, so the figure can read up to
+ * five seconds short of the true silence. That is the whole reason the column is affordable: the
+ * alternative is one SQLite write per output line.
+ */
+export function agentOutputLabel(job: Pick<Job, "status" | "lastOutputAt">, now: number): string {
+  if (job.status === "Running") {
+    const lastOutput = job.lastOutputAt ? Date.parse(job.lastOutputAt) : NaN;
+    if (Number.isNaN(lastOutput)) return AGENT_OUTPUT_STARTING;
+    return formatTimeSpan((now - lastOutput) / 1000);
+  }
+  if (job.status === "Completed") return "Done";
+  return NO_TIME;
+}
 
 /**
  * One table row, mirroring `JobItemRow` (`Models/JobModels.cs:360`) field for field and in its
@@ -269,6 +387,12 @@ export interface JobRow {
   /** Seconds, or `null` for V1's `"-"`. */
   timerSeconds: number | null;
   agentOutput: AgentOutputState;
+  /**
+   * The Agent Output cell's text: the elapsed silence for a running job, `"Done"`, or `"-"`. Kept
+   * beside the state rather than derived in the cell so it is built from the same `now` the Timer is
+   * and the two never disagree by a second. See {@link agentOutputLabel}.
+   */
+  agentOutputLabel: string;
   /** Formatted (with V1's `~` where estimated), or `null` where no figure was reported at all. */
   cost: string | null;
   /** The raw figure, so the column sorts by money rather than by the string `"$"` starts with. */
@@ -341,8 +465,12 @@ export interface BuildJobRowsOptions {
 }
 
 /**
- * `JobsApp.Data.cs` `BuildJobRows`, including its ordering:
- * `.OrderByDescending(r => ExtractJobNumber(r.Id))`, newest job number first.
+ * `JobsApp.Data.cs` `BuildJobRows`, minus its ordering.
+ *
+ * V1 sorts here (`.OrderByDescending(r => ExtractJobNumber(r.Id))`) because it holds every row. This
+ * table holds one window, so the order is the daemon's `ORDER BY` — see {@link JOBS_INITIAL_SORT} — and
+ * re-sorting the rows in hand would silently override whichever sort the reader clicked, shuffling one
+ * window's fifty rows inside an order the other windows were chosen by.
  *
  * V1's Prompt cell (`GetPromptDisplay`) walks the plan's title, then `ReportedPlanTitle`, then the
  * job's typed args. V2's DTO carries `planTitle` and nothing else of that chain, so the fallback
@@ -352,32 +480,31 @@ export function buildJobRows(jobs: readonly Job[], options: BuildJobRowsOptions 
   const now = options.now ?? Date.now();
   const details = options.details ?? {};
 
-  return jobs
-    .map((job) => {
-      const completed = job.completedAt ? Date.parse(job.completedAt) : NaN;
-      return {
-        id: job.id,
-        status: job.status,
-        // V1 derives this from `PlanFile` and falls back to `ReportedPlanId`; the daemon has already
-        // resolved both into `planId` by the time it reaches here.
-        planId: job.planId ?? "",
-        prompt: truncatePrompt(job.planTitle ?? job.planId),
-        type: job.type,
-        // `ProjectHelper.ParseProjects` then `string.Join(", ", ...)`: a job can name several.
-        project: parseProjects(job.project).join(", "),
-        timerSeconds: timerSeconds(job, now),
-        agentOutput: agentOutputState(job.status),
-        cost: formatJobCost(job),
-        costValue: job.cost ?? null,
-        tokens: job.tokens ?? null,
-        tokenBreakdown: tokenBreakdown(job),
-        completedAtMs: Number.isNaN(completed) ? null : completed,
-        statusMessage: jobStatusMessage(job),
-        detached: Boolean(job.detached ?? details[job.id]?.detached),
-        processId: job.processId ?? details[job.id]?.processId,
-      };
-    })
-    .sort((a, b) => extractJobNumber(b.id) - extractJobNumber(a.id));
+  return jobs.map((job) => {
+    const completed = job.completedAt ? Date.parse(job.completedAt) : NaN;
+    return {
+      id: job.id,
+      status: job.status,
+      // V1 derives this from `PlanFile` and falls back to `ReportedPlanId`; the daemon has already
+      // resolved both into `planId` by the time it reaches here.
+      planId: job.planId ?? "",
+      prompt: truncatePrompt(job.planTitle ?? job.planId),
+      type: job.type,
+      // `ProjectHelper.ParseProjects` then `string.Join(", ", ...)`: a job can name several.
+      project: parseProjects(job.project).join(", "),
+      timerSeconds: timerSeconds(job, now),
+      agentOutput: agentOutputState(job.status),
+      agentOutputLabel: agentOutputLabel(job, now),
+      cost: formatJobCost(job),
+      costValue: job.cost ?? null,
+      tokens: job.tokens ?? null,
+      tokenBreakdown: tokenBreakdown(job),
+      completedAtMs: Number.isNaN(completed) ? null : completed,
+      statusMessage: jobStatusMessage(job),
+      detached: Boolean(job.detached ?? details[job.id]?.detached),
+      processId: job.processId ?? details[job.id]?.processId,
+    };
+  });
 }
 
 /** What the row menu is allowed to offer, given what the bridge can actually perform. */
@@ -398,8 +525,9 @@ export interface JobRowActionCapabilities {
  *   which is exactly what V1 would do with the same data - and the three failure states get the
  *   entry **disabled**, carrying {@link RERUN_UNAVAILABLE_REASON}.
  * - **Force Start** is Blocked-only (`:195`): its whole point is skipping the dependency gate.
- * - **Debug** (`:201`, gated on V1 passing a `showDebug`) is absent: it opens `JobDebugSheet`, which
- *   has no V2 counterpart. V1's own gate makes its absence a supported state rather than a hole.
+ * - **Debug** (`:201`) is unconditional. V1 gates it on being passed a `showDebug`, and `JobsApp.cs:113`
+ *   always passes one, so the gate has no false case in practice and there is none here. It opens
+ *   {@link JobDebugSheet}, which is V1's own sheet over the fields the DTO carries.
  * - **Delete** is unconditional in V1 (`:207`), including on terminal rows; here it additionally
  *   needs the bridge to be able to perform it.
  */
@@ -437,6 +565,15 @@ export function buildJobRowActions(
     });
   }
 
+  // Between Force Start and Delete, which is V1's order, and needing no capability: the sheet reads
+  // the detail the store already fetches for every opened job.
+  items.push({
+    tag: "debug-job",
+    label: "Debug",
+    icon: <Bug aria-hidden="true" />,
+    tooltip: "Show debug details for this job",
+  });
+
   if (capabilities.canDelete) {
     items.push({
       tag: "delete-job",
@@ -447,6 +584,10 @@ export function buildJobRowActions(
     });
   }
 
+  // V1's `RowActions` can never return an empty array either — its Delete is unconditional — and
+  // neither can this now that Debug is. Kept as a guard rather than deleted because
+  // `DataTable.hasActionsColumn` drops the whole column for an empty result, and that is the behaviour
+  // a caller with a genuinely empty menu should get.
   if (items.length === 0) return [];
 
   // V1's `RowActions` produce a `MenuItem[]`, which Ivy renders as one per-row overflow menu. The
@@ -479,6 +620,119 @@ export function buildStatusSegments(jobs: readonly Job[]): StackedProgressSegmen
     }));
 }
 
+/** One entry in the header menu's clear list. */
+export interface JobClearScope {
+  /** The `status` value `POST /api/jobs/clear` is sent. */
+  scope: string;
+  /** The menu label, and the dialog's title. */
+  label: string;
+  /** What the sentence in the dialog calls these rows, e.g. "12 **failed** jobs". */
+  noun: string;
+  /** The statuses removed, so the count and the sentence are read from one place. */
+  statuses: JobStatus[];
+}
+
+/**
+ * The bulk clears the header menu offers.
+ *
+ * V1's menu holds two (`JobsApp.DataTable.cs:279-289`: Clear Completed, Clear Failed) — but its service
+ * is already a *generic predicate clear* (`JobService.cs:676`, `ClearJobsByStatus`) and simply never
+ * wires up the rest. So this is not a new mechanism: it is the remaining uses of V1's own primitive,
+ * which is what the user asked for ("clear successful, clear timedout, clear cancelled, clear failed").
+ *
+ * Their wording maps onto V2's `JobStatus` names, and the **labels use V2's names** so a menu entry and
+ * the Status badge it will remove read the same: "successful" is `Completed`, "cancelled" is `Stopped`
+ * (V2 has no `Cancelled` — a stopped job is one that was cancelled, and its default status message says
+ * so), and "timedout" is `Timeout`.
+ *
+ * `Running`, `Queued`, `Pending` and `Blocked` are absent and cannot be reached from here — nor from
+ * anywhere else, because the daemon refuses them (`CLEARABLE_STATUSES` in `jobs/manager.rs`). A clear
+ * only ever removes finished work.
+ *
+ * `all` is last because it is the widest, and it is `clear_all_jobs`' semantics: every terminal status,
+ * which V1's service exposes as `ClearAllJobs` without ever putting it in a menu.
+ */
+export const JOB_CLEAR_SCOPES: readonly JobClearScope[] = [
+  { scope: "Completed", label: "Clear Completed", noun: "completed", statuses: ["Completed"] },
+  { scope: "Failed", label: "Clear Failed", noun: "failed", statuses: ["Failed"] },
+  { scope: "Timeout", label: "Clear Timeout", noun: "timed-out", statuses: ["Timeout"] },
+  { scope: "Stopped", label: "Clear Stopped", noun: "stopped", statuses: ["Stopped"] },
+  {
+    scope: "all",
+    label: "Clear All Finished",
+    noun: "finished",
+    statuses: ["Completed", "Failed", "Timeout", "Stopped"],
+  },
+];
+
+/** What the clear confirm says and offers, for one scope and one count. */
+export interface JobClearPrompt {
+  /** The question, naming both what goes and how many. */
+  body: string;
+  /** The destructive button's label. */
+  confirmLabel: string;
+  /** True while there is nothing to confirm — no count yet, or nothing to remove. */
+  confirmDisabled: boolean;
+}
+
+/**
+ * The clear confirm's copy.
+ *
+ * A function rather than JSX in the dialog because the *sentence* is the safety mechanism: "Delete 412
+ * completed jobs?" and "Delete completed jobs?" are different decisions, and V1 asks neither — it fires
+ * `ClearCompletedJobs()` straight off the menu item. Three states, and each has to be right:
+ *
+ * - **not counted yet** (`null`): says so, and arms nothing. Offering a confirm a moment before the
+ *   figure lands is how someone removes four hundred rows they thought were four.
+ * - **nothing to remove**: says that instead of asking, and stays disarmed. A clear that would delete
+ *   nothing is not a question worth answering.
+ * - **n rows**: the number, the noun, and what goes with them.
+ */
+export function describeClearPrompt(scope: JobClearScope, count: number | null): JobClearPrompt {
+  if (count === null) {
+    return {
+      body: `Counting ${scope.noun} jobs…`,
+      confirmLabel: "Clear",
+      confirmDisabled: true,
+    };
+  }
+  if (count === 0) {
+    return {
+      body: `There are no ${scope.noun} jobs to clear.`,
+      confirmLabel: "Clear",
+      confirmDisabled: true,
+    };
+  }
+  return {
+    body:
+      `Delete ${count} ${scope.noun} job${count === 1 ? "" : "s"}? ` +
+      "Their logs and output are removed with them, and this cannot be undone.",
+    confirmLabel: `Clear ${count}`,
+    confirmDisabled: false,
+  };
+}
+
+/**
+ * How many rows a clear would remove, counted **over the whole table** rather than over the loaded
+ * window.
+ *
+ * The window is fifty rows of a job history that can run to tens of thousands, so counting the rows in
+ * hand would understate a clear by any margin at all — and "Clear 12 failed jobs" is only worth putting
+ * in front of someone if the 12 is true. `POST /api/jobs/query` already answers the *filtered* total for
+ * any filter, which is exactly this question; `limit: 1` and one column keep the reply to a row nobody
+ * reads.
+ */
+export async function countJobsByStatus(statuses: readonly JobStatus[]): Promise<number> {
+  const page = await queryJobsPage({
+    offset: 0,
+    limit: 1,
+    sort: [],
+    filter: whereColumn("status", "inSet", [...statuses]),
+    selectColumns: ["Id"],
+  });
+  return page.totalRows;
+}
+
 export interface JobsViewProps {
   jobs: Job[];
   /** Fetched details, for the `detached` flag the list projection omits. */
@@ -505,19 +759,37 @@ export const JobsView: React.FC<JobsViewProps> = ({
    * in it; navigating away to a page was the structural divergence this replaces.
    */
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  /** V1's `showDebug(id)`: the Job Debug sheet, over the table. See {@link JobDebugSheet}. */
+  const [debugJobId, setDebugJobId] = useState<string | null>(null);
   /**
-   * The header filter row's state, `c.AllowFiltering = true`.
+   * The toolbar's filter, `c.AllowFiltering = true`: the expression as typed, and the wire filter it
+   * parsed to.
    *
-   * One object keyed by column name, which is the shape `columnFiltersToRemoteFilter` turns into the
-   * daemon's `Filter` tree and `matchesColumnFilters` evaluates in the client. Both readings exist and
-   * they agree by construction; which one runs depends only on whether the transport can filter, and
-   * today it cannot — see {@link createJobsListFetcher}.
+   * Both, because they answer different questions. The text is what the editor shows and what "is a
+   * filter applied" is read from; the tree is what goes to the daemon, which is where the filtering
+   * happens — over the whole table rather than over the fifty rows on screen.
    */
-  const [columnFilters, setColumnFilters] = useState<DataTableColumnFilters>({});
+  /** V1's responsive density: Large by default, Medium on a desktop viewport. */
+  const density = useResponsiveDensity(Densities.Large, Densities.Medium);
+  const [filterExpression, setFilterExpression] = useState("");
+  const [filter, setFilter] = useState<RemoteTableFilter | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteJobId, setDeleteJobId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  /**
+   * The clear the operator picked from the header menu, and how many rows it would take.
+   *
+   * `null` count means "not counted yet". The confirm button stays disabled until it is a number,
+   * because the whole point of the dialog is the figure in it: "Clear 12 failed jobs" and "Clear failed
+   * jobs" are different decisions, and offering the second while the first is a moment away is how
+   * someone clears four hundred rows they thought were four.
+   */
+  const [pendingClear, setPendingClear] = useState<JobClearScope | null>(null);
+  const [clearCount, setClearCount] = useState<number | null>(null);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   /**
    * The one thing V1's per-cell update stream buys that a re-render does not.
@@ -529,9 +801,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
    * `job.failed` and on a 5s poll, and React's own diff is the "only what changed" mechanism.
    * Porting a cell-update channel on top of that would be a second source of truth for six cells.
    *
-   * What does not arrive on any event is the *passage of time*: Timer counts up and Agent Output
-   * animates while nothing about the job changes. So this is V1's one-second interval, narrowed to
-   * its cause - it runs only while some row is Running, and stops when none is.
+   * What does not arrive on any event is the *passage of time*: Timer counts up from `startedAt` and
+   * Agent Output counts up from `lastOutputAt` while nothing about the job changes. So this is V1's
+   * one-second interval, narrowed to its cause - it runs only while some row is Running, and stops when
+   * none is.
+   *
+   * It re-renders and nothing more. Both cells are read off a timestamp the daemon already served, so a
+   * tick costs one `buildJobRows` over the loaded window and never a refetch - which matters, because
+   * refetching would drop the accumulated windows and return the reader to the top once a second. See
+   * the structural signature below for the only thing that is allowed to refetch.
    */
   const hasRunningJob = jobs.some((job) => job.status === "Running");
   const [tick, setTick] = useState(0);
@@ -550,14 +828,21 @@ export const JobsView: React.FC<JobsViewProps> = ({
    * newest fifty and every poll replaces them, so a scrolled-open window would collapse every five
    * seconds. It is still the *live* source; see the overlay below.
    *
-   * `createJobsListFetcher` rather than `queryJobsPage`, and the difference is reachability rather than
-   * preference: that route is finished but needs a `cmd_query_table` the shell does not have yet.
-   * Swapping them is this one line, and it is what moves the sort and the filter to SQLite.
+   * `POST /api/jobs/query`, so the sort, the filter and the window all execute in SQLite and the reply
+   * carries the *filtered* total. That is what makes the row count irrelevant to the client: one window
+   * per view, whether the table holds fifty jobs or fifty million. The sort columns are translated to
+   * the daemon's schema on the way out — see {@link JOB_SORT_COLUMNS} and `resolveRemoteSort`.
    */
-  const fetchJobsPage = useMemo(() => createJobsListFetcher(bridge.listJobs), []);
+  const fetchJobsPage = useMemo<RemoteTableFetcher<Job>>(
+    () => (request) =>
+      queryJobsPage({ ...request, sort: resolveRemoteSort(SORT_COLUMNS, request.sort) }),
+    [],
+  );
   const table = useRemoteDataTable<Job>({
     fetchPage: fetchJobsPage,
     pageSize: JOBS_PAGE_SIZE,
+    initialSort: JOBS_INITIAL_SORT,
+    filter,
     infinite: true,
     getRowKey: (job) => job.id,
   });
@@ -570,6 +855,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
    * The `jobs` prop is exactly that stream: `jobsStore` re-reads the newest fifty on every job event
    * and on a 5s poll, which is the set that can have changed. Overlaying it by id is what keeps a
    * Running row's cost and status live without refetching the window under the reader's scroll.
+   *
+   * A whole replacement rather than a field merge, deliberately: a live job is a complete record, and
+   * merging would let a value the fetched page happened to carry outlive the daemon's own answer. The
+   * consequence is that every cell reading a moving field needs that field on `Job` — `lastOutputAt` is
+   * one, and a bridge DTO that dropped it would leave Agent Output reading the fetched page's frozen
+   * stamp, which counts up forever and so reports a chatty agent as a silent one.
    */
   const liveJobs = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs]);
   const windowJobs = useMemo(
@@ -613,25 +904,23 @@ export const JobsView: React.FC<JobsViewProps> = ({
   );
 
   /**
-   * Facet options from the rows in hand.
+   * The values each closed-set column can hold, from `POST /api/tables/jobs/values`.
    *
-   * Right for as long as the filter is evaluated in the client, and only for that long: the two agree
-   * about which values exist because they read the same rows. The moment the filter goes to the daemon,
-   * these must come from `POST /api/tables/jobs/values` instead — a facet built from loaded rows offers
-   * a user the values on screen, and the value they want is usually not one of them.
+   * These used to be derived from the rows in hand, which was right only for as long as the filter was
+   * evaluated in the client: the two agreed about which values existed because they read the same rows.
+   * With the filter running in SQLite over the whole table, a list built from the loaded window offers a
+   * user the values on screen — and the value they want is usually not one of them. `SELECT DISTINCT` is
+   * the only source that can answer for a table the client has not read.
+   *
+   * They feed the filter editor's vocabulary rather than a control per column, so an operator can see
+   * what `[Status] in (…)` accepts without knowing the job schema.
    */
-  const statusOptions = useMemo<DataTableFilterOption[]>(
-    () => distinctOptions(rows.map((row) => row.status)),
-    [rows],
-  );
-  const typeOptions = useMemo<DataTableFilterOption[]>(
-    () => distinctOptions(rows.map((row) => row.type)),
-    [rows],
-  );
-  const projectOptions = useMemo<DataTableFilterOption[]>(
-    () => distinctOptions(rows.flatMap((row) => parseProjects(row.project))),
-    [rows],
-  );
+  const statusOptions = useColumnValues("status");
+  const typeOptions = useColumnValues("type");
+  // Split, because the column stores a *joined* list: `SELECT DISTINCT Project` answers "web, api" as
+  // one value, and the facet has to offer "web" and "api" — which is also why the Project filter's
+  // condition is `contains` rather than `equals`.
+  const projectOptions = useColumnValues("project", parseProjects);
 
   const capabilities: JobRowActionCapabilities = {
     canDelete: jobsStore.canDeleteJob(),
@@ -648,6 +937,36 @@ export const JobsView: React.FC<JobsViewProps> = ({
       setActionError(`${label} failed: ${describeBridgeError(err)}`);
     }
   };
+
+  const clearPrompt = pendingClear
+    ? describeClearPrompt(pendingClear, clearCount)
+    : // Not rendered while `pendingClear` is null; the placeholder keeps the dialog's props unconditional.
+      { body: "", confirmLabel: "Clear", confirmDisabled: true };
+
+  /** Opens a clear's confirm and asks the daemon how many rows it covers. */
+  const openClearDialog = (scope: JobClearScope) => {
+    setClearError(null);
+    setClearCount(null);
+    setPendingClear(scope);
+  };
+
+  useEffect(() => {
+    if (!pendingClear) return;
+    let cancelled = false;
+    void countJobsByStatus(pendingClear.statuses)
+      .then((count) => {
+        if (!cancelled) setClearCount(count);
+      })
+      .catch((err: unknown) => {
+        // The dialog stays open with the reason on it rather than closing: an operator who asked to
+        // clear failed jobs should be told the daemon could not be reached, not silently returned to
+        // the table.
+        if (!cancelled) setClearError(`Could not count jobs: ${describeBridgeError(err)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingClear]);
 
   /**
    * V1's Plan Id cell action (`JobsApp.DataTable.cs:95-141`) picks between three targets: a plan
@@ -676,6 +995,18 @@ export const JobsView: React.FC<JobsViewProps> = ({
   };
 
   /**
+   * V1's `showDebug(id)`. The detail is not supplementary here as it is for the output sheet — it *is*
+   * the sheet: `args`, `workingDirectory`, `reportedFailureReason` and `permissionDenials` are all
+   * detail-only fields, and a debug panel built from the list row would show none of them.
+   */
+  const openJobDebug = (jobId: string) => {
+    setDebugJobId(jobId);
+    jobsStore.fetchJobDetail(jobId).catch(() => {
+      // Reported by the sheet's own empty state rather than swallowed silently.
+    });
+  };
+
+  /**
    * V1's columns, in V1's order, at V1's widths, with the headers Ivy derives from the property
    * names via `SplitPascalCase` (so `PlanId` reads "Plan Id" and `StatusMessage` "Status Message").
    * `Id` is present and hidden, as `.Hidden(t => t.Id)` leaves it: reachable from the column options
@@ -689,13 +1020,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "status",
         header: "Status",
         width: "100px",
-        // A closed set, so a checklist rather than V1's `[Status] = "Running"`. `inSet`, which is the
-        // one condition the framework's editor cannot type but its proto has had all along.
+        // A closed set, so the editor can offer its values: `[Status] in ("Running", "Queued")` is the
+        // `inSet` condition the framework's editor cannot type but its proto has had all along.
         filter: { kind: "select", options: statusOptions, placeholder: "All" },
         accessor: (row) => row.status,
         cell: (_value, row) => (
           <div className="flex items-center gap-1">
-            <Badge variant={JOB_STATUS_BADGE_VARIANT[row.status] ?? "secondary"} density="Small">
+            {/* V1's `LabelsDisplayRenderer` over `Constants.JobStatusColors` — the colour *is* the way
+                this column is read at a glance, so it is V1's colour and not an approximation. */}
+            <Badge color={JOB_STATUS_COLOR[row.status] ?? UNMAPPED_COLOR} density="Small">
               {row.status}
             </Badge>
             {/* Not a V1 column: V1 has no notion of a detached job. `JobSessionView` shows the same
@@ -703,7 +1036,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 Stop action is offered. */}
             {row.detached && (
               <Badge
-                variant="warning"
+                color="Orange"
                 density="Small"
                 data-testid={`job-detached-${row.id}`}
                 title={`Detached (PID ${row.processId ?? "unknown"}) — monitoring an active process started before the last daemon restart`}
@@ -721,13 +1054,16 @@ export const JobsView: React.FC<JobsViewProps> = ({
         // `contains`, not `equals`: a plan id is typed a digit at a time, and the daemon's column is
         // `PlanFile`, whose value only *starts* with the id.
         filter: { kind: "text", column: "planFile", placeholder: "Id…" },
+        // V1's Plan Id cell action navigates (`JobsApp.DataTable.cs:95-141`), so this is the framework's
+        // *link* cell: `cursor: pointer` on the cell and blue underlined text in it.
+        clickable: Boolean(onSelectPlan),
         accessor: (row) => row.planId,
         cell: (_value, row) =>
           row.planId ? (
             onSelectPlan ? (
               <button
                 type="button"
-                className="font-mono text-xs text-foreground hover:underline"
+                className={`font-mono text-xs ${dataTableLinkClass}`}
                 data-testid={`job-plan-${row.id}`}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -765,12 +1101,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
         width: "100px",
         filter: { kind: "select", options: typeOptions, placeholder: "All" },
         accessor: (row) => row.type,
-        // V1 colours this from `Constants.JobTypeColors` (eleven hues) and Project from the project
-        // palette. The design system has six semantic colours and no decorative ramp, and the
-        // contract forbids adding one, so both render as one neutral chip: mapping eleven job types
-        // onto `success`/`warning`/`destructive` would assert something about each that V1 does not.
+        // `Constants.JobTypeColors`, all eleven hues (`JobsApp.DataTable.cs:68-74`). Reachable because
+        // the design system publishes a token per Ivy colour and `Badge`'s `color` tints from it — so
+        // this is a categorical palette the theme already owns, not a decorative ramp invented here.
         cell: (_value, row) => (
-          <Badge variant="outline" density="Small">
+          <Badge color={JOB_TYPE_COLOR[row.type] ?? UNMAPPED_COLOR} density="Small">
             {row.type}
           </Badge>
         ),
@@ -790,8 +1125,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
         accessor: (row) => row.project,
         cell: (_value, row) => (
           <div className="flex flex-wrap items-center gap-1">
+            {/* V1 colours each project from configuration; see {@link projectColor} for why this is
+                derived from the name instead. Coloured either way, because that is what makes two
+                projects tellable apart in a list of a hundred rows. */}
             {parseProjects(row.project).map((project) => (
-              <Badge key={project} variant="secondary" density="Small">
+              <Badge key={project} color={projectColor(project)} density="Small">
                 {project}
               </Badge>
             ))}
@@ -802,6 +1140,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "timer",
         header: "Timer",
         width: "80px",
+        // Derived from `StartedAt` for a running job, so the database's closest total order is the
+        // recorded duration. See {@link SORT_COLUMNS}.
+        sortColumn: "durationSeconds",
         accessor: (row) => row.timerSeconds,
         cell: (_value, row) => (
           <span className="font-mono text-xs text-muted-foreground">
@@ -813,6 +1154,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "agentOutput",
         header: "Agent Output",
         width: "100px",
+        // How long since the agent last wrote a line, not its status message — that has its own column.
+        // `Status` is what groups the three forms this cell takes; see {@link SORT_COLUMNS}.
+        sortColumn: "status",
+        // V1's cell action here opens the output sheet rather than navigating, which is the framework's
+        // plain clickable cell: the cursor, and no link styling.
+        clickable: true,
         accessor: (row) => row.agentOutput,
         // V1's cell action is `showOutput(id)`: the output sheet, over the table.
         cell: (_value, row) => (
@@ -828,12 +1175,13 @@ export const JobsView: React.FC<JobsViewProps> = ({
             {row.agentOutput === "running" ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin text-info" aria-hidden="true" />
-                Starting...
+                {/* Monospace so a figure that ticks every second does not reflow the cell around it. */}
+                <span className="font-mono">{row.agentOutputLabel}</span>
               </>
             ) : row.agentOutput === "done" ? (
-              <span className="text-success">Done</span>
+              <span className="text-success">{row.agentOutputLabel}</span>
             ) : (
-              NO_TIME
+              row.agentOutputLabel
             )}
           </button>
         ),
@@ -880,6 +1228,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "timestamp",
         header: "Timestamp",
         width: "110px",
+        sortColumn: "completedAt",
         accessor: (row) => row.completedAtMs,
         // `FormatTimestamp`: `MM-dd HH:mm` in the viewer's local time, "-" until the job finishes.
         cell: (_value, row) => (
@@ -908,16 +1257,14 @@ export const JobsView: React.FC<JobsViewProps> = ({
   );
 
   /**
-   * V1's filtering, and V1's scope: `AllowFiltering` narrows the rows the app holds
-   * (`jobService.GetJobs()`), not the database. `matchesColumnFilters` is the daemon's own condition
-   * semantics evaluated here — case-insensitive `contains`, case-sensitive `inSet` — so a filter means
-   * the same thing whichever side runs it, and moving it to the daemon changes nothing a user sees
-   * except how many rows it can see.
+   * A query the daemon refused, or a daemon that is not there.
+   *
+   * Worth a line of its own rather than an empty table: with the filter and the sort executing in
+   * SQLite, "no rows" and "the daemon said `unknown column 'costt'`" look identical and mean opposite
+   * things. The daemon's 400 names the column or the function that was wrong, which is the whole value
+   * of the message to whoever typed the expression.
    */
-  const filteredRows = useMemo(
-    () => rows.filter((row) => matchesColumnFilters(columns, columnFilters, row)),
-    [rows, columns, columnFilters],
-  );
+  const tableError = table.error ? describeBridgeError(table.error) : null;
 
   const queuedCount = jobs.filter((job) => job.status === "Queued").length;
   const activeCount = jobs.filter((job) => isActiveStatus(job.status)).length;
@@ -937,8 +1284,25 @@ export const JobsView: React.FC<JobsViewProps> = ({
       : openJob.type
     : "Job Output";
 
+  /**
+   * The debug sheet's subject. Only the fetched detail will do — the list row is a `Job`, and every
+   * field the panel exists to show is on `JobDetail`. A row whose detail has not arrived (or could not
+   * be fetched) gets the sheet's own "nothing to show yet" line rather than a half-empty table.
+   */
+  const debugJob = debugJobId ? jobDetails?.[debugJobId] : undefined;
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-testid="jobs-view">
+      {tableError && (
+        <div
+          role="alert"
+          data-testid="jobs-table-error"
+          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+        >
+          Could not read the jobs table: {tableError}
+        </div>
+      )}
+
       {actionError && (
         <div
           role="alert"
@@ -962,11 +1326,16 @@ export const JobsView: React.FC<JobsViewProps> = ({
         // `.Width(Size.Full()).Height(Size.Full())` on V1's table, and the same fixed layout the
         // other ported tables use so the declared column widths are binding.
         className="min-h-0 flex-1 [&_table.ivy-data-table]:table-fixed"
-        // `.Density(Default: Large, Desktop: Medium)`. V2's DataTable takes one density rather than a
-        // responsive pair, so this is the desktop value - the app is a desktop shell.
-        density={Densities.Medium}
+        // `.Density(new Responsive<Density?> { Default = Large, Desktop = Medium })`
+        // (`JobsApp.DataTable.cs:40`), through the hook that gives V2's flat density a breakpoint:
+        // roomier rows where a finger is the pointer, tighter where a mouse is.
+        density={density}
         columns={columns}
-        rows={filteredRows}
+        /* The window, unfiltered and unsorted here. Both happen in SQLite over the whole table — a
+           client-side predicate would narrow the fifty rows on screen and quietly claim the other
+           2.5 million matched nothing, and a client-side sort would shuffle one window inside an order
+           the other windows were chosen by. */
+        rows={rows}
         getRowId={(row) => row.id}
         loading={(isLoading || table.loading) && table.rows.length === 0}
         /* Infinite scroll, `c.BatchSize = 50`. `paginated={false}` because V1's table has no pager at
@@ -980,27 +1349,28 @@ export const JobsView: React.FC<JobsViewProps> = ({
         loadingMore={table.loadingMore}
         onLoadMore={table.loadMore}
         fillHeight
-        // `c.AllowSorting = true`, and `.SortDirection(t => t.Id, Descending)` with rows already
-        // ordered by `ExtractJobNumber` descending: no initial sort override is needed, because that
-        // *is* the order `buildJobRows` returns, and a header click takes over from there.
-        //
-        // `manualSorting` stays off deliberately: the sort is the table's, over the windows loaded,
-        // because the interim transport has nowhere to put one. That is V1's scope exactly (it sorts
-        // the in-memory job dictionary), and it is the second thing `queryJobsPage` would move to
-        // SQLite.
+        /* `c.AllowSorting = true`, and every header click goes to the daemon: `manualSorting` with the
+           hook's own `sort`/`onSortChange`, so a sort is an `ORDER BY` over the whole table rather than
+           a reordering of the rows on screen. `JOBS_INITIAL_SORT` is V1's declared
+           `.SortDirection(t => t.Id, Descending)`. */
         allowSorting
-        defaultSort={null}
+        manualSorting
+        sort={table.sort}
+        onSortChange={table.setSort}
         // `c.ShowIndexColumn = false` and `c.SelectionMode = SelectionModes.None`: neither the row
         // number nor a checkbox column. `selectable` defaults to false, and no index column exists.
         selectable={false}
-        /* `c.AllowFiltering = true` with `c.ShowSearch = false`: a filter per filterable column and
-           deliberately no search box. V1 renders one expression editor in the toolbar instead of
-           per-column controls; see `column-filters.ts` for why a control per column reaches the same
-           payload, and why the editor itself is not portable. The filter row is part of the sticky
-           header, so it stays put while the rows scroll under it. */
-        showColumnFilters
-        columnFilters={columnFilters}
-        onColumnFiltersChange={setColumnFilters}
+        /* `c.AllowFiltering = true` with `c.ShowSearch = false`: one filter expression at the top-left
+           of the toolbar and deliberately no search box, which is exactly what the framework's grid
+           renders (`DataTableWidget.tsx`) and what V1's config asks for. The conditions are the
+           daemon's — see `filter-expression.ts` — and they are evaluated in SQLite. */
+        showFilter
+        filterExpression={filterExpression}
+        onFilterExpressionChange={(expression, next) => {
+          setFilterExpression(expression);
+          setFilter(next);
+        }}
+        // The show/hide-columns menu, which is how the hidden `Id` column is reachable at all.
         showColumnOptions
         rowActions={(row) => buildJobRowActions(row, capabilities)}
         onRowAction={({ tag, row }) => {
@@ -1008,6 +1378,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
             void runAction(() => jobsStore.cancelJob(row.id), "Stop");
           } else if (tag === "force-start-job") {
             void runAction(() => jobsStore.forceStartJob(row.id), "Force start");
+          } else if (tag === "debug-job") {
+            openJobDebug(row.id);
           } else if (tag === "delete-job") {
             setDeleteError(null);
             setDeleteJobId(row.id);
@@ -1025,7 +1397,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
              count: a filtered-to-nothing table and an empty one look identical and mean opposite
              things. V1 supplies no empty state at all - the framework's `EmptyView` slot is declared
              and never rendered - so an empty Jobs table there is a collapsed header. */
-          hasActiveColumnFilters(columnFilters) ? (
+          filterExpression.length > 0 ? (
             <span className="text-muted-foreground" data-testid="jobs-empty-filtered">
               No jobs match the current filters.
             </span>
@@ -1088,28 +1460,25 @@ export const JobsView: React.FC<JobsViewProps> = ({
                         Stop All ({activeCount})
                       </DropdownMenuItem>
                     )}
-                    {/* V1 offers both unconditionally. They are gated on the capability here because
-                      `bridge.clearJobs` does not exist yet - see `jobsStore.canClearJobs`. */}
-                    {canClear && (
-                      <DropdownMenuItem
-                        data-testid="jobs-clear-completed"
-                        onClick={() =>
-                          void runAction(() => jobsStore.clearJobs("completed"), "Clear")
-                        }
-                      >
-                        <Trash aria-hidden="true" />
-                        Clear Completed
-                      </DropdownMenuItem>
-                    )}
-                    {canClear && (
-                      <DropdownMenuItem
-                        data-testid="jobs-clear-failed"
-                        onClick={() => void runAction(() => jobsStore.clearJobs("failed"), "Clear")}
-                      >
-                        <Trash aria-hidden="true" />
-                        Clear Failed
-                      </DropdownMenuItem>
-                    )}
+                    {/* V1 offers its two clears unconditionally, and so does this - the whole list of
+                      them, one per terminal status plus the sweep. See {@link JOB_CLEAR_SCOPES} for why
+                      that is an extension of V1's own primitive rather than a new mechanism, and for
+                      why no non-terminal status is in it.
+
+                      Still gated on the capability, because `bridge.clearJobs` does not exist yet -
+                      see `jobsStore.canClearJobs`. Every item below is destructive, so none of them
+                      acts on the click: each opens the confirm, which names the count. */}
+                    {canClear &&
+                      JOB_CLEAR_SCOPES.map((scope) => (
+                        <DropdownMenuItem
+                          key={scope.scope}
+                          data-testid={`jobs-clear-${scope.scope.toLowerCase()}`}
+                          onClick={() => openClearDialog(scope)}
+                        >
+                          <Trash aria-hidden="true" />
+                          {scope.label}
+                        </DropdownMenuItem>
+                      ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -1128,15 +1497,24 @@ export const JobsView: React.FC<JobsViewProps> = ({
           if (!open) setOpenJobId(null);
         }}
       >
+        {/* `HeaderLayout`, which is the framework's structure for a panel with fixed chrome over
+            scrolling content (`widgets/layouts/HeaderLayoutWidget.tsx`): the title stays put, the body
+            scrolls under it, and the header takes a shadow once it does — so a reader can see that the
+            output continues above the fold. `p-0` on the sheet because the layout owns the padding, which
+            is what the framework's own `remove-parent-padding` does to its container. */}
         <SheetContent
           data-testid="job-output-sheet"
-          className="inset-y-0 w-full overflow-y-auto sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
+          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
         >
-          <SheetHeader>
-            <SheetTitle>{openJobTitle}</SheetTitle>
-          </SheetHeader>
-          {openJob && (
-            <div className="mt-4">
+          <HeaderLayout
+            className="min-h-0 flex-1"
+            header={
+              <SheetHeader className="pr-8">
+                <SheetTitle>{openJobTitle}</SheetTitle>
+              </SheetHeader>
+            }
+          >
+            {openJob && (
               <React.Suspense
                 fallback={
                   <div className="flex h-32 items-center justify-center text-muted-foreground">
@@ -1148,10 +1526,91 @@ export const JobsView: React.FC<JobsViewProps> = ({
                     exists, so the same callback that closed the tab now closes the sheet. */}
                 <JobOutput job={openJob} layout="sheet" onCloseTab={() => setOpenJobId(null)} />
               </React.Suspense>
-            </div>
-          )}
+            )}
+          </HeaderLayout>
         </SheetContent>
       </Sheet>
+
+      {/* V1's Job Debug sheet (`JobsApp.cs:62-70`), opened by the Debug row action at the same
+          `UxHelper.SheetWidth` as the output sheet and titled the way V1 titles it: "Job Debug". */}
+      <Sheet
+        open={debugJobId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDebugJobId(null);
+        }}
+      >
+        <SheetContent
+          data-testid="job-debug-sheet"
+          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
+        >
+          <HeaderLayout
+            className="min-h-0 flex-1"
+            header={
+              <SheetHeader className="pr-8">
+                <SheetTitle>Job Debug</SheetTitle>
+              </SheetHeader>
+            }
+          >
+            {debugJob ? (
+              <React.Suspense
+                fallback={
+                  <div className="flex h-32 items-center justify-center text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin text-success" aria-hidden="true" />
+                  </div>
+                }
+              >
+                <JobDebug job={debugJob} />
+              </React.Suspense>
+            ) : (
+              /* The detail is the sheet, so there is nothing to render until it lands — and if the
+                 daemon could not answer, this is the honest state rather than a table of blanks. */
+              <span className="text-xs text-muted-foreground" data-testid="job-debug-pending">
+                Loading job details…
+              </span>
+            )}
+          </HeaderLayout>
+        </SheetContent>
+      </Sheet>
+
+      {/* The bulk clears' confirm. V1 fires `ClearCompletedJobs()` straight off the menu item with no
+          dialog at all; that is the one place this deliberately does not follow it, because a bulk delete
+          of unbounded size is exactly what Framework's confirmation contract exists for. One dialog
+          serves all five scopes - they differ only in a noun and a count. */}
+      <ConfirmDialog
+        isOpen={pendingClear !== null}
+        onClose={() => {
+          setPendingClear(null);
+          setClearError(null);
+        }}
+        title={pendingClear?.label ?? "Clear Jobs"}
+        // The copy and the arming rule both live in {@link describeClearPrompt}: the sentence *is* the
+        // safety mechanism here, so it is a function with its own tests rather than a ternary in JSX.
+        body={<p data-testid="jobs-clear-body">{clearPrompt.body}</p>}
+        confirmLabel={clearPrompt.confirmLabel}
+        confirmVariant="destructive"
+        confirmDisabled={clearPrompt.confirmDisabled}
+        isBusy={isClearing}
+        error={clearError}
+        testId="jobs-clear-dialog"
+        onConfirm={async () => {
+          if (!pendingClear) return;
+          setIsClearing(true);
+          setClearError(null);
+          try {
+            await jobsStore.clearJobs(pendingClear.scope);
+            // A clear changes *which rows exist*, which is precisely the case the structural-signature
+            // gate refetches for (V1's `ComputeStructuralSignature`). It is asked for directly rather
+            // than left to that gate: the gate watches the newest fifty, and a clear can empty a window
+            // the reader has scrolled to without touching any of them.
+            refreshTable();
+            setPendingClear(null);
+          } catch (err) {
+            setClearError(`Clear failed: ${describeBridgeError(err)}`);
+          } finally {
+            setIsClearing(false);
+          }
+        }}
+      />
 
       {/* `JobsApp.DataTable.cs:296-317`, copy included. The handler is `jobsStore.deleteJob`, which
           carries V1's "stop a Running or Queued job first, then delete, then re-read" sequence. */}
@@ -1186,11 +1645,51 @@ export const JobsView: React.FC<JobsViewProps> = ({
   );
 };
 
-/** Sorted, de-duplicated filter options for one column. */
-function distinctOptions(values: readonly string[]): DataTableFilterOption[] {
-  return Array.from(new Set(values.filter((value) => value.length > 0)))
-    .sort((a, b) => a.localeCompare(b))
-    .map((value) => ({ value, label: value }));
+/**
+ * One column's distinct values, from `POST /api/tables/jobs/values`.
+ *
+ * `SELECT DISTINCT` over the whole `Jobs` table, not over the rows the client happens to hold — which is
+ * the only way a filter vocabulary can be right once the table is paged. The daemon caps and can search
+ * the list server-side, so it stays one small response on a column with a million distinct values.
+ *
+ * A failure leaves the list empty rather than surfacing: this is the filter editor's *help*, and a
+ * daemon that cannot answer it has already failed the table's own query, which is where the operator is
+ * told (see `jobs-table-error`). Fetched once per mount: a job list's statuses, types and projects do
+ * not turn over inside a session, and re-reading them on every poll would be three requests a second
+ * for a list that never changes.
+ *
+ * @param split For a column that stores a joined list, how one stored value becomes several offered
+ *   ones. `Project` holds "web, api".
+ */
+function useColumnValues(
+  column: string,
+  split?: (value: string) => string[],
+): DataTableFilterOption[] {
+  const [options, setOptions] = useState<DataTableFilterOption[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTableColumnValues("jobs", column)
+      .then((page) => {
+        if (cancelled) return;
+        const values = page.values.map(String).flatMap((value) => split?.(value) ?? [value]);
+        setOptions(
+          Array.from(new Set(values.filter((value) => value.length > 0)))
+            .sort((a, b) => a.localeCompare(b))
+            .map((value) => ({ value, label: value })),
+        );
+      })
+      .catch(() => {
+        /* See above: the table's own error is the one worth showing. */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // `split` is a module-level function at every call site, so it is stable by construction.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [column]);
+
+  return options;
 }
 
 /** `JobsApp.Helpers.cs` `TimestampFormat`: `"MM-dd HH:mm"`, local time. */

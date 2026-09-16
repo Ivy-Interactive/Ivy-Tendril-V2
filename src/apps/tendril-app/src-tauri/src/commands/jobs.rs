@@ -40,6 +40,18 @@ pub async fn cmd_force_start_job(id: String) -> Result<(), BridgeError> {
     get_client_from_master()?.force_start_job(&id).await
 }
 
+/// Bulk-clear finished jobs by scope, answering how many rows went.
+///
+/// `status` names the scope (`completed`, `failed`, `timeout`, `stopped`, `finished`) and is forwarded
+/// as it arrives. The daemon is what decides which scopes are clearable — it filters to the terminal
+/// statuses before reading a row, so no caller can clear a Running or Queued job — and it answers `400`
+/// naming the acceptable scopes. That sentence is carried through rather than replaced, because it is
+/// the whole content of the refusal.
+#[tauri::command]
+pub async fn cmd_clear_jobs(status: String) -> Result<usize, BridgeError> {
+    get_client_from_master()?.clear_jobs(&status).await
+}
+
 /// Starts streaming a job's agent output, re-emitted as `job-stream-event`.
 ///
 /// The stream is consumed natively — `invoke` cannot stream, and `/api/jobs/:id/events` is

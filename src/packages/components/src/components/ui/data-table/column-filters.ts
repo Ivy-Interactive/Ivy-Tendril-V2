@@ -1,33 +1,32 @@
 /**
- * Per-column header filters, and how they become the wire filter the daemon already understands.
+ * A column's filter declaration, and two readings of a filter that is not an expression.
  *
- * ## What the framework does, and why this is the shape of it
+ * ## Where the filter UI actually is
  *
- * The Ivy Framework's grid has no per-column filter widgets. `AllowFiltering` renders **one** filter
- * button in the table's toolbar which expands into a CodeMirror expression editor
- * (`widgets/dataTables/options/DataTableFilterOption.tsx`), whose text is parsed by an ANTLR grammar
- * into the recursive `Filter`/`FilterGroup`/`Condition` tree of `datatable.proto` and evaluated
- * server-side (`Views/DataTables/QueryProcessor.cs`). V1's Jobs table is exactly that: `AllowFiltering
- * = true`, `ShowSearch = false` (`Apps/Jobs/JobsApp.DataTable.cs:86-94`), eleven filterable columns
- * (every one except the hidden `Id` and `ErrorContext`, `:83-84`), and typing `[Status] = "Running"`.
+ * In the toolbar, as one expression — see `filter-expression.ts`, which is the front end the framework's
+ * grid has (`widgets/dataTables/options/DataTableFilterOption.tsx`) and the one `DataTable` renders. This
+ * module is what survives from the per-column controls that briefly stood in for it, and all of it is
+ * still load-bearing:
  *
- * Two things follow from that, and they are what this module is:
+ * 1. **[`DataTableColumnFilter`]** — the *declaration* on a column: whether it is filterable at all
+ *    (`.Filterable(column, false)` is the absence of it), what the server calls it, which condition it
+ *    means by default, and, for a closed set, which values it can hold. The expression parser resolves
+ *    names through this, and the editor's help lists those values.
+ * 2. **[`columnFiltersToRemoteFilter`]** — the payload builder for a facet-shaped front end: `Record<
+ *    column, values[]>` to the daemon's recursive `Filter`. A second front end onto the same
+ *    [`RemoteTableFilter`] costs nothing to keep and is what a toolbar of dropdowns would use.
+ * 3. **[`matchesColumnFilters`]** — the same filter evaluated *in the client*, with the daemon's own
+ *    case sensitivity. For a table whose rows the client already holds, which is not the server-paged
+ *    case and must not be confused with it.
  *
- * 1. **The vocabulary is fixed and it is the server's.** Because every `JobItemRow` property is a
- *    string, the editor offers a Jobs column exactly `equals`, `contains`, `starts with`, `ends with`,
- *    `IS BLANK` and `IS NOT BLANK` (`lib/filter-query-editor/components/extensions/autocomplete.ts`),
- *    and conditions combine with `AND`/`OR`. So the *conditions* here are the framework's conditions;
- *    only the control that produces them differs.
- * 2. **The editor itself is not portable.** It is a CodeMirror language mode plus a generated parser,
- *    and the parity contract's rule is to reuse what exists rather than import a grammar. A control
- *    per column, ANDed, reaches the same payload for every filter V1's Jobs table can actually
- *    express: a closed-set column becomes a checklist (`inSet`, which is `[Status] = "a" OR [Status] =
- *    "b"` without the typing), and a free-text column becomes a text box (`contains`).
+ * ## The vocabulary is fixed, and it is the server's
  *
- * The one thing this cannot express is a hand-written `OR` *across* columns. Nothing in V1's Jobs app
- * relies on it, and the payload it would need is already representable — [`anyOf`] exists, so an
- * expression editor could be added later as a second front end onto the same [`RemoteTableFilter`]
- * without touching the table, the hook or the route.
+ * Because every `JobItemRow` property is a string, the framework's editor offers a Jobs column exactly
+ * `equals`, `contains`, `starts with`, `ends with`, `IS BLANK` and `IS NOT BLANK`
+ * (`lib/filter-query-editor/components/extensions/autocomplete.ts`), and conditions combine with
+ * `AND`/`OR`. So the conditions here are the framework's conditions; only the control that produces them
+ * differs. `inSet` is the one addition — `[Status] = "a" OR [Status] = "b"` as a single indexed `IN`,
+ * which the proto has always had and the editor cannot type.
  */
 
 import type {
@@ -46,21 +45,19 @@ export interface DataTableFilterOption {
 }
 
 /**
- * The control a column's header filter renders.
+ * What kind of value a column holds, which decides the condition a filter means by default.
  *
- * - `"text"` — a text box. Commits on Enter or blur, which is the framework editor's discipline
- *   (`DataTableFilterOption.tsx` fires on Enter, never per keystroke), so a filter costs one request
- *   per intent rather than one per character. Emits `contains` by default.
- * - `"select"` — a checklist of `options`. Emits `inSet` when `multiple` (the default) and `equals`
- *   otherwise. This is the affordance the expression editor gives a column it knows to be an enum;
- *   Jobs' columns are all typed as strings there, so V1 gets it for none of them and V2 gets it for
- *   the three whose values are a closed set.
+ * - `"text"` — free text. `contains`, which compiles to SQLite `LIKE`.
+ * - `"select"` — a closed set. `inSet` when `multiple` (the default) and `equals` otherwise, and the
+ *   `options` are the values the filter editor can offer. Jobs' columns are all typed as strings in the
+ *   framework, so V1 gets a value list for none of them and V2 gets one for the three whose values are a
+ *   closed set — read from `POST /api/tables/{table}/values`, not from the rows on screen.
  */
 export type DataTableFilterKind = "text" | "select";
 
 export interface DataTableColumnFilter {
   kind: DataTableFilterKind;
-  /** `"select"` only. An empty list renders the control disabled — there is nothing to pick. */
+  /** `"select"` only: the values this column can hold, for the filter editor's vocabulary. */
   options?: DataTableFilterOption[];
   /** `"select"` only. Defaults to true. */
   multiple?: boolean;
@@ -78,7 +75,7 @@ export interface DataTableColumnFilter {
 }
 
 /**
- * Header-filter state: column `name` → the values selected for it.
+ * Facet state: column `name` → the values selected for it.
  *
  * One shape for both kinds — a text box is a single-valued list — so a view owns one object, persists
  * one object, and clearing everything is `{}`. An empty or absent list is *no constraint*, never
@@ -120,7 +117,7 @@ function defaultFunction(filter: DataTableColumnFilter): RemoteTableFilterFuncti
 }
 
 /**
- * The header filters as one wire filter, or `null` when nothing is constrained.
+ * Facet state as one wire filter, or `null` when nothing is constrained.
  *
  * Columns are ANDed, which is what a row of independent controls means and what the framework's own
  * editor produces for `[a] = x AND [b] = y`. A `"select"` with several values is one `inSet`
@@ -168,7 +165,7 @@ export function columnFiltersToRemoteFilter<TRow>(
 }
 
 /**
- * Whether one row satisfies the header filters, evaluated in the client.
+ * Whether one row satisfies the facet state, evaluated in the client.
  *
  * The server is where filtering belongs, and [`columnFiltersToRemoteFilter`] is the path there. This
  * exists because a table whose rows the client already holds — V1's Jobs table is one: it filters the

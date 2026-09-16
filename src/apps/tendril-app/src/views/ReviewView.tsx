@@ -22,7 +22,10 @@ import {
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
-import { EmptyState } from "../components/EmptyState";
+import { NoContentView } from "../components/NoContentView";
+import { PlanChatPanel } from "../components/chat/PlanChatPanel";
+import { ProjectBadges } from "../components/ProjectBadges";
+import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
@@ -30,13 +33,13 @@ import { formatPlanId, isReviewState, parseProjects, resolvePlanSelection } from
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import type { ReviewActionTarget } from "./ReviewActionView";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
-import { DiscardPlanDialog } from "./dialogs/DiscardPlanDialog";
+import { DeletePlanDialog } from "./dialogs/DeletePlanDialog";
 import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
 import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
 
 /** The triage dialogs this view owns, at most one open at a time. */
-type TriageDialog = "createPr" | "suggestChanges" | "discard" | "reset" | "partialDelivery";
+type TriageDialog = "createPr" | "suggestChanges" | "delete" | "reset" | "partialDelivery";
 
 /**
  * `ReviewApp.Build`'s `activePlanFolders`: a job in one of these still holds the plan's worktree, so
@@ -175,13 +178,14 @@ export const buildRecommendationChangeRequest = (
 
 /**
  * The shortcuts `ReviewActions.Build` and `ContentView.AddPrimaryAction` bind, letter for letter:
- * the primary CTA on `m`, Request Changes on `c`, Reset to Draft on `r`, Discard on `Backspace`,
- * and `PlanNeighborShortcuts` walking the queue with the arrow keys.
+ * the primary CTA on `m`, Request Changes on `c`, Reset to Draft on `r`, and the danger menu item on
+ * `Backspace` — which is Discard in V1 and Delete here — and `PlanNeighborShortcuts` walking the
+ * queue with the arrow keys.
  */
 const PRIMARY_SHORTCUT = "m";
 const REQUEST_CHANGES_SHORTCUT = "c";
 const RESET_SHORTCUT = "r";
-const DISCARD_SHORTCUT = "Backspace";
+const DELETE_SHORTCUT = "Backspace";
 
 interface ReviewViewProps {
   plans: PlanSummary[];
@@ -198,6 +202,12 @@ interface ReviewViewProps {
    */
   selectedPlanId?: string | null;
   onSelectPlan: (planId: string) => void;
+  /**
+   * V1's `ContentView` wires `onCreatePlan` into its embedded chat unconditionally, so "create plan
+   * from this message" works there as well as on the Chat page. Threaded through to
+   * {@link PlanChatPanel}; without it that message action is inert.
+   */
+  onCreatePlan?: (initialDescription: string) => void;
   /** A job a triage dialog started, so the shell can open its session tab. */
   onJobStarted?: (response: StartJobResponse) => void;
   /** The plan's state changed on the service; the caller should re-fetch. */
@@ -209,6 +219,13 @@ interface ReviewViewProps {
    * has to be framed at full height, neither of which fits inside a card on a scrolling triage page.
    */
   onOpenReviewAction?: (target: ReviewActionTarget) => void;
+  /**
+   * Opens the Create Plan dialog from the empty page's process wallpaper, which is what V1's
+   * `CreatePlanDialogLauncher` does with `OnCreate` (`Hooks/UseTendrilProcess.cs`).
+   */
+  onNewPlan?: () => void;
+  /** Where that wallpaper's other boxes navigate: `Navigate<PlansApp>`/`<ReviewApp>`/`<JobsApp>`. */
+  onNavigate?: (navId: string) => void;
 }
 
 export const ReviewView: React.FC<ReviewViewProps> = ({
@@ -216,9 +233,12 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   jobs,
   selectedPlanId: addressedPlanId = null,
   onSelectPlan,
+  onCreatePlan,
   onJobStarted,
   onPlanChanged,
   onOpenReviewAction,
+  onNewPlan,
+  onNavigate,
 }) => {
   const reviewPlans = useMemo(() => queueFor(plans, jobs), [plans, jobs]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
@@ -410,8 +430,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
   /**
    * `PlanReaderService.GetCompletionBlockReason`, whose text V1 shows in two places: the "No Changes
-   * Needed" callout above the content, and the primary action, which becomes Skip Plan rather than
-   * Complete Plan.
+   * Needed" callout above the content, and the primary action, which becomes Delete Plan rather than
+   * Complete Plan (V1 offers Skip Plan there, which was Discard under another label).
    *
    * Pre-execution said Fail **and** nothing was delivered. The no-commits-and-no-PRs conjunct is what
    * keeps config-only plans (which legitimately have neither) and any plan that did real work out of
@@ -606,8 +626,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const canPr = selectedPlan
     ? PlanActionsController.canCreatePr(selectedPlan)
     : { allowed: false, reason: undefined };
-  const canDiscard = selectedPlan
-    ? PlanActionsController.canDiscard(selectedPlan)
+  const canDeletePlan = selectedPlan
+    ? PlanActionsController.canDelete(selectedPlan)
     : { allowed: false, reason: undefined };
   const canReset = selectedPlan
     ? PlanActionsController.canReset(selectedPlan)
@@ -618,7 +638,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
   /**
    * `ContentView.AddPrimaryAction`, in its order: a plan with commits opens a PR; failing that, a plan
-   * whose completion is blocked offers Skip Plan; failing that, Complete Plan.
+   * whose completion is blocked offers Delete Plan — V1's Skip Plan, which opened the discard dialog
+   * and so only ever wrote `Skipped`; failing that, Complete Plan.
    *
    * `isPrUpdate` is `PlanFile.IsPullRequestSource` (`SourceUrl?.Contains("/pull/")`). It changes both
    * the label and *how* the action fires - see [`updatePr`].
@@ -630,7 +651,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const commitCount = planDetail ? (planDetail.commits?.length ?? 0) : null;
   const isPrUpdate = (planDetail?.sourceUrl ?? "").includes("/pull/");
   const prIsPrimary = commitCount !== 0;
-  const skipIsPrimary = !prIsPrimary && completionBlocked;
+  const deleteIsPrimary = !prIsPrimary && completionBlocked;
 
   /**
    * `ContentView.AddPrimaryAction`'s PR-update branch, which deliberately skips the Create PR dialog:
@@ -669,23 +690,24 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     ? isPrUpdate
       ? "Update PR"
       : "Create PR"
-    : skipIsPrimary
-      ? "Skip Plan"
+    : deleteIsPrimary
+      ? "Delete Plan"
       : "Complete Plan";
   const primaryDisabled = prIsPrimary
     ? !canPr.allowed || pendingAction !== null
-    : skipIsPrimary
-      ? !canDiscard.allowed || pendingAction !== null
+    : deleteIsPrimary
+      ? !canDeletePlan.allowed || pendingAction !== null
       : pendingAction !== null;
   const firePrimary = () => {
     if (primaryDisabled) return;
     if (prIsPrimary) {
       if (isPrUpdate) void updatePr();
       else setActiveDialog("createPr");
-    } else if (skipIsPrimary) {
-      // V1's Skip Plan is the discard dialog under a different label: skipping is what discarding
-      // records (`PlanStatus.Skipped`), and the block text says as much.
-      setActiveDialog("discard");
+    } else if (deleteIsPrimary) {
+      // V1's Skip Plan opened the discard dialog, which only ever wrote `PlanStatus.Skipped`. With
+      // Discard gone, the delete confirm answers the same question and still offers "Move to
+      // Skipped" as its first alternative, so the reversible answer is not lost.
+      setActiveDialog("delete");
     } else {
       void completePlan();
     }
@@ -741,8 +763,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
   /**
    * The topbar's action row, assembled as `ReviewActions.Build` assembles it: Request Changes as an
-   * icon action (badged with the unresolved comment count), Reset to Draft and Discard in the
-   * overflow menu, and the CTA on its own.
+   * icon action (badged with the unresolved comment count), Reset to Draft and the danger item in the
+   * overflow menu — Discard in V1, Delete here — and the CTA on its own.
    *
    * Every entry is a `PlanActionDto` reporting back through one `OnAction` event, and each carries
    * its own `shortcut` so the widget binds the keys V1 binds.
@@ -767,12 +789,12 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       icon: "RotateCcw",
       shortcut: RESET_SHORTCUT,
     });
-  if (canDiscard.allowed)
+  if (canDeletePlan.allowed)
     workspaceMenu.push({
-      tag: "Discard",
-      label: "Discard",
+      tag: "Delete",
+      label: "Delete Plan",
       icon: "Trash",
-      shortcut: DISCARD_SHORTCUT,
+      shortcut: DELETE_SHORTCUT,
       danger: true,
     });
   /*
@@ -800,7 +822,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               ? "Pushing…"
               : primaryLabel,
         // `Icons.GitPullRequest`, `Icons.Ban`, `Icons.CircleCheck`, in `AddPrimaryAction`'s order.
-        icon: prIsPrimary ? "GitPullRequest" : skipIsPrimary ? "Ban" : "CircleCheck",
+        // `Ban` was Skip Plan's; the branch now deletes, so it takes Delete's `Trash` instead.
+        icon: prIsPrimary ? "GitPullRequest" : deleteIsPrimary ? "Trash" : "CircleCheck",
         shortcut: PRIMARY_SHORTCUT,
         disabled: primaryDisabled,
         loading: pendingAction !== null,
@@ -816,8 +839,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     primaryDisabled && pendingAction === null
       ? prIsPrimary
         ? canPr.reason
-        : skipIsPrimary
-          ? canDiscard.reason
+        : deleteIsPrimary
+          ? canDeletePlan.reason
           : undefined
       : undefined;
 
@@ -830,8 +853,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       case "ResetToDraft":
         setActiveDialog("reset");
         return;
-      case "Discard":
-        setActiveDialog("discard");
+      case "Delete":
+        setActiveDialog("delete");
         return;
       case "PartialDelivery":
         setActiveDialog("partialDelivery");
@@ -854,10 +877,21 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
            branch, so it keeps the host's 16px and `Height(Size.Full())` centres it. */
         className="flex h-full min-h-0 items-center justify-center p-4"
       >
-        {/* `NoContentView("No plans to review", "Completed plans will appear here for review")`. */}
-        <EmptyState
+        {/* `NoContentView("No plans to review", "Completed plans will appear here for review",
+            processView)`, where `processView` is `Context.UseTendrilProcess()`: the same pipeline
+            wallpaper the empty Plans page carries. */}
+        <NoContentView
+          data-testid="review-empty"
           title="No plans to review"
           description="Completed plans will appear here for review"
+          cta={
+            <TendrilProcessWallpaper
+              plans={plans}
+              jobs={jobs}
+              onNewPlan={onNewPlan}
+              onNavigate={onNavigate}
+            />
+          }
         />
       </div>
     );
@@ -912,18 +946,11 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             /* `.ProjectBadges(ProjectHelper.BuildBadges(plan.Project, config))`. The state is not one
                of them: this page only ever shows a plan in Review or Failed, and the row's badges in
                the sidebar already say which. */
-            ProjectBadges: parseProjects(selectedPlan.project).map((project) => (
-              <span
-                key={project}
-                className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-              >
-                {project}
-              </span>
-            )),
+            ProjectBadges: [<ProjectBadges key="projects" project={selectedPlan.project} />],
             Toolbar: [
               /* `ContentView.BuildPage`'s toolbar slot opens with this when the plan's completion is
                  blocked: `Callout.Info(..., "No Changes Needed")` above the review actions, with the
-                 primary CTA already switched to Skip Plan. The two are one decision shown twice, so
+                 primary CTA already switched to Delete Plan. The two are one decision shown twice, so
                  they are computed once (`completionBlocked`). */
               completionBlocked ? (
                 <Callout.Info
@@ -932,7 +959,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   data-testid="review-completion-blocked"
                 >
                   Pre-execution validation found no changes needed because the issue or task is
-                  already resolved. You can discard or skip this plan.
+                  already resolved. You can delete this plan, or move it to Skipped or Icebox.
                 </Callout.Info>
               ) : null,
               primaryRefusal ? (
@@ -999,6 +1026,30 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   ))}
                 </div>
               ),
+            ],
+            /**
+             * `Review/ContentView.cs:328`: `isShareMode ? null : new PlanChatView(selectedPlan)` —
+             * the same slot, the same panel and the same conversation as the plan page's, because it
+             * is the same plan. V2 had no chat here at all, which is also why triaging a plan meant
+             * leaving the page to ask about it.
+             *
+             * Fed the detail record once it lands, because the queue row is a summary and carries no
+             * `folderPath` — and the folder is what a new session records as its owner. The summary is
+             * enough to *find* an existing conversation on its own, through the `<id>-` prefix arm of
+             * `sessionBelongsToPlan`, and `PlanChatPanel` takes the folder on in place rather than
+             * rebuilding its store around it, so the panel is never torn down mid-conversation.
+             *
+             * The window in which the folder is unknown is one local round trip against a keystroke
+             * and a click, so a first message cannot realistically land inside it; if one did, the
+             * session it creates records no plan and reads as a free-standing chat.
+             */
+            Chat: [
+              <PlanChatPanel
+                key="chat"
+                plan={planDetail?.id === selectedPlan.id ? planDetail : selectedPlan}
+                onOpenPlan={onSelectPlan}
+                onCreatePlan={onCreatePlan}
+              />,
             ],
             Content: [
               /* `RecommendationsTabView`: the pending rows are selectable and Implement acts on the
@@ -1126,11 +1177,15 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                states the count in a callout and in the submit label rather than listing them again. */
             inlineCommentCount={commentSummary.length}
           />
-          <DiscardPlanDialog
-            isOpen={activeDialog === "discard"}
+          {/* Every one of its four answers takes the plan out of the review queue — deleted, Skipped
+              or Icebox — so all three callbacks resolve the selection the same way. */}
+          <DeletePlanDialog
+            isOpen={activeDialog === "delete"}
             onClose={() => setActiveDialog(null)}
             plan={selectedPlan}
-            onDiscarded={handlePlanLeftReview}
+            onDeleted={handlePlanLeftReview}
+            onSkipped={handlePlanLeftReview}
+            onArchived={handlePlanLeftReview}
           />
           <ResetToDraftDialog
             isOpen={activeDialog === "reset"}

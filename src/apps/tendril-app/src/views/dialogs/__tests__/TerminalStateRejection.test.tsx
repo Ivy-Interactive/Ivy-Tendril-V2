@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import * as React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { DiscardPlanDialog } from "../DiscardPlanDialog";
+import { DeletePlanDialog } from "../DeletePlanDialog";
 import { PartialDeliveryDialog } from "../PartialDeliveryDialog";
 import { ResetToDraftDialog } from "../ResetToDraftDialog";
 import { bridge } from "../../../api/bridge";
@@ -72,7 +72,12 @@ describe("terminal-state rejections are surfaced, never optimistically applied",
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("keeps a Completed plan Completed when discard is refused", async () => {
+  /**
+   * "Move to Skipped" is the surviving path to `Skipped` now that Discard is gone, and it is the one
+   * answer in the delete dialog that writes a *state* rather than removing the folder — so it is the
+   * one that can come back with a terminal-state 409.
+   */
+  it("keeps a Completed plan Completed when Move to Skipped is refused", async () => {
     vi.spyOn(bridge, "updatePlanField").mockRejectedValue({
       code: "Conflict",
       message: "Plan 00021 is already Completed",
@@ -82,17 +87,17 @@ describe("terminal-state rejections are surfaced, never optimistically applied",
     render(
       <StateHarness plan={planSummary({ id: "00021", state: "Completed" })} seen={seen}>
         {(plan, apply) => (
-          <DiscardPlanDialog
+          <DeletePlanDialog
             isOpen
             onClose={vi.fn()}
             plan={plan}
-            onDiscarded={() => apply("Skipped")}
+            onSkipped={() => apply("Skipped")}
           />
         )}
       </StateHarness>,
     );
 
-    fireEvent.click(screen.getByTestId("dialog-confirm"));
+    fireEvent.click(screen.getByTestId("dialog-skip"));
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("Plan 00021 is already Completed"),

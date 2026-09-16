@@ -11,6 +11,14 @@ export const chatApi = {
     agentId?: string;
     modelId?: string;
     effort?: string;
+    /**
+     * The plan folder this session belongs to — `00021-BuildDesktopOperator`.
+     *
+     * V1's `PlanChatSessions.CreateForPlan` passes it, and `BelongsTo` is defined on it: "A session
+     * belongs to exactly one plan, recorded on the session itself." It is what makes the plan page find
+     * its own conversation again, so a plan chat's first message has to send it.
+     */
+    planFolderName?: string;
   }): Promise<ChatSession> {
     return await invoke<ChatSession>("cmd_create_chat_session", { req: args });
   },

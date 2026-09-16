@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
 import { Callout } from "@ivy-interactive/components/ui";
 import { describeBridgeError, type Job, type JobDetail, type JobStatus } from "../types/api";
@@ -100,6 +100,27 @@ function formatTimestamp(job: Job): string {
 const NO_VALUE = "—";
 
 /**
+ * How tall the output may get inside the sheet before it scrolls itself.
+ *
+ * The sheet's `HeaderLayout` scrolls its content, so without a ceiling the viewer grows to the height
+ * of the whole log and its windowing goes inert: the virtualizer renders what fits in its scroll
+ * element, and an unbounded element "fits" 100k lines. A page framing needs none of this — it hands
+ * the viewer a definite height already — which is why this is only passed for the sheet.
+ *
+ * A viewport fraction rather than a pixel count so it fills a tall window, and paired with the `min-h`
+ * floor below so an empty log still shows the viewer rather than collapsing to nothing.
+ */
+const SHEET_OUTPUT_MAX_HEIGHT = "70vh";
+
+/**
+ * The default for `events`, hoisted so it is the *same* empty array on every render.
+ *
+ * `events = []` in the signature mints a new one each time, which the line cache below would read as
+ * "different session" and rebuild against on every render.
+ */
+const NO_EVENTS: StreamEventItem[] = [];
+
+/**
  * `FormatHelper.FormatTokens`: millions to one decimal, thousands to none.
  *
  * A million-plus count keeps scaling rather than saturating, so a 1.4-billion-token run reads
@@ -198,7 +219,7 @@ export function normalizeJobId(id: string): string {
  */
 export const JobSessionView: React.FC<JobSessionViewProps> = ({
   job,
-  events = [],
+  events = NO_EVENTS,
   onCancel,
   onCloseTab,
   layout = "page",
@@ -261,8 +282,39 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
 
   const currentEvents = storeState.events.length > 0 ? storeState.events : events;
 
-  // Convert event items into jsonStream lines
-  const jsonStream = currentEvents.map((e) => JSON.stringify(e.payload)).join("\n");
+  // The eventwire lines the viewer folds, grown in step with the session rather than rebuilt from it.
+  //
+  // This used to be `currentEvents.map((e) => JSON.stringify(e.payload)).join("\n")`, evaluated on
+  // every store notification — and the store notifies once per streamed frame. So frame *n* re-encoded
+  // and re-joined all *n* lines the session held, and the viewer then re-parsed the result: quadratic
+  // in the length of the run, in a component that renders while a job is producing output. At 3k frames
+  // that measured 1.4 seconds of pure JS; at 100k it does not finish.
+  //
+  // `rawText` is what the store already recorded for the frame (`JSON.stringify(payload)` for the
+  // objects `parseJobFrame` produces, and the line itself for one that was not JSON), so the encode
+  // is not repeated either. The generation counter goes on the viewer's `id`: `AgentViewer` reads this
+  // array by length and would not otherwise notice a session that was cleared and refilled to the same
+  // length.
+  const lineCache = useRef<{
+    source: StreamEventItem[] | null;
+    lines: string[];
+    generation: number;
+  }>({ source: null, lines: [], generation: 0 });
+  if (lineCache.current.source !== currentEvents) {
+    lineCache.current = {
+      source: currentEvents,
+      lines: [],
+      generation: lineCache.current.generation + 1,
+    };
+  }
+  const eventLines = lineCache.current.lines;
+  for (let i = eventLines.length; i < currentEvents.length; i++) {
+    const item = currentEvents[i];
+    // `rawText` is optional on the type, and a caller passing `events` in by hand may omit it, so the
+    // encode this used to do for every frame is still the fallback for a frame that has no text.
+    eventLines.push(item.rawText ?? JSON.stringify(item.payload));
+  }
+  const viewerId = `agent-viewer-${currentJob.id}#${lineCache.current.generation}`;
 
   // `OutputSheet.cs:52` keys the live viewer on `Status == Running` and nothing else. Queued was
   // included here, which meant a job still waiting for a slot got an animated "Working..." label and
@@ -519,16 +571,23 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           `flex-1` inside a scrolling container resolves to the content's own height, which for an
           empty log is zero and hides the viewer entirely. */}
       <div className={isSheet ? "min-h-96" : "min-h-0 flex-1 overflow-hidden"}>
-        {jsonStream ? (
+        {eventLines.length > 0 ? (
           <AgentViewer
-            id={`agent-viewer-${currentJob.id}`}
-            jsonStream={jsonStream}
+            id={viewerId}
+            jsonLines={eventLines}
             height="full"
+            // Only while the sheet framing leaves the viewer to size itself; see
+            // {@link SHEET_OUTPUT_MAX_HEIGHT}.
+            maxBodyHeight={isSheet ? SHEET_OUTPUT_MAX_HEIGHT : undefined}
             // `.AutoScroll(false).ShowStatusLabel(false)` once the job is no longer running: nothing
             // more is coming, so following the bottom would only fight the reader, and an animated
             // "Working..." under a finished log is a lie.
             autoScroll={isRunning}
             showStatusLabel={isRunning}
+            // Stops the metrics footer's elapsed timer for a job that stopped without saying so. A
+            // killed or timed-out run reports no terminal result, so the stream alone cannot tell that
+            // it is over, and the timer would tick on against a start that may be days old.
+            live={isRunning}
             eventHandler={noop}
           />
         ) : isRunning ? (
@@ -536,8 +595,9 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           // "Starting..." (`ProjectAgentStepView.cs` makes the same choice, and says why - a separate
           // loading indicator only shifts the layout when the first line arrives).
           <AgentViewer
-            id={`agent-viewer-${currentJob.id}`}
+            id={viewerId}
             height="full"
+            maxBodyHeight={isSheet ? SHEET_OUTPUT_MAX_HEIGHT : undefined}
             autoScroll
             showStatusLabel
             eventHandler={noop}

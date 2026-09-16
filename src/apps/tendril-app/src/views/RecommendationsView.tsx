@@ -7,7 +7,7 @@ import {
   type CrossPlanRecommendation,
   type RecommendationState,
 } from "../types/api";
-import { EmptyState } from "../components/EmptyState";
+import { NoContentView } from "../components/NoContentView";
 import { REC_IMPACT_CLASS } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
@@ -304,15 +304,14 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
       )}
 
       {!selected ? (
-        <EmptyState
-          // EmptyState renders its icon as text. Passing the lucide component made React drop it
-          // with "Functions are not valid as a React child", so the empty state had no icon at all.
-          icon="💡"
+        <NoContentView
+          data-testid="recommendations-empty"
           // `NoContentView("No recommendations", "Recommendations from completed plans will appear
-          // here")`. There is no second "nothing matches your filter" case any more: the page has no
+          // here")`, with no `cta`: V1 hangs the process wallpaper off Plans and Review only. There
+          // is no second "nothing matches your filter" case any more either - the page has no
           // filters, because V1's list is always exactly the pending recommendations.
           title="No recommendations"
-          description="Recommendations from completed plans will appear here."
+          description="Recommendations from completed plans will appear here"
         />
       ) : (
         <>

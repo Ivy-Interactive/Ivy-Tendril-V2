@@ -163,12 +163,20 @@ describe("SettingsView sidebar", () => {
     expect(screen.getByTestId("levels-no-effect")).toBeInTheDocument();
   });
 
-  /** `TagSecurity` and `TagTunnel` select the same row and render the same view. */
-  it("renders Security & Tunneling, and reports what is not wired", async () => {
+  /**
+   * `TagSecurity` and `TagTunnel` select the same row and render the same view.
+   *
+   * The row's own behaviour lives in `security-tunneling-section.test.tsx`, which injects the bridge;
+   * here the daemon is simply absent, which is the case that has to render rather than throw.
+   */
+  it("renders Security & Tunneling with V1's three blocks", async () => {
     await renderSettings(baseConfig, "tunnel");
 
     expect(screen.getByTestId("security-tunneling-card")).toBeInTheDocument();
-    expect(screen.getByTestId("security-not-wired")).toBeInTheDocument();
+    // `SecuritySetupView` plus both blocks of the `TunnelSetupView` it composes.
+    expect(screen.getByTestId("session-protection")).toBeInTheDocument();
+    expect(screen.getByTestId("full-tunnel")).toBeInTheDocument();
+    expect(screen.getByTestId("share-tunnel")).toBeInTheDocument();
     expect(screen.getByTestId("settings-row-security")).toHaveAttribute("aria-selected", "true");
   });
 
@@ -300,5 +308,66 @@ describe("SettingsView sidebar", () => {
       expect(screen.getByText("A project named 'tendril' already exists.")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Create Project" })).toBeDisabled();
     });
+  });
+});
+
+/**
+ * `SettingsApp.cs:120-121`: each expanded project sub-item carries the project's own colour.
+ *
+ *   var projColor = Enum.TryParse<Colors>(proj.Color, out var parsed)
+ *       ? parsed : (config.GetProjectColor(proj.Name) ?? Colors.Slate);
+ *   rows.Add(SidebarListRow.BuildSubItem(proj.Name, null, projColor, ...));
+ *
+ * and `SidebarListRow.BuildSubItem` renders it as `new Box().Background(color)
+ * .BorderRadius(BorderRadius.Rounded).Width(Size.Units(3)).Height(Size.Units(3))`. The colour was set
+ * in project settings and shown nowhere until this existed.
+ */
+describe("project colour in the settings sidebar", () => {
+  const dot = (index: number) => screen.getByTestId(`settings-row-project-${index}-dot`);
+
+  it("gives each project a dot in its configured colour", async () => {
+    await renderSettings(
+      withProjects([
+        { name: "Tendril", color: "Emerald" },
+        { name: "Ivy", color: "Purple" },
+      ]),
+    );
+
+    await click("settings-row-projects");
+
+    // The name resolves through the package's single `ivyColorVar`, so the token, not a hex literal.
+    expect(dot(0)).toHaveAttribute("data-color", "Emerald");
+    expect(dot(0).style.backgroundColor).toBe("var(--emerald, currentColor)");
+    expect(dot(1)).toHaveAttribute("data-color", "Purple");
+    expect(dot(1).style.backgroundColor).toBe("var(--purple, currentColor)");
+  });
+
+  /** V1's `?? Colors.Slate`: no colour configured is a neutral marker, not an invented one. */
+  it("falls back to Slate for a project with no colour", async () => {
+    await renderSettings(withProjects([{ name: "Tendril" }, { name: "Ivy", color: "   " }]));
+
+    await click("settings-row-projects");
+
+    expect(dot(0)).toHaveAttribute("data-color", "Slate");
+    expect(dot(1)).toHaveAttribute("data-color", "Slate");
+  });
+
+  /** `Size.Units(3)` with `BorderRadius.Rounded`, which `styles.ts` resolves to 0.5rem. */
+  it("matches V1's 0.75rem swatch rather than inventing a size", async () => {
+    await renderSettings(withProjects([{ name: "Tendril", color: "Blue" }]));
+
+    await click("settings-row-projects");
+
+    expect(dot(0)).toHaveClass("size-3", "rounded-[0.5rem]", "shrink-0");
+  });
+
+  /** `BuildSubItem` renders the icon *or* the colour box: "Add Project" has an icon, so no dot. */
+  it("gives the Add Project row an icon rather than a colour dot", async () => {
+    await renderSettings(withProjects([{ name: "Tendril", color: "Blue" }]));
+
+    await click("settings-row-projects");
+
+    expect(screen.getByTestId("settings-row-add-project")).toBeInTheDocument();
+    expect(screen.queryByTestId("settings-row-add-project-dot")).not.toBeInTheDocument();
   });
 });
