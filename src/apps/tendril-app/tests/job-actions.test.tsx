@@ -250,13 +250,14 @@ describe("jobsStore stream event ingestion", () => {
     vi.restoreAllMocks();
   });
 
-  // `stream_job_events` always restarts at line 0 and `subscribeJobEvents` never sends `since_line`,
-  // so a remount replays the whole log. The position is what identifies the replay.
-  it("drops the prefix a re-subscription replays", () => {
+  // A frame's log line index is its identity. `since_line` stops the daemon replaying a prefix in the
+  // first place, and this covers the remaining overlap: a job watched over both the per-job stream and
+  // the broadcast `job-event` channel delivers some lines twice.
+  it("ingests a given log line once, however often it arrives", () => {
     jobsStore.addStreamEvent("s1", { kind: "text", text: "a" }, 0);
     jobsStore.addStreamEvent("s1", { kind: "text", text: "b" }, 1);
 
-    // Second connection: the same two lines, then a new one.
+    // The same two lines again, then a new one.
     expect(jobsStore.addStreamEvent("s1", { kind: "text", text: "a" }, 0)).toBe(false);
     expect(jobsStore.addStreamEvent("s1", { kind: "text", text: "b" }, 1)).toBe(false);
     expect(jobsStore.addStreamEvent("s1", { kind: "text", text: "c" }, 2)).toBe(true);

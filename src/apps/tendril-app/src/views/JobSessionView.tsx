@@ -233,6 +233,10 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
       });
     });
 
+    // No base URL and no token on purpose: the store picks the transport that can authenticate. Under
+    // Tauri that is the native bridge, because `/api/jobs/:id/events` is bearer-authenticated and the
+    // webview never sees the secret - handing this call an origin would put it back on the
+    // unauthenticated `fetch` that made every job subscription a 401 and left this view with no output.
     const unsubscribe = jobsStore.subscribeToJob(job.id);
 
     return () => {

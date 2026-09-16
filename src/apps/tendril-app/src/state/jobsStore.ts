@@ -1,5 +1,5 @@
 import { bridge } from "../api/bridge";
-import { subscribeJobEvents, type EventUnsubscribe, type JobStreamEvent } from "../api/events";
+import { subscribeToJobStream, type EventUnsubscribe, type JobStreamEvent } from "../api/events";
 import { serviceStore } from "./serviceStore";
 import type { JobNotification } from "./notificationBurst";
 import type { Job, JobDetail, JobStatus, StartJobArgs, StartJobResponse } from "../types/api";
@@ -141,6 +141,14 @@ class JobsStore {
    * frame each of them delivered was accepted a second time.
    */
   private processedEventIds: Map<string, Set<string>> = new Map();
+
+  /**
+   * Highest log line ingested per job, which is where a resumed stream is asked to start.
+   *
+   * Kept alongside the session rather than derived from it: `activeSessions` holds only the frames
+   * that passed the `kinds` filter, so its length is not a line number.
+   */
+  private lastStreamLine: Map<string, number> = new Map();
 
   /** Last status seen per job id. A job absent from here has no baseline yet and cannot have exited. */
   private lastStatus: Map<string, JobStatus> = new Map();
@@ -424,6 +432,7 @@ class JobsStore {
     // notified about.
     this.lastStatus.delete(id);
     this.notified.delete(id);
+    this.lastStreamLine.delete(id);
     this.notify();
 
     this.fetchJobs().catch(() => {});
@@ -459,22 +468,24 @@ class JobsStore {
    *
    * A frame that carries its own identity (`id`/`uuid`) is deduplicated on it, per session.
    *
-   * A frame that does not - which is every line of a job's eventwire log, since
-   * `JobManager` appends the agent's raw line verbatim
-   * (`crates/tendril-core/src/jobs/manager.rs:1929`) - is positioned instead. The daemon's
-   * `/api/jobs/:id/events` stream always restarts at line 0: `stream_job_events`
-   * (`crates/tendril-server/src/routes/jobs.rs:671`) defaults `since_line` to `0` and
-   * `subscribeJobEvents` (`api/api/events.ts`) never sends one, so every remount and every
-   * reconnect replays the whole log. `streamIndex` is the frame's position in that replay, and a
-   * frame whose position is already held with the same text is the replay of a line this session
-   * ingested - the client-side equivalent of the `since_line` the request cannot express.
+   * A frame that does not - which is every line of a job's eventwire log, since `JobManager` appends
+   * the agent's raw line verbatim - is deduplicated on `line`, the frame's index in that log. The
+   * daemon numbers every frame it sends (the SSE `id:` field) and honours `since_line`, so a resumed
+   * stream does not replay a prefix in the first place; this set covers the remaining overlap, which
+   * is a job watched over two transports at once - the per-job stream and the broadcast `job-event`
+   * channel `App.tsx` feeds from the WebSocket.
    *
-   * The old key fell back to `Date.now()` for an id-less frame, which was wrong in both directions:
-   * it never suppressed a replay (a new millisecond made a new key), and it silently **dropped**
-   * two distinct frames of the same type that landed in the same millisecond, which for a fast
-   * agent is most of them.
+   * This replaces a positional comparison against `session[index].rawText`, which was standing in for
+   * a `since_line` the client had no way to send. It could only ever suppress a replay of the
+   * *leading* frames of a session, in order, and quietly accepted a duplicate that arrived after a
+   * gap; a line number needs neither assumption.
+   *
+   * The key before that fell back to `Date.now()` for an id-less frame, which was wrong in both
+   * directions: it never suppressed a replay (a new millisecond made a new key), and it silently
+   * **dropped** two distinct frames of the same type that landed in the same millisecond, which for a
+   * fast agent is most of them.
    */
-  public addStreamEvent(jobOrPlanId: string, event: unknown, streamIndex?: number): boolean {
+  public addStreamEvent(jobOrPlanId: string, event: unknown, line?: number): boolean {
     const item =
       typeof event === "string" ? { message: event } : (event as Record<string, unknown>);
     const rawId = (item.id as string) || (item.uuid as string);
@@ -485,19 +496,20 @@ class JobsStore {
 
     const session = this.state.activeSessions[jobOrPlanId];
 
-    if (
-      streamIndex !== undefined &&
-      session !== undefined &&
-      streamIndex < session.length &&
-      session[streamIndex].rawText === rawText
-    ) {
-      return false;
-    }
-
     let processed = this.processedEventIds.get(jobOrPlanId);
     if (!processed) {
       processed = new Set<string>();
       this.processedEventIds.set(jobOrPlanId, processed);
+    }
+
+    if (line !== undefined) {
+      const lineKey = `line:${line}`;
+      if (processed.has(lineKey)) return false;
+      processed.add(lineKey);
+      this.lastStreamLine.set(
+        jobOrPlanId,
+        Math.max(this.lastStreamLine.get(jobOrPlanId) ?? -1, line),
+      );
     }
 
     if (rawId) {
@@ -505,7 +517,7 @@ class JobsStore {
       processed.add(rawId);
     }
 
-    const eventKey = rawId || `${jobOrPlanId}-${streamIndex ?? session?.length ?? 0}-${type}`;
+    const eventKey = rawId || `${jobOrPlanId}-${line ?? session?.length ?? 0}-${type}`;
 
     if (!this.state.activeSessions[jobOrPlanId]) {
       this.state.activeSessions[jobOrPlanId] = [];
@@ -531,11 +543,23 @@ class JobsStore {
     delete this.state.activeSessions[jobOrPlanId];
     delete this.state.jobDetails[jobOrPlanId];
     this.processedEventIds.delete(jobOrPlanId);
+    // The resume point goes with the frames it counted: keeping it would make the next subscription
+    // ask the daemon to skip lines this session no longer holds, and the view would open blank.
+    this.lastStreamLine.delete(jobOrPlanId);
     this.notify();
   }
 
   /**
-   * Subscribe to structured job events via SSE, updating stream sessions and job lifecycle status
+   * Subscribes to a job's structured event stream, updating the session and the job's status.
+   *
+   * The transport is chosen by `subscribeToJobStream`: under Tauri, the native bridge, because
+   * `/api/jobs/:id/events` is bearer-authenticated and the webview has no secret to send. `baseUrl`
+   * and `token` describe the HTTP transport used in a browser build; the session view passes neither,
+   * which used to mean sending no `Authorization` header at all, so every job subscription the desktop
+   * app made was answered with a 401 and the session view never showed live output.
+   *
+   * A resubscription resumes from the last line this store ingested, so a remount does not replay the
+   * run it already has.
    */
   public subscribeToJob(
     jobId: string,
@@ -551,16 +575,15 @@ class JobsStore {
         ? `${info.scheme || "http"}://${info.host || "127.0.0.1"}:${info.port}`
         : "http://127.0.0.1:3000");
 
-    // The frame's position in this connection's replay. See `addStreamEvent`: the daemon has no way
-    // to be told where to resume from through `subscribeJobEvents`, so the prefix it repeats is
-    // recognised here instead.
-    let streamIndex = 0;
+    const seen = this.lastStreamLine.get(jobId);
 
-    return subscribeJobEvents(resolvedBaseUrl, jobId, token, {
+    return subscribeToJobStream(jobId, {
       kinds,
-      onEvent: (event) => {
-        this.addStreamEvent(jobId, event, streamIndex);
-        streamIndex += 1;
+      httpBaseUrl: resolvedBaseUrl,
+      token,
+      sinceLine: seen === undefined ? undefined : seen + 1,
+      onEvent: (event, line) => {
+        this.addStreamEvent(jobId, event, line);
 
         const item =
           typeof event === "string" ? { message: event } : (event as Record<string, unknown>);

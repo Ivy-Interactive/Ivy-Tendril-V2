@@ -176,6 +176,58 @@ describe("Job Events Subscription Utility", () => {
     expect(events[0].type).toBe("tool_call");
   });
 
+  // The browser transport's half of `since_line`. The daemon numbers every frame it sends with the
+  // log line index in the SSE `id:`; without reading it the client has nothing to resume from, which is
+  // why every remount used to replay the whole run.
+  it("reports each frame's log line and resumes after the last one on the next subscription", async () => {
+    const urls: string[] = [];
+    const encoder = new TextEncoder();
+
+    globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+      urls.push(url);
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode('id: 0\nevent: event\ndata: {"kind":"text","text":"a"}\n\n'),
+          );
+          controller.enqueue(
+            encoder.encode('id: 1\nevent: event\ndata: {"kind":"text","text":"b"}\n\n'),
+          );
+          controller.close();
+        },
+      });
+      return Promise.resolve(
+        new Response(stream, { headers: { "Content-Type": "text/event-stream" } }),
+      );
+    }) as unknown as typeof fetch;
+
+    const lines: Array<number | undefined> = [];
+    subscribeJobEvents("http://localhost:3000", "job-resume", undefined, {
+      onEvent: (_event, line) => lines.push(line),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(lines).toEqual([0, 1]);
+
+    jobsStore.clearSession("job-resume");
+    jobsStore.subscribeToJob("job-resume", undefined, "http://localhost:3000");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Nothing ingested for this id yet, so the first subscription asks for everything.
+    expect(urls[1]).toBe("http://localhost:3000/api/jobs/job-resume/events");
+
+    jobsStore.subscribeToJob("job-resume", undefined, "http://localhost:3000");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(urls[2]).toBe("http://localhost:3000/api/jobs/job-resume/events?since_line=2");
+
+    jobsStore.clearSession("job-resume");
+    jobsStore.subscribeToJob("job-resume", undefined, "http://localhost:3000");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(urls[3]).toBe(
+      "http://localhost:3000/api/jobs/job-resume/events",
+      // A cleared session no longer holds the frames, so asking the daemon to skip them would leave the
+      // view blank.
+    );
+  });
+
   it("updates job status and triggers detail refresh upon receiving onEnd", async () => {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({

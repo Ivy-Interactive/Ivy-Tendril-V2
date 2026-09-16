@@ -115,6 +115,8 @@ pub fn run() {
             cmd_cancel_job,
             cmd_delete_job,
             cmd_force_start_job,
+            cmd_subscribe_job_events,
+            cmd_unsubscribe_job_events,
             cmd_list_projects,
             cmd_create_project,
             cmd_get_config,

@@ -221,6 +221,29 @@ export const App: React.FC = () => {
 
     onJobEvent((payload) => {
       const item = payload as Record<string, unknown>;
+      const type = item.type as string | undefined;
+
+      // The daemon now emits job lifecycle over this channel — `job.status_changed` on every status
+      // move and `job.completed`/`job.failed` on top of it at the end. Before, it emitted nothing
+      // job-shaped at all and this handler only ever appended agent output, which is why the 5s poll
+      // below was the only thing that moved a badge. The poll stays as the backstop.
+      if (type?.startsWith("job.")) {
+        jobsStore.fetchJobs().catch(() => {});
+        if (type === "job.completed" || type === "job.failed") {
+          // A terminal job moves its plan's state too, and the plan list is a separate projection.
+          plansStore.fetchPlans().catch(() => {});
+        }
+        return;
+      }
+
+      // A client the daemon's broadcast outran is told how much it missed rather than left silently
+      // deaf. There is nothing to replay into a log from that, so the answer is to re-read.
+      if (type === "resync") {
+        jobsStore.fetchJobs().catch(() => {});
+        plansStore.fetchPlans().catch(() => {});
+        return;
+      }
+
       const jobId = (item.jobId as string) || (item.id as string) || "live-job";
       jobsStore.addStreamEvent(jobId, payload);
     })
