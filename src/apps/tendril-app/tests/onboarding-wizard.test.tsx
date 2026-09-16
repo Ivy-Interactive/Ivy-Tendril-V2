@@ -41,6 +41,15 @@ const checks: DoctorCheck[] = [
     installUrl: "https://claude.com/claude-code",
     category: "Prerequisite",
   },
+  // The registry reports every agent CLI, present or not; a missing one warns rather than fails.
+  {
+    name: "Gemini",
+    status: "Warn",
+    message: "Gemini CLI ('gemini') not found on PATH",
+    required: false,
+    installUrl: "https://github.com/google-gemini/gemini-cli",
+    category: "Prerequisite",
+  },
 ];
 
 /** The same registry with nothing required missing, so picking an agent advances. */
@@ -61,6 +70,14 @@ async function renderWizard(onFinished = vi.fn()) {
 const click = async (testId: string) => {
   await act(async () => {
     fireEvent.click(screen.getByTestId(testId));
+  });
+};
+
+/** Types a repository into the picker and submits it, the way V1's `OnSubmit` handler does. */
+const addRepo = async (path: string) => {
+  await act(async () => {
+    fireEvent.change(screen.getByTestId("onboarding-repo-input"), { target: { value: path } });
+    fireEvent.keyDown(screen.getByTestId("onboarding-repo-input"), { key: "Enter" });
   });
 };
 
@@ -96,6 +113,8 @@ describe("OnboardingWizard", () => {
       .mockResolvedValue({ jobId: "00900", status: "Started" });
     // jobsStore refreshes the job list after starting one.
     vi.spyOn(bridge, "listJobs").mockResolvedValue([]);
+    // The wizard reads the project list to spot a name clash before it calls create.
+    vi.spyOn(bridge, "listProjects").mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -146,6 +165,72 @@ describe("OnboardingWizard", () => {
     await renderWizard();
     await click("onboarding-recheck");
     expect(runDoctor).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks the pick when the picked agent's own CLI is missing", async () => {
+    // V1 parity: `BuildAgentCheck` marks the selected agent's check required, so
+    // `RunFlowAsync` opens `InstallMissingDialog` for it instead of advancing - even though the
+    // registry marks every agent optional, since only the selected one has to be there.
+    await renderWizard();
+
+    await click("onboarding-agent-gemini");
+
+    expect(screen.getByTestId("onboarding-step-agent")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-error")).toHaveTextContent(
+      "Tendril needs Gemini but it isn't installed.",
+    );
+  });
+
+  it("re-probes on the pick, so installing the CLI works without pressing Re-check", async () => {
+    // V1's `RunFlowAsync` re-runs its checks on every pick rather than trusting what the last
+    // render fetched.
+    // The mount probe and the first click both see a machine without git.
+    runDoctor.mockResolvedValueOnce(checks).mockResolvedValueOnce(checks);
+    await renderWizard();
+    await click("onboarding-agent-claude");
+    expect(screen.getByTestId("onboarding-step-agent")).toBeInTheDocument();
+
+    // Git appears; the second probe is the one the click makes.
+    await click("onboarding-agent-claude");
+
+    expect(runDoctor).toHaveBeenCalledTimes(3);
+    expect(screen.getByTestId("onboarding-step-data-storage")).toBeInTheDocument();
+  });
+
+  it("fails the pick closed when the probe cannot reach the daemon", async () => {
+    await renderWizard();
+    runDoctor.mockRejectedValue(new Error("daemon offline"));
+
+    await click("onboarding-agent-claude");
+
+    expect(screen.getByTestId("onboarding-step-agent")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-error")).toHaveTextContent(
+      "Please make sure your agent is present and you are authorized.",
+    );
+    // The stepper is still the way out of a step the wizard cannot satisfy.
+    await goToStep(HOME_STEP);
+    expect(screen.getByTestId("onboarding-step-data-storage")).toBeInTheDocument();
+  });
+
+  it("shows an installed-but-unauthenticated GitHub CLI", async () => {
+    // `health.rs::github_cli_checks` reports auth as an Environment row; hiding it would leave the
+    // one gh state an operator has to act on invisible. It must not block: gh is optional in V1.
+    runDoctor.mockResolvedValue([
+      ...healthyChecks,
+      {
+        name: "GitHub CLI auth",
+        status: "Fail",
+        message: "GitHub CLI installed but not authenticated — run 'gh auth login'",
+        required: false,
+        category: "Environment",
+      },
+    ]);
+    await renderWizard();
+
+    expect(screen.getByTestId("onboarding-check-GitHub CLI auth")).toBeInTheDocument();
+
+    await click("onboarding-agent-claude");
+    expect(screen.getByTestId("onboarding-step-data-storage")).toBeInTheDocument();
   });
 
   it("only goes backwards from the last step", async () => {
@@ -207,8 +292,11 @@ describe("OnboardingWizard", () => {
     await click("onboarding-continue");
 
     expect(order).toEqual(["createProject", "startJob"]);
+    // `color: "Green"` is what V1's onboarding writes (`ProjectAgentStepView.Build`); the daemon's
+    // own default is Blue, so the wizard has to say so.
     expect(createProject).toHaveBeenCalledWith({
       name: "Ivy-Tendril-V2",
+      color: "Green",
       repos: ["/repos/tendril"],
     });
     expect(startJob).toHaveBeenCalledWith({
@@ -216,8 +304,82 @@ describe("OnboardingWizard", () => {
       projectName: "Ivy-Tendril-V2",
       repos: [{ path: "/repos/tendril" }],
     });
-    // And it advanced to the final step.
+    // V1 parity: the project section does not auto-advance. V1 lands on its sub-step 1 with the
+    // hand-off in flight and waits for Next, so the wizard stays here with the panel showing.
+    // The old expectation (straight to the last step) left that panel, and its "Configure
+    // verifications now" button, unreachable.
+    expect(screen.getByTestId("onboarding-step-project")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-project-registered")).toBeInTheDocument();
+
+    await click("onboarding-continue");
     expect(screen.getByTestId("onboarding-step-complete")).toBeInTheDocument();
+  });
+
+  it("persists the agent pick with the project, not only on Finish", async () => {
+    // V1 parity: the pick is written into the settings object on step 0 and `SaveSettings()` on the
+    // project step flushes it, so a wizard abandoned after the project exists still has an agent.
+    await renderWizard();
+    await click("onboarding-agent-claude");
+    await goToStep(PROJECT_STEP);
+    await addRepo("/repos/tendril");
+    await click("onboarding-continue");
+
+    expect(putConfig).toHaveBeenCalledWith("codingAgent", "claude");
+    expect(createProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not create the project twice when the operator comes back to the step", async () => {
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+    await addRepo("/repos/tendril");
+    await click("onboarding-continue");
+    expect(createProject).toHaveBeenCalledTimes(1);
+
+    // Forward to Complete, then back to the project step with the same name still typed.
+    await click("onboarding-continue");
+    await goToStep(PROJECT_STEP);
+
+    // V1 only builds a ProjectConfig when the name is not already in the list, and
+    // `CommitPendingProjectAsync` checks again before adding; Create Project is gone here.
+    expect(screen.getByTestId("onboarding-continue")).toHaveTextContent("Next");
+    await click("onboarding-continue");
+    expect(createProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers the existing project instead of creating a duplicate", async () => {
+    vi.spyOn(bridge, "listProjects").mockResolvedValue([
+      { name: "Ivy-Tendril-V2", repos: ["/repos/existing"], verifications: [] },
+    ]);
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("onboarding-project-name"), {
+        target: { value: "ivy-tendril-v2" },
+      });
+    });
+    await addRepo("/repos/tendril");
+
+    // V1 compares names case-insensitively and disables its next button on a clash.
+    expect(screen.getByTestId("onboarding-project-name-exists")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
+
+    await click("onboarding-use-existing-project");
+
+    expect(createProject).not.toHaveBeenCalled();
+    expect(screen.getByTestId("onboarding-project-registered")).toBeInTheDocument();
+    // The existing project's repositories are adopted, as `UseExisting` does.
+    expect(screen.getByText("/repos/existing")).toBeInTheDocument();
+  });
+
+  it("surfaces the daemon's duplicate-name conflict as V1's conflict box", async () => {
+    createProject.mockRejectedValue(new Error("Project 'Ivy-Tendril-V2' already exists"));
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+    await addRepo("/repos/Ivy-Tendril-V2");
+    await click("onboarding-continue");
+
+    expect(screen.getByTestId("onboarding-error")).toHaveTextContent("already exists");
+    expect(screen.getByTestId("onboarding-project-name-exists")).toBeInTheDocument();
   });
 
   it("disables Create Project until there is a name and a repository", async () => {
@@ -244,6 +406,81 @@ describe("OnboardingWizard", () => {
     });
     expect(screen.getByTestId("onboarding-continue")).not.toBeDisabled();
     expect(createProject).not.toHaveBeenCalled();
+  });
+
+  it("rejects a repository path RepoPathValidator does not recognise", async () => {
+    // V1 `ProjectRepoPickerView.AddAsync`: anything `IsValid` says no to never reaches `repos`.
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+
+    await addRepo("tendril");
+
+    expect(screen.getByTestId("onboarding-picker-error")).toHaveTextContent(
+      "Invalid repository path.",
+    );
+    expect(screen.queryByText("tendril")).not.toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
+  });
+
+  it("refuses a remote URL, which V2 has no way to clone during setup", async () => {
+    // V1 clones it into TendrilHome first (`OnboardingRepoHelper.ResolveReposAsync`); with no clone
+    // path in the daemon, accepting it would write a project whose repo path is a URL.
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+
+    await addRepo("https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git");
+
+    expect(screen.getByTestId("onboarding-picker-error")).toHaveTextContent("cannot clone");
+    expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
+  });
+
+  it("dedupes repositories case-insensitively, as V1 does", async () => {
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+
+    await addRepo("/repos/Tendril");
+    await addRepo("/repos/tendril");
+
+    expect(screen.getAllByRole("button", { name: /^Remove / })).toHaveLength(1);
+  });
+
+  it("sanitizes the project name to V1's character set", async () => {
+    // V1 `ProjectInputStepView`'s UseEffect rewrites the state, so what is shown is what is written.
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("onboarding-project-name"), {
+        target: { value: "my project/v2!" },
+      });
+    });
+
+    expect(screen.getByTestId("onboarding-project-name")).toHaveValue("myprojectv2");
+  });
+
+  it("suggests the repository's name, sanitized and without .git", async () => {
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+
+    await addRepo("/repos/my repo.git");
+
+    expect(screen.getByTestId("onboarding-project-name")).toHaveValue("myrepo.git");
+  });
+
+  it("refuses a name sanitizing cannot rescue", async () => {
+    // `.` survives the character filter but is still a path segment, which is why V1 has both a
+    // sanitizer and a validator.
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+    await addRepo("/repos/tendril");
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("onboarding-project-name"), { target: { value: ".." } });
+    });
+
+    expect(screen.getByTestId("onboarding-project-name-error")).toHaveTextContent(
+      "Invalid project name '..'",
+    );
+    expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
   });
 
   it("skips the whole project section straight to the last step", async () => {
