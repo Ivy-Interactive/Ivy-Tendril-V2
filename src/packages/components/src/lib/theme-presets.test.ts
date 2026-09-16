@@ -20,9 +20,12 @@ describe("theme presets", () => {
     document.getElementById(THEME_PRESET_STYLE_ID)?.remove();
   });
 
-  it("carries V1's BuiltInThemes, in V1's order", () => {
+  it("carries V1's BuiltInThemes in V1's order, with Ivy inserted after Default", () => {
+    // `ivy` is V2's own, requested directly: Default now carries a black primary, and Ivy is where
+    // the Ivy-green branding moved to. Everything after it is V1's `BuiltInThemes` order untouched.
     expect(THEME_PRESETS.map((preset) => preset.id)).toEqual([
       "default",
+      "ivy",
       "cupcake",
       "cyberpunk",
       "synthwave",
@@ -116,13 +119,36 @@ describe("theme presets", () => {
     );
   });
 
-  it("removes the override layer for the default preset rather than restating tokens.css", () => {
+  it("removes the override layer for the Ivy preset rather than restating tokens.css", () => {
+    // This invariant moved from `default` to `ivy`. `tokens.css` is the generated Ivy design-system
+    // palette, so the *absence* of an override layer is precisely the Ivy theme - which is why the
+    // branding moved onto a preset instead of being hand-edited into a generated file.
     applyThemePreset("cupcake");
     expect(document.getElementById(THEME_PRESET_STYLE_ID)).not.toBeNull();
 
-    const applied = applyThemePreset(DEFAULT_THEME_PRESET_ID);
-    expect(applied.id).toBe(DEFAULT_THEME_PRESET_ID);
+    const applied = applyThemePreset("ivy");
+    expect(applied.id).toBe("ivy");
     expect(themePresetCss(applied)).toBe("");
     expect(document.getElementById(THEME_PRESET_STYLE_ID)).toBeNull();
+  });
+
+  it("gives the default preset a black primary, inverted for dark", () => {
+    const css = themePresetCss(applyThemePreset(DEFAULT_THEME_PRESET_ID));
+
+    expect(css).toContain("--primary: #000000");
+    expect(css).toContain("--primary-foreground: #ffffff");
+    // Black on `tokens.css`'s #0a0a0a dark background would be invisible, so the dark half inverts.
+    expect(css).toContain("--primary: #f8f8f8");
+  });
+
+  it("overrides nothing but the primary pair in the default preset", () => {
+    // A brand change, not a new palette: every other token must still come from `tokens.css`.
+    const preset = THEME_PRESETS.find((candidate) => candidate.id === DEFAULT_THEME_PRESET_ID)!;
+
+    expect(Object.keys(preset.colors.light ?? {}).sort()).toEqual([
+      "primary",
+      "primary-foreground",
+    ]);
+    expect(Object.keys(preset.colors.dark ?? {}).sort()).toEqual(["primary", "primary-foreground"]);
   });
 });
