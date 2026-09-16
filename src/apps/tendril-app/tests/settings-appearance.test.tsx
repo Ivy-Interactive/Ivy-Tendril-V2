@@ -66,6 +66,9 @@ describe("Settings / Appearance", () => {
     const select = screen.getByLabelText("Theme") as HTMLSelectElement;
     expect(Array.from(select.options).map((option) => option.value)).toEqual([
       "default",
+      // V2's own, requested directly: Default now carries a black primary and `ivy` is where the
+      // Ivy-green branding moved to. Everything after it is V1's `BuiltInThemes` order untouched.
+      "ivy",
       "cupcake",
       "cyberpunk",
       "synthwave",
@@ -126,7 +129,11 @@ describe("Settings / Appearance", () => {
     });
 
     expect(screen.getByLabelText("Theme")).toHaveValue("default");
-    expect(presetStyle()).toBeNull();
+    // Not `toBeNull()` any more: `default` carries an override layer now (a black primary), so a
+    // rollback restores *its* CSS rather than removing the element. The subject is unchanged - what
+    // matters is that Forest's palette is gone and the default's is back.
+    expect(presetStyle()?.textContent).toContain("--primary: #000000");
+    expect(presetStyle()?.textContent).not.toContain("#1eb854");
     expect(screen.getByTestId("appearance-card")).toHaveTextContent("Failed to save");
   });
 

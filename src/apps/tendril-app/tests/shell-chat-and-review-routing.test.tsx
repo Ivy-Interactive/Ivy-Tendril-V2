@@ -105,3 +105,30 @@ describe("a Review row click", () => {
     expect(onSelectSidebarItem).toHaveBeenCalledWith("review", "00074", { planId: "00074" });
   });
 });
+
+/**
+ * Every shell widget gates its callback on `events.includes(...)` — that is how the framework lets a
+ * server declare which events it actually subscribed to — and `events` defaults to `[]`. So a call
+ * site that wires a real `eventHandler` but forgets `events` renders a button that silently swallows
+ * every click. This has now happened twice: the Chat row's new-chat chord, and the primary New Plan
+ * button. These assert the affordances fire, so the next omission fails here instead of in use.
+ */
+describe("the shell's primary affordances actually fire", () => {
+  it("runs the New Plan handler when the button is clicked", () => {
+    const onNewPlan = vi.fn();
+    renderShell({ onNewPlan });
+
+    fireEvent.click(screen.getByRole("button", { name: "New Plan" }));
+
+    expect(onNewPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs the nav handler when a nav item is chosen", () => {
+    const onSelectNav = vi.fn();
+    renderShell({ onSelectNav });
+
+    fireEvent.click(screen.getByText("Jobs"));
+
+    expect(onSelectNav).toHaveBeenCalledWith("jobs");
+  });
+});

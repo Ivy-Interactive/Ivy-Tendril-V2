@@ -16,6 +16,7 @@ import { SortableVerificationList } from "@ivy-interactive/components/tendril";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
 import { LinesField, SaveError, SelectField, SubSection, TextField, asOptions } from "./fields";
+import { useRemovalConfirm } from "./useRemovalConfirm";
 import { formatEnvLines, parseEnvLines, parseLines } from "./configValues";
 import {
   AUTO_IMPLEMENT_OPTIONS,
@@ -486,6 +487,35 @@ const editDeleteActions = <TRow,>(): DataTableRowAction<TRow>[] => [
   { tag: "delete", label: "Delete", variant: "destructive" },
 ];
 
+/**
+ * A cell whose value may be one long unbroken string — a review action's command, an env file path, a
+ * skill path — capped so it cannot dictate how wide this screen is.
+ *
+ * Why it is needed at all: a `<td>`'s min-content width is its longest unbreakable run, and a URL has
+ * no spaces to break on, so one long command made the table wider than the blade. The blade's content
+ * sits inside a Radix `ScrollArea`, whose content wrapper is `display: table` and therefore
+ * shrink-to-fit — so it grew to match, and the whole project screen gained a horizontal scrollbar.
+ *
+ * V1 never hit this because `ReviewActionsTableView` (`Apps/Settings/Blades/ProjectTableViews.cs:385`)
+ * renders **only** `Action Name` and the button column — the command and condition are not in its
+ * table at all, they live in the edit blade. V2 shows them, which is more useful, so they are kept and
+ * bounded rather than dropped back to V1's two columns.
+ *
+ * `max-w` makes the cap definite, which is what lets `truncate` ellipsize; `title` keeps the whole
+ * value readable, so nothing is lost — and `Edit` still shows it in full in a field.
+ */
+const CappedCell: React.FC<{ value: string }> = ({ value }) =>
+  value === "" ? null : (
+    <span className="block max-w-90 truncate" title={value}>
+      {value}
+    </span>
+  );
+
+/** `cell` for a column whose accessor already returns the string to show. */
+const cappedCell =
+  <TRow,>(read: (row: TRow) => string) =>
+  (_value: unknown, row: TRow) => <CappedCell value={read(row)} />;
+
 const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   project,
   verificationDefs,
@@ -527,6 +557,13 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
     push(blade);
   };
 
+  /**
+   * Every destructive row action on this screen goes through one confirm, per Framework's
+   * "never delete on single click". Each of them rewrites `config.yaml` with the entry gone, and
+   * `merge_config_value` replaces sequences wholesale, so the click was the whole transaction.
+   */
+  const { requestRemoval, removalDialog } = useRemovalConfirm();
+
   /* --------------------------------------------------------------- repositories */
 
   const saveRepos = (repos: RepoRef[], message: string) =>
@@ -547,8 +584,18 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
 
   const reviewActionColumns: DataTableColumn<ReviewActionConfigEntry>[] = [
     { name: "name", header: "Action Name", accessor: (row) => row.name },
-    { name: "command", header: "Command", accessor: (row) => row.command },
-    { name: "condition", header: "Condition", accessor: (row) => row.condition },
+    {
+      name: "command",
+      header: "Command",
+      accessor: (row) => row.command,
+      cell: cappedCell<ReviewActionConfigEntry>((row) => row.command),
+    },
+    {
+      name: "condition",
+      header: "Condition",
+      accessor: (row) => row.condition,
+      cell: cappedCell<ReviewActionConfigEntry>((row) => row.condition),
+    },
   ];
 
   const submitReviewAction = (action: ReviewActionConfigEntry, index: number | null) => {
@@ -655,12 +702,23 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   /* --------------------------------------------------------- environment files */
 
   const envFileColumns: DataTableColumn<ProjectEnvFileConfigEntry>[] = [
-    { name: "path", header: "Path", accessor: (row) => row.path },
-    { name: "template", header: "Template", accessor: (row) => row.template },
+    {
+      name: "path",
+      header: "Path",
+      accessor: (row) => row.path,
+      cell: cappedCell<ProjectEnvFileConfigEntry>((row) => row.path),
+    },
+    {
+      name: "template",
+      header: "Template",
+      accessor: (row) => row.template,
+      cell: cappedCell<ProjectEnvFileConfigEntry>((row) => row.template),
+    },
     {
       name: "overrides",
       header: "Overrides",
       accessor: (row) => Object.keys(row.overrides).join(", "),
+      cell: cappedCell<ProjectEnvFileConfigEntry>((row) => Object.keys(row.overrides).join(", ")),
     },
   ];
 
@@ -680,6 +738,9 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       name: "command",
       header: "Command",
       accessor: (row) => [row.command, ...row.arguments].join(" "),
+      cell: cappedCell<ProjectMcpServerRefEntry>((row) =>
+        [row.command, ...row.arguments].join(" "),
+      ),
     },
     { name: "disabled", header: "Disabled", accessor: (row) => (row.disabled ? "Yes" : "No") },
   ];
@@ -694,8 +755,18 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
 
   const skillColumns: DataTableColumn<ProjectSkillRefEntry>[] = [
     { name: "name", header: "Name", accessor: (row) => row.name },
-    { name: "description", header: "Description", accessor: (row) => row.description },
-    { name: "path", header: "Path", accessor: (row) => row.path },
+    {
+      name: "description",
+      header: "Description",
+      accessor: (row) => row.description,
+      cell: cappedCell<ProjectSkillRefEntry>((row) => row.description),
+    },
+    {
+      name: "path",
+      header: "Path",
+      accessor: (row) => row.path,
+      cell: cappedCell<ProjectSkillRefEntry>((row) => row.path),
+    },
   ];
 
   const submitSkill = (skill: ProjectSkillRefEntry, index: number | null) => {
@@ -818,10 +889,17 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
                 size="sm"
                 aria-label={`Remove ${repo.path}`}
                 onClick={() =>
-                  saveRepos(
-                    project.repos.filter((_, i) => i !== index),
-                    `Removed ${repo.path}`,
-                  )
+                  requestRemoval({
+                    kind: "repository",
+                    name: repo.path,
+                    consequence:
+                      "The checkout on disk is untouched — this only stops new plans for this project from being based on it.",
+                    onConfirm: () =>
+                      saveRepos(
+                        project.repos.filter((_, i) => i !== index),
+                        `Removed ${repo.path}`,
+                      ),
+                  })
                 }
               >
                 <X className="size-4" aria-hidden />
@@ -882,6 +960,12 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         }
       >
         <DataTable<ReviewActionConfigEntry>
+          /* Without a fixed layout a `<table>` sizes to its content, so several columns each holding
+             a path or a URL made the table far wider than the settings pane and handed the whole
+             view a horizontal scrollbar. `table-fixed` makes the columns divide the available width
+             instead, which is also what lets the per-cell `truncate` bind. `JobsView` forces the
+             same thing for the same reason. */
+          className="[&_table.ivy-data-table]:table-fixed"
           data-testid="project-review-actions-table"
           paginated={false}
           columns={reviewActionColumns}
@@ -902,14 +986,21 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
                 />,
               );
             } else if (tag === "delete") {
-              void patch(
-                {
-                  reviewActions: project.reviewActions
-                    .filter((_, i) => i !== index)
-                    .map(reviewActionToWire),
-                },
-                `Review action '${row.name}' deleted`,
-              );
+              requestRemoval({
+                kind: "review action",
+                name: row.name,
+                consequence:
+                  "It stops being offered on this project's plans in Review, and the remaining actions close up around its place in the run order.",
+                onConfirm: () =>
+                  void patch(
+                    {
+                      reviewActions: project.reviewActions
+                        .filter((_, i) => i !== index)
+                        .map(reviewActionToWire),
+                    },
+                    `Review action '${row.name}' deleted`,
+                  ),
+              });
             }
           }}
         />
@@ -982,6 +1073,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         }
       >
         <DataTable<ProjectPortConfigEntry>
+          className="[&_table.ivy-data-table]:table-fixed"
           data-testid="project-ports-table"
           paginated={false}
           columns={portColumns}
@@ -1031,6 +1123,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         }
       >
         <DataTable<ProjectEnvFileConfigEntry>
+          className="[&_table.ivy-data-table]:table-fixed"
           data-testid="project-env-files-table"
           paginated={false}
           columns={envFileColumns}
@@ -1051,10 +1144,17 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
                 <EnvFileBlade existing={row} onSubmit={(f) => submitEnvFile(f, index)} />,
               );
             } else if (tag === "delete") {
-              void patch(
-                { envFiles: project.envFiles.filter((_, i) => i !== index).map(envFileToWire) },
-                `Environment file '${row.path}' deleted`,
-              );
+              requestRemoval({
+                kind: "environment file",
+                name: row.path,
+                consequence:
+                  "Its variables stop being injected into new plan worktrees. Files already materialized in existing worktrees stay as they are.",
+                onConfirm: () =>
+                  void patch(
+                    { envFiles: project.envFiles.filter((_, i) => i !== index).map(envFileToWire) },
+                    `Environment file '${row.path}' deleted`,
+                  ),
+              });
             }
           }}
         />
@@ -1232,6 +1332,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           }
         >
           <DataTable<ProjectMcpServerRefEntry>
+            className="[&_table.ivy-data-table]:table-fixed"
             data-testid="project-mcp-servers-table"
             paginated={false}
             columns={mcpColumns}
@@ -1251,14 +1352,21 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
                   <McpServerBlade existing={row} onSubmit={(s) => submitMcpServer(s, index)} />,
                 );
               } else if (tag === "delete") {
-                void patch(
-                  {
-                    mcpServers: project.mcpServers
-                      .filter((_, i) => i !== index)
-                      .map(mcpServerToWire),
-                  },
-                  `MCP server '${row.name}' deleted`,
-                );
+                requestRemoval({
+                  kind: "MCP server",
+                  name: row.name,
+                  consequence:
+                    "Agents working on this project stop being given its tools. This removes the project's reference to it, not the server definition itself.",
+                  onConfirm: () =>
+                    void patch(
+                      {
+                        mcpServers: project.mcpServers
+                          .filter((_, i) => i !== index)
+                          .map(mcpServerToWire),
+                      },
+                      `MCP server '${row.name}' deleted`,
+                    ),
+                });
               }
             }}
           />
@@ -1290,6 +1398,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           }
         >
           <DataTable<ProjectSkillRefEntry>
+            className="[&_table.ivy-data-table]:table-fixed"
             data-testid="project-skills-table"
             paginated={false}
             columns={skillColumns}
@@ -1309,10 +1418,17 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
                   <SkillBlade existing={row} onSubmit={(s) => submitSkill(s, index)} />,
                 );
               } else if (tag === "delete") {
-                void patch(
-                  { skills: project.skills.filter((_, i) => i !== index).map(skillToWire) },
-                  `Skill '${row.name}' deleted`,
-                );
+                requestRemoval({
+                  kind: "custom skill",
+                  name: row.name,
+                  consequence:
+                    "Agents working on this project stop being given it. This removes the project's reference to it, not the skill's own files.",
+                  onConfirm: () =>
+                    void patch(
+                      { skills: project.skills.filter((_, i) => i !== index).map(skillToWire) },
+                      `Skill '${row.name}' deleted`,
+                    ),
+                });
               }
             }}
           />
@@ -1336,6 +1452,8 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           <p className="text-xs text-muted-foreground">{DELETE_UNAVAILABLE}</p>
         </div>
       </SubSection>
+
+      {removalDialog}
     </div>
   );
 };

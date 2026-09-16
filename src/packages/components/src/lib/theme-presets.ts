@@ -42,12 +42,38 @@ export const THEME_PRESETS: ThemePreset[] = [
   {
     id: DEFAULT_THEME_PRESET_ID,
     name: "Default",
-    description: "Standard clean Tendril theme with slate light and dark zinc",
+    description: "Neutral Tendril theme with a black primary, light and dark",
     isDark: false,
-    // V1 previews its own zinc palette here; V2's default is the design system's Ivy-green token
-    // set, and a swatch row that showed V1's colours would be showing colours nothing renders.
+    previewColors: ["#000000", "#dfe7e3", "#f8f8f8", "#ffffff"],
+    /**
+     * Black primary, requested directly. Only `primary` and its foreground are overridden - every
+     * other token stays as `tokens.css` declares it, so this is a brand change and not a new palette.
+     *
+     * The dark half inverts rather than repeating black, because `--background` is `#0a0a0a` there
+     * and a black primary on it is invisible. That is the same light-near-black / dark-near-white
+     * relationship the neutral shadcn palettes use, and the only token pair in this file whose two
+     * halves are deliberately opposites.
+     */
+    colors: {
+      light: { primary: "#000000", "primary-foreground": "#ffffff" },
+      dark: { primary: "#f8f8f8", "primary-foreground": "#000000" },
+    },
+  },
+  {
+    id: "ivy",
+    name: "Ivy",
+    description: "Tendril's own branding, with the Ivy green as the primary colour",
+    isDark: false,
     previewColors: ["#00cc92", "#dfe7e3", "#f8f8f8", "#ffffff"],
-    // No overrides: the default preset *is* `tokens.css`.
+    /**
+     * Deliberately empty, and this is the one preset for which that is meaningful: `tokens.css` is
+     * the generated Ivy design-system token set, so the *absence* of an override layer already is
+     * the Ivy theme. {@link applyThemePreset} removes its `<style>` element for an empty preset,
+     * which is exactly the right behaviour here.
+     *
+     * This is why the brand colours moved onto a preset rather than into `tokens.css`: that file's
+     * palette region is generated (`pnpm sync:tokens`) and hand-editing it would be overwritten.
+     */
     colors: {},
   },
   {

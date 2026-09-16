@@ -1,5 +1,5 @@
 <p align="right">
-  <a href="../../README.md">English</a> | <strong>简体中文</strong> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <a href="README.fr.md">Français</a>
+  <a href="../../README.md">English</a> | <strong>简体中文</strong> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <a href="README.fr.md">Français</a> | <a href="README.ru.md">Русский</a> | <a href="README.hi.md">हिन्दी</a>
 </p>
 
 <h1>
@@ -271,17 +271,22 @@ irm https://cdn.ivy.app/install-tendril.ps1 | iex
 
 ### 运行
 
-Tendril 是一款桌面应用程序，但也支持通过 CLI 启动和控制:
+Tendril 是一款桌面应用程序，但同一份安装同时也提供 CLI。两者是相互独立的可执行文件：`tendril-app`
+是桌面应用，`tendril` 是 CLI 和服务端。
 
-启动桌面应用程序:
+从应用程序菜单启动 **Tendril** 即可打开桌面应用程序（也可以直接运行 `tendril-app` 可执行文件）。
+
+以无头模式启动守护进程 —— 仅提供 HTTP 与 WebSocket API，没有桌面界面:
 ```bash
-tendril
+tendril run
 ```
 
-以无头模式启动 (无桌面界面的 Web 服务端):
-```bash
-tendril --web
-```
+`tendril run` 会先检查端口并迁移数据库，然后在 `127.0.0.1:5010` 上提供服务。使用 `--port` / `--host`
+可以更改监听地址；如果需要不做任何预检查的纯监听器，请使用 `tendril serve`（它也是接受 `--tls-cert` /
+`--tls-key` 的命令）。
+
+其余功能都是子命令 —— `tendril --help` 会列出全部子命令，`tendril doctor` 则会报告安装状态（没有任何
+`[FAIL]` 时退出码为 0，否则为 1，因此可以用它作为脚本中的门禁）。
 
 ---
 
@@ -291,14 +296,20 @@ tendril --web
 Ivy-Tendril-V2/
 ├── src/
 │   ├── apps/
-│   │   └── tendril-app/            # Tauri 桌面应用 + React 前端
+│   │   ├── tendril-app/            # Tauri 桌面应用 + React 前端
+│   │   └── tendril-docs/           # 文档站点
 │   ├── packages/
 │   │   └── components/             # @ivy-interactive/components + Storybook
 │   ├── crates/
 │   │   ├── tendril-core/           # 核心领域模型, SQLite 数据库, 工作区引擎
 │   │   ├── tendril-server/         # Axum REST 与 WebSocket HTTP 服务守护进程
 │   │   └── tendril-cli/            # 命令行界面 ("tendril")
-│   └── promptwares/                # Promptware 智能体定义与固件
+│   ├── extensions/
+│   │   └── vscode/                 # VS Code / Antigravity IDE 扩展
+│   ├── promptwares/                # Promptware 智能体定义与固件
+│   ├── skills/                     # 智能体工作流技能
+│   └── scripts/                    # 仓库配置与测试校验脚本
+├── docs/                           # 文档内容
 ├── Cargo.toml                      # 统一 Cargo 工作空间
 ├── pnpm-workspace.yaml             # 统一 pnpm 工作空间
 └── package.json                    # 工作空间根脚本
@@ -349,6 +360,15 @@ Ivy-Tendril-V2/
    # Rust 测试
    cargo test --workspace
    ```
+
+### 视觉与截图测试
+
+如需在本地运行截图校验与 Storybook 视觉测试:
+
+```bash
+pnpm install
+pnpm run install:playwright:deps
+```
 
 ---
 
