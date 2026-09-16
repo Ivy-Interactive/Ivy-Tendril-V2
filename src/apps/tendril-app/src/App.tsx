@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
-import { initAppearance } from "./state/appearance";
+import { APPEARANCE_DEFAULTS, initAppearance, type ChatMode } from "./state/appearance";
 import { sidebarListStore, usePublishedSidebarList } from "./state/sidebarListStore";
 import { toAddressArgs } from "./state/navigation";
 import { plansStore } from "./state/plansStore";
@@ -115,6 +115,19 @@ const ReviewActionView = React.lazy(() =>
  */
 const REVIEW_ACTION_APP_ID = "review-action";
 
+const AgentTerminalView = React.lazy(() =>
+  import("./views/AgentTerminalView").then((m) => ({ default: m.AgentTerminalView })),
+);
+
+/**
+ * V1's `AgentApp`: the agent's own terminal, opened instead of the chat view when `chatMode` is
+ * `terminal`. `allowDuplicateTabs: true` in the registry, so the router opens it as a session pane
+ * keyed by the chat session it belongs to — reopening the same conversation reveals the pane already
+ * running it rather than spawning a second agent, which is exactly why V1 keys its agent panes the
+ * same way.
+ */
+const AGENT_APP_ID = "agent";
+
 /**
  * The session a review action's pane is keyed by. Router rule 3 keys a pane by its session id, so
  * reopening the same action reveals the terminal already running it instead of spawning a second
@@ -167,6 +180,14 @@ export const App: React.FC = () => {
   // Which review action the review-action view is running. Held here rather than encoded into the nav
   // id: it is three values, and it is deliberately not persisted — a restored nav pointing at a
   // process that died with the last session has nothing to show.
+  /**
+   * Chat sessions with a terminal pane open, keyed by session id, which is also the pane's tab id.
+   * Held here rather than in the address for the same reason a review action's target is: the pane has
+   * to survive a remount without re-reading anything, and the prompt is not something to put in a URL.
+   */
+  const [terminalPanes, setTerminalPanes] = useState<Record<string, { prompt?: string }>>({});
+  const [chatMode, setChatMode] = useState<ChatMode>(APPEARANCE_DEFAULTS.chatMode);
+
   const [reviewActionTargets, setReviewActionTargets] = useState<
     Record<string, ReviewActionTarget>
   >({});
@@ -194,7 +215,7 @@ export const App: React.FC = () => {
     // V1's shell applies the saved theme and theme mode on every session start
     // (`TendrilThemes.ApplyTheme` / `ApplyThemeMode`), so a preset chosen in Appearance survives a
     // restart instead of lasting only for the session that chose it.
-    void initAppearance();
+    void initAppearance().then((settings) => setChatMode(settings.chatMode));
     serviceStore.refreshInfo().catch(() => {});
     plansStore.fetchPlans().catch(() => {});
     jobsStore.fetchJobs().catch(() => {});
@@ -436,6 +457,49 @@ export const App: React.FC = () => {
   };
 
   /**
+   * Opens a chat session as a terminal pane. The pane is keyed by the session, so reopening the same
+   * conversation reveals the agent already running in it (router rule 3) rather than starting another.
+   */
+  const openTerminalPane = (sessionId: string, prompt?: string) => {
+    setTerminalPanes((current) => ({ ...current, [sessionId]: { prompt } }));
+    uiStore.navigate({ appId: AGENT_APP_ID, args: { sessionId } });
+  };
+
+  /**
+   * V1's `ChatLauncher.StartNew`: a new session, opened in whichever mode `chatMode` names. Both
+   * branches create the session first — V1 defers creation to the page in chat mode and to the shell
+   * in terminal mode, and the terminal route needs a session to exist before it can resolve an agent
+   * for it, so creating it here covers both.
+   */
+  const handleNewChat = async () => {
+    const { chatStore } = await import("./state/chatStore");
+    if (chatMode === "terminal") {
+      const session = await chatStore.createSession("New Chat");
+      openTerminalPane(session.id);
+      return;
+    }
+    uiStore.navigate({ appId: "chat" });
+    void chatStore.createSession("New Chat");
+  };
+
+  /**
+   * V1's `OpenChat`: the Chat button reveals the terminal pane already open when there is one, and
+   * otherwise starts a session in the configured mode.
+   */
+  const handleOpenChat = async () => {
+    if (chatMode !== "terminal") {
+      uiStore.navigate({ appId: "chat" });
+      return;
+    }
+    const existing = uiState.sessionTabs.find((tab) => terminalPanes[tab.id]);
+    if (existing) {
+      uiStore.navigate({ appId: AGENT_APP_ID, args: { sessionId: existing.id } });
+      return;
+    }
+    await handleNewChat();
+  };
+
+  /**
    * Opens a job's output. V1 shows it in a sheet (`Apps/Jobs/Sheets/OutputSheet.cs`), not a tab, so
    * this navigates a page and creates no tab; the sheet itself is the Jobs area's to build.
    */
@@ -562,7 +626,9 @@ export const App: React.FC = () => {
   // get here is a target cleared without its tab, which this keeps in step.
   useEffect(() => {
     for (const session of uiState.sessionTabs) {
-      if (!reviewActionTargets[session.id]) uiStore.closeTab(session.id);
+      if (!reviewActionTargets[session.id] && !terminalPanes[session.id]) {
+        uiStore.closeTab(session.id);
+      }
     }
   }, [uiState.sessionTabs, reviewActionTargets]);
 
@@ -573,6 +639,26 @@ export const App: React.FC = () => {
    * action as the page.
    */
   const sessionPanes = uiState.sessionTabs.map((session) => {
+    const terminal = terminalPanes[session.id];
+    if (terminal) {
+      return (
+        <React.Suspense
+          key={session.id}
+          fallback={
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin text-success" />
+            </div>
+          }
+        >
+          <AgentTerminalView
+            sessionId={session.id}
+            prompt={terminal.prompt}
+            onNewSession={() => void handleNewChat()}
+          />
+        </React.Suspense>
+      );
+    }
+
     const target = reviewActionTargets[session.id];
     if (!target) return <div key={session.id} />;
     return (
@@ -626,6 +712,10 @@ export const App: React.FC = () => {
           projectRepos={projects.find((p) => p.name === detail.project)?.repos ?? []}
           jobs={jobsState.jobs}
           onExecute={(id) => startJobAndOpenSession({ type: "ExecutePlan", folderPath: id })}
+          onCreatePlan={(initialDesc) => {
+            setNewPlanPrefill({ description: initialDesc });
+            setIsNewPlanOpen(true);
+          }}
           // The dialogs dispatch their own jobs, so the shell's part is opening
           // the session tab for whatever they started.
           onJobStarted={(res) => handleSelectJob(res.jobId)}
@@ -726,6 +816,9 @@ export const App: React.FC = () => {
               setNewPlanPrefill({});
               setIsNewPlanOpen(true);
             }}
+            // The empty page's process wallpaper navigates as V1's `UseTendrilProcess` does:
+            // `Navigate<PlansApp>()`, `Navigate<ReviewApp>()`, `Navigate<JobsApp>()`.
+            onNavigate={(nav) => uiStore.setActiveNav(nav)}
           />
         );
 
@@ -733,6 +826,10 @@ export const App: React.FC = () => {
         return (
           <ReviewView
             plans={plansState.plans}
+            onCreatePlan={(initialDesc) => {
+              setNewPlanPrefill({ description: initialDesc });
+              setIsNewPlanOpen(true);
+            }}
             // The review queue excludes plans a job still holds, as V1's `activePlanFolders` does.
             // Without the list the exclusion is dead wiring, and the page offers Complete Plan and
             // Create PR on work an agent has not finished — a retry that is only Queued or Blocked
@@ -747,6 +844,13 @@ export const App: React.FC = () => {
             onPlanChanged={() => {
               plansStore.fetchPlans().catch(() => {});
             }}
+            // Same wallpaper as the empty Plans page, same wiring: V1 passes both pages the one
+            // `Context.UseTendrilProcess()` view, dialog launcher and navigation included.
+            onNewPlan={() => {
+              setNewPlanPrefill({});
+              setIsNewPlanOpen(true);
+            }}
+            onNavigate={(nav) => uiStore.setActiveNav(nav)}
           />
         );
 
@@ -907,14 +1011,11 @@ export const App: React.FC = () => {
         // navigation to Plans: that page's list is Draft and Blocked only, so a Completed, Skipped or
         // in-flight plan is reachable through nothing else in the UI.
         onPlanSearch={() => setIsPlanSearchOpen(true)}
-        /* V1's `StartNewChat` -> `ChatLauncher.StartNew`, which navigates to the chat target and
-           lets the page open the session. V2 has no terminal chat kind, so the target is always the
-           chat app; creating the session here is what `ChatView`'s own "New chat" does, so both
-           affordances land in the same place. */
-        onNewChat={() => {
-          uiStore.navigate({ appId: "chat" });
-          void import("./state/chatStore").then((m) => m.chatStore.createSession("New Chat"));
-        }}
+        /* V1's `StartNewChat` -> `ChatLauncher.StartNew` and `OpenChat` -> `ChatLauncher.TargetFor`:
+           both consult `chatMode`, so the Chat button opens either the chat view or the agent's own
+           terminal. */
+        onNewChat={() => void handleNewChat()}
+        onOpenChat={() => void handleOpenChat()}
       >
         {/* V1's `RouteAction.Error` reaches `client.Error(...)`; here it shares the shell's own
             error banner, which is the only place the shell reports its own failures. */}
