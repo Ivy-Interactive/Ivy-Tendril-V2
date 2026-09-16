@@ -144,7 +144,10 @@ describe("navigation seam", () => {
   });
 
   it("rule 3: a session app opens a pane, keyed so the same session is revealed not restarted", () => {
-    uiStore.navigate({ appId: "review-action", args: { sessionId: "ra:1", actionName: "Run Tests" } });
+    uiStore.navigate({
+      appId: "review-action",
+      args: { sessionId: "ra:1", actionName: "Run Tests" },
+    });
     expect(navigation.getState().sessions.map((s) => s.id)).toEqual(["ra:1"]);
     expect(navigation.getState().activeSessionId).toBe("ra:1");
     // The open session is part of the address, which is why V1 can restore a pane by its tab id.
@@ -152,7 +155,10 @@ describe("navigation seam", () => {
 
     // The page behind it is untouched, and reopening the same action reveals the pane it is in.
     uiStore.setActiveNav("review");
-    uiStore.navigate({ appId: "review-action", args: { sessionId: "ra:1", actionName: "Run Tests" } });
+    uiStore.navigate({
+      appId: "review-action",
+      args: { sessionId: "ra:1", actionName: "Run Tests" },
+    });
     expect(navigation.getState().sessions).toHaveLength(1);
 
     // A *different* action is a second pane, which is what `allowDuplicateTabs: true` buys.
@@ -326,7 +332,12 @@ describe("ShellLayout sidebar list", () => {
     const onPlanSearch = vi.fn();
     const onSearch = vi.fn();
     renderShell({
-      sidebarList: plansList({ appId: "chat", title: "Chats", onSearch, searchLabel: "Search chats" }),
+      sidebarList: plansList({
+        appId: "chat",
+        title: "Chats",
+        onSearch,
+        searchLabel: "Search chats",
+      }),
       activeNav: "chat",
       onPlanSearch,
     });

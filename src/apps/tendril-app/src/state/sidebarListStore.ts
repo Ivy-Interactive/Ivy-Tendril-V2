@@ -78,9 +78,7 @@ export const usesSidebarList = (
   if (!listAppId) return false;
   if (currentAppId && listAppId.toLowerCase() === currentAppId.toLowerCase()) return true;
   if (hasSidebarSection(currentAppId)) return true;
-  return (
-    hasSidebarSection(listAppId) && !!currentAppId?.startsWith(PLAN_DETAIL_NAV_PREFIX)
-  );
+  return hasSidebarSection(listAppId) && !!currentAppId?.startsWith(PLAN_DETAIL_NAV_PREFIX);
 };
 
 /**
@@ -88,7 +86,10 @@ export const usesSidebarList = (
  * reads "#74 Draft" rather than the generic "Plans"), else the app's own title. A row whose title is
  * blank falls back too.
  */
-export const pageTabTitle = (appTitle: string, list: ShellSidebarList | null | undefined): string => {
+export const pageTabTitle = (
+  appTitle: string,
+  list: ShellSidebarList | null | undefined,
+): string => {
   const selectedId = list?.selectedId;
   if (!selectedId) return appTitle;
   const selectedRow = list.items.find((item) => item.id === selectedId);

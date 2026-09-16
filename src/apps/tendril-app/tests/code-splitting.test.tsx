@@ -278,12 +278,37 @@ describe("Code-Splitting & Suspense Boundaries", () => {
     // a separate recommendation) and for ordinary app growth. A failure here is a
     // regression, not a signal to raise the number - check what became eager first.
     //
-    // This currently FAILS at ~1.97 MB and is the one known-red assertion in the
-    // suite. The overage predates the parity work: the `INEFFECTIVE_DYNAMIC_IMPORT`
-    // warning the build prints names the cause, a set of static `components/ui`
-    // imports that defeat the dynamic import in App.tsx. Raising the ceiling was
-    // tried and reverted — it moved the goalpost past a number that was still red,
-    // and deleted this very warning to do it. Fix what became eager instead.
+    // This currently FAILS, and two plausible explanations have now been tested and ruled out.
+    // Measure with a production build (`npm run build`), never from inside vitest: vitest bundles
+    // development React, which reads ~250 kB heavier and has misled two separate investigations into
+    // quoting ~2.03 MB. The real figure is 1,781,167 bytes across 16 chunks, 103,445 over.
+    //
+    // Ruled out (1) - tree-shaking metadata. `vendor-katex` is 259,044 of that total, so shaking it
+    // loose would alone put this under. Adding `sideEffects: ["**/*.css"]` to the component package
+    // moved the total by 527 bytes.
+    //
+    // Ruled out (2) - the `.mjs` bundle boundary. The theory was that `App.tsx` importing from the
+    // `@ivy-interactive/components/tendril` barrel pulls a whole finished Rollup chunk, so
+    // `PlanMarkdown` (and katex behind it) cannot be shaken out. The package does publish TypeScript
+    // sources, so this was testable: a `source` export condition plus `resolve.conditions` made the
+    // app compile the package from `src/`. It behaves as advertised - the `INEFFECTIVE_DYNAMIC_IMPORT`
+    // warning goes away and the entry chunk falls from 718,210 to 99,248 bytes - and it still does not
+    // fix this assertion: the eager total lands at 1,759,044, a 1.2% improvement, because the same
+    // modules stay reachable either way. It also splits the preload set from 16 chunks into 94 and
+    // breaks `tailwind-components-utilities.test.tsx`, which asserts selectors present in the built
+    // `style.css`. Reverted. Do not re-run this experiment without reading this paragraph.
+    //
+    // What the evidence actually points at is this metric. The entry chunk's own static imports were
+    // inspected in the build output: it imports neither `vendor-katex` nor `PlanMarkdown`, statically
+    // or dynamically. They are in `dist/index.html` as `rel="modulepreload"` hints for lazily routed
+    // chunks. So `eagerBytes` below counts preload hints, not the blocking initial load, and the two
+    // biggest contributors to the overage are things the browser never waits on. Before touching the
+    // ceiling again, fix the measurement: restrict it to the entry's transitive *static* graph (which
+    // `ENTRY_CHUNK_BUDGET_BYTES` above already guards, at 78% usage), or assert on preload bytes as a
+    // separate, deliberately looser budget.
+    //
+    // A failure here is still a regression rather than a licence to raise the number - that was tried
+    // once, moved the goalpost to another red number, and deleted this warning to do it.
     expect(
       eagerBytes,
       `eager JS is ${eagerBytes} bytes across ${eager.length} chunks: ${eager.join(", ")}`,

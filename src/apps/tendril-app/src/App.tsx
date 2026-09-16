@@ -48,6 +48,13 @@ const ConfirmDialog = React.lazy(() =>
   import("./views/dialogs/ConfirmDialog").then((m) => ({ default: m.ConfirmDialog })),
 );
 
+// V1's `showPlanSearchDialog` (`AppShell/Dialogs/PlanSearchDialog.cs`), the shell's own plan search.
+// Same reasoning again, and by module rather than the barrel for the same reason: it is the shell
+// that owns this dialog, and it is only ever mounted once the operator asks for it.
+const PlanSearchDialog = React.lazy(() =>
+  import("./views/dialogs/PlanSearchDialog").then((m) => ({ default: m.PlanSearchDialog })),
+);
+
 // Lazy for the same reason, and it is the whole point of `notificationsStore` reaching `toast`
 // through a dynamic import too: the toast viewport is mounted from the start of the session, but
 // the chunk it lives in is fetched alongside the first view rather than blocking the entry chunk.
@@ -153,6 +160,9 @@ export const App: React.FC = () => {
     project?: string;
   }>({});
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  // V1's `showPlanSearchDialog` state, owned by the shell because the sidebar section it opens from
+  // is the shell's, and because the plans it finds belong to no one page.
+  const [isPlanSearchOpen, setIsPlanSearchOpen] = useState(false);
   // Which review action the review-action view is running. Held here rather than encoded into the nav
   // id: it is three values, and it is deliberately not persisted — a restored nav pointing at a
   // process that died with the last session has nothing to show.
@@ -361,9 +371,13 @@ export const App: React.FC = () => {
     },
     { description: "Open new plan intake modal" },
   );
-  // The handler navigates; it does not focus a search field, and the description now says so.
-  useShortcut("app:goto-plans", "Ctrl+K", () => uiStore.setActiveNav("plans"), {
-    description: "Go to Plans",
+  /* V1 binds Cmd/Ctrl+K to the sidebar section's search, which is the plan search dialog
+     (`ShellSidebarSection`'s own `SEARCH_SHORTCUT_KEY`, still live under this registration). It used
+     to navigate to Plans here, standing in for the dialog V2 lacked; leaving it that way would now
+     both move the page and open the dialog over it on one keypress. Registered rather than left to
+     the widget alone so it keeps its row in the shortcuts help. */
+  useShortcut("app:plan-search", "Ctrl+K", () => setIsPlanSearchOpen(true), {
+    description: "Search plans",
   });
   useShortcut("app:show-shortcuts", "?", () => setIsShortcutsOpen(true), {
     description: "Show keyboard shortcuts",
@@ -867,10 +881,10 @@ export const App: React.FC = () => {
         onCheckForUpdates={handleCheckForUpdates}
         sidebarList={sidebarList}
         onSelectSidebarItem={handleSelectSidebarItem}
-        // V1's `showPlanSearchDialog`, which V2 does not have yet. Until it does, the section's
-        // search goes to the Plans page, which is where plan search lives in V2 - the same place
-        // Ctrl+K already went.
-        onPlanSearch={() => uiStore.setActiveNav("plans")}
+        // V1's `showPlanSearchDialog`. It has to be a search over the plan database rather than a
+        // navigation to Plans: that page's list is Draft and Blocked only, so a Completed, Skipped or
+        // in-flight plan is reachable through nothing else in the UI.
+        onPlanSearch={() => setIsPlanSearchOpen(true)}
       >
         {/* V1's `RouteAction.Error` reaches `client.Error(...)`; here it shares the shell's own
             error banner, which is the only place the shell reports its own failures. */}
@@ -1029,6 +1043,21 @@ export const App: React.FC = () => {
                 setStopBusy(false);
               }
             }}
+          />
+        </React.Suspense>
+      )}
+
+      {/* V1's plan search dialog, opened by the sidebar section's search icon (and its Cmd/Ctrl+K)
+          for every list that supplies no `onSearch` of its own. Mounted only while open, so the
+          dialog chunk is fetched at that moment. A pick is routed through the very handler a sidebar
+          row click uses, so opening a plan means the same navigation either way - `plan-<id>` with
+          `{ planId }` as its args - and this dialog reaches into no view's state. */}
+      {isPlanSearchOpen && (
+        <React.Suspense fallback={null}>
+          <PlanSearchDialog
+            isOpen
+            onClose={() => setIsPlanSearchOpen(false)}
+            onSelectPlan={(planId) => handleSelectSidebarItem("plans", planId, { planId })}
           />
         </React.Suspense>
       )}

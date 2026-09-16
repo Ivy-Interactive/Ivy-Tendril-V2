@@ -314,7 +314,8 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   const hasSessionTabs = sessions.length > 0;
 
   /* V1 `SelectedStripTabId`: the active session's id, or the page tab when no session is showing. */
-  const activeSession = activeSessionId ?? (sessions.some((s) => s.id === activeNav) ? activeNav : null);
+  const activeSession =
+    activeSessionId ?? (sessions.some((s) => s.id === activeNav) ? activeNav : null);
   const selectedStripTabId = activeSession ?? PAGE_TAB_ID;
   const activeSessionIndex = activeSession
     ? sessions.findIndex((session) => session.id === activeSession)

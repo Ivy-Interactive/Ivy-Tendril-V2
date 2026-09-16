@@ -213,7 +213,8 @@ class Navigation {
   }
 
   private currentAddress(): Address {
-    if (typeof window === "undefined") return { appId: this.state.pageAppId, args: {}, tabId: null };
+    if (typeof window === "undefined")
+      return { appId: this.state.pageAppId, args: {}, tabId: null };
     return parseAddress(window.location.pathname, window.location.search);
   }
 
@@ -289,7 +290,10 @@ class Navigation {
       const existing = this.state.sessions.find((session) => session.id === target.tabId);
       if (existing) {
         this.set({ activeSessionId: existing.id, error: null });
-        this.writeAddress({ appId: existing.appId, args: existing.args, tabId: existing.id }, replace);
+        this.writeAddress(
+          { appId: existing.appId, args: existing.args, tabId: existing.id },
+          replace,
+        );
         return;
       }
     }
@@ -306,14 +310,12 @@ class Navigation {
       const existing = sessionId
         ? this.state.sessions.find((session) => session.id === sessionId)
         : undefined;
-      const pane: SessionPane =
-        existing ??
-        {
-          id: sessionId ?? `${target.appId}:${crypto.randomUUID()}`,
-          appId: target.appId,
-          title: descriptor.title,
-          args,
-        };
+      const pane: SessionPane = existing ?? {
+        id: sessionId ?? `${target.appId}:${crypto.randomUUID()}`,
+        appId: target.appId,
+        title: descriptor.title,
+        args,
+      };
       this.set({
         sessions: existing ? this.state.sessions : [...this.state.sessions, pane],
         activeSessionId: pane.id,

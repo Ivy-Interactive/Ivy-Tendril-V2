@@ -114,6 +114,9 @@ describe("App job event handling", () => {
       deliver!({ jobId: "00007", type: "assistant", text: "working" });
     });
 
-    expect(addStreamEvent).toHaveBeenCalledWith("00007", expect.objectContaining({ text: "working" }));
+    expect(addStreamEvent).toHaveBeenCalledWith(
+      "00007",
+      expect.objectContaining({ text: "working" }),
+    );
   });
 });
