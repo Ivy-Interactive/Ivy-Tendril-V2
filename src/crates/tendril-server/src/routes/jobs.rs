@@ -8,7 +8,7 @@ use serde_json::json;
 use std::sync::Arc;
 use tendril_core::error::TendrilError;
 use tendril_core::jobs::{
-    find_log_file, read_eventwire_log, read_job_log, read_raw_log, StartOptions,
+    find_log_file, read_eventwire_log, read_job_log, read_lines_from, read_raw_log, StartOptions,
 };
 use tendril_core::models::{JobArgs, JobStatus};
 
@@ -461,6 +461,213 @@ pub async fn get_job_logs(
     }
 }
 
+/// How often a follower looks for newly appended lines.
+const LOG_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Follows one of a job's log files, reading only what has been appended since the last call.
+///
+/// The point of this type is that a tick costs the appended bytes and nothing else. The streams used
+/// to call `read_raw_log`/`read_eventwire_log` on every tick, each of which returns the *whole* file:
+/// four full reads a second, per viewer, for as long as the job ran, which on a large log is
+/// sustained multi-MB/s of disk I/O for output nobody is waiting for.
+///
+/// The source file is resolved once and then kept. The old code re-picked it every tick, preferring
+/// the eventwire log whenever it existed, while carrying a single line counter across both — so an
+/// eventwire log that appeared after the raw one had started streaming silently reinterpreted that
+/// counter against a different file. `JobManager` writes the same line to both in one callback, so
+/// there is nothing to gain from switching and a mangled stream to lose.
+struct LogFollower {
+    tendril_home: std::path::PathBuf,
+    job_id: String,
+    /// Candidate suffixes in preference order; the first that exists wins.
+    suffixes: &'static [&'static str],
+    path: Option<std::path::PathBuf>,
+    offset: u64,
+}
+
+impl LogFollower {
+    fn new(
+        tendril_home: std::path::PathBuf,
+        job_id: String,
+        suffixes: &'static [&'static str],
+    ) -> Self {
+        Self {
+            tendril_home,
+            job_id,
+            suffixes,
+            path: None,
+            offset: 0,
+        }
+    }
+
+    /// The log file, resolved on first sight. A job can be accepted before its agent has written
+    /// anything, so "not there yet" is normal and simply means the next tick tries again.
+    fn resolve(&mut self) -> Option<std::path::PathBuf> {
+        if self.path.is_none() {
+            self.path = self
+                .suffixes
+                .iter()
+                .find_map(|suffix| find_log_file(&self.tendril_home, &self.job_id, suffix));
+        }
+        self.path.clone()
+    }
+
+    /// Lines appended since the last call. A half-written trailing line is held back until it has its
+    /// newline, so a consumer is never handed a truncated JSON event.
+    fn next_lines(&mut self) -> Vec<String> {
+        let Some(path) = self.resolve() else {
+            return Vec::new();
+        };
+        match read_lines_from(&path, self.offset) {
+            Ok(chunk) => {
+                self.offset = chunk.next_offset;
+                chunk.lines
+            }
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// The final read of a job that is over: everything left, including a trailing line that never
+    /// received its newline because the process died mid-write.
+    fn drain(&mut self) -> Vec<String> {
+        let Some(path) = self.resolve() else {
+            return Vec::new();
+        };
+        match read_lines_from(&path, self.offset) {
+            Ok(chunk) => {
+                self.offset = chunk.next_offset;
+                let mut lines = chunk.lines;
+                if let Some(partial) = chunk.partial {
+                    lines.push(partial);
+                }
+                lines
+            }
+            Err(_) => Vec::new(),
+        }
+    }
+}
+
+type SseSender =
+    tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>;
+
+/// What distinguishes one job stream from another: the frame name, what to skip, what to filter, and
+/// what the `end` frame carries.
+struct StreamShape {
+    /// SSE `event:` name for a payload frame.
+    event_name: &'static str,
+    /// Lines before this index are the ones the client says it already has. Frames carry their line
+    /// index as the SSE `id:`, so a reconnecting client can name where to resume and stop re-ingesting
+    /// the prefix it already rendered.
+    since_line: usize,
+    /// Empty means "everything".
+    allowed_kinds: std::collections::HashSet<String>,
+    /// The `end` frame's payload, given the terminal status.
+    end_data: fn(&str) -> String,
+}
+
+/// Streams a job's log until the job finishes or the client goes away.
+///
+/// Two things the previous inline version got wrong are load-bearing here. The hang-up check only ran
+/// *inside* the "there is a line to send" loop, so a quiet long-running job never freed the task: an
+/// abandoned stream kept polling until the job ended, however long that took. And the sleep was
+/// unconditional, so even once the client was gone the task waited out its full tick. Both are fixed
+/// by checking `tx` before doing any work and by racing the sleep against the channel closing.
+async fn pump_log_stream<P, F>(
+    tx: SseSender,
+    mut follower: LogFollower,
+    shape: StreamShape,
+    mut terminal_status: P,
+    poll: std::time::Duration,
+) where
+    P: FnMut() -> F,
+    F: std::future::Future<Output = Option<String>>,
+{
+    let mut emitted_lines = 0usize;
+
+    loop {
+        // Before any disk I/O: a reader dropped between ticks must cost one comparison, not a read.
+        if tx.is_closed() {
+            return;
+        }
+
+        if !send_lines(&tx, follower.next_lines(), &mut emitted_lines, &shape).await {
+            return;
+        }
+
+        if let Some(status) = terminal_status().await {
+            if !send_lines(&tx, follower.drain(), &mut emitted_lines, &shape).await {
+                return;
+            }
+            let end_event = axum::response::sse::Event::default()
+                .event("end")
+                .data((shape.end_data)(&status));
+            let _ = tx.send(Ok(end_event)).await;
+            return;
+        }
+
+        tokio::select! {
+            // Noticed the moment it happens rather than up to a tick later.
+            _ = tx.closed() => return,
+            _ = tokio::time::sleep(poll) => {}
+        }
+    }
+}
+
+/// Sends `lines` as frames, advancing the line counter for every line whether or not it was sent.
+/// Returns `false` once the receiver is gone.
+async fn send_lines(
+    tx: &SseSender,
+    lines: Vec<String>,
+    emitted_lines: &mut usize,
+    shape: &StreamShape,
+) -> bool {
+    for line in lines {
+        let index = *emitted_lines;
+        *emitted_lines += 1;
+
+        if index < shape.since_line || !matches_kinds(&line, &shape.allowed_kinds) {
+            continue;
+        }
+
+        let event = axum::response::sse::Event::default()
+            .id(index.to_string())
+            .event(shape.event_name)
+            .data(line);
+        if tx.send(Ok(event)).await.is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+/// A probe that reports the job's terminal status, or `None` while it is still going.
+///
+/// A job the manager cannot find at all counts as finished: it was deleted, or the stream was opened
+/// against nothing but log files left behind by an older run, and in neither case is anything more
+/// coming.
+fn terminal_status_probe(
+    job_manager: std::sync::Arc<tendril_core::jobs::JobManager>,
+    job_id: String,
+) -> impl FnMut() -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<String>> + Send>> {
+    move || {
+        let job_manager = job_manager.clone();
+        let job_id = job_id.clone();
+        Box::pin(async move {
+            match job_manager.get_job(&job_id).await {
+                Ok(Some(j)) => matches!(
+                    j.status,
+                    JobStatus::Completed
+                        | JobStatus::Failed
+                        | JobStatus::Stopped
+                        | JobStatus::Timeout
+                )
+                .then(|| j.status.to_string()),
+                _ => Some("Completed".to_string()),
+            }
+        })
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StreamLogsQuery {
     pub format: Option<String>,
@@ -491,99 +698,32 @@ pub async fn stream_job_logs(
     }
 
     let format_str = query.format.unwrap_or_else(|| "raw".to_string());
-    let suffix = match format_str.to_ascii_lowercase().as_str() {
-        "markdown" => ".md",
-        "eventwire" => ".eventwire.jsonl",
-        _ => ".raw.jsonl",
+    let suffixes: &'static [&'static str] = match format_str.to_ascii_lowercase().as_str() {
+        "markdown" => &[".md"],
+        "eventwire" => &[".eventwire.jsonl"],
+        _ => &[".raw.jsonl"],
     };
 
-    let tendril_home = state.tendril_home.clone();
-    let job_manager = state.job_manager.clone();
-    let since_line = query.since_line.unwrap_or(0);
+    let follower = LogFollower::new(state.tendril_home.clone(), job_id.clone(), suffixes);
+    let probe = terminal_status_probe(state.job_manager.clone(), job_id);
+    let shape = StreamShape {
+        event_name: "log",
+        since_line: query.since_line.unwrap_or(0),
+        allowed_kinds: std::collections::HashSet::new(),
+        end_data: |_status| "Job finished".to_string(),
+    };
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<
         Result<axum::response::sse::Event, std::convert::Infallible>,
     >(64);
 
-    tokio::spawn(async move {
-        let mut emitted_lines = 0usize;
-
-        loop {
-            let lines = match suffix {
-                ".raw.jsonl" => read_raw_log(&tendril_home, &job_id, None)
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default(),
-                ".eventwire.jsonl" => read_eventwire_log(&tendril_home, &job_id, None)
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default(),
-                _ => match read_job_log(&tendril_home, &job_id) {
-                    Ok(Some(c)) => c.lines().map(|s| s.to_string()).collect(),
-                    _ => Vec::new(),
-                },
-            };
-
-            while emitted_lines < lines.len() {
-                if emitted_lines >= since_line {
-                    let event = axum::response::sse::Event::default()
-                        .event("log")
-                        .data(&lines[emitted_lines]);
-                    if tx.send(Ok(event)).await.is_err() {
-                        return;
-                    }
-                }
-                emitted_lines += 1;
-            }
-
-            let is_terminal = match job_manager.get_job(&job_id).await {
-                Ok(Some(j)) => matches!(
-                    j.status,
-                    JobStatus::Completed
-                        | JobStatus::Failed
-                        | JobStatus::Stopped
-                        | JobStatus::Timeout
-                ),
-                _ => true,
-            };
-
-            if is_terminal {
-                let final_lines = match suffix {
-                    ".raw.jsonl" => read_raw_log(&tendril_home, &job_id, None)
-                        .ok()
-                        .flatten()
-                        .unwrap_or_default(),
-                    ".eventwire.jsonl" => read_eventwire_log(&tendril_home, &job_id, None)
-                        .ok()
-                        .flatten()
-                        .unwrap_or_default(),
-                    _ => match read_job_log(&tendril_home, &job_id) {
-                        Ok(Some(c)) => c.lines().map(|s| s.to_string()).collect(),
-                        _ => Vec::new(),
-                    },
-                };
-                while emitted_lines < final_lines.len() {
-                    if emitted_lines >= since_line {
-                        let event = axum::response::sse::Event::default()
-                            .event("log")
-                            .data(&final_lines[emitted_lines]);
-                        if tx.send(Ok(event)).await.is_err() {
-                            return;
-                        }
-                    }
-                    emitted_lines += 1;
-                }
-
-                let end_event = axum::response::sse::Event::default()
-                    .event("end")
-                    .data("Job finished");
-                let _ = tx.send(Ok(end_event)).await;
-                break;
-            }
-
-            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-        }
-    });
+    tokio::spawn(pump_log_stream(
+        tx,
+        follower,
+        shape,
+        probe,
+        LOG_POLL_INTERVAL,
+    ));
 
     let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
     axum::response::sse::Sse::new(stream).into_response()
@@ -666,86 +806,33 @@ pub async fn stream_job_events(
             .map(|(_, v)| v.as_str()),
     );
     let allowed_kinds = parse_allowed_kinds(kind_values);
-    let tendril_home = state.tendril_home.clone();
-    let job_manager = state.job_manager.clone();
-    let since_line = query.since_line.unwrap_or(0);
+
+    // Eventwire first, raw as the fallback for a job whose agent produced no structured events. Both
+    // carry the same lines, so the choice is made once and kept; see [`LogFollower`].
+    let follower = LogFollower::new(
+        state.tendril_home.clone(),
+        job_id.clone(),
+        &[".eventwire.jsonl", ".raw.jsonl"],
+    );
+    let probe = terminal_status_probe(state.job_manager.clone(), job_id);
+    let shape = StreamShape {
+        event_name: "event",
+        since_line: query.since_line.unwrap_or(0),
+        allowed_kinds,
+        end_data: |status| serde_json::json!({ "status": status }).to_string(),
+    };
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<
         Result<axum::response::sse::Event, std::convert::Infallible>,
     >(64);
 
-    tokio::spawn(async move {
-        let mut emitted_lines = 0usize;
-
-        loop {
-            let lines = read_eventwire_log(&tendril_home, &job_id, None)
-                .ok()
-                .flatten()
-                .or_else(|| read_raw_log(&tendril_home, &job_id, None).ok().flatten())
-                .unwrap_or_default();
-
-            while emitted_lines < lines.len() {
-                if emitted_lines >= since_line
-                    && matches_kinds(&lines[emitted_lines], &allowed_kinds)
-                {
-                    let event = axum::response::sse::Event::default()
-                        .event("event")
-                        .data(&lines[emitted_lines]);
-                    if tx.send(Ok(event)).await.is_err() {
-                        return;
-                    }
-                }
-                emitted_lines += 1;
-            }
-
-            let terminal_status = match job_manager.get_job(&job_id).await {
-                Ok(Some(j)) => {
-                    if matches!(
-                        j.status,
-                        JobStatus::Completed
-                            | JobStatus::Failed
-                            | JobStatus::Stopped
-                            | JobStatus::Timeout
-                    ) {
-                        Some(j.status.to_string())
-                    } else {
-                        None
-                    }
-                }
-                _ => Some("Completed".to_string()),
-            };
-
-            if let Some(status_str) = terminal_status {
-                let final_lines = read_eventwire_log(&tendril_home, &job_id, None)
-                    .ok()
-                    .flatten()
-                    .or_else(|| read_raw_log(&tendril_home, &job_id, None).ok().flatten())
-                    .unwrap_or_default();
-                while emitted_lines < final_lines.len() {
-                    if emitted_lines >= since_line
-                        && matches_kinds(&final_lines[emitted_lines], &allowed_kinds)
-                    {
-                        let event = axum::response::sse::Event::default()
-                            .event("event")
-                            .data(&final_lines[emitted_lines]);
-                        if tx.send(Ok(event)).await.is_err() {
-                            return;
-                        }
-                    }
-                    emitted_lines += 1;
-                }
-
-                let end_data = serde_json::json!({ "status": status_str }).to_string();
-                let end_event = axum::response::sse::Event::default()
-                    .event("end")
-                    .data(end_data);
-                let _ = tx.send(Ok(end_event)).await;
-                break;
-            }
-
-            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-        }
-    });
+    tokio::spawn(pump_log_stream(
+        tx,
+        follower,
+        shape,
+        probe,
+        LOG_POLL_INTERVAL,
+    ));
 
     let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
     axum::response::sse::Sse::new(stream)
@@ -753,4 +840,257 @@ pub async fn stream_job_events(
             axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
         )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    fn temp_home(label: &str) -> std::path::PathBuf {
+        let home = std::env::temp_dir().join(format!(
+            "tendril-job-stream-{}-{}",
+            label,
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(home.join("Logs").join("Jobs")).expect("create log dir");
+        home
+    }
+
+    fn append_eventwire(home: &std::path::Path, job_id: &str, line: &str) {
+        let path = home
+            .join("Logs")
+            .join("Jobs")
+            .join(format!("{job_id}.eventwire.jsonl"));
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("open eventwire log");
+        writeln!(f, "{line}").expect("append eventwire line");
+    }
+
+    /// The frames a pump produced, as readable text.
+    ///
+    /// `Event` exposes no accessor for its buffer, so its `Debug` is the only way in; the escaping it
+    /// applies is undone here so an assertion can be written in terms of the wire bytes.
+    fn frame_text(event: &axum::response::sse::Event) -> String {
+        format!("{event:?}")
+            .replace("\\\"", "\"")
+            .replace("\\n", "\n")
+    }
+
+    fn drain(
+        rx: &mut tokio::sync::mpsc::Receiver<
+            Result<axum::response::sse::Event, std::convert::Infallible>,
+        >,
+    ) -> Vec<String> {
+        let mut frames = Vec::new();
+        while let Ok(Ok(event)) = rx.try_recv() {
+            frames.push(frame_text(&event));
+        }
+        frames
+    }
+
+    fn shape() -> StreamShape {
+        StreamShape {
+            event_name: "event",
+            since_line: 0,
+            allowed_kinds: std::collections::HashSet::new(),
+            end_data: |status| serde_json::json!({ "status": status }).to_string(),
+        }
+    }
+
+    fn follower(home: &std::path::Path, job_id: &str) -> LogFollower {
+        LogFollower::new(
+            home.to_path_buf(),
+            job_id.to_string(),
+            &[".eventwire.jsonl", ".raw.jsonl"],
+        )
+    }
+
+    /// The #132 regression. The hang-up check used to sit *inside* the "there is a line to send" loop,
+    /// so a quiet long-running job never freed the task: an abandoned stream kept re-reading the whole
+    /// log four times a second until the job ended, however long that took.
+    ///
+    /// The job here never becomes terminal, so a task that only notices a dropped client when it has
+    /// something to send never returns and this test times out.
+    #[tokio::test]
+    async fn an_abandoned_stream_stops_as_soon_as_the_client_hangs_up() {
+        let home = temp_home("abandoned");
+        append_eventwire(&home, "00001", r#"{"kind":"text","text":"hello"}"#);
+
+        let (tx, rx) = tokio::sync::mpsc::channel(64);
+        let reads = Arc::new(AtomicUsize::new(0));
+        let counted = reads.clone();
+
+        let pump = tokio::spawn(pump_log_stream(
+            tx,
+            follower(&home, "00001"),
+            shape(),
+            move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+                // Still running, forever.
+                async { None }
+            },
+            Duration::from_millis(20),
+        ));
+
+        // Let it deliver the backlog and settle into polling, then walk away.
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        drop(rx);
+
+        tokio::time::timeout(Duration::from_secs(2), pump)
+            .await
+            .expect("the pump must end when the receiver is dropped")
+            .expect("the pump must not panic");
+
+        let settled = reads.load(Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(
+            reads.load(Ordering::SeqCst),
+            settled,
+            "no further polling after the client went away"
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// Every payload frame carries its log line index as the SSE `id:`. That is what makes a resume
+    /// point expressible at all: without it a client has no way to name where it got to, and
+    /// `since_line` — which the route has always accepted — could never be used.
+    #[tokio::test]
+    async fn frames_are_numbered_and_since_line_skips_the_prefix() {
+        let home = temp_home("since-line");
+        for i in 0..4 {
+            append_eventwire(
+                &home,
+                "00002",
+                &format!(r#"{{"kind":"text","text":"{i}"}}"#),
+            );
+        }
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        let mut shape = shape();
+        shape.since_line = 2;
+
+        pump_log_stream(
+            tx,
+            follower(&home, "00002"),
+            shape,
+            || async { Some("Completed".to_string()) },
+            Duration::from_millis(10),
+        )
+        .await;
+
+        let frames = drain(&mut rx);
+
+        // Two payload frames plus the `end` frame: the first two lines were read but not sent.
+        assert_eq!(frames.len(), 3, "unexpected frames: {frames:?}");
+        assert!(
+            frames[0].contains("id: 2"),
+            "unexpected frame: {}",
+            frames[0]
+        );
+        assert!(
+            frames[0].contains(r#""text":"2""#),
+            "unexpected frame: {}",
+            frames[0]
+        );
+        assert!(
+            frames[1].contains("id: 3"),
+            "unexpected frame: {}",
+            frames[1]
+        );
+        assert!(
+            frames[2].contains("event: end"),
+            "unexpected frame: {}",
+            frames[2]
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A line index counts *log lines*, not delivered frames, so a filtered stream's resume point
+    /// still lines up with the log. Numbering the frames instead would make `since_line` skip the
+    /// wrong lines the moment `kinds` was used.
+    #[tokio::test]
+    async fn line_ids_count_log_lines_not_delivered_frames() {
+        let home = temp_home("filtered-ids");
+        append_eventwire(&home, "00003", r#"{"kind":"text","text":"a"}"#);
+        append_eventwire(&home, "00003", r#"{"kind":"tool_call","tool_name":"git"}"#);
+        append_eventwire(&home, "00003", r#"{"kind":"text","text":"b"}"#);
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        let mut shape = shape();
+        shape.allowed_kinds = parse_allowed_kinds(["text"]);
+
+        pump_log_stream(
+            tx,
+            follower(&home, "00003"),
+            shape,
+            || async { Some("Failed".to_string()) },
+            Duration::from_millis(10),
+        )
+        .await;
+
+        let frames = drain(&mut rx);
+
+        assert_eq!(frames.len(), 3, "unexpected frames: {frames:?}");
+        assert!(
+            frames[0].contains("id: 0"),
+            "unexpected frame: {}",
+            frames[0]
+        );
+        assert!(
+            frames[1].contains("id: 2"),
+            "the tool_call line was filtered out but still consumed line 1: {}",
+            frames[1]
+        );
+        assert!(frames[2].contains(r#""status":"Failed""#));
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A job that died mid-write still has its last line delivered: the terminal read takes the
+    /// unterminated tail too, because nothing is going to finish it.
+    #[tokio::test]
+    async fn the_final_read_delivers_a_line_that_never_got_its_newline() {
+        let home = temp_home("partial-tail");
+        let path = home.join("Logs").join("Jobs").join("00004.eventwire.jsonl");
+        std::fs::write(
+            &path,
+            "{\"kind\":\"text\",\"text\":\"whole\"}\n{\"kind\":\"tex",
+        )
+        .expect("write log");
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        pump_log_stream(
+            tx,
+            follower(&home, "00004"),
+            shape(),
+            || async { Some("Stopped".to_string()) },
+            Duration::from_millis(10),
+        )
+        .await;
+
+        let frames = drain(&mut rx);
+        assert_eq!(frames.len(), 3, "unexpected frames: {frames:?}");
+        assert!(
+            frames[0].contains(r#""text":"whole""#),
+            "unexpected frame: {}",
+            frames[0]
+        );
+        assert!(
+            frames[1].contains(r#"data: {"kind":"tex"#),
+            "the unterminated tail must still be delivered: {}",
+            frames[1]
+        );
+        assert!(frames[2].contains("event: end"));
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }

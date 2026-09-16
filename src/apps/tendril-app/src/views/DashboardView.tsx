@@ -4,11 +4,12 @@ import {
   TendrilProcessViewer,
   type DashboardKpiDto,
   type DashboardJobDto,
+  type DashboardMonthValueDto,
   type DashboardTrendDto,
 } from "@ivy-interactive/components/tendril";
 import { BladeContainer } from "@ivy-interactive/components/ui";
 import { X } from "lucide-react";
-import type { DashboardActivity, PlanSummary, Job, JobStatus } from "../types/api";
+import type { DashboardActivity, PlanSummary, Job, JobStatus, RecentMergedPr } from "../types/api";
 import { firstStringArg } from "../utils/eventArgs";
 import { useDashboardAnalytics } from "../hooks/useDashboardAnalytics";
 import {
@@ -17,7 +18,7 @@ import {
   buildKpis,
   buildPullRequests,
 } from "../utils/dashboardMetrics";
-import { rollingAverage, toIsoDate, todayDayNumber } from "../utils/rollingAverage";
+import { rollingAverage, toDayNumber, toIsoDate, todayDayNumber } from "../utils/rollingAverage";
 import { buildKpiBlade, isKpiBreakdownId } from "./KpiBreakdown";
 
 interface DashboardViewProps {
@@ -48,14 +49,74 @@ const ACTIVE_JOBS_SHOWN = 8;
 /** Days the trend card plots, from `DashboardApp.TrendDailyWindowDays`. */
 const TREND_DAILY_WINDOW_DAYS = 28;
 
-/** Distinct plans with an unfinished job of the given promptware type.
- *  Jobs without a planId are counted individually by job id. */
-const activePlanCountForJobType = (jobs: Job[], type: string): number =>
-  new Set(
+/** Weeks the Pull Requests card's Week tab plots, from `DashboardApp.BuildWeeklyPullRequests`. */
+const PR_WEEKS_SHOWN = 6;
+
+/**
+ * The three promptware types `TendrilProcessStatusService.Compute` folds into one Updating counter.
+ * A plan being expanded or split is being rewritten just as much as one being updated, and the
+ * process viewer has one loop arrow for all three.
+ */
+const UPDATING_JOB_TYPES = ["UpdatePlan", "ExpandPlan", "SplitPlan"];
+
+/**
+ * Unfinished jobs of the given promptware type.
+ *
+ * Counted per *job*, not per distinct plan: that is what `TendrilProcessStatusService.Compute` does
+ * (`activeJobs.Count(j => j.Type == ...)`), and it is the honest number for a strip that reads
+ * "how much work is in flight". Two retries queued against one plan are two runs to wait for, and
+ * collapsing them to 1 understates the queue.
+ */
+const activeJobCountForType = (jobs: Job[], types: readonly string[]): number =>
+  jobs.filter((j) => types.includes(j.type) && ACTIVE_JOB_STATUSES.includes(j.status)).length;
+
+/**
+ * Plan states the Plans box counts, and the states the Review box counts
+ * (`TendrilProcessStatusService.Compute`). Blocked plans sit with the drafts because a plan waiting
+ * on a dependency is still a plan nobody has run; Failed plans sit with Review because a failure is
+ * what the Review app exists to triage. This is also what the shell's own nav badges count
+ * (`TendrilAppShell.BuildMenuItems`), so the strip and the badge beside it cannot disagree.
+ */
+const DRAFT_PLAN_STATES = ["Draft", "Blocked"];
+const REVIEW_PLAN_STATES = ["Review", "Failed"];
+
+/**
+ * The two counts the status strip and the process viewer share, with V1's premature-state
+ * correction applied (`TendrilProcessStatusService.Compute`).
+ *
+ * A plan whose job is still running has not necessarily had its `plan.yaml` state advanced yet, so
+ * for a moment it reads as a Draft nobody has run or a Review nobody has looked at. V1 subtracts
+ * those from both boxes rather than inviting the operator to act on a plan an agent is holding.
+ *
+ * V1 matches plan to job on the job's plan folder (and, for CreatePlan, on its allocated id). V2's
+ * job DTO carries neither: `Job.planId` is the daemon's `reportedPlanId`, which only exists once an
+ * agent has reported it. So this matches on what there is, and a job that has not reported its plan
+ * simply corrects nothing — the pre-correction count, which is what V2 showed before.
+ */
+function planStateCounts(
+  plans: PlanSummary[],
+  jobs: Job[],
+): { draftCount: number; reviewCount: number } {
+  const activePlanIds = new Set(
     jobs
-      .filter((j) => j.type === type && ACTIVE_JOB_STATUSES.includes(j.status))
-      .map((j) => j.planId || j.id),
-  ).size;
+      .filter((j) => ACTIVE_JOB_STATUSES.includes(j.status))
+      .map((j) => j.planId)
+      .filter((id): id is string => id != null && id !== ""),
+  );
+
+  let draftCount = 0;
+  let reviewCount = 0;
+  for (const plan of plans) {
+    const isDraft = DRAFT_PLAN_STATES.includes(plan.state);
+    const isReview = REVIEW_PLAN_STATES.includes(plan.state);
+    if (!isDraft && !isReview) continue;
+    if (activePlanIds.has(plan.id)) continue;
+    if (isDraft) draftCount += 1;
+    else reviewCount += 1;
+  }
+
+  return { draftCount, reviewCount };
+}
 
 /** "1st", "2nd", "3rd", "4th"... as `DashboardApp.Ordinal` writes them. */
 const ordinal = (day: number): string => {
@@ -125,6 +186,52 @@ function buildDailyTrend(
 }
 
 /**
+ * Merged PRs per week for the Pull Requests card's Week tab, which is
+ * `DashboardApp.BuildWeeklyPullRequests`: six Monday-to-Sunday weeks ending with the week containing
+ * today, labelled by the week's start date.
+ *
+ * The tab exists in the widget and is clickable, so leaving `pullRequestsWeekly` unsupplied is not a
+ * missing feature — it is a control that renders an empty chart. V1 feeds it from
+ * `GetCompletedPrsByDay`; V2's daemon exposes no per-day PR series, so this buckets the merged-PR
+ * rows themselves, which count the same thing (a `PullRequests` row on a Completed plan, dated by
+ * the plan's `Updated`).
+ *
+ * The one caveat is the list's server-side `LIMIT`: it is the *most recent* rows, so the newest
+ * weeks are always complete and only the oldest can be truncated. See the report note on raising
+ * `useDashboardAnalytics`'s limit.
+ */
+export function buildWeeklyPullRequests(
+  mergedPrs: readonly RecentMergedPr[],
+  today: number = todayDayNumber(),
+): DashboardMonthValueDto[] {
+  // Epoch day 0 is a Thursday, whose distance from the preceding Monday is 3.
+  const currentWeekMonday = today - ((today + 3) % 7);
+
+  const countByDay = new Map<number, number>();
+  for (const pr of mergedPrs) {
+    const day = toDayNumber(pr.updated.slice(0, 10));
+    if (day == null) continue;
+    countByDay.set(day, (countByDay.get(day) ?? 0) + 1);
+  }
+
+  return Array.from({ length: PR_WEEKS_SHOWN }, (_unused, index) => {
+    const weekStart = currentWeekMonday - (PR_WEEKS_SHOWN - 1 - index) * 7;
+    let value = 0;
+    for (let offset = 0; offset < 7; offset++) value += countByDay.get(weekStart + offset) ?? 0;
+
+    const startDate = new Date(toIsoDate(weekStart) + "T00:00:00Z");
+    return {
+      label: `${startDate.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })} ${startDate.getUTCDate()}`,
+      value,
+      year: startDate.getUTCFullYear(),
+      month: startDate.getUTCMonth() + 1,
+      day: startDate.getUTCDate(),
+      date: toIsoDate(weekStart),
+    };
+  });
+}
+
+/**
  * The KPI cards V1 shows, in V1's order (`DashboardApp.BuildKpis`). Its fourth card is the agent
  * rate-limit window, which falls back to Avg Cost/Plan when no usage snapshot exists — and V2 has
  * no usage service, so that branch is permanent. Anything the metrics helper computes beyond these
@@ -160,20 +267,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const analytics = useDashboardAnalytics();
   const [selectedKpi, setSelectedKpi] = React.useState<string | null>(null);
 
-  // Plan-state counts, which the process viewer breaks down box by box.
-  const draftCount = plans.filter((p) => p.state === "Draft").length;
-  const reviewCount = plans.filter((p) => p.state === "Review").length;
-  const executingCount = plans.filter((p) => p.state === "Executing").length;
-  const creatingCount = plans.filter((p) => p.state === "Creating").length;
-  const updatingCount = plans.filter((p) => p.state === "Updating").length;
-  const retryingPlansCount = activePlanCountForJobType(jobs, "RetryPlan");
-  const creatingPrCount = activePlanCountForJobType(jobs, "CreatePr");
-
   // Status strip counts come from the same sources as the apps they navigate to: plan counts as the
   // Plans and Review views show them, job counts as the Jobs view does (`DashboardApp.Build`).
   const activeJobs = jobs.filter((j) => ACTIVE_JOB_STATUSES.includes(j.status));
   const completedJobCount = jobs.filter((j) => j.status === "Completed").length;
   const failedJobCount = jobs.filter((j) => j.status === "Failed").length;
+
+  // Plan-state counts, which the Plans and Review boxes carry.
+  const { draftCount, reviewCount } = planStateCounts(plans, jobs);
+
+  // The arrows between the boxes are *jobs in flight*, not plans in a state: V1 derives all five
+  // from the active job list by promptware type (`TendrilProcessStatusService.Compute`). Reading a
+  // plan's state instead misses the whole transient window this widget exists to show — a plan is
+  // only ever `Creating` for the moments between the job starting and the write landing, and a
+  // CreatePlan job has no plan to be in a state at all until it produces one.
+  const creatingCount = activeJobCountForType(jobs, ["CreatePlan"]);
+  const updatingCount = activeJobCountForType(jobs, UPDATING_JOB_TYPES);
+  const executingCount = activeJobCountForType(jobs, ["ExecutePlan"]);
+  const retryingPlansCount = activeJobCountForType(jobs, ["RetryPlan"]);
+  const creatingPrCount = activeJobCountForType(jobs, ["CreatePr"]);
 
   const { activity } = analytics;
   const kpis =
@@ -209,10 +321,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Active Jobs lists the unfinished jobs only, capped (`DashboardApp.BuildActiveJobs`). A finished
   // job in a card headed "Active Jobs" is the one thing this card must never show.
+  //
+  // The title follows `JobsApp.GetPromptDisplay`'s order as far as V2's DTO reaches: the plan title
+  // first, then the promptware type. The project is *not* a title — every job in a single-project
+  // install would read the same — and neither is the literal "Task Execution", which is wrong for
+  // every job that is not an ExecutePlan.
   const dashboardJobs: DashboardJobDto[] = activeJobs.slice(0, ACTIVE_JOBS_SHOWN).map((j) => ({
     id: j.id,
     planId: j.planId || "",
-    title: j.planTitle || j.project || "Task Execution",
+    title: j.planTitle || j.type || j.project,
     status: j.status.toLowerCase(),
   }));
 
@@ -246,8 +363,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           if (nav) onNavigate?.(nav);
         }}
         kpis={kpis}
-        trend={buildDailyTrend(activity)}
+        // The 28-day series goes in as `trendWeekly`, which is the slot V1 puts its own 28-day
+        // window in (`DashboardApp.BuildWeeklyTrend`); `trend` is V1's 365-day range, which V2's
+        // daemon does not return. The widget prefers `trendWeekly` either way, so naming the slot
+        // correctly is what keeps a future long-range series from silently replacing this one.
+        trendWeekly={buildDailyTrend(activity)}
         pullRequests={buildPullRequests(activity)}
+        pullRequestsWeekly={buildWeeklyPullRequests(analytics.mergedPrs)}
         activity={buildActivityMonths(activity)}
         jobs={dashboardJobs}
         slots={{

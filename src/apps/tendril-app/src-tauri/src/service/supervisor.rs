@@ -39,6 +39,27 @@ pub struct SupervisorStateInfo {
     pub message: String,
 }
 
+/// The outcome of trying to clear `.master`.
+///
+/// A distinct `RefusedLive` rather than a bare bool because "there was nothing to clean up" and "I
+/// refused to unregister a running daemon" are different answers, and the operator clicking Repair
+/// has to be told which one happened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MasterReclaim {
+    /// No `.master` file at all.
+    NoClaim,
+    /// The claim was stale and has been removed. `pid` is what it named, when it was parseable.
+    Removed { pid: Option<u32> },
+    /// The claim belongs to a daemon that is still there, and was left untouched.
+    RefusedLive { pid: u32, port: u16 },
+}
+
+impl MasterReclaim {
+    pub fn removed(&self) -> bool {
+        matches!(self, MasterReclaim::Removed { .. })
+    }
+}
+
 #[derive(Debug)]
 pub struct CircuitBreaker {
     pub max_crashes: u32,
@@ -128,12 +149,84 @@ impl ServiceSupervisor {
         self.tendril_home.join("Logs").join("service.log")
     }
 
-    pub fn atomic_remove_stale_master(&self) -> Result<bool, String> {
+    /// Removes `.master` only when the daemon it names is gone.
+    ///
+    /// The claim is a live daemon's registration, not a lock file, and deleting one that is very much
+    /// alive unregisters it permanently: `is_master()` reads false for the rest of that process's
+    /// life, so its cost backfill, issue importer and job maintenance go silently dead, every client
+    /// reports "not running", and a second daemon can claim the home and run jobs concurrently. So
+    /// liveness is checked first, and this is the only path that removes a foreign claim.
+    ///
+    /// Synchronous, so it can only test the pid — that is enough for the callers that just need to
+    /// clear a leftover. [`ServiceSupervisor::repair_master`] is the variant that also asks the
+    /// daemon whether it is answering, which is what "Repair service" needs.
+    pub fn remove_master_if_stale(&self) -> Result<MasterReclaim, String> {
         let path = self.master_file_path();
         if !path.exists() {
-            return Ok(false);
+            return Ok(MasterReclaim::NoClaim);
         }
 
+        let recorded = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|content| parse_master_json(&content).ok());
+
+        // An unparseable claim names no pid, so nothing can be learned from it and it blocks every
+        // client: that one is cleared. A parseable claim whose pid is alive is left alone.
+        if let Some(info) = &recorded {
+            if is_pid_alive(info.pid) {
+                return Ok(MasterReclaim::RefusedLive {
+                    pid: info.pid,
+                    port: info.port,
+                });
+            }
+        }
+
+        self.force_remove_master()?;
+        Ok(MasterReclaim::Removed {
+            pid: recorded.map(|info| info.pid),
+        })
+    }
+
+    /// What "Repair service" runs: clears the claim unless the daemon it names is both alive **and**
+    /// answering.
+    ///
+    /// A pid that is alive but not answering is precisely the wedged claim an operator cannot
+    /// otherwise escape (the only other way out is the undocumented `TENDRIL_ALLOW_MASTER_TAKEOVER=1`
+    /// env var), so that one is cleared — and reported, because clearing it while the process is
+    /// somehow still serving would be the incident this guard exists to prevent.
+    pub async fn repair_master(&self) -> Result<MasterReclaim, String> {
+        let path = self.master_file_path();
+        if !path.exists() {
+            return Ok(MasterReclaim::NoClaim);
+        }
+
+        let recorded = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|content| parse_master_json(&content).ok());
+
+        if let Some(info) = &recorded {
+            if is_pid_alive(info.pid)
+                && probe_daemon_health(&info.scheme, &info.host, info.port, &info.secret)
+                    .await
+                    .is_ok()
+            {
+                return Ok(MasterReclaim::RefusedLive {
+                    pid: info.pid,
+                    port: info.port,
+                });
+            }
+        }
+
+        self.force_remove_master()?;
+        Ok(MasterReclaim::Removed {
+            pid: recorded.map(|info| info.pid),
+        })
+    }
+
+    /// Deletes the claim with no liveness check whatsoever. Private on purpose: every caller has to
+    /// come through [`Self::remove_master_if_stale`] or [`Self::repair_master`].
+    fn force_remove_master(&self) -> Result<(), String> {
+        let path = self.master_file_path();
         let stale_tmp = self.tendril_home.join(".master.stale.tmp");
         if let Err(e) = std::fs::rename(&path, &stale_tmp) {
             std::fs::remove_file(&path)
@@ -141,7 +234,7 @@ impl ServiceSupervisor {
         } else {
             let _ = std::fs::remove_file(&stale_tmp);
         }
-        Ok(true)
+        Ok(())
     }
 
     pub fn write_lock_file(&self, pid: u32) -> Result<(), String> {
@@ -192,13 +285,13 @@ impl ServiceSupervisor {
         let master = match parse_master_json(&content) {
             Ok(m) => m,
             Err(_) => {
-                let _ = self.atomic_remove_stale_master();
+                let _ = self.remove_master_if_stale();
                 return Ok(None);
             }
         };
 
         if !is_pid_alive(master.pid) {
-            let _ = self.atomic_remove_stale_master();
+            let _ = self.remove_master_if_stale();
             return Ok(None);
         }
 
@@ -278,7 +371,20 @@ impl ServiceSupervisor {
         binary_path: &Path,
         args: &[&str],
     ) -> Result<SupervisorStateInfo, String> {
-        let _ = self.atomic_remove_stale_master();
+        // Only a leftover claim is cleared. Spawning a second daemon over a live one used to start by
+        // deleting the live one's registration, which is the bug in issue #129; now the claim stands
+        // and the child's own `MasterGuard::acquire` refuses, which is the election doing its job.
+        match self.remove_master_if_stale() {
+            Ok(MasterReclaim::RefusedLive { pid, port }) => {
+                return Err(format!(
+                    "Not starting a managed daemon: {} is claimed by a running daemon (PID {pid}, \
+                     port {port}). Stop it first, or adopt it.",
+                    self.master_file_path().display()
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => eprintln!("Warning clearing a stale .master: {e}"),
+        }
 
         if self.circuit_breaker.is_tripped() {
             self.current_status = SupervisorStatus::Crashed;

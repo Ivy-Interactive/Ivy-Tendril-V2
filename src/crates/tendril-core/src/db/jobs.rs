@@ -215,18 +215,38 @@ pub fn get_job(conn: &Connection, id: &str) -> Result<Option<JobItem>> {
     Ok(None)
 }
 
+/// The job list, unfinished work first, capped at `limit`.
+///
+/// The ordering is V1's (`Services/Plans/PlanDatabaseService.cs`): everything that has not completed
+/// sorts ahead of everything that has, and the finished rows then run newest-first. Ordering by
+/// `StartedAt DESC` instead — as this did — put exactly the wrong rows last, because SQLite sorts
+/// NULLs last under `DESC` and a `Pending`, `Queued` or `Blocked` job has no `StartedAt` at all. On
+/// any home with `limit` started jobs the queue became invisible: the rows a user needs in order to
+/// act were the first ones the cap discarded.
+///
+/// `Id DESC` breaks the tie within each group, so two rows sharing a `CompletedAt` — or the whole
+/// unfinished group, which has none — come back newest-first rather than in whatever order the scan
+/// happened to produce.
+///
+/// `Cleared = 0` restores V1's other guard. V2 clears by deleting the row, so it writes no `Cleared`
+/// flag of its own; a home migrated from V1 still holds rows V1 flagged, and without this they keep
+/// consuming slots in the limit forever while never being shown.
 pub fn list_jobs(
     conn: &Connection,
     status_filter: Option<JobStatus>,
     limit: usize,
 ) -> Result<Vec<JobItem>> {
-    let mut sql = format!("SELECT {} FROM Jobs", JOB_COLUMNS);
+    let mut sql = format!("SELECT {} FROM Jobs WHERE Cleared = 0", JOB_COLUMNS);
 
     if let Some(status) = status_filter {
-        sql.push_str(&format!(" WHERE Status = '{}'", status.as_str()));
+        sql.push_str(&format!(" AND Status = '{}'", status.as_str()));
     }
 
-    sql.push_str(&format!(" ORDER BY StartedAt DESC LIMIT {}", limit));
+    sql.push_str(&format!(
+        " ORDER BY CASE WHEN CompletedAt IS NULL THEN 0 ELSE 1 END, CompletedAt DESC, Id DESC \
+         LIMIT {}",
+        limit
+    ));
 
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query([])?;

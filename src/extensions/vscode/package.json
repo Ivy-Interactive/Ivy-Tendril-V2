@@ -31,11 +31,24 @@
   },
   "categories": [
     "AI",
+    "Chat",
     "Machine Learning",
-    "Programming Languages",
     "Other"
   ],
   "main": "./out/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Tendril spawns the tendril executable and git worktrees for the open workspace, so it stays disabled until the workspace is trusted."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Tendril needs a real filesystem for git worktrees and the local Tendril server."
+    }
+  },
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -92,8 +105,9 @@
       {
         "id": "tendril.chatParticipant",
         "name": "tendril",
+        "fullName": "Ivy Tendril",
         "description": "Interact with Tendril agents, execute commands, and manage plans",
-        "isDefault": true,
+        "sampleRequest": "/plan add a health endpoint to the API",
         "commands": [
           {
             "name": "plan",

@@ -5,6 +5,7 @@ import { registerChatParticipant } from './chat/chatParticipant';
 import { registerPlanCommands } from './commands/planCommands';
 import { COMMANDS, CONFIG_KEYS, VIEWS } from './constants';
 import { JobRunner } from './jobs/jobRunner';
+import { hasWebDashboard } from './server/masterDiscovery';
 import { ServerManager } from './server/serverManager';
 import { StatusBarItem } from './statusbar/statusBarItem';
 import { SidebarProvider } from './views/sidebarProvider';
@@ -28,6 +29,23 @@ export function awaitBackgroundInit(): Promise<void> {
  */
 export function getActiveServerManager(): ServerManager | undefined {
   return serverManager;
+}
+
+/**
+ * Message shown when the daemon serves no dashboard at its root.
+ *
+ * The V2 daemon registers API routes only: there is no `ServeDir`, no SPA fallback and no `web_ui`
+ * in `.master`'s `capabilities`, so `GET /` is a bare 404. V1's daemon served the Ivy web UI there,
+ * which is what both of these commands were built around. Reporting that plainly beats V1's
+ * behaviour transplanted unchanged, which is a webview showing an empty 404 page and a browser tab
+ * doing the same.
+ */
+function noDashboardMessage(baseUrl: string): string {
+  return (
+    `The Tendril daemon at ${baseUrl} does not serve a web dashboard; it exposes the JSON API only. ` +
+    'Use the Tendril desktop app for the dashboard, or the Tendril sidebar and @tendril chat ' +
+    'commands from here.'
+  );
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -57,6 +75,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(COMMANDS.openDashboard, async () => {
       try {
         const result = await serverManager!.ensureServerRunning();
+        if (!(await hasWebDashboard(result.baseUrl))) {
+          vscode.window.showErrorMessage(noDashboardMessage(result.baseUrl));
+          return;
+        }
         await DashboardPanel.createOrShow(
           context.extensionUri,
           result.baseUrl,
@@ -73,6 +95,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(COMMANDS.openInBrowser, async () => {
       try {
         const result = await serverManager!.ensureServerRunning();
+        if (!(await hasWebDashboard(result.baseUrl))) {
+          vscode.window.showErrorMessage(noDashboardMessage(result.baseUrl));
+          return;
+        }
         await vscode.env.openExternal(vscode.Uri.parse(result.baseUrl));
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);

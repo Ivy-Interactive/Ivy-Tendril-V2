@@ -11,6 +11,7 @@ import type {
   AgentCostBreakdown,
   Annotation,
   CreateProjectRequest,
+  CrossPlanRecommendation,
   DashboardActivity,
   DiscoveredVaultRepo,
   DoctorCheck,
@@ -477,6 +478,51 @@ const tauriClient = {
     return invoke<RecommendationItem[]>("cmd_list_recommendations", { planId });
   },
 
+  async listCrossPlanRecommendations(
+    this: void,
+    project?: string,
+    state?: string,
+  ): Promise<CrossPlanRecommendation[]> {
+    try {
+      return await invoke<CrossPlanRecommendation[]>("cmd_list_all_recommendations", {
+        project,
+        state,
+      });
+    } catch {
+      // Cross-plan projection fallback: gather from completed plans
+      const plans = await bridge.listPlans();
+      const relevantPlans = plans.filter((p) => p.state === "Completed" || !state);
+      const results: CrossPlanRecommendation[] = [];
+      await Promise.all(
+        relevantPlans.map(async (plan) => {
+          try {
+            const recs = await bridge.listRecommendations(plan.id);
+            for (const r of recs) {
+              const rState = r.state || "Pending";
+              if (state && rState !== state) continue;
+              if (project && plan.project !== project) continue;
+              results.push({
+                planId: plan.id,
+                planTitle: plan.title,
+                project: plan.project,
+                sourcePlanStatus: plan.state,
+                title: r.title,
+                description: r.description,
+                impact: r.impact,
+                state: r.state,
+                declineReason: r.declineReason,
+                notes: r.notes,
+              });
+            }
+          } catch {
+            // Ignore per-plan failure
+          }
+        }),
+      );
+      return results;
+    }
+  },
+
   /**
    * `declineReason` and `notes` are separate fields, not one field reused: a
    * decline reason is why the recommendation was rejected, a note is why it was
@@ -514,6 +560,16 @@ const tauriClient = {
 
   async cancelJob(this: void, id: string, message?: string): Promise<void> {
     return invoke<void>("cmd_cancel_job", { id, message });
+  },
+
+  /** Drops a job from the list and the database. The daemon keeps its log artifacts. */
+  async deleteJob(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_delete_job", { id });
+  },
+
+  /** Promotes a blocked or queued job past its gates so it runs next. */
+  async forceStartJob(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_force_start_job", { id });
   },
 
   async listProjects(this: void): Promise<ProjectSummary[]> {

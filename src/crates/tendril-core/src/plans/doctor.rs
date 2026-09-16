@@ -74,6 +74,34 @@ pub fn check_plan_health(plan_folder: &Path) -> Vec<PlanDoctorIssue> {
         });
     }
 
+    // A plan's `repos` are consumed verbatim: `ExecutePlan` creates one worktree per entry, so a path
+    // that is not there is a plan that cannot run — an Error, not a note. Without this,
+    // `tendril plan validate` printed "Plan is valid." for a plan pointing at a directory that does
+    // not exist, which is a failure to *detect* rather than only a failure to signal.
+    //
+    // Completed and Skipped plans are exempt, as they are for the schema check above: they are
+    // archives, they will never be executed again, and a repository that has since been moved or
+    // deleted must not make an operator's whole history unhealthy.
+    let archived =
+        plan.state.eq_ignore_ascii_case("Completed") || plan.state.eq_ignore_ascii_case("Skipped");
+    if !archived {
+        for repo in &plan.repos {
+            if repo.trim().is_empty() {
+                issues.push(PlanDoctorIssue {
+                    plan_folder: folder_name.clone(),
+                    severity: "Error".to_string(),
+                    message: "Empty repository path in repos".to_string(),
+                });
+            } else if !Path::new(repo.trim()).is_dir() {
+                issues.push(PlanDoctorIssue {
+                    plan_folder: folder_name.clone(),
+                    severity: "Error".to_string(),
+                    message: format!("Repository path does not exist: {}", repo.trim()),
+                });
+            }
+        }
+    }
+
     issues
 }
 

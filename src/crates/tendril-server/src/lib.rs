@@ -24,8 +24,23 @@ use tokio::net::TcpListener;
 /// How often the master rechecks blocked plans, wait-for dependents, stuck jobs and stale entries.
 const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(60);
 
-/// How long in-flight requests get to finish once a TLS server has been asked to shut down.
-const TLS_SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
+/// How long in-flight requests get to finish once the server has been asked to shut down.
+///
+/// Both listeners are bounded by this. A deadline is not optional: `/api/changes/events` and the
+/// websocket have no terminal event by design — they live as long as their client does — and axum's
+/// graceful shutdown waits for *every* connection, so an unbounded plaintext server never exits
+/// while the desktop app is attached, and has to be SIGKILLed. A SIGKILL skips `MasterGuard::drop`,
+/// which is what leaves a stale `.master` behind on every restart.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
+
+/// How often the master re-checks that `.master` still names it.
+///
+/// The claim can disappear under a running daemon — the app's "Repair service" used to delete it
+/// unconditionally, and `tendril reset` removes the home — and `is_master` then reads false forever,
+/// silently switching off cost backfill, the issue importer and job maintenance. Nothing is written
+/// unless the claim is actually missing, so this costs one `read` a minute and never churns a file
+/// that clients poll.
+const MASTER_REASSERT_INTERVAL: Duration = Duration::from_secs(60);
 
 /// PEM certificate and key for a TLS listener — what `tendril generate-certs` writes.
 #[derive(Debug, Clone)]
@@ -61,6 +76,21 @@ pub async fn run_server(
         );
     }
 
+    // Every job compiles its prompt out of `Promptwares/<JobType>/`, so a home that has never had
+    // `tendril promptware deploy` run against it fails every job with "Promptware folder not found".
+    // Deploying at startup is what V1's `TendrilServer` does, and it is an overlay: a deployed
+    // promptware's own `Memory/` and `Tools/` survive, so this is safe to repeat on every boot.
+    if let Err(e) =
+        tendril_core::promptware::deploy_standard_promptwares(&tendril_home.join("Promptwares"))
+    {
+        tracing::warn!(
+            "Could not deploy promptwares under {}: {} — jobs will fail until \
+             `tendril promptware deploy` succeeds",
+            tendril_home.display(),
+            e
+        );
+    }
+
     // Loaded before anything claims the port or writes `.master`: an unreadable certificate should
     // stop the daemon, not leave a half-announced server behind.
     let tls_config = match &tls {
@@ -77,14 +107,37 @@ pub async fn run_server(
     let state = Arc::new(AppState::new(tendril_home.clone(), secret.clone()));
     let app = create_router(state.clone());
 
+    // Claimed *before* the bind, and announced only once both have succeeded.
+    //
+    // The claim is what serialises two daemons against one `TENDRIL_HOME`. Binding first meant two
+    // `tendril serve` processes on different ports both got a listener, both overwrote `.master`, and
+    // both ran the master-only subsystems below — reaping each other's jobs and mirroring the same
+    // Plans folder into one SQLite file. The old order also printed "running" before anything that
+    // could still fail.
+    let master = Arc::new(MasterGuard::acquire(
+        &tendril_home,
+        port,
+        &secret,
+        &host,
+        scheme,
+    )?);
+
     let addr = format!("{}:{}", host, port);
+    // A failed bind drops `master`, which releases the claim: nothing is left behind for the next
+    // start to clean up.
     let listener = TcpListener::bind(&addr).await?;
+    let port = listener.local_addr()?.port();
+    // `--port 0` asks the OS for an ephemeral port, so the claim's port is only known now.
+    if let Err(e) = master.publish_port(port) {
+        tracing::warn!("Could not publish the bound port to .master: {}", e);
+    }
+
     println!(
         ">>> Tendril Server running on {}://{}:{}",
         scheme, host, port
     );
 
-    let _master = MasterGuard::acquire(&tendril_home, port, &secret, &host, scheme)?;
+    spawn_master_reassert(&master);
 
     // Master-only, like everything below: two daemons would double-count every event. Strictly
     // opt-in — `init` returns `None` unless `config.yaml` says `telemetry: true`, and nothing is
@@ -138,12 +191,7 @@ pub async fn run_server(
     // would share one key, so one client's failures would back off everybody else.
     match tls_config {
         None => {
-            axum::serve(
-                listener,
-                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-            )
-            .with_graceful_shutdown(shutdown_signal())
-            .await?;
+            serve_with_shutdown_deadline(listener, app, shutdown_signal(), SHUTDOWN_GRACE).await?;
         }
         Some(config) => {
             // `axum::serve` has no TLS, and `axum_server` drives shutdown through a handle rather
@@ -152,7 +200,7 @@ pub async fn run_server(
             let signalled = handle.clone();
             tokio::spawn(async move {
                 shutdown_signal().await;
-                signalled.graceful_shutdown(Some(TLS_SHUTDOWN_GRACE));
+                signalled.graceful_shutdown(Some(SHUTDOWN_GRACE));
             });
 
             axum_server::from_tcp_rustls(listener.into_std()?, config)
@@ -169,6 +217,101 @@ pub async fn run_server(
     }
 
     Ok(())
+}
+
+/// Serves `app` on `listener` until `shutdown` fires, then for at most `grace` longer.
+///
+/// This is the plaintext half of what `TLS_SHUTDOWN_GRACE` already did for the TLS listener.
+/// `axum::serve(..).with_graceful_shutdown(..)` waits for every connection to close, and the
+/// long-lived streams (`/api/changes/events`, `/api/ws`) never close on their own — the desktop app
+/// holds one permanently — so without a deadline SIGTERM and Ctrl-C simply hang.
+///
+/// Racing the server future against the deadline rather than aborting the connections is deliberate:
+/// in-flight requests still get their `grace` to finish, and when the deadline wins, dropping the
+/// server future stops the accept loop and the process is on its way out anyway. The important part
+/// is that `run_server` *returns*, because that is what runs `MasterGuard::drop` and releases
+/// `.master`.
+pub async fn serve_with_shutdown_deadline<F>(
+    listener: TcpListener,
+    app: axum::Router,
+    shutdown: F,
+    grace: Duration,
+) -> std::io::Result<()>
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    // One signal, two observers: the graceful-shutdown future and the deadline have to see the same
+    // edge, and `watch` latches it so neither can miss it by subscribing late.
+    let (signal_tx, mut graceful_rx) = tokio::sync::watch::channel(false);
+    let mut deadline_rx = signal_tx.subscribe();
+    tokio::spawn(async move {
+        shutdown.await;
+        let _ = signal_tx.send(true);
+    });
+
+    let graceful = async move {
+        let _ = graceful_rx.wait_for(|signalled| *signalled).await;
+    };
+    let deadline = async move {
+        let _ = deadline_rx.wait_for(|signalled| *signalled).await;
+        tokio::time::sleep(grace).await;
+    };
+
+    let server = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(graceful);
+
+    tokio::select! {
+        result = server => result,
+        _ = deadline => {
+            tracing::warn!(
+                "Shutdown grace of {}s elapsed with connections still open; exiting anyway",
+                grace.as_secs()
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Keeps `.master` naming this process for as long as it is the master.
+///
+/// Holds a `Weak`, so the task cannot keep the guard — and therefore the claim — alive past
+/// `run_server`: when the guard drops, the next tick ends the task.
+fn spawn_master_reassert(master: &Arc<tendril_core::config::MasterGuard>) {
+    use tendril_core::config::MasterCheck;
+
+    let master = Arc::downgrade(master);
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(MASTER_REASSERT_INTERVAL);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            let Some(master) = master.upgrade() else {
+                break;
+            };
+
+            // Touches the filesystem, but only a read in the common case.
+            let check = tokio::task::spawn_blocking(move || master.check_and_reassert()).await;
+            match check {
+                Ok(MasterCheck::Intact) => {}
+                Ok(MasterCheck::Reasserted) => {
+                    tracing::warn!("Re-asserted this daemon's claim on .master");
+                }
+                Ok(MasterCheck::Superseded { pid }) => {
+                    // Another daemon owns the home now. Stop checking: the master-only sweeps all
+                    // re-read `is_master` per pass and have already stood down.
+                    tracing::warn!(
+                        "Superseded as master by pid {}; this daemon will not re-claim .master",
+                        pid
+                    );
+                    break;
+                }
+                Err(e) => tracing::warn!("Master re-assert check failed: {}", e),
+            }
+        }
+    });
 }
 
 /// Reads the PEM pair `serve --tls-cert/--tls-key` was given.

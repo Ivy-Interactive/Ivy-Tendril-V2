@@ -177,10 +177,44 @@ config, the health report and every job artifact; plan files are included as the
     ReportBug(commands::report_bug::ReportBugArgs),
 }
 
+/// The log filter used when `RUST_LOG` says nothing.
+///
+/// `warn` globally so a dependency cannot bury the output, `info` for Tendril's own crates so
+/// `tendril serve` has a diagnostic log worth reading. Anything more selective belongs in `RUST_LOG`,
+/// which overrides this entirely.
+const DEFAULT_LOG_FILTER: &str = "warn,tendril_cli=info,tendril_core=info,tendril_server=info";
+
+/// Installs the process-wide log subscriber, on **stderr**.
+///
+/// Without this, every `tracing::{info,warn,error}!` in the daemon and the CLI went nowhere: only
+/// `tendril mcp` and the separate `tendril-server` binary ever installed a subscriber, so
+/// `tendril serve` — the documented way to run the daemon — was silent even under `RUST_LOG=debug`.
+///
+/// stderr, never stdout: `mcp` speaks JSON-RPC on stdout, `project-analyzer` writes a YAML report
+/// there, and the daemon's own user-visible lines are `println!`. A log line on stdout would corrupt
+/// all three. `try_init` rather than `init` because `mcp` installs its own stricter subscriber and
+/// must stay able to do so without panicking.
+fn init_logging() {
+    use tracing_subscriber::EnvFilter;
+
+    let _ = tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_FILTER)),
+        )
+        .try_init();
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let tendril_home = cli.home.unwrap_or_else(get_default_tendril_home);
+
+    // Before any command runs, so nothing it logs is lost.
+    if !matches!(cli.command, Commands::Mcp) {
+        init_logging();
+    }
 
     match cli.command {
         Commands::Plan(cmd) => commands::plan::handle_plan_command(cmd, &tendril_home).await?,
@@ -246,7 +280,7 @@ async fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::Cli;
-    use clap::CommandFactory;
+    use clap::{CommandFactory, Parser};
     use tendril_core::agents::instructions;
 
     /// Every `tendril ...` invocation the agent instructions document must name a command that
@@ -292,6 +326,90 @@ mod tests {
             checked > 100,
             "only {checked} command tokens were checked — the snippet extraction is broken"
         );
+    }
+
+    /// Every `tendril ...` command line the README documents has to parse against this CLI.
+    ///
+    /// Issue #137: the README's "Run" section documented a bare `tendril` and `tendril --web` as the
+    /// way to launch Tendril, and neither existed — `command: Commands` is not `Option<Commands>`, so
+    /// a bare invocation is a clap `MissingSubcommand`, and there has never been a `--web` flag. The
+    /// first command a new user copied out of the README failed. Nothing checked, so nothing caught
+    /// it; this is that check.
+    #[test]
+    fn every_tendril_command_in_the_readme_parses() {
+        const README: &str =
+            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../README.md"));
+
+        let mut checked = 0usize;
+        for line in readme_invocations(README) {
+            let rest = line.strip_prefix("tendril").expect("filtered above");
+            let args: Vec<&str> = std::iter::once("tendril")
+                .chain(rest.split_whitespace())
+                .collect();
+            match Cli::try_parse_from(&args) {
+                Ok(_) => {}
+                // `--help`/`--version` "fail" by printing; both are real, working invocations.
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        clap::error::ErrorKind::DisplayHelp
+                            | clap::error::ErrorKind::DisplayVersion
+                            | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+                    ) => {}
+                Err(e) => panic!(
+                    "the README documents `{}`, which this CLI rejects:\n{}",
+                    line, e
+                ),
+            }
+            checked += 1;
+        }
+
+        assert!(
+            checked >= 3,
+            "only {checked} `tendril` command lines were found in the README — the snippet \
+             extraction is broken, so this test is not checking anything"
+        );
+    }
+
+    /// The `tendril ...` command lines a reader would copy out of the README.
+    ///
+    /// A fenced code block is taken line by line, whatever it says — a bare `tendril` on a line of
+    /// its own in a fence is an instruction to run it, and that is exactly the case in issue #137. An
+    /// inline span is only taken when it carries arguments, because prose naming the binary
+    /// (`` the `tendril` CLI ``) is not an invocation.
+    fn readme_invocations(markdown: &str) -> Vec<String> {
+        let mut invocations = Vec::new();
+        let mut in_fence = false;
+
+        let is_invocation = |candidate: &str| {
+            // `tendril-app`, `tendril-docs`, `ivy-tendril` and the like are other things entirely.
+            candidate == "tendril" || candidate.starts_with("tendril ")
+        };
+
+        for line in markdown.lines() {
+            if line.trim_start().starts_with("```") {
+                in_fence = !in_fence;
+                continue;
+            }
+            if in_fence {
+                let candidate = line.trim();
+                if is_invocation(candidate) {
+                    invocations.push(candidate.to_string());
+                }
+                continue;
+            }
+            let mut parts = line.split('`');
+            parts.next();
+            while let Some(span) = parts.next() {
+                let candidate = span.trim();
+                if candidate.contains(' ') && is_invocation(candidate) {
+                    invocations.push(candidate.to_string());
+                }
+                parts.next();
+            }
+        }
+
+        invocations
     }
 
     /// The contents of every inline code span and fenced code block, which is where the document

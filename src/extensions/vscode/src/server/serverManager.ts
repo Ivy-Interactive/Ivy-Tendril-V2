@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import * as net from 'net';
 import { CONFIG_KEYS } from '../constants';
 import {
+  DEFAULT_MASTER_HOST,
   discoverMaster,
+  fetchActiveJobsCount,
   fetchProjects,
   fetchRecentPlans,
   isWorkspaceManaged,
@@ -12,14 +15,68 @@ import {
 import { assertIsolatedTendrilHome } from './homeGuard';
 import { DiscoveryResult, ServerHealthInfo, TendrilPlanSummary, TendrilProjectSummary } from './types';
 
-export function buildServerArgs(port = 0): string[] {
-  const args = ['--web'];
-  if (typeof port === 'number' && port > 0) {
-    args.push(`--port=${port}`);
-  } else {
-    args.push('--find-available-port');
+/**
+ * The daemon's own default port (`Commands::Run`'s `--port` default in tendril-cli's main.rs). Used
+ * as the base of the free-port search when `tendril.server.port` is left at 0.
+ */
+export const DEFAULT_SERVER_PORT = 5010;
+
+/** Ports tried above the base before giving up. */
+const PORT_SEARCH_ATTEMPTS = 64;
+
+/**
+ * The V2 launch line.
+ *
+ * V1 was `tendril --web [--port=N | --find-available-port]`. Neither the bare `--web` flag nor
+ * `--find-available-port` exists in the Rust CLI, so both are a clap parse error and the spawn dies
+ * immediately. `tendril run --port=N` is the closest counterpart: like V1's `--web` path it migrates
+ * the database and pre-checks the port before handing off to the server.
+ *
+ * The port must be concrete. `--port=0` is not the auto-assign it was in V1: `MasterGuard::acquire`
+ * records the *requested* port in `.master`, so a 0 would publish `port: 0` while the listener sat
+ * on an ephemeral port, and nothing could find it. `findAvailablePort` picks the number instead,
+ * which is what V1 delegated to `--find-available-port`.
+ */
+export function buildServerArgs(port: number = DEFAULT_SERVER_PORT): string[] {
+  const resolved = typeof port === 'number' && port > 0 ? port : DEFAULT_SERVER_PORT;
+  return ['run', `--port=${resolved}`, `--host=${DEFAULT_MASTER_HOST}`];
+}
+
+/** True when a loopback listener cannot be bound at `port`, mirroring the CLI's `is_port_in_use`. */
+export function isPortInUse(port: number): Promise<boolean> {
+  return new Promise(resolve => {
+    const probe = net.createServer();
+    probe.once('error', () => resolve(true));
+    probe.once('listening', () => probe.close(() => resolve(false)));
+    probe.listen(port, DEFAULT_MASTER_HOST);
+  });
+}
+
+/**
+ * First free loopback port at or above `basePort`.
+ *
+ * Replaces V1's `--find-available-port`, which scanned upward from the base port in the same way.
+ * Inherently racy (the port can be taken between the probe and the daemon's bind), which is why
+ * `tendril run` still reports "port is already in use" on its own and that message is surfaced.
+ */
+export async function findAvailablePort(
+  basePort = DEFAULT_SERVER_PORT,
+  attempts = PORT_SEARCH_ATTEMPTS
+): Promise<number> {
+  for (let offset = 0; offset < attempts; offset++) {
+    const candidate = basePort + offset;
+    if (candidate > 65535) {
+      break;
+    }
+    if (!(await isPortInUse(candidate))) {
+      return candidate;
+    }
   }
-  return args;
+
+  throw new Error(
+    `No free port found in ${basePort}-${Math.min(basePort + attempts - 1, 65535)}. ` +
+      'Set tendril.server.port to a specific free port.'
+  );
 }
 
 export class ServerManager implements vscode.Disposable {
@@ -55,6 +112,8 @@ export class ServerManager implements vscode.Disposable {
       };
     }
 
+    // V2 writes no heartbeat, so a live pid proves nothing about whether the daemon is serving.
+    // `/api/ping` is the only liveness signal there is, and it decides `isAlive`.
     const isReachable = await pingServer(discovery.result.baseUrl, 2000);
     if (!isReachable) {
       return {
@@ -71,30 +130,38 @@ export class ServerManager implements vscode.Disposable {
       baseUrl: discovery.result.baseUrl,
       port: discovery.result.port,
       pid: discovery.result.pid,
-      activeJobsCount: 0
+      activeJobsCount: await fetchActiveJobsCount(discovery.result.baseUrl, discovery.result, 2000)
     };
   }
 
+  /** The reachable daemon plus its credentials, or undefined when nothing is serving. */
+  private async getAuthenticatedTarget(): Promise<DiscoveryResult | undefined> {
+    const discovery = discoverMaster(this.tendrilHome, true);
+    if (discovery.status !== 'found') {
+      return undefined;
+    }
+    if (!(await pingServer(discovery.result.baseUrl, 2000))) {
+      return undefined;
+    }
+    return discovery.result;
+  }
+
   public async getRecentPlans(limit = 5): Promise<TendrilPlanSummary[]> {
-    const health = await this.getHealthInfo();
-    if (!health.isAlive || !health.baseUrl) {
+    const target = await this.getAuthenticatedTarget();
+    if (!target) {
       return [];
     }
 
-    const discovery = discoverMaster(this.tendrilHome, false);
-    const apiKey = discovery.status === 'found' ? discovery.result.apiKey : undefined;
-    return fetchRecentPlans(health.baseUrl, limit, apiKey);
+    return fetchRecentPlans(target.baseUrl, limit, target);
   }
 
   public async getProjects(): Promise<TendrilProjectSummary[]> {
-    const health = await this.getHealthInfo();
-    if (!health.isAlive || !health.baseUrl) {
+    const target = await this.getAuthenticatedTarget();
+    if (!target) {
       return [];
     }
 
-    const discovery = discoverMaster(this.tendrilHome, false);
-    const apiKey = discovery.status === 'found' ? discovery.result.apiKey : undefined;
-    return fetchProjects(health.baseUrl, apiKey);
+    return fetchProjects(target.baseUrl, target);
   }
 
   public async checkWorkspaceProjectStatus(): Promise<{
@@ -108,7 +175,17 @@ export class ServerManager implements vscode.Disposable {
     }
 
     const workspacePath = folders[0].uri.fsPath;
-    const projects = await this.getProjects();
+    // A daemon that answered with an empty project list and a daemon that could not be reached at
+    // all both reduce to `[]` in `getProjects`, and V1 read both as "this folder is unmanaged" and
+    // offered to add it. That prompt is one-shot per workspace path, so firing it while the daemon
+    // was down permanently suppressed the real one. Resolve the target first and say nothing when
+    // there is nobody to ask.
+    const target = await this.getAuthenticatedTarget();
+    if (!target) {
+      return { isManaged: true, workspacePath };
+    }
+
+    const projects = await fetchProjects(target.baseUrl, target);
     const result = isWorkspaceManaged(workspacePath, projects);
 
     return {
@@ -174,14 +251,17 @@ export class ServerManager implements vscode.Disposable {
    */
   private async waitUntilDiscoverable(
     timeoutMs: number,
-    requireSpawnedChild: boolean
+    requireSpawnedChild: boolean,
+    describeFailure?: () => string
   ): Promise<DiscoveryResult> {
     const startTime = Date.now();
     let lastStatus = 'not_found';
 
     while (Date.now() - startTime < timeoutMs) {
       if (requireSpawnedChild && !this.spawnedChild) {
-        throw new Error('Tendril server process exited unexpectedly during startup.');
+        throw new Error(
+          `Tendril server process exited unexpectedly during startup.${describeFailure?.() ?? ''}`
+        );
       }
 
       const current = discoverMaster(this.tendrilHome, true);
@@ -197,7 +277,8 @@ export class ServerManager implements vscode.Disposable {
     }
 
     throw new Error(
-      `Tendril server did not become discoverable at ${this.tendrilHome} within ${timeoutMs}ms (last status: ${lastStatus}).`
+      `Tendril server did not become discoverable at ${this.tendrilHome} within ${timeoutMs}ms ` +
+        `(last status: ${lastStatus}).${describeFailure?.() ?? ''}`
     );
   }
 
@@ -218,15 +299,35 @@ export class ServerManager implements vscode.Disposable {
         this.notifyStateChanged();
         return existing.result;
       }
+
+      // A live pid that will not answer `/api/ping` is unrecoverable from here, and spawning anyway
+      // is worse than failing: `MasterGuard::acquire` refuses to take mastership from a live pid
+      // unless TENDRIL_ALLOW_MASTER_TAKEOVER=1, so the child would exit and the caller would sit
+      // through the whole poll deadline to be told only that it "exited unexpectedly". V1 had
+      // `tendril master release` for this; V2 has no such command, so the message has to say what to
+      // do by hand.
+      this.lastStartupError = new Error(
+        `A Tendril daemon (PID ${existing.result.pid}) holds the master claim in ${this.tendrilHome} ` +
+          `on port ${existing.result.port} but is not answering ${existing.result.baseUrl}/api/ping. ` +
+          'Tendril refuses to take mastership from a live process and has no "release" command, so ' +
+          `starting another server against this home cannot succeed. Stop PID ${existing.result.pid}, ` +
+          'or point tendril.homeDirectory at a different TENDRIL_HOME.'
+      );
+      this.outputChannel.appendLine(this.lastStartupError.message);
+      throw this.lastStartupError;
     }
 
     this.isSpawning = true;
     try {
       const config = vscode.workspace.getConfiguration();
       const executable = config.get<string>(CONFIG_KEYS.executablePath, 'tendril');
-      const port = config.get<number>(CONFIG_KEYS.serverPort, 0);
+      const configuredPort = config.get<number>(CONFIG_KEYS.serverPort, 0);
       const pollTimeoutMs = config.get<number>(CONFIG_KEYS.serverPollTimeout, 15000);
 
+      const port =
+        typeof configuredPort === 'number' && configuredPort > 0
+          ? configuredPort
+          : await findAvailablePort();
       const args = buildServerArgs(port);
 
       this.outputChannel.show(true);
@@ -243,15 +344,35 @@ export class ServerManager implements vscode.Disposable {
 
       this.spawnedChild = child;
 
+      // The daemon reports the two failures the extension cannot predict — "port is already in use"
+      // and "refusing to take mastership from live PID" — on its own streams and then exits. Kept so
+      // the thrown error can carry that text instead of only "exited unexpectedly".
+      const recentOutput: string[] = [];
+      const record = (text: string) => {
+        recentOutput.push(text);
+        if (recentOutput.length > 40) {
+          recentOutput.splice(0, recentOutput.length - 40);
+        }
+      };
+      const describeFailure = (): string => {
+        const tail = recentOutput.join('').trim();
+        return tail.length > 0 ? ` Server output: ${tail}` : '';
+      };
+
       child.stdout?.on('data', (data: Buffer) => {
-        this.outputChannel.append(data.toString());
+        const text = data.toString();
+        record(text);
+        this.outputChannel.append(text);
       });
 
       child.stderr?.on('data', (data: Buffer) => {
-        this.outputChannel.append(data.toString());
+        const text = data.toString();
+        record(text);
+        this.outputChannel.append(text);
       });
 
       child.on('error', (err: Error) => {
+        record(err.message);
         this.outputChannel.appendLine(`Failed to start Tendril server: ${err.message}`);
         this.spawnedChild = null;
         this.notifyStateChanged();
@@ -266,7 +387,7 @@ export class ServerManager implements vscode.Disposable {
       });
 
       try {
-        const result = await this.waitUntilDiscoverable(pollTimeoutMs, true);
+        const result = await this.waitUntilDiscoverable(pollTimeoutMs, true, describeFailure);
         this.lastStartupError = undefined;
         this.outputChannel.appendLine(
           `Tendril server successfully connected at ${result.baseUrl} (PID ${result.pid}).`

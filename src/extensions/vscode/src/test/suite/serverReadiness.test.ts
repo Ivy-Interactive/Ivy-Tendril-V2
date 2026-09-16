@@ -21,7 +21,7 @@ describe('Server Readiness Suite', () => {
       const writeTimer = setTimeout(() => {
         fs.writeFileSync(
           masterFile,
-          JSON.stringify({ pid: process.pid, port: 4242, scheme: 'http', heartbeat: new Date().toISOString() })
+          JSON.stringify({ pid: process.pid, port: 4242, host: '127.0.0.1', scheme: 'http', secret: 's' })
         );
       }, 200);
 
@@ -70,7 +70,7 @@ describe('Server Readiness Suite', () => {
       const completeTimer = setTimeout(() => {
         fs.writeFileSync(
           masterFile,
-          JSON.stringify({ pid: process.pid, port: 5151, scheme: 'http', heartbeat: new Date().toISOString() })
+          JSON.stringify({ pid: process.pid, port: 5151, host: '127.0.0.1', scheme: 'http', secret: 's' })
         );
       }, 150);
 
@@ -116,8 +116,9 @@ describe('Server Readiness Suite', () => {
         JSON.stringify({
           pid: process.pid,
           port: deadPort,
+          host: '127.0.0.1',
           scheme: 'http',
-          heartbeat: new Date().toISOString()
+          secret: 'bearer-secret-abc'
         })
       );
 
@@ -133,6 +134,80 @@ describe('Server Readiness Suite', () => {
           () => manager.ensureServerRunning(),
           /autoStart is disabled/,
           'A .master that does not answer /api/ping must never be treated as the ready result'
+        );
+      } finally {
+        fs.rmSync(home, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('a live but unresponsive master', () => {
+    let originalConfig: Record<string, unknown>;
+
+    beforeEach(() => {
+      originalConfig = vscodeMock.workspace.__getConfig();
+    });
+
+    afterEach(() => {
+      vscodeMock.workspace.__resetConfig();
+      vscodeMock.workspace.__setConfig(originalConfig);
+    });
+
+    it('fails immediately, naming the pid and what to do about it', async () => {
+      // `MasterGuard::acquire` refuses to take mastership from a live pid that will not answer
+      // /api/ping unless TENDRIL_ALLOW_MASTER_TAKEOVER=1, and V2 has no `master release` command to
+      // clear the claim. Spawning anyway means the child exits and the caller waits out the whole
+      // poll deadline to be told only that the process "exited unexpectedly".
+      const home = makeTempHome('readiness-wedged-');
+
+      const deadPort = await new Promise<number>((resolve, reject) => {
+        const probe = net.createServer();
+        probe.listen(0, '127.0.0.1', () => {
+          const address = probe.address();
+          const port = typeof address === 'object' && address ? address.port : 0;
+          probe.close(() => resolve(port));
+        });
+        probe.on('error', reject);
+      });
+
+      fs.writeFileSync(
+        path.join(home, '.master'),
+        JSON.stringify({
+          // This process is alive by definition, and it does not answer /api/ping.
+          pid: process.pid,
+          port: deadPort,
+          host: '127.0.0.1',
+          scheme: 'http',
+          secret: 'bearer-secret-abc'
+        })
+      );
+
+      vscodeMock.workspace.__setConfig({
+        'tendril.homeDirectory': home,
+        'tendril.server.autoStart': true,
+        'tendril.server.pollTimeout': 30000
+      });
+
+      try {
+        const manager = new ServerManager();
+        const startedAt = Date.now();
+        await assert.rejects(
+          () => manager.startServer(),
+          (err: Error) => {
+            assert.ok(
+              err.message.includes(String(process.pid)),
+              `Message must name the holding pid: ${err.message}`
+            );
+            assert.ok(
+              err.message.includes('no "release" command'),
+              `Message must say the claim cannot be cleared: ${err.message}`
+            );
+            return true;
+          }
+        );
+        assert.ok(
+          Date.now() - startedAt < 10000,
+          'Must fail without waiting out the 30s poll deadline'
         );
       } finally {
         fs.rmSync(home, { recursive: true, force: true });

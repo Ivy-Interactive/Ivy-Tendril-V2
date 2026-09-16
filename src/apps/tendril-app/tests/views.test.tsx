@@ -239,7 +239,11 @@ describe("Operator Views Component & Accessibility Tests", () => {
       expect(screen.queryByText(/^PR \d+$/)).toBeNull();
     });
 
-    it("counts two RetryPlan jobs on the same plan once", () => {
+    // Changed from "counts two RetryPlan jobs on the same plan once". V1's counter is
+    // `activeJobs.Count(j => j.Type == Constants.JobTypes.RetryPlan)`
+    // (`TendrilProcessStatusService.Compute`) — jobs, not distinct plans. Two retries queued against
+    // one plan are two runs to wait for, and reporting 1 understates the queue.
+    it("counts every active RetryPlan job, including two on the same plan", () => {
       const jobs: Job[] = [
         ...mockJobs,
         {
@@ -261,7 +265,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
 
       const loopArrow = container.querySelector(".tpv-loop-arrow");
       expect(loopArrow).not.toBeNull();
-      expect(loopArrow!.querySelector(".tpv-arrow-count")?.textContent).toBe("1");
+      expect(loopArrow!.querySelector(".tpv-arrow-count")?.textContent).toBe("2");
     });
 
     it("clicking the retry loop arrow and the PR label calls onNavigate('jobs')", () => {
@@ -488,6 +492,92 @@ describe("Operator Views Component & Accessibility Tests", () => {
       fireEvent.keyDown(screen.getByLabelText("Settings"), { key: "Enter" });
       fireEvent.click(screen.getByText("Pull Requests"));
       expect(handleSelectNav).toHaveBeenCalledWith("pull-requests");
+    });
+
+    it("renders Recommendations in sidebar nav and calls onSelectNav with 'recommendations'", () => {
+      const handleSelectNav = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={handleSelectNav}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      const recNavItem = screen.getByLabelText("Recommendations");
+      expect(recNavItem).toBeInTheDocument();
+      fireEvent.click(recNavItem);
+      expect(handleSelectNav).toHaveBeenCalledWith("recommendations");
+    });
+
+    it("exposes Icebox and Check for Updates via the settings menu", () => {
+      const handleSelectNav = vi.fn();
+      const handleCheckForUpdates = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={handleSelectNav}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+          onCheckForUpdates={handleCheckForUpdates}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      fireEvent.keyDown(screen.getByLabelText("Settings"), { key: "Enter" });
+      expect(screen.getByText("Icebox")).toBeInTheDocument();
+      expect(screen.getByText("Check for Updates")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("Icebox"));
+      expect(handleSelectNav).toHaveBeenCalledWith("icebox");
+    });
+
+    it("renders badge counts for plans, review, recommendations, jobs, and chat", () => {
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={() => {}}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+          draftCount={3}
+          reviewCount={5}
+          recommendationsCount={2}
+          jobCount={4}
+          chatCount={7}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      expect(screen.getByText("3")).toBeInTheDocument();
+      expect(screen.getByText("5")).toBeInTheDocument();
+      expect(screen.getByText("2")).toBeInTheDocument();
+      expect(screen.getByText("4")).toBeInTheDocument();
     });
 
     it("calls onCloseTab (not onSelectTab) with the tab id when a tab's close control is clicked", () => {

@@ -2,8 +2,9 @@
 //! wrote, so the watcher event our own write provokes does not loop back into our own reload.
 //!
 //! Only the *internal* reaction is suppressed. Client notification is not: other windows still need
-//! to hear about a daemon write, and that notification comes from `FsWatcher::notify_changed`,
-//! called by the write path itself, rather than from the watcher event.
+//! to hear about a daemon write, and that notification comes from
+//! [`crate::watcher::announce_self_write`], called by [`note_self_write`] — that is, by the write path
+//! itself — rather than from the watcher event.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,12 +22,20 @@ fn recent_writes() -> &'static Mutex<HashMap<PathBuf, Instant>> {
     WRITES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Records that this process just wrote `path`. Called by `write_atomic`.
+/// Records that this process just wrote `path`, and re-announces the write to any live watcher.
+///
+/// Called by `write_atomic` (and by the one delete path that does not go through it), which makes
+/// this the single choke point every daemon write passes. The announcement lives here rather than in
+/// each write path for that reason: the suppression note and the notification that compensates for it
+/// are then impossible to add one without the other.
 pub fn note_self_write(path: &Path) {
     note_self_write_at(path, Instant::now());
+    super::announce_self_write(path);
 }
 
-/// Clock-injected form, so the expiry behaviour is testable without sleeping.
+/// Clock-injected form, so the expiry behaviour is testable without sleeping. Records the write and
+/// nothing else — announcing a write stamped with a fabricated clock would notify clients of
+/// something that did not just happen.
 pub fn note_self_write_at(path: &Path, now: Instant) {
     let mut map = recent_writes().lock().unwrap_or_else(|e| e.into_inner());
     // Pruning on insert keeps the map bounded without a background task: every write both adds one

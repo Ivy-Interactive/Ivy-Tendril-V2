@@ -271,17 +271,23 @@ irm https://cdn.ivy.app/install-tendril.ps1 | iex
 
 ### Run
 
-Tendril is a desktop application, but can also be launched and controlled via the CLI:
+Tendril is a desktop application, but the same installation is also a CLI. The two are separate
+binaries: `tendril-app` is the desktop app, and `tendril` is the CLI and the server.
 
-Start the desktop application:
+Start the desktop application by launching **Tendril** from your applications menu (or run the
+`tendril-app` binary directly).
+
+Start the daemon headlessly — the HTTP & WebSocket API, no desktop UI:
 ```bash
-tendril
+tendril run
 ```
 
-Start in headless mode (web server without desktop UI):
-```bash
-tendril --web
-```
+`tendril run` checks the port and migrates the database first, then serves on `127.0.0.1:5010`. Use
+`--port` / `--host` to change that, and `tendril serve` if you want the bare listener with no
+pre-flight checks (it is also the command that takes `--tls-cert` / `--tls-key`).
+
+Everything else is a subcommand — `tendril --help` lists them all, and `tendril doctor` reports on
+the installation (exit code 0 when nothing is `[FAIL]`, 1 otherwise, so it can gate a script).
 
 ---
 

@@ -30,11 +30,18 @@ const STATUS_OPTIONS: BadgeSelectOption[] = [
   { value: "Unknown", label: "Unknown" },
 ];
 
-/** Shared with the per-plan card in `PlanPullRequests`, so the table and the card agree on colour. */
+/**
+ * Shared with the per-plan card in `PlanPullRequests`, so the table and the card agree on colour.
+ *
+ * `Closed` is neutral, not destructive: `PullRequestApp`'s `BadgeColorMapping` gives it
+ * `Colors.Zinc` beside `Green` for Open and `Purple` for Merged. A PR closed without merging is an
+ * ordinary outcome — a superseded branch, a duplicate — and painting it the same red as a failure
+ * makes an operator triage a row that needs nothing.
+ */
 const STATE_CLASS: Record<PrState, string> = {
   Open: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
   Merged: "bg-violet-500/10 text-violet-300 border-violet-500/30",
-  Closed: "bg-rose-500/10 text-rose-300 border-rose-500/30",
+  Closed: "bg-muted text-muted-foreground border-border",
   Unknown: "bg-slate-700/40 text-slate-400 border-slate-600/40",
 };
 
@@ -47,6 +54,26 @@ function formatTokens(tokens: number): string {
 /** Blank rather than `$0.00` for a plan with no priceable cost — the original's `costValue > 0` guard. */
 function formatCost(cost: number): string {
   return cost > 0 ? `$${cost.toFixed(2)}` : "";
+}
+
+/**
+ * What a status cell means, and how old it is.
+ *
+ * `Unknown` is not "open": `pr_sync` records it when a tracked URL is absent from its repository's
+ * `gh pr list --limit 100` window, or when the `gh` call failed outright. The badge alone reads as a
+ * fourth PR state, so the cell says which of those it is and when the daemon last looked. Nothing in
+ * the table said this before, and a grey chip is exactly what an operator skims past.
+ */
+function statusTooltip(row: PrStatus): string {
+  const checked = row.lastChecked ? `last checked ${row.lastChecked}` : "never checked";
+  if (row.status === "Unknown") {
+    return `Unknown: the daemon could not resolve this pull request (${checked}). Resync to try again.`;
+  }
+  if (row.status === "Merged") {
+    // The first of pr_sync's three guards: a merge is terminal on GitHub's side.
+    return `Merged (${checked}). Merged pull requests are never re-checked.`;
+  }
+  return `${row.status} as of ${checked}.`;
 }
 
 export interface PullRequestsViewProps {
@@ -138,20 +165,42 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
     setNotice(null);
     try {
       const report = await bridge.syncPullRequests();
+      // A sync pass is the longest call this page makes — one `gh` invocation per repository — so the
+      // same unmount guard `load` uses applies here, or navigating away mid-pass writes to a view
+      // that is gone.
+      if (cancelledRef.current) return;
+      // `pr_sync` never fails a pass over one unreachable repository — a `gh` that is missing,
+      // unauthenticated or rate-limited lands in `report.errors`, one entry per `owner/repo`, and the
+      // pass returns success. So the operator's Resync can appear to have worked while every status
+      // on screen is untouched. `checked === 0` with errors is exactly that case, and it is worth
+      // saying plainly rather than leaving them to read a list of repository names.
       if (report.errors.length > 0) {
-        setNotice(`GitHub could not be reached for: ${report.errors.join("; ")}`);
+        const scope =
+          report.checked === 0 ? "No status could be refreshed" : "Some statuses are unchanged";
+        setNotice(
+          `${scope}: GitHub could not be reached for ${report.errors.join("; ")}. ` +
+            `Check that the \`gh\` CLI is installed and authenticated (\`gh auth status\`).`,
+        );
+      } else if (report.checked === 0 && report.tracked > 0) {
+        // The freshness and terminal-merge guards, said out loud: a pass that skipped everything is
+        // not a failure, but a silent no-op invites a second click that will also do nothing.
+        setNotice(
+          `Nothing to refresh: ${report.skippedFresh} recently checked, ` +
+            `${report.skippedMerged} already merged.`,
+        );
       }
       await load();
     } catch (err) {
       // A collision with the periodic pass is not something the operator did wrong, and the running
       // pass broadcasts its result anyway — so it is a notice, not an error banner.
+      if (cancelledRef.current) return;
       if (bridgeErrorCode(err) === "PR_SYNC_IN_PROGRESS") {
         setNotice("A sync pass is already running.");
       } else {
         setSyncError(describeBridgeError(err));
       }
     } finally {
-      setIsSyncing(false);
+      if (!cancelledRef.current) setIsSyncing(false);
     }
   }, [load]);
 
@@ -225,6 +274,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         accessor: (row) => row.status,
         cell: (_value, row) => (
           <span
+            title={statusTooltip(row)}
             className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
               STATE_CLASS[row.status] ?? STATE_CLASS.Unknown
             }`}
@@ -376,9 +426,14 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
               });
             }
           }}
+          // A failed list is not an empty one. Without this the table said the operator's search
+          // matched nothing while the banner above it said the daemon was unreachable, and the two
+          // read as unrelated.
           emptyState={
             <span className="text-muted-foreground">
-              No pull requests match your current search query or filter criteria.
+              {error
+                ? "The pull request list could not be loaded, so nothing can be shown."
+                : "No pull requests match your current search query or filter criteria."}
             </span>
           }
           toolbar={{

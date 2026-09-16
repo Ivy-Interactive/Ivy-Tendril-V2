@@ -181,8 +181,10 @@ describe("ChatStore State Management & Event Handling", () => {
     expect(lastMsg?.content).toBe("Take a look at this");
     expect(lastMsg?.attachments).toEqual(attachments);
 
+    // The prompt that reaches the agent carries the paths, because the execute route has nowhere
+    // else to put them: `ChatExecutionService.SendMessageAsync` appends the same block.
     expect(executeSpy).toHaveBeenCalledWith("session-1", {
-      prompt: "Take a look at this",
+      prompt: "Take a look at this\n\n[Attached Files]:\n- /tmp/screenshot.png",
       agentId: "claude",
       modelId: undefined,
       effort: undefined,

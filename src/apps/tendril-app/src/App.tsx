@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
 import { plansStore } from "./state/plansStore";
@@ -6,6 +6,7 @@ import { jobsStore } from "./state/jobsStore";
 import { notificationsStore } from "./state/notificationsStore";
 import { serviceStore } from "./state/serviceStore";
 import { bridge } from "./api/bridge";
+import { chatApi } from "./api/chatApi";
 import {
   onChangeEvent,
   onChangeStreamStatus,
@@ -39,12 +40,24 @@ const NoProjectsDialog = React.lazy(() =>
   import("./views/dialogs/NoProjectsDialog").then((m) => ({ default: m.NoProjectsDialog })),
 );
 
+// Same reasoning, by module rather than the barrel: the two job sweeps are the only confirms the
+// shell itself owns, and both are rare.
+const ConfirmDialog = React.lazy(() =>
+  import("./views/dialogs/ConfirmDialog").then((m) => ({ default: m.ConfirmDialog })),
+);
+
 // Lazy for the same reason, and it is the whole point of `notificationsStore` reaching `toast`
 // through a dynamic import too: the toast viewport is mounted from the start of the session, but
 // the chunk it lives in is fetched alongside the first view rather than blocking the entry chunk.
 const Toaster = React.lazy(() =>
   import("@ivy-interactive/components/ui").then((m) => ({ default: m.Toaster })),
 );
+
+/** An outline button, written out rather than imported: pulling `components/ui` into App.tsx for
+ *  two buttons is what the lazy dialogs above exist to avoid. */
+const JOB_SWEEP_BUTTON_CLASS =
+  "inline-flex h-8 items-center rounded-md border border-border bg-transparent px-3 text-sm " +
+  "font-medium text-foreground transition hover:bg-muted disabled:pointer-events-none disabled:opacity-50";
 
 /** How often the job list is re-read to spot exits. Short enough that a finished job is announced
  *  while the operator still has it in mind, long enough to be a rounding error on the daemon. */
@@ -77,6 +90,12 @@ const InboxView = React.lazy(() =>
 const PullRequestsView = React.lazy(() =>
   import("./views/PullRequestsView").then((m) => ({ default: m.PullRequestsView })),
 );
+const RecommendationsView = React.lazy(() =>
+  import("./views/RecommendationsView").then((m) => ({ default: m.RecommendationsView })),
+);
+const IceboxView = React.lazy(() =>
+  import("./views/IceboxView").then((m) => ({ default: m.IceboxView })),
+);
 // Lazy for the same reason as the rest, with more at stake: this is the only
 // view that pulls in xterm.js, which nothing else in the shell needs.
 const ReviewActionView = React.lazy(() =>
@@ -97,6 +116,11 @@ export const App: React.FC = () => {
   // so the new-plan flow does not flash the empty state on startup.
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [isNewPlanOpen, setIsNewPlanOpen] = useState(false);
+  // The two bulk job sweeps. Confirmed because both kill work in flight.
+  const [stopQueuedOpen, setStopQueuedOpen] = useState(false);
+  const [stopAllOpen, setStopAllOpen] = useState(false);
+  const [stopBusy, setStopBusy] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const [newPlanPrefill, setNewPlanPrefill] = useState<{
     title?: string;
     description?: string;
@@ -114,6 +138,8 @@ export const App: React.FC = () => {
   // Failures from actions the shell itself owns (service restart/repair).
   const [shellError, setShellError] = useState<string | null>(null);
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+  const [recommendationsCount, setRecommendationsCount] = useState<number>(0);
+  const [chatSessionsCount, setChatSessionsCount] = useState<number>(0);
 
   // Subscribe to stores
   useEffect(() => {
@@ -141,6 +167,16 @@ export const App: React.FC = () => {
       .getOnboardingStatus()
       .then(setOnboarding)
       .catch(() => setOnboarding(null));
+
+    bridge
+      .listCrossPlanRecommendations(undefined, "Pending")
+      .then((recs) => setRecommendationsCount(recs.length))
+      .catch(() => {});
+
+    chatApi
+      .listSessions()
+      .then((sessions) => setChatSessionsCount(sessions.length))
+      .catch(() => {});
 
     // The app only ever reads the daemon's cached release-check result, never the release feed
     // itself — a 6-hour poll matches the daemon's own success-path interval.
@@ -185,6 +221,29 @@ export const App: React.FC = () => {
 
     onJobEvent((payload) => {
       const item = payload as Record<string, unknown>;
+      const type = item.type as string | undefined;
+
+      // The daemon now emits job lifecycle over this channel — `job.status_changed` on every status
+      // move and `job.completed`/`job.failed` on top of it at the end. Before, it emitted nothing
+      // job-shaped at all and this handler only ever appended agent output, which is why the 5s poll
+      // below was the only thing that moved a badge. The poll stays as the backstop.
+      if (type?.startsWith("job.")) {
+        jobsStore.fetchJobs().catch(() => {});
+        if (type === "job.completed" || type === "job.failed") {
+          // A terminal job moves its plan's state too, and the plan list is a separate projection.
+          plansStore.fetchPlans().catch(() => {});
+        }
+        return;
+      }
+
+      // A client the daemon's broadcast outran is told how much it missed rather than left silently
+      // deaf. There is nothing to replay into a log from that, so the answer is to re-read.
+      if (type === "resync") {
+        jobsStore.fetchJobs().catch(() => {});
+        plansStore.fetchPlans().catch(() => {});
+        return;
+      }
+
       const jobId = (item.jobId as string) || (item.id as string) || "live-job";
       jobsStore.addStreamEvent(jobId, payload);
     })
@@ -337,6 +396,52 @@ export const App: React.FC = () => {
     handleSelectJob(res.jobId);
   };
 
+  const draftCount = useMemo(
+    () => plansState.plans.filter((p) => p.state === "Draft").length,
+    [plansState.plans],
+  );
+  const reviewCount = useMemo(
+    () => plansState.plans.filter((p) => p.state === "Review" || p.state === "Failed").length,
+    [plansState.plans],
+  );
+  const jobCount = useMemo(
+    () =>
+      jobsState.jobs.filter(
+        (j) =>
+          j.status === "Running" ||
+          j.status === "Queued" ||
+          j.status === "Pending" ||
+          j.status === "Blocked",
+      ).length,
+    [jobsState.jobs],
+  );
+
+  const handleCheckForUpdates = async () => {
+    try {
+      const info = await bridge.checkVersionNow();
+      setVersionInfo(info);
+      const { toast } = await import("@ivy-interactive/components");
+      if (info.hasUpdate) {
+        toast({
+          title: "Update Available",
+          description: `Version ${info.latestVersion} is available.`,
+        });
+      } else {
+        toast({
+          title: "Up to date",
+          description: `You're on the latest version (v${info.currentVersion}).`,
+        });
+      }
+    } catch (err) {
+      const { toast } = await import("@ivy-interactive/components");
+      toast({
+        title: "Update check failed",
+        description: describeBridgeError(err),
+        variant: "destructive",
+      });
+    }
+  };
+
   const activeNav = uiState.activeNav;
 
   // The nav and its tabs are persisted; the run behind them is not. A restored session therefore
@@ -469,6 +574,11 @@ export const App: React.FC = () => {
         return (
           <ReviewView
             plans={plansState.plans}
+            // The review queue excludes plans a job still holds, as V1's `activePlanFolders` does.
+            // Without the list the exclusion is dead wiring, and the page offers Complete Plan and
+            // Create PR on work an agent has not finished — a retry that is only Queued or Blocked
+            // still leaves its plan recorded in Review.
+            jobs={jobsState.jobs}
             onSelectPlan={handleSelectPlan}
             onOpenReviewAction={handleOpenReviewAction}
             onJobStarted={(res) => handleSelectJob(res.jobId)}
@@ -516,10 +626,58 @@ export const App: React.FC = () => {
           />
         );
 
+      case "recommendations":
+        return (
+          <RecommendationsView
+            onSelectPlan={handleSelectPlan}
+            onJobStarted={(res) => handleSelectJob(res.jobId)}
+          />
+        );
+
+      case "icebox":
+        return (
+          <IceboxView
+            plans={plansState.plans}
+            onSelectPlan={handleSelectPlan}
+            onNewPlan={() => {
+              setNewPlanPrefill({});
+              setIsNewPlanOpen(true);
+            }}
+          />
+        );
+
       case "jobs":
         return (
           <div className="space-y-4">
-            <h1 className="text-2xl font-bold text-foreground">Jobs Activity</h1>
+            {/* V1's header actions (`JobsApp.DataTable`): the counts are in the labels, and each is
+                hidden when it would read `(0)`. Stop All Queued deliberately leaves running jobs
+                alone — its confirm copy promises that, which is also why neither is built on the
+                daemon's stop-all route. */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h1 className="text-2xl font-bold text-foreground">Jobs Activity</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                {jobsStore.queuedJobCount() > 0 && (
+                  <button
+                    type="button"
+                    className={JOB_SWEEP_BUTTON_CLASS}
+                    data-testid="jobs-stop-all-queued"
+                    onClick={() => setStopQueuedOpen(true)}
+                  >
+                    Stop All Queued ({jobsStore.queuedJobCount()})
+                  </button>
+                )}
+                {jobsStore.activeJobCount() > 0 && (
+                  <button
+                    type="button"
+                    className={JOB_SWEEP_BUTTON_CLASS}
+                    data-testid="jobs-stop-all"
+                    onClick={() => setStopAllOpen(true)}
+                  >
+                    Stop All ({jobsStore.activeJobCount()})
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="grid gap-3">
               {jobsState.jobs.map((j) => (
                 <div
@@ -627,6 +785,12 @@ export const App: React.FC = () => {
         dismissedUpdateVersion={uiState.dismissedUpdateVersion}
         onDismissUpdate={(version) => uiStore.setDismissedUpdateVersion(version)}
         onCopyUpdateCommand={() => void navigator.clipboard.writeText(getUpdateCommand())}
+        draftCount={draftCount}
+        reviewCount={reviewCount}
+        recommendationsCount={recommendationsCount}
+        jobCount={jobCount}
+        chatCount={chatSessionsCount}
+        onCheckForUpdates={handleCheckForUpdates}
       >
         {shellError && (
           <div
@@ -689,7 +853,86 @@ export const App: React.FC = () => {
         onJobStarted={(res) => {
           handleSelectJob(res.jobId);
         }}
+        // V1's project picker always ends with "+ Add New Project", which navigates to Settings.
+        // Without the handler the entry never renders, so a project the operator has not created yet
+        // is a dead end in the one flow that needs one. Same route as the no-projects dialog above.
+        onAddProject={() => {
+          setIsNewPlanOpen(false);
+          uiStore.setActiveNav("settings");
+        }}
       />
+
+      {/* The two job sweeps, with V1's copy verbatim (`JobsApp.DataTable`). Mounted only while open,
+          so the dialog chunk is fetched at that moment. Both report how many they actually stopped:
+          the count is re-snapshotted as jobs are cancelled, so it can differ from the label. */}
+      {stopQueuedOpen && (
+        <React.Suspense fallback={null}>
+          <ConfirmDialog
+            isOpen
+            onClose={() => {
+              setStopQueuedOpen(false);
+              setStopError(null);
+            }}
+            title="Stop Queued Jobs"
+            body={`Stop all ${jobsStore.queuedJobCount()} queued jobs? Running jobs are not affected.`}
+            confirmLabel="Stop All"
+            confirmVariant="destructive"
+            isBusy={stopBusy}
+            error={stopError}
+            testId="stop-queued-dialog"
+            onConfirm={async () => {
+              setStopBusy(true);
+              setStopError(null);
+              try {
+                const stopped = await jobsStore.stopQueuedJobs();
+                const { toast } = await import("@ivy-interactive/components");
+                toast({ title: "Jobs", description: `Stopped ${stopped} queued job(s).` });
+                setStopQueuedOpen(false);
+              } catch (err) {
+                setStopError(describeBridgeError(err));
+              } finally {
+                setStopBusy(false);
+              }
+            }}
+          />
+        </React.Suspense>
+      )}
+
+      {stopAllOpen && (
+        <React.Suspense fallback={null}>
+          <ConfirmDialog
+            isOpen
+            onClose={() => {
+              setStopAllOpen(false);
+              setStopError(null);
+            }}
+            title="Stop All Jobs"
+            body={`Stop all ${jobsStore.activeJobCount()} active job(s)? Running agents are killed and their plans revert to their previous state. This cannot be undone.`}
+            confirmLabel="Stop All"
+            confirmVariant="destructive"
+            isBusy={stopBusy}
+            error={stopError}
+            testId="stop-all-dialog"
+            onConfirm={async () => {
+              setStopBusy(true);
+              setStopError(null);
+              try {
+                const stopped = await jobsStore.stopAllJobs();
+                const { toast } = await import("@ivy-interactive/components");
+                toast({
+                  title: "Jobs Stopped",
+                  description: `Stopped ${stopped} job${stopped === 1 ? "" : "s"}`,
+                });
+                setStopAllOpen(false);
+              } catch (err) {
+                setStopError(describeBridgeError(err));
+              } finally {
+                setStopBusy(false);
+              }
+            }}
+          />
+        </React.Suspense>
+      )}
 
       <KeyboardShortcutsHelp isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
 

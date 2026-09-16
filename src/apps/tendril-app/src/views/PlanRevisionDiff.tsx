@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createTwoFilesPatch } from "diff";
 import { PlanDiffView } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
@@ -83,10 +83,34 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
   const [error, setError] = useState<string | null>(null);
   const [comments, setComments] = useState<DraftComment[]>([]);
 
-  // Keep the selectors inside 1..revisionCount when the plan gains revisions.
+  /**
+   * Keep the selectors inside `1..revisionCount`, and keep them on the newest pair while that is
+   * where they already were.
+   *
+   * Two cases the plain clamp got wrong. Mounting before the plan detail has landed puts both
+   * selectors at 1, and clamping alone leaves them there once the real count arrives — the tab then
+   * reports revisions 1 and 1 as identical instead of showing the latest diff. And an UpdatePlan or
+   * RetryPlan run writing a new revision while the tab is open left the pair pointing at the previous
+   * head, so the newly written revision was the one thing the diff did not show. A selection the
+   * operator has deliberately moved off the head is left exactly where they put it.
+   */
+  const previousCount = useRef(revisionCount);
   useEffect(() => {
-    setOldRevision((prev) => Math.min(Math.max(1, prev), Math.max(1, revisionCount)));
-    setNewRevision((prev) => Math.min(Math.max(1, prev), Math.max(1, revisionCount)));
+    const before = previousCount.current;
+    previousCount.current = revisionCount;
+    const ceiling = Math.max(1, revisionCount);
+    const wasAtHead = before < 2 || newRevision === Math.max(1, before);
+
+    if (wasAtHead && revisionCount > before) {
+      setOldRevision(Math.max(1, revisionCount - 1));
+      setNewRevision(ceiling);
+      return;
+    }
+    setOldRevision((prev) => Math.min(Math.max(1, prev), ceiling));
+    setNewRevision((prev) => Math.min(Math.max(1, prev), ceiling));
+    // `newRevision` is read to decide whether the selection is still on the head; re-running this
+    // whenever it changes would fight the operator's own choice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revisionCount]);
 
   useEffect(() => {

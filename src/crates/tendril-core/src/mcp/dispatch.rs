@@ -20,8 +20,8 @@ use crate::mcp::tools::find_mcp_tool;
 use crate::mcp::validate::validate_arguments;
 use crate::models::{
     CreateIssueArgs, CreatePlanArgs, CreatePrArgs, ExecutePlanArgs, ExpandPlanArgs, JobArgs,
-    PlanStatus, PlanVerificationEntry, PlanYaml, RetryPlanArgs, SetupProjectArgs, SplitPlanArgs,
-    SyncRepoArgs, UpdatePlanArgs, VerificationStatus,
+    PlanStatus, PlanYaml, RetryPlanArgs, SetupProjectArgs, SplitPlanArgs, SyncRepoArgs,
+    UpdatePlanArgs, VerificationStatus,
 };
 use crate::plans::{
     add_recommendation, check_plan_health, create_plan, get_revision, list_plan_verifications,
@@ -395,19 +395,14 @@ impl McpDispatcher {
         // ExecutePlan without a second call.
         let settings =
             load_config(&get_config_path(&self.tendril_home)).map_err(|e| e.to_string())?;
-        let verifications: Vec<PlanVerificationEntry> = settings
+        // Shared with the CLI and the HTTP route so all three seed identically. This used to build
+        // the list here and mark every entry `Pending`, ignoring `required` — so an optional
+        // verification became a gate the plan could not clear — and it passed no repos at all.
+        let (repos, verifications) = settings
             .projects
             .iter()
             .find(|p| p.name.eq_ignore_ascii_case(project))
-            .map(|p| {
-                p.verifications
-                    .iter()
-                    .map(|v| PlanVerificationEntry {
-                        name: v.name.clone(),
-                        status: VerificationStatus::Pending,
-                    })
-                    .collect()
-            })
+            .map(|p| crate::plans::seed_plan_from_project(p, Vec::new()))
             .unwrap_or_default();
 
         let opts = CreatePlanOptions {
@@ -421,7 +416,7 @@ impl McpDispatcher {
                 .get("priority")
                 .and_then(|p| p.as_i64())
                 .map(|p| p as i32),
-            repos: Vec::new(),
+            repos,
             verifications,
             depends_on: string_list(args, "depends_on"),
             related_plans: string_list(args, "related_plans"),

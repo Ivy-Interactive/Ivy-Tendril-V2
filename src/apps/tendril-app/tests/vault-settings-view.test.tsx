@@ -258,6 +258,105 @@ describe("VaultSettingsView", () => {
     });
   });
 
+  /**
+   * `VaultSetupView.cs`'s one-click *Update* calls `ImportProjectAsync` with the tracked project's
+   * own repo paths, and `import_project` replaces the local project of the same name. Routing Update
+   * through the plain import path instead produced a second project (`Alpha-2`) at a newly cloned
+   * path and left the original untouched.
+   */
+  it("updates an already-imported project in place instead of creating a second one", async () => {
+    const spies = stubBridge({
+      vaults: [vaultStatus()],
+      catalog: catalog([
+        catalogItem({
+          name: "Alpha",
+          syncStatus: "UpdateAvailable",
+          repos: [{ owner: "acme", name: "Alpha" }],
+        }),
+      ]),
+      projects: [localProject("Alpha")],
+    });
+
+    render(<VaultSettingsView tendrilHome="/Users/test/.tendril" />);
+
+    const alpha = await screen.findByTestId("vault-project-row-Alpha");
+    fireEvent.click(within(alpha).getByRole("button", { name: /Update/ }));
+
+    const dialog = await screen.findByTestId("import-vault-dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Import Project" }));
+
+    await waitFor(() => {
+      expect(spies.importVaultProject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectName: "Alpha",
+          targetLocalProjectName: "Alpha",
+          localRepoMappings: { "acme/Alpha": "/Users/test/git/Alpha" },
+        }),
+        "v1",
+      );
+    });
+    expect(spies.mergeVaultProject).not.toHaveBeenCalled();
+  });
+
+  /* A vault in config.yaml whose clone is missing reports `isConfigured: false`. The original still
+     renders the picker and the toolbar for it, which is the only way to sync it into existence. */
+  it("still offers the toolbar for a vault that has not been cloned yet", async () => {
+    const pending = vaultStatus({ isConfigured: false, currentBranch: "" });
+    stubBridge({ vaults: [pending], status: pending });
+
+    render(<VaultSettingsView />);
+
+    await screen.findByTestId("vault-status-card");
+    expect(screen.getByRole("button", { name: /^Sync$/ })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "Active vault" })).toBeInTheDocument();
+    expect(screen.queryByTestId("vault-empty-state")).not.toBeInTheDocument();
+  });
+
+  /* `availablePushProjects`: without the vault-only name in the list, the dialog opened preselecting
+     a project that was not one of its own checkboxes, so Submit published nothing. */
+  it("offers a vault-only project as a push target", async () => {
+    stubBridge({
+      vaults: [vaultStatus()],
+      catalog: catalog([catalogItem({ name: "Zeta", syncStatus: "UpToDate" })]),
+      projects: [localProject("Alpha")],
+    });
+
+    render(<VaultSettingsView />);
+
+    const zeta = await screen.findByTestId("vault-project-row-Zeta");
+    fireEvent.click(within(zeta).getByRole("button", { name: /Open PR/ }));
+
+    const dialog = await screen.findByTestId("push-vault-dialog");
+    expect(within(dialog).getByTestId("push-project-Zeta")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("push-project-Alpha")).toBeInTheDocument();
+    expect(within(dialog).getByRole("checkbox", { name: /Zeta/ })).toBeChecked();
+  });
+
+  it("reports the branch a PR-less deletion left behind", async () => {
+    stubBridge({
+      vaults: [vaultStatus()],
+      catalog: catalog([catalogItem({ name: "Alpha", syncStatus: "UpToDate" })]),
+    });
+    vi.spyOn(bridge, "deleteVaultProject").mockResolvedValue({
+      success: true,
+      branchName: "vault/delete-Alpha",
+    });
+
+    render(<VaultSettingsView />);
+
+    const alpha = await screen.findByTestId("vault-project-row-Alpha");
+    fireEvent.click(within(alpha).getByRole("button", { name: /Delete 'Alpha' from vault/ }));
+
+    const confirm = await screen.findByTestId("confirm-vault-delete-dialog");
+    fireEvent.click(within(confirm).getByRole("button", { name: /Create Deletion PR/ }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("vault-settings-notice")).toHaveTextContent(
+        "Created deletion branch vault/delete-Alpha",
+      ),
+    );
+  });
+
   it("keeps the section usable when the catalog cannot be read", async () => {
     stubBridge({
       vaults: [vaultStatus()],

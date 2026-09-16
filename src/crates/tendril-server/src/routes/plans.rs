@@ -13,9 +13,11 @@ use tendril_core::db::{
 };
 use tendril_core::error::TendrilError;
 use tendril_core::git::{build_plan_git_data, cleanup_worktrees, run_git};
+use tendril_core::jobs::firmware_values::find_project;
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
 };
+use tendril_core::plans::seed_plan_from_project;
 use tendril_core::plans::{
     accept_recommendation, add_plan_verification, add_recommendation, check_plan_health,
     clear_annotations, clear_diff_comments, create_plan, decline_recommendation, get_plan_field,
@@ -184,6 +186,30 @@ pub async fn create_plan_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreatePlanBody>,
 ) -> impl IntoResponse {
+    // The plan inherits its project's repos and verification set, as V1's `PlanController` does.
+    // This is the path the desktop app creates plans through, so without it every plan made from the
+    // UI reached `ExecutePlan` with no repo to build a worktree from and no gate to run.
+    //
+    // An explicit `repos` in the body wins — a caller that named them meant them. `verifications`
+    // are treated as overrides on top of the project set rather than replacing it, which is how the
+    // CLI's `--verification` behaves.
+    let settings = load_config(&state.config_path).unwrap_or_default();
+    let (repos, verifications) = match find_project(&settings, &body.project) {
+        Some(project) => {
+            let (project_repos, seeded) = seed_plan_from_project(project, body.verifications);
+            let repos = if body.repos.is_empty() {
+                project_repos
+            } else {
+                body.repos
+            };
+            (repos, seeded)
+        }
+        // An unknown project is not rejected here: `create_plan` is the only writer and the CLI
+        // already refuses it, while the app can legitimately create a plan for a project whose
+        // config has not been reloaded yet.
+        None => (body.repos, body.verifications),
+    };
+
     let opts = CreatePlanOptions {
         title: body.title,
         project: body.project,
@@ -192,8 +218,8 @@ pub async fn create_plan_handler(
         source_url: body.source_url,
         execution_profile: body.execution_profile,
         priority: body.priority,
-        repos: body.repos,
-        verifications: body.verifications,
+        repos,
+        verifications,
         depends_on: body.depends_on,
         related_plans: body.related_plans,
         chat_session_id: body.chat_session_id,

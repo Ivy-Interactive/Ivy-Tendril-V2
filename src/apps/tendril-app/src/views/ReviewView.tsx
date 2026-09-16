@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  Ban,
   CircleCheck,
   ExternalLink,
   GitPullRequest,
@@ -8,9 +9,11 @@ import {
   Trash,
 } from "lucide-react";
 import { useShortcut } from "@ivy-interactive/components/tendril";
+import { Callout } from "@ivy-interactive/components/ui";
 import {
   describeBridgeError,
   type DraftComment,
+  type Job,
   type PlanDetail,
   type PlanSummary,
   type PlanVerification,
@@ -45,15 +48,40 @@ type TriageDialog = "createPr" | "suggestChanges" | "discard" | "reset" | "parti
  */
 const REVIEW_QUEUE_STATES: PlanSummary["state"][] = ["Review", "Failed"];
 
-const queueFor = (plans: PlanSummary[]): PlanSummary[] =>
-  plans
-    .filter((p) => REVIEW_QUEUE_STATES.includes(p.state))
+/**
+ * `ReviewApp.Build`'s `activePlanFolders`: a job in one of these still holds the plan's worktree, so
+ * every triage decision on that plan is one an agent is about to overwrite. `Blocked` counts - it is a
+ * job queued behind another, not a job that finished.
+ */
+const JOB_HOLDS_PLAN: ReadonlyArray<Job["status"]> = ["Running", "Queued", "Pending", "Blocked"];
+
+/**
+ * The queue, exactly as `ReviewApp.Build` assembles it: Review or Failed, **minus the plans a job is
+ * still running on** (`.Where(p => !activePlanFolders.Contains(p.FolderPath))`), newest first.
+ *
+ * The exclusion is the part that is easy to drop and matters most. A plan under a RetryPlan is in
+ * Executing and so filtered by state anyway, but one whose retry is only Queued or Blocked is still
+ * sitting in Review, and offering Complete Plan or Create PR on it means approving work that has not
+ * been done yet. `jobs` absent means the caller has no job list to consult, in which case the state
+ * filter is all there is.
+ */
+const queueFor = (plans: PlanSummary[], jobs?: Job[]): PlanSummary[] => {
+  const held = new Set(
+    (jobs ?? [])
+      .filter((job) => JOB_HOLDS_PLAN.includes(job.status))
+      .map((job) => job.planId)
+      .filter((id): id is string => !!id),
+  );
+
+  return plans
+    .filter((p) => REVIEW_QUEUE_STATES.includes(p.state) && !held.has(p.id))
     .sort((a, b) => {
       const left = Number.parseInt(a.id, 10);
       const right = Number.parseInt(b.id, 10);
       if (Number.isNaN(left) || Number.isNaN(right)) return b.id.localeCompare(a.id);
       return right - left;
     });
+};
 
 /**
  * `ReviewApp.BuildRowBadges`: a plan reads as Verified only once every gate has run and none of
@@ -113,6 +141,12 @@ const KbdHint: React.FC<{ keys: string }> = ({ keys }) => (
 
 interface ReviewViewProps {
   plans: PlanSummary[];
+  /**
+   * The live job list. `ReviewApp.Build` reads it to keep a plan out of the queue while a job still
+   * holds its worktree; see [`queueFor`]. Optional so a caller with no job list still gets the
+   * state-filtered queue rather than an empty page.
+   */
+  jobs?: Job[];
   onSelectPlan: (planId: string) => void;
   /** A job a triage dialog started, so the shell can open its session tab. */
   onJobStarted?: (response: StartJobResponse) => void;
@@ -129,12 +163,13 @@ interface ReviewViewProps {
 
 export const ReviewView: React.FC<ReviewViewProps> = ({
   plans,
+  jobs,
   onSelectPlan,
   onJobStarted,
   onPlanChanged,
   onOpenReviewAction,
 }) => {
-  const reviewPlans = useMemo(() => queueFor(plans), [plans]);
+  const reviewPlans = useMemo(() => queueFor(plans, jobs), [plans, jobs]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [activeDialog, setActiveDialog] = useState<TriageDialog | null>(null);
 
@@ -270,6 +305,51 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const allocatedPorts = planDetail?.allocatedPorts ?? selectedPlan?.allocatedPorts;
 
   /**
+   * Whether the plan's pre-execution validation rejected its premise, which is the first half of
+   * `PlanReaderService.GetCompletionBlockReasonForFolder`.
+   *
+   * `PreExecution` is deliberately not a plan.yaml verification row (it is a property of one execution
+   * attempt, not of the plan) so it does not arrive with `plan.verifications` and has to be read as a
+   * report. A missing report is `NOT_FOUND`, which is the common case and means nothing is blocked - a
+   * plan is never blocked on a guess.
+   */
+  const [preExecutionFailed, setPreExecutionFailed] = useState(false);
+
+  useEffect(() => {
+    setPreExecutionFailed(false);
+    if (!selectedId) return;
+
+    let cancelled = false;
+    bridge
+      .getVerificationReport(selectedId, "PreExecution")
+      .then((report) => {
+        if (!cancelled) setPreExecutionFailed(report?.result === "Fail");
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  /**
+   * `PlanReaderService.GetCompletionBlockReason`, whose text V1 shows in two places: the "No Changes
+   * Needed" callout above the content, and the primary action, which becomes Skip Plan rather than
+   * Complete Plan.
+   *
+   * Pre-execution said Fail **and** nothing was delivered. The no-commits-and-no-PRs conjunct is what
+   * keeps config-only plans (which legitimately have neither) and any plan that did real work out of
+   * the block. `null` until the detail has answered: the commit and PR counts are unknown then, not
+   * zero, and blocking completion on an unloaded plan would be the same mistake in the other
+   * direction.
+   */
+  const completionBlocked =
+    preExecutionFailed &&
+    planDetail !== null &&
+    (planDetail.commits?.length ?? 0) === 0 &&
+    (planDetail.prs?.length ?? 0) === 0;
+
+  /**
    * Apply a triage decision optimistically, then persist it. On failure the
    * previous list is restored: the operator must not be left believing a
    * decision was recorded in plan.yaml when it was not.
@@ -392,25 +472,78 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     : { allowed: false, reason: undefined };
 
   /**
-   * Which CTA the plan gets, from `ContentView.AddPrimaryAction`: a plan with commits opens a PR -
-   * "Update PR" when the plan came from one, since ExecutePlan based the worktree on that PR's head
-   * branch and the push updates it rather than opening a second - and a plan with nothing committed
-   * is completed instead, because there is nothing to open a PR from.
+   * `ContentView.AddPrimaryAction`, in its order: a plan with commits opens a PR; failing that, a plan
+   * whose completion is blocked offers Skip Plan; failing that, Complete Plan.
    *
-   * `null` while the detail has not answered: the count is unknown, not zero, and the CTA holds at
-   * Create PR rather than offering to complete a plan whose commits simply have not loaded.
+   * `isPrUpdate` is `PlanFile.IsPullRequestSource` (`SourceUrl?.Contains("/pull/")`). It changes both
+   * the label and *how* the action fires - see [`updatePr`].
+   *
+   * `commitCount` is `null` while the detail has not answered: the count is unknown, not zero, and the
+   * CTA holds at Create PR rather than offering to complete a plan whose commits simply have not
+   * loaded.
    */
   const commitCount = planDetail ? (planDetail.commits?.length ?? 0) : null;
   const isPrUpdate = (planDetail?.sourceUrl ?? "").includes("/pull/");
-  const completeIsPrimary = commitCount === 0;
-  const primaryLabel = completeIsPrimary ? "Complete Plan" : isPrUpdate ? "Update PR" : "Create PR";
-  const primaryDisabled = completeIsPrimary
-    ? pendingAction !== null
-    : !canPr.allowed || pendingAction !== null;
+  const prIsPrimary = commitCount !== 0;
+  const skipIsPrimary = !prIsPrimary && completionBlocked;
+
+  /**
+   * `ContentView.AddPrimaryAction`'s PR-update branch, which deliberately skips the Create PR dialog:
+   * "There's nothing to configure for an update (no new branch, no merge/delete choices), so we skip
+   * the Create PR dialog and push directly." ExecutePlan already based the worktree on the PR's head
+   * branch, so this push updates the open PR instead of opening a second one, and the four options are
+   * V1's literal `CreatePrArgs(SolveMergeConflicts: true, Merge: false, DeleteBranch: false,
+   * IncludeArtifacts: true)`.
+   *
+   * The plan stays in the queue afterwards, as it does in V1: the PR is updated and left open for
+   * review, so only a refresh is asked for.
+   */
+  const updatePr = async () => {
+    if (!selectedPlan) return;
+    setActionError(null);
+    setPendingAction("updatePr");
+    try {
+      const response = await PlanActionsController.createPr(selectedPlan, {
+        solveMergeConflicts: true,
+        merge: false,
+        deleteBranch: false,
+        includeArtifacts: true,
+      });
+      onJobStarted?.(response);
+      onPlanChanged?.(selectedPlan.id);
+    } catch (err) {
+      setActionError(
+        `Could not update the PR for plan ${formatPlanId(selectedPlan.id)}: ${describeBridgeError(err)}`,
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const primaryLabel = prIsPrimary
+    ? isPrUpdate
+      ? "Update PR"
+      : "Create PR"
+    : skipIsPrimary
+      ? "Skip Plan"
+      : "Complete Plan";
+  const primaryDisabled = prIsPrimary
+    ? !canPr.allowed || pendingAction !== null
+    : skipIsPrimary
+      ? !canDiscard.allowed || pendingAction !== null
+      : pendingAction !== null;
   const firePrimary = () => {
     if (primaryDisabled) return;
-    if (completeIsPrimary) void completePlan();
-    else setActiveDialog("createPr");
+    if (prIsPrimary) {
+      if (isPrUpdate) void updatePr();
+      else setActiveDialog("createPr");
+    } else if (skipIsPrimary) {
+      // V1's Skip Plan is the discard dialog under a different label: skipping is what discarding
+      // records (`PlanStatus.Skipped`), and the block text says as much.
+      setActiveDialog("discard");
+    } else {
+      void completePlan();
+    }
   };
 
   /**
@@ -659,17 +792,45 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   </button>
                   <button
                     type="button"
+                    data-testid="review-primary-action"
                     disabled={primaryDisabled}
-                    title={completeIsPrimary ? undefined : canPr.reason}
+                    title={
+                      prIsPrimary ? canPr.reason : skipIsPrimary ? canDiscard.reason : undefined
+                    }
                     onClick={firePrimary}
                     className={BTN_PRIMARY}
                   >
-                    {completeIsPrimary ? <CircleCheck size={16} /> : <GitPullRequest size={16} />}
-                    {pendingAction === "complete" ? "Completing…" : primaryLabel}
+                    {/* `Icons.GitPullRequest`, `Icons.Ban`, `Icons.CircleCheck`, in
+                        `AddPrimaryAction`'s own order. */}
+                    {prIsPrimary ? (
+                      <GitPullRequest size={16} />
+                    ) : skipIsPrimary ? (
+                      <Ban size={16} />
+                    ) : (
+                      <CircleCheck size={16} />
+                    )}
+                    {pendingAction === "complete"
+                      ? "Completing…"
+                      : pendingAction === "updatePr"
+                        ? "Pushing…"
+                        : primaryLabel}
                     <KbdHint keys="M" />
                   </button>
                 </div>
               </div>
+
+              {/* `ContentView.BuildPage`'s toolbar slot opens with this when the plan's completion is
+                  blocked: `Callout.Info(..., "No Changes Needed")` above the review actions, with the
+                  primary CTA already switched to Skip Plan. The two are one decision shown twice, so
+                  they are computed once (`completionBlocked`). */}
+              {completionBlocked && (
+                <div className="border-b border-border px-5 pb-1 pt-2">
+                  <Callout.Info title="No Changes Needed" data-testid="review-completion-blocked">
+                    Pre-execution validation found no changes needed because the issue or task is
+                    already resolved. You can discard or skip this plan.
+                  </Callout.Info>
+                </div>
+              )}
 
               {/* `ContentView.BuildPage`'s toolbar slot: the project's review actions sit above the
                   content as a bare button row (`ReviewActionsBarView`, `Padding(3, 2, 1, 0)`), with
@@ -801,7 +962,21 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             isOpen={activeDialog === "suggestChanges"}
             onClose={() => setActiveDialog(null)}
             plan={selectedPlan}
-            onJobStarted={(response) => onJobStarted?.(response)}
+            onJobStarted={(response) => {
+              /*
+               * `SuggestChangesDialog.HandleSubmit`'s `_draftCommentsState.Set(new List<DraftComment>())`,
+               * which runs beside `ClearDraftCommentsAsync` and not instead of it: the dialog clears the
+               * plan's drafts on the service, and V1 also drops the count it is holding in the same
+               * breath so the Request Changes badge stops counting feedback that has already been sent.
+               *
+               * V1 could have waited for the service instead - `ContentView` subscribes to
+               * `IPlanDiffCommentService.CommentsChanged` and re-reads on every notification - but V2 has
+               * no such subscription, so without this the badge stays wrong until the plan is
+               * reselected.
+               */
+              setDraftComments([]);
+              onJobStarted?.(response);
+            }}
             initialChangeRequest={inlineFeedback}
             /* The comments themselves are already in the field via `inlineFeedback`; V1's dialog
                states the count in a callout and in the submit label rather than listing them again. */

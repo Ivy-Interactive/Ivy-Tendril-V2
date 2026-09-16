@@ -32,7 +32,7 @@ import {
 } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
-import type { GitHubIssue, InboxProposal, ProjectSummary } from "../types/api";
+import type { GitHubIssue, InboxProposal, ProjectSummary, SweepReport } from "../types/api";
 import { EmptyState } from "../components/EmptyState";
 import { AutoAcceptSettingsDialog } from "./dialogs/AutoAcceptSettingsDialog";
 
@@ -45,6 +45,14 @@ export type PollInterval = "off" | "30s" | "1m" | "5m" | "15m";
  * `PullRequestsView` ports the same number for the same reason: an inbox page is long.
  */
 const DEFAULT_PAGE_SIZE = 50;
+
+/**
+ * GitHub's search API serves at most 1000 results however large `total_count` is, and the daemon
+ * derives `hasMore` from that full count. Paging past the cap therefore returns HTTP 422, which
+ * arrives as a `GITHUB_ERROR` where the list used to be. Capping the reported row count leaves the
+ * Next Page control disabled at the boundary instead.
+ */
+const GITHUB_SEARCH_RESULT_CAP = 1000;
 
 const POLL_INTERVAL_MS: Record<PollInterval, number> = {
   off: 0,
@@ -89,6 +97,17 @@ function repoLabelOf(issue: GitHubIssue): string {
 }
 
 /**
+ * V1 `InboxApp.ResolveIssueUrl`: the issue's own url when it has one, otherwise one built from
+ * `owner/name` and the number, otherwise nothing at all. V1's callers check for that nothing
+ * (`if (url != null) client.OpenUrl(url)`), which is why every open path here goes through this.
+ */
+function resolveIssueUrl(issue: GitHubIssue): string | undefined {
+  if (issue.url && issue.url.trim()) return issue.url;
+  const nameWithOwner = issue.repository?.nameWithOwner?.trim();
+  return nameWithOwner ? `https://github.com/${nameWithOwner}/issues/${issue.number}` : undefined;
+}
+
+/**
  * V1 `InboxChatPrompt.Build`, block for block: one framing line, then a section per issue capped at
  * `CHAT_MAX_DETAILED_ISSUES`, then a single line accounting for the remainder.
  */
@@ -106,7 +125,9 @@ export function buildInboxChatPrompt(issues: GitHubIssue[]): string {
     const lines: string[] = [
       repo ? `## ${repo}#${issue.number}: ${issue.title}` : `## #${issue.number}: ${issue.title}`,
     ];
-    if (issue.url) lines.push(`URL: ${issue.url}`);
+    // V1 `InboxChatPrompt.BuildIssueBlock` writes the line from `ResolveIssueUrl`, not the raw field.
+    const url = resolveIssueUrl(issue);
+    if (url) lines.push(`URL: ${url}`);
     const labels = issue.labels.map((l) => l.name).filter(Boolean);
     if (labels.length > 0) lines.push(`Labels: ${labels.join(", ")}`);
     const assignees = issue.assignees.map((a) => a.login).filter(Boolean);
@@ -127,6 +148,37 @@ export function buildInboxChatPrompt(issues: GitHubIssue[]): string {
   return blocks.join("\n\n");
 }
 
+/**
+ * Everything one sweep is willing to say about itself.
+ *
+ * V1's `InboxRecoverySummary` exists because "recovery used to be silent, which is why roughly 60
+ * resurrections in the #2710 storm produced no explanatory log entries at all". `SweepReport` is
+ * V2's equivalent payload and it was being read two fields deep: a pass in which every project's
+ * `gh` call failed reports `imported: []`, `skipped: 0` and a populated `errors`, which rendered as
+ * "Imported 0, skipped 0." - indistinguishable from nothing being assigned to you. `accepted` is the
+ * other half: with auto-accept on, an imported issue becomes a plan in the same pass and never
+ * appears as a card below, so the count is the only evidence the sweep did anything.
+ */
+export function describeSweep(report: SweepReport): string {
+  if (report.outcome === "AlreadyRunning") return "A check is already running.";
+  if (report.outcome === "NotMaster") return "This daemon is not the master, so it did not check.";
+
+  const parts = [`Imported ${report.imported.length}, skipped ${report.skipped}.`];
+  if (report.accepted > 0) {
+    parts.push(
+      `${report.accepted} started a plan straight away${
+        report.accepted === report.imported.length ? "" : " (the rest are below)"
+      }.`,
+    );
+  }
+  if (report.errors.length > 0) {
+    parts.push(
+      `${report.errors.length} error${report.errors.length === 1 ? "" : "s"}: ${report.errors[0]}`,
+    );
+  }
+  return parts.join(" ");
+}
+
 /** V1 `InboxChatPrompt.Title`. */
 export function inboxChatTitle(issues: GitHubIssue[]): string | undefined {
   if (issues.length === 0) return undefined;
@@ -137,9 +189,16 @@ export function inboxChatTitle(issues: GitHubIssue[]): string | undefined {
  * V1 `InboxApp.BuildInboxFileContent` writes the issue link and body into an inbox markdown file.
  * V2 has no inbox folder: the same intake happens as a `CreatePlan` job, whose `description` is
  * this string. Kept identical to the prefill `App.tsx` builds so both paths intake the same text.
+ *
+ * V1 drops the link entirely when no url resolves and heads the file with the issue number instead;
+ * the same branch here keeps an empty pair of brackets out of the description.
  */
 function buildIssueIntake(issue: GitHubIssue): string {
-  return `Task from GitHub Issue #${issue.number} (${issue.url}):\n\n${issue.body}`;
+  const url = resolveIssueUrl(issue);
+  const heading = url
+    ? `Task from GitHub Issue #${issue.number} (${url}):`
+    : `Task from GitHub Issue #${issue.number}:`;
+  return `${heading}\n\n${issue.body}`;
 }
 
 /**
@@ -396,6 +455,17 @@ export const InboxView: React.FC<InboxViewProps> = ({
       setError(null);
 
       try {
+        if (selectedCategory === "project-issues" && !selectedRepo) {
+          // V1 `InboxApp.FetchCurrentDataAsync`: a project whose git remotes resolve to no GitHub
+          // repository is told so, and no query is issued (`InboxApp.cs:98-103`). Querying with an
+          // empty repo instead produced either an empty table or a daemon-shaped error.
+          setIssues([]);
+          setTotalCount(0);
+          setHasMore(false);
+          setError(`No git remotes resolved for project ${selectedProject || "(none selected)"}.`);
+          return;
+        }
+
         const repoArg = selectedCategory === "project-issues" ? selectedRepo : undefined;
         const data = await bridge.listGitHubIssues(repoArg, selectedCategory, page, pageSize);
 
@@ -422,12 +492,45 @@ export const InboxView: React.FC<InboxViewProps> = ({
         }
       }
     },
-    [selectedCategory, selectedRepo, page, pageSize],
+    [selectedCategory, selectedProject, selectedRepo, page, pageSize],
   );
 
   useEffect(() => {
     void fetchIssues();
   }, [fetchIssues]);
+
+  /**
+   * V1 keeps `inbox:my-issues` and `inbox:review-requests` running as two standing queries, so both
+   * sidebar badges carry a count from the first render whichever category is open
+   * (`InboxApp.cs:202-203`). V2 fetches one category at a time, which left the Reviews badge blank
+   * until Reviews was visited at least once. The inactive fixed category is therefore primed on
+   * mount and again whenever the category changes.
+   *
+   * It is deliberately not re-primed on every poll tick, where V1's 60s query expiry would have
+   * kept it live: the interval here goes down to 30s, and doubling every tick's GitHub calls to keep
+   * a badge current is not a trade V1 was making.
+   */
+  const primeInactiveCategoryCounts = useCallback(async () => {
+    const inactive = (["my-issues", "review-requests"] as InboxCategory[]).filter(
+      (category) => category !== selectedCategory,
+    );
+    await Promise.all(
+      inactive.map(async (category) => {
+        try {
+          const data = await bridge.listGitHubIssues(undefined, category, 1, DEFAULT_PAGE_SIZE);
+          const rows = Array.isArray(data) ? data : data.issues;
+          const total = Array.isArray(data) ? rows.length : (data.totalCount ?? rows.length);
+          setCounts((prev) => ({ ...prev, [category]: total }));
+        } catch {
+          // A badge is not worth an error banner; the category's own fetch reports when opened.
+        }
+      }),
+    );
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    void primeInactiveCategoryCounts();
+  }, [primeInactiveCategoryCounts]);
 
   // Pending proposals are independent of the category/repo/page selection, so this fetch has no
   // dependencies and is not part of `fetchIssues`.
@@ -451,12 +554,11 @@ export const InboxView: React.FC<InboxViewProps> = ({
     setProposalError(null);
     try {
       const report = await bridge.checkInbox();
-      setCheckSummary(
-        report.outcome === "AlreadyRunning"
-          ? "A check is already running."
-          : `Imported ${report.imported.length}, skipped ${report.skipped}.`,
-      );
-      await fetchProposals();
+      setCheckSummary(describeSweep(report));
+      // V1's Check Now awaits `onRefresh()` after the sweep (`AutoAcceptSettingsDialog.cs:50`), and
+      // the sweep itself invalidates the my-issues query (`AssignedIssuesAutoImportService.cs:93`):
+      // a pass that accepted an issue changes what is assigned to you, so the list is stale too.
+      await Promise.all([fetchProposals(), fetchIssues({ silent: true })]);
     } catch (err) {
       setCheckSummary(null);
       setProposalError(describeBridgeError(err));
@@ -493,6 +595,12 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
   // Background polling: silently refetch on the configured interval, skipping
   // ticks while the tab/window is hidden to preserve GitHub API rate limits.
+  //
+  // The proposals ride the same tick. A sweep that runs server-side on `inbox.checkIntervalMinutes`
+  // creates rows nothing tells this view about: the app's filesystem-change handler for `inbox` is
+  // an explicit no-op (`src/api/changes.ts`), so without this the panel only ever fills on Check Now
+  // or a remount. V1 had the equivalent push, `_queryService.InvalidateByTag(MyIssuesQueryTag)` at
+  // the end of every pass (`AssignedIssuesAutoImportService.cs:93`).
   useEffect(() => {
     if (pollInterval === "off") {
       return;
@@ -503,9 +611,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
         return;
       }
       void fetchIssues({ silent: true });
+      void fetchProposals();
     }, intervalMs);
     return () => window.clearInterval(id);
-  }, [pollInterval, fetchIssues]);
+  }, [pollInterval, fetchIssues, fetchProposals]);
 
   const resetToFirstPage = () => setPage(1);
 
@@ -540,6 +649,12 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
   const filteredIssues = useMemo(() => {
     return issues.filter((issue) => {
+      // V1's project query is an issue search (`is:issue`), but V2's daemon serves this category
+      // from `repos/{slug}/issues`, which GitHub answers with pull requests as well. Nothing
+      // server-side drops them, so a PR would otherwise appear as a row on an Issues table - and
+      // firing one off would create a plan for a pull request.
+      if (!isReviews && issue.isPullRequest === true) return false;
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesNumber = `#${issue.number}`.includes(q) || String(issue.number) === q;
@@ -565,15 +680,51 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
       return true;
     });
-  }, [issues, searchQuery, selectedLabels, selectedAssignees]);
+  }, [issues, isReviews, searchQuery, selectedLabels, selectedAssignees]);
+
+  /**
+   * V1's selection is a `HashSet<int>` resolved against `allIssues`, which is every issue in the
+   * category: it fetched the lot and let the table page client-side, so
+   * `allIssues.Where(i => selected.Contains(i.Number))` could never lose a row
+   * (`ContentView.cs:402-404`). V2 holds one server page, so a selected issue has to be remembered
+   * as it is selected. Without this, selecting on page 1, paging to page 2 and pressing a bulk
+   * button showed `(3)` on the button and then did nothing at all, because the count came from the
+   * id set while the action came from the listed rows.
+   *
+   * Note this is deliberately not filtered by the client-side search either: V1's `allIssues` is
+   * unaffected by the table's own filtering, so an issue selected and then filtered out of view is
+   * still fired off.
+   */
+  const [selectedIssueDetails, setSelectedIssueDetails] = useState<Record<string, GitHubIssue>>({});
+
+  useEffect(() => {
+    setSelectedIssueDetails((prev) => {
+      const next: Record<string, GitHubIssue> = {};
+      let changed = Object.keys(prev).length !== selectedIssueNumbers.length;
+      for (const id of selectedIssueNumbers) {
+        const listed = issues.find((issue) => String(issue.number) === id);
+        const resolved = listed ?? prev[id];
+        if (resolved) next[id] = resolved;
+        if (resolved !== prev[id]) changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [selectedIssueNumbers, issues]);
 
   const selectedIssues = useMemo(
-    () => filteredIssues.filter((issue) => selectedIssueNumbers.includes(String(issue.number))),
-    [filteredIssues, selectedIssueNumbers],
+    () =>
+      selectedIssueNumbers
+        .map((id) => selectedIssueDetails[id])
+        .filter((issue): issue is GitHubIssue => issue !== undefined),
+    [selectedIssueNumbers, selectedIssueDetails],
   );
   const selectedCount = selectedIssueNumbers.length;
 
-  /** V1 `ContentView.SelectAllIssues` / `DeselectAllIssues`, over the rows currently listed. */
+  /**
+   * V1 `ContentView.SelectAllIssues` / `DeselectAllIssues`. Select All can only reach the rows this
+   * page fetched, where V1's reached the whole category; Deselect All clears the lot, as V1's does,
+   * rather than only the rows that happen to be listed.
+   */
   const selectAll = () =>
     setSelectedIssueNumbers((prev) => {
       const next = new Set(prev);
@@ -581,13 +732,11 @@ export const InboxView: React.FC<InboxViewProps> = ({
       return Array.from(next);
     });
 
-  const deselectAll = () =>
-    setSelectedIssueNumbers((prev) => {
-      const listed = new Set(filteredIssues.map((issue) => String(issue.number)));
-      return prev.filter((id) => !listed.has(id));
-    });
+  const deselectAll = () => setSelectedIssueNumbers([]);
 
-  const handleOpenGitHub = async (url: string) => {
+  /** V1 opens nothing when no url resolves; `openUrl("")` would open a blank window. */
+  const handleOpenGitHub = async (url: string | undefined) => {
+    if (!url) return;
     try {
       await openUrl(url);
     } catch {
@@ -596,12 +745,21 @@ export const InboxView: React.FC<InboxViewProps> = ({
   };
 
   /**
-   * V1 `InboxApp.FireOffIssues` resolves the target project from the issue's repository
-   * (`FindProjectForGithubRepo`) and falls back to the selected one. `ProjectSummary.repos` holds
-   * local clone paths, which end in `owner/name`, so the same match is available here.
+   * V1 `InboxApp.FireOffIssues` resolves the target project in a fixed order (`InboxApp.cs:171-173`):
+   * on the Project category the selected project wins outright, otherwise the issue's own repository
+   * decides (`FindProjectForGithubRepo`), and a repository that matches no project falls back to the
+   * literal `Auto`, the daemon's auto-detect sentinel (`routes/inbox.rs`, `resolve_project`).
+   *
+   * The order matters. Preferring the repository match everywhere and then falling back to
+   * `selectedProject` meant an issue on My Issues from an unconfigured repository was attributed to
+   * whichever project happened to be first in the sidebar, rather than left for auto-detection.
+   *
+   * `ProjectSummary.repos` holds local clone paths, which end in `owner/name`, so the match V1 does
+   * against configured remotes is available here.
    */
   const resolveProjectForIssue = useCallback(
-    (issue: GitHubIssue): string | undefined => {
+    (issue: GitHubIssue): string => {
+      if (selectedCategory === "project-issues" && selectedProject) return selectedProject;
       const nameWithOwner = issue.repository?.nameWithOwner;
       if (nameWithOwner) {
         const match = projects.find((p) =>
@@ -609,9 +767,9 @@ export const InboxView: React.FC<InboxViewProps> = ({
         );
         if (match) return match.name;
       }
-      return selectedProject || undefined;
+      return "Auto";
     },
-    [projects, selectedProject],
+    [projects, selectedCategory, selectedProject],
   );
 
   /**
@@ -637,7 +795,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
           onOpenNewPlanModal({
             title: issue.title,
             description: buildIssueIntake(issue),
-            sourceUrl: issue.url,
+            sourceUrl: resolveIssueUrl(issue) ?? "",
             project,
           });
         } else {
@@ -648,25 +806,43 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
       setIsFiring(true);
       setFireNotice(null);
-      let fired = 0;
-      try {
-        for (const issue of distinct) {
+      const fired = new Set<number>();
+      let failure: string | null = null;
+
+      for (const issue of distinct) {
+        try {
           await bridge.startJob({
             type: "CreatePlan",
             project: resolveProjectForIssue(issue),
             description: buildIssueIntake(issue),
             priority: 0,
-            sourceUrl: issue.url,
+            sourceUrl: resolveIssueUrl(issue),
           });
-          fired++;
+          fired.add(issue.number);
+        } catch (err) {
+          failure = describeBridgeError(err);
+          break;
         }
-        setSelectedIssueNumbers((prev) => prev.filter((id) => !seen.has(Number(id))));
-        setFireNotice(`Fired off ${fired} issue${fired === 1 ? "" : "s"} in Tendril`);
-      } catch (err) {
-        setFireNotice(`Failed to fire off issues: ${describeBridgeError(err)}`);
-      } finally {
-        setIsFiring(false);
       }
+
+      // V1 writes one inbox file per issue and skips any file that already exists
+      // (`InboxApp.cs:169`), so re-running after a failure never fires the same issue twice. A
+      // `CreatePlan` job has no such guard, so the issues that did land leave the selection even
+      // when a later one failed: pressing the button again then fires only what is still pending.
+      if (fired.size > 0) {
+        setSelectedIssueNumbers((prev) => prev.filter((id) => !fired.has(Number(id))));
+      }
+
+      if (failure) {
+        const failedOn = distinct[fired.size]?.number;
+        setFireNotice(
+          `Fired off ${fired.size} of ${distinct.length}. Failed on ` +
+            `${failedOn !== undefined ? `#${failedOn}` : "an issue"}: ${failure}`,
+        );
+      } else {
+        setFireNotice(`Fired off ${fired.size} issue${fired.size === 1 ? "" : "s"} in Tendril`);
+      }
+      setIsFiring(false);
     },
     [onCreatePlan, onOpenNewPlanModal, resolveProjectForIssue],
   );
@@ -865,8 +1041,22 @@ export const InboxView: React.FC<InboxViewProps> = ({
       ? "My Issues"
       : `${activeProject?.name || selectedProject || "Project"} Issues`;
 
-  const rowCount =
-    totalCount ?? (hasMore ? page * pageSize + 1 : (page - 1) * pageSize + filteredIssues.length);
+  /**
+   * V1's search and column filters run over `allIssues`, the whole category, and its footer counts
+   * whatever survived them. V2's run over the page the daemon returned, so while a filter is active
+   * the footer has to count the filtered rows: reporting the server's total next to one visible row,
+   * with a Next Page that fetches rows the filter would only hide, is worse than saying that
+   * filtering searches what is loaded.
+   */
+  const isClientFiltered =
+    searchQuery.trim().length > 0 || selectedLabels.length > 0 || selectedAssignees.length > 0;
+
+  const rowCount = isClientFiltered
+    ? filteredIssues.length
+    : Math.min(
+        totalCount ?? (hasMore ? page * pageSize + 1 : (page - 1) * pageSize + issues.length),
+        GITHUB_SEARCH_RESULT_CAP,
+      );
 
   return (
     <div data-testid="inbox-view" className="flex min-h-0 gap-4">
@@ -939,10 +1129,19 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
             {/* V1 shows the Auto-Accept state and its controls on My Issues only. */}
             {isMyIssues && autoAccept !== null && (
+              /* V1's label, but the setting does less here than it did there: V1 skipped the sweep
+                 entirely while off, whereas V2's sweep always runs and the flag only chooses
+                 between starting a plan and proposing one below (`inbox/mod.rs` module docs). The
+                 tooltip says which, since "Off" no longer means "nothing happens". */
               <Badge
                 variant={autoAccept ? "primary" : "secondary"}
                 density="Small"
                 data-testid="inbox-auto-accept"
+                title={
+                  autoAccept
+                    ? "Newly assigned issues start a plan as soon as they are found"
+                    : "Newly assigned issues are listed below for you to accept or dismiss"
+                }
               >
                 {autoAccept ? "Auto-Accept: On" : "Auto-Accept: Off"}
               </Badge>
@@ -995,8 +1194,12 @@ export const InboxView: React.FC<InboxViewProps> = ({
               >
                 Deselect All
               </Button>
+              {/* V1: `{selectedCount} of {allIssues.Count} selected`, where `allIssues` is the whole
+                  category rather than the visible page, and is not narrowed by the table's own
+                  search. The daemon's `totalCount` is that number; it is absent for a project's
+                  issues, which come back as a bare array, so the page length stands in there. */}
               <span className="text-xs text-muted-foreground" data-testid="inbox-selection-summary">
-                {selectedCount} of {filteredIssues.length} selected
+                {selectedCount} of {totalCount ?? issues.length} selected
               </span>
               {onOpenChat && (
                 <Button
@@ -1092,14 +1295,19 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
         {/* Imported proposals awaiting a decision. Hidden entirely when there are none, so the panel
             costs nothing on the common path — but a check that failed still reports, since a silent
-            failure looks identical to "nothing was assigned to you". */}
-        {checkSummary && proposals.length === 0 && !proposalError && (
+            failure looks identical to "nothing was assigned to you".
+
+            Scoped to My Issues, for the reason V1 scopes the Auto-Accept badge and gear there
+            (`ContentView.cs:429`): these rows are what the assigned-issues sweep produced, they are
+            not filtered by category or project, and repeating them under Reviews or a project's
+            issues would attach them to a list they have nothing to do with. */}
+        {isMyIssues && checkSummary && proposals.length === 0 && !proposalError && (
           <p data-testid="inbox-check-summary" className="text-xs text-muted-foreground">
             {checkSummary}
           </p>
         )}
 
-        {proposalError && (
+        {isMyIssues && proposalError && (
           <div
             role="alert"
             data-testid="inbox-proposal-error"
@@ -1109,7 +1317,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
           </div>
         )}
 
-        {proposals.length > 0 && (
+        {isMyIssues && proposals.length > 0 && (
           <div data-testid="inbox-proposals" className="space-y-2">
             <div className="flex items-baseline justify-between">
               <h2 className="text-sm font-semibold text-foreground">
@@ -1175,6 +1383,9 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
         {/* V1's order in `BuildIssuesView`: the spinner only while the list is still empty, then the
             error with its Retry, then the empty state, then the table. */}
+        {/* An empty page past the first keeps the table, and with it the footer that is the only way
+            back: `NoContentView` in its place would strand the operator on a page that does not
+            exist. V1 pages one in-memory list, so it could never land there. */}
         {isLoading && issues.length === 0 ? (
           <div
             data-testid="inbox-loading"
@@ -1205,7 +1416,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               Retry
             </Button>
           </div>
-        ) : filteredIssues.length === 0 && issues.length === 0 ? (
+        ) : filteredIssues.length === 0 && issues.length === 0 && page === 1 ? (
           <div data-testid="inbox-empty">
             {/* V1's `NoContentView` strings, per category. */}
             {isReviews ? (
@@ -1240,7 +1451,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
             onRowAction={({ tag, row }) => {
               if (tag === "fire-off") void fireOffIssues([row]);
               else if (tag === "view-details") setSheetIssue(row);
-              else if (tag === "open-github") void handleOpenGitHub(row.url);
+              // V1 `IssuesTableView.OnRowAction`: `var url = ResolveIssueUrl(raw); if (url != null)`.
+              else if (tag === "open-github") void handleOpenGitHub(resolveIssueUrl(row));
             }}
             // The daemon pages, so the footer reports and drives the server-side page.
             manualPagination
@@ -1361,12 +1573,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     </Button>
                   ) : (
                     <>
-                      {sheetIssue.url && (
+                      {/* V1's sheet shows the GitHub button only when a url resolves, and resolves
+                          it the same way the row action does. */}
+                      {resolveIssueUrl(sheetIssue) && (
                         <Button
                           type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => void handleOpenGitHub(sheetIssue.url)}
+                          onClick={() => void handleOpenGitHub(resolveIssueUrl(sheetIssue))}
                         >
                           <ExternalLink aria-hidden="true" />
                           GitHub
@@ -1422,7 +1636,12 @@ export const InboxView: React.FC<InboxViewProps> = ({
         isOpen={isAutoAcceptSettingsOpen}
         onClose={() => setIsAutoAcceptSettingsOpen(false)}
         onSaved={refreshAutoAccept}
-        onChecked={() => void fetchProposals()}
+        // V1's dialog awaits `onRefresh()` after its own Check Now, which revalidates the issue
+        // query, not just whatever the pass imported (`AutoAcceptSettingsDialog.cs:50`).
+        onChecked={() => {
+          void fetchProposals();
+          void fetchIssues({ silent: true });
+        }}
       />
     </div>
   );

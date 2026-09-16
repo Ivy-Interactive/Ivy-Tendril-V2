@@ -273,7 +273,10 @@ async fn a_job_whose_process_is_still_alive_is_left_untouched() {
     let _ = child.kill().await;
 }
 
-/// A job that never got a process is not an interrupted job.
+/// A job that never got a process is not an interrupted job: it keeps its `Queued` row and keeps
+/// owning its plan's mid-flight state, because it is going to run. With a manager to hand it to it is
+/// put back on the queue — see `a_queued_job_is_put_back_on_the_queue`. This case passes `None`, which
+/// is the CLI-side reconcile with no dispatcher to receive it.
 #[tokio::test]
 async fn a_queued_job_stays_queued() {
     let home = HomeFixture::new("rec-queued");
@@ -296,6 +299,73 @@ async fn a_queued_job_stays_queued() {
         "Executing",
         "a queued job still owns its plan's state"
     );
+}
+
+/// The queue is in-memory, so a restart loses it; the `Queued` rows are the durable record and
+/// reconciliation reads them back onto it.
+///
+/// Leaving them alone was not neutral. The row counts as live, so the plan is never reverted out of
+/// `Executing`, and the conflict guard counts it as in-flight and rejects every resubmission naming a
+/// job that will never start — a plan wedged on any ordinary daemon restart, recoverable only by
+/// force-starting each job by hand.
+///
+/// `Pending` is normalised to `Queued` on the way back in: nothing sets `Pending` any more, and the
+/// dispatcher only ever launches `Queued`, so a legacy row would otherwise be popped and dropped.
+#[tokio::test]
+async fn a_queued_job_is_put_back_on_the_queue() {
+    let home = HomeFixture::new("rec-requeue");
+    let queued = home.write_plan("00001-Queued", &plan_with(PlanStatus::Executing, &[]));
+    let pending = home.write_plan("00002-Pending", &plan_with(PlanStatus::Executing, &[]));
+    seed_job(
+        &home,
+        "00001",
+        "ExecutePlan",
+        &queued,
+        JobStatus::Queued,
+        None,
+        Some("Draft"),
+    );
+    seed_job(
+        &home,
+        "00002",
+        "ExecutePlan",
+        &pending,
+        JobStatus::Pending,
+        None,
+        Some("Draft"),
+    );
+
+    let manager = JobManager::new(home.path.clone(), TendrilSettings::default())
+        .with_plans_dir(Some(home.plans_dir()))
+        .share();
+
+    let report = reconcile_jobs_with(
+        &home.path,
+        &home.plans_dir(),
+        &TendrilSettings::default(),
+        &never_called_resolver,
+        Some(&manager),
+    )
+    .await
+    .expect("reconciliation should not error");
+
+    assert_eq!(
+        report.queued_jobs,
+        vec!["00001".to_string(), "00002".to_string()]
+    );
+
+    let queue = manager.queue_order().await;
+    assert!(
+        queue.contains(&"00001".to_string()),
+        "the queued job should be back on the queue, got {queue:?}"
+    );
+    assert!(
+        queue.contains(&"00002".to_string()),
+        "the pending job should be back on the queue too, got {queue:?}"
+    );
+
+    // Normalised on disk, so the dispatcher's `status == Queued` re-check passes.
+    assert_eq!(reload(&home, "00002").status, JobStatus::Queued);
 }
 
 /// A plan left mid-flight with no job at all cannot be left stranded there.

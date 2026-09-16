@@ -1,6 +1,7 @@
 pub mod changes_bridge;
 pub mod client;
 pub mod compatibility;
+pub mod job_events_bridge;
 pub mod master;
 pub mod plan_mapping;
 pub mod platform;

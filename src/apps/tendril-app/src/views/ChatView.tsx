@@ -16,8 +16,9 @@ import {
 } from "@ivy-interactive/components/ui";
 import { chatStore, type ChatState } from "../state/chatStore";
 import { jobsStore } from "../state/jobsStore";
+import { plansStore } from "../state/plansStore";
 import type { ChatMessage, ChatSession, ChatAttachment, ChatQueuedItem } from "../types/chat";
-import type { Job } from "../types/api";
+import type { Job, PlanSummary } from "../types/api";
 import { PIN_TOP_PADDING, useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import {
   useChatMessageWindow,
@@ -94,6 +95,79 @@ const SAMPLE_PROMPTS = [
   },
 ];
 
+/** `SamplePrompts.Max`: the empty state never offers more than five. */
+const MAX_SAMPLE_PROMPTS = 5;
+
+/** `#21`, not `#00021`, as `PlansView.formatPlanId` explains; inlined to keep the chunks apart. */
+const shortPlanId = (id: string): string => id.replace(/^0+(?=\d)/, "") || id;
+
+const newestByUpdated = (plans: PlanSummary[]): PlanSummary | undefined =>
+  [...plans].sort(
+    (a, b) => new Date(b.updated ?? 0).getTime() - new Date(a.updated ?? 0).getTime(),
+  )[0];
+
+/**
+ * Port of `SamplePrompts.ForChat`. The chips are what this tendril happens to need right now, with
+ * the five generic prompts as the tail that fills whatever the rules did not: plans waiting for
+ * review, the newest failure, the newest block, and jobs in flight, capped at five.
+ *
+ * V1's fifth rule - the newest plan with `PartialDelivery` - has no counterpart here: `PlanSummary`
+ * carries no partial-delivery flag, so that chip is absent rather than guessed at.
+ */
+export function buildChatSamplePrompts(
+  plans: PlanSummary[],
+  jobs: Job[],
+): { label: string; prompt: string }[] {
+  const prompts: { label: string; prompt: string }[] = [];
+  const labels = new Set<string>();
+  const add = (label: string, prompt: string) => {
+    if (labels.has(label)) return;
+    labels.add(label);
+    prompts.push({ label, prompt });
+  };
+
+  const reviewPlans = plans.filter((p) => p.state === "Review");
+  if (reviewPlans.length > 0) {
+    const planList = reviewPlans.map((p) => `#${shortPlanId(p.id)} ${p.title}`).join(", ");
+    add(
+      `Review the ${reviewPlans.length} plans waiting`,
+      `${reviewPlans.length} plans are waiting for review: ${planList}. Summarize what each delivers and tell me which to merge first.`,
+    );
+  }
+
+  const failedPlan = newestByUpdated(plans.filter((p) => p.state === "Failed"));
+  if (failedPlan) {
+    add(
+      `Why did #${shortPlanId(failedPlan.id)} fail?`,
+      `Plan #${shortPlanId(failedPlan.id)} ${failedPlan.title} failed. Read its logs and verification reports and explain what went wrong.`,
+    );
+  }
+
+  const blockedPlan = newestByUpdated(plans.filter((p) => p.state === "Blocked"));
+  if (blockedPlan) {
+    add(
+      `What is blocking #${shortPlanId(blockedPlan.id)}?`,
+      `Plan #${shortPlanId(blockedPlan.id)} ${blockedPlan.title} is blocked. List the plans it depends on and what each one still needs.`,
+    );
+  }
+
+  const runningJobs = jobs.filter(
+    (job) => job.status === "Running" || job.status === "Pending" || job.status === "Queued",
+  );
+  if (runningJobs.length > 0) {
+    add(
+      "What are my jobs doing?",
+      `${runningJobs.length} jobs are running. Summarize what each one is working on.`,
+    );
+  }
+
+  for (const fallback of SAMPLE_PROMPTS) {
+    add(fallback.label, fallback.prompt);
+  }
+
+  return prompts.slice(0, MAX_SAMPLE_PROMPTS);
+}
+
 /** The time-of-day greeting above the empty state's headline. */
 function buildGreeting(now: Date): string {
   const hour = now.getHours();
@@ -157,6 +231,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   const [activeLightboxImage, setActiveLightboxImage] = useState<LightboxImage | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>(jobsStore.getState().jobs);
+  const [plans, setPlans] = useState<PlanSummary[]>(plansStore.getState().plans);
   const [multiline, setMultiline] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -232,6 +307,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   useEffect(() => {
     const unsub = jobsStore.subscribe(() => {
       setJobs([...jobsStore.getState().jobs]);
+    });
+    return unsub;
+  }, []);
+
+  // The empty state's chips are drawn from the plans that need attention, so they follow the plan
+  // list rather than a snapshot taken when the view mounted.
+  useEffect(() => {
+    const unsub = plansStore.subscribe(() => {
+      setPlans([...plansStore.getState().plans]);
     });
     return unsub;
   }, []);
@@ -527,15 +611,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
 
   /**
    * Jumps a queued prompt to the front: it leaves the queue and starts a turn right away, even
-   * while one is running, which is what V1's force-send does.
+   * while one is running, which is what V1's force-send does. The store owns the interrupt and the
+   * put-it-back-on-failure, so the prompt cannot be lost between the two calls.
    */
   const handleSendQueuedNow = async (item: ChatQueuedItem) => {
-    try {
-      await chatStore.deleteQueuedMessage(item.id);
-      await chatStore.sendMessage(item.prompt, { attachments: item.attachments });
-    } catch {
-      // Handled in store
-    }
+    await chatStore.sendQueuedNow(item.id);
   };
 
   const handleStartEditQueued = (itemId: string, prompt: string) => {
@@ -587,7 +667,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     const pinned = pinnedMessageRef.current;
     if (!pinned) return;
     if (messages.some((m) => m.id === pinned.id)) return;
-    const replacement = messages.find((m) => m.role === "user" && m.content === pinned.content);
+    // Prefix, not equality: the daemon's copy of the prompt carries the `[Attached Files]:` block
+    // the composer never showed, which is why V1 matches with `startsWith` too.
+    const replacement = messages.find(
+      (m) => m.role === "user" && m.content.startsWith(pinned.content),
+    );
     if (replacement) {
       retargetPin(pinned.id, replacement.id);
       pinnedMessageRef.current = { ...pinned, id: replacement.id };
@@ -658,6 +742,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   );
 
   const greeting = useMemo(() => buildGreeting(new Date()), []);
+  const samplePrompts = useMemo(() => buildChatSamplePrompts(plans, jobs), [plans, jobs]);
   const hasComposerContent = inputPrompt.trim().length > 0 || attachments.length > 0;
 
   const sessionPendingDeletion = sessions.find((s) => s.id === deletingSessionId);
@@ -671,10 +756,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   const renderSessionItem = (session: ChatSession) => {
     const isActive = session.id === activeSessionId;
     const isEditing = session.id === editingSessionId;
+    // V1's `ChatApp.BuildRowState`: a row says whether its own chat is working, or finished while
+    // the user was reading a different one.
+    const rowState = chatStore.sessionRowState(session.id);
 
     return (
       <div
         key={session.id}
+        data-testid="chat-session-row"
+        data-state={rowState ?? undefined}
         onClick={() => chatStore.selectSession(session.id)}
         className={`group flex items-center justify-between rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors ${
           isActive
@@ -710,6 +800,20 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
               <div className="flex items-center gap-1.5 min-w-0">
                 {session.isPinned && (
                   <Pin className="size-3 text-warning shrink-0" data-testid="pin-indicator" />
+                )}
+                {rowState === "working" && (
+                  <Loader2
+                    className="size-3 shrink-0 animate-spin text-muted-foreground"
+                    data-testid="chat-session-working"
+                    aria-label="Working"
+                  />
+                )}
+                {rowState === "completed" && (
+                  <span
+                    className="inline-block size-1.5 shrink-0 rounded-full bg-success"
+                    data-testid="chat-session-completed"
+                    aria-label="Finished"
+                  />
                 )}
                 <span className="truncate text-xs font-medium">{displayTitle(session)}</span>
               </div>
@@ -872,7 +976,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 className="mt-4 flex flex-wrap justify-center gap-2"
                 data-testid="sample-prompts"
               >
-                {SAMPLE_PROMPTS.map((item) => (
+                {samplePrompts.map((item) => (
                   <button
                     key={item.label}
                     type="button"

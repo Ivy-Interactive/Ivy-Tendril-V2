@@ -131,8 +131,19 @@ pub async fn reconcile_jobs_with(
                 let _ = insert_job(&conn, &job);
             }
             JobStatus::Queued | JobStatus::Pending => {
-                // No process was ever started for these. Re-enqueueing across restarts needs a
-                // durable queue, so they are simply left as they are.
+                // No process was ever started for these, so they are re-queued rather than failed:
+                // the rows are the durable queue the in-memory heap does not survive a restart with.
+                // Leaving them alone is not neutral — the plan below stays `Executing` because this
+                // job counts as live, and the conflict guard counts the row as in-flight and rejects
+                // every resubmission, so the plan wedges until someone force-starts the job by hand.
+                //
+                // `Pending` predates `Queued` as the pre-dispatch status and nothing sets it now; the
+                // dispatcher only launches `Queued`, so it is normalised on the way back in.
+                job.status = JobStatus::Queued;
+                let _ = insert_job(&conn, &job);
+                if let Some(manager) = job_manager {
+                    manager.requeue_restored(job.clone()).await;
+                }
                 report.queued_jobs.push(job.id.clone());
             }
             // Blocked jobs are handled wholesale by `unblock_satisfied_plans` below.
