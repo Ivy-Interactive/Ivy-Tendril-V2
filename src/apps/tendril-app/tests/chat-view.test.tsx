@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ChatView } from "../src/views/ChatView";
 import { chatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
+import { sidebarListStore } from "../src/state/sidebarListStore";
 import type { ChatSession } from "../src/types/chat";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -636,6 +637,102 @@ questions:
     );
   });
 
+  /**
+   * `ChatApp.BuildSidebarList`'s own `OnSearch` and `OnNew`, which the shell's Chats section calls:
+   * search opens `Apps/Chat/Dialogs/ChatSearchDialog` (an absent `OnSearch` would open the *plan*
+   * search dialog), and New is the new-chat action.
+   */
+  it("searches chats from the list's own search action and selects the one picked", async () => {
+    const other: ChatSession = {
+      id: "session-11",
+      title: "Deployment Pipeline",
+      createdAt: "2026-09-07T11:00:00Z",
+      updatedAt: "2026-09-07T11:00:00Z",
+      spawnedJobIds: [],
+      messages: [],
+    };
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions, other]);
+    vi.spyOn(chatApi, "getSession").mockImplementation(async (id: string) =>
+      id === other.id ? other : mockSessionWithQuestions,
+    );
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+    await waitFor(() => expect(sidebarListStore.getState()?.items.length).toBe(2));
+
+    act(() => {
+      sidebarListStore.getState()?.onSearch?.();
+    });
+
+    const dialog = await screen.findByTestId("chat-search-dialog");
+    fireEvent.change(within(dialog).getByLabelText("Search chats"), {
+      target: { value: "deploy" },
+    });
+
+    const results = within(dialog).getAllByTestId("chat-search-result");
+    expect(results).toHaveLength(1);
+    fireEvent.click(results[0]);
+
+    await waitFor(() => {
+      expect(sidebarListStore.getState()?.selectedId).toBe("session-11");
+    });
+    expect(screen.queryByTestId("chat-search-dialog")).not.toBeInTheDocument();
+  });
+
+  it("starts a new chat from the list's New action", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    const createSession = vi.spyOn(chatApi, "createSession").mockResolvedValue({
+      id: "session-12",
+      title: "New Chat",
+      createdAt: "2026-09-07T13:00:00Z",
+      updatedAt: "2026-09-07T13:00:00Z",
+      spawnedJobIds: [],
+      messages: [],
+    });
+
+    render(<ChatView />);
+    await waitFor(() => expect(sidebarListStore.getState()?.items.length).toBe(1));
+
+    act(() => {
+      sidebarListStore.getState()?.onNew?.();
+    });
+
+    await waitFor(() => expect(createSession).toHaveBeenCalled());
+  });
+
+  it("renames and pins through the list's row actions", async () => {
+    // A copy, because the store renames the session object it was handed in place - and the shared
+    // fixture would then reach every test after this one already renamed.
+    const session: ChatSession = { ...mockSessionWithQuestions };
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([session]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(session);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    const rename = vi
+      .spyOn(chatApi, "updateSession")
+      .mockResolvedValue({ ...session, title: "Renamed" });
+
+    render(<ChatView />);
+    await waitFor(() => expect(sidebarListStore.getState()?.items.length).toBe(1));
+
+    act(() => {
+      sidebarListStore.getState()?.onRename?.("session-10", "Renamed");
+    });
+    await waitFor(() => expect(rename).toHaveBeenCalledWith("session-10", "Renamed"));
+
+    act(() => {
+      sidebarListStore.getState()?.onTogglePin?.("session-10");
+    });
+    await waitFor(() => expect(sidebarListStore.getState()?.items[0].pinned).toBe(true));
+
+    // The pin is persisted, so it has to be dropped again or it follows this session into the tests
+    // after it.
+    act(() => {
+      sidebarListStore.getState()?.onTogglePin?.("session-10");
+    });
+  });
+
   it("confirms before deleting a chat and only then deletes it", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
@@ -648,7 +745,11 @@ questions:
       expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
-    fireEvent.click(screen.getByTitle("Delete"));
+    // The row's own Delete is a shell sidebar row action now (the list's `onDelete`), which V1
+    // routes to exactly this dialog (`id => deletingSessionId.Set(id)`).
+    act(() => {
+      sidebarListStore.getState()?.onDelete?.("session-10");
+    });
     const dialog = await screen.findByTestId("chat-delete-session-dialog");
     expect(dialog).toHaveTextContent('Are you sure you want to delete "Architecture Planning"?');
     expect(deleteSpy).not.toHaveBeenCalled();

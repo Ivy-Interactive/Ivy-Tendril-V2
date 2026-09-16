@@ -4,6 +4,7 @@ import { ChatMessageRow, parseUserMessageContent } from "../src/views/ChatMessag
 import { ChatView, buildChatSamplePrompts } from "../src/views/ChatView";
 import { chatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
+import { sidebarListStore } from "../src/state/sidebarListStore";
 import { plansStore } from "../src/state/plansStore";
 import { jobsStore } from "../src/state/jobsStore";
 import type { ChatMessage, ChatSession } from "../src/types/chat";
@@ -217,9 +218,23 @@ describe("chat message presentation parity", () => {
       vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
 
       render(<ChatView />);
+      // The list is the shell sidebar's now (`ChatApp.BuildSidebarList`), so the row state is read
+      // off what this view published rather than off markup it no longer owns.
       await waitFor(() => {
-        expect(screen.getAllByTestId("chat-session-row").length).toBe(2);
+        expect(sidebarListStore.getState()?.items.length).toBe(2);
       });
+      const list = sidebarListStore.getState();
+      expect(list?.appId).toBe("chat");
+      expect(list?.title).toBe("Chats");
+      // The flags V1 sets on this list and on no other: a flyout in the collapsed rail, its own
+      // search, and the three row actions.
+      expect(list?.collapsedMenu).toBe(true);
+      expect(list?.searchLabel).toBe("Search chats");
+      expect(list?.onSearch).toBeTypeOf("function");
+      expect(list?.newLabel).toBe("New chat");
+      expect(list?.onRename).toBeTypeOf("function");
+      expect(list?.onDelete).toBeTypeOf("function");
+      expect(list?.onTogglePin).toBeTypeOf("function");
 
       chatStore.handleChatEvent({
         type: "chat.generating_state",
@@ -227,11 +242,51 @@ describe("chat message presentation parity", () => {
         isGenerating: true,
       });
 
+      // `ChatApp.BuildRowState`: the row of the chat that is working says so, and the one on screen
+      // does not.
       await waitFor(() => {
-        expect(screen.getByTestId("chat-session-working")).toBeInTheDocument();
+        const items = sidebarListStore.getState()?.items ?? [];
+        expect(items.find((i) => i.id === "b")?.state).toBe("working");
+        expect(items.find((i) => i.id === "a")?.state).toBeUndefined();
       });
       // The composer belongs to the chat on screen, which is not the one working.
       expect(screen.getByTitle("Send message")).toBeInTheDocument();
+    });
+
+    it("renders no Chats list of its own: the page is the conversation", async () => {
+      const sessions: ChatSession[] = [
+        {
+          id: "a",
+          title: "Active",
+          createdAt: "2026-09-14T10:00:00Z",
+          updatedAt: "2026-09-14T10:00:02Z",
+          messages: [{ id: "a1", role: "user", content: "hi", timestamp: "2026-09-14T10:00:00Z" }],
+          spawnedJobIds: [],
+        },
+        {
+          id: "b",
+          title: "Other chat",
+          createdAt: "2026-09-14T10:00:00Z",
+          updatedAt: "2026-09-14T10:00:01Z",
+          messages: [],
+          spawnedJobIds: [],
+        },
+      ];
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue(sessions);
+      vi.spyOn(chatApi, "getSession").mockImplementation(async (id: string) =>
+        sessions.find((s) => s.id === id)!,
+      );
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+      render(<ChatView />);
+      await waitFor(() => {
+        expect(sidebarListStore.getState()?.items.length).toBe(2);
+      });
+
+      expect(screen.queryAllByTestId("chat-session-row")).toHaveLength(0);
+      // The other chat is a sidebar row; only the open one names itself, in the header.
+      expect(screen.queryByText("Other chat")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "New Chat" })).not.toBeInTheDocument();
     });
   });
 });

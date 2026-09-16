@@ -681,6 +681,9 @@ export const App: React.FC = () => {
         return (
           <PlansView
             plans={plansState.plans}
+            // `PlansApp.Build`'s `activePlanFolders`: a plan a job already holds is not offered for
+            // action. Without the list the exclusion is dead wiring, as it was for Review.
+            jobs={jobsState.jobs}
             // V1's `PlansAppArgs.PlanId`, now that a navigation carries args: the page reads its
             // selection from them instead of the publisher having to apply it as a side effect.
             selectedPlanId={uiState.pageArgs.planId ?? uiState.selectedPlanId}

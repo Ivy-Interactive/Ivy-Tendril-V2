@@ -12,7 +12,12 @@ export default defineConfig({
     execArgv: ["--no-experimental-webstorage"],
     server: {
       deps: {
-        inline: [/@ivy-interactive\/components/, /@dnd-kit/],
+        // Radix is inlined for the same reason as the components bundle: resolved from
+        // `packages/components/node_modules` it binds that package's own React, so a dialog rendered
+        // from a test whose graph does not already pull in the components entry dies on a null
+        // `useRef`. The root cause is the nested store under `packages/components`; this is the fix
+        // that works without a reinstall.
+        inline: [/@ivy-interactive\/components/, /@dnd-kit/, /@radix-ui/],
       },
     },
   },

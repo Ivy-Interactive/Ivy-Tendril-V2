@@ -11,19 +11,16 @@ interface JobSessionViewProps {
   events?: StreamEventItem[];
   onCancel?: (jobId: string) => void | Promise<void>;
   onCloseTab?: () => void;
-}
-
-/**
- * Usage fields the daemon's `JobItem` carries (`crates/tendril-core/src/models/job.rs`) that the
- * Tauri DTO layer does not pass through yet, so `types/api.ts` does not model them.
- *
- * `costSource` is the one this view needs: `JobsApp.Data.cs` `FormatJobCost` prefixes an estimate
- * with `"~"` so the column never presents a figure nobody was charged as a charge. Read
- * defensively - it is `undefined` today and becomes live the moment `JobDto`/`JobDetailDto`
- * (`src-tauri/src/models.rs`) carry it.
- */
-interface JobUsageExtras {
-  costSource?: string;
+  /**
+   * How this is framed. V1's job output is a **sheet over the Jobs table**
+   * (`Apps/Jobs/Sheets/OutputSheet.cs`, opened from the table's Agent Output cell), so `"sheet"` is
+   * what `JobsView` renders: the sheet's own header carries V1's title
+   * (`$"{job.Type} {ExtractPlanId(job.PlanFile)}"`) and its own close control, so neither is drawn
+   * again here, and the body scrolls with the sheet rather than filling a page.
+   *
+   * `"page"` is the older full-view framing, kept for any caller that still mounts this as a view.
+   */
+  layout?: "page" | "sheet";
 }
 
 /**
@@ -135,11 +132,16 @@ function formatCost(cost: number): string {
  *
  * An estimate derived from tokens times the price list carries V1's `"~"` prefix
  * (`JobCostSources.Estimated`), so a figure nobody was actually billed never presents itself as one.
+ *
+ * The comparison is case-insensitive because the value on the wire is lower case: V1 writes
+ * `"estimated"` (`Services/Jobs/JobUsageSnapshot.cs:22`) and so does the daemon
+ * (`jobs/manager.rs:2909`). This matched `"Estimated"` exactly, dating from when `costSource` was not
+ * on the DTO at all and its casing was a guess, so the tilde never actually appeared on an estimate.
  */
 function formatJobCost(job: Job): string | null {
   if (job.cost === undefined || job.cost === null || !Number.isFinite(job.cost)) return null;
   const formatted = formatCost(job.cost);
-  return (job as JobUsageExtras).costSource === "Estimated" ? `~${formatted}` : formatted;
+  return job.costSource?.toLowerCase() === "estimated" ? `~${formatted}` : formatted;
 }
 
 /**
@@ -183,19 +185,23 @@ export function normalizeJobId(id: string): string {
 }
 
 /**
- * V1's job output sheet, as a tab.
+ * V1's job output sheet.
  *
  * The layout mirrors `JobsApp.cs`'s output sheet: its title is `$"{job.Type} {ExtractPlanId(...)}"`,
  * and its body is `Sheets/OutputSheet.cs` - an `AgentViewer` for a job with output, and a callout
  * explaining itself for one without. Everything V1 puts in the Jobs table's cells for the same job
- * (status, timer, timestamp, cost, tokens, project) sits in the header, because a tab has no row
- * above it to carry them.
+ * (status, timer, timestamp, cost, tokens, project) sits in the header, so a reader who opened the
+ * sheet from the table does not have to close it again to see them.
+ *
+ * See {@link JobSessionViewProps.layout}: this was a full page tab, which was a structural
+ * divergence - V1 opens it over the table and the operator keeps their place in the list.
  */
 export const JobSessionView: React.FC<JobSessionViewProps> = ({
   job,
   events = [],
   onCancel,
   onCloseTab,
+  layout = "page",
 }) => {
   const [isStopping, setIsStopping] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
@@ -360,9 +366,14 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   const tokens = currentJob.tokens;
   const hasUsage = cost !== null || tokens !== undefined;
 
+  const isSheet = layout === "sheet";
+
   return (
-    <div className="flex h-full flex-col space-y-4" data-testid="job-session-view">
-      {/* Header: the output sheet's title, plus the row the tab replaced. */}
+    <div
+      className={`flex flex-col space-y-4 ${isSheet ? "" : "h-full"}`}
+      data-testid="job-session-view"
+    >
+      {/* Header: the output sheet's title, plus the row the table showed. */}
       <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -398,10 +409,13 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
               </span>
             )}
           </div>
-          {/* The output sheet's title: `$"{job.Type} {ExtractPlanId(job.PlanFile)}"`. */}
-          <h1 className="mt-2 truncate text-2xl font-bold text-foreground">
-            {planId ? `${currentJob.type} ${planId}` : currentJob.type}
-          </h1>
+          {/* The output sheet's title: `$"{job.Type} {ExtractPlanId(job.PlanFile)}"`. Drawn here
+              only for the page framing - in a sheet it is the `SheetTitle`, as it is in V1. */}
+          {!isSheet && (
+            <h1 className="mt-2 truncate text-2xl font-bold text-foreground">
+              {planId ? `${currentJob.type} ${planId}` : currentJob.type}
+            </h1>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             {currentJob.planTitle && <span className="truncate">{currentJob.planTitle}</span>}
             {timer !== "-" && <span data-testid="job-timer">{timer}</span>}
@@ -470,7 +484,8 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             </button>
           )}
 
-          {onCloseTab && (
+          {/* A sheet has its own close control; a second one beside Delete is noise. */}
+          {onCloseTab && !isSheet && (
             <button
               type="button"
               onClick={onCloseTab}
@@ -500,7 +515,10 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
 
       {/* Output. `OutputSheet.cs` decides between three things: a viewer following a live stream, a
           viewer showing a finished one, and a job that produced nothing at all. */}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      {/* A sheet scrolls, so the viewer gets a floor rather than the remaining height of a page:
+          `flex-1` inside a scrolling container resolves to the content's own height, which for an
+          empty log is zero and hides the viewer entirely. */}
+      <div className={isSheet ? "min-h-96" : "min-h-0 flex-1 overflow-hidden"}>
         {jsonStream ? (
           <AgentViewer
             id={`agent-viewer-${currentJob.id}`}

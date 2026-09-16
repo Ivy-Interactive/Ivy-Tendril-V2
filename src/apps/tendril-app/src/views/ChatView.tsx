@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useResizableSidebar } from "@ivy-interactive/components";
 import { ChatInput, ChatMessageList } from "@ivy-interactive/components/renderers";
 import { VoiceRecorder, type VoiceStatus } from "@ivy-interactive/components/tendril";
 import {
@@ -12,8 +11,13 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   Input,
 } from "@ivy-interactive/components/ui";
+import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import { chatStore, type ChatState } from "../state/chatStore";
 import { jobsStore } from "../state/jobsStore";
 import { plansStore } from "../state/plansStore";
@@ -36,16 +40,12 @@ import {
   ArrowRight,
   Check,
   ChevronDown,
-  Edit2,
   HelpCircle,
   ListPlus,
   Loader2,
   Mic,
   Paperclip,
   Pencil,
-  Pin,
-  PinOff,
-  Plus,
   SendHorizontal,
   Square,
   Trash2,
@@ -60,10 +60,8 @@ interface ChatViewProps {
   onOpenPlan?: (planId: string) => void;
 }
 
-const CHAT_SIDEBAR_WIDTH_STORAGE_KEY = "tendril:chat:sidebar_width";
-const DEFAULT_CHAT_SIDEBAR_WIDTH = 256;
-const MIN_CHAT_SIDEBAR_WIDTH = 180;
-const MAX_CHAT_SIDEBAR_WIDTH = 480;
+/** `ChatSearchDialog.MaxResults`: the search dialog never lists more than fifteen chats. */
+const MAX_CHAT_SEARCH_RESULTS = 15;
 
 /** The transcription socket the shared composer defaults to; the mic here speaks to the same one. */
 const TRANSCRIPTION_URL = "wss://tendril-api.ivy.app/transcribe/ws";
@@ -182,7 +180,67 @@ const displayTitle = (session: ChatSession | null | undefined): string =>
 
 /** The plan a session belongs to, shown as its row tag; null for a free-standing chat. */
 const planTag = (session: ChatSession): string | null =>
-  session.planFolderName ? `#${session.planFolderName.split("-")[0]}` : null;
+  session.planFolderName ? `#${shortPlanId(session.planFolderName.split("-")[0])}` : null;
+
+/** The row actions the Chats list carries, so the shell can wire its row menu to them. */
+export interface ChatSidebarListActions {
+  onNew: () => void;
+  onSearch: () => void;
+  onSelect: (sessionId: string) => void;
+  onRename: (sessionId: string, title: string) => void;
+  onDelete: (sessionId: string) => void;
+  onTogglePin: (sessionId: string) => void;
+}
+
+/**
+ * `ChatApp.BuildSidebarList`: the Chats list the shell sidebar shows while this app is open.
+ *
+ * Everything non-default here is V1's, and each flag has a reason:
+ * - `collapsedMenu: true` folds the collapsed rail's list into one flyout button instead of the
+ *   narrow id chips a plan list shows there - a chat has no id to chip.
+ * - `searchLabel: "Search chats"` with its own `onSearch`, because an absent `onSearch` means the
+ *   plan search dialog, "which is right for every plan list and wrong for anything else".
+ * - `onNew` is the new-chat action, labelled "New chat".
+ * - `onRename` / `onDelete` / `onTogglePin` are the row's own actions.
+ *
+ * A row's `state` is `ChatApp.BuildRowState`: "working" while its own turn is running, "completed"
+ * when it finished while the user was reading a different chat. V1 also sets `Icon: "Terminal"` on a
+ * terminal session; V2's `ChatSession` has no terminal kind, so no row ever carries that glyph.
+ */
+export const buildChatSidebarList = (
+  sessions: ChatSession[],
+  selectedId: string | null,
+  rowState: (sessionId: string) => "working" | "completed" | null,
+  actions: ChatSidebarListActions,
+): ShellSidebarList => ({
+  appId: "chat",
+  title: "Chats",
+  items: sessions.map((session) => ({
+    id: session.id,
+    title: displayTitle(session),
+    tag: planTag(session) ?? undefined,
+    state: rowState(session.id) ?? undefined,
+    pinned: session.isPinned,
+  })),
+  selectedId,
+  searchable: true,
+  onSearch: actions.onSearch,
+  searchLabel: "Search chats",
+  onNew: actions.onNew,
+  newLabel: "New chat",
+  collapsedMenu: true,
+  onRename: actions.onRename,
+  onDelete: actions.onDelete,
+  onTogglePin: actions.onTogglePin,
+  buildSelectArgs: (sessionId) => {
+    /* The shell routes a click as `OpenApp(new NavigateArgs("chat", BuildSelectArgs(id)))` and V1's
+       `ChatApp` reads `ChatAppArgs.SessionId` back out. V2 has no arg-carrying navigation yet, so the
+       session is selected here too; the returned object is still V1's args, so this drops out once
+       the shell can hand args to a view. */
+    actions.onSelect(sessionId);
+    return { sessionId };
+  },
+});
 
 /**
  * Whether the prompt needs more than one line beside the composer's buttons. It is measured at the
@@ -219,8 +277,9 @@ const needsMultipleLines = (textarea: HTMLTextAreaElement, row: HTMLElement | nu
 export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) => {
   const [storeState, setStoreState] = useState<ChatState>(chatStore.getState());
   const [inputPrompt, setInputPrompt] = useState("");
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [editTitle, setEditTitle] = useState("");
+  /** `ChatApp`'s own search trigger, opened from the Chats section's search icon. */
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   // V1 opens the queue panel: a prompt that will be sent for you is worth reading without a click.
   const [isQueueExpanded, setIsQueueExpanded] = useState(true);
   const [editingQueuedId, setEditingQueuedId] = useState<string | null>(null);
@@ -280,17 +339,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   }, [syncMultiline]);
 
   useEffect(() => () => recorderRef.current?.stop(), []);
-
-  const {
-    width: sidebarWidth,
-    isDragging: isResizingSidebar,
-    separatorProps,
-  } = useResizableSidebar({
-    storageKey: CHAT_SIDEBAR_WIDTH_STORAGE_KEY,
-    defaultWidth: DEFAULT_CHAT_SIDEBAR_WIDTH,
-    minWidth: MIN_CHAT_SIDEBAR_WIDTH,
-    maxWidth: MAX_CHAT_SIDEBAR_WIDTH,
-  });
 
   useEffect(() => {
     const unsub = chatStore.subscribe(() => {
@@ -466,25 +514,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
       requestComposerFocus();
     } catch {
       // Handled in store
-    }
-  };
-
-  const handleStartRename = (session: ChatSession, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingSessionId(session.id);
-    setEditTitle(session.title);
-  };
-
-  const handleSaveRename = async (id: string, e?: React.MouseEvent | React.FormEvent) => {
-    if (e) e.stopPropagation();
-    if (!editTitle.trim()) {
-      setEditingSessionId(null);
-      return;
-    }
-    try {
-      await chatStore.renameSession(id, editTitle.trim());
-    } finally {
-      setEditingSessionId(null);
     }
   };
 
@@ -750,176 +779,49 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     ? `"${sessionPendingDeletion.title}"`
     : "this chat session";
 
-  const pinnedSessionsList = sessions.filter((s) => s.isPinned);
-  const unpinnedSessionsList = sessions.filter((s) => !s.isPinned);
+  /**
+   * The Chats list goes to the shell sidebar, not into this page: `ChatApp.Build` renders no list of
+   * its own, it sends one and returns a `ContentView` that is the conversation. Published on every
+   * render, as `ShellSidebarListSignal` documents ("The active app publishes this on every build") -
+   * V1 additionally guards the send behind a fingerprint, which is an optimisation over the same
+   * contract rather than a different one.
+   */
+  const sidebarList = useMemo(
+    () =>
+      buildChatSidebarList(
+        sessions,
+        activeSessionId ?? null,
+        (id) => chatStore.sessionRowState(id),
+        {
+          onNew: () => void handleCreateSession(),
+          onSearch: () => {
+            setSearchQuery("");
+            setIsSearchOpen(true);
+          },
+          onSelect: (id) => void chatStore.selectSession(id),
+          onRename: (id, title) => void chatStore.renameSession(id, title),
+          onDelete: (id) => setDeletingSessionId(id),
+          onTogglePin: (id) => chatStore.togglePinSession(id),
+        },
+      ),
+    // The row states are read through the store on each build, so a re-render caused by a
+    // generating-state event rebuilds the list even though `sessions` is the same array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sessions, activeSessionId, storeState],
+  );
 
-  const renderSessionItem = (session: ChatSession) => {
-    const isActive = session.id === activeSessionId;
-    const isEditing = session.id === editingSessionId;
-    // V1's `ChatApp.BuildRowState`: a row says whether its own chat is working, or finished while
-    // the user was reading a different one.
-    const rowState = chatStore.sessionRowState(session.id);
+  usePublishSidebarList(sidebarList);
 
-    return (
-      <div
-        key={session.id}
-        data-testid="chat-session-row"
-        data-state={rowState ?? undefined}
-        onClick={() => chatStore.selectSession(session.id)}
-        className={`group flex items-center justify-between rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors ${
-          isActive
-            ? "bg-muted text-foreground font-medium shadow-sm"
-            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-        }`}
-      >
-        <div className="flex-1 min-w-0 pr-2">
-          {isEditing ? (
-            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-              <input
-                type="text"
-                value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void handleSaveRename(session.id);
-                  if (e.key === "Escape") setEditingSessionId(null);
-                }}
-                autoFocus
-                className="w-full rounded bg-background px-1.5 py-0.5 text-xs text-foreground border border-border focus:outline-none focus:border-ring"
-              />
-              <button
-                type="button"
-                onClick={(e) => handleSaveRename(session.id, e)}
-                className="p-0.5 text-muted-foreground hover:text-foreground"
-                title="Save"
-              >
-                <Check className="size-3.5" />
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-1.5 min-w-0">
-                {session.isPinned && (
-                  <Pin className="size-3 text-warning shrink-0" data-testid="pin-indicator" />
-                )}
-                {rowState === "working" && (
-                  <Loader2
-                    className="size-3 shrink-0 animate-spin text-muted-foreground"
-                    data-testid="chat-session-working"
-                    aria-label="Working"
-                  />
-                )}
-                {rowState === "completed" && (
-                  <span
-                    className="inline-block size-1.5 shrink-0 rounded-full bg-success"
-                    data-testid="chat-session-completed"
-                    aria-label="Finished"
-                  />
-                )}
-                <span className="truncate text-xs font-medium">{displayTitle(session)}</span>
-              </div>
-              {/* The row's tag is the plan the chat belongs to, as in the shell's Chats list. */}
-              {planTag(session) && (
-                <div className="text-[10px] text-muted-foreground">{planTag(session)}</div>
-              )}
-            </>
-          )}
-        </div>
-
-        {!isEditing && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                chatStore.togglePinSession(session.id);
-              }}
-              className={`rounded p-1 ${
-                session.isPinned
-                  ? "text-warning hover:bg-accent"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              }`}
-              title={session.isPinned ? "Unpin chat" : "Pin chat"}
-            >
-              {session.isPinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
-            </button>
-            <button
-              type="button"
-              onClick={(e) => handleStartRename(session, e)}
-              className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-              title="Rename"
-            >
-              <Edit2 className="size-3" />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDeletingSessionId(session.id);
-              }}
-              className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-              title="Delete"
-            >
-              <Trash2 className="size-3" />
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
+  /** `ChatSearchDialog`: a case-insensitive match on the chat's display title, capped at fifteen. */
+  const searchResults = useMemo(() => {
+    const term = searchQuery.trim().toLowerCase();
+    return sessions
+      .filter((session) => term.length === 0 || displayTitle(session).toLowerCase().includes(term))
+      .slice(0, MAX_CHAT_SEARCH_RESULTS);
+  }, [sessions, searchQuery]);
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
-      {/* Session Sidebar */}
-      <aside
-        style={{ width: `${sidebarWidth}px` }}
-        className="relative flex flex-shrink-0 flex-col border-r border-border bg-card/60"
-      >
-        <div className="p-3 border-b border-border">
-          <button
-            type="button"
-            onClick={handleCreateSession}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="size-4" />
-            <span>New Chat</span>
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {sessions.length === 0 ? (
-            <div className="p-4 text-center text-xs text-muted-foreground">
-              No chat sessions yet. Click "New Chat" to start.
-            </div>
-          ) : pinnedSessionsList.length > 0 ? (
-            <>
-              <div className="px-2.5 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                Pinned
-              </div>
-              {pinnedSessionsList.map((session) => renderSessionItem(session))}
-              {unpinnedSessionsList.length > 0 && (
-                <>
-                  <div className="pt-2 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                    Recent
-                  </div>
-                  {unpinnedSessionsList.map((session) => renderSessionItem(session))}
-                </>
-              )}
-            </>
-          ) : (
-            sessions.map((session) => renderSessionItem(session))
-          )}
-        </div>
-
-        {/* Resizer Handle */}
-        <div
-          {...separatorProps}
-          className={`absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/50 transition-colors z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background focus-visible:bg-primary/50 ${
-            isResizingSidebar ? "bg-success w-2" : "bg-transparent"
-          }`}
-          title="Drag to resize chat sidebar, double-click to reset"
-        />
-      </aside>
-
       {/* Main Chat Thread Area. A file may be dropped anywhere in it, not only on the composer. */}
       <main
         className="relative flex flex-1 flex-col overflow-hidden"
@@ -1460,6 +1362,54 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* `Apps/Chat/Dialogs/ChatSearchDialog`: search over chat titles, opened from the Chats
+            section's search icon, and picking a row selects that chat. It belongs to the chat app,
+            not the shell - the shell's own search icon opens the *plan* search dialog, which is why
+            the published list carries its own `onSearch`. */}
+        <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+          <DialogContent data-testid="chat-search-dialog" className="max-w-[560px]">
+            <DialogHeader>
+              <DialogTitle>Search Chats</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-2">
+              <Input
+                autoFocus
+                type="search"
+                aria-label="Search chats"
+                placeholder="Search chats"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchResults.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No chats found.</p>
+              ) : (
+                <div className="flex max-h-80 flex-col overflow-y-auto">
+                  {searchResults.map((session) => (
+                    <button
+                      key={session.id}
+                      type="button"
+                      data-testid="chat-search-result"
+                      onClick={() => {
+                        setIsSearchOpen(false);
+                        void chatStore.selectSession(session.id);
+                      }}
+                      className="flex items-center justify-between gap-2 rounded-selector px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <span className="truncate">{displayTitle(session)}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {new Date(session.updatedAt).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

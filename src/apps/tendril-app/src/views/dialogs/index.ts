@@ -27,3 +27,14 @@ export { SuggestChangesDialog } from "./SuggestChangesDialog";
 export { CreatePrDialog } from "./CreatePrDialog";
 
 export { AutoAcceptSettingsDialog } from "./AutoAcceptSettingsDialog";
+
+export {
+  ShareTunnelDialog,
+  shareTunnelApi,
+  shareUrlForPlan,
+  SHARE_POLL_INTERVAL_MS,
+  type ShareTunnelDialogProps,
+  type ShareTunnelSnapshot,
+  type ShareTunnelStatus,
+  type ShareTunnelApi,
+} from "./ShareTunnelDialog";

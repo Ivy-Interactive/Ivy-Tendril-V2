@@ -8,6 +8,9 @@ import type { ServiceInfo, TendrilConfig } from "../src/types/api";
 /**
  * Port of `NotificationsSetupView`: the one setting, its default, and what saving it does. The
  * control is a switch (`ToSwitchInput`) and its Save is labelled "Save" and gated on `hasChanges`.
+ *
+ * `SettingsApp` renders only the selected sidebar row's view, so these open the Notifications
+ * section with `initialSection` - V1's `SettingsAppArgs.Section`.
  */
 
 const baseConfig: TendrilConfig = {
@@ -64,10 +67,16 @@ describe("SettingsView notifications card", () => {
     vi.restoreAllMocks();
   });
 
-  async function renderWith(config: TendrilConfig) {
+  async function renderWith(config: TendrilConfig, section = "notifications") {
     vi.spyOn(bridge, "getConfig").mockResolvedValue(config);
     await act(async () => {
-      render(<SettingsView serviceInfo={serviceInfo} onRefreshHealth={vi.fn()} />);
+      render(
+        <SettingsView
+          serviceInfo={serviceInfo}
+          onRefreshHealth={vi.fn()}
+          initialSection={section}
+        />,
+      );
     });
   }
 
@@ -129,6 +138,10 @@ describe("SettingsView notifications card", () => {
     await renderWith({ ...baseConfig });
 
     fireEvent.click(toggle());
+    // Only one section renders at a time, so Advanced is reached through its sidebar row.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("settings-row-advanced"));
+    });
     const advanced = screen.getByTestId("advanced-settings-card");
     const advancedSave = Array.from(advanced.querySelectorAll("button")).find(
       (b) => b.textContent === "Save",

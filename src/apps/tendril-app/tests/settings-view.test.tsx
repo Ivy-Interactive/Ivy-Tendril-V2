@@ -8,6 +8,11 @@ import type { ServiceInfo, TendrilConfig } from "../src/types/api";
  * Port of `SettingsApp`'s root setup views. Each section saves on its own, its Save stays disabled
  * until that section changes (`hasChanges` in every V1 setup view), and `jobTimeout` is minutes -
  * `TendrilSettings::job_timeout` is documented as minutes, unlike `daemonRequestTimeout`.
+ *
+ * `SettingsApp` is a nested sidebar and renders **only the selected row's view**, so every test here
+ * opens its section first - through `initialSection`, which is V1's `SettingsAppArgs.Section`, or by
+ * clicking the row. Before the structural pass every section was mounted at once, which is why these
+ * tests previously needed no navigation at all.
  */
 
 const baseConfig: TendrilConfig = {
@@ -28,11 +33,24 @@ const serviceInfo: ServiceInfo = {
   message: "Online",
 };
 
-async function renderSettings(onRefreshHealth = vi.fn()) {
+async function renderSettings(section = "coding-agent", onRefreshHealth = vi.fn()) {
   await act(async () => {
-    render(<SettingsView serviceInfo={serviceInfo} onRefreshHealth={onRefreshHealth} />);
+    render(
+      <SettingsView
+        serviceInfo={serviceInfo}
+        onRefreshHealth={onRefreshHealth}
+        initialSection={section}
+      />,
+    );
   });
 }
+
+/** Clicking a sidebar row, the way an operator moves between sections. */
+const gotoSection = async (tag: string) => {
+  await act(async () => {
+    fireEvent.click(screen.getByTestId(`settings-row-${tag}`));
+  });
+};
 
 /** The Save inside one section card, since every section now carries its own. */
 const saveIn = (testId: string) => {
@@ -96,20 +114,24 @@ describe("SettingsView", () => {
   });
 
   it("keeps each section's Save disabled until that section changes", async () => {
-    await renderSettings();
+    await renderSettings("advanced");
 
-    expect(saveIn("coding-agent-card")).toBeDisabled();
     expect(saveIn("advanced-settings-card")).toBeDisabled();
-
     fireEvent.change(screen.getByLabelText("Job Timeout"), { target: { value: "45" } });
-
     expect(saveIn("advanced-settings-card")).toBeEnabled();
-    // A change in one section does not arm another section's Save.
+
+    // A change in one section does not arm another section's Save. Only one section is mounted at a
+    // time now, so the other one is checked by navigating to it rather than by querying alongside.
+    await gotoSection("coding-agent");
     expect(saveIn("coding-agent-card")).toBeDisabled();
+
+    // The edit survives the round trip: the sidebar changes which view renders, not the form state.
+    await gotoSection("advanced");
+    expect(saveIn("advanced-settings-card")).toBeEnabled();
   });
 
   it("writes only the advanced keys that changed, and job timeout in minutes", async () => {
-    await renderSettings();
+    await renderSettings("advanced");
 
     fireEvent.change(screen.getByLabelText("Job Timeout"), { target: { value: "45" } });
     await submitIn("advanced-settings-card");
@@ -138,7 +160,7 @@ describe("SettingsView", () => {
   it("re-reads config from disk after a successful save", async () => {
     getConfig.mockResolvedValue({ ...baseConfig, maxConcurrentJobs: 8 });
 
-    await renderSettings();
+    await renderSettings("advanced");
 
     fireEvent.change(screen.getByLabelText("Max Concurrent Jobs"), { target: { value: "8" } });
     await submitIn("advanced-settings-card");
@@ -154,7 +176,7 @@ describe("SettingsView", () => {
    * only gate an out-of-range value passes through.
    */
   it("refuses an out-of-bounds timeout with ParseBoundedInt's message and writes nothing", async () => {
-    await renderSettings();
+    await renderSettings("advanced");
 
     fireEvent.change(screen.getByLabelText("Job Timeout"), { target: { value: "900" } });
     await submitIn("advanced-settings-card");
@@ -164,7 +186,7 @@ describe("SettingsView", () => {
   });
 
   it("refuses the whole section rather than persisting the half of it that is valid", async () => {
-    await renderSettings();
+    await renderSettings("advanced");
 
     fireEvent.change(screen.getByLabelText("Max Concurrent Jobs"), { target: { value: "8" } });
     fireEvent.change(screen.getByLabelText("Stale Output Timeout"), { target: { value: "90" } });
@@ -177,7 +199,7 @@ describe("SettingsView", () => {
   });
 
   it("accepts a job timeout above V1's own input cap but inside the persisted bound", async () => {
-    await renderSettings();
+    await renderSettings("advanced");
 
     fireEvent.change(screen.getByLabelText("Job Timeout"), { target: { value: "300" } });
     await submitIn("advanced-settings-card");
@@ -187,7 +209,7 @@ describe("SettingsView", () => {
 
   it("shows what config.yaml already holds out of bounds rather than substituting a default", async () => {
     getConfig.mockResolvedValue({ ...baseConfig, jobTimeout: 0 });
-    await renderSettings();
+    await renderSettings("advanced");
 
     expect(screen.getByLabelText("Job Timeout")).toHaveValue(0);
     expect(screen.getByTestId("advanced-out-of-bounds")).toHaveTextContent(
@@ -217,7 +239,7 @@ describe("SettingsView", () => {
   });
 
   it("saves the appearance mode on the click, under V1's themeMode key", async () => {
-    await renderSettings();
+    await renderSettings("appearance");
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Light" }));
@@ -229,7 +251,7 @@ describe("SettingsView", () => {
 
   it("defaults the appearance mode to System when config.yaml does not mention it", async () => {
     getConfig.mockResolvedValue({ ...baseConfig, raw: {} });
-    await renderSettings();
+    await renderSettings("appearance");
 
     expect(screen.getByRole("button", { name: "System" })).toHaveAttribute("aria-pressed", "true");
   });
@@ -324,7 +346,7 @@ describe("SettingsView", () => {
           },
         },
       });
-      await renderSettings();
+      await renderSettings("promptwares");
 
       const allowed = screen
         .getByTestId("promptwares-card")
@@ -348,7 +370,10 @@ describe("SettingsView", () => {
 
   /**
    * The seven flattened `AgentSecurityConfig` controls. `apply_security_settings` reads all of them on
-   * every job launch, and none of them had a UI in either V1 or V2.
+   * every job launch, and none of them had a UI in V1.
+   *
+   * They belong to one project, so the structural pass moved them out of a top-level settings card
+   * (which V1 has no row for) into the project's own screen, reached through the Projects row.
    */
   describe("project security", () => {
     const withProject = (project: Record<string, unknown>) => ({
@@ -356,23 +381,23 @@ describe("SettingsView", () => {
       raw: { ...baseConfig.raw, projects: [{ name: "Tendril", ...project }] },
     });
 
-    it("says there is nothing to secure when no project is configured", async () => {
-      await renderSettings();
+    /** `SettingsApp.Build`: `TagProjects` with no projects falls back to `CodingAgentSetupView`. */
+    it("falls back to the coding agent view when no project is configured", async () => {
+      await renderSettings("projects");
 
-      expect(screen.getByTestId("project-security-card")).toHaveTextContent(
-        "No projects are configured yet",
-      );
+      expect(screen.getByTestId("coding-agent-card")).toBeInTheDocument();
+      expect(screen.queryByTestId("project-security")).not.toBeInTheDocument();
     });
 
     it("patches only the named project, by name, and leaves other keys alone", async () => {
       getConfig.mockResolvedValue(withProject({ repos: [{ path: "/src" }] }));
-      await renderSettings();
+      await renderSettings("project:0");
 
       fireEvent.change(screen.getByLabelText("Allowed Terminal Commands"), {
         target: { value: "pnpm\ncargo" },
       });
       await act(async () => {
-        fireEvent.click(saveIn("project-security-card"));
+        fireEvent.click(saveIn("project-security"));
       });
 
       expect(putConfig).toHaveBeenCalledTimes(1);
@@ -388,13 +413,13 @@ describe("SettingsView", () => {
 
     it("parses `Mode path` file rules and reports the effective policy", async () => {
       getConfig.mockResolvedValue(withProject({}));
-      await renderSettings();
+      await renderSettings("project:0");
 
       fireEvent.change(screen.getByLabelText("File Permissions"), {
         target: { value: "Allow src/**\nDeny .env\nplain/path" },
       });
       await act(async () => {
-        fireEvent.click(saveIn("project-security-card"));
+        fireEvent.click(saveIn("project-security"));
       });
 
       const [, value] = putConfig.mock.calls[0] as [string, Record<string, unknown>[]];
@@ -410,11 +435,11 @@ describe("SettingsView", () => {
       getConfig.mockResolvedValue(
         withProject({ securityPreset: "Strict", sandboxMode: "Disabled" }),
       );
-      await renderSettings();
+      await renderSettings("project:0");
 
       // `effective_sandbox_mode` forces Enabled under Strict even though the field says Disabled.
-      expect(screen.getByTestId("project-security-card")).toHaveTextContent("Effective: Enabled.");
-      expect(screen.getByTestId("project-security-card")).toHaveTextContent("Effective: Deny.");
+      expect(screen.getByTestId("project-security")).toHaveTextContent("Effective: Enabled.");
+      expect(screen.getByTestId("project-security")).toHaveTextContent("Effective: Deny.");
       expect(screen.getByLabelText("Sandbox Mode")).toBeDisabled();
       expect(screen.getByLabelText("Outside File Access")).toBeDisabled();
       // The preset does not govern terminal confirmation.
@@ -425,17 +450,15 @@ describe("SettingsView", () => {
       getConfig.mockResolvedValue(
         withProject({ sandboxMode: "Inherit General", terminalAutoExecution: "always ask" }),
       );
-      await renderSettings();
+      await renderSettings("project:0");
 
-      expect(screen.getByTestId("project-security-card")).toHaveTextContent(
-        "Effective: AlwaysAsk.",
-      );
-      expect(saveIn("project-security-card")).toBeDisabled();
+      expect(screen.getByTestId("project-security")).toHaveTextContent("Effective: AlwaysAsk.");
+      expect(saveIn("project-security")).toBeDisabled();
     });
 
     it("names the controls the configured agent's CLI ignores", async () => {
       getConfig.mockResolvedValue({ ...withProject({}), codingAgent: "opencode" });
-      await renderSettings();
+      await renderSettings("project:0");
 
       expect(screen.getByTestId("project-security-enforcement")).toHaveTextContent(
         "OpenCode enforces: none of these controls.",
@@ -444,7 +467,7 @@ describe("SettingsView", () => {
 
     it("reports full enforcement for Claude", async () => {
       getConfig.mockResolvedValue(withProject({}));
-      await renderSettings();
+      await renderSettings("project:0");
 
       expect(screen.getByTestId("project-security-enforcement")).toHaveTextContent(
         "Claude enforces: sandbox mode, network access, terminal confirmation, file and command rules.",
@@ -453,7 +476,7 @@ describe("SettingsView", () => {
   });
 
   it("saves the plan template on its own", async () => {
-    await renderSettings();
+    await renderSettings("plans");
 
     fireEvent.change(screen.getByLabelText("Plan Template"), { target: { value: "## Goal" } });
     await submitIn("plans-settings-card");

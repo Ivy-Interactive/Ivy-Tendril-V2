@@ -59,19 +59,22 @@ export function coerceJobStatus(raw: unknown): JobStatus | undefined {
  *
  * `DELETE /api/jobs/:id` and `POST /api/jobs/:id/force-start` are registered in
  * `crates/tendril-server/src/routes/mod.rs:171-172`, and `JobManager::delete_job` /
- * `force_start_job` implement them. What is missing is the client half: a method on
- * `ServiceClient` (`src-tauri/src/service/client.rs`), a `#[tauri::command]`
- * (`src-tauri/src/commands/jobs.rs`) and an `api/bridge.ts` wrapper - three files this area does not
- * own.
+ * `force_start_job` implement them; both of those wrappers have since landed. `POST /api/jobs/clear`
+ * (`routes/mod.rs:169`, `JobManager::clear_completed_jobs` / `clear_failed_jobs`) has not: it still
+ * needs the client half - a method on `ServiceClient` (`src-tauri/src/service/client.rs`), a
+ * `#[tauri::command]` (`src-tauri/src/commands/jobs.rs`, registered in `lib.rs`) and an
+ * `api/bridge.ts` wrapper - three files this area does not own.
  *
  * Probing for the wrapper rather than assuming it is what keeps this from becoming the thing the
- * parity contract warns about: a button that is present but cannot do anything. `canDeleteJob()` and
- * `canForceStartJob()` gate the UI on the capability, so the actions appear the moment the wrapper
- * lands and never appear as a control that throws.
+ * parity contract warns about: a button that is present but cannot do anything. `canDeleteJob()`,
+ * `canForceStartJob()` and `canClearJobs()` gate the UI on the capability, so an action appears the
+ * moment its wrapper lands and never appears as a control that throws.
  */
 interface OptionalJobBridge {
   deleteJob?: (id: string) => Promise<void>;
   forceStartJob?: (id: string) => Promise<void>;
+  /** `POST /api/jobs/clear`, which answers `{ cleared: n }`. */
+  clearJobs?: (status: string) => Promise<number>;
 }
 
 function optionalBridge(): OptionalJobBridge {
@@ -263,6 +266,36 @@ class JobsStore {
   /** Whether `Force Start` can be offered at all. See {@link OptionalJobBridge}. */
   public canForceStartJob(): boolean {
     return typeof optionalBridge().forceStartJob === "function";
+  }
+
+  /** Whether `Clear Completed` / `Clear Failed` can be offered. See {@link OptionalJobBridge}. */
+  public canClearJobs(): boolean {
+    return typeof optionalBridge().clearJobs === "function";
+  }
+
+  /**
+   * The Jobs table header's `Clear Completed` and `Clear Failed`
+   * (`JobsApp.DataTable.cs:279-289`): `JobService.ClearCompletedJobs` / `ClearFailedJobs`, each
+   * followed by a refresh. The daemon exposes both through one route, `POST /api/jobs/clear`, whose
+   * scope is `completed`, `failed` or `all` (`routes/jobs.rs:293-329`) - `all` has no V1 counterpart
+   * and no caller here.
+   *
+   * Returns how many rows the daemon says it removed, which is what a toast can quote. The list is
+   * re-read rather than filtered locally: `clear_completed_jobs` decides what "completed" means, and
+   * a client-side guess at that would drift from it.
+   */
+  public async clearJobs(scope: "completed" | "failed"): Promise<number> {
+    const clearViaBridge = optionalBridge().clearJobs;
+    if (!clearViaBridge) {
+      throw new Error(
+        "Clearing jobs needs bridge.clearJobs, which does not exist yet; " +
+          "gate the action on jobsStore.canClearJobs().",
+      );
+    }
+
+    const cleared = await clearViaBridge(scope);
+    await this.fetchJobs().catch(() => {});
+    return cleared;
   }
 
   /** Test seam: drops the exit baseline so a suite can replay snapshots from scratch. */

@@ -426,10 +426,29 @@ describe("JobSessionView cost and token display", () => {
   // `JobsApp.Data.cs:49`: an estimate derived from tokens times the price list is prefixed "~" so
   // the figure never presents itself as a charge anyone was billed.
   it("marks an estimated cost with V1's tilde", () => {
-    show({
+    const capitalised = show({
       ...job("00014", "Completed", { tokens: 12_000, cost: 1.234 }),
       costSource: "Estimated",
     } as Job);
     expect(screen.getByTestId("job-cost")).toHaveTextContent("Cost ~$1.23");
+    capitalised.unmount();
+
+    // The value actually on the wire is lower case - V1 writes `"estimated"`
+    // (`JobUsageSnapshot.cs:22`) and so does `jobs/manager.rs:2909`. This is the case that used to
+    // miss, which meant no estimate ever showed the tilde.
+    show({
+      ...job("00015", "Completed", { tokens: 12_000, cost: 1.234 }),
+      costSource: "estimated",
+    } as Job);
+    expect(screen.getByTestId("job-cost")).toHaveTextContent("Cost ~$1.23");
+  });
+
+  it("leaves an agent-reported cost unprefixed", () => {
+    show({
+      ...job("00016", "Completed", { tokens: 12_000, cost: 1.234 }),
+      costSource: "agent",
+    } as Job);
+    expect(screen.getByTestId("job-cost")).toHaveTextContent("Cost $1.23");
+    expect(screen.getByTestId("job-cost")).not.toHaveTextContent("~");
   });
 });
