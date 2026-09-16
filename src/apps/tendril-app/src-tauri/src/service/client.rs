@@ -723,7 +723,12 @@ impl TendrilClient {
             self.base_url,
             urlencoding(job_id)
         );
-        let resp = self.client.post(&url).headers(self.headers()).send().await?;
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();

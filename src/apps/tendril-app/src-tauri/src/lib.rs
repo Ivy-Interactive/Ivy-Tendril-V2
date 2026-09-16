@@ -15,6 +15,7 @@ pub use commands::jobs::*;
 pub use commands::plans::*;
 pub use commands::pull_requests::*;
 pub use commands::state::*;
+pub use commands::tunnel::*;
 pub use commands::vault::*;
 pub use commands::*;
 
@@ -182,6 +183,11 @@ pub fn run() {
             cmd_get_recent_merged_prs,
             cmd_get_recent_plan_costs,
             cmd_get_agent_cost_breakdown,
+            // Share tunnel. Without these four the share dialog is unreachable from the running app.
+            cmd_get_share_tunnel,
+            cmd_start_share_tunnel,
+            cmd_stop_share_tunnel,
+            cmd_get_cloudflared_install_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

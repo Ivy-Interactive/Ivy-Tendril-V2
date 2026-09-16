@@ -7,6 +7,7 @@ pub mod plan_mapping;
 pub mod platform;
 pub mod review_action_bridge;
 pub mod supervisor;
+pub mod tunnel_client;
 pub mod ws_bridge;
 
 pub use changes_bridge::ChangeBridge;
@@ -18,4 +19,5 @@ pub use supervisor::{
     calculate_backoff_secs, redact_sensitive_tokens, CircuitBreaker, ServiceOwnership,
     ServiceSupervisor, SupervisorStateInfo, SupervisorStatus,
 };
+pub use tunnel_client::{CloudflaredInstallDto, ShareTunnelDto, TunnelClient};
 pub use ws_bridge::WsBridge;

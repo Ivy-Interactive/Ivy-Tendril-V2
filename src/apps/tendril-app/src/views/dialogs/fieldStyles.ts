@@ -34,6 +34,8 @@ export const DIALOG_WIDTH = {
   rem32: "sm:!max-w-[32rem]",
   /** `Size.Rem(40)`: Delete Plan, and the SyncRepo policy dialog. */
   rem40: "sm:!max-w-[40rem]",
+  /** `Size.Px(560)`: the shell's plan search dialog, the one call site given in px rather than rem. */
+  px560: "sm:!max-w-[560px]",
 } as const;
 
 export type DialogWidth = keyof typeof DIALOG_WIDTH;

@@ -8,6 +8,7 @@ pub mod jobs;
 pub mod plans;
 pub mod pull_requests;
 pub mod state;
+pub mod tunnel;
 pub mod vault;
 
 use crate::daemon::{discover_daemon_status, resolve_tendril_home, DaemonStatusResponse};
@@ -104,9 +105,9 @@ pub async fn cmd_repair_service() -> Result<String, BridgeError> {
         MasterReclaim::NoClaim => {
             "Service repair completed. (No daemon registration to clean up.)".to_string()
         }
-        MasterReclaim::Removed { pid: Some(pid) } => format!(
-            "Service repair completed. (Cleaned a stale registration left by PID {pid}.)"
-        ),
+        MasterReclaim::Removed { pid: Some(pid) } => {
+            format!("Service repair completed. (Cleaned a stale registration left by PID {pid}.)")
+        }
         MasterReclaim::Removed { pid: None } => {
             "Service repair completed. (Cleaned an unreadable daemon registration.)".to_string()
         }

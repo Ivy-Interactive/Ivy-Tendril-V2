@@ -21,8 +21,15 @@ pub fn is_allowed_host(host: &str, allowed: Option<&[String]>, tunnel_host: Opti
         return true;
     }
 
-    // The share tunnel's own hostname. Keeping this a parameter is what lets tunnelled access work
-    // without anybody having to widen `security.allowedHosts` by hand.
+    // The share tunnel's own hostname, from `IsAllowedHost`'s "Active tunnel host" branch. Keeping
+    // this a parameter is what lets tunnelled access work without anybody having to widen
+    // `security.allowedHosts` by hand.
+    //
+    // The original guards this branch with `_tunnelService.IsConnected` — a host that *would* be the
+    // tunnel's is not allowed unless a tunnel is actually up. The equivalent here is that the caller
+    // passes `None` when there is no active share: see
+    // [`tendril_core::tunnel::share_state::active_host`], which only ever reports a recorded, live
+    // share. A stale or absent record therefore allows nothing.
     if let Some(tunnel) = tunnel_host {
         if !tunnel.is_empty() && tunnel.eq_ignore_ascii_case(host) {
             return true;
@@ -74,5 +81,113 @@ pub fn strip_port(host: &str) -> &str {
     match (host.find(':'), host.rfind(':')) {
         (Some(first), Some(last)) if first == last => &host[..first],
         _ => host,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_is_always_allowed() {
+        for host in [
+            "localhost",
+            "LOCALHOST",
+            "127.0.0.1",
+            "127.1.2.3",
+            "::1",
+            "[::1]",
+        ] {
+            assert!(is_allowed_host(host, None, None), "{host}");
+        }
+    }
+
+    #[test]
+    fn private_ranges_and_mdns_names_are_allowed() {
+        for host in [
+            "10.0.0.1",
+            "172.16.5.5",
+            "172.31.0.1",
+            "192.168.1.20",
+            "mymac.local",
+            "MyMac.LOCAL",
+        ] {
+            assert!(is_allowed_host(host, None, None), "{host}");
+        }
+        for host in [
+            "172.15.0.1",
+            "172.32.0.1",
+            "192.169.0.1",
+            "11.0.0.1",
+            "8.8.8.8",
+        ] {
+            assert!(!is_allowed_host(host, None, None), "{host} is not private");
+        }
+    }
+
+    #[test]
+    fn an_empty_or_public_host_is_refused() {
+        assert!(!is_allowed_host("", None, None));
+        assert!(!is_allowed_host("   ", None, None));
+        assert!(!is_allowed_host("evil.example.com", None, None));
+    }
+
+    /// The share-tunnel branch: this is what makes a shared plan's images load for the visitor.
+    #[test]
+    fn the_active_tunnel_host_is_allowed_and_only_that_host() {
+        let tunnel = Some("calm-otter.trycloudflare.com");
+        assert!(is_allowed_host(
+            "calm-otter.trycloudflare.com",
+            None,
+            tunnel
+        ));
+        assert!(
+            is_allowed_host("CALM-OTTER.trycloudflare.com", None, tunnel),
+            "the original compares case-insensitively"
+        );
+        assert!(
+            !is_allowed_host("other-otter.trycloudflare.com", None, tunnel),
+            "a different quick tunnel is a different origin"
+        );
+        assert!(
+            !is_allowed_host("calm-otter.trycloudflare.com.attacker.test", None, tunnel),
+            "a suffix match would allow an attacker-controlled name"
+        );
+    }
+
+    /// With no share running there is no tunnel host, so the same request that would be served during a
+    /// share is refused — the port of the original's `IsConnected` guard.
+    #[test]
+    fn with_no_active_share_the_tunnel_host_is_refused() {
+        assert!(!is_allowed_host("calm-otter.trycloudflare.com", None, None));
+        assert!(!is_allowed_host(
+            "calm-otter.trycloudflare.com",
+            None,
+            Some("")
+        ));
+    }
+
+    #[test]
+    fn configured_allowed_hosts_are_honoured_case_insensitively() {
+        let allowed = vec!["tendril.example.com".to_string()];
+        assert!(is_allowed_host("TENDRIL.example.com", Some(&allowed), None));
+        assert!(!is_allowed_host("other.example.com", Some(&allowed), None));
+    }
+
+    #[test]
+    fn strip_port_leaves_ipv6_literals_intact() {
+        assert_eq!(strip_port("localhost:5010"), "localhost");
+        assert_eq!(strip_port("127.0.0.1:5010"), "127.0.0.1");
+        assert_eq!(strip_port("[::1]:5010"), "[::1]");
+        assert_eq!(strip_port("[::1]"), "[::1]");
+        assert_eq!(
+            strip_port("::1"),
+            "::1",
+            "a bare IPv6 literal has no port to strip"
+        );
+        assert_eq!(
+            strip_port("calm-otter.trycloudflare.com"),
+            "calm-otter.trycloudflare.com"
+        );
     }
 }

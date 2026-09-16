@@ -259,6 +259,56 @@ pub async fn auth_middleware(
         }
     }
 
+    // A share visitor has no bearer secret and no session token — they have the capability token that
+    // came with their link. Three bindings make it narrow enough to hand to the internet:
+    //
+    // 1. It only works while a share is *recorded*, so stopping the share is the revocation.
+    // 2. It only works for a request addressed to the tunnel's own host, so a leaked link cannot be
+    //    replayed against loopback or the LAN.
+    // 3. It only authorises `share::policy::share_token_allows` — deny-by-default, reads on one plan's
+    //    surfaces plus comments and annotations, and no PUT/PATCH/DELETE at all.
+    //
+    // That third binding is the whole design. V1 fenced a share by filtering the sidebar
+    // (`ShareAllowedAppIds`), which is sufficient *there* because V1 renders the UI on the server: an
+    // app the shell will not route to is an app whose `Build()` never runs. V2 ships a bundle the
+    // visitor controls, so hiding a nav row hides nothing — `fetch('/api/jobs')` from the console is
+    // the same request either way. The fence has to be here, on the route.
+    if !authenticated {
+        let presented = req
+            .headers()
+            .get("x-tendril-share-token")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+            .or_else(|| {
+                req.uri().query().and_then(|q| {
+                    q.split('&').find_map(|pair| {
+                        pair.split_once('=')
+                            .filter(|(k, _)| *k == "shareToken")
+                            .map(|(_, v)| v.to_string())
+                    })
+                })
+            })
+            .unwrap_or_default();
+
+        if !presented.is_empty() {
+            let host = tendril_core::security::host_policy::strip_port(
+                req.headers()
+                    .get(axum::http::header::HOST)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or_default(),
+            )
+            .to_string();
+            if let Some(session) = tendril_core::tunnel::share_state::read(&state.tendril_home) {
+                authenticated = session.host.eq_ignore_ascii_case(&host)
+                    && tendril_core::tunnel::share_state::tokens_match(&session.token, &presented)
+                    && tendril_core::share::policy::share_token_allows(
+                        req.method().as_str(),
+                        req.uri().path(),
+                    );
+            }
+        }
+    }
+
     // Basic credentials are an *additional* accepted credential, checked last: with no `auth` block
     // in config.yaml `state.basic_auth` is `None` and nothing above or below this point changes.
     if !authenticated {

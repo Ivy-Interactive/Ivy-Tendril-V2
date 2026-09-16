@@ -5,6 +5,7 @@ pub mod master;
 pub mod pr_sync;
 pub mod pty;
 pub mod routes;
+pub mod share_exposure;
 pub mod state;
 pub mod tasks;
 pub mod watch;

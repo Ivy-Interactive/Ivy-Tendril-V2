@@ -17,6 +17,7 @@ pub mod plans;
 pub mod projects;
 pub mod pull_requests;
 pub mod recommendations;
+pub mod tables;
 pub mod tunnel;
 pub mod vault;
 pub mod verifications;
@@ -171,6 +172,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Static segments before `:id`, so a literal path can never be read as a job id. Axum
         // matches static segments first; keeping them adjacent makes the intent obvious.
         .route("/api/jobs/queue", get(jobs::job_queue))
+        // The server-side query API over the Jobs table: sort, filter, window and total count are
+        // SQLite's, so a jobs table costs one page per view however long the history is.
+        .route("/api/jobs/query", post(jobs::query_jobs_handler))
         .route("/api/jobs/stop-all", post(jobs::stop_all_jobs))
         .route("/api/jobs/clear", post(jobs::clear_jobs))
         .route("/api/jobs/maintenance", post(jobs::run_maintenance))
@@ -186,6 +190,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/jobs/:id/logs/stream", get(jobs::stream_job_logs))
         .route("/api/jobs/:id/events", get(jobs::stream_job_events))
         // Filesystem changes
+        // Tables — the generic form of the query API above. A table listed in
+        // `tables::queryable_tables` is server-paged, sortable and filterable with no DTO of its own.
+        .route("/api/tables", get(tables::list_tables))
+        .route("/api/tables/:table/schema", get(tables::table_schema))
+        .route(
+            "/api/tables/:table/query",
+            post(tables::query_table_handler),
+        )
+        .route(
+            "/api/tables/:table/values",
+            post(tables::table_values_handler),
+        )
         .route("/api/changes/events", get(changes::stream_changes))
         // Projects & Verifications
         .route(
@@ -427,7 +443,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
-        .merge(password_auth)
+        // Refused over a share: a visitor has no business logging in, and exposing a credential
+        // check to the internet buys the operator nothing. See `crate::share_exposure`.
+        .merge(password_auth.layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::share_exposure::refuse_on_tunnel_host,
+        )))
         .merge(local_file)
         // Alias for the original Tendril's GET /api/jobs/health, same handler/payload. Kept
         // unauthenticated to match /api/health (the original guards it, but a peer that hasn't
@@ -438,7 +459,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // navigation carries no Authorization header, and neither do the subresource requests the
         // service worker reissues from inside the proxied page. A loopback-only target allow-list is
         // what keeps these from being an open relay — see crate::webviewer.
-        .merge(crate::webviewer::routes())
+        // ...and that allow-list is exactly why this has to be refused over a share tunnel: confined
+        // to loopback targets, a publicly reachable proxy lets an anonymous visitor reach services
+        // bound to the daemon host's localhost. See `crate::share_exposure`.
+        .merge(
+            crate::webviewer::routes().layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                crate::share_exposure::refuse_on_tunnel_host,
+            )),
+        )
         .merge(protected)
         .layer(cors)
         .with_state(state)

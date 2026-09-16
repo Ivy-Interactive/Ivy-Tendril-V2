@@ -3,9 +3,10 @@
 //! This is the one endpoint in the daemon that reads a caller-named path off the filesystem, so it is
 //! guarded in depth and every layer fails closed:
 //!
-//! 0. **Token** — `?token=` must match the bearer secret or be a valid session token. The route
-//!    cannot sit behind [`crate::auth::auth_middleware`] (an `<img src>` sends no `Authorization`
-//!    header), so this is its equivalent, and it runs before anything else touches the request.
+//! 0. **Token** — `?token=` must match the bearer secret, be a valid session token, or be the active
+//!    share's capability token *presented to the share tunnel's own host*. The route cannot sit behind
+//!    [`crate::auth::auth_middleware`] (an `<img src>` sends no `Authorization` header), so this is its
+//!    equivalent, and it runs before anything else touches the request.
 //! 1. **Host** allowlist, 2. **Origin** same-host, 3. **`Sec-Fetch-Site`** — a page on another origin
 //!    must not be able to make the browser read local files through the daemon.
 //! 4. **Extension** allowlist, 5. **Root confinement** — see
@@ -149,25 +150,70 @@ pub async fn local_file_guard(
     next: Next,
 ) -> Response {
     let snapshot = state.settings_snapshot();
+    let host = request_host(&req);
+
+    // The active share, if any. Read once and used for two decisions — which token is acceptable and
+    // which host is — because they have to agree: a share's token is only good for the share's host.
+    //
+    // Read from disk rather than from `AppState`, which does not carry the tunnel (see
+    // `tendril_core::tunnel::share_state` for why). It is only read when the request's host is not
+    // already allowed *and* the token did not match a first-party credential, so the common local
+    // request costs nothing.
+    let share_host = |host: &str| -> Option<ShareGrant> {
+        let session = tendril_core::tunnel::share_state::read(&state.tendril_home)?;
+        session
+            .host
+            .eq_ignore_ascii_case(host)
+            .then_some(ShareGrant {
+                token: session.token,
+                host: session.host,
+            })
+    };
 
     // 0. Token. Before every other check, so an unauthenticated caller learns nothing about hosts,
     //    extensions or the filesystem.
     let token = query_param(req.uri().query(), "token").unwrap_or_default();
-    let token_ok = secrets_match(&token, &state.secret)
+    let mut share_grant: Option<ShareGrant> = None;
+    let mut token_ok = secrets_match(&token, &state.secret)
         || validate_session_token(snapshot.settings.auth.as_ref(), &token);
+    if !token_ok {
+        // A share visitor has no bearer secret and no session token — they have the capability token
+        // that came with the link. It is accepted here and *only* for the tunnel's own host, so a
+        // leaked link cannot be replayed against a loopback or LAN address.
+        if let Some(grant) = share_host(&host) {
+            if tendril_core::tunnel::share_state::tokens_match(&grant.token, &token) {
+                token_ok = true;
+                share_grant = Some(grant);
+            }
+        }
+    }
     if !token_ok {
         return unauthorized();
     }
 
     // 1. Host allowlist.
-    let host = request_host(&req);
     let allowed_hosts = snapshot
         .settings
         .security
         .as_ref()
         .and_then(|security| security.allowed_hosts.as_deref());
-    // TODO: pass the share-tunnel host once V2 has one.
-    if !is_allowed_host(&host, allowed_hosts, None) {
+    // The original's `IsAllowedHost` allows the active tunnel's host, which is what makes a shared
+    // plan's screenshots load for the visitor. `None` when no share is running, so the same request is
+    // refused outside a share.
+    //
+    // Checked without the tunnel first: the allowlist is a disjunction, so a loopback or LAN request
+    // gets the same answer either way and never pays for the state-file read.
+    let host_allowed = is_allowed_host(&host, allowed_hosts, None) || {
+        let tunnel_host = match &share_grant {
+            // Already established above that this request came in on the tunnel host.
+            Some(grant) => Some(grant.host.clone()),
+            // A first-party credential can also arrive on the tunnel host — the owner opening
+            // their own share link — so the allowance is looked up for them too.
+            None => share_host(&host).map(|grant| grant.host),
+        };
+        is_allowed_host(&host, allowed_hosts, tunnel_host.as_deref())
+    };
+    if !host_allowed {
         return forbidden("Access denied: invalid host");
     }
 
@@ -233,3 +279,11 @@ pub async fn local_file_guard(
 /// The confined, absolute path the guard approved, handed to the handler through request extensions.
 #[derive(Clone, Debug)]
 pub struct ApprovedPath(pub std::path::PathBuf);
+
+/// An active share, as far as this guard is concerned: the token it will accept and the one host it
+/// will accept it on. Only ever constructed for a request whose `Host` already matches the share, so
+/// the two fields cannot drift apart.
+struct ShareGrant {
+    token: String,
+    host: String,
+}
