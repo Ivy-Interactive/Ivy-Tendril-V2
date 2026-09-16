@@ -187,12 +187,26 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
       value: model.id,
       label: model.displayName,
     }));
-    const effortSource = agent.efforts.length > 0 ? agent.efforts : isSelected ? efforts : [];
+    const model =
+      remembered.modelId ??
+      (isSelected ? selectedModelId : (modelOptions[0]?.value ?? DEFAULT_OPTION_ID));
+
+    /* The ladder belongs to the *model* first, then the agent. V1 declares `SupportedEfforts` on
+       every catalogue row and resolves through `ChatApp.GetEffortsForAgentAndModel`, so Copilot on
+       `claude-opus-5` offers Claude's five levels and on `gpt-5.4` offers Copilot's four. Reading
+       `agent.efforts` alone gave one ladder per agent regardless of the model chosen beside it. */
+    const activeModel = modelSource.find((candidate) => candidate.id === model);
+    const effortSource =
+      activeModel?.efforts && activeModel.efforts.length > 0
+        ? activeModel.efforts
+        : agent.efforts.length > 0
+          ? agent.efforts
+          : isSelected
+            ? efforts
+            : [];
     return {
       models: modelOptions,
-      model:
-        remembered.modelId ??
-        (isSelected ? selectedModelId : (modelOptions[0]?.value ?? DEFAULT_OPTION_ID)),
+      model,
       supportsEffort: agent.supportsEffort || (isSelected && supportsEffort === true),
       efforts:
         effortSource.length > 0

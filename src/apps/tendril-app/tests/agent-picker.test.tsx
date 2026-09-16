@@ -47,6 +47,40 @@ const GEMINI: AgentOption = {
   efforts: [],
 };
 
+/**
+ * V1's canonical per-model case. `ChatApp.GetEffortsForAgentAndModel` resolves the ladder from the
+ * *model row*, so Copilot offers Claude's five levels on an Anthropic model and its own four on a
+ * GPT one. Reading `AgentOption.efforts` alone cannot express that.
+ */
+const COPILOT: AgentOption = {
+  id: "copilot",
+  label: "Copilot",
+  models: [
+    {
+      id: "gpt-5.4",
+      displayName: "GPT-5.4",
+      efforts: [
+        { id: "low", displayName: "Low" },
+        { id: "medium", displayName: "Medium" },
+      ],
+    },
+    {
+      id: "claude-opus-5",
+      displayName: "Claude Opus 5",
+      efforts: [
+        { id: "low", displayName: "Low" },
+        { id: "high", displayName: "High" },
+        { id: "max", displayName: "Max" },
+      ],
+    },
+  ],
+  supportsEffort: true,
+  efforts: [
+    { id: "low", displayName: "Low" },
+    { id: "medium", displayName: "Medium" },
+  ],
+};
+
 /** The picker is controlled, so the harness carries the per-agent memory rule the store owns. */
 const Harness: React.FC<{
   agents?: AgentOption[];
@@ -282,5 +316,35 @@ describe("AgentPicker", () => {
     expect(agentBrandIcon("openaiproxy")).toBe("OpenAI");
     expect(agentBrandIcon("berget")).toBe("ChevronUp");
     expect(agentBrandIcon("something-else")).toBeUndefined();
+  });
+
+  it("offers the selected model's own effort ladder, not just the agent's", () => {
+    render(<Harness agents={[COPILOT]} initialAgentId="copilot" />);
+    openMenu();
+    openOptions("Copilot");
+
+    // First model is the GPT row, which carries Copilot's own two levels.
+    expect([...effortSelect().options].map((option) => option.value)).toEqual(["low", "medium"]);
+
+    // Switching to the Anthropic row must switch the ladder with it.
+    fireEvent.change(modelSelect(), { target: { value: "claude-opus-5" } });
+
+    expect([...effortSelect().options].map((option) => option.value)).toEqual([
+      "low",
+      "high",
+      "max",
+    ]);
+  });
+
+  it("falls back to the agent's ladder for a model that declares none", () => {
+    const noPerModel: AgentOption = {
+      ...COPILOT,
+      models: [{ id: "gpt-5.4", displayName: "GPT-5.4" }],
+    };
+    render(<Harness agents={[noPerModel]} initialAgentId="copilot" />);
+    openMenu();
+    openOptions("Copilot");
+
+    expect([...effortSelect().options].map((option) => option.value)).toEqual(["low", "medium"]);
   });
 });
