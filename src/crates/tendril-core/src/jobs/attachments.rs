@@ -141,8 +141,8 @@ pub fn store_attachment(
         return Err(AttachmentError::TooLarge);
     }
 
-    let dir = attachment_session_dir(tendril_home, session_id)
-        .ok_or(AttachmentError::InvalidSession)?;
+    let dir =
+        attachment_session_dir(tendril_home, session_id).ok_or(AttachmentError::InvalidSession)?;
     let name = safe_attachment_name(file_name).ok_or(AttachmentError::InvalidName)?;
 
     // Belt and braces over `safe_attachment_name`: whatever the name turned out to mean on this
@@ -228,10 +228,7 @@ pub fn clean_stale_attachment_sessions(tendril_home: &Path, max_age: Duration) -
 
 fn directory_age(path: &Path, now: SystemTime) -> Option<Duration> {
     let metadata = std::fs::metadata(path).ok()?;
-    let stamp = metadata
-        .created()
-        .or_else(|_| metadata.modified())
-        .ok()?;
+    let stamp = metadata.created().or_else(|_| metadata.modified()).ok()?;
     now.duration_since(stamp).ok()
 }
 
@@ -242,7 +239,10 @@ pub fn move_attachments_to_plan_folder(tendril_home: &Path, plans_dir: &Path, jo
     let Some(session_id) = upload_session_id(job) else {
         return;
     };
-    let session_dir = tendril_home.join("Attachments").join(&session_id);
+    // Through the same helper the staging half writes with, so one function owns the layout.
+    let Some(session_dir) = attachment_session_dir(tendril_home, &session_id) else {
+        return;
+    };
     if !session_dir.is_dir() {
         return;
     }

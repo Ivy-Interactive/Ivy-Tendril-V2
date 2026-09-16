@@ -631,7 +631,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
    * dropped rather than duplicated: `addAttachments` de-duplicates on the path it was given, which is
    * the source path, and by the time this runs the first row no longer carries it.
    */
-  const useStagedPath = (source: string, staged: string) => {
+  const applyStagedPath = (source: string, staged: string) => {
     setAttachments((prev) => {
       if (prev.some((a) => a.path === staged)) {
         return prev.filter((a) => a.path !== source);
@@ -667,7 +667,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           stagingRef.current.set(source, pending);
         }
         try {
-          useStagedPath(source, await pending);
+          applyStagedPath(source, await pending);
         } catch {
           // Retried if the file is attached again.
           stagingRef.current.delete(source);

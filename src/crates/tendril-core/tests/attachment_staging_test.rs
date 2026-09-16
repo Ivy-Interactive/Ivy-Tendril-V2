@@ -9,8 +9,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tendril_core::jobs::attachments::{
-    attachment_session_dir, clean_stale_attachment_sessions, safe_attachment_name, store_attachment,
-    AttachmentError, MAX_ATTACHMENT_BYTES,
+    attachment_session_dir, clean_stale_attachment_sessions, safe_attachment_name,
+    store_attachment, AttachmentError, MAX_ATTACHMENT_BYTES,
 };
 
 /// A fresh, empty Tendril home that removes itself. `tempfile` is not a dependency of this crate, so
@@ -66,7 +66,10 @@ fn an_upload_lands_in_the_session_directory() {
 
     assert_eq!(
         stored,
-        home.path().join("Attachments").join("session-1").join("shot.png")
+        home.path()
+            .join("Attachments")
+            .join("session-1")
+            .join("shot.png")
     );
     assert_eq!(std::fs::read(&stored).expect("read back"), b"pretend png");
 }
@@ -105,7 +108,10 @@ fn a_session_id_that_could_escape_the_attachments_directory_is_refused() {
 
     for session in ["..", "../..", "../elsewhere", "a/b", "a\\b", "/tmp", ""] {
         match store_attachment(home.path(), session, "shot.png", b"payload") {
-            Ok(path) => panic!("session {session:?} must not stage (wrote {})", path.display()),
+            Ok(path) => panic!(
+                "session {session:?} must not stage (wrote {})",
+                path.display()
+            ),
             Err(err) => assert!(
                 matches!(err, AttachmentError::InvalidSession),
                 "{session:?}: {err}"
@@ -114,7 +120,8 @@ fn a_session_id_that_could_escape_the_attachments_directory_is_refused() {
     }
 
     assert!(
-        !home.path().join("shot.png").exists() && !home.path().join("Attachments/shot.png").exists(),
+        !home.path().join("shot.png").exists()
+            && !home.path().join("Attachments/shot.png").exists(),
         "no escaping session id may write above its own directory"
     );
     assert!(attachment_session_dir(home.path(), "..").is_none());
@@ -181,11 +188,18 @@ fn a_second_file_of_the_same_name_does_not_overwrite_the_first() {
 /// with itself about what a plain file name is.
 #[test]
 fn a_plain_name_survives_unchanged() {
-    for name in ["shot.png", "Screenshot 2026-09-16 at 10.41.11.png", "a.b.c.pdf"] {
+    for name in [
+        "shot.png",
+        "Screenshot 2026-09-16 at 10.41.11.png",
+        "a.b.c.pdf",
+    ] {
         assert_eq!(safe_attachment_name(name).as_deref(), Some(name));
     }
     // Surrounding whitespace is not part of a file name.
-    assert_eq!(safe_attachment_name("  shot.png  ").as_deref(), Some("shot.png"));
+    assert_eq!(
+        safe_attachment_name("  shot.png  ").as_deref(),
+        Some("shot.png")
+    );
     // A name long enough to break a filesystem is not a name.
     assert!(safe_attachment_name(&"a".repeat(201)).is_none());
 }
@@ -208,7 +222,10 @@ fn the_stale_sweep_removes_old_sessions_and_keeps_new_ones() {
     assert!(fresh.exists() && stale.exists());
 
     // A zero threshold makes every existing directory stale, which is the sweep's other end.
-    assert_eq!(clean_stale_attachment_sessions(home.path(), Duration::ZERO), 2);
+    assert_eq!(
+        clean_stale_attachment_sessions(home.path(), Duration::ZERO),
+        2
+    );
     assert!(!fresh.exists() && !stale.exists());
     assert!(
         home.path().join("Attachments").is_dir(),
@@ -219,6 +236,9 @@ fn the_stale_sweep_removes_old_sessions_and_keeps_new_ones() {
 #[test]
 fn the_stale_sweep_is_a_no_op_without_an_attachments_directory() {
     let home = Home::new("no-directory");
-    assert_eq!(clean_stale_attachment_sessions(home.path(), Duration::ZERO), 0);
+    assert_eq!(
+        clean_stale_attachment_sessions(home.path(), Duration::ZERO),
+        0
+    );
     assert!(!Path::new(&home.path().join("Attachments")).exists());
 }
