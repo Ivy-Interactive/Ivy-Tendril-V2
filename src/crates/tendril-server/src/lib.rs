@@ -61,6 +61,21 @@ pub async fn run_server(
         );
     }
 
+    // Every job compiles its prompt out of `Promptwares/<JobType>/`, so a home that has never had
+    // `tendril promptware deploy` run against it fails every job with "Promptware folder not found".
+    // Deploying at startup is what V1's `TendrilServer` does, and it is an overlay: a deployed
+    // promptware's own `Memory/` and `Tools/` survive, so this is safe to repeat on every boot.
+    if let Err(e) = tendril_core::promptware::deploy_standard_promptwares(
+        &tendril_home.join("Promptwares"),
+    ) {
+        tracing::warn!(
+            "Could not deploy promptwares under {}: {} — jobs will fail until \
+             `tendril promptware deploy` succeeds",
+            tendril_home.display(),
+            e
+        );
+    }
+
     // Loaded before anything claims the port or writes `.master`: an unreadable certificate should
     // stop the daemon, not leave a half-announced server behind.
     let tls_config = match &tls {

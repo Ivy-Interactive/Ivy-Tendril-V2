@@ -2,6 +2,7 @@ use crate::agents::providers::{
     apply_security_settings, build_agent_spec, AgentLaunchConfig, AgentProcessSpec,
 };
 use crate::agents::reconcile::build_missing_result_lines;
+use crate::agents::resolution::resolve_agent;
 use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
@@ -22,8 +23,9 @@ use crate::jobs::denials::{describe_denials, extract_permission_denials, summari
 use crate::jobs::dependents::release_dependents;
 use crate::jobs::failure_analysis::extract_failure_reason;
 use crate::jobs::firmware_values::{
-    build_firmware_values, execution_profile_override, find_project, find_repo_ref, repo_name,
-    resolve_project, resolve_project_skills, resolve_working_directory,
+    build_firmware_values, build_job_context, execution_profile_override, find_project,
+    find_repo_ref, repo_name, resolve_project, resolve_project_skills,
+    resolve_working_directory, resolve_writable_directories,
 };
 use crate::jobs::hooks::{run_hooks, shell_hook_executor, HookExecutor, HookPhase, HookRunContext};
 use crate::jobs::logger::{
@@ -1854,11 +1856,38 @@ fn spawn_runner(
             .map(|p| p.security.clone())
             .unwrap_or_default();
 
+        // What the agent is actually launched with. Without this the launch config carries no
+        // allowlist at all, which sends `build_claude_spec` down its restrictive fallback and denies
+        // the shell commands every promptware is built out of — so the job burns tokens and reports
+        // "exited 0 with no commits recorded". V1 resolves the same way in `AgentProviderFactory`.
+        let job_context = build_job_context(&values, &tendril_home, &promptware_folder);
+        let resolution = resolve_agent(
+            &settings,
+            &job.provider,
+            &job.job_type,
+            job.execution_profile.as_deref(),
+            &job_context,
+        );
+
         let mut launch_config = AgentLaunchConfig {
             prompt: compiled_prompt,
             working_directory: working_dir.clone(),
-            model: job.model.clone(),
-            effort: job.effort.clone(),
+            // The job's own model and effort win when it carries them: an explicit per-job choice is
+            // downstream of the profile the resolution applied.
+            model: job.model.clone().or_else(|| resolution.model.clone()),
+            effort: job.effort.clone().or_else(|| resolution.effort.clone()),
+            permission_mode: Some("FullAuto".to_string()),
+            allowed_tools: resolution.allowed_tools.clone(),
+            denied_tools: resolution.denied_tools.clone(),
+            writable_directories: resolve_writable_directories(
+                &job.job_type,
+                &promptware_folder,
+                Path::new(&job.plan_file),
+                &tendril_home,
+                &settings,
+            ),
+            environment_variables: resolution.environment_variables.clone(),
+            extra_arguments: resolution.extra_arguments.clone(),
             ..Default::default()
         };
         apply_security_settings(&mut launch_config, &security);
@@ -2589,6 +2618,18 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
                                     job.model = Some(m.to_string());
                                 }
                             }
+                            // Claude Code's result event carries no `model`; it reports usage keyed
+                            // by model id under `modelUsage`. Without this the model column stays
+                            // empty and the cost estimate falls back to a default model's pricing.
+                            if job.model.is_none() {
+                                if let Some(first) = v
+                                    .get("modelUsage")
+                                    .and_then(|m| m.as_object())
+                                    .and_then(|m| m.keys().next())
+                                {
+                                    job.model = Some(first.to_string());
+                                }
+                            }
                             if let Some(usage) = usage_opt {
                                 if let Some(m) = usage.get("model").and_then(|m| m.as_str()) {
                                     if job.model.is_none() {
@@ -2608,17 +2649,23 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
                                     .and_then(|n| n.as_i64())
                                     .unwrap_or(0);
 
+                                // `cache_read_input_tokens` is what Claude Code's result event
+                                // actually calls this, and it dominates the bill on a long run —
+                                // without the alias a 227k-token cache read was recorded as 0.
                                 let cache_read_tok = usage
                                     .get("cache_read_tokens")
                                     .or_else(|| usage.get("cacheReadTokens"))
                                     .or_else(|| usage.get("cached_input_tokens"))
+                                    .or_else(|| usage.get("cache_read_input_tokens"))
                                     .and_then(|n| n.as_i64())
                                     .unwrap_or(0);
 
+                                // Likewise `cache_creation_input_tokens` for the write side.
                                 let cache_write_tok = usage
                                     .get("cache_write_tokens")
                                     .or_else(|| usage.get("cacheWriteTokens"))
                                     .or_else(|| usage.get("cache_write_input_tokens"))
+                                    .or_else(|| usage.get("cache_creation_input_tokens"))
                                     .and_then(|n| n.as_i64())
                                     .unwrap_or(0);
 
@@ -2639,10 +2686,15 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
                                 }
                                 job.tokens = Some(total_tok);
 
+                                // `total_cost_usd` is the field Claude Code reports, and it is the
+                                // agent's own figure — preferred over our estimate, which cannot know
+                                // the caller's plan or tier.
                                 let provider_cost = usage
                                     .get("cost")
                                     .or_else(|| v.get("cost"))
                                     .or_else(|| v.get("total_cost"))
+                                    .or_else(|| v.get("total_cost_usd"))
+                                    .or_else(|| usage.get("total_cost_usd"))
                                     .and_then(|c| c.as_f64());
 
                                 if let Some(cost) = provider_cost {

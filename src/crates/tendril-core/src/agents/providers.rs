@@ -226,11 +226,23 @@ fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
 // Claude Code (claude)
 // ---------------------------------------------------------------------------
 fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
-    let perm_mode = match config.permission_mode.as_deref().unwrap_or("FullAuto") {
-        "FullAuto" => "dontAsk",
-        "AcceptEdits" => "acceptEdits",
-        "Plan" => "plan",
-        _ => "default",
+    // A caller that supplies no allowlist (the chat app) wants an unrestricted trusted session, the
+    // same thing the interactive agent gets. `dontAsk` plus a prefix allow list denies anything the
+    // list does not name — including every compound `cd x && y` the agent naturally reaches for, and
+    // every Bash command reaching outside the working directory — and `--print` has no prompt surface
+    // to ask through, so the run dies rather than pausing. Ported from V1's `ClaudeCli`.
+    let unrestricted = config.permission_mode.as_deref().unwrap_or("FullAuto") == "FullAuto"
+        && config.allowed_tools.is_empty();
+
+    let perm_mode = if unrestricted {
+        "bypassPermissions"
+    } else {
+        match config.permission_mode.as_deref().unwrap_or("FullAuto") {
+            "FullAuto" => "dontAsk",
+            "AcceptEdits" => "acceptEdits",
+            "Plan" => "plan",
+            _ => "default",
+        }
     };
 
     let mut args = vec![
