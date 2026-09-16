@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   ReviewActionsBarView,
   evaluateCondition,
+  evaluateConditionState,
   getReviewActionTooltip,
 } from "../src/components/ReviewActionsBarView";
 import { ReviewView } from "../src/views/ReviewView";
@@ -240,5 +241,109 @@ describe("ReviewView integration with ReviewActionsBarView", () => {
       });
     });
     expect(executeSpy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The case V1 does not have. `PlatformHelper.EvaluatePowerShellCondition` runs the condition against
+ * the real filesystem, so every condition reaches a verdict and a button is disabled only on a verdict
+ * of "does not hold". This evaluator has no filesystem, so it has to distinguish a condition that
+ * failed from one it never ran - folding the second into the first disabled every conditioned review
+ * action in the app permanently, under a tooltip claiming the condition had been checked.
+ */
+describe("evaluateConditionState", () => {
+  it("decides what it can, exactly as evaluateCondition does", () => {
+    expect(evaluateConditionState(undefined)).toBe(true);
+    expect(evaluateConditionState("$true")).toBe(true);
+    expect(evaluateConditionState("$false")).toBe(false);
+    expect(evaluateConditionState("$false -or $true")).toBe(true);
+    expect(evaluateConditionState("$true -and $false")).toBe(false);
+    expect(
+      evaluateConditionState('Test-Path "package.json"', { existingPaths: ["/r/package.json"] }),
+    ).toBe(true);
+    expect(
+      evaluateConditionState('Test-Path "gone.txt"', { existingPaths: ["/r/package.json"] }),
+    ).toBe(false);
+  });
+
+  it("reports a Test-Path with nothing to test against as undecided, not as failed", () => {
+    expect(evaluateConditionState('Test-Path "dist"')).toBe("unknown");
+    expect(evaluateConditionState("Test-Path src/apps/tendril-app")).toBe("unknown");
+  });
+
+  it("reports grammar outside its subset as undecided", () => {
+    expect(evaluateConditionState("$env:CI -eq 'true'")).toBe("unknown");
+  });
+
+  it("short-circuits three-valued logic the way PowerShell would", () => {
+    // One true settles an -or; one false settles an -and. Only a genuinely open question stays open.
+    expect(evaluateConditionState('$true -or Test-Path "dist"')).toBe(true);
+    expect(evaluateConditionState('$false -or Test-Path "dist"')).toBe("unknown");
+    expect(evaluateConditionState('$false -and Test-Path "dist"')).toBe(false);
+    expect(evaluateConditionState('$true -and Test-Path "dist"')).toBe("unknown");
+  });
+
+  it("keeps evaluateCondition's own contract, which tendril-core mirrors for hooks", () => {
+    // A hook whose condition cannot be evaluated does not run, so undecided reads as false here.
+    expect(evaluateCondition('Test-Path "dist"')).toBe(false);
+    expect(evaluateCondition("$env:CI -eq 'true'")).toBe(false);
+  });
+});
+
+describe("ReviewActionsBarView undecidable conditions", () => {
+  const action: ReviewActionConfig = {
+    name: "Dev Server",
+    condition: "Test-Path src/apps/tendril-app",
+    command: "pnpm dev:app",
+  };
+
+  it("offers the action and says the condition was not checked", () => {
+    render(<ReviewActionsBarView actions={[action]} />);
+
+    const btn = screen.getByRole("button", { name: "Dev Server" });
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveAttribute(
+      "title",
+      "Run: pnpm dev:app. Condition not evaluated here: Test-Path src/apps/tendril-app",
+    );
+  });
+
+  it("defers to a host that did evaluate the condition", () => {
+    render(<ReviewActionsBarView actions={[action]} actionStates={{ "Dev Server": false }} />);
+
+    const btn = screen.getByRole("button", { name: "Dev Server" });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute(
+      "title",
+      "Disabled: Condition not met (Test-Path src/apps/tendril-app)",
+    );
+  });
+
+  it("only quiets the button that was pressed, since V1 allows duplicate action tabs", async () => {
+    let release: (() => void) | undefined;
+    const onExecute = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    render(
+      <ReviewActionsBarView
+        actions={[
+          { name: "Dev Server", condition: "$true", command: "pnpm dev:app" },
+          { name: "Docs", condition: "$true", command: "pnpm docs" },
+        ]}
+        onExecuteAction={onExecute}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Dev Server" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Dev Server" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "Docs" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Docs" }));
+    await waitFor(() => expect(onExecute).toHaveBeenCalledWith("Docs"));
+    release?.();
   });
 });

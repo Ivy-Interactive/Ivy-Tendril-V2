@@ -534,6 +534,11 @@ export const App: React.FC = () => {
         return (
           <ReviewView
             plans={plansState.plans}
+            // The review queue excludes plans a job still holds, as V1's `activePlanFolders` does.
+            // Without the list the exclusion is dead wiring, and the page offers Complete Plan and
+            // Create PR on work an agent has not finished — a retry that is only Queued or Blocked
+            // still leaves its plan recorded in Review.
+            jobs={jobsState.jobs}
             onSelectPlan={handleSelectPlan}
             onOpenReviewAction={handleOpenReviewAction}
             onJobStarted={(res) => handleSelectJob(res.jobId)}
@@ -779,6 +784,13 @@ export const App: React.FC = () => {
         initialProject={newPlanPrefill.project}
         onJobStarted={(res) => {
           handleSelectJob(res.jobId);
+        }}
+        // V1's project picker always ends with "+ Add New Project", which navigates to Settings.
+        // Without the handler the entry never renders, so a project the operator has not created yet
+        // is a dead end in the one flow that needs one. Same route as the no-projects dialog above.
+        onAddProject={() => {
+          setIsNewPlanOpen(false);
+          uiStore.setActiveNav("settings");
         }}
       />
 
