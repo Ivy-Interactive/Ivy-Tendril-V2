@@ -28,6 +28,12 @@ export const formatShortcut = (keys: string | string[]): string => {
 /**
  * The bundle's one keyboard hint. Bare renders a span per key so a caller can space or hide
  * them; boxed renders the formatted line inside a single key cap.
+ *
+ * Hidden from assistive technology. A shortcut hint is a visual affordance for the control it sits
+ * in, not part of that control's name — without this, a button labelled "Execute Plan" carrying an
+ * `X` hint announces itself as "Execute Plan X", and every caller has to work around the hint when
+ * querying by accessible name. The key is still reachable: the control's own handler is what binds
+ * it, and `aria-keyshortcuts` is the attribute for announcing one.
  */
 export const TuiKbd: React.FC<TuiKbdProps> = ({ keys, variant = "boxed", className = "" }) => {
   const parts = splitKeys(keys);
@@ -37,7 +43,7 @@ export const TuiKbd: React.FC<TuiKbdProps> = ({ keys, variant = "boxed", classNa
 
   if (variant === "bare") {
     return (
-      <span className={classes}>
+      <span className={classes} aria-hidden="true">
         {parts.map((key, index) => (
           <span key={`${key}-${index}`}>{key}</span>
         ))}
@@ -45,5 +51,9 @@ export const TuiKbd: React.FC<TuiKbdProps> = ({ keys, variant = "boxed", classNa
     );
   }
 
-  return <kbd className={classes}>{formatShortcut(parts)}</kbd>;
+  return (
+    <kbd className={classes} aria-hidden="true">
+      {formatShortcut(parts)}
+    </kbd>
+  );
 };

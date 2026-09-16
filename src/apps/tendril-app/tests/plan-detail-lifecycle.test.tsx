@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PlanDetailView } from "../src/views/PlanDetailView";
 import { bridge } from "../src/api/bridge";
+import { chatApi } from "../src/api/chatApi";
 import { planDetail, planGit, verification } from "./fixtures/plan.fixture";
 import type { Job, PlanDetail, RepoStatus } from "../src/types/api";
 
@@ -48,7 +49,20 @@ beforeEach(() => {
   vi.spyOn(bridge, "getRepoStatus").mockResolvedValue([]);
   vi.spyOn(bridge, "listAnnotations").mockResolvedValue([]);
   vi.spyOn(bridge, "listProjects").mockResolvedValue([]);
+  // The workspace's Chat slot looks for the plan's own session on mount.
+  vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
 });
+
+/**
+ * Opens the workspace's overflow menu.
+ *
+ * `DraftActions` puts "Update and Share as icons, everything else in the overflow menu", so Expand,
+ * Split, Delete and the rest are `role="menuitem"` inside a menu that has to be opened first — they
+ * are no longer toolbar buttons.
+ */
+const openWorkspaceMenu = () => {
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+};
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -58,7 +72,7 @@ describe("plan switch", () => {
   it("returns to the Plan tab, as V1 does with selectedTab.Set(PlanTab)", async () => {
     const { rerender } = render(<PlanDetailView plan={draft()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Details" }));
     expect(screen.getByText("Repositories")).toBeInTheDocument();
 
     rerender(<PlanDetailView plan={draft({ id: "00022" })} />);
@@ -72,7 +86,7 @@ describe("plan switch", () => {
     const plan = draft();
     const { rerender } = render(<PlanDetailView plan={plan} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Details" }));
 
     // A fresh object for the same plan: V1 keys this block on the plan's id precisely so "that must
     // not throw the reader back to the first tab".
@@ -86,7 +100,7 @@ describe("plan switch", () => {
     const onExecute = vi.fn();
     const { rerender } = render(<PlanDetailView plan={draft()} onExecute={onExecute} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Execute Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Execute Plan/ }));
     expect(await screen.findByTestId("dirty-repo-dialog")).toBeInTheDocument();
 
     rerender(<PlanDetailView plan={draft({ id: "00022" })} onExecute={onExecute} />);
@@ -112,7 +126,7 @@ describe("a job already holds the plan", () => {
     render(<PlanDetailView plan={draft({ state: "Executing" })} />);
 
     expect(screen.getByTestId("plan-in-flight-notice")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Execute Plan" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Execute Plan/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Discard Plan/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Reset to Draft/ })).not.toBeInTheDocument();
   });
@@ -121,28 +135,31 @@ describe("a job already holds the plan", () => {
     render(<PlanDetailView plan={draft()} jobs={[job({ type: "ExecutePlan" })]} />);
 
     expect(screen.getByTestId("plan-in-flight-notice")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Execute Plan" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Execute Plan/ })).not.toBeInTheDocument();
   });
 
   // `DraftActions`: `.Menu("Expand", ..., disabled: ctx.HasActiveExpandJob)`.
   it("disables Expand while an ExpandPlan job is running, and nothing else", () => {
     render(<PlanDetailView plan={draft()} jobs={[job({ type: "ExpandPlan" })]} />);
 
-    expect(screen.getByRole("button", { name: "Expand Plan" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Split Plan" })).toBeEnabled();
+    openWorkspaceMenu();
+    expect(screen.getByRole("menuitem", { name: /^Expand Plan/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /^Split Plan/ })).toBeEnabled();
   });
 
   it("disables Split while a SplitPlan job is running", () => {
     render(<PlanDetailView plan={draft()} jobs={[job({ type: "SplitPlan" })]} />);
 
-    expect(screen.getByRole("button", { name: "Split Plan" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Expand Plan" })).toBeEnabled();
+    openWorkspaceMenu();
+    expect(screen.getByRole("menuitem", { name: /^Split Plan/ })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: /^Expand Plan/ })).toBeEnabled();
   });
 
   it("ignores a job belonging to another plan", () => {
     render(<PlanDetailView plan={draft()} jobs={[job({ planId: "00099" })]} />);
 
-    expect(screen.getByRole("button", { name: "Expand Plan" })).toBeEnabled();
+    openWorkspaceMenu();
+    expect(screen.getByRole("menuitem", { name: /^Expand Plan/ })).toBeEnabled();
     expect(screen.queryByTestId("plan-in-flight-notice")).not.toBeInTheDocument();
   });
 
@@ -150,7 +167,8 @@ describe("a job already holds the plan", () => {
   it("ignores a job that has already finished", () => {
     render(<PlanDetailView plan={draft()} jobs={[job({ status: "Completed" })]} />);
 
-    expect(screen.getByRole("button", { name: "Expand Plan" })).toBeEnabled();
+    openWorkspaceMenu();
+    expect(screen.getByRole("menuitem", { name: /^Expand Plan/ })).toBeEnabled();
   });
 });
 
@@ -159,25 +177,25 @@ describe("optimistic transitions", () => {
     const onExecute = vi.fn();
     render(<PlanDetailView plan={draft()} onExecute={onExecute} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Execute Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Execute Plan/ }));
 
     await waitFor(() => expect(onExecute).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByTestId("plan-state-badge")).toHaveTextContent("Creating"),
     );
     // And so stops offering to execute it again.
-    expect(screen.queryByRole("button", { name: "Execute Plan" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Execute Plan/ })).not.toBeInTheDocument();
   });
 
   it("takes the guess back when the dispatch is refused", async () => {
     const onExecute = vi.fn().mockRejectedValue(new Error("daemon unreachable"));
     render(<PlanDetailView plan={draft()} onExecute={onExecute} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Execute Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Execute Plan/ }));
 
     await waitFor(() => expect(screen.getByTestId("plan-action-error")).toBeInTheDocument());
     expect(screen.getByTestId("plan-state-badge")).toHaveTextContent("Draft");
-    expect(screen.getByRole("button", { name: "Execute Plan" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Execute Plan/ })).toBeInTheDocument();
   });
 
   it("drops the guess once the service reports a state of its own", async () => {
@@ -185,7 +203,7 @@ describe("optimistic transitions", () => {
     const plan = draft();
     const { rerender } = render(<PlanDetailView plan={plan} onExecute={onExecute} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Execute Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Execute Plan/ }));
     await waitFor(() =>
       expect(screen.getByTestId("plan-state-badge")).toHaveTextContent("Creating"),
     );
@@ -207,9 +225,9 @@ describe("preflight", () => {
     const onExecute = vi.fn();
     render(<PlanDetailView plan={draft()} onExecute={onExecute} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Execute Plan" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Execute Plan/ }));
 
-    const button = await screen.findByRole("button", { name: "Checking..." });
+    const button = await screen.findByRole("button", { name: /^Checking\.\.\./ });
     expect(button).toBeDisabled();
 
     // A second click while it is checking must not start a second chain.
