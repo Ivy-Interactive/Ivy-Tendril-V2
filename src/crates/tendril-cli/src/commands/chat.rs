@@ -6,7 +6,10 @@ use tendril_core::chat::execution::{ChatEvent, ChatExecutionManager, ChatTurnOpt
 use tendril_core::chat::models::ChatSession;
 use tendril_core::chat::storage;
 use tendril_core::config::{get_config_path, load_config, read_master, MasterInfo};
-use tendril_core::http::daemon_client;
+use tendril_core::http::{
+    classify_transport_error, daemon_client, daemon_request_timeout_for, describe_transport_error,
+    DaemonTransportFailure,
+};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
@@ -102,18 +105,7 @@ pub async fn handle_chat_command(cmd: ChatCommands, tendril_home: &Path) -> anyh
 }
 
 async fn handle_chat_list(args: ChatListArgs, tendril_home: &Path) -> anyhow::Result<()> {
-    let sessions = if let Some(master) = read_master(tendril_home) {
-        let client = daemon_client(tendril_home);
-        let url = format!("{}/api/chat/sessions", master.base_url());
-        let resp = client.get(&url).bearer_auth(&master.secret).send().await?;
-        if resp.status().is_success() {
-            resp.json::<Vec<ChatSession>>().await?
-        } else {
-            storage::load_all_sessions(tendril_home)?
-        }
-    } else {
-        storage::load_all_sessions(tendril_home)?
-    };
+    let sessions = list_sessions(tendril_home).await?;
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&sessions)?);
@@ -146,6 +138,28 @@ async fn handle_chat_list(args: ChatListArgs, tendril_home: &Path) -> anyhow::Re
     }
 
     Ok(())
+}
+
+/// Every session the daemon knows about, or the ones on disk when it cannot say.
+///
+/// The daemon is asked first because it holds sessions that are mid-turn and not yet persisted. When
+/// it cannot answer — refused, wedged, erroring, or replying with something that will not decode —
+/// `Chats/*.json` is the answer rather than an error: it is the same store the daemon itself persists
+/// to, so a read has nothing to gain from failing. Only the mutating paths have to care *why* the
+/// call failed.
+async fn list_sessions(tendril_home: &Path) -> anyhow::Result<Vec<ChatSession>> {
+    if let Some(master) = read_master(tendril_home) {
+        let client = daemon_client(tendril_home);
+        let url = format!("{}/api/chat/sessions", master.base_url());
+        if let Ok(resp) = client.get(&url).bearer_auth(&master.secret).send().await {
+            if resp.status().is_success() {
+                if let Ok(sessions) = resp.json::<Vec<ChatSession>>().await {
+                    return Ok(sessions);
+                }
+            }
+        }
+    }
+    Ok(storage::load_all_sessions(tendril_home)?)
 }
 
 async fn handle_chat_get(args: ChatGetArgs, tendril_home: &Path) -> anyhow::Result<()> {
@@ -190,29 +204,9 @@ async fn handle_chat_get(args: ChatGetArgs, tendril_home: &Path) -> anyhow::Resu
 }
 
 async fn handle_chat_create(args: ChatCreateArgs, tendril_home: &Path) -> anyhow::Result<()> {
-    let session = if let Some(master) = read_master(tendril_home) {
-        let client = daemon_client(tendril_home);
-        let url = format!("{}/api/chat/sessions", master.base_url());
-        let resp = client
-            .post(&url)
-            .bearer_auth(&master.secret)
-            .json(&serde_json::json!({
-                "title": args.title,
-                "agent_id": args.agent,
-                "model_id": args.model,
-                "effort": args.effort,
-                "planFolderName": args.plan,
-            }))
-            .send()
-            .await?;
-
-        if resp.status().is_success() {
-            resp.json::<ChatSession>().await?
-        } else {
-            create_session_local(&args, tendril_home)?
-        }
-    } else {
-        create_session_local(&args, tendril_home)?
+    let session = match read_master(tendril_home) {
+        Some(master) => create_session_via_daemon(&args, tendril_home, &master).await?,
+        None => create_session_local(&args, tendril_home)?,
     };
 
     if args.json {
@@ -224,6 +218,50 @@ async fn handle_chat_create(args: ChatCreateArgs, tendril_home: &Path) -> anyhow
     }
 
     Ok(())
+}
+
+/// Asks the daemon to create the session, falling back to the local store only when it is safe to.
+///
+/// A refused connection proves the daemon never saw the request, so writing the session locally
+/// cannot duplicate one it already made — that is the stale-`.master` case, and it has to keep
+/// working. A timeout or a mid-read failure is ambiguous: the daemon may well have created the
+/// session, and a second one is worse than an error, so those are reported.
+async fn create_session_via_daemon(
+    args: &ChatCreateArgs,
+    tendril_home: &Path,
+    master: &MasterInfo,
+) -> anyhow::Result<ChatSession> {
+    let client = daemon_client(tendril_home);
+    let url = format!("{}/api/chat/sessions", master.base_url());
+    let resp = match client
+        .post(&url)
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({
+            "title": args.title,
+            "agent_id": args.agent,
+            "model_id": args.model,
+            "effort": args.effort,
+            "planFolderName": args.plan,
+        }))
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) if classify_transport_error(&e) == DaemonTransportFailure::Unreachable => {
+            return create_session_local(args, tendril_home);
+        }
+        Err(e) => anyhow::bail!(describe_transport_error(
+            &e,
+            master,
+            daemon_request_timeout_for(tendril_home)
+        )),
+    };
+
+    if resp.status().is_success() {
+        Ok(resp.json::<ChatSession>().await?)
+    } else {
+        create_session_local(args, tendril_home)
+    }
 }
 
 fn create_session_local(args: &ChatCreateArgs, tendril_home: &Path) -> anyhow::Result<ChatSession> {
@@ -247,11 +285,22 @@ fn create_session_local(args: &ChatCreateArgs, tendril_home: &Path) -> anyhow::R
 async fn handle_chat_delete(args: ChatDeleteArgs, tendril_home: &Path) -> anyhow::Result<()> {
     let session = resolve_session(tendril_home, &args.id).await?;
 
-    if let Some(master) = read_master(tendril_home) {
-        let client = daemon_client(tendril_home);
-        let url = format!("{}/api/chat/sessions/{}", master.base_url(), session.id);
-        let _ = client.delete(&url).bearer_auth(&master.secret).send().await;
-    } else {
+    // A daemon that did not answer has deleted nothing, and printing "Deleted" while the session is
+    // still sitting in `Chats/` — where `chat list` will keep showing it — is a lie. Deleting is
+    // idempotent, so falling back is safe even if the daemon did get there first and only lost its
+    // reply.
+    let deleted_by_daemon = match read_master(tendril_home) {
+        Some(master) => {
+            let client = daemon_client(tendril_home);
+            let url = format!("{}/api/chat/sessions/{}", master.base_url(), session.id);
+            matches!(
+                client.delete(&url).bearer_auth(&master.secret).send().await,
+                Ok(resp) if resp.status().is_success()
+            )
+        }
+        None => false,
+    };
+    if !deleted_by_daemon {
         storage::delete_session(tendril_home, &session.id)?;
     }
 

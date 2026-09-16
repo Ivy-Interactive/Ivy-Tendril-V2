@@ -2,7 +2,7 @@ use crate::commands::confirm::{confirm_with, is_exactly_y};
 use crate::commands::daemon_guard::refuse_if_daemon_running;
 use clap::Subcommand;
 use std::path::Path;
-use tendril_core::config::get_database_path;
+use tendril_core::config::{ensure_not_real_home, get_database_path};
 use tendril_core::db::{apply_migrations, get_schema_version, open_database, SCHEMA_VERSION};
 
 #[derive(Subcommand)]
@@ -70,6 +70,11 @@ pub fn handle_db_command(cmd: DbCommands, tendril_home: &Path) -> anyhow::Result
         }
 
         DbCommands::Reset { force } => {
+            // Same reasoning as `tendril reset`: dropping every table in the operator's real
+            // `tendril.db` from a test process destroys their plans, jobs and cost history. A no-op
+            // outside a test context, so nothing changes for an operator at a shell.
+            ensure_not_real_home(tendril_home)?;
+
             if refuse_if_daemon_running(tendril_home, force, "resetting the database") {
                 std::process::exit(1);
             }

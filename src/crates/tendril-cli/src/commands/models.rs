@@ -81,3 +81,19 @@ pub async fn handle_models(refresh: bool, tendril_home: &Path) -> anyhow::Result
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The source line is read by operators, so the singular case is spelled out rather than left as
+    /// "1 days ago", and a cache with no recorded fetch time says so instead of printing an age.
+    #[test]
+    fn format_age_covers_today_the_singular_and_a_missing_timestamp() {
+        assert_eq!(format_age(Some(0)), "today");
+        assert_eq!(format_age(Some(1)), "1 day ago");
+        assert_eq!(format_age(Some(2)), "2 days ago");
+        assert_eq!(format_age(Some(40)), "40 days ago");
+        assert_eq!(format_age(None), "no recorded fetch time");
+    }
+}
