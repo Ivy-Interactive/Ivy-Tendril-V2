@@ -24,6 +24,7 @@ import {
   VaultStatusCard,
   computeVaultGate,
   formatVaultRepo,
+  seedRepoMappings,
   type VaultExportDraft,
 } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
@@ -45,12 +46,19 @@ export interface VaultSettingsViewProps {
   tendrilHome?: string | null;
 }
 
-/** Which dialog is open, and what it is about. Only one vault dialog is ever open at a time. */
+/**
+ * Which dialog is open, and what it is about. Only one vault dialog is ever open at a time.
+ *
+ * `import` covers all three of the original's entry points, and `update` is what separates them:
+ * `Import` creates a new local project, `Link & Merge` (`merge`) combines with an existing one, and
+ * `Update` replaces an already-imported project in place. Without the flag, Update behaved like
+ * Import and produced a second project named `<name>-2` at a freshly cloned path.
+ */
 type VaultDialog =
   | { kind: "create" }
   | { kind: "connect" }
   | { kind: "push"; project: string | null }
-  | { kind: "import"; item: VaultCatalogItem; merge: boolean }
+  | { kind: "import"; item: VaultCatalogItem; merge: boolean; update?: boolean }
   | { kind: "delete"; item: VaultCatalogItem };
 
 const EMPTY_ASSETS = (projectName: string): ProjectAssets => ({
@@ -78,11 +86,24 @@ interface VaultActionResult {
   message?: string;
   errorMessage?: string | null;
   prUrl?: string | null;
+  branchName?: string | null;
 }
 
 /** The message a vault call left behind, whichever half of the result carries it. */
 function resultMessage(result: VaultActionResult): string {
   return result.errorMessage?.trim() || result.message?.trim() || "";
+}
+
+/**
+ * What a PR-opening call has to show for itself. `VaultSetupView.cs` falls back to the branch when the
+ * PR could not be opened (no `gh` auth, for instance) — reporting only the message would leave the
+ * operator with a pushed branch they have no way of finding.
+ */
+function resultReference(result: VaultActionResult, branchLabel = "branch"): string {
+  const prUrl = result.prUrl?.trim();
+  if (prUrl) return `Created PR: ${prUrl}`;
+  const branch = result.branchName?.trim();
+  return branch ? `Created ${branchLabel} ${branch}` : "";
 }
 
 /**
@@ -128,10 +149,12 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
       });
       setVaults(loadedVaults);
 
-      const configured = loadedVaults.filter((vault) => vault.isConfigured);
+      // An explicitly picked vault wins even when it is not configured, the way `selectedVaultId` in
+      // `VaultSetupView.cs` is only auto-corrected when it names no vault in the list at all.
+      // Otherwise selecting a not-yet-cloned vault snapped straight back to a configured one.
       const active =
-        configured.find((vault) => vault.id === vaultId) ??
-        configured[0] ??
+        loadedVaults.find((vault) => vault.id === vaultId) ??
+        loadedVaults.find((vault) => vault.isConfigured) ??
         loadedVaults[0] ??
         null;
       setSelectedVaultId(active?.id ?? "");
@@ -174,7 +197,13 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
     void refresh();
   }, [refresh]);
 
-  const hasVault = vaults.some((vault) => vault.isConfigured);
+  /**
+   * A vault that is in `config.yaml` but reports `isConfigured: false` — disabled, or cloned nowhere
+   * yet — still gets the full section, exactly as in `VaultSetupView.cs`, whose not-configured layout
+   * is only returned when there is no vault at all. Requiring `isConfigured` here hid the picker and
+   * the Sync button that are the only way to recover such a vault.
+   */
+  const hasVault = vaults.length > 0;
   const hasGitHubAuth = accounts.length > 0;
   const existingNames = projects.map((project) => project.name);
   const existingPaths = projects.flatMap((project) => project.repos);
@@ -182,7 +211,6 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
     name: project.name,
     repos: project.repos,
   }));
-  const configuredVaults = vaults.filter((vault) => vault.isConfigured);
 
   const createGate = computeVaultGate({ hasGitHubAuth, hasVault, isBusy, requires: ["github"] });
   const vaultGate = computeVaultGate({ hasGitHubAuth, hasVault, isBusy, requires: ["vault"] });
@@ -205,7 +233,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
   /** Runs one mutation, keeping a failed result in the dialog and a successful one in the section. */
   const runVaultAction = async (
     work: () => Promise<VaultActionResult>,
-    { closeOnSuccess = true }: { closeOnSuccess?: boolean } = {},
+    { closeOnSuccess = true, branchLabel }: { closeOnSuccess?: boolean; branchLabel?: string } = {},
   ): Promise<VaultActionResult | null> => {
     setIsBusy(true);
     setDialogError(null);
@@ -216,8 +244,10 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
         return null;
       }
 
-      const prUrl = result.prUrl?.trim();
-      setNotice([resultMessage(result), prUrl].filter(Boolean).join(" — ") || "Done.");
+      setNotice(
+        [resultMessage(result), resultReference(result, branchLabel)].filter(Boolean).join(" — ") ||
+          "Done.",
+      );
       if (closeOnSuccess) setDialog(null);
       await refresh(selectedVaultId);
       return result;
@@ -249,15 +279,31 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
   };
 
   /**
+   * `availablePushProjects` in `VaultSetupView.cs`: a project the vault knows but this machine does
+   * not is added to the list, case-insensitively. Without it, *Publish* on such a row opened a dialog
+   * whose default project was not one of its own options.
+   */
+  const pushProjectNames = (project: string | null): string[] =>
+    project && !existingNames.some((name) => name.toLowerCase() === project.toLowerCase())
+      ? [...existingNames, project]
+      : existingNames;
+
+  /**
    * The push dialog seeds its checkboxes from `assets` on mount, so the assets are collected before
    * it opens rather than arriving into an already-empty checklist.
    */
   const openPushDialog = async (project: string | null) => {
     setDialogError(null);
     setPushPrUrl(null);
-    const names = projects.map((entry) => entry.name);
+    const names = pushProjectNames(project);
     const assets = await Promise.all(
-      names.map((name) => bridge.collectProjectAssets(name).catch(() => EMPTY_ASSETS(name))),
+      names.map((name) =>
+        projects.some((entry) => entry.name === name)
+          ? bridge.collectProjectAssets(name).catch(() => EMPTY_ASSETS(name))
+          : // A vault-only project has nothing to collect locally, but it still needs an entry: the
+            // dialog reads its checklist out of `assets` by project name.
+            Promise.resolve(EMPTY_ASSETS(name)),
+      ),
     );
     setPushAssets(assets);
     setDialog({ kind: "push", project });
@@ -271,12 +317,37 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
     }
   };
 
-  const handleImportSubmit = (request: VaultImportRequest, merge: boolean) =>
-    runVaultAction(() =>
-      merge
-        ? bridge.mergeVaultProject(request, selectedVaultId)
-        : bridge.importVaultProject(request, selectedVaultId),
-    );
+  /**
+   * `Import`, `Link & Merge` and `Update`, which all reach the same dialog.
+   *
+   * The `update` branch is what `VaultSetupView.cs`'s one-click *Update* did: `import_project`
+   * *replaces* the local project of the same name, so the target name and the repo paths must be the
+   * existing project's, not a freshly suggested name under `~/git`. The original read the paths out
+   * of the vault's `TrackedProjects[...].LocalRepoPaths`; `VaultStatus` does not carry those over the
+   * wire in V2, so they are recovered by matching each vault repo against the local project's repo
+   * folders — the same rule `seedRepoMappings` uses for a merge.
+   */
+  const handleImportSubmit = (
+    request: VaultImportRequest,
+    { merge, update, item }: { merge: boolean; update?: boolean; item: VaultCatalogItem },
+  ) => {
+    if (merge) {
+      return runVaultAction(() => bridge.mergeVaultProject(request, selectedVaultId));
+    }
+
+    const localMatch = update
+      ? (localProjects.find((p) => p.name.toLowerCase() === item.name.toLowerCase()) ?? null)
+      : null;
+    const payload = localMatch
+      ? {
+          ...request,
+          targetLocalProjectName: item.name,
+          localRepoMappings: seedRepoMappings(item.repos, homeDirOf(tendrilHome), localMatch),
+        }
+      : request;
+
+    return runVaultAction(() => bridge.importVaultProject(payload, selectedVaultId));
+  };
 
   const handlePushSubmit = async (draft: VaultExportDraft) => {
     const projectList = draft.projectNames.join(", ");
@@ -321,8 +392,10 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
                 <SelectTrigger aria-label="Active vault" className="w-fit min-w-56">
                   <SelectValue placeholder="Select vault" />
                 </SelectTrigger>
+                {/* Every vault, not only the configured ones: `vaultOptions` is built from the whole
+                    `vaultsList`, so a vault that has not been cloned yet is still selectable. */}
                 <SelectContent>
-                  {configuredVaults.map((vault) => (
+                  {vaults.map((vault) => (
                     <SelectItem key={vault.id} value={vault.id}>
                       {formatVaultRepo(vault) || vault.id}
                     </SelectItem>
@@ -416,7 +489,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
                 }}
                 onUpdate={(item) => {
                   setDialogError(null);
-                  setDialog({ kind: "import", item, merge: false });
+                  setDialog({ kind: "import", item, merge: false, update: true });
                 }}
                 onPublish={(item) => void openPushDialog(item.name)}
                 onDelete={(item) => {
@@ -467,7 +540,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
             open
             vaultDisplayName={status ? formatVaultRepo(status) : "Team Vault"}
             targetVaultId={selectedVaultId}
-            availableProjects={existingNames}
+            availableProjects={pushProjectNames(dialog.project)}
             assets={pushAssets}
             defaultProject={dialog.project}
             error={dialogError}
@@ -490,7 +563,13 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
             error={dialogError}
             isBusy={isBusy}
             onClose={() => setDialog(null)}
-            onSubmit={(request) => void handleImportSubmit(request, dialog.merge)}
+            onSubmit={(request) =>
+              void handleImportSubmit(request, {
+                merge: dialog.merge,
+                update: dialog.update,
+                item: dialog.item,
+              })
+            }
           />
         )}
 
@@ -502,8 +581,9 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
             isBusy={isBusy}
             onClose={() => setDialog(null)}
             onConfirm={() =>
-              void runVaultAction(() =>
-                bridge.deleteVaultProject(dialog.item.name, selectedVaultId),
+              void runVaultAction(
+                () => bridge.deleteVaultProject(dialog.item.name, selectedVaultId),
+                { branchLabel: "deletion branch" },
               )
             }
           />
