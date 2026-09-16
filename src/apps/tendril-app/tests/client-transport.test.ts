@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import { bridge, resetTendrilClient, setTendrilClient, type TendrilClient } from "../src/api/bridge";
+import {
+  bridge,
+  resetTendrilClient,
+  setTendrilClient,
+  type TendrilClient,
+} from "../src/api/bridge";
 
 // The seam that lets a client which is not on the daemon's machine exist at all. Views import `bridge`
 // and must not care whether it reaches the daemon over Tauri IPC or over HTTP with a session token, so

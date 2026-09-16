@@ -47,18 +47,21 @@ export function DiscardPlanDialog({ isOpen, onClose, plan, onDiscarded }: Discar
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      title={`Discard plan ${plan.id}?`}
+      // Header, button label and destructive treatment from V1's `DiscardPlanDialog`; the body keeps
+      // V2's account of what survives, which V1's bare "Are you sure…" leaves the operator to guess.
+      title="Discard Plan"
       testId="discard-plan-dialog"
-      confirmLabel="Discard Plan"
+      confirmLabel="Discard"
       confirmVariant="destructive"
       onConfirm={handleDiscard}
       isBusy={isBusy}
       error={error}
       body={
         <p>
-          The plan moves to <span className="text-foreground">Skipped</span> and leaves the review
-          queue. Its folder, revisions and verification reports stay on disk, and no pull request is
-          opened for the work already done.
+          Are you sure you want to discard plan #{plan.id}? The plan moves to{" "}
+          <span className="text-foreground">Skipped</span> and leaves the review queue. Its folder,
+          revisions and verification reports stay on disk, and no pull request is opened for the
+          work already done.
         </p>
       }
     />

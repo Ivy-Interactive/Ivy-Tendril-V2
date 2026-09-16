@@ -16,6 +16,10 @@ export interface UnansweredQuestionsDialogProps {
  * Warns that the plan still asks questions nobody has answered — execute now and
  * the agent decides the scope for itself.
  *
+ * Not a block, which is why V1 makes *Execute Anyway* the primary button and gives it
+ * `ShortcutKey("Ctrl+Enter")`: an unanswered question means "you decide", and ExecutePlan resolves
+ * one itself by taking the `recommended` option. This is the confirmation that you meant to let it.
+ *
  * This is the first place the app surfaces unanswered plan questions at all.
  * Legacy's third button was *Answer Questions*, which navigated to a questions
  * view; V2 has neither that view nor an answer-a-plan-question endpoint, so the
@@ -33,15 +37,22 @@ export function UnansweredQuestionsDialog({
   onProceed,
 }: UnansweredQuestionsDialogProps) {
   const cancelRef = React.useRef<HTMLButtonElement>(null);
+  const plural = questions.length === 1;
 
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title="Unanswered questions"
-      description={`⚠ This plan has ${questions.length} unanswered question${
-        questions.length === 1 ? "" : "s"
-      }. Executing now lets the agent decide these for itself.`}
+      title="Unanswered Questions"
+      width="rem32"
+      footerClassName="flex-wrap"
+      shortcut="Ctrl+Enter"
+      onShortcut={onProceed}
+      description={`⚠ This plan has ${questions.length} unanswered ${
+        plural ? "question" : "questions"
+      }. Executing now leaves ${
+        plural ? "it" : "them"
+      } to the agent, which will take the recommended option where there is one and decide for itself where there is not.`}
       testId="unanswered-questions-dialog"
       initialFocusRef={cancelRef}
       footer={
@@ -52,7 +63,7 @@ export function UnansweredQuestionsDialog({
           <Button variant="outline" onClick={onUpdatePlan} data-testid="guard-update-plan">
             Update Plan…
           </Button>
-          <Button variant="warning" onClick={onProceed} data-testid="guard-proceed">
+          <Button onClick={onProceed} data-testid="guard-proceed">
             Execute Anyway
           </Button>
         </>

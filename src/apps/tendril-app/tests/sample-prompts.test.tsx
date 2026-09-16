@@ -55,9 +55,7 @@ describe("Sample Prompt Chips", () => {
     const chip = screen.getByText("Add a new project");
     fireEvent.click(chip);
 
-    const textarea = screen.getByPlaceholderText(
-      /Ask Tendril anything/i,
-    ) as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i) as HTMLTextAreaElement;
     expect(textarea.value).toBe("Add a new project to my tendril");
   });
 });

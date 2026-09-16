@@ -803,14 +803,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             plan={selectedPlan}
             onJobStarted={(response) => onJobStarted?.(response)}
             initialChangeRequest={inlineFeedback}
-            summaryItems={commentSummary.length > 0 ? commentSummary : undefined}
-            summaryTitle={
-              commentSummary.length > 0
-                ? `${commentSummary.length} inline comment${
-                    commentSummary.length === 1 ? "" : "s"
-                  } on file diffs`
-                : undefined
-            }
+            /* The comments themselves are already in the field via `inlineFeedback`; V1's dialog
+               states the count in a callout and in the submit label rather than listing them again. */
+            inlineCommentCount={commentSummary.length}
           />
           <DiscardPlanDialog
             isOpen={activeDialog === "discard"}

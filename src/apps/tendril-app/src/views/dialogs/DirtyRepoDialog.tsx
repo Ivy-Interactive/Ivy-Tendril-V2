@@ -8,23 +8,41 @@ export interface DirtyRepoDialogProps {
   onClose: () => void;
   dirtyRepos: RepoStatus[];
   onProceed: () => void;
+  /** V1's `proceedLabel`: the dialog is reused by every dispatch it guards. */
+  proceedLabel?: string;
 }
+
+/** V1's `MaxItemsShown`: three paths, then a count. A repo mid-refactor otherwise fills the dialog. */
+const MAX_ITEMS_SHOWN = 3;
 
 /**
  * The last guard before dispatch: a target repo has uncommitted work.
  *
  * The worktree the agent gets is branched from the last commit, so uncommitted
  * changes are simply absent from it — which is usually a surprise, and
- * occasionally deliberate. It asks closest to dispatch for that reason.
+ * occasionally deliberate. It asks closest to dispatch for that reason, and V1 treats proceeding as
+ * the ordinary answer rather than a warning: `new Button(proceedLabel).Primary()`.
+ *
+ * V1's third button, *Sync Repos*, and the SyncRepo policy dialog behind it are not ported: V2 has
+ * no SyncRepo dispatch path from the UI (see the report accompanying this pass). V1's richer
+ * `PreflightResult` — untracked files, commits ahead of origin, detached HEAD, base branch — has no
+ * counterpart in `RepoStatus` either, which carries porcelain lines and a count, so each repo is
+ * summarised as the uncommitted changes it has.
  */
-export function DirtyRepoDialog({ isOpen, onClose, dirtyRepos, onProceed }: DirtyRepoDialogProps) {
+export function DirtyRepoDialog({
+  isOpen,
+  onClose,
+  dirtyRepos,
+  onProceed,
+  proceedLabel = "Execute Anyway",
+}: DirtyRepoDialogProps) {
   const cancelRef = React.useRef<HTMLButtonElement>(null);
 
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title="Uncommitted changes"
+      title="Local Changes Detected"
       description={`⚠ ${dirtyRepos.length} ${
         dirtyRepos.length === 1 ? "repository has" : "repositories have"
       } uncommitted changes. They will not be included in the worktree the agent works in.`}
@@ -35,20 +53,31 @@ export function DirtyRepoDialog({ isOpen, onClose, dirtyRepos, onProceed }: Dirt
           <Button ref={cancelRef} variant="outline" onClick={onClose} data-testid="dialog-cancel">
             Cancel
           </Button>
-          <Button variant="warning" onClick={onProceed} data-testid="guard-proceed">
-            Execute Anyway
+          <Button onClick={onProceed} data-testid="guard-proceed">
+            {proceedLabel}
           </Button>
         </>
       }
     >
       <ul className="space-y-3">
         {dirtyRepos.map((repo) => {
-          const hidden = (repo.changeCount ?? repo.changes.length) - repo.changes.length;
+          // The service already caps `changes`; `changeCount` is the true total, so the count of
+          // what is not shown is measured against that rather than against the truncated list.
+          const total = repo.changeCount ?? repo.changes.length;
+          const shown = repo.changes.slice(0, MAX_ITEMS_SHOWN);
+          const hidden = total - shown.length;
+          // V1 leads each repo with its folder name and puts the full path underneath: the name is
+          // what the operator recognises, the path is what disambiguates two checkouts of it.
+          const name = repo.path.split(/[/\\]/).filter(Boolean).pop() ?? repo.path;
           return (
             <li key={repo.path} className="rounded-box border border-border p-3">
-              <div className="font-mono text-xs text-foreground">{repo.path}</div>
-              <ul className="mt-2 space-y-0.5 font-mono text-xs text-muted-foreground">
-                {repo.changes.map((change) => (
+              <div className="text-sm font-semibold text-foreground">{name}</div>
+              <div className="font-mono text-xs text-muted-foreground">{repo.path}</div>
+              <div className="mt-2 text-xs text-foreground">
+                {total} uncommitted {total === 1 ? "change" : "changes"}
+              </div>
+              <ul className="mt-1 space-y-0.5 font-mono text-xs text-muted-foreground">
+                {shown.map((change) => (
                   <li key={change}>{change}</li>
                 ))}
               </ul>

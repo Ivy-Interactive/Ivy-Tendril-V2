@@ -5,10 +5,58 @@ import { DialogShell } from "./DialogShell";
 export interface PendingAnnotationsDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * Unresolved annotations. Today's caller (`collectExecuteGuards`) passes the **sum** of
+   * annotations and unfolded answers here, which is why the copy names neither unless
+   * `answeredQuestionCount` is also given.
+   */
   annotationCount: number;
+  /**
+   * Answers written into the plan but not yet folded into its body — V1's second count.
+   *
+   * Optional because V2 sums the two before they reach here. Supplying it restores V1's naming:
+   * the two are not discarded alike (annotations live only in the UI, answers are already in the
+   * revision file and survive), and V1's header and decline label say which is which.
+   */
+  answeredQuestionCount?: number;
   /** Opens `UpdatePlanDialog` so the pending items get folded into the plan body. */
   onUpdatePlan: () => void;
+  /** V1's `onDiscardAndExecute`: execute as written, leaving the pending items behind. */
   onProceed: () => void;
+  /** V1's primary: fold the pending items in and execute once that has landed. */
+  onUpdateAndExecute?: () => void;
+}
+
+/**
+ * V1's `Message(annotationCount, answeredQuestionCount)`, verbatim: the two counts are addressed by
+ * the same UpdatePlan job, so they share one dialog, but they are not discarded alike and the copy
+ * has to say so.
+ */
+function splitMessage(annotationCount: number, answeredQuestionCount: number): string {
+  const annotations = `${annotationCount} ${annotationCount === 1 ? "annotation" : "annotations"}`;
+  const answers = `${answeredQuestionCount} answered ${
+    answeredQuestionCount === 1 ? "question" : "questions"
+  }`;
+
+  if (annotationCount > 0 && answeredQuestionCount > 0) {
+    return (
+      `This plan has ${annotations} and ${answers} that haven't been incorporated yet. ` +
+      "Executing now would ignore the annotations, and the agent would read the answers as they " +
+      "stand rather than as part of the plan."
+    );
+  }
+
+  if (answeredQuestionCount > 0) {
+    return (
+      `This plan has ${answers} that haven't been incorporated yet. Executing now means the agent ` +
+      "reads them as they stand rather than as part of the plan."
+    );
+  }
+
+  return (
+    `This plan has ${annotations} that haven't been incorporated yet. Executing now would ignore ` +
+    "them."
+  );
 }
 
 /**
@@ -16,26 +64,62 @@ export interface PendingAnnotationsDialogProps {
  * folded into its body — the cheapest of the three guards to resolve, hence the
  * first asked.
  *
- * The count sums both sources (see `collectExecuteGuards`), so the copy names
- * neither: one phrasing that stays true whichever of them is pending.
+ * The footer is V1's, in V1's order: Cancel, *Update Plan* (leave the guard and go fold them in),
+ * the decline, and *Update Plan & Execute* as the primary with `Ctrl+Enter` — the answer that
+ * resolves the warning rather than steps over it. All three alternatives are outline, so the one
+ * that fixes the problem is the only filled button.
+ *
+ * When only the summed count is known the header stays on V1's mixed-case wording
+ * ("Unincorporated Changes") and the body keeps V2's count-agnostic sentence: naming annotations
+ * specifically would be a guess, and a decline button offering to "discard annotations" when the
+ * count is all answers discards nothing.
  */
 export function PendingAnnotationsDialog({
   isOpen,
   onClose,
   annotationCount,
+  answeredQuestionCount,
   onUpdatePlan,
   onProceed,
+  onUpdateAndExecute,
 }: PendingAnnotationsDialogProps) {
   const cancelRef = React.useRef<HTMLButtonElement>(null);
+
+  const knowsSplit = answeredQuestionCount !== undefined;
+  const hasAnnotations = annotationCount > 0;
+  const hasAnswers = (answeredQuestionCount ?? 0) > 0;
+
+  const title = knowsSplit
+    ? hasAnnotations && hasAnswers
+      ? "Unincorporated Changes"
+      : hasAnswers
+        ? "Unincorporated Answers"
+        : "Unincorporated Annotations"
+    : "Unincorporated Changes";
+
+  const description = knowsSplit
+    ? `⚠ ${splitMessage(annotationCount, answeredQuestionCount ?? 0)}`
+    : `⚠ This plan has ${annotationCount} item${
+        annotationCount === 1 ? "" : "s"
+      } that no UpdatePlan run has incorporated yet.`;
+
+  const declineLabel = knowsSplit
+    ? hasAnnotations
+      ? "Discard Annotations & Execute"
+      : "Execute Without Updating"
+    : "Execute Anyway";
 
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title="Pending annotations"
-      description={`⚠ This plan has ${annotationCount} item${
-        annotationCount === 1 ? "" : "s"
-      } that no UpdatePlan run has incorporated yet.`}
+      title={title}
+      width="rem32"
+      footerClassName="flex-wrap"
+      {...(onUpdateAndExecute
+        ? { shortcut: "Ctrl+Enter" as const, onShortcut: onUpdateAndExecute }
+        : {})}
+      description={description}
       testId="pending-annotations-dialog"
       initialFocusRef={cancelRef}
       footer={
@@ -44,11 +128,16 @@ export function PendingAnnotationsDialog({
             Cancel
           </Button>
           <Button variant="outline" onClick={onUpdatePlan} data-testid="guard-update-plan">
-            Update Plan First
+            Update Plan
           </Button>
-          <Button variant="warning" onClick={onProceed} data-testid="guard-proceed">
-            Execute Anyway
+          <Button variant="outline" onClick={onProceed} data-testid="guard-proceed">
+            {declineLabel}
           </Button>
+          {onUpdateAndExecute && (
+            <Button onClick={onUpdateAndExecute} data-testid="guard-update-and-execute">
+              Update Plan &amp; Execute
+            </Button>
+          )}
         </>
       }
     >

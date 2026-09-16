@@ -53,7 +53,33 @@ describe("DeletePlanDialog", () => {
     expect(deletePlan).not.toHaveBeenCalled();
   });
 
-  it("archives to Icebox instead, without deleting", async () => {
+  /**
+   * V1 asks "what would you like to do with this plan" and offers both states that keep the folder,
+   * in this order, before the delete that does not.
+   */
+  it("offers Skipped and Icebox before the delete, and delete is the only destructive one", () => {
+    render(<DeletePlanDialog isOpen onClose={vi.fn()} plan={plan} />);
+
+    const footer = screen.getByTestId("dialog-cancel").parentElement as HTMLElement;
+    const labels = [...footer.querySelectorAll("button")].map((b) => b.textContent);
+    expect(labels).toEqual(["Cancel", "Move to Skipped", "Move to Icebox", "Delete"]);
+  });
+
+  it("moves the plan to Skipped instead, without deleting", async () => {
+    const deletePlan = vi.spyOn(bridge, "deletePlan").mockResolvedValue(undefined);
+    const updateField = vi.spyOn(bridge, "updatePlanField").mockResolvedValue(undefined);
+    const onSkipped = vi.fn();
+
+    render(<DeletePlanDialog isOpen onClose={vi.fn()} plan={plan} onSkipped={onSkipped} />);
+
+    fireEvent.click(screen.getByTestId("dialog-skip"));
+
+    await waitFor(() => expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped"));
+    expect(deletePlan).not.toHaveBeenCalled();
+    expect(onSkipped).toHaveBeenCalledWith("00021");
+  });
+
+  it("moves the plan to Icebox instead, without deleting", async () => {
     const deletePlan = vi.spyOn(bridge, "deletePlan").mockResolvedValue(undefined);
     const updateField = vi.spyOn(bridge, "updatePlanField").mockResolvedValue(undefined);
     const onArchived = vi.fn();

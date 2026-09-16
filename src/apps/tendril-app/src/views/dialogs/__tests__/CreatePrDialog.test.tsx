@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CreatePrDialog } from "../CreatePrDialog";
 import { bridge } from "../../../api/bridge";
-import { planSummary, verification } from "../../../../tests/fixtures/plan.fixture";
+import { planDetail, planSummary, verification } from "../../../../tests/fixtures/plan.fixture";
 
 // `canCreatePr` refuses a plan with a failing or pending verification, and the
 // shared fixture ships one of each — so the plan under test is an all-green one.
@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("CreatePrDialog option pass-through", () => {
-  it("dispatches the promptware defaults when nothing is changed", async () => {
+  it("dispatches V1's dialog defaults when nothing is changed", async () => {
     const startJob = mockStartJob();
     const onJobStarted = vi.fn();
 
@@ -36,7 +36,9 @@ describe("CreatePrDialog option pass-through", () => {
         merge: true,
         draft: false,
         deleteBranch: true,
-        includeArtifacts: true,
+        // V1's dialog starts Include Artifacts off, unlike `CreatePrArgs`, whose server-side
+        // default is true: attaching a plan's screenshots and reports to a PR is a choice there.
+        includeArtifacts: false,
         solveMergeConflicts: true,
       }),
     );
@@ -50,21 +52,74 @@ describe("CreatePrDialog option pass-through", () => {
 
     render(<CreatePrDialog isOpen onClose={vi.fn()} plan={plan} />);
 
-    fireEvent.click(screen.getByLabelText(/Merge when checks pass/));
-    fireEvent.click(screen.getByLabelText(/Open as draft/));
+    fireEvent.click(screen.getByLabelText("Include Artifacts"));
+    fireEvent.click(screen.getByLabelText("Create as Draft"));
     fireEvent.click(screen.getByTestId("dialog-confirm"));
 
     await waitFor(() =>
       expect(startJob).toHaveBeenCalledWith({
         type: "CreatePr",
         folderPath: "00021",
-        merge: false,
+        merge: true,
         draft: true,
         deleteBranch: true,
         includeArtifacts: true,
         solveMergeConflicts: true,
       }),
     );
+  });
+
+  /**
+   * V1's `UseEffect(() => { if (!merge) deleteBranch.Set(false); }, merge)`, plus the
+   * `DeleteBranch: deleteBranch && merge` it sends: there is no pushed branch to delete when nothing
+   * was merged, so the checkbox clears and disables rather than riding along ticked.
+   */
+  it("clears and disables Delete Branch when Merge is unchecked", async () => {
+    const startJob = mockStartJob();
+
+    render(<CreatePrDialog isOpen onClose={vi.fn()} plan={plan} />);
+
+    const deleteBranch = screen.getByLabelText("Delete Branch") as HTMLInputElement;
+    expect(deleteBranch.checked).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("Merge"));
+
+    expect(deleteBranch.checked).toBe(false);
+    expect(deleteBranch).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
+    await waitFor(() =>
+      expect(startJob).toHaveBeenCalledWith({
+        type: "CreatePr",
+        folderPath: "00021",
+        merge: false,
+        draft: false,
+        deleteBranch: false,
+        includeArtifacts: false,
+        solveMergeConflicts: true,
+      }),
+    );
+  });
+
+  /** `multipleBranches`: V1 pluralises the label and its description off the plan's repo count. */
+  it("pluralises Delete Branch for a plan with more than one repo", () => {
+    render(
+      <CreatePrDialog
+        isOpen
+        onClose={vi.fn()}
+        plan={planDetail({
+          id: "00021",
+          state: "Review",
+          repos: ["/repos/App", "/repos/Service"],
+          verifications: [verification("NpmLint", "Pass")],
+        })}
+      />,
+    );
+
+    expect(screen.getByLabelText("Delete Branches")).toBeInTheDocument();
+    expect(
+      screen.getByText("Deletes the branches pushed to origin after successful merge."),
+    ).toBeInTheDocument();
   });
 
   it("splits a comma-separated reviewer list into an array", async () => {
@@ -119,7 +174,7 @@ describe("CreatePrDialog option pass-through", () => {
     const startJob = mockStartJob();
 
     render(<CreatePrDialog isOpen onClose={vi.fn()} plan={plan} />);
-    fireEvent.click(screen.getByLabelText(/Open as draft/));
+    fireEvent.click(screen.getByLabelText("Create as Draft"));
 
     expect(startJob).not.toHaveBeenCalled();
   });

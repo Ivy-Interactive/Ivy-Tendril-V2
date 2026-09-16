@@ -24,7 +24,7 @@ export function NoProjectsDialog({ isOpen, onClose, onOpenSettings }: NoProjects
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title="No projects configured"
+      title="No Projects"
       description="Every plan belongs to a project, and this Tendril home has none yet."
       testId="no-projects-dialog"
       initialFocusRef={cancelRef}
@@ -33,8 +33,10 @@ export function NoProjectsDialog({ isOpen, onClose, onOpenSettings }: NoProjects
           <Button ref={cancelRef} variant="outline" onClick={onClose} data-testid="dialog-cancel">
             Cancel
           </Button>
+          {/* V1's label is `Go to Projects`, and it navigates to the Projects tag of Settings —
+              which is where `onOpenSettings` lands too, so the label survives the port intact. */}
           <Button onClick={onOpenSettings} data-testid="open-settings">
-            Open Settings
+            Go to Projects
           </Button>
         </>
       }

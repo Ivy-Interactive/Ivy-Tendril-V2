@@ -11,6 +11,7 @@ import {
   GitPullRequest,
   MessageCircle,
   RefreshCw,
+  Settings,
   Zap,
 } from "lucide-react";
 import {
@@ -33,6 +34,7 @@ import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 import type { GitHubIssue, InboxProposal, ProjectSummary } from "../types/api";
 import { EmptyState } from "../components/EmptyState";
+import { AutoAcceptSettingsDialog } from "./dialogs/AutoAcceptSettingsDialog";
 
 export type InboxCategory = "my-issues" | "review-requests" | "project-issues";
 
@@ -312,6 +314,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
   /** `config.Settings.Inbox.AutoAcceptAssignedIssues`, behind the Auto-Accept badge. */
   const [autoAccept, setAutoAccept] = useState<boolean | null>(null);
+  /** V1's `isAutoAcceptSettingsOpen`: the gear beside the badge opens the settings dialog. */
+  const [isAutoAcceptSettingsOpen, setIsAutoAcceptSettingsOpen] = useState<boolean>(false);
 
   // Auto-imported assigned issues waiting on a human. Kept separate from `issues`: these are rows
   // the daemon already swept, not a live GitHub query, and the decision buttons act on the row id.
@@ -358,8 +362,9 @@ export const InboxView: React.FC<InboxViewProps> = ({
       });
   }, []);
 
-  // The Auto-Accept badge reads the same setting V1's badge reads.
-  useEffect(() => {
+  // The Auto-Accept badge reads the same setting V1's badge reads. Re-read rather than assumed after
+  // the settings dialog saves, which is what V1's `refreshToken.Refresh()` does for the same badge.
+  const refreshAutoAccept = useCallback(() => {
     bridge
       .getConfig()
       .then((cfg) => setAutoAccept(cfg.inbox?.autoAcceptAssignedIssues ?? false))
@@ -367,6 +372,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
         // Without the config the badge simply does not claim a state.
       });
   }, []);
+
+  useEffect(() => {
+    refreshAutoAccept();
+  }, [refreshAutoAccept]);
 
   const handlePollIntervalChange = (value: PollInterval) => {
     setPollInterval(value);
@@ -939,8 +948,24 @@ export const InboxView: React.FC<InboxViewProps> = ({
               </Badge>
             )}
             {isMyIssues && (
-              /* V1 houses `Check Now` in its Auto-Accept Settings dialog; V2 has no such dialog
-                 yet, so the button keeps V1's label, icon and outline treatment out here. */
+              /* V1's gear beside the badge: ghost, small, tooltip only. It is the only way to reach
+                 `inbox.checkIntervalMinutes`, which decides how often the daemon sweeps. */
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Auto-Accept Settings"
+                title="Auto-Accept Settings"
+                data-testid="inbox-auto-accept-settings"
+                onClick={() => setIsAutoAcceptSettingsOpen(true)}
+              >
+                <Settings aria-hidden="true" />
+              </Button>
+            )}
+            {isMyIssues && (
+              /* V1 houses `Check Now` in its Auto-Accept Settings dialog only. Kept out here too
+                 because V2's proposals panel below is its own thing: this is the button that fills
+                 it, and it reports what the sweep did where those rows appear. */
               <Button
                 type="button"
                 variant="outline"
@@ -1390,6 +1415,15 @@ export const InboxView: React.FC<InboxViewProps> = ({
           )}
         </SheetContent>
       </Sheet>
+
+      {/* V1 renders this alongside the sheets in the same fragment, outside the header that opens it,
+          so the dialog survives a category switch that unmounts the gear. */}
+      <AutoAcceptSettingsDialog
+        isOpen={isAutoAcceptSettingsOpen}
+        onClose={() => setIsAutoAcceptSettingsOpen(false)}
+        onSaved={refreshAutoAccept}
+        onChecked={() => void fetchProposals()}
+      />
     </div>
   );
 };

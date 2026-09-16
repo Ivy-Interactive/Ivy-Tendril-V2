@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Button } from "@ivy-interactive/components/ui";
 import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS } from "./fieldStyles";
+import { ALERT_CLASS, type DialogWidth } from "./fieldStyles";
 
 export type ConfirmVariant = "destructive" | "warning" | "primary";
 
@@ -23,6 +23,8 @@ export interface ConfirmDialogProps {
   testId?: string;
   /** Extra controls below the body, e.g. the delete confirmation field. */
   children?: React.ReactNode;
+  /** V1's `.Width(Size.Rem(n))`; most of V1's confirm dialogs pass none and take Ivy's own. */
+  width?: DialogWidth;
 }
 
 const VARIANT_CLASS: Record<ConfirmVariant, "destructive" | "warning" | "default"> = {
@@ -37,6 +39,12 @@ const VARIANT_CLASS: Record<ConfirmVariant, "destructive" | "warning" | "default
  * Cancel is rendered **first** and holds the initial focus: the destructive
  * confirm is never the default-focused control, so a stray Enter cannot carry
  * out the action.
+ *
+ * That is a deliberate departure from V1, which puts `.ShortcutKey("Enter").AutoFocus()` on the
+ * destructive button of every one of these dialogs (Delete Plan, Discard, Reset to Draft, Delete
+ * Job, Stop All). Everything else here is V1's — the button order, the outline Cancel, the
+ * destructive treatment, the copy — but a delete that happens because a keystroke arrived a moment
+ * late is not recoverable, and the confirm has no keyboard path to it that Cancel is not on first.
  */
 export function ConfirmDialog({
   isOpen,
@@ -52,6 +60,7 @@ export function ConfirmDialog({
   secondaryAction,
   testId = "confirm-dialog",
   children,
+  width = "default",
 }: ConfirmDialogProps) {
   const cancelRef = React.useRef<HTMLButtonElement>(null);
   const bodyId = React.useId();
@@ -62,6 +71,7 @@ export function ConfirmDialog({
       onClose={onClose}
       title={title}
       testId={testId}
+      width={width}
       initialFocusRef={cancelRef}
       footer={
         <>
