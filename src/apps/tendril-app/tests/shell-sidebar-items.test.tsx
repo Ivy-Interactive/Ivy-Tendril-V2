@@ -118,16 +118,20 @@ describe("sidebar body and footer (V1 sidebarBody / sidebarFooter)", () => {
     expect(container.querySelector(".tsh-agent")?.getAttribute("aria-label")).toBe("Chat");
   });
 
-  it("is the settings cog then the Inbox in the footer, both icon-only", () => {
-    // V1: `inboxInFooter ? [settingsMenu, inboxButton] : [settingsMenu]`, and
-    // `ShowLabel(!inboxInFooter)` is false whenever the two are paired.
+  it("is the Inbox then the settings cog in the footer, both icon-only", () => {
+    // A deliberate divergence, requested directly: V1 pairs them the other way round
+    // (`inboxInFooter ? [settingsMenu, inboxButton] : [settingsMenu]`,
+    // `TendrilAppShell.cs:1188`). `.tsh-sidebar-footer` is a row while the sidebar is expanded and a
+    // column once collapsed - identical CSS in both versions - so this order is what puts Inbox
+    // above Settings on the rail. `ShowLabel(!inboxInFooter)` is still false whenever the two are
+    // paired, which is V1's rule and unchanged.
     const { container } = renderShell();
     const footer = container.querySelector(".tsh-sidebar-footer");
     const buttons = Array.from(footer!.querySelectorAll("button.tsh-settings"));
 
     expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
-      "Settings",
       "Inbox",
+      "Settings",
     ]);
     expect(buttons.every((button) => button.getAttribute("data-icon-only") === "true")).toBe(true);
     // Neither carries a badge in V1, even though `icebox` and `inbox` have counts elsewhere.

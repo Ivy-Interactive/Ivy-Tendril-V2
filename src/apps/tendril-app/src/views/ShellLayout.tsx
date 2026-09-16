@@ -595,6 +595,21 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                (`ShowLabel(!inboxInFooter)` is false whenever the Inbox is in the footer). */
             SidebarFooter: (
               <>
+                {/* Inbox before Settings, which is a deliberate divergence from V1: V1's footer is
+                    `inboxInFooter ? [settingsMenu, inboxButton] : [settingsMenu]`
+                    (`TendrilAppShell.cs:1188`), putting Settings first. The footer is a row while the
+                    sidebar is expanded and a column once collapsed (`.tsh-sidebar-footer`, identical
+                    CSS in both versions), so this order is what puts Inbox above Settings on the
+                    rail. Requested explicitly; not drift. */}
+                <ShellSettingsButton
+                  id="shell-inbox-btn"
+                  label="Inbox"
+                  icon="Inbox"
+                  showLabel={false}
+                  isActive={activeNav === "inbox"}
+                  events={["OnClick"]}
+                  eventHandler={() => onSelectNav("inbox")}
+                />
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <ShellSettingsButton
@@ -610,15 +625,6 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                     {renderMenuItems(settingsMenuItems)}
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <ShellSettingsButton
-                  id="shell-inbox-btn"
-                  label="Inbox"
-                  icon="Inbox"
-                  showLabel={false}
-                  isActive={activeNav === "inbox"}
-                  events={["OnClick"]}
-                  eventHandler={() => onSelectNav("inbox")}
-                />
               </>
             ),
             /* The 16px default, or nothing at all for a full-bleed app. Deciding it here - once,
