@@ -39,7 +39,18 @@
   min-width: 0;
   width: 100%;
   max-width: 50rem; /* 200 units * 0.25rem */
-  padding: 0 0 1rem 1.5rem; /* left 1.5rem matches Details' Padding(6,…) */
+  /* Top matches left. A deliberate divergence from V1, which has `padding: 0 0 1rem 1.5rem` here
+     and leaves the first heading's own `margin-top: 2rem` to stand in for a top inset - so V1's
+     content sits 32px from the top against 24px from the left, and the corner reads lopsided.
+     Padding the top instead, and zeroing the first child's margin below, makes both 1.5rem. */
+  padding: 1.5rem 0 1rem 1.5rem; /* left 1.5rem matches Details' Padding(6,…) */
+}
+
+/* The other half of that fix: the first block's own top margin would otherwise stack on the padding
+   and put the gap back. Only the *first* child is reset - every later heading keeps its 2rem, which
+   is the vertical rhythm that separates sections inside the document. */
+.pmv-markdown > :first-child {
+  margin-top: 0;
 }
 
 /* Fixed slot: sticky top-right, stays pinned while the shell scrolls.
