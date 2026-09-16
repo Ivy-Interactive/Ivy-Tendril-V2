@@ -207,3 +207,29 @@ V2 additionally does the opposite of rule 4: `uiStore.setActiveNav` pushes every
 `activeTabIds`, and `setSelectedPlanId` pushes a `plan-<id>` tab, so ordinary pages accumulate in the
 session strip. `Apps/Jobs/Sheets/OutputSheet.cs` is the reminder that not everything even wants a
 page: job output is a **sheet** over the jobs table in V1, and V2 made it a tab.
+
+#### Adapt the mechanism, match the behaviour
+
+The rules above are the **behaviour** to match, not a shape to copy. V1's router is a C# `Route()`
+returning an action enum because that is what its shell needed; V2 should express the same decisions
+the way its own stack expects. The intended stack is TanStack Router and Query, so:
+
+- **Navigation state belongs in the URL.** TanStack Router is URL-first, so `NavigateArgs`'
+  `{ appId, appArgs }` becomes a route plus its params and search, and the router's job becomes route
+  matching rather than a hand-written switch. This is the single decision everything else follows from
+  — it is also what makes `historyOp`/`Pop` fall out for free instead of being modelled by hand.
+- **A session tab is addressable.** Rule 1 exists because V1 restores a session pane from browser
+  history by its `TabId`, which means the open session is part of the address, not hidden store state.
+- **Server state belongs in Query, not in stores.** The hand-rolled fetch-and-store wiring is
+  [#153](https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues/153), and it is the same theme: the
+  five routing actions and the stores' manual invalidation are both restating things the libraries do.
+
+**Neither library is installed, and the registry is unreachable from the dev sandbox**
+(`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`); only `@tanstack/react-virtual` is present, for the DataTable.
+So until someone with network runs the install, implement the behaviour behind a **thin navigation
+seam** — one `navigate({ appId, args, tabId })` plus a read of the current address — expressed as URL
+state rather than ad-hoc store fields. That keeps the behaviour testable now and makes adopting the
+router a change of implementation behind the seam rather than a rewrite of every caller.
+
+Do **not** hand-roll a general-purpose router. Match the four rules, keep the seam small, and leave
+the rest to the library.
