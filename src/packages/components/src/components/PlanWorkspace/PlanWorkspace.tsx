@@ -408,7 +408,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
   return (
     <div
       ref={rootRef}
-      className="pws-root remove-parent-padding"
+      className="pws-root"
       style={rootStyle}
       data-narrow={narrow}
       data-compact={compact}

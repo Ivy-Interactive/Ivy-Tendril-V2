@@ -120,7 +120,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
           };
 
   return (
-    <div className="tdb-root remove-parent-padding">
+    <div className="tdb-root">
       <div className="tdb-inner">
         <div className="tdb-grid">
           <div className="tdb-col">

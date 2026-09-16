@@ -126,7 +126,12 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
 
   return (
     <div
-      className="tsh-root remove-parent-padding"
+      /* No `remove-parent-padding` class here. It is Ivy's opt-out for full-bleed widgets, but it only
+         works through the `:has(> .remove-parent-padding)` rules in the framework's `index.css`, and V2
+         ships no stylesheet implementing them — so carrying it made these components *look* as though
+         they handled their own inset while the shell went on padding them anyway. V2 decides full-bleed
+         in one place instead: `AppDescriptor.fullBleed` in the app registry, read by `ShellLayout`. */
+      className="tsh-root"
       data-collapsed={collapsed}
       data-resizing={isDragging}
       style={

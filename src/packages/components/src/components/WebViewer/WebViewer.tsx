@@ -828,9 +828,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   const loading = !!frameSrc && isFramingReady && loadedKey !== frameKey;
 
   return (
-    // remove-parent-padding is Ivy's opt-out for full-bleed widgets: the host layout zeroes
-    // its own padding when a child carries it, so the viewport reaches the container edges.
-    <div className="wvr-shell remove-parent-padding" style={shellStyle}>
+    <div className="wvr-shell" style={shellStyle}>
       {toolbar && (
         <Toolbar
           url={currentUrl}
