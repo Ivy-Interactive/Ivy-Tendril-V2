@@ -17,6 +17,7 @@ pub mod plans;
 pub mod projects;
 pub mod pull_requests;
 pub mod recommendations;
+pub mod tunnel;
 pub mod vault;
 pub mod verifications;
 pub mod ws;
@@ -76,6 +77,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/plans/:id/revisions",
             get(plans::get_revision_handler).post(plans::write_revision_handler),
+        )
+        // In place, keeping the revision number — what answering a question needs. See the handler.
+        .route(
+            "/api/plans/:id/revisions/latest",
+            put(plans::update_latest_revision_handler),
         )
         .route(
             "/api/plans/:id/diff-comments",
@@ -324,6 +330,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/dashboard/agent-costs",
             get(dashboard::get_agent_costs),
+        )
+        // Share tunnel. Owner-only: starting, stopping and reading a share are bearer-credentialled
+        // operations, and the GET returns the visitor's capability token. The static `install` segment
+        // is declared alongside so it can never be read as anything else.
+        .route(
+            "/api/tunnel/share",
+            get(tunnel::get_share_tunnel)
+                .post(tunnel::start_share_tunnel)
+                .delete(tunnel::stop_share_tunnel),
+        )
+        .route(
+            "/api/tunnel/share/install",
+            get(tunnel::get_cloudflared_install_state),
         )
         // Models
         .route("/api/models", get(models::list_models))

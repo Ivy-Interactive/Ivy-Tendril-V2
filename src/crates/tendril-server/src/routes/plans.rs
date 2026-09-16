@@ -25,9 +25,9 @@ use tendril_core::plans::{
     read_diff_comments, read_plan_file, read_plan_yaml, remove_annotation, remove_diff_comment,
     remove_plan_verification, remove_recommendation, resolve_plan_folder, resolve_plan_folder_name,
     set_plan_verification_status, set_recommendation_field, set_recommendation_state,
-    upsert_annotation, upsert_diff_comment, write_annotations, write_diff_comments,
-    write_plan_yaml, write_revision, Annotation, CreatePlanOptions, DraftComment,
-    PlanCompletionGuard, SUPPORTED_PLAN_FIELDS,
+    update_latest_revision, upsert_annotation, upsert_diff_comment, write_annotations,
+    write_diff_comments, write_plan_yaml, write_revision, Annotation, CreatePlanOptions,
+    DraftComment, PlanCompletionGuard, SUPPORTED_PLAN_FIELDS,
 };
 
 #[derive(Debug, Deserialize)]
@@ -1037,6 +1037,74 @@ pub async fn write_revision_handler(
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to write revision: {}", e) })),
+        ),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateLatestRevisionBody {
+    pub content: String,
+}
+
+/// Overwrites the newest revision in place, keeping its number.
+///
+/// This is the route answering a question needs, and it is deliberately not the `POST` above.
+/// Answering a question is not a new revision of the plan, it is filling in a blank the plan left —
+/// V1 says so and routes answers through `UpdateLatestRevision` for that reason. Appending would
+/// claim the agent produced a new plan, and would inflate `revisionCount`, which the client's
+/// unfolded-answer guard reads as `revisionCount === 1`; one answer would switch that guard off.
+///
+/// `revision` comes back unchanged so a caller can assert nothing moved.
+pub async fn update_latest_revision_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<UpdateLatestRevisionBody>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+            )
+        }
+    };
+
+    match update_latest_revision(&folder, &body.content) {
+        Ok(rev_num) => {
+            // `updated` moves because the plan's content changed, but the revision count does not —
+            // which is the whole point of this route, so `sync_plan` must run to refresh the row
+            // without it appearing to gain a revision.
+            if let Ok((mut plan, _)) = read_plan_yaml(&folder) {
+                plan.updated = Utc::now();
+                let _ = write_plan_yaml(&folder, &plan);
+            }
+            if let Ok(pf) = read_plan_file(&folder) {
+                if let Ok(conn) = open_database(&state.db_path) {
+                    let _ = sync_plan(&conn, &pf);
+                }
+            }
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "revision": rev_num,
+                    "message": format!("Revision {:03} updated", rev_num)
+                })),
+            )
+        }
+        Err(TendrilError::Validation(e)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("Validation failed: {}", e) })),
+        ),
+        // "no revision to update" is the caller asking to fill a blank in a plan that has no body
+        // yet. That is a bad request, not a server fault.
+        Err(TendrilError::Plan(e)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to update revision: {}", e) })),
         ),
     }
 }
