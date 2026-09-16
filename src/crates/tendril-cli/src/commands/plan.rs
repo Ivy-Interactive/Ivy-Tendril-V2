@@ -134,11 +134,56 @@ pub struct PlanListArgs {
     pub search: Option<String>,
     #[arg(long)]
     pub format: Option<String>,
-    #[arg(long)]
-    pub limit: Option<usize>,
+    /// `0` is rejected by the parser rather than silently truncating the list to nothing, which is
+    /// indistinguishable from "no plans match".
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
+    pub limit: Option<u64>,
     #[arg(long)]
     pub plans_dir: Option<PathBuf>,
 }
+
+/// The plan states `--state`/`--status` accept, in the order `GET /api/plans` reports them in its
+/// `supportedStates` list on a 400. Kept in step with `PlanStatus::from_str_loose` by
+/// `every_supported_state_parses` below.
+pub const SUPPORTED_PLAN_STATES: &[&str] = &[
+    "Draft",
+    "Creating",
+    "Updating",
+    "Executing",
+    "Completed",
+    "Failed",
+    "Review",
+    "Skipped",
+    "Icebox",
+    "Blocked",
+];
+
+/// The `--format` values `plan list` can render. Anything else is a typo, not a request for the
+/// default table.
+pub const PLAN_LIST_FORMATS: &[&str] = &["table", "ids", "folders", "json"];
+
+/// The fields `plan set` can write. A subset of [`SUPPORTED_PLAN_FIELDS`]: `id`, `created`,
+/// `updated` and the list fields are read-only through `plan set` (the lists have their own
+/// `add-*`/`remove-*` verbs), so naming one of those is an error rather than a silent no-op.
+pub const SETTABLE_PLAN_FIELDS: &[&str] = &[
+    "state",
+    "title",
+    "level",
+    "project",
+    "executionProfile",
+    "initialPrompt",
+    "sourceUrl",
+    "priority",
+];
+
+/// The plan states `plan cleanup` will destroy worktrees for without `--force`. A plan outside this
+/// set may have a running agent inside those worktrees.
+pub const TERMINAL_PLAN_STATES: &[PlanStatus] = &[
+    PlanStatus::Completed,
+    PlanStatus::Failed,
+    PlanStatus::Skipped,
+    PlanStatus::Icebox,
+];
 
 #[derive(Args)]
 pub struct PlanCreateArgs {
@@ -209,6 +254,11 @@ pub struct PlanValidateArgs {
 #[derive(Args)]
 pub struct PlanCleanupArgs {
     pub plan_id: String,
+    #[arg(
+        long,
+        help = "Remove the worktrees even if the plan is not in a terminal state"
+    )]
+    pub force: bool,
 }
 
 #[derive(Args)]
@@ -467,7 +517,9 @@ pub enum PlanRecCommands {
     Add {
         plan_id: String,
         title: String,
-        #[arg(long, default_value = "")]
+        // `-d` is V1's short and `ExecutePlan`'s reflection step invokes it that way, so dropping it
+        // made that step a usage error on every run.
+        #[arg(short = 'd', long, default_value = "")]
         description: String,
         #[arg(long)]
         impact: Option<String>,
@@ -726,11 +778,38 @@ pub async fn handle_plan_command(
         PlanCommands::List(args) => {
             let custom_dir = args.plans_dir.is_some();
             let p_dir = args.plans_dir.unwrap_or(plans_dir);
-            let status_filter = args
-                .state
+
+            // Every filter is validated before anything is read, because a filter that cannot be
+            // honoured must not be silently dropped: `--state Faild` used to mean "no state filter",
+            // so "show me the failed plans" answered with every plan and exit 0.
+            let status_filter = match args.state.as_deref().or(args.status.as_deref()) {
+                Some(v) => Some(PlanStatus::from_str_loose(v).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Unknown plan state '{}'. Supported states: {}",
+                        v,
+                        SUPPORTED_PLAN_STATES.join(", ")
+                    )
+                })?),
+                None => None,
+            };
+            let format = args
+                .format
                 .as_deref()
-                .or(args.status.as_deref())
-                .and_then(PlanStatus::from_str_loose);
+                .unwrap_or("table")
+                .to_ascii_lowercase();
+            if !PLAN_LIST_FORMATS.contains(&format.as_str()) {
+                anyhow::bail!(
+                    "Unknown format '{}'. Supported formats: {}",
+                    args.format.as_deref().unwrap_or_default(),
+                    PLAN_LIST_FORMATS.join(", ")
+                );
+            }
+            // A mistyped `--plans-dir` printed an empty table, which reads as "this home has no
+            // plans" rather than "I looked in the wrong place". The default directory is *not*
+            // checked: a home with no `Plans/` yet legitimately lists nothing.
+            if custom_dir && !p_dir.exists() {
+                anyhow::bail!("Plans directory not found: {}", p_dir.display());
+            }
             let search_term = args.search.as_deref();
 
             let mut plans = if custom_dir || !db_path.exists() {
@@ -791,16 +870,10 @@ pub async fn handle_plan_command(
             }
 
             if let Some(limit) = args.limit {
-                plans.truncate(limit);
+                plans.truncate(limit as usize);
             }
 
-            match args
-                .format
-                .as_deref()
-                .unwrap_or("table")
-                .to_ascii_lowercase()
-                .as_str()
-            {
+            match format.as_str() {
                 "json" => {
                     println!("{}", serde_json::to_string_pretty(&plans)?);
                 }
@@ -969,8 +1042,18 @@ pub async fn handle_plan_command(
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
             let (mut plan, _) = read_plan_yaml(&folder)?;
 
-            if args.field.eq_ignore_ascii_case("state") {
-                if let Some(new_state) = PlanStatus::from_str_loose(&args.value) {
+            // A `match` with a `_` arm, not an `if/else if` chain: the chain had no final `else`, so
+            // `plan set 1 titel "X"` bumped `updated`, rewrote plan.yaml, re-synced the database and
+            // reported success while writing nothing at all.
+            match args.field.to_ascii_lowercase().as_str() {
+                "state" => {
+                    let new_state = PlanStatus::from_str_loose(&args.value).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Invalid state: {}. Supported states: {}",
+                            args.value,
+                            SUPPORTED_PLAN_STATES.join(", ")
+                        )
+                    })?;
                     if let Some(warn) = PlanCompletionGuard::apply_state(
                         &mut plan,
                         new_state,
@@ -979,25 +1062,28 @@ pub async fn handle_plan_command(
                     )? {
                         eprintln!("{}", warn);
                     }
-                } else {
-                    anyhow::bail!("Invalid state: {}", args.value);
                 }
-            } else if args.field.eq_ignore_ascii_case("title") {
-                plan.title = args.value.clone();
-            } else if args.field.eq_ignore_ascii_case("level") {
-                plan.level = args.value.clone();
-            } else if args.field.eq_ignore_ascii_case("project") {
-                plan.project = args.value.clone();
-            } else if args.field.eq_ignore_ascii_case("executionprofile") {
-                plan.execution_profile = Some(args.value.clone());
-            } else if args.field.eq_ignore_ascii_case("initialprompt") {
-                plan.initial_prompt = Some(args.value.clone());
-            } else if args.field.eq_ignore_ascii_case("sourceurl") {
-                plan.source_url = Some(args.value.clone());
-            } else if args.field.eq_ignore_ascii_case("priority") {
-                if let Ok(p) = args.value.parse::<i32>() {
-                    plan.priority = p;
+                "title" => plan.title = args.value.clone(),
+                "level" => plan.level = args.value.clone(),
+                "project" => plan.project = args.value.clone(),
+                "executionprofile" => plan.execution_profile = Some(args.value.clone()),
+                "initialprompt" => plan.initial_prompt = Some(args.value.clone()),
+                "sourceurl" => plan.source_url = Some(args.value.clone()),
+                // The old arm was `if let Ok(p) = value.parse()` with no error branch, so a
+                // non-numeric priority reported success and kept the old number.
+                "priority" => {
+                    plan.priority = args.value.parse::<i32>().map_err(|_| {
+                        anyhow::anyhow!(
+                            "Invalid priority '{}': expected a whole number.",
+                            args.value
+                        )
+                    })?
                 }
+                _ => anyhow::bail!(
+                    "Unknown field '{}'. Settable fields: {}",
+                    args.field,
+                    SETTABLE_PLAN_FIELDS.join(", ")
+                ),
             }
 
             plan.updated = Utc::now();
@@ -1031,8 +1117,19 @@ pub async fn handle_plan_command(
             if issues.is_empty() {
                 println!("Plan is valid.");
             } else {
-                for issue in issues {
+                for issue in &issues {
                     println!("[{}] {}", issue.severity, issue.message);
+                }
+                // Exit non-zero on an error, so a script can gate on validity. Warnings stay exit 0:
+                // an outdated schema version or a missing Revisions directory is a note, not a
+                // reason to refuse to work with the plan.
+                let errors = error_count(&issues);
+                if errors > 0 {
+                    anyhow::bail!(
+                        "Plan {} is not valid: {} error(s). See the [Error] line(s) above.",
+                        args.plan_id,
+                        errors
+                    );
                 }
             }
         }
@@ -1059,17 +1156,50 @@ pub async fn handle_plan_command(
             if issues.is_empty() {
                 println!("All plans are healthy.");
             } else {
-                for issue in issues {
+                for issue in &issues {
                     println!(
                         "{}: [{}] {}",
                         issue.plan_folder, issue.severity, issue.message
+                    );
+                }
+                let errors = error_count(&issues);
+                if errors > 0 {
+                    anyhow::bail!(
+                        "{} plan error(s) found. See the [Error] line(s) above.",
+                        errors
                     );
                 }
             }
         }
         PlanCommands::Cleanup(args) => {
             let folder = resolve_plan_folder(&args.plan_id, &plans_dir)?;
+
+            // The worktrees of a non-terminal plan may have a coding agent working inside them, so
+            // removing them needs an explicit override. Without this guard `plan cleanup` deleted an
+            // actively executing plan's worktrees out from under its agent and exited 0.
+            if !args.force {
+                let (plan, _) = read_plan_yaml(&folder)?;
+                let terminal = PlanStatus::from_str_loose(&plan.state)
+                    .is_some_and(|s| TERMINAL_PLAN_STATES.contains(&s));
+                if !terminal {
+                    anyhow::bail!(
+                        "Plan is not in a terminal state (current: {}). Use --force to override.",
+                        plan.state
+                    );
+                }
+            }
+
             cleanup_worktrees(&folder)?;
+
+            // `cleanup_worktrees` is best-effort per directory and returns `Ok(())` even when it
+            // removed nothing, so the only honest verdict comes from looking again.
+            let survivors = surviving_worktree_dirs(&folder);
+            if !survivors.is_empty() {
+                for path in &survivors {
+                    eprintln!("Could not remove worktree: {}", path.display());
+                }
+                anyhow::bail!("{} worktrees could not be removed.", survivors.len());
+            }
             println!("Worktrees cleaned up for plan {}", args.plan_id);
         }
         // Worktree creation and removal are filesystem-only: unlike the project commands there is
@@ -1908,6 +2038,29 @@ pub async fn handle_plan_command(
     Ok(())
 }
 
+/// How many of these health issues are errors rather than warnings. `plan validate` and
+/// `plan doctor` exit non-zero on errors only.
+fn error_count(issues: &[tendril_core::plans::PlanDoctorIssue]) -> usize {
+    issues
+        .iter()
+        .filter(|i| i.severity.eq_ignore_ascii_case("Error"))
+        .count()
+}
+
+/// The directories still present under a plan's `Worktrees/` folder, i.e. what a cleanup pass failed
+/// to remove. Empty when there is no `Worktrees/` folder at all.
+fn surviving_worktree_dirs(plan_folder: &std::path::Path) -> Vec<PathBuf> {
+    let worktrees_dir = plan_folder.join("Worktrees");
+    let Ok(entries) = std::fs::read_dir(&worktrees_dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect()
+}
+
 /// The plan id as everything else in Tendril addresses it: the folder's 5-digit prefix.
 fn plan_id_from_folder(plan_folder: &std::path::Path) -> String {
     plan_folder
@@ -1960,4 +2113,104 @@ fn env_json_document(
     });
 
     serde_json::to_string_pretty(&doc).unwrap_or_else(|_| "{}".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tendril_core::plans::PlanDoctorIssue;
+
+    /// The list the `--state` and `plan set state` errors advertise has to be the list the parser
+    /// actually accepts, spelled the way `PlanStatus` spells it. A state that has been added to the
+    /// enum but not here would be rejected by a filter that can in fact honour it.
+    #[test]
+    fn every_supported_state_parses_and_round_trips() {
+        for name in SUPPORTED_PLAN_STATES {
+            let parsed = PlanStatus::from_str_loose(name)
+                .unwrap_or_else(|| panic!("advertised state '{}' does not parse", name));
+            assert_eq!(
+                parsed.as_str(),
+                *name,
+                "advertised state '{}' is not the canonical spelling",
+                name
+            );
+        }
+    }
+
+    /// `plan set` must not advertise a field `plan get` cannot read back: an agent that writes a
+    /// field and then verifies its own write has to be able to.
+    #[test]
+    fn every_settable_field_is_also_readable() {
+        for field in SETTABLE_PLAN_FIELDS {
+            assert!(
+                SUPPORTED_PLAN_FIELDS
+                    .iter()
+                    .any(|f| f.eq_ignore_ascii_case(field)),
+                "settable field '{}' is not in SUPPORTED_PLAN_FIELDS, so `plan get` would reject it",
+                field
+            );
+        }
+    }
+
+    #[test]
+    fn terminal_states_are_the_four_states_cleanup_allows() {
+        for state in [
+            PlanStatus::Draft,
+            PlanStatus::Creating,
+            PlanStatus::Updating,
+            PlanStatus::Executing,
+            PlanStatus::Review,
+            PlanStatus::Blocked,
+        ] {
+            assert!(
+                !TERMINAL_PLAN_STATES.contains(&state),
+                "{:?} is not terminal and must need --force",
+                state
+            );
+        }
+        assert_eq!(TERMINAL_PLAN_STATES.len(), 4);
+    }
+
+    fn issue(severity: &str) -> PlanDoctorIssue {
+        PlanDoctorIssue {
+            plan_folder: "00001-Plan".to_string(),
+            severity: severity.to_string(),
+            message: "m".to_string(),
+        }
+    }
+
+    #[test]
+    fn error_count_counts_errors_case_insensitively_and_ignores_warnings() {
+        let issues = vec![issue("Error"), issue("error"), issue("Warning")];
+        assert_eq!(error_count(&issues), 2);
+        assert_eq!(error_count(&[issue("Warning")]), 0);
+        assert_eq!(error_count(&[]), 0);
+    }
+
+    #[test]
+    fn surviving_worktree_dirs_reports_what_is_left_behind() {
+        let root = std::env::temp_dir().join(format!(
+            "tendril-cli-survivors-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        // No Worktrees folder at all is a clean plan, not a failure.
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(surviving_worktree_dirs(&root).is_empty());
+
+        std::fs::create_dir_all(root.join("Worktrees")).unwrap();
+        assert!(surviving_worktree_dirs(&root).is_empty());
+
+        std::fs::create_dir_all(root.join("Worktrees/repo-one")).unwrap();
+        std::fs::write(root.join("Worktrees/stray-file"), b"x").unwrap();
+        let survivors = surviving_worktree_dirs(&root);
+        assert_eq!(
+            survivors.len(),
+            1,
+            "files are not worktrees: {:?}",
+            survivors
+        );
+        assert!(survivors[0].ends_with("repo-one"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

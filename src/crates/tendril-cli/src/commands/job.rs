@@ -52,6 +52,20 @@ pub enum JobCommands {
     Maintenance,
 }
 
+/// The statuses `job list --status` accepts. Kept in step with `JobStatus::from_str_loose` by
+/// `every_supported_job_status_parses` below, and worded like the plan-state list `plan list` and
+/// `GET /api/plans` report.
+pub const SUPPORTED_JOB_STATUSES: &[&str] = &[
+    "Pending",
+    "Queued",
+    "Running",
+    "Completed",
+    "Failed",
+    "Timeout",
+    "Stopped",
+    "Blocked",
+];
+
 #[derive(Args)]
 pub struct JobListArgs {
     #[arg(short, long)]
@@ -226,16 +240,27 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
 
     match cmd {
         JobCommands::AddLog(args) => {
-            let log_path = append_agent_log(
-                tendril_home,
-                &args.job_id,
-                &args.action,
-                args.summary.as_deref(),
-            )?;
+            // Filesystem-only: this is the one job subcommand that works with no daemon, because an
+            // agent's narrative log must survive a daemon that went away mid-run.
+            let job_id = normalize_job_id(&args.job_id)?;
+            let log_path =
+                append_agent_log(tendril_home, &job_id, &args.action, args.summary.as_deref())?;
             println!("Log written: {}", log_path.display());
             return Ok(());
         }
         JobCommands::List(args) => {
+            // Validated here rather than left to the server: `GET /api/jobs` parses `?status=` with
+            // `and_then`, so an unparseable value there becomes *no filter* and `job list --status
+            // Runing` answers with every job and exit 0.
+            if let Some(st) = args.status.as_deref() {
+                if JobStatus::from_str_loose(st).is_none() {
+                    anyhow::bail!(
+                        "Unknown job status '{}'. Supported statuses: {}",
+                        st,
+                        SUPPORTED_JOB_STATUSES.join(", ")
+                    );
+                }
+            }
             let master = get_master_or_err(tendril_home)?;
             let mut url = format!("{}/api/jobs?limit={}", master.base_url(), args.limit);
             if let Some(st) = args.status {
@@ -769,6 +794,34 @@ fn confirm(prompt: &str) -> anyhow::Result<bool> {
     ))
 }
 
+/// The job id in the form the daemon named the job's artifacts, or an error when it cannot be one.
+///
+/// `add-log` builds `Logs/Jobs/<id>.md` out of this string, so an id that is not a plain job id has
+/// to be refused rather than turned into a filename. The two cases seen in practice are an
+/// unsubstituted `{{TendrilJobId}}` firmware placeholder, which litters the log directory with junk
+/// nobody ever reads, and a `../` segment, which escapes the log directory altogether. V1 rejected
+/// both on every surface that accepted a job id, and was right to.
+///
+/// Ids are allocated as zero-padded five-digit numbers, but agents and operators routinely type the
+/// unpadded form, so a numeric id is padded back to the allocated spelling — otherwise `add-log 123`
+/// silently starts an orphan `123.md` beside the real `00123.md`.
+fn normalize_job_id(job_id: &str) -> anyhow::Result<String> {
+    let trimmed = job_id.trim();
+    if trimmed.is_empty()
+        || trimmed.len() > 32
+        || !trimmed.chars().all(|c| c.is_ascii_alphanumeric())
+    {
+        anyhow::bail!(
+            "Invalid job id '{}'. Expected an alphanumeric job id such as 00458.",
+            job_id
+        );
+    }
+    Ok(match trimmed.parse::<u64>() {
+        Ok(number) => format!("{:05}", number),
+        Err(_) => trimmed.to_string(),
+    })
+}
+
 fn get_master_or_err(tendril_home: &Path) -> anyhow::Result<MasterInfo> {
     read_master(tendril_home).ok_or_else(|| {
         // `run` is the documented daemon starter — it migrates the database and checks the port
@@ -800,4 +853,36 @@ async fn put_job_report(
     }
     resp.error_for_status()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The list `job list --status` advertises has to be the list the parser accepts, spelled the way
+    /// `JobStatus` spells it — otherwise the error message tells a caller a working status is invalid.
+    #[test]
+    fn every_supported_job_status_parses_and_round_trips() {
+        for name in SUPPORTED_JOB_STATUSES {
+            let parsed = JobStatus::from_str_loose(name)
+                .unwrap_or_else(|| panic!("advertised status '{}' does not parse", name));
+            assert_eq!(
+                parsed.as_str(),
+                *name,
+                "advertised status '{}' is not the canonical spelling",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn a_mistyped_job_status_does_not_parse() {
+        for typo in ["Runing", "run", "complete", ""] {
+            assert!(
+                JobStatus::from_str_loose(typo).is_none(),
+                "{:?} must not parse, or the --status guard is meaningless",
+                typo
+            );
+        }
+    }
 }
