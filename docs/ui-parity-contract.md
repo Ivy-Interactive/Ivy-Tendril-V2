@@ -74,3 +74,26 @@ made centrally per area.
 
 Match surrounding code style. Note that V1's `AGENTS.md` bans em dashes; that is a V1 rule and does not
 apply here, so do not reformat V2 prose to follow it.
+
+## Behavioural parity (second pass)
+
+The first pass aligned *composition and appearance*: which widgets, in what order, with what labels.
+This pass is about *behaviour*, which is where the real divergence turned out to live. For your area,
+the V1 C# is the authority on all of it:
+
+- **State machines.** Every state a view can be in, what moves it between them, and what is disabled,
+  hidden or read-only in each. V1's `ViewBase.Build()` plus its `UseState`/`UseEffect` calls are the
+  spec.
+- **Actions and their guards.** What each button actually does, what it refuses to do and why, what it
+  does optimistically versus after the service confirms, and what it does on failure.
+- **Data flow.** What is fetched, when, how often, what invalidates it, and what is re-read rather than
+  assumed. A V1 view that re-reads from the service on click and not just on render is making a
+  deliberate choice — copy it.
+- **Edge cases.** Empty, single-item, very large, offline, mid-flight, terminal-state and
+  permission-denied. These are where a port silently does nothing instead of the right thing.
+- **Wiring that exists but is unreachable.** A prop nobody passes, a callback nobody supplies and a
+  handler nobody calls are all equivalent to the feature being absent. Check that each behaviour you
+  port is actually reachable from the running app, and say so.
+
+Report behavioural divergence even where you cannot fix it in files you own — that is the most valuable
+thing you can produce.
