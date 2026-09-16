@@ -1,6 +1,6 @@
 use crate::error::{Result, TendrilError};
 use crate::fs_lock::{write_atomic, FileLock};
-use crate::models::{PlanFile, PlanStatus, PlanVerificationEntry, PlanYaml};
+use crate::models::{PlanFile, PlanStatus, PlanVerificationEntry, PlanYaml, VerificationStatus};
 use crate::plans::helpers::{allocate_plan_id, to_safe_title};
 use crate::plans::reader::read_plan_file;
 use chrono::Utc;
@@ -20,6 +20,52 @@ pub fn write_plan_yaml(plan_folder: &Path, plan: &PlanYaml) -> Result<()> {
         .map_err(|e| TendrilError::Plan(format!("Failed to serialize plan.yaml: {}", e)))?;
     let _lock = FileLock::acquire(&yaml_path)?;
     write_atomic(&yaml_path, raw.as_bytes())
+}
+
+/// The repos and verifications a new plan inherits from its project.
+///
+/// Ports V1's `PlanCreateCommand` repo copy plus `PlanCommandHelpers.ApplyProjectVerifications`,
+/// and exists as one function for the same reason V1's does: plan creation has three entry points
+/// (the CLI, the HTTP route and the MCP tool) and all three have to seed identically.
+///
+/// Without this a plan is created with no repos and no verifications, which is not a cosmetic gap:
+/// `ExecutePlan` walks the plan's repos to create worktrees and its verifications to run the quality
+/// gates, so both loops iterate nothing and the job reports success having checked nothing.
+///
+/// A project verification is seeded `Pending` when required and `Skipped` when optional. An entry
+/// named by `overrides` (the CLI's `--verification Name=Status`) takes that status instead, matched
+/// case-insensitively; an override naming something the project does not have is kept and appended
+/// after the project set, in the order supplied.
+pub fn seed_plan_from_project(
+    project: &crate::models::project::ProjectConfig,
+    overrides: Vec<PlanVerificationEntry>,
+) -> (Vec<String>, Vec<PlanVerificationEntry>) {
+    let repos = project.repos.iter().map(|r| r.path.clone()).collect();
+
+    let mut seeded: Vec<PlanVerificationEntry> = Vec::new();
+    for pv in &project.verifications {
+        let status = overrides
+            .iter()
+            .find(|o| o.name.eq_ignore_ascii_case(&pv.name))
+            .map(|o| o.status)
+            .unwrap_or(if pv.required {
+                VerificationStatus::Pending
+            } else {
+                VerificationStatus::Skipped
+            });
+        seeded.push(PlanVerificationEntry {
+            name: pv.name.clone(),
+            status,
+        });
+    }
+
+    for o in overrides {
+        if !seeded.iter().any(|s| s.name.eq_ignore_ascii_case(&o.name)) {
+            seeded.push(o);
+        }
+    }
+
+    (repos, seeded)
 }
 
 pub struct CreatePlanOptions {

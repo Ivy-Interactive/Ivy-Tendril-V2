@@ -11,6 +11,7 @@ import type {
   AgentCostBreakdown,
   Annotation,
   CreateProjectRequest,
+  CrossPlanRecommendation,
   DashboardActivity,
   DiscoveredVaultRepo,
   DoctorCheck,
@@ -475,6 +476,51 @@ const tauriClient = {
 
   async listRecommendations(this: void, planId: string): Promise<RecommendationItem[]> {
     return invoke<RecommendationItem[]>("cmd_list_recommendations", { planId });
+  },
+
+  async listCrossPlanRecommendations(
+    this: void,
+    project?: string,
+    state?: string,
+  ): Promise<CrossPlanRecommendation[]> {
+    try {
+      return await invoke<CrossPlanRecommendation[]>("cmd_list_all_recommendations", {
+        project,
+        state,
+      });
+    } catch {
+      // Cross-plan projection fallback: gather from completed plans
+      const plans = await bridge.listPlans();
+      const relevantPlans = plans.filter((p) => p.state === "Completed" || !state);
+      const results: CrossPlanRecommendation[] = [];
+      await Promise.all(
+        relevantPlans.map(async (plan) => {
+          try {
+            const recs = await bridge.listRecommendations(plan.id);
+            for (const r of recs) {
+              const rState = r.state || "Pending";
+              if (state && rState !== state) continue;
+              if (project && plan.project !== project) continue;
+              results.push({
+                planId: plan.id,
+                planTitle: plan.title,
+                project: plan.project,
+                sourcePlanStatus: plan.state,
+                title: r.title,
+                description: r.description,
+                impact: r.impact,
+                state: r.state,
+                declineReason: r.declineReason,
+                notes: r.notes,
+              });
+            }
+          } catch {
+            // Ignore per-plan failure
+          }
+        }),
+      );
+      return results;
+    }
   },
 
   /**

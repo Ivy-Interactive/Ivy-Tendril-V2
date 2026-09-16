@@ -490,6 +490,92 @@ describe("Operator Views Component & Accessibility Tests", () => {
       expect(handleSelectNav).toHaveBeenCalledWith("pull-requests");
     });
 
+    it("renders Recommendations in sidebar nav and calls onSelectNav with 'recommendations'", () => {
+      const handleSelectNav = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={handleSelectNav}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      const recNavItem = screen.getByLabelText("Recommendations");
+      expect(recNavItem).toBeInTheDocument();
+      fireEvent.click(recNavItem);
+      expect(handleSelectNav).toHaveBeenCalledWith("recommendations");
+    });
+
+    it("exposes Icebox and Check for Updates via the settings menu", () => {
+      const handleSelectNav = vi.fn();
+      const handleCheckForUpdates = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={handleSelectNav}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+          onCheckForUpdates={handleCheckForUpdates}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      fireEvent.keyDown(screen.getByLabelText("Settings"), { key: "Enter" });
+      expect(screen.getByText("Icebox")).toBeInTheDocument();
+      expect(screen.getByText("Check for Updates")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("Icebox"));
+      expect(handleSelectNav).toHaveBeenCalledWith("icebox");
+    });
+
+    it("renders badge counts for plans, review, recommendations, jobs, and chat", () => {
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={() => {}}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onOpenShortcuts={() => {}}
+          onReconnect={() => {}}
+          draftCount={3}
+          reviewCount={5}
+          recommendationsCount={2}
+          jobCount={4}
+          chatCount={7}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      expect(screen.getByText("3")).toBeInTheDocument();
+      expect(screen.getByText("5")).toBeInTheDocument();
+      expect(screen.getByText("2")).toBeInTheDocument();
+      expect(screen.getByText("4")).toBeInTheDocument();
+    });
+
     it("calls onCloseTab (not onSelectTab) with the tab id when a tab's close control is clicked", () => {
       const handleSelectTab = vi.fn();
       const handleCloseTab = vi.fn();

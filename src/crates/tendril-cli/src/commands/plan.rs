@@ -14,6 +14,7 @@ use tendril_core::git::worktree::{
     WorktreeMode,
 };
 use tendril_core::http::daemon_client;
+use tendril_core::jobs::firmware_values::find_project;
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanWorktreeEntry, RecommendationStatus, VerificationStatus,
 };
@@ -23,9 +24,10 @@ use tendril_core::plans::{
     get_plan_field, get_revision, list_recommendations, materialize_plan_env,
     order_by_project_config, read_plan_file, read_plan_yaml, remove_plan_verification,
     remove_recommendation, render_env_file, resolve_plan_folder, resolve_plan_folder_name,
-    resolve_plan_project, resolve_pr_head_via_gh, resolve_worktrees, set_plan_verification_status,
-    set_recommendation_field, write_plan_yaml, write_revision, CreatePlanOptions,
-    DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard, RenderedEnvFile,
+    resolve_plan_project, resolve_pr_head_via_gh, resolve_worktrees, seed_plan_from_project,
+    set_plan_verification_status, set_recommendation_field, write_plan_yaml, write_revision,
+    CreatePlanOptions, DuplicateCandidateFinder, MaterializeOutcome, PlanCompletionGuard,
+    RenderedEnvFile, SUPPORTED_PLAN_FIELDS,
 };
 
 #[derive(Subcommand)]
@@ -853,6 +855,20 @@ pub async fn handle_plan_command(
             let duplicates =
                 DuplicateCandidateFinder::find(&p_dir, &args.title, &args.project, None);
 
+            // The plan inherits the project's repos and verification set, as V1 does. A project with
+            // no repos is refused rather than producing a plan `ExecutePlan` can make no worktree
+            // for — also V1's behaviour.
+            let settings = load_config(&get_config_path(tendril_home))?;
+            let (repos, verifications) = match find_project(&settings, &args.project) {
+                Some(project) => {
+                    if project.repos.is_empty() {
+                        anyhow::bail!("Project '{}' has no repos configured.", args.project);
+                    }
+                    seed_plan_from_project(project, verifications)
+                }
+                None => anyhow::bail!("Project '{}' not found.", args.project),
+            };
+
             let opts = CreatePlanOptions {
                 title: args.title,
                 project: args.project,
@@ -861,7 +877,7 @@ pub async fn handle_plan_command(
                 source_url: args.source_url,
                 execution_profile: args.execution_profile,
                 priority: args.priority,
-                repos: Vec::new(),
+                repos,
                 verifications,
                 depends_on: args.depends_on,
                 related_plans: args.related_plan,
@@ -933,7 +949,16 @@ pub async fn handle_plan_command(
                     plan_file.metadata.id.to_string()
                 } else {
                     let (plan_yaml, _) = read_plan_yaml(&folder)?;
-                    get_plan_field(&plan_yaml, &f).unwrap_or_default()
+                    // An unknown field is an error, as in V1. Swallowing it into an empty line made
+                    // a typo indistinguishable from a genuinely empty list, with exit 0 either way.
+                    match get_plan_field(&plan_yaml, &f) {
+                        Some(v) => v,
+                        None => anyhow::bail!(
+                            "Unknown field '{}'. Valid fields: {}",
+                            f,
+                            SUPPORTED_PLAN_FIELDS.join(", ")
+                        ),
+                    }
                 };
                 println!("{}", val);
             } else {
@@ -977,7 +1002,9 @@ pub async fn handle_plan_command(
 
             plan.updated = Utc::now();
             write_plan_yaml(&folder, &plan)?;
-            println!("Updated {} to '{}'", args.field, plan.title);
+            // The value that was written, not the plan's title: an agent that reads this back to
+            // check its own write was being told "Updated state to 'My Plan Title'". V1's wording.
+            println!("Set {} = {}", args.field, args.value);
 
             if let Ok(pf) = read_plan_file(&folder) {
                 if let Ok(conn) = open_database(&db_path) {

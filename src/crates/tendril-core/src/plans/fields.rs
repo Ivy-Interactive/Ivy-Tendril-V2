@@ -17,6 +17,15 @@ pub const SUPPORTED_PLAN_FIELDS: &[&str] = &[
     "sourceUrl",
     "priority",
     "partialDelivery",
+    // The list fields. Each renders one item per line, so a caller can pipe them into `grep`/`wc`,
+    // which is exactly what the CreatePr, CreatePlan and RetryPlan promptwares do.
+    "repos",
+    "prs",
+    "commits",
+    "verifications",
+    "dependsOn",
+    "relatedPlans",
+    "recommendations",
 ];
 
 /// Resolves a case-insensitive `?field=` name against `plan.yaml`. Returns `None` for an
@@ -35,6 +44,33 @@ pub fn get_plan_field(plan: &PlanYaml, field: &str) -> Option<String> {
         "sourceurl" => Some(plan.source_url.clone().unwrap_or_default()),
         "priority" => Some(plan.priority.to_string()),
         "partialdelivery" => Some(plan.partial_delivery.to_string()),
+
+        // One item per line. An empty list is an empty string, which is distinct from the `None`
+        // that means "no such field" — `CreatePr` reads `verifications` to decide whether the plan
+        // can be completed, so "no failing gates" and "I do not know that field" must not look
+        // alike. Formats are V1's: bare values, except the two `Name=Status` pairs.
+        "repos" => Some(plan.repos.join("\n")),
+        "prs" => Some(plan.prs.join("\n")),
+        "commits" => Some(plan.commits.join("\n")),
+        "verifications" => Some(
+            plan.verifications
+                .iter()
+                .map(|v| format!("{}={}", v.name, v.status))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+        "dependson" => Some(plan.depends_on.join("\n")),
+        "relatedplans" => Some(plan.related_plans.join("\n")),
+        "recommendations" => Some(
+            plan.recommendations
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(|r| format!("{}={}", r.title, r.state))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ),
+
         _ => None,
     }
 }

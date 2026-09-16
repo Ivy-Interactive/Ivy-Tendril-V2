@@ -392,6 +392,15 @@ export interface RecommendationItem {
   notes?: string;
 }
 
+export interface CrossPlanRecommendation extends RecommendationItem {
+  planId: string;
+  planTitle?: string;
+  planFolderName?: string;
+  project: string;
+  sourcePlanStatus?: string;
+  date?: string;
+}
+
 export interface VerificationReport {
   name: string;
   /** Raw markdown of `<planFolder>/Verification/<name>.md`. */

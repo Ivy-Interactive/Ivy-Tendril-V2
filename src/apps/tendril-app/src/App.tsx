@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
 import { plansStore } from "./state/plansStore";
@@ -6,6 +6,7 @@ import { jobsStore } from "./state/jobsStore";
 import { notificationsStore } from "./state/notificationsStore";
 import { serviceStore } from "./state/serviceStore";
 import { bridge } from "./api/bridge";
+import { chatApi } from "./api/chatApi";
 import {
   onChangeEvent,
   onChangeStreamStatus,
@@ -77,6 +78,12 @@ const InboxView = React.lazy(() =>
 const PullRequestsView = React.lazy(() =>
   import("./views/PullRequestsView").then((m) => ({ default: m.PullRequestsView })),
 );
+const RecommendationsView = React.lazy(() =>
+  import("./views/RecommendationsView").then((m) => ({ default: m.RecommendationsView })),
+);
+const IceboxView = React.lazy(() =>
+  import("./views/IceboxView").then((m) => ({ default: m.IceboxView })),
+);
 // Lazy for the same reason as the rest, with more at stake: this is the only
 // view that pulls in xterm.js, which nothing else in the shell needs.
 const ReviewActionView = React.lazy(() =>
@@ -114,6 +121,8 @@ export const App: React.FC = () => {
   // Failures from actions the shell itself owns (service restart/repair).
   const [shellError, setShellError] = useState<string | null>(null);
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+  const [recommendationsCount, setRecommendationsCount] = useState<number>(0);
+  const [chatSessionsCount, setChatSessionsCount] = useState<number>(0);
 
   // Subscribe to stores
   useEffect(() => {
@@ -141,6 +150,16 @@ export const App: React.FC = () => {
       .getOnboardingStatus()
       .then(setOnboarding)
       .catch(() => setOnboarding(null));
+
+    bridge
+      .listCrossPlanRecommendations(undefined, "Pending")
+      .then((recs) => setRecommendationsCount(recs.length))
+      .catch(() => {});
+
+    chatApi
+      .listSessions()
+      .then((sessions) => setChatSessionsCount(sessions.length))
+      .catch(() => {});
 
     // The app only ever reads the daemon's cached release-check result, never the release feed
     // itself — a 6-hour poll matches the daemon's own success-path interval.
@@ -337,6 +356,52 @@ export const App: React.FC = () => {
     handleSelectJob(res.jobId);
   };
 
+  const draftCount = useMemo(
+    () => plansState.plans.filter((p) => p.state === "Draft").length,
+    [plansState.plans],
+  );
+  const reviewCount = useMemo(
+    () => plansState.plans.filter((p) => p.state === "Review" || p.state === "Failed").length,
+    [plansState.plans],
+  );
+  const jobCount = useMemo(
+    () =>
+      jobsState.jobs.filter(
+        (j) =>
+          j.status === "Running" ||
+          j.status === "Queued" ||
+          j.status === "Pending" ||
+          j.status === "Blocked",
+      ).length,
+    [jobsState.jobs],
+  );
+
+  const handleCheckForUpdates = async () => {
+    try {
+      const info = await bridge.checkVersionNow();
+      setVersionInfo(info);
+      const { toast } = await import("@ivy-interactive/components");
+      if (info.hasUpdate) {
+        toast({
+          title: "Update Available",
+          description: `Version ${info.latestVersion} is available.`,
+        });
+      } else {
+        toast({
+          title: "Up to date",
+          description: `You're on the latest version (v${info.currentVersion}).`,
+        });
+      }
+    } catch (err) {
+      const { toast } = await import("@ivy-interactive/components");
+      toast({
+        title: "Update check failed",
+        description: describeBridgeError(err),
+        variant: "destructive",
+      });
+    }
+  };
+
   const activeNav = uiState.activeNav;
 
   // The nav and its tabs are persisted; the run behind them is not. A restored session therefore
@@ -516,6 +581,26 @@ export const App: React.FC = () => {
           />
         );
 
+      case "recommendations":
+        return (
+          <RecommendationsView
+            onSelectPlan={handleSelectPlan}
+            onJobStarted={(res) => handleSelectJob(res.jobId)}
+          />
+        );
+
+      case "icebox":
+        return (
+          <IceboxView
+            plans={plansState.plans}
+            onSelectPlan={handleSelectPlan}
+            onNewPlan={() => {
+              setNewPlanPrefill({});
+              setIsNewPlanOpen(true);
+            }}
+          />
+        );
+
       case "jobs":
         return (
           <div className="space-y-4">
@@ -627,6 +712,12 @@ export const App: React.FC = () => {
         dismissedUpdateVersion={uiState.dismissedUpdateVersion}
         onDismissUpdate={(version) => uiStore.setDismissedUpdateVersion(version)}
         onCopyUpdateCommand={() => void navigator.clipboard.writeText(getUpdateCommand())}
+        draftCount={draftCount}
+        reviewCount={reviewCount}
+        recommendationsCount={recommendationsCount}
+        jobCount={jobCount}
+        chatCount={chatSessionsCount}
+        onCheckForUpdates={handleCheckForUpdates}
       >
         {shellError && (
           <div

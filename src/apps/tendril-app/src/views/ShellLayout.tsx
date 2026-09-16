@@ -42,6 +42,12 @@ interface ShellLayoutProps {
   dismissedUpdateVersion?: string | null;
   onDismissUpdate?: (version: string) => void;
   onCopyUpdateCommand?: () => void;
+  draftCount?: number;
+  reviewCount?: number;
+  recommendationsCount?: number;
+  jobCount?: number;
+  chatCount?: number;
+  onCheckForUpdates?: () => void;
   children: React.ReactNode;
 }
 
@@ -53,7 +59,7 @@ interface ShellLayoutProps {
  * deliberately absent from the nav: V1's `BuildNavItems` drops the agent and chat
  * entries because the dedicated Chat row above the nav reaches them, and drops
  * `footerAppIds` because the Inbox gets its own icon-only footer button
- * (`ShowInboxInFooter`). Settings and Pull Requests are `isVisible: false` apps in
+ * (`ShowInboxInFooter`). Settings, Pull Requests, and Icebox are `isVisible: false` apps in
  * V1, reached from the footer's settings menu (`settingsMenuItems`), not the nav.
  */
 export const ShellLayout: React.FC<ShellLayoutProps> = ({
@@ -75,16 +81,51 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   dismissedUpdateVersion = null,
   onDismissUpdate = () => {},
   onCopyUpdateCommand = () => {},
+  draftCount,
+  reviewCount,
+  recommendationsCount,
+  jobCount,
+  chatCount,
+  onCheckForUpdates,
   children,
 }) => {
   /* V1's visible "Apps" group in `Constants` order (Dashboard 10, Plans 20, Review 30,
-     Jobs 50), minus the entries `BuildNavItems` excludes. Recommendations (40) has no V2
-     view yet, so it is the one V1 row missing here. */
+     Recommendations 40, Jobs 50), minus the entries `BuildNavItems` excludes. */
   const navItems: ShellNavItemDto[] = [
-    { id: "dashboard", label: "Dashboard", icon: "ChartBar", isActive: activeNav === "dashboard" },
-    { id: "plans", label: "Plans", icon: "Feather", isActive: activeNav === "plans" },
-    { id: "review", label: "Review", icon: "ThumbsUp", isActive: activeNav === "review" },
-    { id: "jobs", label: "Jobs", icon: "Activity", isActive: activeNav === "jobs" },
+    {
+      id: "dashboard",
+      label: "Dashboard",
+      icon: "ChartBar",
+      isActive: activeNav === "dashboard",
+    },
+    {
+      id: "plans",
+      label: "Plans",
+      icon: "Feather",
+      badge: draftCount && draftCount > 0 ? String(draftCount) : undefined,
+      isActive: activeNav === "plans",
+    },
+    {
+      id: "review",
+      label: "Review",
+      icon: "ThumbsUp",
+      badge: reviewCount && reviewCount > 0 ? String(reviewCount) : undefined,
+      isActive: activeNav === "review",
+    },
+    {
+      id: "recommendations",
+      label: "Recommendations",
+      icon: "Lightbulb",
+      badge: recommendationsCount && recommendationsCount > 0 ? String(recommendationsCount) : undefined,
+      isActive: activeNav === "recommendations",
+    },
+    {
+      id: "jobs",
+      label: "Jobs",
+      icon: "Activity",
+      badge: jobCount && jobCount > 0 ? String(jobCount) : undefined,
+      isActive: activeNav === "jobs",
+    },
   ];
 
   /* V1 splits the strip into non-closable page tabs, which carry the icon of the app
@@ -116,6 +157,14 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
       title = "Review";
       icon = "ThumbsUp";
       closable = false;
+    } else if (tabId === "recommendations") {
+      title = "Recommendations";
+      icon = "Lightbulb";
+      closable = false;
+    } else if (tabId === "jobs") {
+      title = "Jobs";
+      icon = "Activity";
+      closable = false;
     } else if (tabId === "review-action") {
       // Closable, unlike the other named tabs: it holds one run, and closing it is how the
       // reviewer says they are done watching. It passes no icon, so it gets the terminal
@@ -125,6 +174,10 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
     } else if (tabId === "pull-requests") {
       title = "Pull Requests";
       icon = "GitPullRequest";
+      closable = false;
+    } else if (tabId === "icebox") {
+      title = "Icebox";
+      icon = "Snowflake";
       closable = false;
     } else if (tabId === "settings") {
       title = "Settings";
@@ -192,11 +245,12 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
               <>
                 <ShellNewPlanButton id="new-plan-btn" eventHandler={onNewPlan} />
                 {/* V1's chatButton: label "Chat", the MessageCircle glyph, active while the
-                    chat page is showing. */}
+                    chat page is showing, with session count badge. */}
                 <ShellAgentButton
                   id="shell-chat-btn"
                   label="Chat"
                   icon="MessageCircle"
+                  badge={chatCount && chatCount > 0 ? String(chatCount) : undefined}
                   isActive={activeNav === "chat"}
                   events={["OnOpen"]}
                   eventHandler={() => onSelectNav("chat")}
@@ -236,6 +290,14 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                     <DropdownMenuItem onSelect={() => onSelectNav("pull-requests")}>
                       Pull Requests
                     </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onSelectNav("icebox")}>
+                      Icebox
+                    </DropdownMenuItem>
+                    {onCheckForUpdates && (
+                      <DropdownMenuItem onSelect={onCheckForUpdates}>
+                        Check for Updates
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={onOpenShortcuts}>
                       Keyboard Shortcuts

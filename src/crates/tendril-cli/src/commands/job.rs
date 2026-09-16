@@ -288,47 +288,46 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                 StartOutcome::Unconfirmed(_) => anyhow::bail!("{}", outcome.render()),
             }
         }
+        // `status` and `fail` are progress telemetry, and telemetry must never fail an agent run —
+        // V1 warns on stderr and exits 0 for both. These are the two most-invoked commands in the
+        // promptware corpus, usually inside an `&&` chain, so a daemon blip exiting non-zero aborts
+        // the agent's step. `fail` is the worse of the two: it runs on the failure path, so a job
+        // that cannot reach the daemon would die mid-report instead of finishing its report.
         JobCommands::Status(args) => {
-            let master = get_master_or_err(tendril_home)?;
-            let url = format!("{}/api/jobs/{}/status", master.base_url(), args.job_id);
-            let body = serde_json::json!({
-                "message": args.message,
-                "planId": args.plan_id,
-                "planTitle": args.plan_title,
-            });
-            let resp = client
-                .put(&url)
-                .bearer_auth(&master.secret)
-                .json(&body)
-                .send()
-                .await?;
-            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-                anyhow::bail!(
-                    "Authentication failed: unauthorized request to Tendril daemon at {}",
-                    master.base_url()
-                );
+            let report = async {
+                let master = get_master_or_err(tendril_home)?;
+                let url = format!("{}/api/jobs/{}/status", master.base_url(), args.job_id);
+                let body = serde_json::json!({
+                    "message": args.message,
+                    "planId": args.plan_id,
+                    "planTitle": args.plan_title,
+                });
+                put_job_report(&client, &url, &master, body).await
             }
-            resp.error_for_status()?;
-            println!("Status updated for job {}", args.job_id);
+            .await;
+            match report {
+                Ok(()) => println!("Status updated for job {}", args.job_id),
+                Err(e) => eprintln!(
+                    "Warning: could not report status for job {}: {}",
+                    args.job_id, e
+                ),
+            }
         }
         JobCommands::Fail(args) => {
-            let master = get_master_or_err(tendril_home)?;
-            let url = format!("{}/api/jobs/{}/fail", master.base_url(), args.job_id);
-            let body = serde_json::json!({ "message": args.message });
-            let resp = client
-                .put(&url)
-                .bearer_auth(&master.secret)
-                .json(&body)
-                .send()
-                .await?;
-            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-                anyhow::bail!(
-                    "Authentication failed: unauthorized request to Tendril daemon at {}",
-                    master.base_url()
-                );
+            let report = async {
+                let master = get_master_or_err(tendril_home)?;
+                let url = format!("{}/api/jobs/{}/fail", master.base_url(), args.job_id);
+                let body = serde_json::json!({ "message": args.message });
+                put_job_report(&client, &url, &master, body).await
             }
-            resp.error_for_status()?;
-            println!("Failure reported for job {}", args.job_id);
+            .await;
+            match report {
+                Ok(()) => println!("Failure reported for job {}", args.job_id),
+                Err(e) => eprintln!(
+                    "Warning: could not report failure for job {}: {}",
+                    args.job_id, e
+                ),
+            }
         }
         JobCommands::Cancel(args) => {
             let master = get_master_or_err(tendril_home)?;
@@ -772,6 +771,33 @@ fn confirm(prompt: &str) -> anyhow::Result<bool> {
 
 fn get_master_or_err(tendril_home: &Path) -> anyhow::Result<MasterInfo> {
     read_master(tendril_home).ok_or_else(|| {
-        anyhow::anyhow!("Tendril server is not running. Start it with 'tendril serve' first.")
+        // `run` is the documented daemon starter — it migrates the database and checks the port
+        // first, which bare `serve` does not.
+        anyhow::anyhow!(
+            "No Tendril server is running (no .master file found). Start it with 'tendril run'."
+        )
     })
+}
+
+/// One PUT of a job report, with the unauthorized case named rather than left as a bare 401.
+async fn put_job_report(
+    client: &reqwest::Client,
+    url: &str,
+    master: &MasterInfo,
+    body: serde_json::Value,
+) -> anyhow::Result<()> {
+    let resp = client
+        .put(url)
+        .bearer_auth(&master.secret)
+        .json(&body)
+        .send()
+        .await?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        anyhow::bail!(
+            "authentication failed: unauthorized request to Tendril daemon at {}",
+            master.base_url()
+        );
+    }
+    resp.error_for_status()?;
+    Ok(())
 }

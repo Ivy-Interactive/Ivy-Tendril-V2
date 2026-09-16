@@ -65,9 +65,9 @@ pub async fn run_server(
     // `tendril promptware deploy` run against it fails every job with "Promptware folder not found".
     // Deploying at startup is what V1's `TendrilServer` does, and it is an overlay: a deployed
     // promptware's own `Memory/` and `Tools/` survive, so this is safe to repeat on every boot.
-    if let Err(e) = tendril_core::promptware::deploy_standard_promptwares(
-        &tendril_home.join("Promptwares"),
-    ) {
+    if let Err(e) =
+        tendril_core::promptware::deploy_standard_promptwares(&tendril_home.join("Promptwares"))
+    {
         tracing::warn!(
             "Could not deploy promptwares under {}: {} — jobs will fail until \
              `tendril promptware deploy` succeeds",

@@ -24,8 +24,8 @@ use crate::jobs::dependents::release_dependents;
 use crate::jobs::failure_analysis::extract_failure_reason;
 use crate::jobs::firmware_values::{
     build_firmware_values, build_job_context, execution_profile_override, find_project,
-    find_repo_ref, repo_name, resolve_project, resolve_project_skills,
-    resolve_working_directory, resolve_writable_directories,
+    find_repo_ref, repo_name, resolve_project, resolve_project_skills, resolve_working_directory,
+    resolve_writable_directories,
 };
 use crate::jobs::hooks::{run_hooks, shell_hook_executor, HookExecutor, HookPhase, HookRunContext};
 use crate::jobs::logger::{
