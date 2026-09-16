@@ -1,0 +1,48 @@
+name: Code Review
+
+# AI review of pull requests, delegated to the shared workflow in
+# Ivy-Interactive/ivy-code-review (which wraps alibaba/open-code-review and
+# points it at llmproxy). Inputs, model choice and posting behaviour are
+# documented there; this file only decides when reviews run for this repo.
+
+concurrency:
+  # Comment events are grouped by issue number, PR events by pull request
+  # number — they are the same number for a PR, so a `/code-review` re-review
+  # supersedes an in-flight review of the same PR instead of racing it.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  # pull_request_target rather than pull_request: secrets are withheld from
+  # fork-triggered pull_request runs, and the review cannot reach llmproxy
+  # without the token. The shared workflow only reads the diff — it checks out
+  # this repo's base branch and fetches the PR head as bare git objects, so
+  # nothing from the pull request is executed.
+  pull_request_target:
+    types: [opened, reopened]
+    branches:
+      - main
+      - development
+  # Lets a maintainer comment `/code-review` to re-review after pushing fixes.
+  # Pushes alone do not trigger a review; see the note below.
+  issue_comment:
+    types: [created]
+
+# Scopes inherited by the shared workflow, which cannot widen them: read the
+# diff, write review comments. Explicitly listing them also drops the token's
+# default write access to everything else in this repo.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: Review pull request
+    uses: Ivy-Interactive/ivy-code-review/.github/workflows/pr-review.yml@main
+    # Picks up the org-level OCR_LLM_TOKEN, so no secret lives in this repo.
+    secrets: inherit
+    with:
+      # This workspace produces large diffs, so cap spend per review rather
+      # than paying for an unbounded one. On overrun the review posts what it
+      # found and still exits 0, so it never blocks a pull request.
+      max_tokens_budget: '500000'
