@@ -1,15 +1,11 @@
 import * as React from "react";
 import { Terminal, WebViewer, type TerminalHandle } from "@ivy-interactive/components/tendril";
 import { bridge, type ReviewActionRun } from "../api/bridge";
-import {
-  applyCommentEvent,
-  formatChangeRequest,
-  readSource,
-  type AppComment,
-} from "../utils/appComments";
+import { applyCommentEvent, formatChangeRequest, type AppComment } from "../utils/appComments";
 import { detectAppUrl } from "../utils/detectAppUrl";
 import {
   describeBridgeError,
+  type Job,
   type PlanDetail,
   type PlanSummary,
   type StartJobResponse,
@@ -33,6 +29,8 @@ export interface ReviewActionViewProps {
   target: ReviewActionTarget;
   /** The plan a change request would be dispatched against. Absent for a project-scoped action. */
   plan?: PlanDetail | PlanSummary;
+  /** The live job list, filtered to this plan for the update dialog's two `AppPreview` gates. */
+  jobs?: Job[];
   /**
    * Not called from inside the view: closing a review action is the shell tab's X, as in V1, where
    * `ReviewActionApp` renders the runner and nothing else and the session tab carries the close.
@@ -91,7 +89,7 @@ function hasVisibleText(text: string): boolean {
  * as long as it is being looked at — so closing the view stops watching the stream rather than
  * stopping the process.
  */
-export function ReviewActionView({ target, plan, onJobStarted }: ReviewActionViewProps) {
+export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: ReviewActionViewProps) {
   const [appUrl, setAppUrl] = React.useState<string | null>(null);
   const [device, setDevice] = React.useState("Desktop");
   const [comments, setComments] = React.useState<AppComment[]>([]);
@@ -252,21 +250,13 @@ export function ReviewActionView({ target, plan, onJobStarted }: ReviewActionVie
   );
 
   /**
-   * One line per comment, in pin order, as `UpdateFromCommentsDialog` lists them: what the reviewer
-   * said first, then where it points — the source location the widget resolved, or the selector when
-   * it resolved nothing. The page comes along for a comment left somewhere other than the app's own
-   * entry URL, which is the fact V1's grouping carries: a comment left three screens back is not
-   * feedback on the screen the reviewer happens to be looking at.
+   * The jobs already running on this plan. `UpdateFromCommentsDialog` reads them twice: to queue the
+   * new request behind them (`JobsToWaitFor`) instead of letting two agents rewrite one worktree, and
+   * for the `CanRequestChanges` gate that decides whether the request can be sent at all.
    */
-  const summaryItems = React.useMemo(
-    () =>
-      comments.map((comment) => {
-        const tag = comment.tag || "element";
-        const where = readSource(comment.debugJson).label ?? comment.selector;
-        const page = comment.url && comment.url !== appUrl ? ` · ${comment.url}` : "";
-        return `${comment.comment.trim()} — ${where ? `${tag} · ${where}` : tag}${page}`;
-      }),
-    [appUrl, comments],
+  const planJobs = React.useMemo(
+    () => (plan ? jobs.filter((job) => job.planId === plan.id) : []),
+    [jobs, plan],
   );
 
   const handleJobStarted = (response: StartJobResponse) => {
@@ -349,8 +339,11 @@ export function ReviewActionView({ target, plan, onJobStarted }: ReviewActionVie
           onClose={() => setIsDialogOpen(false)}
           plan={plan}
           initialChangeRequest={changeRequest}
-          summaryTitle={`${comments.length} comment${comments.length === 1 ? "" : "s"} from the running app`}
-          summaryItems={summaryItems}
+          /* Present means the dialog is V1's `UpdateFromCommentsDialog`: the comments listed
+             read-only and grouped by the page each was left on, not a flat list above a field. */
+          appComments={comments}
+          appUrl={appUrl ?? undefined}
+          planJobs={planJobs}
           onJobStarted={handleJobStarted}
         />
       )}

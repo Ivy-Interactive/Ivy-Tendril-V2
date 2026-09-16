@@ -55,10 +55,13 @@ export function PartialDeliveryDialog({
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Accept partial delivery?"
+      // V1 names the dialog after what blocked completion rather than after the override, and treats
+      // the override as destructive: it stamps a plan as shipped incomplete, and duplicate detection
+      // reads that stamp afterwards.
+      title="Verification Failed"
       testId="partial-delivery-dialog"
-      confirmLabel="Accept Partial Delivery"
-      confirmVariant="warning"
+      confirmLabel="Complete as Partial Delivery"
+      confirmVariant="destructive"
       onConfirm={handleAccept}
       isBusy={isBusy}
       error={error}

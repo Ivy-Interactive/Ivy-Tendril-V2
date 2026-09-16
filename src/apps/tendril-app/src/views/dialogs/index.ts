@@ -9,6 +9,7 @@
  */
 export { DialogShell, type DialogShellProps } from "./DialogShell";
 export { ConfirmDialog, type ConfirmDialogProps } from "./ConfirmDialog";
+export { DIALOG_WIDTH, type DialogWidth } from "./fieldStyles";
 
 export { UnansweredQuestionsDialog } from "./UnansweredQuestionsDialog";
 export { PendingAnnotationsDialog } from "./PendingAnnotationsDialog";
@@ -24,3 +25,5 @@ export { ResetToDraftDialog } from "./ResetToDraftDialog";
 export { PartialDeliveryDialog } from "./PartialDeliveryDialog";
 export { SuggestChangesDialog } from "./SuggestChangesDialog";
 export { CreatePrDialog } from "./CreatePrDialog";
+
+export { AutoAcceptSettingsDialog } from "./AutoAcceptSettingsDialog";

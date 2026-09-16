@@ -48,6 +48,10 @@ export function CreateIssueDialog({
   const [comment, setComment] = React.useState("");
   const [isBusy, setIsBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // V1 puts `.AutoFocus()` on the repository select: it is the one required field, and the only one
+  // that changes what the other two mean. Safe to focus here because nothing in this dialog is
+  // destructive.
+  const repoRef = React.useRef<HTMLSelectElement>(null);
   const cancelRef = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => {
@@ -90,10 +94,13 @@ export function CreateIssueDialog({
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title={`Create issue from plan ${plan.id}`}
+      title={`Create GitHub Issue #${plan.id}`}
+      width="rem30"
+      shortcut="Ctrl+Enter"
+      onShortcut={() => void handleSubmit()}
       description="CreateIssue writes the issue body from the plan and opens it with `gh` in the selected repository."
       testId="create-issue-dialog"
-      initialFocusRef={cancelRef}
+      initialFocusRef={repos.length === 0 ? cancelRef : repoRef}
       footer={
         <>
           <Button
@@ -127,6 +134,7 @@ export function CreateIssueDialog({
         ) : (
           <select
             id="create-issue-repo"
+            ref={repoRef}
             aria-label="Repository"
             value={repo}
             onChange={(event) => setRepo(event.target.value)}

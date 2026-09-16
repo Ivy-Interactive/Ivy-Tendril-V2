@@ -10,14 +10,21 @@ export interface DeletePlanDialogProps {
   plan: PlanDetail | PlanSummary;
   /** Called after the plan is gone, so the caller can re-point its selection. */
   onDeleted?: (planId: string) => void;
-  /** Called after the plan is archived instead. */
+  /** Called after the plan is moved to Icebox instead. */
   onArchived?: (planId: string) => void;
+  /** Called after the plan is moved to Skipped instead. */
+  onSkipped?: (planId: string) => void;
 }
 
 /**
- * The one action with no recovery path, so it asks for the strongest signal of
- * intent available: the operator has to type the plan id before the destructive
- * button enables, and *Archive instead* is offered right beside it.
+ * V1's `Apps/Plans/Dialogs/DeletePlanDialog`: not a yes/no but a "what would you like to do with
+ * this plan", offering the two states that keep the folder — Skipped and Icebox — beside the delete
+ * that does not. Both alternatives are outline, delete is destructive, and they sit in that order
+ * between Cancel and it, so the reversible answers are read first.
+ *
+ * The typed-id gate is V2's, and stays: V1 pairs its one-click delete with `.ShortcutKey("Enter")
+ * .AutoFocus()`, which is the combination this family declines (see `ConfirmDialog`). Typing the id
+ * is the strongest signal of intent available for the one action with no recovery path.
  *
  * Calls `bridge.deletePlan` directly and awaits it. On rejection the dialog stays
  * open with the backend's message — a plan that vanished from the list and then
@@ -29,6 +36,7 @@ export function DeletePlanDialog({
   plan,
   onDeleted,
   onArchived,
+  onSkipped,
 }: DeletePlanDialogProps) {
   const [typedId, setTypedId] = React.useState("");
   const [isBusy, setIsBusy] = React.useState(false);
@@ -56,12 +64,14 @@ export function DeletePlanDialog({
     }
   };
 
-  const handleArchive = async () => {
+  /** Both alternatives are one `state` write, so they share the transition and differ only in target. */
+  const moveTo = async (state: "Icebox" | "Skipped") => {
     setIsBusy(true);
     setError(null);
     try {
-      await bridge.updatePlanField(plan.id, "state", "Icebox");
-      onArchived?.(plan.id);
+      await bridge.updatePlanField(plan.id, "state", state);
+      if (state === "Icebox") onArchived?.(plan.id);
+      else onSkipped?.(plan.id);
       onClose();
     } catch (err) {
       setError(describeBridgeError(err));
@@ -74,9 +84,10 @@ export function DeletePlanDialog({
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      title={`Delete plan ${plan.id}?`}
+      title="Delete Plan"
       testId="delete-plan-dialog"
-      confirmLabel="Delete Permanently"
+      width="rem40"
+      confirmLabel="Delete"
       confirmVariant="destructive"
       confirmDisabled={typedId.trim() !== plan.id}
       onConfirm={handleDelete}
@@ -84,19 +95,29 @@ export function DeletePlanDialog({
       error={error}
       body={
         <p>
-          The plan folder, all revisions and all verification reports are removed permanently. This
-          cannot be undone.
+          What would you like to do with plan #{plan.id}? Deleting removes the plan folder, all
+          revisions and all verification reports permanently. This cannot be undone.
         </p>
       }
       secondaryAction={
-        <Button
-          variant="outline"
-          onClick={() => void handleArchive()}
-          data-testid="dialog-archive"
-          disabled={isBusy}
-        >
-          Archive instead (Icebox)
-        </Button>
+        <>
+          <Button
+            variant="outline"
+            onClick={() => void moveTo("Skipped")}
+            data-testid="dialog-skip"
+            disabled={isBusy}
+          >
+            Move to Skipped
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void moveTo("Icebox")}
+            data-testid="dialog-archive"
+            disabled={isBusy}
+          >
+            Move to Icebox
+          </Button>
+        </>
       }
     >
       <div className="mt-4">

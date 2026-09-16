@@ -442,6 +442,71 @@ describe("InboxView Component & Triage Tests", () => {
     });
   });
 
+  describe("auto-accept settings", () => {
+    it("opens the settings dialog from V1's gear, which is the only path to the check interval", async () => {
+      vi.spyOn(bridge, "getConfig").mockResolvedValue({
+        codingAgent: "claude",
+        inbox: { autoAcceptAssignedIssues: true, checkIntervalMinutes: 30 },
+      });
+
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+
+      fireEvent.click(await screen.findByTestId("inbox-auto-accept-settings"));
+
+      // The interval had no reachable control at all before this dialog existed.
+      const select = (await screen.findByLabelText("Check Interval")) as HTMLSelectElement;
+      expect(select.value).toBe("30");
+    });
+
+    it("re-reads the badge after a save rather than assuming what was written", async () => {
+      const getConfig = vi
+        .spyOn(bridge, "getConfig")
+        .mockResolvedValue({ codingAgent: "claude", inbox: { autoAcceptAssignedIssues: false } });
+      vi.spyOn(bridge, "putConfig").mockResolvedValue(undefined);
+
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      await waitFor(() =>
+        expect(screen.getByTestId("inbox-auto-accept")).toHaveTextContent("Auto-Accept: Off"),
+      );
+
+      fireEvent.click(screen.getByTestId("inbox-auto-accept-settings"));
+      fireEvent.click(await screen.findByLabelText("Auto-Accept Assigned Issues"));
+
+      // The badge's own re-read is what turns it on, so the service stays the source of truth.
+      getConfig.mockResolvedValue({
+        codingAgent: "claude",
+        inbox: { autoAcceptAssignedIssues: true },
+      });
+      fireEvent.click(screen.getByTestId("dialog-confirm"));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("inbox-auto-accept")).toHaveTextContent("Auto-Accept: On"),
+      );
+    });
+
+    it("refetches the proposals a check imported, since the list behind the dialog is now stale", async () => {
+      vi.spyOn(bridge, "getConfig").mockResolvedValue({ codingAgent: "claude", inbox: {} });
+      vi.spyOn(bridge, "checkInbox").mockResolvedValue({
+        imported: [],
+        accepted: 0,
+        skipped: 0,
+        errors: [],
+        outcome: "Ran",
+      });
+
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      await waitFor(() => expect(listInboxProposalsSpy).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(screen.getByTestId("inbox-auto-accept-settings"));
+      fireEvent.click(await screen.findByTestId("auto-accept-check-now"));
+
+      await waitFor(() => expect(listInboxProposalsSpy).toHaveBeenCalledTimes(2));
+    });
+  });
+
   describe("imported proposals", () => {
     const proposal = (id: number, number: number): InboxProposal => ({
       id,

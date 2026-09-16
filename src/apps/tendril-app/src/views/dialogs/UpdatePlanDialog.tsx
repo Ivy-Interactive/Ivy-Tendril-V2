@@ -1,8 +1,9 @@
 import * as React from "react";
-import { Button } from "@ivy-interactive/components/ui";
+import { Button, Callout } from "@ivy-interactive/components/ui";
 import { PlanActionsController } from "../../controllers/plan_actions";
 import {
   describeBridgeError,
+  type Job,
   type PlanDetail,
   type PlanSummary,
   type StartJobResponse,
@@ -16,14 +17,35 @@ export interface UpdatePlanDialogProps {
   plan: PlanDetail | PlanSummary;
   /** Called with the started job so the caller can open its session tab. */
   onJobStarted?: (response: StartJobResponse) => void;
+  /**
+   * The job list, for V1's "UpdatePlan is already running for this plan" warning.
+   *
+   * Optional: without it the dialog cannot tell, and V1's own check is a convenience rather than the
+   * authority — the service refuses a second UpdatePlan on the same folder either way.
+   */
+  planJobs?: Job[];
 }
+
+/** V1's in-flight statuses for this check: `Running or Queued or Pending`. */
+const IN_FLIGHT: ReadonlyArray<Job["status"]> = ["Running", "Queued", "Pending"];
 
 /**
  * Hands the agent a set of instructions and runs UpdatePlan, which writes a new
  * revision. This is also where the two answer-related execute guards send the
  * operator: an UpdatePlan run is what folds answers into the plan body.
+ *
+ * V1 renders the instructions field as a `ContentInput` whose submit button carries the label
+ * ("Update") and which also accepts file attachments. V2 has no upload session endpoint behind
+ * `UpdatePlanArgs.uploadSessionId`, so the field is a plain textarea with the submit in the footer
+ * where the rest of this family puts it, keeping V1's label and its `Ctrl+Enter`.
  */
-export function UpdatePlanDialog({ isOpen, onClose, plan, onJobStarted }: UpdatePlanDialogProps) {
+export function UpdatePlanDialog({
+  isOpen,
+  onClose,
+  plan,
+  onJobStarted,
+  planJobs,
+}: UpdatePlanDialogProps) {
   const [instructions, setInstructions] = React.useState("");
   const [isBusy, setIsBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -37,9 +59,15 @@ export function UpdatePlanDialog({ isOpen, onClose, plan, onJobStarted }: Update
     }
   }, [isOpen]);
 
+  const hasActiveJob = (planJobs ?? []).some(
+    (job) => job.type === "UpdatePlan" && job.planId === plan.id && IN_FLIGHT.includes(job.status),
+  );
+
+  const canSubmit = !isBusy && !hasActiveJob && instructions.trim() !== "";
+
   const handleSubmit = async () => {
     const trimmed = instructions.trim();
-    if (!trimmed) return;
+    if (!canSubmit) return;
     setIsBusy(true);
     setError(null);
     try {
@@ -57,8 +85,11 @@ export function UpdatePlanDialog({ isOpen, onClose, plan, onJobStarted }: Update
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title={`Update plan ${plan.id}`}
-      description="Describe what should change. UpdatePlan rewrites the plan into a new revision — it does not touch any code."
+      title={`Update Plan #${plan.id}`}
+      width="rem30"
+      shortcut="Ctrl+Enter"
+      onShortcut={() => void handleSubmit()}
+      description="Provide instructions for revising this plan. UpdatePlan rewrites the plan into a new revision — it does not touch any code."
       testId="update-plan-dialog"
       initialFocusRef={textareaRef}
       footer={
@@ -69,13 +100,20 @@ export function UpdatePlanDialog({ isOpen, onClose, plan, onJobStarted }: Update
           <Button
             onClick={() => void handleSubmit()}
             data-testid="dialog-confirm"
-            disabled={isBusy || instructions.trim() === ""}
+            disabled={!canSubmit}
           >
-            {isBusy ? "Starting…" : "Update Plan"}
+            {isBusy ? "Starting…" : "Update"}
           </Button>
         </>
       }
     >
+      {/* V1: `Text.P("⚠️ UpdatePlan is already running for this plan. Please wait...").Color(Warning)`,
+          as a Callout here — `Alert` has only default and destructive, so it has no warning to give. */}
+      {hasActiveJob && (
+        <Callout.Warning className="mb-3" data-testid="update-plan-already-running">
+          UpdatePlan is already running for this plan. Please wait…
+        </Callout.Warning>
+      )}
       <label
         htmlFor="update-plan-instructions"
         className="mb-1 block text-xs text-muted-foreground"

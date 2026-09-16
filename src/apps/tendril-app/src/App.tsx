@@ -368,6 +368,7 @@ export const App: React.FC = () => {
           plan={detail}
           allPlans={plansState.plans}
           projectRepos={projects.find((p) => p.name === detail.project)?.repos ?? []}
+          jobs={jobsState.jobs}
           onExecute={(id) => startJobAndOpenSession({ type: "ExecutePlan", folderPath: id })}
           // The dialogs dispatch their own jobs, so the shell's part is opening
           // the session tab for whatever they started.
@@ -493,6 +494,7 @@ export const App: React.FC = () => {
                   plansState.plans.find((p) => p.id === reviewActionTarget.planId))
                 : undefined
             }
+            jobs={jobsState.jobs}
             onClose={() => {
               setReviewActionTarget(null);
               uiStore.closeTab(REVIEW_ACTION_NAV);

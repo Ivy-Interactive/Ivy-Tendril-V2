@@ -3,6 +3,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { PlanGitView, PlanMarkdown } from "@ivy-interactive/components/tendril";
 import {
   describeBridgeError,
+  type Job,
   type PlanDetail,
   type PlanGitData,
   type PlanSummary,
@@ -130,6 +131,12 @@ interface PlanDetailViewProps {
   allPlans?: PlanSummary[];
   /** Repos to offer the Create Issue dialog when the plan records none. */
   projectRepos?: string[];
+  /**
+   * The live job list. `UpdatePlanDialog` reads it to refuse a second UpdatePlan while one is still
+   * in flight, as V1 does — two agents rewriting one plan file at once is how a plan ends up with
+   * half of each.
+   */
+  jobs?: Job[];
   /** Dispatches ExecutePlan — called only once every guard has been passed.
    *  A rejection is surfaced in the action error banner rather than swallowed. */
   onExecute?: (planId: string) => void | Promise<void>;
@@ -145,6 +152,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   plan,
   allPlans = [],
   projectRepos = [],
+  jobs = [],
   onExecute,
   onJobStarted,
   onPlanChanged,
@@ -844,6 +852,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         isOpen={activeDialog === "update"}
         onClose={() => setActiveDialog(null)}
         plan={plan}
+        planJobs={jobs}
         onJobStarted={handleJobStarted}
       />
       <CreateIssueDialog

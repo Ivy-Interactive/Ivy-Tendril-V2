@@ -48,7 +48,8 @@ export function ResetToDraftDialog({ isOpen, onClose, plan, onReset }: ResetToDr
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      title={`Reset plan ${plan.id} to Draft?`}
+      // `DialogHeader($"Reset Plan #{id} to Draft")`, and V1's Warning (not destructive) confirm.
+      title={`Reset Plan #${plan.id} to Draft`}
       testId="reset-to-draft-dialog"
       confirmLabel="Reset to Draft"
       confirmVariant="warning"

@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@ivy-interactive/components/ui";
+import { DIALOG_WIDTH, type DialogWidth } from "./fieldStyles";
 
 export interface DialogShellProps {
   isOpen: boolean;
@@ -20,6 +21,23 @@ export interface DialogShellProps {
   children?: React.ReactNode;
   /** Overrides the accessible name Radix would otherwise derive from `title` via `aria-labelledby`. */
   ariaLabel?: string;
+  /** V1's `.Width(Size.Rem(n))` on the `Dialog`; `default` is Ivy's own width. */
+  width?: DialogWidth;
+  /**
+   * V1's `.ShortcutKey(...)` on the primary footer button, and `onShortcut` is that button's click.
+   *
+   * `Ctrl+Enter` is honoured everywhere in the dialog, a multi-line field included — that modifier is
+   * why V1 puts it on the dialogs that have one. Bare `Enter` is ignored while a `textarea` or a
+   * button holds focus: a newline is what Enter means in the first, and the second already fires its
+   * own click, which would submit twice.
+   */
+  shortcut?: "Enter" | "Ctrl+Enter";
+  onShortcut?: () => void;
+  /**
+   * Extra classes on the footer row. `flex-wrap` is the port of V1's `Layout.Wrap()`, which the
+   * dialogs carrying three or four choices use so the last one does not fall off a narrow window.
+   */
+  footerClassName?: string;
 }
 
 /**
@@ -37,6 +55,8 @@ export interface DialogShellProps {
  * 3. Escape cancels, via Radix's `onOpenChange(false)`. It must never confirm.
  * 4. `role="dialog"`/`aria-modal` come from Radix; a `DialogTitle` is always
  *    rendered, since Radix warns without one.
+ * 5. `shortcut` is the keyboard half of V1's primary footer button, gated so it
+ *    can only ever fire the *non*-destructive action a dialog nominates.
  */
 export function DialogShell({
   isOpen,
@@ -48,6 +68,10 @@ export function DialogShell({
   footer,
   children,
   ariaLabel,
+  width = "default",
+  shortcut,
+  onShortcut,
+  footerClassName,
 }: DialogShellProps) {
   const invokerRef = React.useRef<HTMLElement | null>(null);
 
@@ -56,6 +80,22 @@ export function DialogShell({
       invokerRef.current = document.activeElement as HTMLElement | null;
     }
   }, [isOpen]);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" || onShortcut === undefined) return;
+
+    const wantsModifier = shortcut === "Ctrl+Enter";
+    const hasModifier = event.ctrlKey || event.metaKey;
+    if (wantsModifier !== hasModifier) return;
+
+    if (!wantsModifier) {
+      const tag = (event.target as HTMLElement | null)?.tagName;
+      if (tag === "TEXTAREA" || tag === "BUTTON") return;
+    }
+
+    event.preventDefault();
+    onShortcut();
+  };
 
   return (
     <Dialog
@@ -66,6 +106,8 @@ export function DialogShell({
     >
       <DialogContent
         data-testid={testId}
+        className={DIALOG_WIDTH[width]}
+        onKeyDown={handleKeyDown}
         // Radix gives `role="dialog"` and hides the rest of the tree with
         // `aria-hidden`, but this version emits no `aria-modal`, so it is set
         // here. A dialog with only one of the two reads as inert markup to some
@@ -96,7 +138,7 @@ export function DialogShell({
         {children !== undefined && (
           <div className="flex-1 overflow-y-auto px-6 pb-2 text-sm text-foreground">{children}</div>
         )}
-        <DialogFooter>{footer}</DialogFooter>
+        <DialogFooter className={footerClassName}>{footer}</DialogFooter>
       </DialogContent>
     </Dialog>
   );
