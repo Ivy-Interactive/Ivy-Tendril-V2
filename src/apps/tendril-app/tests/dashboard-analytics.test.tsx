@@ -267,4 +267,73 @@ describe("DashboardView analytics", () => {
     expect(container.querySelectorAll(".tdb-bar-item")).toHaveLength(2);
     expect(screen.queryByText("No merged pull requests yet")).not.toBeInTheDocument();
   });
+
+  /**
+   * The un-ported cost backfills.
+   *
+   * `get_activity_stats` splits daily spend on `CostSource`, counting only `'agent'`/`'computed'` as
+   * API and `'estimated'` as subsidised, with a `Cost > 0` heuristic for `NULL`. A row written before
+   * the column existed holds the *empty string*, which matches none of those branches — so it is in
+   * `cost` and in neither half, and both columns silently under-report. These cases pin that the
+   * panels say so rather than presenting an incomplete split as a complete one.
+   */
+  describe("unattributed spend", () => {
+    const historical = activity({
+      dailyCosts: [
+        // $30 recorded, $10 attributed: the $20 remainder is what an un-backfilled CostSource costs
+        // the report.
+        dailyCost({
+          date: dayAgo(1),
+          cost: 30,
+          tokens: 900_000,
+          apiCost: 10,
+          apiTokens: 300_000,
+        }),
+      ],
+    });
+
+    it("states the remainder under the daily spend table", async () => {
+      mockAnalytics(historical);
+      renderDashboard();
+
+      await clickKpi("Forecast This Month");
+
+      const panel = screen.getByTestId("kpi-breakdown");
+      expect(panel.textContent).toContain("Incomplete Split");
+      expect(panel.textContent).toContain("$20.00");
+    });
+
+    it("reports it as its own month-to-date figure", async () => {
+      mockAnalytics(historical);
+      renderDashboard();
+
+      await clickKpi("Forecast This Month");
+
+      expect(screen.getByText("Month-to-Date Unattributed Spend")).toBeInTheDocument();
+    });
+
+    it("says nothing when the split does add up", async () => {
+      mockAnalytics(activity());
+      renderDashboard();
+
+      await clickKpi("Forecast This Month");
+
+      const panel = screen.getByTestId("kpi-breakdown");
+      expect(panel.textContent).not.toContain("Incomplete Split");
+      expect(screen.queryByText("Month-to-Date Unattributed Spend")).not.toBeInTheDocument();
+    });
+
+    it("names the share the Unknown agent accounts for", async () => {
+      mockAnalytics(activity());
+      renderDashboard();
+
+      await clickKpi("Forecast This Month");
+
+      // $2 of $20 in AGENT_COSTS. V1's `BuildAgentBreakdownSection` flags the presence of Unknown;
+      // saying how much of the spend it is turns the flag into something actionable.
+      const panel = screen.getByTestId("kpi-breakdown");
+      expect(panel.textContent).toContain("Partial Attribution");
+      expect(panel.textContent).toContain("10% of the spend in this window");
+    });
+  });
 });

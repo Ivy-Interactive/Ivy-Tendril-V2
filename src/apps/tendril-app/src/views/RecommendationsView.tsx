@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Lightbulb, RefreshCw, Search, ExternalLink } from "lucide-react";
-import {
-  BadgeSelect,
-  type BadgeSelectOption,
-} from "@ivy-interactive/components/tendril";
+import { RefreshCw, Search, ExternalLink } from "lucide-react";
+import { BadgeSelect, type BadgeSelectOption } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
-import { describeBridgeError, type CrossPlanRecommendation, type RecommendationState } from "../types/api";
+import {
+  describeBridgeError,
+  type CrossPlanRecommendation,
+  type RecommendationState,
+} from "../types/api";
 import { EmptyState } from "../components/EmptyState";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { formatPlanId } from "./PlansView";
@@ -15,6 +16,26 @@ const STATUS_OPTIONS: BadgeSelectOption[] = [
   { value: "Accepted", label: "Accepted" },
   { value: "Declined", label: "Declined" },
 ];
+
+/**
+ * Which recommendation the inbox will show at all, from
+ * `RecommendationsApp.Build`: `r.SourcePlanStatus == PlanStatus.Completed`, and the same predicate
+ * the daemon's own pending count uses (`PlanDatabaseService.ComputePlanCounts`, whose subquery reads
+ * `State = 'Pending' AND SourcePlanStatus = 'Completed'`).
+ *
+ * The reason is not cosmetic: accepting a recommendation starts a CreatePlan job, and a source plan
+ * that has not finished may still do the work itself. A recommendation from a Failed or Executing
+ * plan is a note, not an action.
+ *
+ * A row with no `sourcePlanStatus` at all is shown rather than hidden. The field is optional on the
+ * DTO and the projection route is currently unreachable from the desktop app (see the report), so
+ * "absent" means the transport lost it, and blanking the page on a transport gap is the worse
+ * failure of the two.
+ */
+const isActionableSource = (rec: CrossPlanRecommendation): boolean =>
+  rec.sourcePlanStatus == null ||
+  rec.sourcePlanStatus === "" ||
+  rec.sourcePlanStatus === "Completed";
 
 export const REC_STATUS_CLASS: Record<string, string> = {
   Accepted: "bg-success/10 text-success border border-success/40",
@@ -52,6 +73,17 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
     action: "Accept" | "Decline";
   } | null>(null);
 
+  /**
+   * The recommendation an action is mid-flight on, as `"planId::title"`.
+   *
+   * V1 gets this guard for free: `ContentView`'s Accept and Decline both call `refresh()` and
+   * `GoToNext()`, so the row the operator just acted on is no longer the selected one and its buttons
+   * are gone before a second click can land. This page is a list, so the buttons stay under the
+   * cursor — and Accept writes a state *and* starts a CreatePlan job, which means a double click
+   * costs two plans and two agent runs.
+   */
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -69,16 +101,21 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
     void load();
   }, [load]);
 
+  /** The identity `RecommendationsApp.RecommendationId` uses: plan plus title, since a title is only unique within its plan. */
+  const recId = (rec: CrossPlanRecommendation): string => `${rec.planId}::${rec.title}`;
+
+  const actionable = useMemo(() => recommendations.filter(isActionableSource), [recommendations]);
+
   const projects = useMemo(() => {
     const set = new Set<string>();
-    for (const r of recommendations) {
+    for (const r of actionable) {
       if (r.project) set.add(r.project);
     }
     return Array.from(set).sort();
-  }, [recommendations]);
+  }, [actionable]);
 
   const filtered = useMemo(() => {
-    return recommendations.filter((r) => {
+    return actionable.filter((r) => {
       const state = r.state || "Pending";
       if (selectedStatuses.length > 0 && !selectedStatuses.includes(state)) {
         if (!selectedStatuses.includes("Accepted") || state !== "AcceptedWithNotes") {
@@ -102,45 +139,80 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
 
       return true;
     });
-  }, [recommendations, selectedStatuses, selectedProject, search]);
+  }, [actionable, selectedStatuses, selectedProject, search]);
 
+  /**
+   * The whole state machine, mirroring `Recommendations/ContentView`'s two handlers and its
+   * `AcceptWithNotesDialog` callback:
+   *
+   * - Decline writes `Declined` and nothing else.
+   * - Accept writes `Accepted`, then starts a CreatePlan job from the description.
+   * - Accept with notes writes `AcceptedWithNotes` and starts the job from the `[ORIGINAL
+   *   RECOMMENDATION]` / `[NOTES]` envelope, so the agent sees both.
+   *
+   * The write comes first in all three, exactly as V1 orders them: a recommendation marked accepted
+   * whose job failed to start is recoverable (start it again from the plan), whereas a job started
+   * against a recommendation still marked Pending gets accepted a second time by the next operator.
+   *
+   * The reload at the end is V1's `refresh()`. It matters more here than the optimistic patch it
+   * replaces: when `startJob` fails after the state write landed, the patch would leave the row
+   * reading Pending while the daemon has it as Accepted, and the operator's next click would be
+   * refused for reasons nothing on screen explains.
+   */
   const handleSetState = async (
     rec: CrossPlanRecommendation,
     state: RecommendationState,
     noteOrReason?: string,
   ) => {
+    const id = recId(rec);
+    if (pendingId != null) return;
     setActionError(null);
+    setPendingId(id);
+
+    const declineReason = state === "Declined" ? noteOrReason : undefined;
+    const notes = state === "AcceptedWithNotes" ? noteOrReason : undefined;
+
     try {
-      const declineReason = state === "Declined" ? noteOrReason : undefined;
-      const notes = state === "AcceptedWithNotes" ? noteOrReason : undefined;
       await bridge.setRecommendationState(rec.planId, rec.title, state, declineReason, notes);
-
-      // If accepted, also launch a CreatePlan job mirroring V1
-      if (state === "Accepted" || state === "AcceptedWithNotes") {
-        const desc = notes
-          ? `[ORIGINAL RECOMMENDATION]\n${rec.description}\n\n[NOTES]\n${notes}`
-          : rec.description;
-        const res = await bridge.startJob({
-          type: "CreatePlan",
-          prompt: desc,
-          project: rec.project,
-        });
-        if (res && onJobStarted) {
-          onJobStarted(res);
-        }
-      }
-
-      // Optimistically update local list
-      setRecommendations((prev) =>
-        prev.map((item) =>
-          item.planId === rec.planId && item.title === rec.title
-            ? { ...item, state, declineReason, notes }
-            : item,
-        ),
-      );
     } catch (err) {
       setActionError(`Failed to update recommendation "${rec.title}": ${describeBridgeError(err)}`);
+      setPendingId(null);
+      return;
     }
+
+    // Reflected immediately so the row stops offering actions it has already taken; the reload
+    // below is what makes it true rather than merely hopeful.
+    setRecommendations((prev) =>
+      prev.map((item) =>
+        item.planId === rec.planId && item.title === rec.title
+          ? { ...item, state, declineReason, notes }
+          : item,
+      ),
+    );
+
+    if (state === "Accepted" || state === "AcceptedWithNotes") {
+      const description = notes
+        ? `[ORIGINAL RECOMMENDATION]\n${rec.description}\n\n[NOTES]\n${notes}`
+        : rec.description;
+      try {
+        const res = await bridge.startJob({
+          type: "CreatePlan",
+          prompt: description,
+          project: rec.project,
+        });
+        if (res && onJobStarted) onJobStarted(res);
+      } catch (err) {
+        // Named apart from a failed write, because the two need different things from the operator:
+        // this one is accepted-but-not-started, which only a retry from the plan can fix.
+        setActionError(
+          `Marked "${rec.title}" accepted, but the CreatePlan job did not start: ` +
+            `${describeBridgeError(err)}`,
+        );
+      }
+    }
+
+    setPendingId(null);
+    await load();
   };
 
   return (
@@ -199,11 +271,19 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
         </div>
 
         <BadgeSelect
+          // BadgeSelect has no `onChange`: it is an Ivy widget and emits only the events it was
+          // opted into. Without `id`, `events` and `eventHandler` the trigger opened, the options
+          // highlighted and no selection ever arrived — the filter was inert. Same wiring as
+          // `PullRequestsView`'s status filter, so the two behave alike.
+          id="recommendation-status-filter"
           options={STATUS_OPTIONS}
           value={selectedStatuses}
-          onChange={setSelectedStatuses}
           multiple
           placeholder="Filter by status..."
+          events={["OnChange"]}
+          eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
+            if (args && Array.isArray(args[0])) setSelectedStatuses(args[0] as string[]);
+          }}
         />
 
         {projects.length > 0 && (
@@ -225,21 +305,32 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
       {/* List */}
       {filtered.length === 0 ? (
         <EmptyState
-          icon={Lightbulb}
+          // EmptyState renders its icon as text. Passing the lucide component made React drop it
+          // with "Functions are not valid as a React child", so the empty state had no icon at all.
+          icon="💡"
           title="No recommendations"
+          // `NoContentView("No recommendations", "Recommendations from completed plans will appear
+          // here")` is what V1 shows when the *set* is empty, and the filter message belongs to the
+          // separate case where a filter hid a set that is not. Keying this off the filter controls
+          // instead got it backwards: the status chips default to Pending, so a fresh install with
+          // no recommendations at all was told its filters were at fault.
           description={
-            search || selectedStatuses.length > 0 || selectedProject !== "all"
-              ? "No recommendations match the current filters."
-              : "Recommendations from completed plans will appear here."
+            actionable.length === 0
+              ? "Recommendations from completed plans will appear here."
+              : "No recommendations match the current filters."
           }
         />
       ) : (
         <div className="grid gap-3">
           {filtered.map((rec) => {
             const statusKey = rec.state || "Pending";
+            // Every row's buttons go down while one action is in flight: the reload that follows
+            // rewrites the whole list, so a second action started against the old list would be
+            // acting on a stale row.
+            const isBusy = pendingId != null;
             const badgeClass = REC_STATUS_CLASS[statusKey] ?? REC_STATUS_CLASS.Pending;
             const impactClass = rec.impact
-              ? REC_IMPACT_CLASS[rec.impact] ?? "border border-border text-muted-foreground"
+              ? (REC_IMPACT_CLASS[rec.impact] ?? "border border-border text-muted-foreground")
               : "border border-border text-muted-foreground";
 
             return (
@@ -290,27 +381,32 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                   )}
                 </div>
 
-                {/* Actions */}
+                {/* Actions. Only a Pending recommendation has any: `ContentView` renders its
+                    Accept/Decline bar for the selected recommendation, and the app only ever selects
+                    from the Pending set, so the three terminal states are read-only. */}
                 {statusKey === "Pending" && (
                   <div className="flex flex-wrap items-center gap-2 sm:self-center">
                     <button
                       type="button"
+                      disabled={isBusy}
                       onClick={() => void handleSetState(rec, "Accepted")}
-                      className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90"
+                      className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90 disabled:opacity-50"
                     >
-                      Accept
+                      {pendingId === recId(rec) ? "Accepting..." : "Accept"}
                     </button>
                     <button
                       type="button"
+                      disabled={isBusy}
                       onClick={() => setActiveDialog({ rec, action: "Accept" })}
-                      className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted"
+                      className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
                     >
                       Accept with Notes
                     </button>
                     <button
                       type="button"
+                      disabled={isBusy}
                       onClick={() => setActiveDialog({ rec, action: "Decline" })}
-                      className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/20"
+                      className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
                     >
                       Decline
                     </button>
@@ -327,6 +423,9 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
         <RecommendationNoteDialog
           isOpen
           title={activeDialog.rec.title}
+          // `AcceptWithNotesDialog` renders the recommendation in its body, so the notes are written
+          // against the text rather than from memory.
+          recommendationDescription={activeDialog.rec.description}
           action={activeDialog.action}
           onClose={() => setActiveDialog(null)}
           onSubmit={async (note) => {

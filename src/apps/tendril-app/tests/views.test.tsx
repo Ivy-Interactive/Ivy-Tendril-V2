@@ -239,7 +239,11 @@ describe("Operator Views Component & Accessibility Tests", () => {
       expect(screen.queryByText(/^PR \d+$/)).toBeNull();
     });
 
-    it("counts two RetryPlan jobs on the same plan once", () => {
+    // Changed from "counts two RetryPlan jobs on the same plan once". V1's counter is
+    // `activeJobs.Count(j => j.Type == Constants.JobTypes.RetryPlan)`
+    // (`TendrilProcessStatusService.Compute`) — jobs, not distinct plans. Two retries queued against
+    // one plan are two runs to wait for, and reporting 1 understates the queue.
+    it("counts every active RetryPlan job, including two on the same plan", () => {
       const jobs: Job[] = [
         ...mockJobs,
         {
@@ -261,7 +265,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
 
       const loopArrow = container.querySelector(".tpv-loop-arrow");
       expect(loopArrow).not.toBeNull();
-      expect(loopArrow!.querySelector(".tpv-arrow-count")?.textContent).toBe("1");
+      expect(loopArrow!.querySelector(".tpv-arrow-count")?.textContent).toBe("2");
     });
 
     it("clicking the retry loop arrow and the PR label calls onNavigate('jobs')", () => {
