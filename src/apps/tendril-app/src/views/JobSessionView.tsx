@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
 import { Callout } from "@ivy-interactive/components/ui";
 import { describeBridgeError, type Job, type JobDetail, type JobStatus } from "../types/api";
-import { jobsStore, type StreamEventItem } from "../state/jobsStore";
+import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
+import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
 interface JobSessionViewProps {
@@ -10,6 +11,19 @@ interface JobSessionViewProps {
   events?: StreamEventItem[];
   onCancel?: (jobId: string) => void | Promise<void>;
   onCloseTab?: () => void;
+}
+
+/**
+ * Usage fields the daemon's `JobItem` carries (`crates/tendril-core/src/models/job.rs`) that the
+ * Tauri DTO layer does not pass through yet, so `types/api.ts` does not model them.
+ *
+ * `costSource` is the one this view needs: `JobsApp.Data.cs` `FormatJobCost` prefixes an estimate
+ * with `"~"` so the column never presents a figure nobody was charged as a charge. Read
+ * defensively - it is `undefined` today and becomes live the moment `JobDto`/`JobDetailDto`
+ * (`src-tauri/src/models.rs`) carry it.
+ */
+interface JobUsageExtras {
+  costSource?: string;
 }
 
 /**
@@ -81,16 +95,51 @@ function formatTimestamp(job: Job): string {
   )}:${pad(completed.getMinutes())}`;
 }
 
-/** `FormatHelper.FormatTokens`: millions to one decimal, thousands to none. */
+/**
+ * `JobsApp.Data.cs` and `JobCostSheet.cs` both use this for "nothing recorded here". Keeping V1's
+ * em-dash rather than an empty string is what stops a job that reported no cost from reading as one
+ * that cost nothing: `Cost —` and `Cost $0.00` are different claims.
+ */
+const NO_VALUE = "—";
+
+/**
+ * `FormatHelper.FormatTokens`: millions to one decimal, thousands to none.
+ *
+ * A million-plus count keeps scaling rather than saturating, so a 1.4-billion-token run reads
+ * "1400.0M" exactly as V1's `(tokens / 1_000_000.0).ToString("F1")` does. A non-finite or negative
+ * count is not a token count at all and is reported as absent rather than as "NaN".
+ */
 function formatTokens(tokens: number): string {
+  if (!Number.isFinite(tokens) || tokens < 0) return NO_VALUE;
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
   return String(tokens);
 }
 
+/** `FormatHelper.FormatCount`: the exact figure, grouped, for the tooltip behind the short form. */
+function formatTokenCount(tokens: number): string {
+  return tokens.toLocaleString("en-US");
+}
+
 /** `JobsApp.Data.cs` `FormatJobCost` via `FormatHelper.FormatCost`: two decimals, dollars. */
 function formatCost(cost: number): string {
   return `$${cost.toFixed(2)}`;
+}
+
+/**
+ * The Cost cell, `JobsApp.Data.cs` `FormatJobCost`.
+ *
+ * Returns `null` where V1 returns `""` - the job has no cost figure at all, which is the normal
+ * state of a subscription-plan run: the agent reports tokens and no charge. The caller renders
+ * {@link NO_VALUE} for that, so it cannot be mistaken for a charge of zero.
+ *
+ * An estimate derived from tokens times the price list carries V1's `"~"` prefix
+ * (`JobCostSources.Estimated`), so a figure nobody was actually billed never presents itself as one.
+ */
+function formatJobCost(job: Job): string | null {
+  if (job.cost === undefined || job.cost === null || !Number.isFinite(job.cost)) return null;
+  const formatted = formatCost(job.cost);
+  return (job as JobUsageExtras).costSource === "Estimated" ? `~${formatted}` : formatted;
 }
 
 /**
@@ -110,9 +159,27 @@ function statusMessage(job: Job): string {
       return "Waiting for a job slot to become available";
     case "Stopped":
       return "Job was manually stopped";
+    // `GetStatusMessage` has no Pending default because V1's Pending rows are transient in the
+    // table, but `OutputSheet.cs:42-47` - the sheet this view replaces - does:
+    // `Callout.Info("Job is queued and waiting to start.", "Job Pending")`. Without it a Pending
+    // job showed a warning badge and nothing else.
+    case "Pending":
+      return "Job is queued and waiting to start.";
     default:
       return "";
   }
+}
+
+/**
+ * `Helpers/JobId.cs` `Normalize`: ids are allocated as zero-padded five-digit numbers
+ * (`JobIdAllocator`), and every V1 surface that receives one pads it, because a bare `458` and
+ * `00458` are the same job. V2 reaches this view with whatever the caller had - `activeNav` strips a
+ * `job-` prefix off a nav id, and `acceptInboxProposal` returns a raw `jobId` - so the display is
+ * normalised here rather than trusting it.
+ */
+export function normalizeJobId(id: string): string {
+  const trimmed = id.trim();
+  return /^\d+$/.test(trimmed) ? trimmed.padStart(5, "0") : trimmed;
 }
 
 /**
@@ -132,6 +199,10 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
 }) => {
   const [isStopping, setIsStopping] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
+  const [isForceStarting, setIsForceStarting] = useState(false);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [storeState, setStoreState] = useState(() => ({
     job:
@@ -183,14 +254,23 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   // Convert event items into jsonStream lines
   const jsonStream = currentEvents.map((e) => JSON.stringify(e.payload)).join("\n");
 
-  const isRunning = currentJob.status === "Running" || currentJob.status === "Queued";
+  // `OutputSheet.cs:52` keys the live viewer on `Status == Running` and nothing else. Queued was
+  // included here, which meant a job still waiting for a slot got an animated "Working..." label and
+  // an autoscrolling viewer over an empty log - the sheet says the opposite about a job that has not
+  // started.
+  const isRunning = currentJob.status === "Running";
+
   // V1's Stop row action covers every state a job can still be taken out of, not just the two that
-  // are already moving: `JobsApp.DataTable.cs` gates it on Running/Queued/Pending/Blocked.
-  const canStop =
-    currentJob.status === "Running" ||
-    currentJob.status === "Queued" ||
-    currentJob.status === "Pending" ||
-    currentJob.status === "Blocked";
+  // are already moving: `JobsApp.DataTable.cs:183` gates it on Running/Queued/Pending/Blocked.
+  const canStop = isActiveStatus(currentJob.status);
+
+  // `Force Start` (`JobsApp.DataTable.cs:195`) is Blocked-only: the point of it is to skip the
+  // dependency gate that is holding the job, and there is no gate to skip in any other state.
+  const canForceStart = currentJob.status === "Blocked" && jobsStore.canForceStartJob();
+
+  // `Delete` (`JobsApp.DataTable.cs:207`) is offered in every state, terminal ones included: V1 adds
+  // it unconditionally, and the confirm's handler stops a live job first.
+  const canDelete = jobsStore.canDeleteJob();
 
   // A running job's timer counts up. V1 gets this from the Jobs table's one-second cell update
   // stream (`BuildDataTableUpdates`); here it is a tick on the same interval, and only while running.
@@ -219,6 +299,37 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
     }
   };
 
+  const handleForceStart = async () => {
+    setIsForceStarting(true);
+    setStopError(null);
+    try {
+      await jobsStore.forceStartJob(currentJob.id);
+    } catch (err) {
+      setStopError(`Force start failed: ${describeBridgeError(err)}`);
+    } finally {
+      setIsForceStarting(false);
+    }
+  };
+
+  // `JobsApp.DataTable.cs:302-315`: the confirm's own handler stops a live job and then deletes,
+  // and only then closes. A rejection keeps the dialog open with the reason on it rather than
+  // dismissing as though it had worked.
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await jobsStore.deleteJob(currentJob.id);
+      setIsConfirmDeleteOpen(false);
+      // `jobsStore.deleteJob` already re-reads the list, so the host needs nothing but the close:
+      // the tab is pointing at a job that no longer exists.
+      onCloseTab?.();
+    } catch (err) {
+      setDeleteError(`Delete failed: ${describeBridgeError(err)}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const failureReason = (currentJob as JobDetail).reportedFailureReason;
   const message = failureReason || statusMessage(currentJob);
   // Failed and Timeout are V1's two red statuses; Blocked, Queued, Pending and Stopped explain
@@ -236,6 +347,15 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   const planId = currentJob.planId;
   const noop = () => {};
 
+  // The Cost and Tokens cells. V1 has two labelled columns, so an empty Cost beside a populated
+  // Tokens is already legible; a tab has no column headers, so the labels come inline. Both are
+  // rendered together whenever either has a figure: a subscription-plan run - tokens spent, nothing
+  // billed - then reads "Tokens 450,000 · Cost —" rather than dropping the cost silently and looking
+  // like a run whose cost simply has not landed yet.
+  const cost = formatJobCost(currentJob);
+  const tokens = currentJob.tokens;
+  const hasUsage = cost !== null || tokens !== undefined;
+
   return (
     <div className="flex h-full flex-col space-y-4" data-testid="job-session-view">
       {/* Header: the output sheet's title, plus the row the tab replaced. */}
@@ -243,7 +363,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm font-bold text-muted-foreground">
-              {currentJob.id}
+              {normalizeJobId(currentJob.id)}
             </span>
             <span
               data-testid="job-status-badge"
@@ -282,13 +402,29 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             {currentJob.planTitle && <span className="truncate">{currentJob.planTitle}</span>}
             {timer !== "-" && <span data-testid="job-timer">{timer}</span>}
             {timestamp !== "-" && <span>{timestamp}</span>}
-            {currentJob.cost !== undefined && <span>{formatCost(currentJob.cost)}</span>}
-            {currentJob.tokens !== undefined && <span>{formatTokens(currentJob.tokens)}</span>}
+            {hasUsage && (
+              <span
+                data-testid="job-tokens"
+                title={tokens !== undefined ? formatTokenCount(tokens) : undefined}
+              >
+                Tokens {tokens !== undefined ? formatTokens(tokens) : NO_VALUE}
+              </span>
+            )}
+            {hasUsage && (
+              <span
+                data-testid="job-cost"
+                title={cost === null ? "No cost was reported for this job" : undefined}
+              >
+                Cost {cost ?? NO_VALUE}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* V1's row actions, in their order (`JobsApp.DataTable.cs` `RowActions`): Stop first.
-            Rerun, Force Start, Debug and Delete have no bridge call to reach yet. */}
+        {/* V1's row actions, in their order (`JobsApp.DataTable.cs` `RowActions`): Stop, Rerun,
+            Force Start, Debug, Delete. Rerun and Debug are still absent - Rerun needs V1's
+            `RerunJobDialog` and the job's original `TypedArgs`, which the DTO layer does not carry,
+            and Debug needs `JobDebugSheet`. Both are reported rather than stubbed. */}
         <div className="flex flex-wrap items-center gap-2">
           {canStop && (
             <button
@@ -299,6 +435,34 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
               className="rounded-selector bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-50"
             >
               {isStopping ? "Stopping..." : "Stop"}
+            </button>
+          )}
+
+          {canForceStart && (
+            <button
+              type="button"
+              data-testid="job-force-start"
+              disabled={isForceStarting}
+              onClick={handleForceStart}
+              title="Force start this blocked job"
+              className="rounded-selector border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              {isForceStarting ? "Starting..." : "Force Start"}
+            </button>
+          )}
+
+          {canDelete && (
+            <button
+              type="button"
+              data-testid="job-delete"
+              onClick={() => {
+                setDeleteError(null);
+                setIsConfirmDeleteOpen(true);
+              }}
+              title="Delete this job"
+              className="rounded-selector border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10"
+            >
+              Delete
             </button>
           )}
 
@@ -356,12 +520,31 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             showStatusLabel
             eventHandler={noop}
           />
-        ) : (
+        ) : explainsItself && message ? null : ( // a contradiction. // available." directly under "Waiting for a job slot to become available", which reads as // text is only reached when there is nothing to say. Rendering both put "No output // `OutputSheet.cs:26-49` **returns** its callout for a job with no output; the fallback
           <p className="text-sm text-muted-foreground" data-testid="job-no-output">
             No output available.
           </p>
         )}
       </div>
+
+      {/* `JobsApp.DataTable.cs:296-317`, copy included: header "Delete Job", body "Are you sure you
+          want to delete this job? This cannot be undone.", a destructive "Delete". `ConfirmDialog`
+          deliberately focuses Cancel rather than V1's `.AutoFocus()` on the confirm; that departure
+          is documented there. */}
+      {canDelete && (
+        <ConfirmDialog
+          isOpen={isConfirmDeleteOpen}
+          onClose={() => setIsConfirmDeleteOpen(false)}
+          title="Delete Job"
+          body={<p>Are you sure you want to delete this job? This cannot be undone.</p>}
+          confirmLabel="Delete"
+          confirmVariant="destructive"
+          onConfirm={handleDelete}
+          isBusy={isDeleting}
+          error={deleteError}
+          testId="job-delete-dialog"
+        />
+      )}
     </div>
   );
 };
