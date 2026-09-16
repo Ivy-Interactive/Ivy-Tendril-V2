@@ -6,6 +6,7 @@
   "scripts": {
     "dev:app": "pnpm --filter @ivy-interactive/tendril-app dev",
     "dev:tauri": "pnpm --filter @ivy-interactive/tendril-app tauri dev",
+    "dev:desktop": "tsx src/scripts/dev-desktop.ts",
     "dev:docs": "pnpm --filter @ivy-interactive/tendril-docs dev",
     "dev:storybook": "pnpm --filter @ivy-interactive/components storybook",
     "build": "pnpm --filter @ivy-interactive/components build && pnpm --filter @ivy-interactive/tendril-app build && pnpm --filter @ivy-interactive/tendril-docs build",
