@@ -271,17 +271,23 @@ irm https://cdn.ivy.app/install-tendril.ps1 | iex
 
 ### 実行
 
-Tendrilはデスクトップアプリケーションですが、CLIから起動および制御することもできます:
+Tendrilはデスクトップアプリケーションですが、同じインストールにCLIも含まれます。両者は別々のバイナリで、
+`tendril-app`がデスクトップアプリ、`tendril`がCLIおよびサーバーです。
 
-デスクトップアプリケーションの起動:
+アプリケーションメニューから **Tendril** を起動するとデスクトップアプリケーションが開きます
+(`tendril-app`バイナリを直接実行することもできます)。
+
+デーモンをヘッドレスで起動 — HTTP & WebSocket API のみ、デスクトップUIなし:
 ```bash
-tendril
+tendril run
 ```
 
-ヘッドレスモードで起動 (デスクトップUIなしのWebサーバー):
-```bash
-tendril --web
-```
+`tendril run`は最初にポートを確認しデータベースをマイグレーションしてから、`127.0.0.1:5010`で待ち受け
+ます。変更するには`--port` / `--host`を使用します。事前チェックなしの素のリスナーが必要な場合は
+`tendril serve`を使ってください (`--tls-cert` / `--tls-key`を受け付けるのはこちらのコマンドです)。
+
+それ以外はすべてサブコマンドです — `tendril --help`がすべてを一覧表示し、`tendril doctor`はインストール
+状態を報告します (`[FAIL]`が一つもなければ終了コード0、それ以外は1。スクリプトのゲートとして使えます)。
 
 ---
 
@@ -291,14 +297,20 @@ tendril --web
 Ivy-Tendril-V2/
 ├── src/
 │   ├── apps/
-│   │   └── tendril-app/            # Tauriデスクトップアプリ + Reactフロントエンド
+│   │   ├── tendril-app/            # Tauriデスクトップアプリ + Reactフロントエンド
+│   │   └── tendril-docs/           # ドキュメントサイト
 │   ├── packages/
 │   │   └── components/             # @ivy-interactive/components + Storybook
 │   ├── crates/
 │   │   ├── tendril-core/           # コアドメインモデル, SQLiteデータベース, ワークツリーエンジン
 │   │   ├── tendril-server/         # Axum REST & WebSocket HTTPサーバーデーモン
 │   │   └── tendril-cli/            # コマンドラインインターフェース ("tendril")
-│   └── promptwares/                # Promptwareエージェント定義 & ファームウェア
+│   ├── extensions/
+│   │   └── vscode/                 # VS Code / Antigravity IDE 拡張機能
+│   ├── promptwares/                # Promptwareエージェント定義 & ファームウェア
+│   ├── skills/                     # エージェントワークフロースキル
+│   └── scripts/                    # リポジトリセットアップ & テスト検証スクリプト
+├── docs/                           # ドキュメントコンテンツ
 ├── Cargo.toml                      # 統合Cargoワークスペース
 ├── pnpm-workspace.yaml             # 統合pnpmワークスペース
 └── package.json                    # ワークスペースルートスクリプト
@@ -349,6 +361,15 @@ Ivy-Tendril-V2/
    # Rustテスト
    cargo test --workspace
    ```
+
+### ビジュアル & スクリーンショットテスト
+
+スクリーンショット検証とStorybookのビジュアルテストをローカルで実行するには:
+
+```bash
+pnpm install
+pnpm run install:playwright:deps
+```
 
 ---
 

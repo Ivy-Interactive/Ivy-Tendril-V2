@@ -271,17 +271,24 @@ irm https://cdn.ivy.app/install-tendril.ps1 | iex
 
 ### Ausführung
 
-Tendril ist eine Desktop-Anwendung, kann jedoch auch über die CLI gestartet und gesteuert werden:
+Tendril ist eine Desktop-Anwendung, doch dieselbe Installation ist auch eine CLI. Es sind zwei
+getrennte Binaries: `tendril-app` ist die Desktop-Anwendung, `tendril` ist die CLI und der Server.
 
-Desktop-Anwendung starten:
+Die Desktop-Anwendung wird über **Tendril** im Anwendungsmenü gestartet (oder indem das Binary
+`tendril-app` direkt ausgeführt wird).
+
+Den Daemon headless starten — die HTTP- und WebSocket-API, ohne Desktop-Oberfläche:
 ```bash
-tendril
+tendril run
 ```
 
-Im Headless-Modus starten (Webserver ohne Desktop-Benutzeroberfläche):
-```bash
-tendril --web
-```
+`tendril run` prüft zuerst den Port und migriert die Datenbank, danach wird auf `127.0.0.1:5010`
+ausgeliefert. Mit `--port` / `--host` lässt sich das ändern, und `tendril serve` liefert den reinen
+Listener ohne Vorabprüfungen (es ist außerdem der Befehl, der `--tls-cert` / `--tls-key` annimmt).
+
+Alles Weitere sind Unterbefehle — `tendril --help` listet sie alle auf, und `tendril doctor` berichtet
+über die Installation (Exit-Code 0, wenn nichts `[FAIL]` ist, sonst 1, sodass er ein Skript absichern
+kann).
 
 ---
 
@@ -291,14 +298,20 @@ tendril --web
 Ivy-Tendril-V2/
 ├── src/
 │   ├── apps/
-│   │   └── tendril-app/            # Tauri Desktop-App + React Frontend
+│   │   ├── tendril-app/            # Tauri Desktop-App + React Frontend
+│   │   └── tendril-docs/           # Dokumentationswebsite
 │   ├── packages/
 │   │   └── components/             # @ivy-interactive/components + Storybook
 │   ├── crates/
 │   │   ├── tendril-core/           # Kern-Domänenmodelle, SQLite-Datenbank, Worktree-Engine
 │   │   ├── tendril-server/         # Axum REST & WebSocket HTTP-Server-Daemon
 │   │   └── tendril-cli/            # Befehlszeilenschnittstelle ("tendril")
-│   └── promptwares/                # Promptware-Agentendefinitionen & Firmware
+│   ├── extensions/
+│   │   └── vscode/                 # VS Code / Antigravity IDE Erweiterung
+│   ├── promptwares/                # Promptware-Agentendefinitionen & Firmware
+│   ├── skills/                     # Agenten-Workflow-Skills
+│   └── scripts/                    # Skripte für Repository-Setup & Testvalidierung
+├── docs/                           # Dokumentationsinhalte
 ├── Cargo.toml                      # Einheitlicher Cargo-Workspace
 ├── pnpm-workspace.yaml             # Einheitlicher pnpm-Workspace
 └── package.json                    # Workspace-Root-Skripte
@@ -349,6 +362,15 @@ Ivy-Tendril-V2/
    # Rust-Tests
    cargo test --workspace
    ```
+
+### Visuelle Tests & Screenshot-Tests
+
+Um Screenshot-Verifizierungen und visuelle Storybook-Tests lokal auszuführen:
+
+```bash
+pnpm install
+pnpm run install:playwright:deps
+```
 
 ---
 
