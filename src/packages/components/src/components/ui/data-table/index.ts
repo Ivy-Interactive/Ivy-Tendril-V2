@@ -21,6 +21,31 @@ export {
 } from "./data-table-row-actions";
 export { DataTableToolbar, type DataTableToolbarProps } from "./data-table-toolbar";
 
+export {
+  allOf,
+  anyOf,
+  not,
+  sortToRemote,
+  whereColumn,
+  type RemoteTableAggregation,
+  type RemoteTableAggregationResult,
+  type RemoteTableCondition,
+  type RemoteTableFetcher,
+  type RemoteTableFilter,
+  type RemoteTableFilterArg,
+  type RemoteTableFilterFunction,
+  type RemoteTableFilterGroup,
+  type RemoteTablePage,
+  type RemoteTableRequest,
+  type RemoteTableSort,
+} from "./remote-query";
+export {
+  DEFAULT_REMOTE_PAGE_SIZE,
+  useRemoteDataTable,
+  type UseRemoteDataTableOptions,
+  type UseRemoteDataTableResult,
+} from "./use-remote-data-table";
+
 export type {
   DataTableAlign,
   DataTableCellCommitEvent,

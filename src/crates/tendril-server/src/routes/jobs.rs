@@ -10,7 +10,7 @@ use tendril_core::error::TendrilError;
 use tendril_core::jobs::{
     find_log_file, read_eventwire_log, read_job_log, read_lines_from, read_raw_log, StartOptions,
 };
-use tendril_core::models::{JobArgs, JobStatus};
+use tendril_core::models::{JobArgs, JobItem, JobStatus};
 
 #[derive(Debug, Deserialize)]
 pub struct JobListQuery {
@@ -33,6 +33,127 @@ pub async fn list_jobs(
         )
             .into_response(),
     }
+}
+
+/// `POST /api/jobs/query` — one window of the Jobs table under a caller's sort, filter and offset.
+///
+/// The body is `TableQuery` (`sort`, a recursive `filter`, `offset`, `limit`, `selectColumns`,
+/// `aggregations`, `versionToken`) and `{}` means "the first page in the server's order", which is
+/// exactly what `GET /api/jobs` returns. The rows are the same `Job` objects that route sends, so a
+/// view can move onto this one without a second DTO.
+///
+/// Why it exists next to `GET /api/jobs`: that route can only answer "the newest N", so a table built
+/// on it has to hold every row it might display and do its own sorting and paging — which stops
+/// working somewhere in the tens of thousands of jobs and gets slower every day the daemon runs. Here
+/// SQLite does the sort, the filter and the window, and the response carries `totalRows`, so the
+/// client holds one page and the footer still knows the true count.
+///
+/// See `routes::tables` for the generic form of this API, the `Accept`-based encoding negotiation and
+/// the Arrow story.
+pub async fn query_jobs_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(query): Json<tendril_core::db::query::TableQuery>,
+) -> impl IntoResponse {
+    use crate::routes::tables::{
+        arrow_not_available_response, negotiate_encoding, ResponseEncoding,
+    };
+
+    if negotiate_encoding(&headers) == ResponseEncoding::ArrowIpc {
+        return arrow_not_available_response();
+    }
+
+    let db_path = state.db_path.clone();
+    let select_columns = query.select_columns.clone();
+
+    // `spawn_blocking`: a filtered `COUNT(*)` over a long job history is the one read here whose cost
+    // grows with the table, and it must not sit on an async worker thread.
+    let result = tokio::task::spawn_blocking(move || {
+        let conn = tendril_core::db::open_database(&db_path)?;
+        tendril_core::db::jobs::query_jobs(&conn, &query)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(page)) => {
+            // `selectColumns` is applied to the serialized rows rather than to the `SELECT`, because
+            // the rows are `Job` DTOs whose fields are not one-to-one with columns (`typedArgs` is
+            // rehydrated from `Args`, `waitForJobIds` is parsed out of a JSON column). It is still a
+            // real saving on the wire — a jobs table showing six columns need not carry 36 — and the
+            // names were already validated against the schema, so a typo was a 400.
+            let rows: Vec<serde_json::Value> = page
+                .rows
+                .iter()
+                .map(|job| project_job(job, &select_columns))
+                .collect();
+            Json(json!({
+                "encoding": "application/json",
+                "rows": rows,
+                "offset": page.offset,
+                "rowCount": page.row_count,
+                "totalRows": page.total_rows,
+                "limit": page.limit,
+                "versionToken": page.version_token,
+                "stale": page.stale,
+                "aggregations": page.aggregations,
+            }))
+            .into_response()
+        }
+        Ok(Err(TendrilError::Validation(message))) => {
+            (StatusCode::BAD_REQUEST, Json(json!({ "error": message }))).into_response()
+        }
+        Ok(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to query jobs: {e}") })),
+        )
+            .into_response(),
+        Err(join) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to query jobs: {join}") })),
+        )
+            .into_response(),
+    }
+}
+
+/// Serializes a job, keeping only the requested fields. An empty request keeps all of them.
+///
+/// Matching is by response-field name, loosely: `completedAt`, `CompletedAt` and `completed_at` all
+/// name the same field, so a caller can send the column names it read from
+/// `GET /api/tables/jobs/schema` or the field names it sees in a row. `id` is always kept — it is the
+/// row identity every table needs, and a projection that dropped it would produce rows a client
+/// cannot key.
+///
+/// The names to send are *column* names, because that is what the query processor validates against —
+/// so a typo is a 400 rather than a silently missing field. Nearly every response field is one: the
+/// exceptions are `typedArgs`, which is rehydrated from the `Args` column, and `detached`, which is
+/// runtime state with no column at all. Neither can be selected by name; ask for `args` instead, or
+/// omit `selectColumns` and take the whole row.
+fn project_job(job: &JobItem, select: &[String]) -> serde_json::Value {
+    let serialized = json!(job);
+    if select.is_empty() {
+        return serialized;
+    }
+    let Some(object) = serialized.as_object() else {
+        return serialized;
+    };
+
+    let normalize = |name: &str| -> String {
+        name.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .flat_map(|c| c.to_lowercase())
+            .collect()
+    };
+    let wanted: Vec<String> = select.iter().map(|name| normalize(name)).collect();
+
+    let kept = object
+        .iter()
+        .filter(|(key, _)| {
+            let normalized = normalize(key);
+            normalized == "id" || wanted.contains(&normalized)
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<serde_json::Map<_, _>>();
+    serde_json::Value::Object(kept)
 }
 
 /// A job start. The args are flattened, so the current bare-`JobArgs` body keeps working and the new

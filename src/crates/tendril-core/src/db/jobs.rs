@@ -1,3 +1,4 @@
+use crate::db::query::{QueryPage, TableDescriptor, TableQuery};
 use crate::models::{JobItem, JobStatus};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Result, Row};
@@ -236,26 +237,92 @@ pub fn list_jobs(
     status_filter: Option<JobStatus>,
     limit: usize,
 ) -> Result<Vec<JobItem>> {
-    let mut sql = format!("SELECT {} FROM Jobs WHERE Cleared = 0", JOB_COLUMNS);
+    let mut sql = format!(
+        "SELECT {} FROM Jobs WHERE {}",
+        JOB_COLUMNS, JOBS_BASE_PREDICATE
+    );
 
+    // Bound, not interpolated. `status_filter` is a parsed `JobStatus` so its `as_str()` cannot carry
+    // anything but one of the enum's literals — but a read path that formats a value into SQL is a
+    // pattern the next edit copies, and the next value may not be an enum.
+    let mut binds: Vec<&str> = Vec::new();
     if let Some(status) = status_filter {
-        sql.push_str(&format!(" AND Status = '{}'", status.as_str()));
+        sql.push_str(" AND Status = ?1");
+        binds.push(status.as_str());
     }
 
     sql.push_str(&format!(
-        " ORDER BY CASE WHEN CompletedAt IS NULL THEN 0 ELSE 1 END, CompletedAt DESC, Id DESC \
-         LIMIT {}",
-        limit
+        " ORDER BY {}, {} LIMIT {}",
+        JOBS_DEFAULT_ORDER, JOBS_TIEBREAK_ORDER, limit
     ));
 
     let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query([])?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(binds))?;
     let mut jobs = Vec::new();
     while let Some(row) = rows.next()? {
         jobs.push(row_to_job(row)?);
     }
 
     Ok(jobs)
+}
+
+/// The server's own visibility rule for the Jobs table: a row V1 flagged as cleared is not part of
+/// any list, and is not part of any count either. Applied ahead of a caller's filter and never
+/// negotiable — see [`crate::db::query::TableDescriptor::base_predicate`].
+const JOBS_BASE_PREDICATE: &str = "Cleared = 0";
+
+/// [`list_jobs`]' ordering, reused as the query API's default sort so the two agree by construction:
+/// unfinished work first, then finished rows newest-first.
+const JOBS_DEFAULT_ORDER: &str =
+    "CASE WHEN CompletedAt IS NULL THEN 0 ELSE 1 END, CompletedAt DESC";
+
+/// Appended after every sort — the caller's included.
+///
+/// Not decoration: `Status`, `Project` and `CompletedAt` all have huge ties, and two windows of a
+/// result whose ties are ordered arbitrarily are not slices of one sequence. Without a total order,
+/// paging a large Jobs table can show a row twice and never show its neighbour. `Id` is the primary
+/// key, so this makes every sort total.
+const JOBS_TIEBREAK_ORDER: &str = "Id DESC";
+
+/// The Jobs table as the query processor sees it.
+pub fn jobs_table_descriptor() -> TableDescriptor<'static> {
+    TableDescriptor {
+        table: "Jobs",
+        columns_sql: JOB_COLUMNS,
+        base_predicate: Some(JOBS_BASE_PREDICATE),
+        default_order_sql: JOBS_DEFAULT_ORDER,
+        tiebreak_order_sql: JOBS_TIEBREAK_ORDER,
+        // Moves whenever a job is stamped — every status transition writes one of these — so a client
+        // paging through a busy queue is told its offsets have shifted. Inserts and deletions are
+        // caught by the row count the token is paired with.
+        version_marker_sql: Some("MAX(COALESCE(LastOutputAt, CompletedAt, StartedAt, ''))"),
+    }
+}
+
+/// One window of the Jobs table under a caller's sort, filter and offset, with the matching total.
+///
+/// This is what lets a jobs table stay responsive at any row count: the sort, the filter and the
+/// window are SQLite's problem, and the client receives `limit` rows plus a number. Contrast
+/// [`list_jobs`], which can only answer "the newest N in the server's order" — a client wanting page
+/// four, or rows sorted by cost, had no choice but to fetch everything and do it itself.
+///
+/// Every identifier in `query` is validated against the live `Jobs` schema and every value is bound;
+/// see [`crate::db::query`] for the injection boundary.
+pub fn query_jobs(
+    conn: &Connection,
+    query: &TableQuery,
+) -> crate::error::Result<QueryPage<JobItem>> {
+    crate::db::query::query_table(conn, &jobs_table_descriptor(), query, row_to_job)
+}
+
+/// Distinct values of one Jobs column, for a filter facet. The framework's `Values` rpc.
+pub fn job_column_values(
+    conn: &Connection,
+    column: &str,
+    search: Option<&str>,
+    limit: Option<i64>,
+) -> crate::error::Result<crate::db::query::ValuesPage> {
+    crate::db::query::distinct_values(conn, &jobs_table_descriptor(), column, search, limit)
 }
 
 /// Every job row that has not reached a terminal status. This is the input to startup

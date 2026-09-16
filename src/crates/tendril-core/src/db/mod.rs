@@ -5,6 +5,7 @@ pub mod jobs;
 pub mod migrations;
 pub mod plans;
 pub mod pr_status;
+pub mod query;
 
 pub use costs::*;
 pub use dashboard::*;
