@@ -1,7 +1,8 @@
 use chrono::Utc;
 use tendril_core::chat::models::{ChatMessage, ChatSession};
 use tendril_core::chat::storage::{
-    delete_session, load_all_sessions, load_session, rename_session, sanitize_title, save_session,
+    delete_session, load_all_sessions, load_session, plan_session_recipients, rename_session,
+    sanitize_title, save_session,
 };
 
 #[test]
@@ -94,4 +95,56 @@ fn test_crud_and_atomic_writes() {
     assert_eq!(all_after_delete.len(), 0);
 
     let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// Which chats a plan's events reach: every session attached to its folder, plus the plan's own chat.
+/// The daemon's job notifier runs a turn per recipient, so the rule has to be the same one the existing
+/// pull-request broadcast uses — hence one function, tested here.
+#[test]
+fn test_plan_session_recipients() {
+    let dir = std::env::temp_dir().join(format!(
+        "tendril-chat-recipients-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&dir).expect("create test dir");
+
+    let session = |id: &str, folder: Option<&str>| ChatSession {
+        id: id.to_string(),
+        title: id.to_string(),
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+        agent_id: "claude".to_string(),
+        model_id: "default".to_string(),
+        messages: Vec::new(),
+        effort: None,
+        spawned_job_ids: Vec::new(),
+        plan_folder_name: folder.map(str::to_string),
+    };
+
+    for s in [
+        session("attached-a", Some("00007-PortTheChat")),
+        session("attached-b", Some("00007-PortTheChat")),
+        session("other-plan", Some("00008-Something")),
+        session("free-standing", None),
+        // The plan's own chat, which is named by `plan.yaml` rather than by a folder on the session.
+        session("plan-chat", None),
+    ] {
+        save_session(&dir, &s).expect("save");
+    }
+
+    let recipients =
+        plan_session_recipients(&dir, "00007-PortTheChat", Some("plan-chat")).expect("recipients");
+    assert_eq!(recipients, vec!["attached-a", "attached-b", "plan-chat"]);
+
+    // Without the plan's own chat id, only the attached sessions qualify.
+    let attached_only =
+        plan_session_recipients(&dir, "00007-PortTheChat", None).expect("recipients");
+    assert_eq!(attached_only, vec!["attached-a", "attached-b"]);
+
+    // A plan nothing is watching reaches nobody, rather than everybody.
+    assert!(plan_session_recipients(&dir, "00099-Nothing", None)
+        .expect("recipients")
+        .is_empty());
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

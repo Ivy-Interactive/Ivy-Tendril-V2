@@ -21,7 +21,7 @@ use tendril_core::db::open_database;
 use tendril_core::error::{Result, TendrilError};
 use tendril_core::jobs::manager::{
     conflict_group, describe_wait_dependency, stale_eviction_candidates, JobManager, SpecBuilder,
-    StartOptions,
+    StartOptions, CLEARABLE_STATUSES,
 };
 use tendril_core::jobs::recovery::reconcile_jobs_with;
 use tendril_core::models::{
@@ -708,9 +708,10 @@ async fn assert_one_concurrent_start_wins(
     manager.stop_all_jobs().await.unwrap();
 }
 
-/// Startup recovery deliberately does not rehydrate the in-memory map, so straight after a restart
-/// the map is empty while the database still holds the job that owns the plan. A memory-only guard
-/// went blind exactly there and admitted a second job onto a plan an agent was still working on.
+/// The conflict guard has to answer out of SQLite rather than out of the in-memory map. These cases
+/// reconcile with no `JobManager`, so nothing rehydrates the map at all and the row is the only trace
+/// of the job left — which is what a memory-only guard went blind on, admitting a second job onto a
+/// plan an agent was still working on.
 #[tokio::test]
 async fn a_persisted_conflicting_job_is_detected_after_a_restart() {
     // A live PID: recovery reads the row as a job that survived the daemon and leaves it running.
@@ -720,8 +721,8 @@ async fn a_persisted_conflicting_job_is_detected_after_a_restart() {
         Some(alive_pid()),
     )
     .await;
-    // And a queued row with no process at all — recovery has no durable queue, so it leaves those
-    // alone too, which makes them just as invisible to the map and just as real to the plan.
+    // And a queued row with no process at all. Given a manager, recovery would put this one back on
+    // the queue; the row still owns the plan either way, which is all the guard is being asked about.
     assert_persisted_job_blocks_a_start("queue-restart-queued", JobStatus::Queued, None).await;
     // `Blocked` counts too, and the group gate is the only gate that says so: a blocked job is a
     // standing intention to mutate this plan, and the way to replace one is the delete-then-start
@@ -1193,6 +1194,68 @@ async fn maintenance_releases_a_job_blocked_on_a_plan_dependency() {
     );
 }
 
+/// The restart-shaped version of the test above, and the case the wait-for sweep exists for: its
+/// comment calls itself belt and braces against a release notification missed because the daemon
+/// restarted, so a row left `Blocked` by the daemon that died has to be released here.
+///
+/// The row is the only trace of the job a new daemon has. Startup reconciliation leaves `Blocked`
+/// alone and so never puts it in the in-memory map, and the conflict guard reads the row as in-flight
+/// and refuses every resubmission — so a waiter this pass cannot see never runs and never fails.
+#[cfg(unix)]
+#[tokio::test]
+async fn maintenance_releases_a_job_left_blocked_on_a_finished_job_by_a_restart() {
+    let home = HomeFixture::new("queue-maint-release-restart");
+    home.write_promptware("ExecutePlan");
+    let upstream_folder = home.write_plan("00002-Upstream", &plan_with(PlanStatus::Completed, &[]));
+    // Passing verification plus a commit is what the post-execution gate reads as delivered work, so
+    // the released job's own outcome is `Completed` and not a gate failure that would mask it.
+    let mut dependent = plan_with(PlanStatus::Draft, &[("Build", VerificationStatus::Pass)]);
+    dependent.commits = vec!["abc1234".to_string()];
+    let folder = home.write_plan("00001-Dependent", &dependent);
+
+    // The dependency finished before the daemon died, so the waiter's release notification was
+    // never delivered: on a live daemon `release_wait_dependents` would have fired on 00002.
+    write_terminal_job(&home, "00002", &upstream_folder, JobStatus::Completed);
+    let mut waiter = seed_live_job(&home, "00001", &folder, JobStatus::Blocked, None);
+    waiter.wait_for_job_ids = vec!["00002".to_string()];
+    waiter.status_message = Some(format!(
+        "Waiting for {}",
+        describe_wait_dependency(&job_in(
+            "00002",
+            &upstream_folder,
+            "ExecutePlan",
+            JobStatus::Completed
+        ))
+    ));
+    write_job_row(&home, &waiter);
+
+    // A manager built fresh over the same home *is* the restart: nothing ever populated its map.
+    let script = write_script(&home, "agent.sh", "echo working\nexit 0\n");
+    let manager = manager_for(&home, 2, Some(script)).share();
+    reconcile_jobs_with(
+        &home.path,
+        &home.plans_dir(),
+        &settings(2),
+        &never_called_resolver,
+        Some(&manager),
+    )
+    .await
+    .expect("reconciliation should not error");
+
+    let report = manager
+        .run_maintenance_pass_with(&never_called_resolver)
+        .await;
+    assert!(
+        report.released_jobs.contains(&"00001".to_string()),
+        "the sweep must find the blocked row the restart left behind, released: {:?}",
+        report.released_jobs
+    );
+    assert_eq!(
+        wait_for_terminal(&manager, "00001", Duration::from_secs(20)).await,
+        JobStatus::Completed
+    );
+}
+
 /// The stuck-job check catches a `Running` row whose own watchdog never armed, e.g. a job left behind
 /// by a daemon that died.
 #[tokio::test]
@@ -1493,6 +1556,104 @@ async fn clear_all_leaves_a_blocked_job_in_place() {
     assert_eq!(manager.clear_all_jobs().await.unwrap(), 1);
     assert!(manager.get_job("00001").await.unwrap().is_some());
     assert!(manager.get_job("00002").await.unwrap().is_none());
+}
+
+/// The safety property of every bulk clear: it removes finished work and nothing else.
+///
+/// Enforced in [`JobManager::clear_jobs`] rather than at its callers, so the CLI's `tendril job clear`,
+/// the app's header menu and whatever asks next all inherit it. Asking for `Running` explicitly is the
+/// test worth having — the exposed scopes cannot express it today, and the point is that they could not
+/// do damage even if one did.
+#[tokio::test]
+async fn a_clear_never_touches_a_running_or_queued_job_however_it_is_asked() {
+    let home = HomeFixture::new("queue-clear-safety");
+    let folder = home.write_plan("00001-Plan", &plan_with(PlanStatus::Executing, &[]));
+
+    write_job_row(
+        &home,
+        &job_in("00001", &folder, "ExecutePlan", JobStatus::Running),
+    );
+    write_job_row(
+        &home,
+        &job_in("00002", &folder, "ExecutePlan", JobStatus::Queued),
+    );
+    write_job_row(
+        &home,
+        &job_in("00003", &folder, "ExecutePlan", JobStatus::Pending),
+    );
+    // History, and on a plan of its own: deleting a job reverts the plan it was mid-flight on, so
+    // sharing a folder would make the plan assertion below a statement about `delete_job` instead.
+    let history = home.write_plan("00009-Done", &plan_with(PlanStatus::Completed, &[]));
+    write_terminal_job(&home, "00004", &history, JobStatus::Completed);
+
+    let manager = manager_for(&home, 2, None);
+
+    // Named directly, and refused.
+    for status in [JobStatus::Running, JobStatus::Queued, JobStatus::Pending] {
+        assert_eq!(
+            manager.clear_jobs(&[status]).await.unwrap(),
+            0,
+            "clearing {status} must remove nothing"
+        );
+    }
+    // And mixed in with a status that *is* clearable, the clearable one still goes and the others stay.
+    assert_eq!(
+        manager
+            .clear_jobs(&[JobStatus::Running, JobStatus::Completed, JobStatus::Queued])
+            .await
+            .unwrap(),
+        1
+    );
+
+    for surviving in ["00001", "00002", "00003"] {
+        assert!(
+            manager.get_job(surviving).await.unwrap().is_some(),
+            "{surviving} is work in flight, not history"
+        );
+    }
+    assert!(manager.get_job("00004").await.unwrap().is_none());
+    // The plan its running job owns is untouched too — nothing went through the cancel path.
+    assert_eq!(plan_state(&folder), "Executing");
+}
+
+/// An empty scope clears nothing, rather than falling through to an `IN ()` predicate.
+#[tokio::test]
+async fn an_empty_clear_scope_removes_nothing() {
+    let home = HomeFixture::new("queue-clear-empty");
+    let folder = home.write_plan("00001-Plan", &plan_with(PlanStatus::Draft, &[]));
+    write_terminal_job(&home, "00001", &folder, JobStatus::Completed);
+
+    let manager = manager_for(&home, 2, None);
+    assert_eq!(manager.clear_jobs(&[]).await.unwrap(), 0);
+    assert!(manager.get_job("00001").await.unwrap().is_some());
+}
+
+/// Every terminal status is clearable on its own, which is what lets the app offer one menu item per
+/// status instead of V1's two. `CLEARABLE_STATUSES` is the list, and it is the same list `clear all`
+/// sweeps.
+#[tokio::test]
+async fn each_terminal_status_can_be_cleared_on_its_own() {
+    let home = HomeFixture::new("queue-clear-per-status");
+    let folder = home.write_plan("00001-Plan", &plan_with(PlanStatus::Draft, &[]));
+
+    let ids = ["00001", "00002", "00003", "00004"];
+    for (id, status) in ids.iter().zip(CLEARABLE_STATUSES) {
+        write_terminal_job(&home, id, &folder, *status);
+    }
+
+    let manager = manager_for(&home, 2, None);
+    for (index, status) in CLEARABLE_STATUSES.iter().enumerate() {
+        assert_eq!(
+            manager.clear_jobs(&[*status]).await.unwrap(),
+            1,
+            "clearing {status} takes exactly its own row"
+        );
+        assert!(manager.get_job(ids[index]).await.unwrap().is_none());
+        // ...and leaves every status it was not asked about.
+        for later in &ids[index + 1..] {
+            assert!(manager.get_job(later).await.unwrap().is_some());
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

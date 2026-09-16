@@ -536,7 +536,7 @@ fn publish_port_rewrites_the_claim_after_the_bind() {
     assert_eq!(claim.info.pid, std::process::id());
     assert_eq!(claim.info.secret, "bound-secret");
     assert!(
-        claim.heartbeat_at.is_some(),
+        claim.heartbeat.is_some(),
         "publishing the port re-asserts the claim, so it carries a heartbeat"
     );
 
@@ -652,4 +652,211 @@ fn test_guard_refuses_real_home_in_test_context() {
             tmp_files
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// A `.master` a reader cannot understand
+//
+// The 2026-09-16 incident: a developer's agent ran `tendril job start`, `tendril` on PATH was the
+// installed V1 CLI, and V1's discovery judged the V2 claim's heartbeat stale — V1 reads a `heartbeat`
+// field V2 did not write, so the claim looked infinitely old — and deleted the file. The live dev
+// daemon then had no registration for any later CLI call or for the extension.
+//
+// V1 cannot be patched from here. What can be fixed is the two halves this repo owns: V2 must not do
+// the same thing to somebody else's claim, and V2's own claim must not read as abandoned to a reader
+// that keys off `heartbeat`.
+// ---------------------------------------------------------------------------
+
+/// A file a reader cannot parse is left standing. "I cannot read this" is not "its owner is gone", and
+/// the reader has no way to tell the difference — which is the whole mistake being fixed.
+#[test]
+fn a_master_file_that_cannot_be_parsed_is_left_alone() {
+    let test_dir = temp_home("tendril-foreign-master-test");
+    let master_file = test_dir.join(".master");
+
+    // A structured claim from some other Tendril: valid JSON, none of our fields.
+    let foreign = r#"{"schemaVersion":99,"owner":"some-future-tendril","registration":{"pid":1}}"#;
+    std::fs::write(&master_file, foreign).unwrap();
+
+    assert!(
+        read_master_claim(&test_dir).is_none(),
+        "this build must not pretend to understand it"
+    );
+    assert!(
+        !tendril_core::config::delete_master_if_pid(&test_dir, std::process::id()),
+        "an unreadable claim must not be swept away as stale"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&master_file).unwrap(),
+        foreign,
+        "the file must be byte-for-byte untouched"
+    );
+
+    // And a daemon that wants the home refuses to start rather than clearing it.
+    let message = match MasterGuard::acquire(&test_dir, 5010, "secret", "127.0.0.1", "http") {
+        Ok(_) => panic!("a claim this build cannot read must not be evicted on a guess"),
+        Err(e) => e.to_string(),
+    };
+    assert!(
+        message.contains("does not understand") && message.contains("99"),
+        "the refusal must say what it found: {message}"
+    );
+    assert!(
+        message.contains("TENDRIL_ALLOW_MASTER_TAKEOVER"),
+        "and how to override it deliberately: {message}"
+    );
+    assert!(master_file.exists(), "the refusal must not delete anything");
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// The recovery path this must not cost: a genuinely broken write — the empty file a racing daemon can
+/// be caught mid-create with — is still cleared, and a crashed daemon's readable claim is still taken
+/// over (`test_stale_master_detection_and_cleanup` covers the latter).
+#[test]
+fn a_truncated_master_file_is_still_recovered() {
+    let test_dir = temp_home("tendril-truncated-master-test");
+    std::fs::write(test_dir.join(".master"), "").unwrap();
+
+    let guard = MasterGuard::acquire(&test_dir, 5010, "fresh-secret", "127.0.0.1", "http")
+        .expect("a truncated claim names nobody and must not block a daemon");
+    assert_eq!(read_master(&test_dir).unwrap().secret, "fresh-secret");
+
+    drop(guard);
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// The escape hatch stays open: an operator who knows the file is dead can say so.
+#[test]
+fn the_takeover_escape_hatch_clears_an_unreadable_claim() {
+    let _lock = env_lock();
+    let test_dir = temp_home("tendril-foreign-takeover-test");
+    std::fs::write(test_dir.join(".master"), r#"{"schemaVersion":99}"#).unwrap();
+
+    std::env::set_var("TENDRIL_ALLOW_MASTER_TAKEOVER", "1");
+    let guard = MasterGuard::acquire(&test_dir, 5010, "forced-secret", "127.0.0.1", "http");
+    std::env::remove_var("TENDRIL_ALLOW_MASTER_TAKEOVER");
+
+    let guard = guard.expect("an explicit takeover must succeed");
+    assert_eq!(read_master(&test_dir).unwrap().secret, "forced-secret");
+
+    drop(guard);
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// A running daemon does not re-assert over a claim it cannot read either: it reports it and leaves it.
+#[test]
+fn a_live_daemon_does_not_overwrite_an_unreadable_claim() {
+    let test_dir = temp_home("tendril-foreign-reassert-test");
+    let guard = MasterGuard::acquire(&test_dir, 5010, "owner-secret", "127.0.0.1", "http").unwrap();
+
+    let foreign = r#"{"schemaVersion":99,"owner":"some-future-tendril"}"#;
+    std::fs::write(test_dir.join(".master"), foreign).unwrap();
+
+    assert_eq!(guard.check_and_reassert(), MasterCheck::Foreign);
+    assert_eq!(
+        std::fs::read_to_string(test_dir.join(".master")).unwrap(),
+        foreign
+    );
+
+    drop(guard);
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// What the file has to say for a foreign reader to leave it alone: a schema marker, and a `heartbeat`
+/// under the name — and in the UTC-with-`Z` form — that V1's `MasterLock.ReadLiveMaster` reads.
+#[test]
+fn a_written_claim_marks_its_schema_and_carries_a_readable_heartbeat() {
+    let test_dir = temp_home("tendril-master-marker-test");
+    let guard = MasterGuard::acquire(&test_dir, 5010, "secret", "127.0.0.1", "http").unwrap();
+
+    let raw = std::fs::read_to_string(test_dir.join(".master")).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    assert_eq!(
+        json.get("schemaVersion").and_then(|v| v.as_u64()),
+        Some(tendril_core::config::MASTER_SCHEMA_VERSION as u64)
+    );
+
+    let heartbeat = json
+        .get("heartbeat")
+        .and_then(|v| v.as_str())
+        .expect("the wire name a foreign reader looks for is `heartbeat`");
+    assert!(
+        heartbeat.ends_with('Z'),
+        "a numeric offset is read as local time by .NET and mis-ages west of UTC: {heartbeat}"
+    );
+    let parsed = chrono::DateTime::parse_from_rfc3339(heartbeat).expect("a parseable timestamp");
+    assert!(
+        (chrono::Utc::now() - parsed.with_timezone(&chrono::Utc))
+            .num_seconds()
+            .abs()
+            < 60,
+        "the heartbeat must be now: {heartbeat}"
+    );
+
+    drop(guard);
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// And the heartbeat has to keep moving, or the claim of a daemon that has merely been up a while reads
+/// as hung. The daemon beats it on a 30s timer; this is the write that timer performs.
+#[test]
+fn a_beat_moves_the_heartbeat_and_only_while_the_claim_is_ours() {
+    let test_dir = temp_home("tendril-master-beat-test");
+    let guard = MasterGuard::acquire(&test_dir, 5010, "secret", "127.0.0.1", "http").unwrap();
+
+    let before = read_master_claim(&test_dir).unwrap().heartbeat.unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    assert!(guard.beat(), "beating our own claim must succeed");
+
+    let after = read_master_claim(&test_dir).unwrap();
+    assert!(
+        after.heartbeat.unwrap() > before,
+        "the heartbeat must move forward"
+    );
+    assert_eq!(after.info.secret, "secret", "and nothing else may change");
+    assert_eq!(after.info.port, 5010);
+
+    // A foreign claim is not beaten on: that would be one daemon stamping another's registration.
+    let foreign = claim_for(424_242, 5099, "foreign-secret", None);
+    tendril_core::config::write_master_claim(&test_dir, &foreign).unwrap();
+    assert!(
+        !guard.beat(),
+        "a claim that is not ours must not be written"
+    );
+    assert_eq!(
+        read_master(&test_dir).unwrap().secret,
+        "foreign-secret",
+        "the foreign claim must be untouched"
+    );
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// A `.master` from a build that predates the marker still reads, and still counts as a claim: the
+/// hardening must not turn every pre-existing file into an unrecoverable one.
+#[test]
+fn an_unmarked_claim_still_reads_as_a_claim() {
+    let test_dir = temp_home("tendril-unmarked-master-test");
+    std::fs::write(
+        test_dir.join(".master"),
+        r#"{"port":5010,"pid":424242,"secret":"old","startedAt":"2026-09-01T00:00:00Z","heartbeatAt":"2026-09-01T00:00:00Z"}"#,
+    )
+    .unwrap();
+
+    let claim = read_master_claim(&test_dir).expect("an unmarked claim must still parse");
+    assert_eq!(claim.schema_version, 1, "absent means pre-marker");
+    assert_eq!(
+        claim.heartbeat.as_deref(),
+        Some("2026-09-01T00:00:00Z"),
+        "the old `heartbeatAt` spelling must still be read"
+    );
+
+    // And a dead pid in it is still recoverable, marker or no marker.
+    let guard = MasterGuard::acquire(&test_dir, 5011, "fresh", "127.0.0.1", "http")
+        .expect("a stale unmarked claim must not block a daemon");
+    assert_eq!(read_master(&test_dir).unwrap().secret, "fresh");
+
+    drop(guard);
+    let _ = std::fs::remove_dir_all(test_dir);
 }

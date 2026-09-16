@@ -1,13 +1,16 @@
 pub mod agents;
+pub mod attachments;
 pub mod chat;
 pub mod config;
 pub mod dashboard;
 pub mod github;
 pub mod inbox;
 pub mod jobs;
+pub mod local_file;
 pub mod plans;
 pub mod pull_requests;
 pub mod state;
+pub mod tables;
 pub mod tunnel;
 pub mod vault;
 
@@ -95,8 +98,8 @@ pub async fn cmd_repair_service() -> Result<String, BridgeError> {
         .map_err(BridgeError::internal)?;
 
     // The lock file and the breaker are the app's own state, so they are always safe to reset — but
-    // not while the daemon they describe is still the one running.
-    if !matches!(reclaim, MasterReclaim::RefusedLive { .. }) {
+    // not while the daemon they describe may still be the one running.
+    if !reclaim.refused() {
         supervisor.remove_lock_file();
     }
     supervisor.circuit_breaker.reset();
@@ -109,11 +112,24 @@ pub async fn cmd_repair_service() -> Result<String, BridgeError> {
             format!("Service repair completed. (Cleaned a stale registration left by PID {pid}.)")
         }
         MasterReclaim::Removed { pid: None } => {
-            "Service repair completed. (Cleaned an unreadable daemon registration.)".to_string()
+            "Service repair completed. (Cleaned a truncated daemon registration.)".to_string()
         }
         MasterReclaim::RefusedLive { pid, port } => format!(
             "Nothing to repair: the daemon on port {port} (PID {pid}) is running and answering, so \
              its registration was left intact. Stop it if you want it replaced."
+        ),
+        // Deliberately the one thing Repair will not do. An unreadable registration cannot be shown to
+        // be wreckage — there is nobody to ask whether it is answering — and deleting one that turned
+        // out to be live is the incident this guard exists to prevent.
+        MasterReclaim::RefusedUnreadable { schema_version } => format!(
+            "Nothing was repaired: {} is not a daemon registration this version of Tendril can \
+             read{}. It may belong to a daemon that is still running, so it was left intact. Stop \
+             that daemon, update Tendril, or move the file aside once you are sure nothing is using \
+             it.",
+            home.join(".master").display(),
+            schema_version
+                .map(|v| format!(" (it declares schemaVersion {v})"))
+                .unwrap_or_default()
         ),
     })
 }

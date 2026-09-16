@@ -136,6 +136,17 @@ async function main() {
   if (isAlreadyRunning) {
     console.log(`\x1b[32m[dev-desktop] Tendril service is already active on http://127.0.0.1:${port}\x1b[0m`);
   } else {
+    // The agents this daemon launches get `target/debug` at the front of their PATH, so `tendril` in a
+    // promptware resolves to this workspace's CLI rather than to whatever the developer has installed
+    // (see `agents::providers::agent_path`). `cargo run -p tendril-server` does not build the CLI, so
+    // without this the binary that PATH entry points at may be missing or stale.
+    console.log("\x1b[36m[dev-desktop] Building the Tendril CLI so agents resolve this workspace's binary...\x1b[0m");
+    try {
+      execSync("cargo build -p tendril-cli", { stdio: "inherit" });
+    } catch {
+      console.error("\x1b[31m[dev-desktop] Could not build the CLI; agents will fall back to the `tendril` on your PATH\x1b[0m");
+    }
+
     console.log(`\x1b[36m[dev-desktop] Starting Tendril service (cargo run -p tendril-server)...\x1b[0m`);
     serverProcess = spawn("cargo", ["run", "-p", "tendril-server", "--", "--port", String(port)], {
       stdio: ["ignore", "pipe", "pipe"],
@@ -177,14 +188,46 @@ async function main() {
     console.log(`\n\x1b[32m[dev-desktop] Service is up and listening on port ${port}!\x1b[0m`);
   }
 
+  const rawArgs = process.argv.slice(2);
+  const noWatch =
+    rawArgs.includes("--no-watch") ||
+    rawArgs.includes("--no-reload") ||
+    process.env.NO_WATCH === "1";
+  const noHmr =
+    rawArgs.includes("--no-hmr") ||
+    rawArgs.includes("--no-reload") ||
+    process.env.NO_HMR === "1";
+
+  // Filter out npm/vp forwarding delimiter "--" and custom flags Tauri CLI doesn't know about
+  const cleanArgs = rawArgs.filter(
+    (arg) => arg !== "--" && arg !== "--no-reload" && arg !== "--no-hmr",
+  );
+
+  const tauriArgs: string[] = [];
+  if (noWatch) {
+    tauriArgs.push("--no-watch");
+  }
+  for (const arg of cleanArgs) {
+    if (!tauriArgs.includes(arg)) {
+      tauriArgs.push(arg);
+    }
+  }
+
+  const flagsSummary: string[] = [];
+  if (noWatch) flagsSummary.push("Rust file watching disabled (--no-watch)");
+  if (noHmr) flagsSummary.push("frontend HMR disabled (NO_HMR=1)");
+  if (flagsSummary.length > 0) {
+    console.log(`\x1b[33m[dev-desktop] Hot reload options: ${flagsSummary.join(", ")}\x1b[0m`);
+  }
+
   console.log("\x1b[36m[dev-desktop] Launching desktop app (Tauri dev)...\x1b[0m");
-  const extraArgs = process.argv.slice(2);
-  appProcess = spawn("pnpm", ["--filter", "@ivy-interactive/tendril-app", "tauri", "dev", ...extraArgs], {
+  appProcess = spawn("pnpm", ["--filter", "@ivy-interactive/tendril-app", "tauri", "dev", ...tauriArgs], {
     stdio: "inherit",
     detached: process.platform !== "win32",
     env: {
       ...process.env,
       TENDRIL_HOME: tendrilHome,
+      ...(noHmr ? { NO_HMR: "1", VITE_HMR: "false" } : {}),
     },
   });
 

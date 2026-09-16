@@ -107,6 +107,16 @@ const mockPullRequests: DashboardMonthValueDto[] = [
   { label: "Sep", value: 72, year: 2026, month: 9, day: 1, date: "2026-09-01" },
 ];
 
+/** The range the card opens on, so the Default story shows bars rather than its empty note. */
+const mockPullRequestsWeekly: DashboardMonthValueDto[] = [
+  { label: "Aug 3", value: 12, year: 2026, month: 8, day: 3, date: "2026-08-03" },
+  { label: "Aug 10", value: 17, year: 2026, month: 8, day: 10, date: "2026-08-10" },
+  { label: "Aug 17", value: 14, year: 2026, month: 8, day: 17, date: "2026-08-17" },
+  { label: "Aug 24", value: 21, year: 2026, month: 8, day: 24, date: "2026-08-24" },
+  { label: "Aug 31", value: 19, year: 2026, month: 8, day: 31, date: "2026-08-31" },
+  { label: "Sep 7", value: 9, year: 2026, month: 9, day: 7, date: "2026-09-07" },
+];
+
 const mockActivity: DashboardActivityMonthDto[] = [
   { label: "May", weeks: [8, 12, 10, 14] },
   { label: "Jun", weeks: [11, 15, 13, 17] },
@@ -165,6 +175,7 @@ export const Default: Story = {
     kpis: mockKpis,
     trend: mockTrend,
     pullRequests: mockPullRequests,
+    pullRequestsWeekly: mockPullRequestsWeekly,
     activity: mockActivity,
     jobs: mockJobs,
   },
@@ -200,5 +211,28 @@ export const ClickableKpis: Story = {
     ...Default.args,
     id: "dashboard-kpis",
     kpis: mockDrillDownKpis,
+  },
+};
+
+/**
+ * The first paint, before any analytics have arrived.
+ *
+ * Distinct from `EmptyState`, which is the settled answer "we looked and there is nothing" — this is
+ * "we have not looked yet", and it states no figure at all. The four tiles, the trend card and the two
+ * side charts are `Skeleton` placeholders sized to the content they stand in for, so the page does not
+ * move when the numbers replace them. The status strip and Active Jobs carry real counts throughout:
+ * they come from the plan and job stores, which keep the previous list across a refresh.
+ */
+export const Loading: Story = {
+  args: {
+    ...Default.args,
+    id: "dashboard-loading",
+    loading: true,
+    kpis: [],
+    trend: null,
+    pullRequests: [],
+    pullRequestsWeekly: [],
+    activity: [],
+    jobs: [],
   },
 };

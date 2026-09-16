@@ -309,16 +309,23 @@ pub async fn auth_middleware(
         }
     }
 
-    // Basic credentials are an *additional* accepted credential, checked last: with no `auth` block
-    // in config.yaml `state.basic_auth` is `None` and nothing above or below this point changes.
+    // Basic credentials are an *additional* accepted credential, checked last: with no `auth` block in
+    // config.yaml there is nothing to read and nothing above or below this point changes.
+    //
+    // Read from `settings_snapshot()` rather than the `state.basic_auth` resolved at startup, so
+    // `PUT /api/auth/password` takes effect at once. A password change that the middleware went on
+    // ignoring until the next daemon restart would be a change that did not happen. The snapshot is
+    // mtime-cached and this branch is only reached when nothing else authenticated, so the common request
+    // pays nothing for it.
     if !authenticated {
-        if let Some(config) = &state.basic_auth {
-            if let Some((user, password)) = req
-                .headers()
-                .get(axum::http::header::AUTHORIZATION)
-                .and_then(|v| v.to_str().ok())
-                .and_then(parse_basic)
-            {
+        if let Some((user, password)) = req
+            .headers()
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_basic)
+        {
+            let snapshot = state.settings_snapshot();
+            if let Some(config) = BasicAuthConfig::from_settings(&snapshot.settings) {
                 authenticated = config.accepts(&user, &password);
             }
         }

@@ -2,6 +2,7 @@ import "@testing-library/jest-dom";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import {
+  ConfirmVaultDeleteDialog,
   ConnectVaultDialog,
   CreateVaultDialog,
   GatedActionButton,
@@ -482,5 +483,77 @@ describe("PushToVaultDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Publish & Open PR" }));
 
     expect(onSubmit.mock.calls[0][0].selectedSkills).toEqual({ Alpha: ["release"] });
+  });
+});
+
+/**
+ * Framework's confirmation contract, applied to the one destructive confirm in this package.
+ *
+ * `Ivy-Framework/src/Ivy/Views/Alerts/AlertExtensions.cs` (`WithConfirmView`) builds every
+ * confirmation as `DialogFooter(Button("Cancel").Outline(), Button(confirmLabel).Destructive())`, and
+ * `DialogWidget.tsx` supplies the behaviours: Escape cancels, a click on the overlay does not
+ * dismiss, and nothing is auto-focused unless it opts in — which a confirm button never does.
+ */
+describe("ConfirmVaultDeleteDialog follows Framework's confirmation contract", () => {
+  const open = () =>
+    render(
+      <ConfirmVaultDeleteDialog open projectName="Alpha" onClose={vi.fn()} onConfirm={vi.fn()} />,
+    );
+
+  it("declines first as an outline button and confirms last as destructive", () => {
+    open();
+
+    // The header carries Framework's own X close control, so the footer is scoped from Cancel.
+    const footer = screen.getByRole("button", { name: "Cancel" }).parentElement as HTMLElement;
+    const buttons = [...footer.querySelectorAll("button")];
+    const labels = buttons.map((b) => b.textContent?.trim());
+    expect(labels).toEqual(["Cancel", "Create Deletion PR"]);
+    expect(buttons[0]).toHaveClass("border", "bg-background");
+    expect(buttons[1]).toHaveClass("bg-destructive");
+  });
+
+  it("says what disappears, and names the project", () => {
+    open();
+
+    expect(screen.getByTestId("confirm-vault-delete-dialog")).toHaveTextContent(
+      /remove project 'Alpha' and all its associated manifests/,
+    );
+  });
+
+  it("does not focus the destructive confirm", () => {
+    open();
+
+    expect(document.activeElement).not.toBe(
+      screen.getByRole("button", { name: "Create Deletion PR" }),
+    );
+  });
+
+  it("cancels on Escape without confirming", () => {
+    const onClose = vi.fn();
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmVaultDeleteDialog open projectName="Alpha" onClose={onClose} onConfirm={onConfirm} />,
+    );
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("does not dismiss on a click outside", () => {
+    const onClose = vi.fn();
+    const onConfirm = vi.fn();
+    render(
+      <ConfirmVaultDeleteDialog open projectName="Alpha" onClose={onClose} onConfirm={onConfirm} />,
+    );
+
+    fireEvent.pointerDown(document.body, { button: 0 });
+    fireEvent.mouseDown(document.body, { button: 0 });
+    fireEvent.click(document.body);
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(screen.getByTestId("confirm-vault-delete-dialog")).toBeInTheDocument();
   });
 });

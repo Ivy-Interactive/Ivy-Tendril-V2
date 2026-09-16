@@ -89,6 +89,24 @@ describe("chat turn finalization", () => {
     expect(chatStore.getState().activeSession?.messages).toHaveLength(2);
   });
 
+  it("appends stream events onto the message's raw stream as they arrive", async () => {
+    await chatStore.init();
+
+    const call = '{"kind":"tool_call","tool_use_id":"t1","tool_name":"view_file","input":{}}';
+    const result = '{"kind":"tool_result","tool_use_id":"t1","output":"18 bytes","is_error":false}';
+
+    deliver({ type: "chat.stream_event", sessionId: "s1", messageId: "m2", line: call });
+    deliver({ type: "chat.stream_event", sessionId: "s1", messageId: "m2", line: result });
+
+    const message = chatStore.getState().activeSession?.messages.find((m) => m.id === "m2");
+    // Newline-delimited JSON, which is what `TurnActivity` hands to `parseEventWireStream`.
+    expect(message?.rawStream).toBe(`${call}\n${result}`);
+    // Activity streams in without touching the reply body.
+    expect(message?.content).toBe("");
+    // A turn streaming into a session proves it is working, so the composer shows a stop button.
+    expect(chatStore.isSessionGenerating("s1")).toBe(true);
+  });
+
   it("keeps a locally known raw stream when the finalize frame omits it", async () => {
     await chatStore.init();
 

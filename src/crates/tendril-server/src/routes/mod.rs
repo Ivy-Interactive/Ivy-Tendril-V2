@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod attachments;
 pub mod auth;
 pub mod changes;
 pub mod chat;
@@ -226,6 +227,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/repos",
             post(projects::add_project_repo).delete(projects::remove_project_repo),
         )
+        // Fast-forwards the project's repos and returns a per-repo escalation for the refusals; see
+        // `projects::sync_project_repos` for why a diverged repo is reported rather than reconciled.
+        .route(
+            "/api/projects/:name/sync",
+            post(projects::sync_project_repos),
+        )
         .route(
             "/api/projects/:name/verifications",
             post(projects::add_project_verification).put(projects::move_project_verification_route),
@@ -303,6 +310,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Agents
         .route("/api/agents", get(agents::get_agents_handler))
+        // Live model discovery for a bring-your-own-LLM endpoint. A POST because it takes a body and
+        // reaches a third party; the key it uses is read from config here rather than sent by the
+        // webview whenever the operator has already saved one.
+        .route(
+            "/api/agents/models",
+            post(agents::fetch_provider_models_handler),
+        )
         // Config
         .route(
             "/api/config",
@@ -387,6 +401,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/chat/sessions/:id/cancel",
             post(chat::cancel_turn_handler),
         )
+        // The terminal half of V1's chat modes: the session's agent, interactive, under a pty. The
+        // session id is what authorises the spawn, so these sit under the session rather than in a
+        // namespace of their own.
+        .route(
+            "/api/chat/sessions/:id/terminal",
+            post(chat::start_terminal_handler).delete(chat::terminal_close_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/terminal/input",
+            post(chat::terminal_input_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/terminal/resize",
+            post(chat::terminal_resize_handler),
+        )
         .route(
             "/api/chat/sessions/:id/messages/:msg_id/answers",
             post(chat::answer_questions_handler),
@@ -429,6 +458,52 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             crate::auth::api_key_middleware,
         ));
 
+    // Owner-only *and* local-only: the full-access tunnel's switch, the password that gates it, and
+    // attachment staging.
+    //
+    // Bearer-credentialled like the share routes, plus refused when the request arrived over either
+    // tunnel. `/api/tunnel/full` publishes the whole daemon and `/api/auth/password` is the credential
+    // that makes doing so defensible; neither is something to be able to reach from the internet the
+    // tunnel exposes. A session token from `/api/auth/login` satisfies `auth_middleware`, so without the
+    // host fence a remote caller holding the password could rotate it. See `crate::share_exposure`.
+    //
+    // Its own router rather than three more routes on `protected`, because `protected` must *not* gain
+    // this fence: a share visitor's capability token is checked inside `auth_middleware` and reaches its
+    // allow-listed reads over exactly the host this refuses.
+    let owner_local = Router::new()
+        .route(
+            "/api/auth/password",
+            put(auth::set_password_handler).delete(auth::clear_password_handler),
+        )
+        .route(
+            "/api/tunnel/full",
+            get(tunnel::get_full_tunnel)
+                .post(tunnel::start_full_tunnel)
+                .delete(tunnel::stop_full_tunnel),
+        )
+        // Writes a file the user attached into `<TendrilHome>/Attachments/<session>/`, which is what
+        // makes it previewable at all. Here rather than on `protected` because it writes to the
+        // daemon's home: see `attachments`. The body limit is the route's own, since the default 2 MB
+        // would refuse most screenshots before the handler's 16 MiB cap could answer for them.
+        .route(
+            "/api/attachments/:session_id",
+            post(attachments::upload_attachment).layer(axum::extract::DefaultBodyLimit::max(
+                tendril_core::jobs::attachments::MAX_ATTACHMENT_BYTES + 1024,
+            )),
+        )
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::share_exposure::refuse_on_any_tunnel_host,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::auth_middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::api_key_middleware,
+        ));
+
     // `GET /ivy/local-file`, outside the bearer layer because an `<img src>` navigation carries no
     // `Authorization` header. Its own guard supplies the credential check (`?token=`) plus host,
     // origin, extension and root-confinement enforcement — see crate::local_file_guard.
@@ -459,15 +534,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // navigation carries no Authorization header, and neither do the subresource requests the
         // service worker reissues from inside the proxied page. A loopback-only target allow-list is
         // what keeps these from being an open relay — see crate::webviewer.
-        // ...and that allow-list is exactly why this has to be refused over a share tunnel: confined
+        // ...and that allow-list is exactly why this has to be refused over *either* tunnel: confined
         // to loopback targets, a publicly reachable proxy lets an anonymous visitor reach services
         // bound to the daemon host's localhost. See `crate::share_exposure`.
         .merge(
             crate::webviewer::routes().layer(axum::middleware::from_fn_with_state(
                 state.clone(),
-                crate::share_exposure::refuse_on_tunnel_host,
+                crate::share_exposure::refuse_on_any_tunnel_host,
             )),
         )
+        .merge(owner_local)
         .merge(protected)
         .layer(cors)
         .with_state(state)

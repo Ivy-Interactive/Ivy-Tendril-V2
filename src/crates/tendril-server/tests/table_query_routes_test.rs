@@ -175,8 +175,11 @@ async fn an_empty_body_is_the_first_page_of_the_jobs_list() {
 }
 
 #[tokio::test]
-async fn the_rows_are_the_same_job_shape_the_list_route_returns() {
-    // A view moving from `GET /api/jobs` to this route must not need a second DTO.
+async fn the_rows_are_the_clients_job_shape_not_the_daemons_job_item() {
+    // The app's `Job` (= `src-tauri`'s `JobDto`) is what every view already parses, because the desktop
+    // bridge maps `GET /api/jobs` into it on the way through. A table paging this route receives that
+    // shape directly: `planId`/`planTitle` rather than `reportedPlanId`/`reportedPlanTitle`, and no
+    // `planFile`. Without the rename the two columns V1's Jobs table leans on hardest render empty.
     let server = start_test_server().await;
     seed_jobs(&server);
 
@@ -193,7 +196,156 @@ async fn the_rows_are_the_same_job_shape_the_list_route_returns() {
 
     let first_listed = &listed.as_array().expect("array")[0];
     let first_queried = &queried["rows"].as_array().expect("rows")[0];
-    assert_eq!(first_listed, first_queried);
+
+    // Same row, and the fields the two shapes share are untouched.
+    assert_eq!(first_queried["id"], first_listed["id"]);
+    for field in [
+        "type",
+        "project",
+        "status",
+        "startedAt",
+        "completedAt",
+        "cost",
+    ] {
+        assert_eq!(
+            first_queried[field], first_listed[field],
+            "{field} must survive the projection unchanged"
+        );
+    }
+
+    // The daemon's names are gone, and everything not in the app's `Job` with them.
+    for absent in [
+        "reportedPlanId",
+        "reportedPlanTitle",
+        "planFile",
+        "provider",
+        "args",
+        "typedArgs",
+        "cleared",
+        "priority",
+        "waitForJobIds",
+    ] {
+        assert!(
+            first_queried.get(absent).is_none(),
+            "{absent} is not part of the client's Job shape: {first_queried}"
+        );
+    }
+
+    // Every key on the row is one the app's `Job` declares.
+    let allowed = [
+        "id",
+        "type",
+        "planId",
+        "planTitle",
+        "project",
+        "status",
+        "statusMessage",
+        "startedAt",
+        "completedAt",
+        "lastOutputAt",
+        "durationSeconds",
+        "cost",
+        "costSource",
+        "tokens",
+        "inputTokens",
+        "outputTokens",
+        "cacheReadTokens",
+        "cacheWriteTokens",
+        "reasoningTokens",
+        "model",
+        "processId",
+        "detached",
+    ];
+    for key in first_queried.as_object().expect("row object").keys() {
+        assert!(
+            allowed.contains(&key.as_str()),
+            "{key} is not a field of the app's Job type"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_plan_id_and_title_arrive_under_the_names_the_app_reads() {
+    let server = start_test_server().await;
+    let conn = open_database(&get_database_path(&server.tendril_home)).expect("open database");
+    let mut job = JobItem::new(
+        "00007".to_string(),
+        "ExecutePlan".to_string(),
+        "Plans/00638-RebuildJobs".to_string(),
+        "alpha".to_string(),
+    );
+    job.status = JobStatus::Running;
+    job.reported_plan_id = Some("00638".to_string());
+    job.reported_plan_title = Some("Rebuild the Jobs page".to_string());
+    insert_job(&conn, &job).expect("insert job");
+
+    let (status, body) = post(&server, "/api/jobs/query", serde_json::json!({})).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+    let row = &body["rows"][0];
+    assert_eq!(row["planId"], "00638");
+    assert_eq!(row["planTitle"], "Rebuild the Jobs page");
+    // Absent rather than false: a row read from SQLite cannot know whether the process is detached, and
+    // `false` would suppress the one caller (`GET /api/jobs/:id`) that does.
+    assert!(row.get("detached").is_none(), "{row}");
+    // And a job that reported no cost carries no `cost` key at all, so "—" and "$0.00" stay different
+    // claims in the cell.
+    assert!(row.get("cost").is_none(), "{row}");
+    assert!(row.get("planTitle").is_some());
+}
+
+/// The Jobs table's Agent Output cell is the time since the agent last wrote a line
+/// (`JobsApp.Helpers.cs` `FormatAgentOutput`), so the row has to carry that timestamp. It did not, and
+/// with nothing to count from every running row rendered V1's no-output-yet fallback — "Starting…" —
+/// for the whole life of the job.
+#[tokio::test]
+async fn a_running_row_carries_the_last_output_stamp_the_agent_output_cell_counts_from() {
+    let server = start_test_server().await;
+    let conn = open_database(&get_database_path(&server.tendril_home)).expect("open database");
+    let stamped_at = chrono::Utc::now() - chrono::Duration::seconds(90);
+
+    let mut chatty = JobItem::new(
+        "00002".to_string(),
+        "ExecutePlan".to_string(),
+        "Plans/00002-Chatty".to_string(),
+        "alpha".to_string(),
+    );
+    chatty.status = JobStatus::Running;
+    chatty.last_output_at = Some(stamped_at);
+    insert_job(&conn, &chatty).expect("insert chatty job");
+
+    let mut silent = JobItem::new(
+        "00001".to_string(),
+        "ExecutePlan".to_string(),
+        "Plans/00001-Silent".to_string(),
+        "alpha".to_string(),
+    );
+    silent.status = JobStatus::Running;
+    insert_job(&conn, &silent).expect("insert silent job");
+
+    let (status, body) = post(&server, "/api/jobs/query", serde_json::json!({})).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+    let rows = body["rows"].as_array().expect("rows");
+    let row = |id: &str| {
+        rows.iter()
+            .find(|row| row["id"] == id)
+            .unwrap_or_else(|| panic!("row {id} in {body}"))
+            .clone()
+    };
+
+    let served: chrono::DateTime<chrono::Utc> = row("00002")["lastOutputAt"]
+        .as_str()
+        .unwrap_or_else(|| panic!("lastOutputAt on {}", row("00002")))
+        .parse()
+        .expect("an RFC 3339 timestamp the client can subtract from");
+    assert_eq!(served.timestamp(), stamped_at.timestamp());
+
+    // A job that has not spoken yet carries no key at all, which is the "Starting…" case. Absent rather
+    // than null, so the client cannot mistake it for a timestamp at the epoch.
+    assert!(
+        row("00001").get("lastOutputAt").is_none(),
+        "{}",
+        row("00001")
+    );
 }
 
 #[tokio::test]

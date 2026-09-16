@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { SettingsView } from "../src/views/SettingsView";
 import { bridge } from "../src/api/bridge";
 import {
@@ -67,6 +67,17 @@ async function renderProject(config: TendrilConfig) {
 const clickButton = async (name: string | RegExp, index = 0) => {
   await act(async () => {
     fireEvent.click(screen.getAllByRole("button", { name })[index]);
+  });
+};
+
+/**
+ * Answers the removal confirm every destructive row action on this screen now opens, per Framework's
+ * "never delete on single click" (`useRemovalConfirm`).
+ */
+const confirmRemoval = async () => {
+  const dialog = await screen.findByTestId("settings-remove-dialog");
+  await act(async () => {
+    fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
   });
 };
 
@@ -168,12 +179,28 @@ describe("project configuration", () => {
       });
     });
 
-    it("removes a repository", async () => {
+    it("removes a repository, once the removal is confirmed", async () => {
       await renderProject(configWith({ repos: [{ path: "/a" }, { path: "/b" }] }));
 
       await clickButton("Remove /a");
+      // The click opens the confirm and writes nothing on its own.
+      expect(putConfig).not.toHaveBeenCalled();
+
+      await confirmRemoval();
 
       expect(lastProjectPatch(putConfig)).toEqual({ name: "Tendril", repos: [{ path: "/b" }] });
+    });
+
+    it("keeps the repository when the removal is cancelled", async () => {
+      await renderProject(configWith({ repos: [{ path: "/a" }, { path: "/b" }] }));
+
+      await clickButton("Remove /a");
+      const dialog = await screen.findByTestId("settings-remove-dialog");
+      await act(async () => {
+        fireEvent.click(within(dialog).getByTestId("dialog-cancel"));
+      });
+
+      expect(putConfig).not.toHaveBeenCalled();
     });
   });
 
@@ -296,6 +323,8 @@ describe("project configuration", () => {
       );
 
       await clickButton("Delete");
+      expect(putConfig).not.toHaveBeenCalled();
+      await confirmRemoval();
 
       expect(lastProjectPatch(putConfig)).toEqual({
         name: "Tendril",
@@ -395,6 +424,8 @@ describe("project configuration", () => {
       await act(async () => {
         fireEvent.click(del!);
       });
+      expect(putConfig).not.toHaveBeenCalled();
+      await confirmRemoval();
 
       expect(lastProjectPatch(putConfig)).toEqual({
         name: "Tendril",

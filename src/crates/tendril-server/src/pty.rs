@@ -237,6 +237,8 @@ pub fn resolve_worktree_dir(plan_folder: &Path, repos: &[String]) -> Option<Path
 pub struct PtySession {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
+    /// The child's pid, for [`PtySession::kill`]. `None` when the platform did not report one.
+    pid: Option<u32>,
 }
 
 impl PtySession {
@@ -248,6 +250,25 @@ impl PtySession {
             .write_all(bytes)
             .and_then(|()| writer.flush())
             .map_err(|e| e.to_string())
+    }
+
+    /// Ends the session's process, and everything it started.
+    ///
+    /// A pane that hosts an interactive agent has no reason to outlive its own view — unlike a review
+    /// action, whose dev server has to keep serving the preview that replaces the terminal, which is
+    /// why closing *that* only stops reading. The whole tree goes, because an agent's children (a
+    /// build, a test run) are not the caller's to leave behind.
+    pub fn kill(&self) -> bool {
+        match self.pid {
+            Some(pid) => {
+                tendril_core::jobs::process_tree::kill_tree(
+                    pid,
+                    tendril_core::jobs::process_tree::DEFAULT_KILL_GRACE,
+                );
+                true
+            }
+            None => false,
+        }
     }
 
     /// Tells the kernel the window changed size, which is what makes the process redraw to fit.
@@ -296,13 +317,49 @@ pub struct PtyStream {
     pub frames: tokio::sync::mpsc::Receiver<SseFrame>,
 }
 
-/// Runs `command` under a pty and returns its frame stream.
+/// Runs a shell `command` under a pty and returns its frame stream.
 ///
 /// The child is owned by the tasks spawned here, not by the request, so it outlives a client
 /// disconnect — which is the whole point for a review action: the app it started has to stay up for
 /// the preview that replaces the terminal.
 pub fn spawn_review_action(
     command: &str,
+    working_dir: Option<&Path>,
+    env: &[(String, String)],
+) -> Result<PtyStream, String> {
+    let builder = if cfg!(windows) {
+        let mut builder = CommandBuilder::new("cmd");
+        builder.args(["/C", command]);
+        builder
+    } else {
+        let mut builder = CommandBuilder::new("sh");
+        builder.args(["-c", command]);
+        builder
+    };
+    spawn_pty(builder, working_dir, env)
+}
+
+/// Runs `argv` under a pty, with no shell in between.
+///
+/// An interactive agent is launched this way rather than through [`spawn_review_action`] because its
+/// initial task is an *argument*: routing that through `sh -c` would mean quoting a prompt that can
+/// contain anything, and a mis-quoted prompt is a command substitution rather than a typo. A review
+/// action is the opposite case — its command is authored as shell and needs the shell.
+pub fn spawn_pty_argv(
+    argv: &[String],
+    working_dir: Option<&Path>,
+    env: &[(String, String)],
+) -> Result<PtyStream, String> {
+    let (program, args) = argv
+        .split_first()
+        .ok_or_else(|| "No command to run under the pseudo-terminal".to_string())?;
+    let mut builder = CommandBuilder::new(program);
+    builder.args(args);
+    spawn_pty(builder, working_dir, env)
+}
+
+fn spawn_pty(
+    mut builder: CommandBuilder,
     working_dir: Option<&Path>,
     env: &[(String, String)],
 ) -> Result<PtyStream, String> {
@@ -314,16 +371,6 @@ pub fn spawn_review_action(
             pixel_height: 0,
         })
         .map_err(|e| format!("Failed to open a pseudo-terminal: {e}"))?;
-
-    let mut builder = if cfg!(windows) {
-        let mut builder = CommandBuilder::new("cmd");
-        builder.args(["/C", command]);
-        builder
-    } else {
-        let mut builder = CommandBuilder::new("sh");
-        builder.args(["-c", command]);
-        builder
-    };
 
     if let Some(dir) = working_dir {
         builder.cwd(dir);
@@ -357,6 +404,7 @@ pub fn spawn_review_action(
     let session = Arc::new(PtySession {
         master: Mutex::new(pair.master),
         writer: Mutex::new(writer),
+        pid: child.process_id(),
     });
     lock(&SESSIONS).insert(session_id.clone(), Arc::clone(&session));
 

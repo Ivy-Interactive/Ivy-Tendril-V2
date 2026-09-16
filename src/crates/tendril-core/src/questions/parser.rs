@@ -8,71 +8,177 @@ struct CanonicalWrapper {
     questions: Vec<QuestionItem>,
 }
 
+/// One code fence delimiter line, as [`match_fence`] reads it.
+struct Fence<'a> {
+    delimiter: u8,
+    length: usize,
+    indent: usize,
+    info: &'a str,
+}
+
+/// The fence currently open, and whether its body is a `questions` block.
+struct OpenFence {
+    delimiter: u8,
+    length: usize,
+    indent: usize,
+    is_questions: bool,
+    start_line: usize,
+}
+
+/// Every `questions` fence in `markdown`, in document order.
+///
+/// **Fence tracking follows CommonMark, and has to.** A fence is closed only by a bare run of the
+/// *same* delimiter that is *at least as long* as the opener and indented no more than three spaces.
+/// Anything less than all four of those conditions truncates real documents:
+///
+/// - Length, so a `questions` fence written inside a longer fence is documentation rather than a
+///   question — which is how `plan_reference.md` documents the format without failing its own
+///   validator.
+/// - Indentation, so a ` ```rust ` sample inside a `description: |` block scalar — indented, as a
+///   block scalar's content must be — does not end the block early. Without this rule a question
+///   that illustrates its options with code loses every option after the sample, and since the
+///   write path bounds its edits by the same `end_line`, an answer then lands *inside* the code
+///   sample and corrupts the YAML.
+/// - Delimiter, so a `~~~` fence's contents are not scanned for backtick fences and vice versa.
+/// - A bare run, so a line that opens a nested fence is content, not a close.
+///
+/// This matches V1's `QuestionBlockParser.Scan` and the frontend's `scanQuestionsFences`; all three
+/// must agree, or the UI offers options the validator cannot see.
 pub fn parse_question_blocks(markdown: &str) -> Vec<QuestionBlock> {
     let mut blocks = Vec::new();
     let lines: Vec<&str> = markdown.lines().collect();
 
-    let mut in_fence: Option<(usize, bool)> = None; // (fence_len, is_questions)
-    let mut current_body_lines: Vec<&str> = Vec::new();
-    let mut current_start_line = 0;
-    let mut current_fence_len = 0;
+    let mut open: Option<OpenFence> = None;
+    let mut body: Vec<&str> = Vec::new();
 
     for (idx, line) in lines.iter().enumerate() {
         let line_num = idx + 1;
-        let trimmed = line.trim_start();
+        let fence = match_fence(line);
 
-        if let Some((open_len, is_questions)) = in_fence {
-            // Check if closing fence
-            if trimmed.starts_with('`') {
-                let ticks = trimmed.chars().take_while(|c| *c == '`').count();
-                let rest = trimmed[ticks..].trim();
-                if ticks >= open_len && rest.is_empty() {
-                    // Close fence
-                    if is_questions {
-                        let block_index = blocks.len() + 1;
-                        let raw_body = current_body_lines.join("\n");
-                        let (questions, is_legacy, parse_error) = parse_body(&raw_body);
+        let Some(current) = open.as_ref() else {
+            if let Some(opening) = fence {
+                open = Some(OpenFence {
+                    delimiter: opening.delimiter,
+                    length: opening.length,
+                    indent: opening.indent,
+                    is_questions: is_questions_info(opening.info),
+                    start_line: line_num,
+                });
+                body.clear();
+            }
+            continue;
+        };
 
-                        blocks.push(QuestionBlock {
-                            block_index,
-                            line_number: current_start_line,
-                            fence_len: current_fence_len,
-                            raw_body,
-                            questions,
-                            is_legacy,
-                            parse_error,
-                            start_line: current_start_line,
-                            end_line: line_num,
-                        });
-                    }
-                    in_fence = None;
-                    current_body_lines.clear();
-                    continue;
+        if let Some(closing) = &fence {
+            if closing.delimiter == current.delimiter
+                && closing.length >= current.length
+                && closing.info.is_empty()
+            {
+                if current.is_questions {
+                    push_block(&mut blocks, current, &body, line_num);
                 }
+                open = None;
+                body.clear();
+                continue;
             }
+        }
 
-            if is_questions {
-                current_body_lines.push(line);
-            }
-        } else {
-            // Check for opening fence
-            if trimmed.starts_with("```") {
-                let ticks = trimmed.chars().take_while(|c| *c == '`').count();
-                let info = trimmed[ticks..].trim();
+        if current.is_questions {
+            body.push(dedent(line, current.indent));
+        }
+    }
 
-                if info.eq_ignore_ascii_case("questions") {
-                    in_fence = Some((ticks, true));
-                    current_start_line = line_num;
-                    current_fence_len = ticks;
-                    current_body_lines.clear();
-                } else {
-                    in_fence = Some((ticks, false));
-                }
-            }
+    // An unterminated fence runs to the end of the document (CommonMark). Reporting it is what keeps
+    // a missing closing fence from silently discarding the questions above it.
+    if let Some(current) = open {
+        if current.is_questions {
+            push_block(&mut blocks, &current, &body, lines.len());
         }
     }
 
     blocks
+}
+
+fn push_block(blocks: &mut Vec<QuestionBlock>, open: &OpenFence, body: &[&str], end_line: usize) {
+    let raw_body = body.join("\n");
+    let (questions, is_legacy, parse_error) = parse_body(&raw_body);
+
+    blocks.push(QuestionBlock {
+        block_index: blocks.len() + 1,
+        line_number: open.start_line,
+        fence_len: open.length,
+        raw_body,
+        questions,
+        is_legacy,
+        parse_error,
+        start_line: open.start_line,
+        end_line,
+    });
+}
+
+/// The fence `line` is, or `None` when it is not a fence delimiter at all.
+fn match_fence(line: &str) -> Option<Fence<'_>> {
+    let bytes = line.as_bytes();
+
+    // CommonMark allows up to three characters of leading whitespace; a fourth makes the line
+    // indented content instead.
+    let mut indent = 0;
+    while indent < 4 && indent < bytes.len() && (bytes[indent] == b' ' || bytes[indent] == b'\t') {
+        indent += 1;
+    }
+    if indent > 3 || indent >= bytes.len() {
+        return None;
+    }
+
+    let delimiter = bytes[indent];
+    if delimiter != b'`' && delimiter != b'~' {
+        return None;
+    }
+
+    let mut end = indent;
+    while end < bytes.len() && bytes[end] == delimiter {
+        end += 1;
+    }
+
+    let length = end - indent;
+    if length < 3 {
+        return None;
+    }
+
+    let info = line[end..].trim();
+
+    // A backtick fence's info string may not contain a backtick (CommonMark), which is what keeps
+    // inline code such as ``a ``` b`` from being read as a fence.
+    if delimiter == b'`' && info.contains('`') {
+        return None;
+    }
+
+    Some(Fence {
+        delimiter,
+        length,
+        indent,
+        info,
+    })
+}
+
+/// Whether an info string names a questions block. Only the first word is read, so
+/// ` ```questions {highlight} ` still opens one — matching the frontend, which keys its renderer off
+/// the same first word.
+fn is_questions_info(info: &str) -> bool {
+    info.split_whitespace()
+        .next()
+        .is_some_and(|word| word.eq_ignore_ascii_case("questions"))
+}
+
+/// Strips up to `indent` characters of the opening fence's own indentation, so an indented block's
+/// YAML reaches the parser at column zero.
+fn dedent(line: &str, indent: usize) -> &str {
+    let bytes = line.as_bytes();
+    let mut strip = 0;
+    while strip < indent && strip < bytes.len() && (bytes[strip] == b' ' || bytes[strip] == b'\t') {
+        strip += 1;
+    }
+    &line[strip..]
 }
 
 fn parse_body(raw_body: &str) -> (Vec<QuestionItem>, bool, Option<String>) {

@@ -384,9 +384,11 @@ all work. Reach for a snippet or a table when it settles the question faster tha
 would: an option that proposes an API is clearer showing the call than describing it. Use a `|` block
 scalar for any description spanning more than one line, so blank lines and indentation survive YAML
 parsing intact. Quote `title`, `header` and `description` whenever the value contains a colon, a quote
-or a code span — `title: "Option: SQLite"`. A fence inside a description needs the `questions` fence to
-be **longer** than the one it contains, which is ordinary CommonMark: open the block with four
-backticks and the descriptions can use three.
+or a code span — `title: "Option: SQLite"`. A fence inside a description is ordinary CommonMark: a
+`questions` block ends at the first bare run of its own delimiter that is **at least as long** as the
+one that opened it and indented **three spaces or less**. A sample inside a `|` block scalar is
+indented further than that by definition, so three backticks inside three backticks is safe — but
+open the block with **four** anyway, and nothing inside it can end it early wherever it sits.
 
 #### Answer Semantics
 

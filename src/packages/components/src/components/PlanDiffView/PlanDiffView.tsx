@@ -14,6 +14,7 @@ import Markdown from "react-markdown";
 export type IvyEventHandler = (eventName: string, widgetId: string, args: any[]) => void;
 import { getWidth, getHeight } from "@/lib/styles";
 import { getMarkdownPlugins } from "@/lib/math";
+import { useMathReady } from "@/hooks/use-math-ready";
 import { MessageSquare } from "lucide-react";
 import { refractor, type Syntax } from "refractor/core";
 import { prismTheme } from "@/lib/prismTheme";
@@ -573,6 +574,9 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
   onCancelEdit,
 }) => {
   const [inputText, setInputText] = useState("");
+  // KaTeX loads on demand, so a review comment containing maths typesets on the render this
+  // subscription triggers rather than never. See `src/hooks/use-math-ready.ts`.
+  useMathReady();
   const hasComment = comments.length > 0;
   const isAuthor = !currentAuthor || !currentAuthor.trim();
 

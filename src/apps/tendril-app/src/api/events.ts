@@ -96,6 +96,48 @@ export async function onChatEvent(
   return () => unlisten();
 }
 
+/** One frame of a chat session's interactive-agent stream, as re-emitted by `agent_terminal_bridge.rs`. */
+export interface AgentTerminalEvent {
+  /** The *chat* session the pane belongs to, which is how a pane recognises its own frames. */
+  chatSessionId: string;
+  /** `log`, `end`, or `meta` (already consumed natively and returned by the invoke). */
+  event: string;
+  data: string;
+}
+
+/**
+ * Interactive-agent frames bridged from the daemon's `/api/chat/sessions/:id/terminal` SSE stream by
+ * `service/agent_terminal_bridge.rs`, for the same reason [`onChangeEvent`] exists.
+ *
+ * Subscribe before starting the session: the agent can write before the invoke that started it has
+ * returned the pty id, so a listener registered afterwards misses the first frames.
+ */
+export async function onAgentTerminalEvent(
+  handler: (event: AgentTerminalEvent) => void,
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<AgentTerminalEvent>("agent-terminal-event", (event) => {
+    handler(event.payload);
+  });
+  return () => unlisten();
+}
+
+/**
+ * Connection transitions of a chat terminal's stream. Like a review action's and unlike the change
+ * stream's, this never reconnects — re-issuing the request would spawn a second agent — so
+ * `disconnected` is terminal.
+ */
+export async function onAgentTerminalStreamStatus(
+  handler: (status: { chatSessionId: string; status: "connected" | "disconnected" }) => void,
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<{
+    chatSessionId: string;
+    status: "connected" | "disconnected";
+  }>("agent-terminal-stream-status", (event) => {
+    handler(event.payload);
+  });
+  return () => unlisten();
+}
+
 export interface JobStreamEvent {
   kind?: string;
   type?: string;

@@ -158,6 +158,53 @@ describe("fetchTableColumnValues", () => {
   });
 });
 
+/**
+ * Inside the shell the only reachable transport is `cmd_query_table`: the webview holds no bearer secret
+ * and there is no `/api` proxy, so a relative `fetch` resolves against the asset origin.
+ */
+describe("the Tauri transport", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockReset();
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  });
+
+  afterEach(() => {
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  it("invokes the command with the path and the body, and never touches fetch", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    vi.mocked(invoke).mockResolvedValue({ rows: [], totalRows: 7 });
+
+    const page = await queryJobsPage({ offset: 50, limit: 50, sort: [] });
+
+    expect(invoke).toHaveBeenCalledWith("cmd_query_table", {
+      path: "/api/jobs/query",
+      body: { offset: 50, limit: 50 },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(page.totalRows).toBe(7);
+  });
+
+  it("surfaces the command's failure instead of retrying over HTTP", async () => {
+    // The retry could only reach the asset origin, so it would replace the daemon's reason ("unknown
+    // column …") with a confusing one. This is a `BridgeError`, which the app renders by `code`.
+    const { invoke } = await import("@tauri-apps/api/core");
+    const bridgeError = {
+      code: "TABLE_QUERY_FAILED",
+      message: "unknown column 'costt' for table 'Jobs'",
+      details: null,
+    };
+    vi.mocked(invoke).mockRejectedValue(bridgeError);
+
+    await expect(queryJobsPage({ offset: 0, limit: 10, sort: [] })).rejects.toBe(bridgeError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("the HTTP transport", () => {
   const fetchMock = vi.fn();
 

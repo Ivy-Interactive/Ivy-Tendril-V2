@@ -65,6 +65,88 @@ export const NO_VALUE = "—";
 export const formatCurrency = (value: number): string =>
   value >= 1000 ? `$${Math.round(value).toLocaleString("en-US")}` : `$${value.toFixed(2)}`;
 
+/** `"1.0"` to `"1"`, so a round figure does not spend a character saying so. */
+const trimDotZero = (mantissa: string): string =>
+  mantissa.endsWith(".0") ? mantissa.slice(0, -2) : mantissa;
+
+/** Units the compact currency ladder climbs, in order. */
+const COMPACT_UNITS = ["k", "M", "B", "T"];
+
+/**
+ * A cost at two or three significant figures, never wider than five characters: `$0.00`, `$9.99`,
+ * `$99.9`, `$999`, `$1.2k`, `$47k`, `$999k`, `$1.2M`.
+ *
+ * For the *forecast* only, and only because the forecast is rendered as a range. Two
+ * {@link formatCurrency} figures joined by a separator run to `$1,234,567 – $2,345,678` — nineteen
+ * characters, and at the KPI value's 30px semibold roughly 300px. A KPI card's content box narrows to
+ * about 137px: four cards across, 24px gutters, 24px card padding, in a main column that is the full
+ * dashboard width at a ~870px container (`dashboard.css`, `.tdb-kpis`, and the same figure recurs
+ * just above the 1260px fold). `.tdb-root` sets `overflow-x: hidden`, so the overflow never spilled
+ * visibly — it *cut a number in half*, and half a currency figure still reads as a currency figure,
+ * which is worse than an ugly card.
+ *
+ * Rounding the digits away is the honest half of the fix rather than a concession. Both bounds are a
+ * daily rate multiplied by the days in a month, and the width of the band between them is itself an
+ * admission that the next digit means nothing; cents on a month-end projection are noise. Every
+ * unrounded figure is in the drill-down (`KpiBreakdown`, `roundedCost`) one click away, so nothing is
+ * lost. The other cards keep {@link formatCurrency}: an *observed* average cost per feature is a
+ * measurement, and its cents are real.
+ *
+ * Five characters is what makes the range fit rather than merely fit better. `$999k` is about 89px at
+ * this size, so `$999k –` is about 112px and clears the 137px floor with room; the seven-character
+ * `$999.9k` variant this replaced came to about 138px with its dash, i.e. one pixel over, and would
+ * have had `overflow-wrap` break the number instead. The extra digit bought nothing: relative
+ * precision is worst just above a unit boundary (`$1.2k` resolves to $100, 8%) and that is identical
+ * under either format.
+ *
+ * Each threshold is the input that would *round up* into the next format, not the format's own bound,
+ * so no input can produce a sixth character: 99.95 is `$100` rather than `$100.0`, 999.5 is `$1k`
+ * rather than `$1000`, and 999_500 is `$1M` rather than `$1000k`. A trailing `.0` is always dropped,
+ * so a round thousand is `$1k` and ten thousand is `$10k`. The guarantee holds up to `$999T`,
+ * comfortably past any month a coding agent can bill for.
+ */
+export function formatCurrencyCompact(value: number): string {
+  const sign = value < 0 ? "-" : "";
+  const magnitude = Math.abs(value);
+  if (!Number.isFinite(magnitude)) return NO_VALUE;
+
+  // Single dollars: the cents are the figure, and two of them cost no extra characters.
+  if (magnitude < 9.995) return `${sign}$${magnitude.toFixed(2)}`;
+  // Tens: one decimal. Hundreds: none — the tenth of a dollar is not a fact about next month.
+  if (magnitude < 99.95) return `${sign}$${trimDotZero(magnitude.toFixed(1))}`;
+  if (magnitude < 999.5) return `${sign}$${Math.round(magnitude)}`;
+
+  let scaled = magnitude / 1000;
+  let unit = 0;
+  // Climb until the mantissa is under a thousand, so 999_500 is `$1M` and never `$1000k`.
+  while (scaled >= 999.5 && unit < COMPACT_UNITS.length - 1) {
+    scaled /= 1000;
+    unit += 1;
+  }
+  // Same shape one unit up: a decimal below ten, whole numbers above it.
+  const mantissa = scaled < 9.995 ? trimDotZero(scaled.toFixed(1)) : String(Math.round(scaled));
+  return `${sign}$${mantissa}${COMPACT_UNITS[unit]}`;
+}
+
+/**
+ * The widest string {@link formatCurrencyCompact} can return for a non-negative cost. Exported so the
+ * layout test can pin the budget the card was designed against, rather than restating it.
+ */
+export const COMPACT_CURRENCY_MAX_CHARS = 5;
+
+/**
+ * What sits between the two projection bases: a non-breaking space, an en dash, an ordinary space.
+ *
+ * The asymmetry is the *other* half of the fix, and the part an innocent tidy-up removes. With two
+ * ordinary spaces the line breaker is free to put `– $3.4k` on the second line, and a leading en
+ * dash on a currency figure reads as a minus sign. Gluing the dash to the lower bound leaves exactly
+ * one break opportunity, so the range either sits on one line or wraps as `$1.2k –` / `$3.4k`.
+ * `.tdb-kpi-value` supplies the wrapping half (`white-space: normal`, `min-width: 0`).
+ */
+export const RANGE_SEPARATOR = "\u00a0\u2013 ";
+
+const formatRange = (lower: string, upper: string): string => `${lower}${RANGE_SEPARATOR}${upper}`;
+
 export const formatTokens = (value: number): string => {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
@@ -85,11 +167,23 @@ const deltaDirection = (change: number | null): "up" | "down" | null => {
 
 // --- component props ---------------------------------------------------------
 
-/** Merged PRs per month, which is what `PillBars` plots. */
+/**
+ * Merged PRs per month, which is what `PillBars` plots on the Pull Requests card's Month tab.
+ *
+ * Six months, which is `DashboardApp.BuildMonthlyPullRequests`'s own `count = 6`. This used to plot
+ * {@link TREND_MONTHS} of them, and twelve does not fit: the card lives in a 280-360px side column
+ * (`dashboard.css`, `.tdb-grid`), and twelve bars with 8px gutters leave each one about 11px wide
+ * while its month label needs roughly 20px — so the labels ran past the card and
+ * `.tdb-side-block { overflow: hidden }` cut them off. Six bars are ~27px each and fit at the narrow
+ * end. The activity grid keeps twelve because its columns shrink to a 9px floor inside a scroller;
+ * these bars carry a label each and cannot.
+ */
+export const PR_MONTHS = 6;
+
 export function buildPullRequests(activity: DashboardActivity | null): DashboardMonthValueDto[] {
   if (activity == null) return [];
   return activity.months
-    .slice(-TREND_MONTHS)
+    .slice(-PR_MONTHS)
     .map((month) => ({ label: monthLabel(month), value: month.prsMerged }));
 }
 
@@ -203,15 +297,22 @@ export function buildKpis({
   const { forecast } = activity;
   const lower = forecast.calendarProjection;
   const upper = forecast.activityProjection;
+  // Compact on *both* branches, not only the range: one basis is the same projection as two, and a
+  // card whose precision changes with the shape of the month is worse than one that always rounds.
+  const lowerText = lower == null ? null : formatCurrencyCompact(lower);
+  const upperText = upper == null ? null : formatCurrencyCompact(upper);
   const forecastMonth: DashboardKpiDto = {
     id: "forecastMonth",
     label: "Forecast This Month",
+    // Collapsed on the rendered *text*, not on the raw floats. The bases coincide whenever every day
+    // in the window had spend, and rounding brings them together whenever they are within a
+    // significant figure of each other — and `$1.2k – $1.2k` states a band the card cannot show.
     value:
-      lower == null || upper == null
+      lowerText == null || upperText == null
         ? NO_VALUE
-        : lower === upper
-          ? formatCurrency(lower)
-          : `${formatCurrency(lower)} – ${formatCurrency(upper)}`,
+        : lowerText === upperText
+          ? lowerText
+          : formatRange(lowerText, upperText),
     hint:
       lower == null || upper == null
         ? "no spend recorded to project from"

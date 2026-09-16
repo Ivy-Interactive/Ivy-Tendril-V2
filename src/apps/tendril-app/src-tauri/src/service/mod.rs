@@ -1,3 +1,4 @@
+pub mod agent_terminal_bridge;
 pub mod changes_bridge;
 pub mod client;
 pub mod compatibility;
@@ -19,5 +20,5 @@ pub use supervisor::{
     calculate_backoff_secs, redact_sensitive_tokens, CircuitBreaker, ServiceOwnership,
     ServiceSupervisor, SupervisorStateInfo, SupervisorStatus,
 };
-pub use tunnel_client::{CloudflaredInstallDto, ShareTunnelDto, TunnelClient};
+pub use tunnel_client::{CloudflaredInstallDto, TunnelClient, TunnelSnapshotDto};
 pub use ws_bridge::WsBridge;

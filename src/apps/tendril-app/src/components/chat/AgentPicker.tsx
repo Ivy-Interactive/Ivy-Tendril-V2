@@ -187,9 +187,12 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
       value: model.id,
       label: model.displayName,
     }));
+    /* `ChatApp.ResolveModel`: an agent's default is the real id its catalogue flags `IsDefault`, which
+       `catalog.rs` pins first and also names in `defaultModel`. There is no synthetic `default` row to
+       fall back to any more, so an agent with no models at all offers no model. */
     const model =
       remembered.modelId ??
-      (isSelected ? selectedModelId : (modelOptions[0]?.value ?? DEFAULT_OPTION_ID));
+      (isSelected ? selectedModelId : (agent.defaultModel ?? modelOptions[0]?.value ?? ""));
 
     /* The ladder belongs to the *model* first, then the agent. V1 declares `SupportedEfforts` on
        every catalogue row and resolves through `ChatApp.GetEffortsForAgentAndModel`, so Copilot on

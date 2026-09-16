@@ -34,17 +34,39 @@ const VARIANT_CLASS: Record<ConfirmVariant, "destructive" | "warning" | "default
 };
 
 /**
- * The shared body of the confirm-only dialogs.
+ * The shared body of the confirm-only dialogs, and the app's single implementation of
+ * Framework's confirmation contract.
  *
- * Cancel is rendered **first** and holds the initial focus: the destructive
- * confirm is never the default-focused control, so a stray Enter cannot carry
- * out the action.
+ * Framework asks for a confirmation with `Button.WithConfirm(message, title, confirmLabel,
+ * destructive)` (`Ivy-Framework/src/Ivy/Views/Alerts/AlertExtensions.cs`), which builds:
  *
- * That is a deliberate departure from V1, which puts `.ShortcutKey("Enter").AutoFocus()` on the
- * destructive button of every one of these dialogs (Delete Plan, Discard, Reset to Draft, Delete
- * Job, Stop All). Everything else here is V1's — the button order, the outline Cancel, the
- * destructive treatment, the copy — but a delete that happens because a keystroke arrived a moment
- * late is not recoverable, and the confirm has no keyboard path to it that Cancel is not on first.
+ *   Dialog(onClose → cancel, DialogHeader(title), DialogBody(message),
+ *          DialogFooter(Button("Cancel").Outline(), Button(confirmLabel).Destructive()))
+ *
+ * so the contract this component implements is, point for point:
+ *
+ * 1. A modal dialog with a **title**, a one-question **body**, and a footer of exactly two roles —
+ *    decline and confirm.
+ * 2. **Cancel first**, `variant="outline"`. It is the leftmost control in the footer's DOM order,
+ *    which is also its reading order (`DialogFooter` is `sm:flex-row sm:justify-end`).
+ * 3. **Confirm last**, `variant="destructive"` when the action destroys something. The label is the
+ *    verb, never "Ok" — Framework's default label is only a fallback its own call sites all replace
+ *    (`WithConfirm(..., confirmLabel: "Delete", destructive: true)`).
+ * 4. **Nothing to type.** Framework's confirm is armed the moment the dialog opens; there is no
+ *    typed-name gate anywhere in it, and none here.
+ * 5. **Escape cancels** and can never confirm; a click on the overlay does not dismiss at all. Both
+ *    live in `DialogShell`, which is where Framework puts them too (`DialogWidget.tsx`).
+ * 6. **The destructive button is not focused on open.** Framework prevents Radix's auto-focus
+ *    outright unless a control opts in with `[autofocus]`, and its confirm buttons never do. Focus
+ *    here goes to Cancel instead of nowhere, which is the same guarantee with a keyboard user
+ *    actually inside the dialog: a stray Enter declines.
+ *
+ * Point 6 is also where V1 differs — it puts `.ShortcutKey("Enter").AutoFocus()` on the destructive
+ * button of every one of these dialogs. Framework's rule wins: a delete that happens because a
+ * keystroke arrived a moment late is not recoverable.
+ *
+ * `secondaryAction` is the one addition to the two-button footer, for V1's Delete Plan, whose
+ * alternatives are the *reversible* answers and are read before the destructive one.
  */
 export function ConfirmDialog({
   isOpen,

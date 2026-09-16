@@ -608,6 +608,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <SidebarSubItem
                       key={project.name}
                       label={project.name}
+                      /*
+                       * `SettingsApp.cs:120-121`, exactly: `Enum.TryParse<Colors>(proj.Color, out var
+                       * parsed) ? parsed : (config.GetProjectColor(proj.Name) ?? Colors.Slate)`. The
+                       * second arm re-parses the same field, so it reduces to "the configured colour,
+                       * else Slate" — a project with none gets V1's neutral marker rather than a
+                       * colour implying a choice nobody made.
+                       */
+                      color={project.color.trim() === "" ? "Slate" : project.color.trim()}
                       selected={
                         !isAddingProject &&
                         (selected === projectTag(index) ||

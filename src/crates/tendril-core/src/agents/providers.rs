@@ -77,6 +77,152 @@ pub fn agent_command(provider: &str) -> String {
     build_agent_spec(provider, &AgentLaunchConfig::default()).command
 }
 
+/// What an agent is launched with for an **interactive** session under a pseudo-terminal, as opposed
+/// to the one-shot `--print` run [`build_agent_spec`] builds.
+#[derive(Debug, Clone, Default)]
+pub struct AgentPtyConfig {
+    pub model: Option<String>,
+    /// A task typed for the agent on launch. Passed as an argument rather than written into the pty,
+    /// so it cannot be mangled by a shell or raced by the agent's own startup — V1 says the same in
+    /// `AgentApp.GetCommandLine`.
+    pub initial_prompt: Option<String>,
+    pub environment_variables: HashMap<String, String>,
+    pub extra_arguments: Vec<String>,
+}
+
+/// The argv of an interactive agent session, and the environment it runs in.
+#[derive(Debug, Clone)]
+pub struct AgentPtySpec {
+    /// `argv[0]` is the binary; there is no shell in the way, so nothing here needs quoting.
+    pub argv: Vec<String>,
+    pub environment: HashMap<String, String>,
+}
+
+/// Builds the interactive command line for `provider`. Port of V1's per-provider `IAgentPty`
+/// `BuildPtySpec`, whose flags differ from the one-shot ones in ways that matter:
+///
+/// - Claude needs `--dangerously-skip-permissions`, not `--permission-mode dontAsk`: `dontAsk` still
+///   prompts before running a command, and an interactive session that stops to ask is one the agent
+///   never gets past (`ClaudePty.BuildPtySpec`'s comment says exactly this).
+/// - Antigravity, Gemini, Copilot and OpenCode take an initial task as a flag (`-i` / `--prompt`);
+///   Claude and Codex take it as the final positional argument and auto-submit it.
+///
+/// No `--output-format`: an interactive agent draws its own terminal UI, and the whole point of this
+/// path is to show that UI rather than parse it.
+pub fn build_agent_pty_spec(provider: &str, config: &AgentPtyConfig) -> AgentPtySpec {
+    let model = config
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty() && !m.eq_ignore_ascii_case("default"));
+    let normalized = crate::agents::resolution::normalize_agent_name(provider);
+    let mut argv: Vec<String> = Vec::new();
+    // A prompt passed as a flag, rather than as the trailing positional argument.
+    let mut prompt_flag: Option<&str> = None;
+
+    match normalized.as_str() {
+        "antigravity" | "agy" => {
+            argv.push("agy".to_string());
+            argv.push("--dangerously-skip-permissions".to_string());
+            prompt_flag = Some("-i");
+        }
+        "codex" => {
+            argv.push("codex".to_string());
+            argv.extend(
+                [
+                    "--sandbox",
+                    "workspace-write",
+                    "-c",
+                    "sandbox_workspace_write.network_access=true",
+                    "--ask-for-approval",
+                    "never",
+                ]
+                .map(str::to_string),
+            );
+            if let Some(model) = model {
+                argv.push("--model".to_string());
+                argv.push(model.to_string());
+            }
+        }
+        "gemini" => {
+            argv.push("gemini".to_string());
+            argv.push("--yolo".to_string());
+            argv.push("--skip-trust".to_string());
+            if let Some(model) = model {
+                argv.push("--model".to_string());
+                argv.push(model.to_string());
+            }
+            prompt_flag = Some("-i");
+        }
+        "copilot" => {
+            let (binary, prefix) = resolve_copilot_binary();
+            argv.push(binary);
+            argv.extend(prefix);
+            argv.extend(
+                ["--allow-all-paths", "--allow-all-urls", "--allow-all-tools"].map(str::to_string),
+            );
+            if let Some(model) = model {
+                argv.push("--model".to_string());
+                argv.push(model.to_string());
+            }
+            prompt_flag = Some("-i");
+        }
+        "opencode" | "ivy" | "openaiproxy" | "proxy" => {
+            argv.push(if normalized == "opencode" {
+                resolve_opencode_binary()
+            } else {
+                resolve_ivy_agent_binary()
+            });
+            if let Some(model) = model {
+                argv.push("--model".to_string());
+                argv.push(format_opencode_model(Some(model), None));
+            }
+            prompt_flag = Some("--prompt");
+        }
+        // claude, and any id we do not know: Claude is the default provider.
+        _ => {
+            argv.push("claude".to_string());
+            if let Some(model) = model {
+                argv.push("--model".to_string());
+                argv.push(normalize_claude_model(model));
+            }
+            argv.push("--dangerously-skip-permissions".to_string());
+        }
+    }
+
+    argv.extend(config.extra_arguments.clone());
+
+    if let Some(prompt) = config
+        .initial_prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+    {
+        if let Some(flag) = prompt_flag {
+            argv.push(flag.to_string());
+        }
+        argv.push(prompt.to_string());
+    }
+
+    // Not `default_environment`: `TERM=dumb` and `CI=true` are what tell a CLI it is being scraped,
+    // and they stop it drawing the interface this session exists to show. The pty supplies its own
+    // `TERM`.
+    let mut environment = HashMap::new();
+    environment.insert("BASH_DEFAULT_TIMEOUT_MS".to_string(), "300000".to_string());
+    environment.insert("BASH_MAX_TIMEOUT_MS".to_string(), "600000".to_string());
+    // The one thing this path *does* share with `default_environment`: an interactive agent shells
+    // out to `tendril` exactly like a one-shot one, so it must resolve the same CLI. See
+    // [`agent_path`].
+    if let Some(path) = agent_path() {
+        environment.insert("PATH".to_string(), path);
+    }
+    for (key, value) in &config.environment_variables {
+        environment.insert(key.clone(), value.clone());
+    }
+
+    AgentPtySpec { argv, environment }
+}
+
 /// Enforces a project's [`AgentSecurityConfig`] onto a launch config before it reaches
 /// [`build_agent_spec`]: the single place where the seven security keys turn into the
 /// provider-agnostic fields (`sandbox_mode`, `network_access`, `permission_mode`, tool
@@ -847,7 +993,88 @@ fn default_environment() -> HashMap<String, String> {
     let mut env = HashMap::new();
     env.insert("CI".to_string(), "true".to_string());
     env.insert("TERM".to_string(), "dumb".to_string());
+    if let Some(path) = agent_path() {
+        env.insert("PATH".to_string(), path);
+    }
     env
+}
+
+/// The `tendril` executable's file name on this platform.
+const TENDRIL_CLI_BINARY: &str = if cfg!(windows) {
+    "tendril.exe"
+} else {
+    "tendril"
+};
+
+/// The `PATH` an agent this daemon launches must run with: this build's own directory first, then
+/// whatever the daemon inherited.
+///
+/// Agents drive Tendril by shelling out to `tendril` — the promptware↔CLI contract is hundreds of
+/// invocations by bare name — so "which `tendril`" is decided by `PATH`, and inheriting the
+/// developer's `PATH` means inheriting whatever they happen to have installed. A developer with the
+/// V1 .NET CLI on `PATH` had every agent talk to *that*, and V1's discovery deletes a `.master` whose
+/// heartbeat it cannot read: one agent command took the running dev daemon off the air for every
+/// later CLI call and for the extension. The CLI that belongs to the running daemon is the only
+/// correct answer, and `current_exe` is how the daemon knows where it is.
+///
+/// `None` leaves `PATH` inherited untouched, which is the honest outcome when there is no `tendril`
+/// beside this executable to point at.
+fn agent_path() -> Option<String> {
+    agent_path_for(
+        &std::env::current_exe().ok()?,
+        std::env::var("PATH").ok().as_deref(),
+    )
+}
+
+/// [`agent_path`] over its two inputs, so the resolution is testable without a process whose
+/// `current_exe` happens to sit next to a `tendril`.
+fn agent_path_for(exe: &Path, inherited: Option<&str>) -> Option<String> {
+    let dir = own_cli_dir(exe)?;
+    Some(path_with_dir_first(&dir, inherited))
+}
+
+/// The directory holding the `tendril` CLI that belongs to the build `exe` is part of.
+///
+/// Every layout Tendril ships keeps the two side by side, so no debug-only branch is needed:
+/// a dev tree's `target/debug` holds `tendril`, `tendril-server` and `tendril-app`; an installed CLI
+/// *is* the daemon, so its own directory holds it by definition; and Tauri copies the
+/// `binaries/tendril` sidecar next to `tendril-app` in the packaged bundle's `Contents/MacOS`. `bin/`
+/// is checked too, mirroring [`resolve_ivy_agent_binary`].
+///
+/// `None` when no `tendril` is there — a `cargo run -p tendril-server` in a tree where the CLI was
+/// never built, say. Prepending that directory would shadow nothing and hide the real state from
+/// `tendril doctor`, so the caller leaves `PATH` alone instead.
+fn own_cli_dir(exe: &Path) -> Option<PathBuf> {
+    let dir = exe.parent()?;
+    if dir.join(TENDRIL_CLI_BINARY).is_file() {
+        return Some(dir.to_path_buf());
+    }
+    let bin = dir.join("bin");
+    if bin.join(TENDRIL_CLI_BINARY).is_file() {
+        return Some(bin);
+    }
+    None
+}
+
+/// `inherited` with `dir` moved to the front, keeping the rest in order and dropping any later
+/// duplicate of `dir` (an agent that re-exports `PATH` would otherwise accumulate copies).
+fn path_with_dir_first(dir: &Path, inherited: Option<&str>) -> String {
+    let dir_str = dir.to_string_lossy().to_string();
+    let separator = if cfg!(windows) { ";" } else { ":" };
+
+    let rest: Vec<String> = inherited
+        .map(|path| {
+            std::env::split_paths(path)
+                .filter(|entry| entry != dir && !entry.as_os_str().is_empty())
+                .map(|entry| entry.to_string_lossy().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if rest.is_empty() {
+        return dir_str;
+    }
+    format!("{}{}{}", dir_str, separator, rest.join(separator))
 }
 
 fn normalize_claude_model(model: &str) -> String {
@@ -1203,4 +1430,205 @@ fn resolve_ivy_agent_binary() -> String {
     }
 
     "ivy-agent".to_string()
+}
+
+/// Tests for the `PATH` an agent is launched with. Inline rather than in `tests/` because the
+/// resolution seam is deliberately private: nothing outside this module should be picking its own
+/// `tendril`.
+#[cfg(test)]
+mod agent_path_tests {
+    use super::{
+        agent_path, agent_path_for, build_agent_pty_spec, AgentPtyConfig, TENDRIL_CLI_BINARY,
+    };
+    use std::path::{Path, PathBuf};
+
+    /// A directory containing executable stubs with the given names.
+    fn dir_with(prefix: &str, binaries: &[&str]) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("{}-{}", prefix, uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in binaries {
+            let path = dir.join(name);
+            std::fs::write(&path, b"#!/bin/sh\nexit 0\n").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+        }
+        dir
+    }
+
+    /// What a `PATH` lookup of `tendril` would find, i.e. what the agent's shell will run.
+    fn resolve_on(path: &str, binary: &str) -> Option<PathBuf> {
+        std::env::split_paths(path)
+            .map(|entry| entry.join(binary))
+            .find(|candidate| candidate.is_file())
+    }
+
+    #[test]
+    fn the_daemons_own_directory_comes_before_the_inherited_path() {
+        let dev = dir_with("tendril-path-dev", &[TENDRIL_CLI_BINARY, "tendril-server"]);
+        let inherited = format!(
+            "{}{}{}",
+            Path::new("/usr/local/bin").display(),
+            if cfg!(windows) { ";" } else { ":" },
+            Path::new("/usr/bin").display()
+        );
+
+        let path = agent_path_for(&dev.join("tendril-server"), Some(&inherited))
+            .expect("a tendril beside the daemon must produce a PATH");
+
+        let first = std::env::split_paths(&path).next().unwrap();
+        assert_eq!(first, dev, "the daemon's own directory must come first");
+        assert!(
+            path.ends_with(&inherited),
+            "the inherited PATH must be kept, in order: {path}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dev);
+    }
+
+    /// The incident this exists to prevent: a developer with the V1 CLI installed ahead of everything
+    /// else on `PATH` had every agent resolve `tendril` to *that*, and V1's discovery deletes a
+    /// `.master` whose heartbeat it cannot parse.
+    #[test]
+    fn an_agent_from_a_dev_build_resolves_tendril_to_the_workspace_binary() {
+        let dev = dir_with(
+            "tendril-path-workspace",
+            &[TENDRIL_CLI_BINARY, "tendril-server"],
+        );
+        let installed = dir_with("tendril-path-installed", &[TENDRIL_CLI_BINARY]);
+        let inherited = installed.to_string_lossy().to_string();
+
+        // Without the fix, this is what the agent would have run.
+        assert_eq!(
+            resolve_on(&inherited, TENDRIL_CLI_BINARY).unwrap(),
+            installed.join(TENDRIL_CLI_BINARY)
+        );
+
+        let path = agent_path_for(&dev.join("tendril-server"), Some(&inherited)).unwrap();
+        assert_eq!(
+            resolve_on(&path, TENDRIL_CLI_BINARY).unwrap(),
+            dev.join(TENDRIL_CLI_BINARY),
+            "the agent must resolve the CLI of the daemon that launched it"
+        );
+
+        let _ = std::fs::remove_dir_all(&dev);
+        let _ = std::fs::remove_dir_all(&installed);
+    }
+
+    /// A packaged app puts the sidecar next to `tendril-app`; an installed CLI is itself the daemon.
+    /// Both are the same co-location, and neither needs a debug-only branch.
+    #[test]
+    fn a_sidecar_and_an_installed_cli_both_resolve_beside_themselves() {
+        let bundle = dir_with("tendril-path-bundle", &[TENDRIL_CLI_BINARY, "tendril-app"]);
+        let sidecar_path = agent_path_for(&bundle.join("tendril-app"), Some("/usr/bin")).unwrap();
+        assert_eq!(std::env::split_paths(&sidecar_path).next().unwrap(), bundle);
+
+        let installed_path = agent_path_for(&bundle.join(TENDRIL_CLI_BINARY), None).unwrap();
+        assert_eq!(
+            std::env::split_paths(&installed_path).next().unwrap(),
+            bundle
+        );
+
+        let _ = std::fs::remove_dir_all(&bundle);
+    }
+
+    /// A `bin/` subdirectory is the other layout an installer produces.
+    #[test]
+    fn a_cli_under_bin_is_found_too() {
+        let root = dir_with("tendril-path-root", &["tendril-server"]);
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join(TENDRIL_CLI_BINARY), b"#!/bin/sh\nexit 0\n").unwrap();
+
+        let path = agent_path_for(&root.join("tendril-server"), None).unwrap();
+        assert_eq!(std::env::split_paths(&path).next().unwrap(), bin);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// No `tendril` beside the daemon means there is nothing to point at, and inventing a `PATH`
+    /// entry would only hide that from `tendril doctor`.
+    #[test]
+    fn no_cli_beside_the_daemon_leaves_path_alone() {
+        let lonely = dir_with("tendril-path-lonely", &["tendril-server"]);
+        assert!(agent_path_for(&lonely.join("tendril-server"), Some("/usr/bin")).is_none());
+        let _ = std::fs::remove_dir_all(&lonely);
+    }
+
+    /// The directory is not repeated when it is already on the inherited `PATH`: an agent that
+    /// re-exports `PATH` into a subprocess would otherwise accumulate copies of it.
+    #[test]
+    fn an_already_present_directory_is_not_duplicated() {
+        let dev = dir_with("tendril-path-dedupe", &[TENDRIL_CLI_BINARY]);
+        let inherited = format!(
+            "/usr/bin{}{}",
+            if cfg!(windows) { ";" } else { ":" },
+            dev.display()
+        );
+
+        let path = agent_path_for(&dev.join(TENDRIL_CLI_BINARY), Some(&inherited)).unwrap();
+        let occurrences = std::env::split_paths(&path)
+            .filter(|entry| entry == &dev)
+            .count();
+        assert_eq!(
+            occurrences, 1,
+            "PATH should list the directory once: {path}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dev);
+    }
+
+    /// The wiring, as opposed to the resolution: every launch path this daemon has must hand the agent
+    /// the `PATH` [`agent_path`] computed, and none of them may quietly forget it. Stated as an
+    /// equality against `agent_path()` so it holds wherever the test binary happens to live — the live
+    /// end of this (a real daemon launching a real agent) is what proves the value itself.
+    #[test]
+    fn every_launch_path_carries_the_resolved_path() {
+        let expected = agent_path();
+        assert_eq!(super::default_environment().get("PATH"), expected.as_ref());
+
+        for provider in [
+            "claude",
+            "codex",
+            "gemini",
+            "opencode",
+            "copilot",
+            "antigravity",
+            "ivy",
+        ] {
+            let spec = super::build_agent_spec(provider, &super::AgentLaunchConfig::default());
+            assert_eq!(
+                spec.environment.get("PATH"),
+                expected.as_ref(),
+                "{provider} must launch with the daemon's own CLI first on PATH"
+            );
+            for file in spec.temp_files {
+                let _ = std::fs::remove_file(file);
+            }
+        }
+
+        let pty = build_agent_pty_spec("claude", &AgentPtyConfig::default());
+        assert_eq!(pty.environment.get("PATH"), expected.as_ref());
+    }
+
+    /// An interactive session shells out to `tendril` just like a one-shot run, so it gets the same
+    /// `PATH` — and a caller's own `PATH` still wins, because explicit configuration always overlays
+    /// the defaults.
+    #[test]
+    fn a_caller_supplied_path_still_wins_for_a_pty_session() {
+        let spec = build_agent_pty_spec(
+            "claude",
+            &AgentPtyConfig {
+                environment_variables: std::collections::HashMap::from([(
+                    "PATH".to_string(),
+                    "/only/this".to_string(),
+                )]),
+                ..Default::default()
+            },
+        );
+        assert_eq!(spec.environment.get("PATH").unwrap(), "/only/this");
+    }
 }

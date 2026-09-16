@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React from "react";
 import { CircleCheck, LoaderCircle } from "lucide-react";
 import { Tooltip } from "./TuiTooltip";
+import { useElapsedMs } from "./use-elapsed";
 import "./ui.css";
 
 export interface StatusLineProps {
@@ -41,12 +42,6 @@ export const formatTokenCount = (count: number): string => {
   return `${trim(value / 1_000_000)}M`;
 };
 
-const toMillis = (value: string | number | null | undefined): number | null => {
-  if (value == null) return null;
-  const ms = typeof value === "number" ? value : Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
-};
-
 /**
  * The bundle's one agent status line: a spinner, the live elapsed time and token count, and
  * the status message — `12m 22s · 16.8k tokens · Waiting for Claude…`. It is what every
@@ -62,25 +57,7 @@ export const StatusLine: React.FC<StatusLineProps> = ({
   tokensEstimated = false,
   className = "",
 }) => {
-  const startMs = toMillis(startedAt);
-  const ticking = startMs != null && elapsedMs == null && !isComplete;
-  const [now, setNow] = useState(() => Date.now());
-
-  /* A stream's timestamps come from the agent's machine, `now` from this browser. A server
-     running ahead of us would pin the timer at "0s" for the first seconds of every run, so the
-     run is anchored on whichever is earlier: its reported start, or when we first saw it. */
-  const seen = useRef<{ key: number | null; at: number }>({ key: null, at: 0 });
-  if (seen.current.key !== startMs) seen.current = { key: startMs, at: Date.now() };
-  const anchor = startMs == null ? null : Math.min(startMs, seen.current.at);
-
-  useEffect(() => {
-    if (!ticking) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [ticking, startMs]);
-
-  const elapsed = elapsedMs != null ? elapsedMs : anchor != null ? Math.max(0, now - anchor) : null;
+  const elapsed = useElapsedMs(startedAt, elapsedMs, isComplete);
 
   const parts: React.ReactNode[] = [];
   if (elapsed != null) {

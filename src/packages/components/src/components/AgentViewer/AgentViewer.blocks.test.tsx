@@ -228,4 +228,39 @@ Done.`,
     expect(container.querySelector(".aov-status-event")).toBeNull();
     expect(screen.queryByText("Scanning directory tree...")).toBeNull();
   });
+
+  it("prints a final message once when the result repeats it verbatim", () => {
+    // Several providers end a run by restating the last assistant message as the result's `response`.
+    // Rendering both puts the same prose on screen twice, once as the message and once inside the
+    // summary. Found by index off the one `result` node rather than by scanning every adjacent pair,
+    // so a 100k-line run does not re-scan itself per appended line.
+    const answer = "All three tests pass.";
+    const jsonStream = [
+      mockSessionInit,
+      JSON.stringify({ kind: "text", timestamp: "t", text: answer, delta: false }),
+      JSON.stringify({ kind: "result", timestamp: "t", is_success: true, response: answer }),
+    ].join("\n");
+
+    const { container } = render(
+      <AgentViewer id="test-result-echo" jsonStream={jsonStream} eventHandler={() => {}} />,
+    );
+
+    expect(container.querySelector(".aov-assistant")).toBeNull();
+    expect(container.querySelector(".aov-result")?.textContent).toContain(answer);
+  });
+
+  it("keeps a final message that the result does not repeat", () => {
+    const jsonStream = [
+      mockSessionInit,
+      JSON.stringify({ kind: "text", timestamp: "t", text: "Working on it.", delta: false }),
+      JSON.stringify({ kind: "result", timestamp: "t", is_success: true, response: "Done." }),
+    ].join("\n");
+
+    const { container } = render(
+      <AgentViewer id="test-result-distinct" jsonStream={jsonStream} eventHandler={() => {}} />,
+    );
+
+    expect(container.querySelector(".aov-assistant")?.textContent).toContain("Working on it.");
+    expect(container.querySelector(".aov-result")?.textContent).toContain("Done.");
+  });
 });

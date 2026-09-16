@@ -988,4 +988,130 @@ describe("InboxView Component & Triage Tests", () => {
       expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
     });
   });
+
+  /**
+   * V1 `SidebarListRow.BuildSubItem` colours a project's marker with `config.GetProjectColor`, and
+   * `SettingsApp.cs:120-121` reduces to "the configured colour, else `Colors.Slate`". The colour now
+   * reaches the view: `ProjectConfig.color` -> the bridge's `ProjectSummaryDto` -> `ProjectSummary`.
+   *
+   * The shape is the Settings project rail's, deliberately: `Box().Background(color)
+   * .BorderRadius(Rounded).Width(Size.Units(3)).Height(Size.Units(3))` — 0.75rem at 0.5rem radius.
+   */
+  describe("project colour in the category rail", () => {
+    const dot = (project: string) => screen.getByTestId(`inbox-project-${project}-dot`);
+
+    it("gives each project a dot in its configured colour", async () => {
+      render(
+        <InboxView
+          projects={[
+            { name: "Tendril", color: "Emerald", repos: [], verifications: [] },
+            { name: "Ivy", color: "Purple", repos: [], verifications: [] },
+          ]}
+        />,
+      );
+      await waitForInboxIdle();
+
+      // The name resolves through the package's single `ivyColorVar`, so the token, not a hex literal.
+      expect(dot("Tendril")).toHaveAttribute("data-color", "Emerald");
+      expect(dot("Tendril").style.backgroundColor).toBe("var(--emerald, currentColor)");
+      expect(dot("Ivy")).toHaveAttribute("data-color", "Purple");
+      expect(dot("Ivy").style.backgroundColor).toBe("var(--purple, currentColor)");
+    });
+
+    /** V1's `?? Colors.Slate`: no colour configured is a neutral dot, not the absence of one. */
+    it("falls back to Slate for a project with no colour", async () => {
+      render(
+        <InboxView
+          projects={[
+            { name: "Tendril", repos: [], verifications: [] },
+            { name: "Ivy", color: "   ", repos: [], verifications: [] },
+          ]}
+        />,
+      );
+      await waitForInboxIdle();
+
+      expect(dot("Tendril")).toHaveAttribute("data-color", "Slate");
+      expect(dot("Tendril").style.backgroundColor).toBe("var(--slate, currentColor)");
+      expect(dot("Ivy")).toHaveAttribute("data-color", "Slate");
+    });
+
+    /** `Size.Units(3)` with `BorderRadius.Rounded`, which the framework resolves to 0.5rem. */
+    it("matches the Settings rail's 0.75rem swatch rather than inventing a size", async () => {
+      render(
+        <InboxView projects={[{ name: "Tendril", color: "Blue", repos: [], verifications: [] }]} />,
+      );
+      await waitForInboxIdle();
+
+      expect(dot("Tendril").className).toContain("size-3");
+      expect(dot("Tendril").className).toContain("rounded-[0.5rem]");
+      expect(dot("Tendril").className).not.toContain("rounded-full");
+    });
+
+    /** `BuildSubItem` renders icon *or* colour, never both — so this row keeps its folder icon. */
+    it("leaves the no-projects row its icon and gives it no dot", async () => {
+      render(<InboxView projects={[]} />);
+      await waitForInboxIdle();
+
+      const row = screen.getByTestId("inbox-no-projects");
+      expect(row).toHaveTextContent("No projects in settings");
+      expect(row.querySelector("[data-color]")).toBeNull();
+      expect(row.querySelector("svg")).not.toBeNull();
+    });
+  });
+
+  /**
+   * The issues table bounds its own height instead of growing and taking the page's scroller with it.
+   *
+   * jsdom does no layout, so the height itself is not observable here; the *chain* that produces it
+   * is. Every link matters, and `min-h-0` most of all: a flex child's default `min-height: auto`
+   * refuses to shrink below its content, which is exactly how a bounded table becomes a scrolling
+   * page. Inbox stays registered padded (`APP_DESCRIPTORS`), so `h-full` here is what turns the
+   * shell's definite-height content frame into a definite height for this column.
+   */
+  describe("issues table height", () => {
+    it("hangs a definite-height column off the shell's frame", async () => {
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+
+      const root = screen.getByTestId("inbox-view");
+      expect(root.className).toContain("h-full");
+      expect(root.className).toContain("min-h-0");
+
+      // The content column: a flex column that may shrink, with the table as its growing child.
+      const column = screen.getByTestId("inbox-content");
+      expect(column.className).toContain("flex-col");
+      expect(column.className).toContain("flex-1");
+      expect(column.className).toContain("min-h-0");
+      expect(column.parentElement).toBe(root);
+      expect(column.contains(screen.getByTestId("inbox-issue-table"))).toBe(true);
+
+      // The rail is the column's sibling and scrolls itself, so it cannot grow the frame either.
+      const rail = screen.getByRole("tablist", { name: "Inbox categories" });
+      expect(rail.className).toContain("overflow-y-auto");
+    });
+
+    it("gives the table `fillHeight`'s bounded viewport rather than the page scroller", async () => {
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+
+      // `data-testid` lands on the `<table>`; walk out through the wrappers `fillHeight` builds.
+      const table = screen.getByTestId("inbox-issue-table");
+      const viewport = table.parentElement as HTMLElement;
+      const box = viewport.parentElement as HTMLElement;
+      const wrapper = box.parentElement as HTMLElement;
+
+      // The scroll viewport is bounded and is the element that scrolls.
+      expect(viewport.className).toContain("min-h-0");
+      expect(viewport.className).toContain("flex-1");
+      // `fillHeight`'s bordered box: takes the remaining height and clips, so nothing escapes it.
+      expect(box.className).toContain("min-h-0");
+      expect(box.className).toContain("flex-1");
+      expect(box.className).toContain("overflow-hidden");
+      // The table's own root claims the column's leftover height.
+      expect(wrapper.className).toContain("min-h-0");
+      expect(wrapper.className).toContain("flex-1");
+      // No view-level scroller: the frame owns the page scroll, the table owns the rows'.
+      expect(screen.getByTestId("inbox-view").className).not.toContain("overflow-y-auto");
+    });
+  });
 });

@@ -13,6 +13,7 @@ use tendril_core::config::{
     VerificationPlacement,
 };
 use tendril_core::db::open_database;
+use tendril_core::git::sync::{diagnostic_prompt, sync_project, ProjectSyncResult};
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{
     AgentSecurityConfig, ExtraKeys, FileAccessRuleConfig, NetworkAccessRuleConfig,
@@ -713,6 +714,142 @@ pub async fn remove_project_repo(
         StatusCode::OK,
         Json(json!({
             "message": format!("Repo '{}' removed from project '{}'", target_path, name)
+        })),
+    )
+        .into_response()
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct SyncReposParams {
+    /// Narrows the pass to one repo, matched the way `tendril project sync --repo` matches: by
+    /// configured path, expanded path, or final path segment.
+    pub repo: Option<String>,
+}
+
+/// One repository's outcome. `diagnosticPrompt` is present exactly when `canFixWithAgent` is set,
+/// so a client can offer "Fix with Agent" without composing the prompt itself — the wording is a
+/// contract shared with the CLI and must not be re-derived per client.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoSyncResultDto {
+    pub repo_path: String,
+    pub base_branch: Option<String>,
+    pub success: bool,
+    pub message: String,
+    pub git_error_details: Option<String>,
+    pub can_fix_with_agent: bool,
+    pub diagnostic_prompt: Option<String>,
+    /// Commit counts on each side, set only when the refusal was a genuine divergence.
+    pub ahead: Option<u32>,
+    pub behind: Option<u32>,
+    pub diverged: bool,
+}
+
+impl From<&ProjectSyncResult> for RepoSyncResultDto {
+    fn from(result: &ProjectSyncResult) -> Self {
+        Self {
+            repo_path: result.repo_path.clone(),
+            base_branch: result.base_branch.clone(),
+            success: result.success,
+            message: result.message.clone(),
+            git_error_details: result.git_error_details.clone(),
+            can_fix_with_agent: result.can_fix_with_agent,
+            diagnostic_prompt: result.can_fix_with_agent.then(|| diagnostic_prompt(result)),
+            ahead: result.divergence.map(|d| d.ahead),
+            behind: result.divergence.map(|d| d.behind),
+            diverged: result.divergence.is_some(),
+        }
+    }
+}
+
+/// `POST /api/projects/:name/sync` — fast-forwards each of a project's repos onto its base branch,
+/// and hands back the escalation for the ones it refused.
+///
+/// The refusals are the point. A dirty tree, a feature branch, a detached HEAD or a diverged history
+/// all stop the pass for that repo with `canFixWithAgent` and a ready-made `diagnosticPrompt`; the
+/// daemon never reconciles any of them, because a divergence has no safe automatic answer. Nothing
+/// in this path force-pushes, resets, deletes a branch, or discards uncommitted work.
+///
+/// A repo that failed is reported in the body, not as an HTTP error: the caller asked about every
+/// repo, and a 500 would throw away the results for the ones that succeeded. `success` is the
+/// whole-pass verdict.
+pub async fn sync_project_repos(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    Query(params): Query<SyncReposParams>,
+) -> impl IntoResponse {
+    let settings = load_config(&state.config_path).unwrap_or_default();
+    let Some(project) = settings
+        .projects
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(&name))
+        .cloned()
+    else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Project '{}' not found", name) })),
+        )
+            .into_response();
+    };
+
+    if project.repos.is_empty() {
+        return (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "message": "No repositories found in project.",
+                "total": 0,
+                "failed": 0,
+                "results": Vec::<RepoSyncResultDto>::new(),
+            })),
+        )
+            .into_response();
+    }
+
+    // `sync_project` shells out to `git fetch`, which can take tens of seconds per repo, so it runs
+    // off the async runtime rather than blocking a worker thread for the whole pass.
+    let repo_filter = params.repo.clone();
+    let tendril_home = state.tendril_home.clone();
+    let joined = tokio::task::spawn_blocking(move || {
+        sync_project(&project, repo_filter.as_deref(), &tendril_home)
+    })
+    .await;
+
+    let results = match joined {
+        Ok(results) => results,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Repository sync task panicked: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    if results.is_empty() {
+        return (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "message": "No matching repositories found to sync.",
+                "total": 0,
+                "failed": 0,
+                "results": Vec::<RepoSyncResultDto>::new(),
+            })),
+        )
+            .into_response();
+    }
+
+    let dtos: Vec<RepoSyncResultDto> = results.iter().map(RepoSyncResultDto::from).collect();
+    let failed = dtos.iter().filter(|r| !r.success).count();
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": failed == 0,
+            "total": dtos.len(),
+            "failed": failed,
+            "results": dtos,
         })),
     )
         .into_response()

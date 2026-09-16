@@ -116,11 +116,8 @@ describe("IceboxView delete", () => {
     fireEvent.click(screen.getByRole("button", { name: /delete plan/i }));
 
     const dialog = await screen.findByTestId("delete-plan-dialog");
-    // V1's own Icebox delete dialog is a bare confirm; V2's shared dialog keeps its typed-id gate,
-    // which is the stronger signal of intent for the one action with no recovery path.
-    fireEvent.change(within(dialog).getByLabelText("Confirm plan id"), {
-      target: { value: "00300" },
-    });
+    // Framework's confirm shape, which V1's own Icebox delete dialog also has: one click on the
+    // destructive answer, nothing to type first.
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(deletePlan).toHaveBeenCalledWith("00300"));

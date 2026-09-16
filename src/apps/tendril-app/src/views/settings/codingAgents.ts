@@ -491,15 +491,45 @@ export function tierDefaults(agent: string, baseUrl = ""): Profiles {
 /**
  * Which catalog entry supplies a card's models and efforts.
  *
- * The agent's own entry when `GET /api/agents` serves one. It currently does not for `openaiproxy`,
- * because that is not a CLI of its own: `build_openai_proxy_spec` launches the same OpenCode-family
- * binary as `opencode`, through `format_opencode_model`, so OpenCode's catalogue is the list that is
- * actually accepted. The fallback is written this way round so that the moment `catalog.rs` grows an
- * `openaiproxy` provider, this pane uses it without another change here. V1 asks the provider's own
- * `/models` endpoint instead, which this build has no client for.
+ * A bundled agent uses its own entry. A BYO card is not an agent id at all, and the entry
+ * `GET /api/agents` serves for `openaiproxy` is resolved from the `ANTHROPIC_BASE_URL` **on disk** -
+ * so while the operator is typing a new URL, or has picked a card whose provider the saved config
+ * does not point at, that entry is the wrong provider's list. Picking the Anthropic card and being
+ * shown the models of whatever the proxy was last saved against is exactly how a Claude selection
+ * came to offer Gemini rows.
+ *
+ * So the card and the URL in front of the operator pick the catalogue, by V1's own table:
+ * `OpenAiProxyModelCatalog.GetModelsForBaseUrl` returns the Claude catalogue for `api.anthropic.com`,
+ * the Codex one for `api.openai.com` or no URL at all, the Gemini one for Google's endpoint, the Ivy
+ * splice for `ivy.app`, and OpenCode's list plus Qwen for Berget - and every one of those is a
+ * catalogue this build already serves under its own agent id.
+ *
+ * Only an unrecognised custom URL falls through to the daemon's own `openaiproxy` row, which is V1's
+ * declared union for that case. V1 asks the provider's `/models` endpoint first; this build has no
+ * client for that, so the declared list is all there is.
  */
-export function catalogAgentFor(finalAgent: string, available: string[] = []): string {
+export function catalogAgentFor(
+  finalAgent: string,
+  available: string[] = [],
+  baseUrl = "",
+): string {
   const id = normalizeAgentName(finalAgent);
-  if (available.includes(id)) return id;
-  return id === "openaiproxy" || id === "proxy" || id === "ivy" ? "opencode" : id;
+  const first = (...candidates: string[]): string =>
+    candidates.find((candidate) => available.includes(candidate)) ?? candidates[0];
+
+  if (id !== "openaiproxy" && id !== "proxy" && id !== "ivy") return id;
+
+  const url = (baseUrl || "").toLowerCase();
+  if (id === "ivy" || url.includes("ivy.app")) return first("ivy", "opencode");
+  if (url.includes("api.berget.ai")) return first("opencode");
+  if (url.includes("api.anthropic.com")) return first("claude");
+  if (
+    url.includes("generativelanguage.googleapis.com") ||
+    url.includes("gemini") ||
+    url.includes("google")
+  ) {
+    return first("gemini");
+  }
+  if (url.includes("api.openai.com") || url.trim() === "") return first("codex");
+  return first("openaiproxy", "opencode");
 }

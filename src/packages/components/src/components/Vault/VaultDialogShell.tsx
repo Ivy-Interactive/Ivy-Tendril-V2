@@ -34,6 +34,11 @@ export interface VaultDialogShellProps {
  *
  * Focus is moved onto the dialog itself rather than its first tabbable node, so opening a dialog
  * never lands on a destructive confirm.
+ *
+ * A click on the overlay does not dismiss, which is Framework's rule for every dialog it renders
+ * (`Ivy-Framework/src/frontend/src/widgets/dialogs/DialogWidget.tsx`: `onInteractOutside={(e) =>
+ * e.preventDefault()}`). It matters most for `ConfirmVaultDeleteDialog`, where a stray click would
+ * otherwise read as having declined, and for the form dialogs, where it would throw away input.
  */
 export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
   open,
@@ -59,6 +64,7 @@ export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
       data-testid={testId}
       aria-modal="true"
       {...(description === undefined ? { "aria-describedby": undefined } : {})}
+      onInteractOutside={(event) => event.preventDefault()}
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         (event.currentTarget as HTMLElement | null)?.focus();

@@ -40,6 +40,7 @@ export * from "./components/ui/menubar";
 export * from "./components/ui/multiselect";
 export * from "./components/ui/pagination";
 export * from "./components/ui/pagination-variant";
+export * from "./components/ui/panel-layout";
 export * from "./components/ui/popover";
 export * from "./components/ui/progress";
 export * from "./components/ui/radio-group";

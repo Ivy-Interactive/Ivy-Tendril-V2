@@ -1,5 +1,16 @@
-//! The share tunnel: exposing this daemon on a public `*.trycloudflare.com` URL so somebody who is
-//! not on this machine can read a plan and comment on it.
+//! Tunnels: exposing this daemon on a public `*.trycloudflare.com` URL.
+//!
+//! Two of them, matching the two blocks `Apps/Settings/TunnelSetupView.cs` renders:
+//!
+//! - **[`TunnelKind::Share`]** — "Share Tunnel" in V1. A read-only, comment-only view of one plan for
+//!   somebody who is not the operator. Deny-by-default: a capability token bound to the tunnel host and
+//!   to [`crate::share::policy::share_token_allows`], with the daemon's unauthenticated surface refused
+//!   outright on the share host.
+//! - **[`TunnelKind::FullAccess`]** — "Tunnel" in V1. The whole daemon, for reaching your own instance
+//!   from elsewhere. It grants nothing by existing — every route still needs a credential — and it
+//!   refuses to start unless a session password is configured, because the bearer secret lives in
+//!   `.master` on this machine and a password is the only credential a remote caller can hold. See
+//!   [`service::TunnelService::start`].
 //!
 //! A port of the original Tendril's `Services/Tunnel/**` (`ShareTunnelService`, `CloudflaredService`,
 //! `CloudflaredInstaller`, `TunnelSession`, `ChildProcessTracker`, `TunnelConfig`, `TunnelStatus`).
@@ -27,26 +38,33 @@
 //!   to work around a locally poisoned negative-DNS cache. The registered-connection fallback it sits
 //!   next to is ported; the 1.1.1.1 probe is not.
 //!
-//! # Security note: what a share publishes, and what is not yet fenced off
+//! # Security note: what each tunnel publishes, and what is fenced off
 //!
-//! A share puts the daemon's HTTP origin on the public internet. Almost every route needs a bearer
-//! credential, which a visitor does not have, and [`crate::share::policy`] defines the narrow set a
-//! visitor's capability token *should* buy. Two things are true today and are not this module's to fix:
+//! Either tunnel puts the daemon's HTTP origin on the public internet. Almost every route needs a
+//! bearer credential, which nobody on the internet has, and [`crate::share::policy`] defines the narrow
+//! set a share visitor's capability token buys. What is left is the handful of routes that sit *outside*
+//! `auth_middleware` — `/api/ping`, `/api/health`, `/api/auth/login`, `/api/auth/status`, and the
+//! WebViewer proxy (`/__proxy`, `/__view/*`, `/__lib/:file`, `/__capture`, `/__captures/:file`,
+//! `/__resolve`, `/sw.js`) — and `tendril_server::share_exposure` is where they are dealt with:
 //!
-//! 1. **The routes that sit outside the auth layer become publicly reachable.** In `tendril-server`
-//!    those are `/api/ping`, `/api/health`, `/api/auth/login`, `/api/auth/status`, and the WebViewer
-//!    proxy (`/__proxy`, `/__view/*`, `/__lib/:file`, `/__capture`, `/__captures/:file`, `/__resolve`,
-//!    `/sw.js`). The proxy is the one that matters: it is confined to loopback *targets*, which means a
-//!    visitor could use it to reach services listening only on the daemon host's `localhost`.
-//!    [`ShareTunnelService::start`] logs this list every time a share starts, so it is at least never
-//!    silent. The fix is to refuse those routes for a request arriving on the tunnel host, which needs
-//!    a change in `tendril-server`'s router.
-//! 2. **A visitor's capability token is not yet honoured by the API.** It is honoured by the local-file
-//!    guard (which is what makes a plan's images load), but `auth_middleware` does not know about it, so
-//!    every `/api` call from a share page is a `401` until it does. See the report accompanying this
-//!    change for the exact patch.
+//! - **The WebViewer proxy is refused on either tunnel's host.** It is confined to loopback *targets*,
+//!   which on a locally-bound daemon is a restriction and on a published one inverts into a guarantee
+//!   that an anonymous caller can reach services listening only on the daemon host's `localhost`. There
+//!   is no tunnel for which that is acceptable.
+//! - **`/api/auth/login` is refused on a *share* host and allowed on a full-access host.** A reviewer
+//!   has no business logging in; an operator reaching their own daemon from elsewhere has nothing else
+//!   to present. This asymmetry is the reason [`full_state`] is a separate file from [`share_state`]
+//!   rather than one record with a flag.
+//! - **`/api/auth/password` is refused on either host.** Changing the credential is an at-the-machine
+//!   operation.
+//! - **`/api/ping` and `/api/health` stay reachable**, deliberately: they disclose nothing and they are
+//!   how a client tells "daemon is down" from "you are not allowed".
+//!
+//! [`service::TunnelService::start`] logs the exposed list every time either tunnel starts, so it is
+//! never silent.
 
 pub mod config;
+pub mod full_state;
 pub mod installer;
 pub mod registry;
 pub mod service;
@@ -55,18 +73,28 @@ pub mod share_state;
 pub mod status;
 
 pub use config::TunnelConfig;
-pub use service::{ShareTunnelService, TunnelSnapshot, TunnelTimings};
+pub use full_state::FullTunnelSession;
+pub use service::{TunnelService, TunnelSnapshot, TunnelTimings};
 pub use share_state::ShareSession;
-pub use status::TunnelStatus;
+pub use status::{TunnelKind, TunnelStatus};
 
 use std::path::PathBuf;
 
-/// Everything that can go wrong starting or running a share tunnel.
+/// Everything that can go wrong starting or running a tunnel.
 ///
 /// Each variant carries what the operator has to *do*, not just what failed: the message is surfaced
-/// verbatim in the share dialog, which is the only place most users will ever see it.
+/// verbatim in the share dialog and in Settings, which is the only place most users will ever see it.
 #[derive(Debug, thiserror::Error)]
 pub enum TunnelError {
+    /// A [`TunnelKind::FullAccess`] tunnel with no session password configured. Not an environment
+    /// problem and not a bug — a refusal, so the message says what to do about it rather than what
+    /// broke. See [`service::TunnelService::start`] for why this is a refusal and not a warning.
+    #[error(
+        "A full-access tunnel publishes this whole daemon on the public internet, so it needs a \
+password first. Set one under Security & Tunneling, then activate the tunnel."
+    )]
+    PasswordRequired,
+
     /// No `cloudflared` anywhere. The one error a fresh install is most likely to hit, so it names
     /// both places that were searched and both ways to fix it.
     #[error(

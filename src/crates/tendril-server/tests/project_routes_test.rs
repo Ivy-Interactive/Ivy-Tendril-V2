@@ -173,16 +173,18 @@ impl Drop for TestServer {
 /// Seeds a temp `TENDRIL_HOME` with the fixture config **before** constructing `AppState`, which
 /// reads the config at construction time, then serves the real router on an ephemeral loopback port.
 async fn start_test_server(tag: &str) -> TestServer {
+    start_test_server_with_config(tag, SAMPLE_PROJECT_EXTRAS_CONFIG).await
+}
+
+/// As [`start_test_server`], with a caller-supplied `config.yaml` — the sync tests need a project
+/// whose repo path points at a real git repository in a temp directory.
+async fn start_test_server_with_config(tag: &str, config: &str) -> TestServer {
     let tendril_home = std::env::temp_dir().join(format!(
         "tendril-project-routes-test-{tag}-{}",
         uuid::Uuid::new_v4().simple()
     ));
     std::fs::create_dir_all(&tendril_home).unwrap();
-    std::fs::write(
-        tendril_home.join("config.yaml"),
-        SAMPLE_PROJECT_EXTRAS_CONFIG,
-    )
-    .unwrap();
+    std::fs::write(tendril_home.join("config.yaml"), config).unwrap();
 
     let host_str = "127.0.0.1".to_string();
     let tokio_listener = tokio::net::TcpListener::bind(format!("{}:0", host_str))
@@ -447,5 +449,211 @@ async fn test_create_project_persists_extra_keys() {
     assert_all_nine_extras(
         &srv.project_from_disk("ivy-framework"),
         "after POST /api/projects",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/projects/:name/sync
+//
+// The escalation surface for a repository that cannot be fast-forwarded. These go against real git
+// repositories in temp directories, because a diverged branch is a fact about git and a mock would
+// prove nothing about it.
+// ---------------------------------------------------------------------------
+
+/// A repo with a bare `origin` beside it, removed on drop.
+struct SyncGitFixture {
+    root: PathBuf,
+    repo: PathBuf,
+}
+
+impl Drop for SyncGitFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+impl SyncGitFixture {
+    /// A repo one commit behind its origin. `local_commits` commits on top of the rewound branch
+    /// make the histories diverge; zero leaves it plainly fast-forwardable.
+    fn new(label: &str, local_commits: usize) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "tendril-route-sync-{label}-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let repo = root.join(label);
+        let origin = root.join("origin.git");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&origin).unwrap();
+
+        let fixture = Self { root, repo };
+        fixture.git_in(&origin, &["init", "--bare", "-b", "main"]);
+        fixture.git(&["init", "-b", "main"]);
+        fixture.git(&["config", "user.email", "fixture@tendril.test"]);
+        fixture.git(&["config", "user.name", "Tendril Fixture"]);
+        fixture.git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(fixture.repo.join("README.md"), "fixture\n").unwrap();
+        fixture.git(&["add", "."]);
+        fixture.git(&["commit", "-m", "Initial commit"]);
+        let origin_url = origin.to_string_lossy().to_string();
+        fixture.git(&["remote", "add", "origin", &origin_url]);
+        fixture.git(&["push", "-u", "origin", "main"]);
+
+        std::fs::write(fixture.repo.join("ahead.txt"), "ahead\n").unwrap();
+        fixture.git(&["add", "ahead.txt"]);
+        fixture.git(&["commit", "-m", "Commit only origin has"]);
+        fixture.git(&["push", "origin", "main"]);
+        fixture.git(&["reset", "--hard", "HEAD~1"]);
+
+        for i in 0..local_commits {
+            let file = format!("local-{i}.txt");
+            std::fs::write(fixture.repo.join(&file), "local\n").unwrap();
+            fixture.git(&["add", &file]);
+            fixture.git(&["commit", "-m", &format!("Local-only commit {i}")]);
+        }
+
+        fixture
+    }
+
+    fn git(&self, args: &[&str]) -> String {
+        let repo = self.repo.clone();
+        self.git_in(&repo, args)
+    }
+
+    fn git_in(&self, dir: &std::path::Path, args: &[&str]) -> String {
+        let (code, stdout, stderr) =
+            tendril_core::git::service::run_git(args, dir).expect("run git");
+        assert_eq!(code, 0, "git {args:?} failed: {stdout}{stderr}");
+        stdout
+    }
+
+    fn head(&self) -> String {
+        self.git(&["rev-parse", "HEAD"]).trim().to_string()
+    }
+
+    /// A `config.yaml` whose single project points at this fixture's repo.
+    fn config(&self) -> String {
+        format!(
+            "codingAgent: claude\nprojects:\n  - name: SyncProject\n    color: Blue\n    repos:\n      - path: {}\n        baseBranch: main\nverifications: []\n",
+            self.repo.to_string_lossy()
+        )
+    }
+}
+
+#[tokio::test]
+async fn sync_route_fast_forwards_a_repo_that_is_merely_behind() {
+    let fixture = SyncGitFixture::new("behind", 0);
+    let srv = start_test_server_with_config("sync-behind", &fixture.config()).await;
+    let before = fixture.head();
+
+    let (status, body) = srv
+        .send(reqwest::Method::POST, "/SyncProject/sync", json!({}))
+        .await;
+
+    assert_eq!(status, 200, "sync failed: {body}");
+    assert_eq!(body["success"], json!(true));
+    assert_eq!(body["failed"], json!(0));
+    let results = body["results"].as_array().expect("results array");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["success"], json!(true));
+    assert_eq!(
+        results[0]["message"],
+        json!("Fast-forwarded main to origin/main.")
+    );
+    assert_eq!(results[0]["diverged"], json!(false));
+    assert!(results[0]["diagnosticPrompt"].is_null());
+    assert_ne!(fixture.head(), before, "HEAD did not advance");
+}
+
+#[tokio::test]
+async fn sync_route_reports_a_divergence_and_hands_back_the_escalation() {
+    let fixture = SyncGitFixture::new("diverged", 2);
+    let srv = start_test_server_with_config("sync-diverged", &fixture.config()).await;
+    let before = fixture.head();
+
+    let (status, body) = srv
+        .send(reqwest::Method::POST, "/SyncProject/sync", json!({}))
+        .await;
+
+    // A repo that could not be synced is reported in the body, not as an HTTP error: the caller
+    // asked about every repo and a 5xx would discard the results for the ones that worked.
+    assert_eq!(status, 200, "sync should still answer: {body}");
+    assert_eq!(body["success"], json!(false));
+    assert_eq!(body["failed"], json!(1));
+
+    let result = &body["results"][0];
+    assert_eq!(result["success"], json!(false));
+    assert_eq!(
+        result["message"],
+        json!("Fast-forward merge failed for origin/main")
+    );
+    assert_eq!(result["canFixWithAgent"], json!(true));
+    assert_eq!(result["diverged"], json!(true));
+    assert_eq!(result["ahead"], json!(2));
+    assert_eq!(result["behind"], json!(1));
+
+    let prompt = result["diagnosticPrompt"]
+        .as_str()
+        .expect("a diverged repo must carry a diagnostic prompt");
+    assert!(
+        prompt.contains("could not be safely synchronized")
+            && prompt.contains("without losing any work")
+            && prompt.contains("Do NOT force-push")
+            && prompt.contains("do NOT `reset --hard`"),
+        "prompt is not the escalation contract: {prompt}"
+    );
+
+    // The route resolved nothing. That is the whole design: it describes the divergence and stops.
+    assert_eq!(
+        fixture.head(),
+        before,
+        "the route moved HEAD on a divergence"
+    );
+    assert!(
+        fixture.git(&["status", "--porcelain"]).trim().is_empty(),
+        "the route left the working tree dirty"
+    );
+    assert!(
+        fixture.git(&["stash", "list"]).trim().is_empty(),
+        "the route stashed the operator's work"
+    );
+}
+
+#[tokio::test]
+async fn sync_route_404s_an_unknown_project_and_reports_an_empty_one() {
+    let fixture = SyncGitFixture::new("empty", 0);
+    // `SyncProject` plus a repo-less second project, so both "nothing to do" shapes are reachable.
+    let config = format!(
+        "codingAgent: claude\nprojects:\n  - name: SyncProject\n    color: Blue\n    repos:\n      - path: {}\n        baseBranch: main\n  - name: NoRepos\n    color: Green\n    repos: []\nverifications: []\n",
+        fixture.repo.to_string_lossy()
+    );
+    let srv = start_test_server_with_config("sync-empty", &config).await;
+
+    let (status, body) = srv
+        .send(reqwest::Method::POST, "/NoSuchProject/sync", json!({}))
+        .await;
+    assert_eq!(status, 404, "unexpected body: {body}");
+
+    // A project with no repos is nothing to do, not a failure.
+    let (status, body) = srv
+        .send(reqwest::Method::POST, "/NoRepos/sync", json!({}))
+        .await;
+    assert_eq!(status, 200, "unexpected body: {body}");
+    assert_eq!(body["success"], json!(true));
+    assert_eq!(body["total"], json!(0));
+    assert_eq!(body["message"], json!("No repositories found in project."));
+
+    // An unmatched `repo` filter selects nothing, reported the same way rather than as an error.
+    let (status, body) = srv
+        .send(
+            reqwest::Method::POST,
+            "/SyncProject/sync?repo=no-such-repo",
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, 200, "unexpected body: {body}");
+    assert_eq!(body["success"], json!(true));
+    assert_eq!(
+        body["message"],
+        json!("No matching repositories found to sync.")
     );
 }

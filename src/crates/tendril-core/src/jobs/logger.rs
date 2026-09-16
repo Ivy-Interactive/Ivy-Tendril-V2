@@ -153,18 +153,75 @@ pub fn find_log_file(tendril_home: &Path, job_id: &str, suffix: &str) -> Option<
     None
 }
 
+/// How much is read at a time while looking backwards for the start of the tail.
+const TAIL_SCAN_CHUNK: usize = 8 * 1024;
+
+/// Byte offset at which the last `tail` complete lines of a `len`-byte file begin.
+///
+/// Found by walking backwards from the end counting newlines, so the cost is the size of the window
+/// asked for rather than the size of the file. That is the whole point: an agent's `.eventwire.jsonl`
+/// is 6.9MB at 100k lines, and every caller of [`read_eventwire_log`] with a `tail` — the log route,
+/// the recovery pass that wants the last 20 lines of every interrupted job — was reading all of it and
+/// throwing away everything but the window. Reading 6.9MB to answer a question about 2KB is the
+/// fetch-side half of "100k lines loaded to display 50".
+///
+/// A newline at the very last byte terminates the final line rather than starting another, so it is
+/// not counted; a `\n` cannot occur inside a multi-byte UTF-8 sequence, so cutting the file here can
+/// never split a character.
+fn tail_offset(file: &mut std::fs::File, len: u64, tail: usize) -> Result<u64> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    if tail == 0 {
+        return Ok(len);
+    }
+
+    let mut found = 0usize;
+    let mut pos = len;
+    let mut buf = vec![0u8; TAIL_SCAN_CHUNK];
+
+    while pos > 0 {
+        let take = std::cmp::min(TAIL_SCAN_CHUNK as u64, pos) as usize;
+        pos -= take as u64;
+        file.seek(SeekFrom::Start(pos))?;
+        file.read_exact(&mut buf[..take])?;
+        for i in (0..take).rev() {
+            if buf[i] != b'\n' {
+                continue;
+            }
+            let at = pos + i as u64;
+            if at + 1 == len {
+                continue;
+            }
+            found += 1;
+            if found == tail {
+                return Ok(at + 1);
+            }
+        }
+    }
+
+    // Fewer lines in the file than were asked for: the whole file *is* the tail.
+    Ok(0)
+}
+
+/// The last `tail` lines of a file, newline stripped, or every line when `tail` is `None`.
 fn read_lines_tail(path: &Path, tail: Option<usize>) -> Result<Vec<String>> {
-    use std::io::BufRead;
-    let file = std::fs::File::open(path)?;
+    use std::io::{BufRead, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path)?;
+    let offset = match tail {
+        // The caller asked for the file, so it reads the file.
+        None => 0,
+        Some(n) => {
+            let len = file.metadata()?.len();
+            tail_offset(&mut file, len, n)?
+        }
+    };
+    file.seek(SeekFrom::Start(offset))?;
+
     let reader = std::io::BufReader::new(file);
     let mut lines = Vec::new();
     for line in reader.lines() {
         lines.push(line?);
-    }
-    if let Some(n) = tail {
-        if lines.len() > n {
-            lines = lines[lines.len() - n..].to_vec();
-        }
     }
     Ok(lines)
 }
@@ -259,6 +316,12 @@ pub fn read_raw_log(
     }
 }
 
+/// A job's eventwire log, or its last `tail` lines.
+///
+/// `tail` is a *window*, and since [`read_lines_tail`] finds it by walking back from the end of the
+/// file, asking for a window now costs the window. `None` still reads and returns the whole log, which
+/// for a long run is megabytes: [`read_lines_from`] is what a follower should use, and a caller that
+/// only needs the end of the run should say so.
 pub fn read_eventwire_log(
     tendril_home: &Path,
     job_id: &str,
@@ -269,5 +332,122 @@ pub fn read_eventwire_log(
         Ok(Some(lines))
     } else {
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A directory of its own per test, the way the crate's other log tests get one.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(label: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "tendril-log-tail-{}-{}",
+                label,
+                uuid::Uuid::new_v4().simple()
+            ));
+            std::fs::create_dir_all(&dir).expect("create temp dir");
+            Self(dir)
+        }
+
+        fn file(&self, name: &str, content: &str) -> PathBuf {
+            let path = self.0.join(name);
+            let mut file = std::fs::File::create(&path).expect("create file");
+            file.write_all(content.as_bytes()).expect("write file");
+            path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn tail_of(content: &str, tail: Option<usize>) -> Vec<String> {
+        let dir = TempDir::new("case");
+        let path = dir.file("log.jsonl", content);
+        read_lines_tail(&path, tail).expect("read tail")
+    }
+
+    #[test]
+    fn tail_returns_the_last_n_lines_in_order() {
+        assert_eq!(tail_of("a\nb\nc\nd\n", Some(2)), vec!["c", "d"]);
+        assert_eq!(tail_of("a\nb\nc\nd", Some(2)), vec!["c", "d"]);
+        assert_eq!(tail_of("a\nb\nc\nd\n", Some(1)), vec!["d"]);
+    }
+
+    #[test]
+    fn a_window_larger_than_the_file_is_the_whole_file() {
+        assert_eq!(tail_of("a\nb\n", Some(9)), vec!["a", "b"]);
+        assert_eq!(tail_of("only line", Some(9)), vec!["only line"]);
+    }
+
+    #[test]
+    fn no_window_is_every_line() {
+        assert_eq!(tail_of("a\nb\nc\n", None), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn an_empty_window_and_an_empty_file_are_both_nothing() {
+        assert!(tail_of("a\nb\n", Some(0)).is_empty());
+        assert!(tail_of("", Some(3)).is_empty());
+        assert!(tail_of("", None).is_empty());
+    }
+
+    #[test]
+    fn crlf_terminators_are_stripped_like_lf_ones() {
+        assert_eq!(tail_of("a\r\nb\r\nc\r\n", Some(2)), vec!["b", "c"]);
+    }
+
+    #[test]
+    fn multi_byte_characters_survive_the_cut() {
+        // A `\n` never occurs inside a UTF-8 sequence, so a cut at one cannot split a character —
+        // but only if the scan cuts *at* newlines, which is what this pins.
+        assert_eq!(tail_of("é\n数\n🙂\n", Some(2)), vec!["数", "🙂"]);
+    }
+
+    #[test]
+    fn a_window_spanning_more_than_one_scan_chunk_is_still_correct() {
+        // Lines long enough that two of them exceed `TAIL_SCAN_CHUNK`, so the backwards walk has to
+        // carry its count across chunk boundaries.
+        let long = "x".repeat(TAIL_SCAN_CHUNK);
+        let content = format!("{long}\n{long}\n{long}\n");
+        let lines = tail_of(&content, Some(2));
+        assert_eq!(lines.len(), 2);
+        assert!(lines.iter().all(|line| line.len() == TAIL_SCAN_CHUNK));
+    }
+
+    #[test]
+    fn a_window_costs_the_window_rather_than_the_file() {
+        // The fetch-side defect this replaced: the whole log was read into a `Vec<String>` and all but
+        // the last few entries thrown away. A 200k-line log is ~2.6MB, and answering `tail = 50`
+        // against it must touch kilobytes, not megabytes — which is exactly what the offset the scan
+        // lands on measures.
+        let dir = TempDir::new("big");
+        let mut content = String::new();
+        for i in 0..200_000 {
+            content.push_str(&format!("{{\"kind\":\"text\",\"text\":\"line {i}\"}}\n"));
+        }
+        let path = dir.file("big.jsonl", &content);
+
+        let len = std::fs::metadata(&path).expect("metadata").len();
+        assert!(len > 2_000_000, "fixture should be megabytes, was {len}");
+
+        let mut file = std::fs::File::open(&path).expect("open");
+        let offset = tail_offset(&mut file, len, 50).expect("tail offset");
+        assert!(
+            len - offset < 4 * 1024,
+            "reading the last 50 lines should start within a few KB of the end, not {} bytes back",
+            len - offset
+        );
+
+        let lines = read_lines_tail(&path, Some(50)).expect("read tail");
+        assert_eq!(lines.len(), 50);
+        assert!(lines[49].contains("line 199999"));
+        assert!(lines[0].contains("line 199950"));
     }
 }

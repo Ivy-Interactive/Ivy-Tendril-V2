@@ -12,9 +12,17 @@ export {
 } from "./column-filters";
 export { DataTableCellEditor, type DataTableCellEditorProps } from "./data-table-cell-editor";
 export {
-  DataTableColumnFilterControl,
-  type DataTableColumnFilterProps,
-} from "./data-table-column-filter";
+  DataTableFilterExpression,
+  type DataTableFilterExpressionComponent,
+  type DataTableFilterExpressionProps,
+} from "./data-table-filter-expression";
+export {
+  filterExpressionColumns,
+  filterExpressionPlaceholder,
+  parseFilterExpression,
+  type FilterExpressionColumn,
+  type FilterExpressionResult,
+} from "./filter-expression";
 export {
   DataTableColumnHeader,
   type DataTableColumnHeaderComponent,
@@ -40,6 +48,7 @@ export {
   allOf,
   anyOf,
   not,
+  resolveRemoteSort,
   sortToRemote,
   whereColumn,
   type RemoteTableAggregation,
@@ -50,6 +59,7 @@ export {
   type RemoteTableFilterArg,
   type RemoteTableFilterFunction,
   type RemoteTableFilterGroup,
+  type RemoteSortColumn,
   type RemoteTablePage,
   type RemoteTableRequest,
   type RemoteTableSort,
@@ -133,4 +143,9 @@ export {
   toDisplayString,
 } from "./utils";
 
-export { dataTableCellAlignVariant, dataTableRowVariant, dataTableToolbarVariant } from "./variant";
+export {
+  dataTableCellAlignVariant,
+  dataTableLinkClass,
+  dataTableRowVariant,
+  dataTableToolbarVariant,
+} from "./variant";

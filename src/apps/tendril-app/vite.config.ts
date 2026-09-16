@@ -77,6 +77,7 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 5173,
     strictPort: true,
+    hmr: process.env.NO_HMR === "1" || process.env.VITE_HMR === "false" ? false : undefined,
     fs: {
       allow: [path.resolve(__dirname), path.resolve(__dirname, "../../packages/components")],
     },

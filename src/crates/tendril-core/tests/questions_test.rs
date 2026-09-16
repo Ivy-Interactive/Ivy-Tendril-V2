@@ -92,6 +92,244 @@ title: Should not be parsed
     assert_eq!(blocks.len(), 0);
 }
 
+/// The shape of plan 00681: an option's `description: |` block scalar illustrates itself with a
+/// ` ```rust ` sample. The sample's own closing fence is indented, as a block scalar's content must
+/// be, and CommonMark only lets a fence be closed from three spaces or less — so it is content, and
+/// every option after it survives.
+///
+/// This was silent truncation. The block closed at the inner fence, one option reached the
+/// validator, and the answer was refused for `question must have between 2 and 4 options` naming a
+/// block the user could see two options in.
+#[test]
+fn test_indented_code_sample_inside_description_does_not_close_the_block() {
+    let markdown = r#"### Pagination guard
+
+```questions
+- id: pagination-panic
+  title: Fix the pagination underflow, or pin the current behaviour?
+  header: Pagination
+  optional: true
+  description: |
+    A test cannot assert a page count without changing the formula.
+  options:
+    - title: Fix the formula
+      value: fix
+      recommended: true
+      description: |
+        Replace the expression with
+
+        ```rust
+        paging.total_items.div_ceil(paging.page_size.max(1)).max(1),
+        ```
+
+        `u32::div_ceil` is stable and also settles clippy's `manual_div_ceil`.
+    - title: Pin it with should_panic
+      value: pin
+      description: |
+        Leave the formula alone and document the bug instead.
+```
+
+Trailing prose that is outside the block.
+"#;
+
+    let blocks = parse_question_blocks(markdown);
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].start_line, 3);
+    assert_eq!(blocks[0].end_line, 26);
+    assert_eq!(blocks[0].parse_error, None);
+    assert!(!blocks[0].is_legacy);
+    assert_eq!(blocks[0].questions.len(), 1);
+    assert_eq!(blocks[0].questions[0].options.len(), 2);
+    assert_eq!(blocks[0].questions[0].options[1].value, "pin");
+
+    // The sample survives inside the description it belongs to, rather than being cut off with it.
+    let description = blocks[0].questions[0].options[0]
+        .description
+        .as_deref()
+        .expect("first option keeps its description");
+    assert!(description.contains("```rust"));
+    assert!(description.contains("manual_div_ceil"));
+
+    // Two options is legal, so the block that used to be refused now validates clean.
+    assert!(validate_question_blocks(&blocks).is_empty());
+
+    // And the write path, which bounds its edits by the same `end_line`, puts the answer after the
+    // last option instead of inside the code sample.
+    let mut answers = HashMap::new();
+    answers.insert("pagination-panic".to_string(), vec!["fix".to_string()]);
+    let answered = apply_question_answers(markdown, &answers).expect("answer applies");
+    assert!(answered.contains(
+        "        Leave the formula alone and document the bug instead.\n  answer: fix\n```"
+    ));
+
+    // Round-trip: parsing what was written sees the same block, and answering again is idempotent.
+    let reparsed = parse_question_blocks(&answered);
+    assert_eq!(reparsed.len(), 1);
+    assert_eq!(reparsed[0].questions.len(), 1);
+    assert_eq!(reparsed[0].questions[0].options.len(), 2);
+    assert!(validate_question_blocks(&reparsed).is_empty());
+    assert_eq!(
+        apply_question_answers(&answered, &answers).expect("re-answer applies"),
+        answered
+    );
+}
+
+/// The four-backtick outer form the reference document recommends. It is belt and braces now that
+/// indentation is honoured, but it is what agents are told to write, so it has to work.
+#[test]
+fn test_four_backtick_block_survives_a_three_backtick_sample() {
+    let markdown = r#"````questions
+- id: sample-shape
+  title: Which shape?
+  options:
+    - title: Struct
+      value: struct
+      description: |
+        Like this:
+
+        ```rust
+        struct Paging { page: u32 }
+        ```
+    - title: Tuple
+      value: tuple
+````
+"#;
+
+    let blocks = parse_question_blocks(markdown);
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].fence_len, 4);
+    assert_eq!(blocks[0].end_line, 15);
+    assert_eq!(blocks[0].parse_error, None);
+    assert_eq!(blocks[0].questions[0].options.len(), 2);
+
+    // And the length rule alone carries a bare run at column zero, where the indentation rule cannot
+    // help. Such a body is not valid YAML inside a block scalar, so this is the pre-schema
+    // plain-text form — but the fence geometry is the point: the block ends at its own `````.
+    let legacy = r#"````questions
+Here is how a fenced sample looks:
+
+```
+paging.total_items.div_ceil(paging.page_size)
+```
+
+That is all.
+````
+"#;
+    let blocks = parse_question_blocks(legacy);
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].end_line, 9);
+    assert!(blocks[0].is_legacy);
+}
+
+/// An inner fence *longer* than the outer one does close it, because CommonMark says a run of at
+/// least the opener's length closes a fence wherever it sits. That is the format's own rule rather
+/// than a defect in the scanner, and it is why the reference document tells agents to open the block
+/// with more backticks than anything inside it.
+///
+/// Pinned so the behaviour is a decision rather than an accident: nothing here can be fixed in the
+/// scanner without disagreeing with every CommonMark renderer that displays the same plan.
+#[test]
+fn test_inner_fence_longer_than_the_opener_closes_the_block() {
+    let markdown = r#"```questions
+- id: too-long
+  title: Truncated?
+  description: |
+   ````
+   A sample fenced longer than the block that holds it.
+   ````
+  options:
+    - title: A
+      value: a
+    - title: B
+      value: b
+```
+"#;
+
+    let blocks = parse_question_blocks(markdown);
+    assert_eq!(blocks.len(), 1);
+    // A run of four backticks closes a three-backtick opener, so the block ends on line 5.
+    assert_eq!(blocks[0].end_line, 5);
+    assert_eq!(blocks[0].questions.len(), 1);
+    assert!(blocks[0].questions[0].options.is_empty());
+}
+
+/// A `questions` fence that is never closed runs to the end of the document, so its questions are
+/// still read and still validated. Dropping it — which is what a scanner that requires a close does
+/// — would silently discard every question in it.
+#[test]
+fn test_unterminated_block_runs_to_end_of_document() {
+    // The inner sample is opened and never closed. Being indented, it is content either way, so the
+    // block simply has no closing fence of its own.
+    let markdown = r#"# A plan
+
+```questions
+- id: unclosed
+  title: Which one?
+  options:
+    - title: A
+      value: a
+      description: |
+        ```rust
+        let a = 1;
+    - title: B
+      value: b
+"#;
+
+    let blocks = parse_question_blocks(markdown);
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].start_line, 3);
+    assert_eq!(blocks[0].end_line, 13);
+    assert_eq!(blocks[0].questions.len(), 1);
+    assert_eq!(blocks[0].questions[0].options.len(), 2);
+    assert!(validate_question_blocks(&blocks).is_empty());
+}
+
+/// A tilde fence is a different delimiter, so a backtick run inside it is content and a `questions`
+/// block inside it is documentation.
+#[test]
+fn test_delimiters_do_not_close_each_other() {
+    let tilde_block = r#"~~~questions
+- id: tilde-block
+  title: Which one?
+  description: |
+    ```
+    A backtick run cannot close a tilde fence.
+    ```
+  options:
+    - title: A
+      value: a
+    - title: B
+      value: b
+~~~
+"#;
+    let blocks = parse_question_blocks(tilde_block);
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].end_line, 13);
+    assert_eq!(blocks[0].questions[0].options.len(), 2);
+
+    let inside_tilde = r#"~~~
+```questions
+- id: documented
+  title: An example, not a real question.
+```
+~~~
+"#;
+    assert_eq!(parse_question_blocks(inside_tilde).len(), 0);
+}
+
+/// An indented `questions` fence is dedented by its own indentation, so its YAML reaches the parser
+/// at column zero.
+#[test]
+fn test_indented_block_is_dedented() {
+    let markdown = "Context:\n\n   ```questions\n   - id: indented\n     title: Which one?\n     options:\n       - title: A\n         value: a\n       - title: B\n         value: b\n   ```\n";
+
+    let blocks = parse_question_blocks(markdown);
+    assert_eq!(blocks.len(), 1);
+    assert!(blocks[0].raw_body.starts_with("- id: indented"));
+    assert_eq!(blocks[0].questions.len(), 1);
+    assert_eq!(blocks[0].questions[0].options.len(), 2);
+}
+
 #[test]
 fn test_lint_rules() {
     // Duplicate question IDs across document

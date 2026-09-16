@@ -15,6 +15,7 @@ import { AlertBlockquote } from "./AlertBlockquote";
 import { ImageRenderer } from "./ImageRenderer";
 import { isLocalFileUrl, transformLocalFileUrl } from "./localFiles";
 import { getMarkdownPlugins } from "@/lib/math";
+import { useMathReady } from "@/hooks/use-math-ready";
 import { tagQuestionBlocks } from "./questionsSource";
 import { QuestionsAnswerContext } from "./questionsContext";
 import type { AnswerCallback } from "./questionsContext";
@@ -461,8 +462,12 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
   }, []);
 
   // Math plugins are added only when the content actually contains math
-  // delimiters, so plain plan markdown skips the extra KaTeX pass entirely.
-  const plugins = useMemo(() => getMarkdownPlugins(content), [content]);
+  // delimiters, so plain plan markdown skips the extra KaTeX pass entirely - and, since KaTeX is
+  // loaded on demand, does not fetch it either. `mathReady` is a dependency rather than decoration:
+  // the first render of a plan with maths in it gets a plugin list built before the import resolved,
+  // and this is what rebuilds it afterwards.
+  const mathReady = useMathReady();
+  const plugins = useMemo(() => getMarkdownPlugins(content), [content, mathReady]);
 
   // Each top-level `questions` fence gets its index stamped onto its info line, which is how the
   // renderer learns which block it is dispatching. The info line is never rendered, so annotation

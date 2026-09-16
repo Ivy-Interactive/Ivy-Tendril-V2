@@ -1,5 +1,6 @@
 import React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { ivyColorVar } from "@ivy-interactive/components";
 import { Badge } from "@ivy-interactive/components/ui";
 
 /**
@@ -85,17 +86,26 @@ export const SidebarExpandableRow: React.FC<{
  * `SidebarListRow.BuildSubItem`: a 1rem indent, then either an icon or a small colour box, then the
  * label.
  *
- * V1 fills that box with the project's Ivy `Colors` value (`config.GetProjectColor`). V2's palette is
- * generated and carries no per-name colour token, and the parity contract forbids adding one, so the
- * marker stays a neutral token - the same decision `InboxView` took for its project sub-items.
+ * The colour box is V1's, literally: `new Box().Background(color).BorderRadius(BorderRadius.Rounded)
+ * .Width(Size.Units(3)).Height(Size.Units(3))` — a 0.75rem square with Ivy's `Rounded` radius, which
+ * `styles.ts` resolves to 0.5rem, so it reads as a dot without being a circle. `Size.Units(3)` and
+ * that radius are why this is `size-3 rounded-[0.5rem]` rather than `size-2 rounded-full`.
+ *
+ * `color` is an Ivy `Colors` name, resolved through the package's `ivyColorVar` — the same resolver
+ * `Badge` and `TuiBadge` use, so there is exactly one name-to-token mapping in the codebase.
+ *
+ * A row with neither an icon nor a colour keeps the old neutral marker: `SettingsApp` also builds
+ * sub-items that are not projects, and they have no colour to show.
  */
 export const SidebarSubItem: React.FC<{
   label: string;
   icon?: IconComponent;
+  /** An Ivy `Colors` name, e.g. the project's configured colour. */
+  color?: string;
   selected?: boolean;
   onClick: () => void;
   testId?: string;
-}> = ({ label, icon: IconCmp, selected = false, onClick, testId }) => (
+}> = ({ label, icon: IconCmp, color, selected = false, onClick, testId }) => (
   <button
     type="button"
     role="tab"
@@ -108,6 +118,14 @@ export const SidebarSubItem: React.FC<{
   >
     {IconCmp ? (
       <IconCmp className="size-4 shrink-0" aria-hidden />
+    ) : color ? (
+      <span
+        aria-hidden
+        data-testid={testId ? `${testId}-dot` : undefined}
+        data-color={color}
+        className="size-3 shrink-0 rounded-[0.5rem]"
+        style={{ backgroundColor: ivyColorVar(color) }}
+      />
     ) : (
       <span
         aria-hidden

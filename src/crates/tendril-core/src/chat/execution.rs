@@ -1,3 +1,4 @@
+use crate::agents::eventwire::{event_wire_text, EventWireNormalizer};
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
 use crate::agents::reconcile::build_missing_result_lines;
 use crate::agents::runner::{
@@ -39,6 +40,20 @@ pub enum ChatEvent {
         message_id: String,
         delta: String,
     },
+    /// One eventwire line of a turn in flight — a tool call, its result, thinking, or prose.
+    ///
+    /// The port of V1's `ChatExecutionService.StreamLineEmitted`, which is what makes a turn's tool
+    /// calls appear *as they happen*: the client appends the line to the message's `rawStream`, which
+    /// is what `TurnActivity` renders. Without it the activity existed only on the copy re-read from
+    /// the daemon once the turn had already finished.
+    #[serde(rename = "chat.stream_event")]
+    StreamEvent {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        #[serde(rename = "messageId")]
+        message_id: String,
+        line: String,
+    },
     #[serde(rename = "chat.generating_state")]
     GeneratingState {
         #[serde(rename = "sessionId")]
@@ -75,6 +90,13 @@ pub struct ChatTurnOptions {
     pub model_id: Option<String>,
     pub effort: Option<String>,
     pub working_directory: Option<PathBuf>,
+    /// Who the turn's message is from: `user` (the default) or `system` for an event Tendril injected
+    /// — a job finishing, a plan moving, a pull request opening.
+    ///
+    /// It decides three things, all of them V1's (`ChatExecutionService.SendMessageAsync`): the role the
+    /// message is stored under, which prompt section the agent is given (`# Current Event Notification`
+    /// rather than `# Current User Request`), and whether the session may be auto-named from it.
+    pub role: Option<String>,
 }
 
 pub struct ChatExecutionManager {
@@ -287,6 +309,81 @@ impl ChatExecutionManager {
         map.remove(session_id);
     }
 
+    /// The jobs this session set running, as the prompt describes them.
+    ///
+    /// Read straight from SQLite rather than through [`crate::jobs::manager::JobManager`]: the chat
+    /// manager has no handle on it and does not need one — this is a read of six columns, and going
+    /// through the manager would couple the two lifecycles for nothing. A job that cannot be read is
+    /// skipped rather than guessed at: a prompt claiming a job is `Pending` when the row is gone would
+    /// be worse than not mentioning it.
+    ///
+    /// The ids come from the cached session, which is where `spawned_job_ids` is maintained as the
+    /// stream reports them, so a job started earlier in this same turn is already listed.
+    pub async fn spawned_jobs(&self, session_id: &str) -> Vec<ChatSpawnedJob> {
+        let ids = match self.sessions.read().await.get(session_id) {
+            Some(session) => session.spawned_job_ids.clone(),
+            None => Vec::new(),
+        };
+        if ids.is_empty() {
+            return Vec::new();
+        }
+
+        let db_path = crate::config::get_database_path(&self.tendril_home);
+        let Ok(conn) = crate::db::open_database(&db_path) else {
+            return Vec::new();
+        };
+
+        ids.iter()
+            .filter_map(|id| crate::db::jobs::get_job(&conn, id).ok().flatten())
+            .map(|job| ChatSpawnedJob {
+                id: job.id,
+                job_type: job.job_type,
+                status: format!("{:?}", job.status),
+                plan_id: job.reported_plan_id,
+                plan_title: job.reported_plan_title,
+                status_message: job.status_message,
+            })
+            .collect()
+    }
+
+    /// Injects an event into a session and lets the agent react to it — V1's
+    /// `SendMessageAsync(sessionId, content, role: "system")`.
+    ///
+    /// This is the half that was missing: the daemon could already *store* a system message into a
+    /// plan's chats (`storage::broadcast_system_message_to_plan_sessions`), but nothing ran a turn
+    /// afterwards, so the agent never saw the event and never advised on it.
+    ///
+    /// A session that is mid-turn is left alone rather than interrupted: the event is stored so the
+    /// thread and the *next* turn's replayed history both carry it, which is where V1's queue would
+    /// have put it anyway.
+    pub async fn notify_event(self: &Arc<Self>, session_id: &str, content: &str) -> Result<bool> {
+        if self.is_generating(session_id).await {
+            let message = ChatMessage {
+                id: Uuid::new_v4().to_string(),
+                role: "system".to_string(),
+                content: content.to_string(),
+                timestamp: Utc::now(),
+                agent_id: None,
+                model_id: None,
+                raw_stream: None,
+                effort: None,
+            };
+            self.add_message(session_id, message).await?;
+            return Ok(false);
+        }
+
+        self.start_session_turn(
+            session_id,
+            content,
+            ChatTurnOptions {
+                role: Some("system".to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
+        Ok(true)
+    }
+
     /// Rewrites a queued item's prompt in place, keeping its position in the queue. Returns the
     /// updated item, or `None` when the session has no item with that id.
     pub async fn update_queued_message(
@@ -382,11 +479,18 @@ impl ChatExecutionManager {
         // request is added separately below.
         let history_before = session.messages.clone();
 
+        let role = options.role.clone().unwrap_or_else(|| "user".to_string());
+        let is_event = is_event_role(&role);
+
         // If title is still default, write a synchronous snippet immediately (so the sidebar
         // never flashes "New Chat") and remember it so the naming task below can tell an
         // auto-generated title apart from a user rename that lands during its 30s budget.
+        //
+        // Only a *user* turn may name a session, which is V1's `isFirstUserMessage`. An injected job
+        // event arriving before the user has said anything would otherwise become the session's name —
+        // a chat called "[System Event] Pull request for plan …".
         let mut auto_title_snippet: Option<String> = None;
-        if is_default_chat_title(&session.title) && !user_prompt.trim().is_empty() {
+        if !is_event && is_default_chat_title(&session.title) && !user_prompt.trim().is_empty() {
             let snippet: String = user_prompt.trim().chars().take(40).collect();
             let snippet = sanitize_title(&snippet);
             session.title = snippet.clone();
@@ -396,7 +500,9 @@ impl ChatExecutionManager {
         // Add user message
         let user_msg = ChatMessage {
             id: Uuid::new_v4().to_string(),
-            role: "user".to_string(),
+            // An injected event is stored as `system`, so the thread renders it as a one-line timeline
+            // note rather than as something the user said (`ChatMessageRow`'s `formatSystemEvent`).
+            role: role.clone(),
             content: user_prompt.to_string(),
             timestamp: now,
             agent_id: None,
@@ -479,6 +585,8 @@ impl ChatExecutionManager {
         // Spawn async runner task
         tokio::spawn(async move {
             let mut current_prompt = initial_prompt;
+            // Only the turn that was injected is an event: a prompt dequeued afterwards is the user's.
+            let mut current_role = role;
             let mut current_history = history_before;
             let mut current_assistant_msg_id = initial_assistant_msg_id;
             let current_options = options;
@@ -511,7 +619,13 @@ impl ChatExecutionManager {
                 // reaches the agent, as the environment variable V1 sets, so `tendril job start
                 // --chat-session $TENDRIL_CHAT_SESSION_ID` keeps working.
                 let launch_config = AgentLaunchConfig {
-                    prompt: build_chat_agent_prompt(&current_history, &current_prompt, &s_id),
+                    prompt: build_chat_agent_prompt(
+                        &current_history,
+                        &current_prompt,
+                        &s_id,
+                        &current_role,
+                        &mgr.spawned_jobs(&s_id).await,
+                    ),
                     working_directory: current_options
                         .working_directory
                         .clone()
@@ -545,6 +659,9 @@ impl ChatExecutionManager {
                 let mut accumulated_text = String::new();
                 let mut raw_stream_lines = Vec::new();
                 let mut stderr_tail: Vec<String> = Vec::new();
+                // One per run: Antigravity identifies a tool step by `step_index`, so tying its
+                // `ACTIVE` and `DONE` halves together is state that lives for the length of the turn.
+                let mut normalizer = EventWireNormalizer::new();
                 let mut is_dirty = false;
                 let mut persist_ticker = tokio::time::interval(persist_interval);
                 persist_ticker.tick().await; // consume initial tick
@@ -554,8 +671,6 @@ impl ChatExecutionManager {
                         opt_evt = line_rx.recv() => {
                             match opt_evt {
                                 Some(evt) => {
-                                    raw_stream_lines.push(evt.raw_line.clone());
-
                                     // Where a CLI writes its own refusals ("Session ID … is
                                     // already in use", an auth failure, an unknown flag). Kept so
                                     // a turn that produced no response can say why instead of
@@ -589,17 +704,32 @@ impl ChatExecutionManager {
                                         }
                                     }
 
-                                    // Extract delta text
-                                    let delta = extract_delta(&evt.raw_line, evt.is_stderr);
-                                    if !delta.is_empty() {
-                                        accumulated_text.push_str(&delta);
+                                    // The provider's line becomes one or more eventwire events, which
+                                    // is the only shape `TurnActivity`/`AgentViewer` can render, and
+                                    // the only place a turn's prose can be read from uniformly.
+                                    for wire_line in normalizer.normalize(&evt.raw_line, evt.is_stderr) {
+                                        raw_stream_lines.push(wire_line.clone());
                                         is_dirty = true;
 
-                                        let _ = mgr.event_tx.send(ChatEvent::StreamDelta {
+                                        // Published per event so tool calls appear *while* the turn
+                                        // runs, as V1's `StreamLineEmitted` does. Without this the
+                                        // activity only existed on the message re-read at the end.
+                                        let _ = mgr.event_tx.send(ChatEvent::StreamEvent {
                                             session_id: s_id.clone(),
                                             message_id: current_assistant_msg_id.clone(),
-                                            delta,
+                                            line: wire_line.clone(),
                                         });
+
+                                        if let Some(delta) =
+                                            next_text_delta(&accumulated_text, &wire_line)
+                                        {
+                                            accumulated_text.push_str(&delta);
+                                            let _ = mgr.event_tx.send(ChatEvent::StreamDelta {
+                                                session_id: s_id.clone(),
+                                                message_id: current_assistant_msg_id.clone(),
+                                                delta,
+                                            });
+                                        }
                                     }
                                 }
                                 None => {
@@ -650,6 +780,7 @@ impl ChatExecutionManager {
                 // Check if there are queued messages to dequeue
                 if let Some(next_item) = mgr.dequeue_message(&s_id).await {
                     current_prompt = next_item.prompt;
+                    current_role = "user".to_string();
                     let next_a_id = Uuid::new_v4().to_string();
                     current_assistant_msg_id = next_a_id.clone();
                     let now = Utc::now();
@@ -770,9 +901,16 @@ impl ChatExecutionManager {
             .await
         });
 
+        // The same normalisation the turn itself uses, so the naming agent's answer is read out of
+        // whatever shape its provider emits rather than only the one shape a guess covered.
+        let mut normalizer = EventWireNormalizer::new();
         let mut accumulated_text = String::new();
         while let Some(evt) = line_rx.recv().await {
-            accumulated_text.push_str(&extract_delta(&evt.raw_line, evt.is_stderr));
+            for wire_line in normalizer.normalize(&evt.raw_line, evt.is_stderr) {
+                if let Some(delta) = next_text_delta(&accumulated_text, &wire_line) {
+                    accumulated_text.push_str(&delta);
+                }
+            }
         }
 
         let outcome = match run_handle.await {
@@ -979,12 +1117,21 @@ impl TurnOutcome {
         }
     }
 
-    /// What to tell the user went wrong, as a headline and the detail behind it.
+    /// Why the turn failed, and the part of it the agent may already have said itself.
     ///
-    /// Most specific source first: the spawn failure, then the reason we stopped it, then the agent's
-    /// own structured error event, then its stderr, and only then the bare exit code (V1's
-    /// `"Agent execution completed with status code …"` floor). The detail is returned separately so a
-    /// caller can drop it when the agent already said the same thing out loud.
+    /// Most specific source first: the spawn failure, the reason we stopped it, the agent's own
+    /// structured error event, then its stderr. Only when none of those exist does the exit code
+    /// become the answer — V1's `result.Error ?? "Agent execution completed with status code N"`
+    /// floor, and in that order for the same reason.
+    ///
+    /// A reason **stands alone**: it is not introduced by the exit code. A provider that answers
+    /// `503 No capacity available` on a process that exits 0 produced
+    /// "Agent execution completed with status code 0: API error …", which reads as though a clean exit
+    /// were the explanation for a turn that plainly failed. The code is only mentioned when it is the
+    /// only thing known.
+    ///
+    /// The second element is the reason on its own, so a caller can tell whether the agent's own
+    /// output already contains it.
     fn failure_parts(&self, raw_lines: &[String]) -> (String, Option<String>) {
         if let Some(err) = &self.launch_error {
             return (err.clone(), None);
@@ -1003,13 +1150,8 @@ impl TurnOutcome {
             _ => {}
         }
 
-        let status = match self.exit_code {
-            Some(code) => format!("Agent execution completed with status code {}", code),
-            None => "Agent execution completed with an unknown status code".to_string(),
-        };
-
         if let Some(reason) = crate::jobs::try_extract_error_event(raw_lines) {
-            return (status, Some(reason));
+            return (reason.clone(), Some(reason));
         }
 
         let tail = self
@@ -1020,45 +1162,48 @@ impl TurnOutcome {
             .collect::<Vec<_>>()
             .join(" | ");
         if !tail.is_empty() {
-            return (status, Some(tail));
+            return (tail.clone(), Some(tail));
         }
 
+        let status = match self.exit_code {
+            Some(code) => format!("Agent execution completed with status code {}", code),
+            None => "Agent execution completed with an unknown status code".to_string(),
+        };
         (status, None)
     }
 
     fn failure_text(&self, raw_lines: &[String]) -> String {
-        match self.failure_parts(raw_lines) {
-            (headline, Some(detail)) => format!("{}: {}", headline, detail),
-            (headline, None) => headline,
-        }
+        self.failure_parts(raw_lines).0
     }
 }
 
-/// What a finished turn's message says, following `ChatExecutionService`'s order: the agent's own
-/// text if it produced any, then the terminal result's response, then a summary of what the turn
-/// actually did, and a failure reason appended (or standing alone) whenever the run failed.
+/// What a finished turn's message says: the agent's own words when it produced any, and why there are
+/// none when it did not.
+///
+/// It is deliberately **not** an inventory of what the turn did. The eventwire stream carries a
+/// `tool_call` / `tool_result` pair per tool, which `TurnActivity` renders as cards above this text and
+/// which `tendril chat send` prints as it happens — so a prose summary of the same calls is a second,
+/// longer disclosure of something the reader can already see, and it pushed the one line that mattered
+/// (the failure reason) off the bottom of a wall of `run_command` entries.
 fn compose_turn_content(text: &str, raw_lines: &[String], outcome: &TurnOutcome) -> String {
     let success = outcome.is_success();
     let with_failure = |body: String| -> String {
         if success {
             return body;
         }
-        let (headline, detail) = outcome.failure_parts(raw_lines);
+        let (reason, detail) = outcome.failure_parts(raw_lines);
         if body.trim().is_empty() {
-            return match detail {
-                Some(detail) => format!("{}: {}", headline, detail),
-                None => headline,
-            };
+            return reason;
         }
-        // An agent that printed its own error (a bad model, an auth failure) has already said the
-        // detail; repeating it under the headline reads as the same message twice.
+        // An agent that printed its own error (a bad model, an auth failure, a 503) has already said
+        // it; appending the same sentence underneath reads as the message twice.
         let already_said = detail
             .as_deref()
             .is_some_and(|detail| body.contains(detail.trim()));
-        match detail {
-            Some(detail) if !already_said => format!("{}\n\n{}: {}", body, headline, detail),
-            _ => format!("{}\n\n{}", body, headline),
+        if already_said {
+            return body;
         }
+        format!("{}\n\n{}", body, reason)
     };
 
     if !text.trim().is_empty() {
@@ -1071,12 +1216,8 @@ fn compose_turn_content(text: &str, raw_lines: &[String], outcome: &TurnOutcome)
         return with_failure(response);
     }
 
-    if let Some(report) = summarize_tool_calls(raw_lines) {
-        return with_failure(report);
-    }
-
     if success {
-        // V1's wording for a run that succeeded without saying anything.
+        // V1's wording for a run that succeeded without saying anything. What it *did* is in the cards.
         "Task completed successfully.".to_string()
     } else {
         outcome.failure_text(raw_lines)
@@ -1110,344 +1251,26 @@ fn terminal_result_response(raw_lines: &[String]) -> Option<String> {
     None
 }
 
-/// The assistant prose carried by one output line, or `""` for a line that carries none.
+/// The text one eventwire line adds to the answer being built, or `None` when it adds nothing.
 ///
-/// Every provider Tendril launches streams structured JSON, and the text is nested differently in
-/// each — so the shapes have to be read by name. Guessing from top-level `text` / `content` /
-/// `message` keys (which is all this used to do) reaches none of them: Claude Code's `stream-json`
-/// puts a turn's prose at `message.content[].text` of a `{"type":"assistant"}` line, so *every*
-/// chat turn accumulated an empty response and fell through to the "no response" report, however
-/// well the agent had actually answered.
+/// A `delta` event is a chunk and is appended verbatim. A non-delta event is a whole message (how
+/// Claude, Codex and Gemini send prose), and gets a blank line in front of it so consecutive messages
+/// read as paragraphs instead of running together.
 ///
-/// The shapes, and where each is defined: the eventwire form Tendril's own logs use
-/// (`{"kind":"text","text":…}`), Claude / Antigravity (`ClaudeEventParser.ParseAssistant`), Codex
-/// (`CodexEventParser.ParseAgentMessage`) and Gemini (`GeminiEventParser.ParseMessage`). A line that
-/// is not JSON at all is prose from a provider that streams plain text, and is passed through.
-fn extract_delta(line: &str, is_stderr: bool) -> String {
-    if is_stderr {
-        return String::new();
-    }
-
-    let trimmed = line.trim();
-    if trimmed.starts_with('{') && trimmed.ends_with('}') {
-        if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            return extract_json_delta(&val);
-        }
-    }
-
-    format!("{}\n", line)
-}
-
-fn extract_json_delta(val: &serde_json::Value) -> String {
-    // The eventwire form, which is authoritative when present: any other `kind` (`tool_call`,
-    // `tool_result`, `result`, `error`, …) is deliberately not prose.
-    if let Some(kind) = val.get("kind").and_then(|k| k.as_str()) {
-        if kind == "text" {
-            return val
-                .get("text")
-                .and_then(|t| t.as_str())
-                .unwrap_or_default()
-                .to_string();
-        }
-        return String::new();
-    }
-
-    match val.get("type").and_then(|t| t.as_str()) {
-        // Claude / Antigravity: text and thinking blocks of an assistant message. `tool_use` blocks
-        // on the same line are not prose and are reported by `TurnActivity` from the raw stream.
-        Some("assistant") => {
-            let Some(blocks) = val
-                .get("message")
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-            else {
-                return String::new();
-            };
-            return blocks
-                .iter()
-                .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("text"))
-                .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                .collect::<Vec<_>>()
-                .join("");
-        }
-        // Gemini: one assistant message per line. A `user` role is the CLI echoing the prompt back.
-        Some("message") => {
-            if val.get("role").and_then(|r| r.as_str()) == Some("user") {
-                return String::new();
-            }
-            return val
-                .get("content")
-                .and_then(|c| c.as_str())
-                .unwrap_or_default()
-                .to_string();
-        }
-        // Codex: prose arrives as a completed `agent_message` item.
-        Some("item.completed") | Some("item.updated") => {
-            let Some(item) = val.get("item") else {
-                return String::new();
-            };
-            if item.get("type").and_then(|t| t.as_str()) != Some("agent_message") {
-                return String::new();
-            }
-            return item
-                .get("text")
-                .and_then(|t| t.as_str())
-                .unwrap_or_default()
-                .to_string();
-        }
-        // `user` lines carry tool results, `system` lines carry session metadata, and a terminal
-        // `result` repeats prose that has already been streamed — appending it would double the
-        // answer. `compose_turn_content` reads the result line for its response only when nothing
-        // was streamed at all.
-        Some("user") | Some("system") | Some("result") | Some("turn.completed") | Some("error") => {
-            return String::new()
-        }
-        _ => {}
-    }
-
-    // Simple `{"delta": …}` / `{"text": …}` shapes, which is what a wrapper or a test harness emits.
-    if let Some(delta_obj) = val.get("delta") {
-        if let Some(t) = delta_obj.get("text").and_then(|v| v.as_str()) {
-            return t.to_string();
-        }
-        if let Some(s) = delta_obj.as_str() {
-            return s.to_string();
-        }
-    }
-    if let Some(t) = val.get("text").and_then(|v| v.as_str()) {
-        return t.to_string();
-    }
-    if let Some(c) = val.get("content").and_then(|v| v.as_str()) {
-        return c.to_string();
-    }
-    if let Some(m) = val.get("message").and_then(|v| v.as_str()) {
-        return m.to_string();
-    }
-    String::new()
-}
-
-/// Synthesizes a markdown summary of the tools a turn called, for a turn that did the work but never
-/// said anything about it — so `finalize_message` never leaves a turn empty. `None` when the turn
-/// called no tools, which leaves the caller free to say *why* there was nothing to report rather
-/// than asserting that no reason could be found.
-///
-/// Reads both wire shapes emitted onto `raw_lines`: the normalised eventwire form
-/// (`{"kind":"tool_call",…}` / `{"kind":"tool_result",…}`) and the provider's own form
-/// (`{"type":"assistant",…}` / `{"type":"user",…}` with `tool_use` / `tool_result` content blocks) —
-/// same two shapes [`crate::agents::reconcile`] and [`crate::jobs::failure_analysis`] read.
-fn summarize_tool_calls(raw_lines: &[String]) -> Option<String> {
-    let mut call_order: Vec<String> = Vec::new();
-    let mut call_names: HashMap<String, String> = HashMap::new();
-    let mut call_inputs: HashMap<String, String> = HashMap::new();
-    let mut call_results: HashMap<String, (bool, String)> = HashMap::new();
-
-    for line in raw_lines {
-        let Some(v) = crate::jobs::failure_analysis::parse_json_object(line) else {
-            continue;
-        };
-        record_report_call(&v, &mut call_order, &mut call_names, &mut call_inputs);
-        record_report_result(&v, &mut call_results);
-    }
-
-    if call_order.is_empty() {
+/// V1 *replaces* the accumulated text on a non-delta event (`ChatExecutionService`:
+/// `LastText = IsDelta ? LastText + text : text`) because its `ChatWidget` renders the whole turn
+/// from the raw stream and only falls back to `content`. V2's row renders prose from `content` and
+/// only the tool activity from the stream, so dropping earlier messages would lose them from the
+/// thread entirely — they are appended instead.
+fn next_text_delta(accumulated: &str, wire_line: &str) -> Option<String> {
+    let (text, is_delta) = event_wire_text(wire_line)?;
+    if text.is_empty() {
         return None;
     }
-
-    let mut actions = String::new();
-    let mut failures = String::new();
-    for id in &call_order {
-        let name = call_names.get(id).map(String::as_str).unwrap_or("unknown");
-        let label = match call_inputs.get(id) {
-            Some(input) if !input.is_empty() => format!("{} ({})", name, input),
-            _ => name.to_string(),
-        };
-
-        match call_results.get(id) {
-            Some((is_error, output)) if is_failed_tool_output(*is_error, output) => {
-                actions.push_str(&format!("- **{}** — failed\n", label));
-                let detail = if output.trim().is_empty() {
-                    "(no output)".to_string()
-                } else {
-                    crate::jobs::sanitize_for_display(output)
-                };
-                failures.push_str(&format!("- **{}**: {}\n", label, detail));
-            }
-            Some(_) => {
-                actions.push_str(&format!("- **{}** — completed\n", label));
-            }
-            None => {
-                actions.push_str(&format!("- **{}** — no result recorded\n", label));
-            }
-        }
+    if is_delta || accumulated.is_empty() || accumulated.ends_with('\n') {
+        return Some(text);
     }
-
-    let mut report = String::from("### Summary of Actions\n\n");
-    report.push_str(&actions);
-
-    if !failures.is_empty() {
-        report.push_str("\n### Failures\n\n");
-        report.push_str(&failures);
-    }
-
-    Some(report)
-}
-
-/// True for an explicit `is_error`, and for the synthetic outputs
-/// [`crate::agents::reconcile::build_missing_result_lines`] writes for a tool call the stream never
-/// closed — those already carry `is_error: true`, but a provider could in principle emit the same
-/// marker text itself without the flag, so the text is checked either way.
-fn is_failed_tool_output(is_error: bool, output: &str) -> bool {
-    is_error
-        || matches!(
-            output.trim(),
-            "[Cancelled]" | "[Timed out]" | "[No output received]"
-        )
-}
-
-fn record_report_call(
-    v: &serde_json::Value,
-    order: &mut Vec<String>,
-    names: &mut HashMap<String, String>,
-    inputs: &mut HashMap<String, String>,
-) {
-    // Eventwire form.
-    if v.get("kind").and_then(|k| k.as_str()) == Some("tool_call") {
-        if let Some(id) = v.get("tool_use_id").and_then(|i| i.as_str()) {
-            note_report_call(
-                id,
-                v.get("tool_name"),
-                v.get("input").or_else(|| v.get("arguments")),
-                order,
-                names,
-                inputs,
-            );
-        }
-        return;
-    }
-
-    // Provider form: an assistant message with tool_use content blocks.
-    if v.get("type").and_then(|t| t.as_str()) == Some("assistant") {
-        let Some(blocks) = v
-            .get("message")
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_array())
-        else {
-            return;
-        };
-        for block in blocks {
-            if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
-                continue;
-            }
-            if let Some(id) = block.get("id").and_then(|i| i.as_str()) {
-                note_report_call(
-                    id,
-                    block.get("name"),
-                    block.get("input"),
-                    order,
-                    names,
-                    inputs,
-                );
-            }
-        }
-    }
-}
-
-fn note_report_call(
-    id: &str,
-    name: Option<&serde_json::Value>,
-    input: Option<&serde_json::Value>,
-    order: &mut Vec<String>,
-    names: &mut HashMap<String, String>,
-    inputs: &mut HashMap<String, String>,
-) {
-    if !names.contains_key(id) {
-        order.push(id.to_string());
-    }
-    names.insert(
-        id.to_string(),
-        name.and_then(|n| n.as_str())
-            .unwrap_or("unknown")
-            .to_string(),
-    );
-    if let Some(input) = input {
-        let summary = summarize_tool_input(input);
-        if !summary.is_empty() {
-            inputs.insert(id.to_string(), summary);
-        }
-    }
-}
-
-/// A short human-readable rendering of a tool call's arguments for the "Summary of Actions" line —
-/// the first few keys of an object input, or the string itself for a bare-string input.
-fn summarize_tool_input(input: &serde_json::Value) -> String {
-    match input {
-        serde_json::Value::Object(map) if !map.is_empty() => {
-            let mut parts: Vec<String> = map
-                .iter()
-                .take(3)
-                .map(|(k, v)| {
-                    let rendered = match v {
-                        serde_json::Value::String(s) => s.clone(),
-                        other => other.to_string(),
-                    };
-                    format!("{}: {}", k, rendered)
-                })
-                .collect();
-            parts.sort();
-            parts.join(", ")
-        }
-        serde_json::Value::String(s) => s.clone(),
-        _ => String::new(),
-    }
-}
-
-fn record_report_result(v: &serde_json::Value, results: &mut HashMap<String, (bool, String)>) {
-    // Eventwire form.
-    if v.get("kind").and_then(|k| k.as_str()) == Some("tool_result") {
-        if let Some(id) = v.get("tool_use_id").and_then(|i| i.as_str()) {
-            let is_error = v.get("is_error").and_then(|b| b.as_bool()).unwrap_or(false);
-            let output = v
-                .get("output")
-                .and_then(|o| o.as_str())
-                .unwrap_or("")
-                .to_string();
-            results.insert(id.to_string(), (is_error, output));
-        }
-        return;
-    }
-
-    // Provider form: a user message whose content blocks are tool results.
-    if v.get("type").and_then(|t| t.as_str()) == Some("user") {
-        let Some(blocks) = v
-            .get("message")
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_array())
-        else {
-            return;
-        };
-        for block in blocks {
-            if block.get("type").and_then(|t| t.as_str()) != Some("tool_result") {
-                continue;
-            }
-            let Some(id) = block.get("tool_use_id").and_then(|i| i.as_str()) else {
-                continue;
-            };
-            let is_error = block
-                .get("is_error")
-                .and_then(|b| b.as_bool())
-                .unwrap_or(false);
-            let output = match block.get("content") {
-                Some(serde_json::Value::String(s)) => s.clone(),
-                Some(serde_json::Value::Array(items)) => items
-                    .iter()
-                    .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
-                    .collect::<Vec<_>>()
-                    .join(" "),
-                _ => String::new(),
-            };
-            results.insert(id.to_string(), (is_error, output));
-        }
-    }
+    Some(format!("\n\n{}", text))
 }
 
 /// True for the placeholder title a session is created with, and for anything blank —
@@ -1467,8 +1290,31 @@ pub fn is_default_chat_title(title: &str) -> bool {
 /// Replaying the conversation is what carries it forward: a chat turn is a fresh agent session, so
 /// nothing else remembers the previous turns. Empty messages are skipped, because an assistant stub
 /// that a turn never filled in has nothing to contribute.
-pub fn build_chat_agent_prompt(history: &[ChatMessage], prompt: &str, session_id: &str) -> String {
+pub fn build_chat_agent_prompt(
+    history: &[ChatMessage],
+    prompt: &str,
+    session_id: &str,
+    role: &str,
+    spawned_jobs: &[ChatSpawnedJob],
+) -> String {
     let mut out = String::new();
+
+    // V1 puts this first, before the history: what the session has already set running is context for
+    // everything below it, and for a turn that *is* a job event it is the subject.
+    if !spawned_jobs.is_empty() {
+        out.push_str("# Jobs Spawned in this Chat Session\n");
+        out.push_str("The following jobs were spawned in this chat session:\n\n");
+        for job in spawned_jobs {
+            out.push_str(&job.prompt_line());
+        }
+        out.push('\n');
+        out.push_str(match JobRollup::of(spawned_jobs) {
+            JobRollup::AllDone => "All spawned jobs have completed. Proactively guide the user through the next steps (e.g. ask if they want you to review the plan or implementation, inspect results, or proceed to creating PRs).\n",
+            JobRollup::AnyFailed => "Some spawned jobs failed or encountered issues. Guide the user through the failures and offer to diagnose, retry, or adjust the plan.\n",
+            JobRollup::StillRunning => "Some spawned jobs are still running or pending. Inform the user of their progress as appropriate.\n",
+        });
+        out.push_str("---\n\n");
+    }
 
     let prior: Vec<&ChatMessage> = history
         .iter()
@@ -1498,11 +1344,87 @@ pub fn build_chat_agent_prompt(history: &[ChatMessage], prompt: &str, session_id
     ));
     out.push_str("---\n\n");
 
-    out.push_str("# Current User Request\n");
-    out.push_str(prompt);
-    out.push('\n');
+    if is_event_role(role) {
+        // The framing is the whole point of the system role: without it an injected event reads as
+        // something the user typed, and the agent answers it instead of reacting to it.
+        out.push_str("# Current Event Notification\n");
+        out.push_str(prompt);
+        out.push_str("\n\n");
+        out.push_str("Evaluate this completed job event. Proactively inspect the job outcomes/artifacts if needed, determine whether any action is needed, and advise the user with a concise summary and suggested next steps.\n");
+    } else {
+        out.push_str("# Current User Request\n");
+        out.push_str(prompt);
+        out.push('\n');
+    }
 
     out
+}
+
+/// One job this chat session set running, as the prompt describes it. The fields are the ones V1 lists
+/// (`ChatExecutionService`'s spawned-jobs block); everything else on a job is noise in a prompt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatSpawnedJob {
+    pub id: String,
+    pub job_type: String,
+    pub status: String,
+    pub plan_id: Option<String>,
+    pub plan_title: Option<String>,
+    pub status_message: Option<String>,
+}
+
+impl ChatSpawnedJob {
+    fn prompt_line(&self) -> String {
+        let plan = match (&self.plan_id, &self.plan_title) {
+            (Some(id), Some(title)) if !id.is_empty() => format!(" | Plan: {} ({})", id, title),
+            (Some(id), None) if !id.is_empty() => format!(" | Plan: {}", id),
+            _ => String::new(),
+        };
+        let message = match &self.status_message {
+            Some(message) if !message.trim().is_empty() => format!(" | Message: {}", message),
+            _ => String::new(),
+        };
+        format!(
+            "- Job {}: {} | Status: {}{}{}\n",
+            self.id, self.job_type, self.status, plan, message
+        )
+    }
+
+    fn is_completed(&self) -> bool {
+        self.status.eq_ignore_ascii_case("Completed")
+    }
+
+    fn is_failed(&self) -> bool {
+        ["Failed", "Timeout", "Stopped"]
+            .iter()
+            .any(|s| self.status.eq_ignore_ascii_case(s))
+    }
+}
+
+/// Which of V1's three closing sentences the jobs section ends with.
+enum JobRollup {
+    AllDone,
+    AnyFailed,
+    StillRunning,
+}
+
+impl JobRollup {
+    fn of(jobs: &[ChatSpawnedJob]) -> Self {
+        if jobs.iter().all(ChatSpawnedJob::is_completed) {
+            // V1 checks "all done" before "any failed", so a set that finished with failures in it is
+            // reported as finished — a failed job *is* done, and the failure is on its own line above.
+            return Self::AllDone;
+        }
+        if jobs.iter().any(ChatSpawnedJob::is_failed) {
+            return Self::AnyFailed;
+        }
+        Self::StillRunning
+    }
+}
+
+/// Whether a turn's message is an event Tendril injected rather than something the user typed.
+/// `ChatExecutionService` compares the role to `"system"` case-insensitively, and so does this.
+pub fn is_event_role(role: &str) -> bool {
+    role.trim().eq_ignore_ascii_case("system")
 }
 
 /// Verbatim port of `ChatSessionNamingService.BuildPrompt` (legacy C#).
@@ -1626,71 +1548,58 @@ pub fn clean_generated_title(raw: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// The shape that was silently dropped: Claude Code's `--output-format stream-json` puts a
-    /// turn's prose at `message.content[].text`, and the terminal `result` line repeats it.
+    /// How the eventwire text events a turn receives accumulate into the message body.
+    ///
+    /// Which shapes yield a text event at all is covered by
+    /// [`crate::agents::eventwire`]'s own tests, against streams captured from real CLI runs.
     #[test]
-    fn test_extract_delta_reads_claude_stream_json() {
-        let assistant = r#"{"type":"assistant","message":{"model":"claude-opus-5","content":[{"type":"text","text":"Hello"},{"type":"text","text":" world"}]},"session_id":"s"}"#;
-        assert_eq!(extract_delta(assistant, false), "Hello world");
+    fn test_next_text_delta_accumulation() {
+        let chunk = |text: &str| crate::agents::eventwire::text_event(text, true);
+        let whole = |text: &str| crate::agents::eventwire::text_event(text, false);
 
-        // Metadata, tool traffic and the result echo carry no new prose.
+        // Chunks append verbatim: Antigravity's `text_delta`, and any provider streaming partials.
+        assert_eq!(
+            next_text_delta("", &chunk("Yes, ")).as_deref(),
+            Some("Yes, ")
+        );
+        assert_eq!(
+            next_text_delta("Yes, ", &chunk("I am alive.")).as_deref(),
+            Some("I am alive.")
+        );
+
+        // Whole messages become paragraphs rather than running into the previous one.
+        assert_eq!(
+            next_text_delta("", &whole("Reading it.")).as_deref(),
+            Some("Reading it.")
+        );
+        assert_eq!(
+            next_text_delta("Reading it.", &whole("It says X.")).as_deref(),
+            Some("\n\nIt says X.")
+        );
+        // ...unless the text so far already ended a line.
+        assert_eq!(
+            next_text_delta("Reading it.\n", &whole("It says X.")).as_deref(),
+            Some("It says X.")
+        );
+
+        // Nothing else contributes to the body: tool traffic, thinking, the result echo, stderr.
         for line in [
-            r#"{"type":"system","subtype":"init","session_id":"s","tools":["Bash"]}"#,
-            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}"#,
-            r#"{"type":"result","subtype":"success","is_error":false,"result":"Hello world"}"#,
-            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{}}]}}"#,
+            r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"Bash"}"#.to_string(),
+            r#"{"kind":"tool_result","tool_use_id":"t1","output":"ok","is_error":false}"#
+                .to_string(),
+            r#"{"kind":"thinking","content":"hmm"}"#.to_string(),
+            r#"{"kind":"result","response":"Yes, I am alive.","is_success":true}"#.to_string(),
+            crate::agents::eventwire::text_event("[stderr] boom", true),
+            crate::agents::eventwire::text_event("", true),
+            "not json".to_string(),
         ] {
-            assert_eq!(extract_delta(line, false), "", "line: {}", line);
+            assert_eq!(
+                next_text_delta("Yes, I am alive.", &line),
+                None,
+                "line: {}",
+                line
+            );
         }
-    }
-
-    #[test]
-    fn test_extract_delta_reads_other_provider_shapes() {
-        // Tendril's own eventwire form.
-        assert_eq!(
-            extract_delta(r#"{"kind":"text","text":"eventwire"}"#, false),
-            "eventwire"
-        );
-        assert_eq!(
-            extract_delta(
-                r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"Bash"}"#,
-                false
-            ),
-            ""
-        );
-        // Codex.
-        assert_eq!(
-            extract_delta(
-                r#"{"type":"item.completed","item":{"type":"agent_message","id":"i1","text":"codex says"}}"#,
-                false
-            ),
-            "codex says"
-        );
-        assert_eq!(
-            extract_delta(
-                r#"{"type":"item.completed","item":{"type":"command_execution","id":"i1","command":"ls"}}"#,
-                false
-            ),
-            ""
-        );
-        // Gemini, whose user lines are the CLI echoing the prompt back.
-        assert_eq!(
-            extract_delta(
-                r#"{"type":"message","role":"assistant","content":"gemini says"}"#,
-                false
-            ),
-            "gemini says"
-        );
-        assert_eq!(
-            extract_delta(
-                r#"{"type":"message","role":"user","content":"my prompt"}"#,
-                false
-            ),
-            ""
-        );
-        // A plain-text line is prose, and stderr never is.
-        assert_eq!(extract_delta("just words", false), "just words\n");
-        assert_eq!(extract_delta("Error: boom", true), "");
     }
 
     fn outcome(exit_code: Option<i32>, terminated: TerminationReason) -> TurnOutcome {
@@ -1727,33 +1636,23 @@ mod tests {
 
     #[test]
     fn test_compose_turn_content_always_explains_a_failure() {
+        // The reason stands alone: it is the explanation, so it is not introduced by an exit code.
         let mut failed = outcome(Some(1), TerminationReason::Exited);
         failed.stderr_tail = vec!["Error: Session ID abc is already in use.".to_string()];
-        let reported = compose_turn_content("", &[], &failed);
-        assert!(reported.contains("status code 1"), "got: {}", reported);
-        assert!(
-            reported.contains("Session ID abc is already in use"),
-            "got: {}",
-            reported
+        assert_eq!(
+            compose_turn_content("", &[], &failed),
+            "Error: Session ID abc is already in use."
         );
 
         // Partial prose is kept and the reason appended, rather than one replacing the other.
-        let with_text = compose_turn_content("got partway", &[], &failed);
-        assert!(with_text.starts_with("got partway"), "got: {}", with_text);
-        assert!(with_text.contains("status code 1"), "got: {}", with_text);
-        assert!(
-            with_text.contains("Session ID abc is already in use"),
-            "got: {}",
-            with_text
+        assert_eq!(
+            compose_turn_content("got partway", &[], &failed),
+            "got partway\n\nError: Session ID abc is already in use."
         );
 
-        // An agent that already printed the reason itself gets the headline only, not the same
-        // sentence a second time — the shape the duplicated report in the UI had.
-        let echoed = compose_turn_content("Error: Session ID abc is already in use.", &[], &failed);
-        assert_eq!(
-            echoed,
-            "Error: Session ID abc is already in use.\n\nAgent execution completed with status code 1"
-        );
+        // An agent that already printed the reason is left alone rather than made to say it twice.
+        let echoed = "Error: Session ID abc is already in use.";
+        assert_eq!(compose_turn_content(echoed, &[], &failed), echoed);
 
         // A signal death reports no exit code, and is not a success.
         let signalled = compose_turn_content("", &[], &outcome(None, TerminationReason::Exited));
@@ -1771,6 +1670,36 @@ mod tests {
         said_failed.result_success = Some(false);
         assert!(compose_turn_content("hmm", &[], &said_failed).contains("status code 0"));
 
+        // The reported shape: a provider 503 on a process that exited 0. The reason is the whole of
+        // the answer — "completed with status code 0: API error …" read as though a clean exit were
+        // the explanation for a turn that plainly failed.
+        let mut unavailable = outcome(Some(0), TerminationReason::Exited);
+        unavailable.result_success = Some(false);
+        let result_line = vec![
+            r#"{"kind":"result","is_success":false,"error":"API error (attempt 2): UNAVAILABLE (code 503): No capacity available for model gemini-3.8-flash-high"}"#
+                .to_string(),
+        ];
+        assert_eq!(
+            compose_turn_content("", &result_line, &unavailable),
+            "API error (attempt 2): UNAVAILABLE (code 503): No capacity available for model gemini-3.8-flash-high"
+        );
+
+        // And a turn that called tools but said nothing carries no inventory of them: the cards and
+        // `tendril chat send`'s own lines are where that belongs.
+        let tool_lines = vec![
+            r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"run_command","input":{"CommandLine":"tendril doctor"}}"#.to_string(),
+            r#"{"kind":"tool_result","tool_use_id":"t1","output":"ok","is_error":false}"#.to_string(),
+        ];
+        assert_eq!(
+            compose_turn_content(
+                "",
+                &tool_lines,
+                &outcome(Some(0), TerminationReason::Exited)
+            ),
+            "Task completed successfully."
+        );
+        assert!(!compose_turn_content("", &tool_lines, &failed).contains("run_command"));
+
         let cancelled = compose_turn_content("", &[], &outcome(None, TerminationReason::Cancelled));
         assert_eq!(cancelled, "Execution was cancelled.");
 
@@ -1782,6 +1711,85 @@ mod tests {
             ..Default::default()
         };
         assert!(compose_turn_content("", &[], &unlaunchable).contains("Failed to spawn agent"));
+    }
+
+    /// An injected event is framed as one, and a session's jobs are context for whatever it is asked.
+    /// The framing is the point: without it the agent answers the event as though the user had typed it.
+    #[test]
+    fn test_build_chat_agent_prompt_frames_events_and_lists_jobs() {
+        let event = "[System Event] Job 00042 (ExecutePlan) completed.";
+        let injected = build_chat_agent_prompt(&[], event, "sess-1", "system", &[]);
+        assert!(
+            injected.contains("# Current Event Notification"),
+            "got: {}",
+            injected
+        );
+        assert!(!injected.contains("# Current User Request"));
+        assert!(injected.contains(event));
+        // The instruction is what turns a notification into something to act on.
+        assert!(injected.contains("Evaluate this completed job event."));
+        assert!(
+            injected.contains("advise the user with a concise summary and suggested next steps")
+        );
+
+        // The role check is case-insensitive, as `ChatExecutionService`'s is, and anything else is a
+        // user request.
+        assert!(is_event_role("system") && is_event_role("System") && is_event_role(" SYSTEM "));
+        for role in ["user", "", "assistant", "systemic"] {
+            assert!(!is_event_role(role), "role: {}", role);
+        }
+        assert!(build_chat_agent_prompt(&[], "hi", "s", "assistant", &[])
+            .contains("# Current User Request"));
+
+        let job = |id: &str, status: &str| ChatSpawnedJob {
+            id: id.to_string(),
+            job_type: "ExecutePlan".to_string(),
+            status: status.to_string(),
+            plan_id: Some("00042".to_string()),
+            plan_title: Some("Port the chat".to_string()),
+            status_message: None,
+        };
+
+        // Every job is listed with its plan, and the closing sentence reads the set as a whole.
+        let all_done =
+            build_chat_agent_prompt(&[], "now what?", "s", "user", &[job("1", "Completed")]);
+        assert!(all_done.contains("# Jobs Spawned in this Chat Session"));
+        assert!(all_done
+            .contains("- Job 1: ExecutePlan | Status: Completed | Plan: 00042 (Port the chat)"));
+        assert!(all_done.contains("All spawned jobs have completed."));
+
+        let failed = build_chat_agent_prompt(
+            &[],
+            "now what?",
+            "s",
+            "user",
+            &[job("1", "Completed"), job("2", "Failed")],
+        );
+        assert!(
+            failed.contains("Some spawned jobs failed"),
+            "got: {}",
+            failed
+        );
+
+        let running =
+            build_chat_agent_prompt(&[], "now what?", "s", "user", &[job("1", "Running")]);
+        assert!(
+            running.contains("still running or pending"),
+            "got: {}",
+            running
+        );
+
+        // A status message is carried; no jobs means no section at all.
+        let mut with_message = job("3", "Failed");
+        with_message.status_message = Some("verification failed".to_string());
+        let detailed = build_chat_agent_prompt(&[], "?", "s", "user", &[with_message]);
+        assert!(
+            detailed.contains("| Message: verification failed"),
+            "got: {}",
+            detailed
+        );
+        assert!(!build_chat_agent_prompt(&[], "?", "s", "user", &[])
+            .contains("Jobs Spawned in this Chat Session"));
     }
 
     #[test]
@@ -1797,7 +1805,7 @@ mod tests {
             effort: None,
         };
 
-        let first = build_chat_agent_prompt(&[], "what is broken?", "sess-1");
+        let first = build_chat_agent_prompt(&[], "what is broken?", "sess-1", "user", &[]);
         assert!(!first.contains("Previous Conversation"));
         assert!(first.contains("Chat Session ID: sess-1"));
         assert!(first.contains("--chat-session sess-1"));
@@ -1809,7 +1817,7 @@ mod tests {
             // An assistant stub a turn never filled in has nothing to replay.
             msg("assistant", "   "),
         ];
-        let second = build_chat_agent_prompt(&history, "fix it", "sess-1");
+        let second = build_chat_agent_prompt(&history, "fix it", "sess-1", "user", &[]);
         assert!(second.contains("# Previous Conversation Discussion History"));
         assert!(second.contains("### User\nwhat is broken?"));
         assert!(second.contains("### Assistant\nthe chat path"));

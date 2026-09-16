@@ -572,7 +572,10 @@ fn map_profile_tier(profile_name: &str) -> Option<&'static str> {
 }
 
 /// `default` is how the config spells "leave it to the CLI", so it counts as unset everywhere.
-fn is_set(value: &str) -> bool {
+///
+/// `pub(crate)` rather than private only so `catalog.rs` can assert it: the picker no longer offers
+/// `default` as a model, and this is what keeps a config that still holds one launchable.
+pub(crate) fn is_set(value: &str) -> bool {
     !value.is_empty() && !value.eq_ignore_ascii_case("default")
 }
 

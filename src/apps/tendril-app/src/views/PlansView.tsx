@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useShortcut, type ShellBadgeDto } from "@ivy-interactive/components/tendril";
 import type { Job, PlanSummary } from "../types/api";
-import { EmptyState } from "../components/EmptyState";
+import { NoContentView } from "../components/NoContentView";
+import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 
 /**
@@ -29,6 +30,12 @@ interface PlansViewProps {
   selectedPlanId?: string | null;
   onSelectPlan: (planId: string) => void;
   onNewPlan?: () => void;
+  /**
+   * Where the empty page's process wallpaper navigates: V1's `UseTendrilProcess` wires its boxes to
+   * `Navigate<PlansApp>()`, `Navigate<ReviewApp>()` and `Navigate<JobsApp>()`, so without this the
+   * wallpaper's arrows are drawn and do nothing.
+   */
+  onNavigate?: (navId: string) => void;
 }
 
 /**
@@ -274,6 +281,7 @@ export const PlansView: React.FC<PlansViewProps> = ({
   selectedPlanId = null,
   onSelectPlan,
   onNewPlan,
+  onNavigate,
 }) => {
   /**
    * The row the sidebar reads as selected. Seeded from the host and then whatever this page last
@@ -339,7 +347,21 @@ export const PlansView: React.FC<PlansViewProps> = ({
            `NoContentView` *before* the workspace branch, so the empty case keeps the host's 16px and
            `Height(Size.Full())` centres it. */
         <div className="flex h-full min-h-0 items-center justify-center p-4">
-          <EmptyState title="No plans" description="Plans you create will appear here" />
+          {/* The `cta` is V1's `processView`, i.e. `Context.UseTendrilProcess()`: the pipeline
+              wallpaper, with New Plan opening the Create Plan dialog straight from it. */}
+          <NoContentView
+            data-testid="plans-empty"
+            title="No plans"
+            description="Plans you create will appear here"
+            cta={
+              <TendrilProcessWallpaper
+                plans={plans}
+                jobs={jobs}
+                onNewPlan={onNewPlan}
+                onNavigate={onNavigate}
+              />
+            }
+          />
         </div>
       ) : (
         <div

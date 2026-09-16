@@ -100,6 +100,30 @@ pub fn rename_session(tendril_home: &Path, id: &str, new_title: &str) -> Result<
     Ok(session)
 }
 
+/// The chat sessions watching a plan: every session attached to its folder, plus the plan's own chat.
+///
+/// Factored out of [`broadcast_system_message_to_plan_sessions`] so a caller that wants to *run a turn*
+/// per recipient — rather than only write a message into each — resolves the same set by the same rule.
+/// The daemon's job notifier is that caller.
+pub fn plan_session_recipients(
+    tendril_home: &Path,
+    folder_name: &str,
+    plan_chat_session_id: Option<&str>,
+) -> Result<Vec<String>> {
+    let sessions = load_all_sessions(tendril_home)?;
+    let mut recipient_ids: Vec<String> = sessions
+        .iter()
+        .filter(|session| {
+            session.plan_folder_name.as_deref() == Some(folder_name)
+                || plan_chat_session_id == Some(&session.id)
+        })
+        .map(|session| session.id.clone())
+        .collect();
+    recipient_ids.sort();
+    recipient_ids.dedup();
+    Ok(recipient_ids)
+}
+
 pub fn broadcast_system_message_to_plan_sessions(
     tendril_home: &Path,
     folder_name: &str,
@@ -108,16 +132,8 @@ pub fn broadcast_system_message_to_plan_sessions(
     content: &str,
 ) -> Result<Vec<String>> {
     let mut sessions = load_all_sessions(tendril_home)?;
-    let mut recipient_ids = Vec::new();
-    for session in &sessions {
-        let matches_folder = session.plan_folder_name.as_deref() == Some(folder_name);
-        let matches_plan_chat = plan_chat_session_id == Some(&session.id);
-        if matches_folder || matches_plan_chat {
-            recipient_ids.push(session.id.clone());
-        }
-    }
-    recipient_ids.sort();
-    recipient_ids.dedup();
+    let mut recipient_ids =
+        plan_session_recipients(tendril_home, folder_name, plan_chat_session_id)?;
     if let Some(src) = source_chat_session_id {
         recipient_ids.retain(|id| id != src);
     }

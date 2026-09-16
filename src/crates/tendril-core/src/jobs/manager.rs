@@ -1,3 +1,4 @@
+use crate::agents::eventwire::EventWireNormalizer;
 use crate::agents::providers::{
     apply_security_settings, build_agent_spec, AgentLaunchConfig, AgentProcessSpec,
 };
@@ -67,6 +68,24 @@ const STALE_JOB_KEEP_RECENT: usize = 20;
 /// Floor on how often a running job's `LastOutputAt` is written, so a chatty agent does not hammer
 /// SQLite once per output line.
 const LAST_OUTPUT_PERSIST_INTERVAL: Duration = Duration::from_secs(5);
+
+/// The only statuses [`JobManager::clear_jobs`] will remove: finished work, and nothing else.
+///
+/// This is the whole safety property of every bulk clear. `Running` and `Queued` are excluded for the
+/// obvious reason — clearing a job that is working, or about to, destroys work rather than history.
+/// `Pending` and `Blocked` are excluded too, which is stricter than V1's `not Running and not Queued`
+/// (`Services/Jobs/JobService.cs:678`) and deliberately so: a `Blocked` job is waiting on a real
+/// dependency and is released by [`JobManager::restore_blocked`] and the maintenance sweeps, so it is
+/// pending work under a discouraging name, and `Pending` is the pre-dispatch status a restart
+/// normalises to `Queued`.
+///
+/// A caller wanting one status asks for one; the order here is the order the app's menu offers them in.
+pub const CLEARABLE_STATUSES: &[JobStatus] = &[
+    JobStatus::Completed,
+    JobStatus::Failed,
+    JobStatus::Timeout,
+    JobStatus::Stopped,
+];
 
 /// Builds the process spec for an agent launch. Injectable so tests can exercise the whole launch
 /// path against a throwaway script instead of a real agent CLI.
@@ -716,6 +735,24 @@ impl JobManager {
         self.enqueue(&id, priority).await;
     }
 
+    /// Puts a job that was still `Blocked` when the daemon stopped back into the in-memory map, with
+    /// no enqueue: its gate has not been re-run yet, so it is still waiting by default.
+    ///
+    /// This is the map-only counterpart to [`Self::requeue_restored`], and it exists because every
+    /// path that can ever release a blocked job reads the map, not SQLite: both blocked sweeps in
+    /// [`Self::run_maintenance_pass_with`] and [`release_wait_dependents`] on the live path all
+    /// filter `self.jobs` for `JobStatus::Blocked`. A restart empties that map, so without this a
+    /// `Blocked` row is invisible to all three — which strands it, rather than merely delaying it.
+    /// It never runs, and it never fails either: `find_conflicting_job` reads SQLite, so the row
+    /// still counts as in-flight and every resubmission naming its plan is refused.
+    ///
+    /// Restoring it is what a live daemon looks like anyway. `start_job` inserts the job and returns
+    /// early at its gate without enqueueing, and `evict_stale_jobs` only drops terminal jobs, so on a
+    /// daemon that never died the blocked job is sitting in this same map waiting for the same sweeps.
+    pub async fn restore_blocked(&self, job: JobItem) {
+        self.jobs.write().await.insert(job.id.clone(), job);
+    }
+
     /// Pushes a `Queued` job onto the priority queue and wakes the dispatcher.
     async fn enqueue(&self, job_id: &str, priority: i32) {
         ensure_handle(&self.handles, job_id).await;
@@ -1155,11 +1192,36 @@ impl JobManager {
 
     /// Bulk delete by status. Each job goes through [`Self::delete_job`], so the plan-state guards
     /// apply to every one of them.
+    ///
+    /// **Terminal statuses only.** Anything else in `statuses` is dropped before a single row is read,
+    /// so no caller — the CLI's `tendril job clear`, the app's header menu, or whatever asks next — can
+    /// destroy work that is still in flight. V1 makes the same promise, but it makes it in the
+    /// *predicate each use passes* (`ClearAllJobs` is `not Running and not Queued`,
+    /// `Services/Jobs/JobService.cs:678`), which leaves the guarantee one careless new call site away
+    /// from being lost. Here it is a property of the primitive. See [`CLEARABLE_STATUSES`].
     pub async fn clear_jobs(&self, statuses: &[JobStatus]) -> Result<usize> {
+        let clearable: Vec<JobStatus> = statuses
+            .iter()
+            .copied()
+            .filter(|status| CLEARABLE_STATUSES.contains(status))
+            .collect();
+        for refused in statuses.iter().filter(|s| !clearable.contains(s)) {
+            tracing::warn!(
+                "Refusing to clear {} jobs: a clear only ever removes finished work",
+                refused
+            );
+        }
+        // Not an early `Ok(0)` for the empty case only as an optimisation: `list_job_ids_by_status`
+        // with no statuses builds an `IN ()` predicate, and an empty scope must mean "nothing" rather
+        // than whatever SQLite makes of that.
+        if clearable.is_empty() {
+            return Ok(0);
+        }
+
         let ids = {
             let db_path = crate::config::get_database_path(&self.tendril_home);
             let conn = open_database(&db_path)?;
-            list_job_ids_by_status(&conn, statuses)?
+            list_job_ids_by_status(&conn, &clearable)?
         };
 
         let mut cleared = 0;
@@ -1181,16 +1243,9 @@ impl JobManager {
         self.clear_jobs(&[JobStatus::Failed]).await
     }
 
-    /// Clears every terminal job. `Blocked` jobs survive: one still waiting on a real dependency is
-    /// pending work, not history.
+    /// Clears every terminal job — [`CLEARABLE_STATUSES`] in full.
     pub async fn clear_all_jobs(&self) -> Result<usize> {
-        self.clear_jobs(&[
-            JobStatus::Completed,
-            JobStatus::Failed,
-            JobStatus::Timeout,
-            JobStatus::Stopped,
-        ])
-        .await
+        self.clear_jobs(CLEARABLE_STATUSES).await
     }
 
     // -----------------------------------------------------------------------
@@ -1821,6 +1876,30 @@ impl OutputActivity {
             .map(|last| last.elapsed())
             .unwrap_or_default()
     }
+
+    /// Whether this line's timestamp is due to be published, recording that it was.
+    ///
+    /// The first line always is, so a job shows a real "last heard from" the moment it says anything.
+    /// After that it is one claim per [`LAST_OUTPUT_PERSIST_INTERVAL`], because the alternative is an
+    /// `UPDATE Jobs` per output line: an agent mid-`cargo test` emits thousands of lines a minute, and
+    /// the only reader of the value is a table cell rendering it as `1m 20s`. Ten seconds of extra
+    /// staleness is invisible there; ten thousand writes are not.
+    ///
+    /// A poisoned lock claims nothing: dropping a heartbeat is a stale cell, and the watchdog's own
+    /// anchor is a separate field, so nothing about liveness depends on this succeeding.
+    fn claim_persist_slot(&self, now: Instant) -> bool {
+        match self.last_persist.lock() {
+            Ok(mut last_persist) => {
+                let due = last_persist
+                    .is_none_or(|at| now.duration_since(at) >= LAST_OUTPUT_PERSIST_INTERVAL);
+                if due {
+                    *last_persist = Some(now);
+                }
+                due
+            }
+            Err(_) => false,
+        }
+    }
 }
 
 /// Fails a job whose agent has gone quiet for longer than `staleOutputTimeout`.
@@ -2068,14 +2147,27 @@ fn spawn_runner(
         let activity_for_output = activity.clone();
         let home_for_output = tendril_home.clone();
         let id_for_output = job_id.clone();
+        let jobs_for_output = jobs_map.clone();
+
+        // Stateful, and held by the `FnMut` closure rather than shared: Antigravity ties a tool call's
+        // two halves together by `step_index`, so the normalizer has to remember the open ones.
+        let mut eventwire = EventWireNormalizer::new();
 
         let run_res = run_agent_process_with_grace(
             spec,
             move |evt| {
                 let _ = append_to_raw_log(&th, &jid, &evt.raw_line);
-                let _ = append_to_eventwire(&th, &jid, &evt.raw_line);
+                // A provider's own line is *not* eventwire. `parseEventWireStream` keeps only lines
+                // carrying a `kind`, so appending the raw line here left `AgentViewer` with nothing to
+                // render in `JobSessionView` - for every provider, not just one. Normalising first is
+                // what the chat turn already does; this is the same layer, so a job's tool disclosure
+                // and a chat turn's now come from one implementation.
+                for event_line in eventwire.normalize(&evt.raw_line, evt.is_stderr) {
+                    let _ = append_to_eventwire(&th, &jid, &event_line);
+                }
                 note_agent_output(
                     &activity_for_output,
+                    &jobs_for_output,
                     &home_for_output,
                     &id_for_output,
                     &evt.raw_line,
@@ -2101,6 +2193,17 @@ fn spawn_runner(
 
         finished.store(true, Ordering::SeqCst);
         job.process_id = Some(pid.load(Ordering::SeqCst)).filter(|p| *p != 0);
+        // This task's own copy predates every heartbeat, and `finish_job` persists the whole record —
+        // so without this the terminal write erases the last-output stamp `note_agent_output` spent the
+        // run maintaining, and a job's row would remember when it started but not when it last spoke.
+        if let Some(at) = jobs_map
+            .read()
+            .await
+            .get(&job_id)
+            .and_then(|current| current.last_output_at)
+        {
+            job.last_output_at = Some(at);
+        }
 
         // A tool_call that never received a tool_result leaves its card spinning forever in
         // AgentViewer, since that's fed straight from this eventwire log. Close any out before
@@ -2279,9 +2382,18 @@ async fn run_detached_supervisor(ctx: DispatchContext, job: JobItem, pid: u32) {
 }
 
 /// Records one line of agent output: refreshes the liveness anchor, notes a terminal result event,
-/// and refreshes `LastOutputAt` in SQLite at most once per [`LAST_OUTPUT_PERSIST_INTERVAL`].
+/// and publishes `LastOutputAt` at most once per [`LAST_OUTPUT_PERSIST_INTERVAL`].
+///
+/// "Publishes" is two writes, and both are needed. The row is what `GET /api/jobs` and
+/// `POST /api/jobs/query` read, so it is what reaches the Jobs table's Agent Output cell. The
+/// in-memory map matters because [`persist`] writes the *whole* `JobItem` it is handed, and every
+/// caller of it takes that item from this same map ([`JobManager::update_job_status`] and friends read
+/// through [`JobManager::get_job`]): an agent reporting a status message between two heartbeats would
+/// otherwise write `LastOutputAt = NULL` back over the stamp, and the cell would flick back to
+/// "Starting…" mid-run. Stamping the map keeps the value in the record those writers carry forward.
 fn note_agent_output(
     activity: &Arc<OutputActivity>,
+    jobs: &Arc<RwLock<HashMap<String, JobItem>>>,
     tendril_home: &Path,
     job_id: &str,
     raw_line: &str,
@@ -2294,29 +2406,24 @@ fn note_agent_output(
         activity.result_seen.store(true, Ordering::SeqCst);
     }
 
-    let should_persist = match activity.last_persist.lock() {
-        Ok(mut last_persist) => {
-            let due = last_persist
-                .map(|at| now.duration_since(at) >= LAST_OUTPUT_PERSIST_INTERVAL)
-                .unwrap_or(true);
-            if due {
-                *last_persist = Some(now);
-            }
-            due
-        }
-        Err(_) => false,
-    };
-    if !should_persist {
+    if !activity.claim_persist_slot(now) {
         return;
     }
 
     let home = tendril_home.to_path_buf();
     let id = job_id.to_string();
+    let jobs = jobs.clone();
     tokio::spawn(async move {
+        let at = Utc::now();
+        if let Some(job) = jobs.write().await.get_mut(&id) {
+            job.last_output_at = Some(at);
+        }
         let db_path = crate::config::get_database_path(&home);
         match open_database(&db_path) {
             Ok(conn) => {
-                if let Err(e) = touch_job_last_output(&conn, &id, Utc::now()) {
+                // A targeted `UPDATE` rather than a row rewrite: a heartbeat must not clobber a field
+                // a concurrent writer owns. See `touch_job_last_output`.
+                if let Err(e) = touch_job_last_output(&conn, &id, at) {
                     tracing::debug!("Failed to stamp last output for job {}: {}", id, e);
                 }
             }
@@ -3438,5 +3545,110 @@ async fn persist(
             }
         }
         Err(e) => tracing::warn!("Failed to open database to persist job {}: {}", job.id, e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The write rate behind the Jobs table's Agent Output cell.
+    ///
+    /// The cell renders "how long since the agent last said anything", which needs a stamped timestamp
+    /// — but stamping it per output line would make `UPDATE Jobs SET LastOutputAt` the hottest write in
+    /// the daemon, thousands a minute for an agent running a test suite. These pin the throttle that
+    /// makes the feature affordable: one write to open the run, then one per
+    /// [`LAST_OUTPUT_PERSIST_INTERVAL`] however loud the agent is.
+    #[test]
+    fn a_chatty_agent_costs_one_last_output_write_per_interval() {
+        let activity = OutputActivity::new();
+        let start = Instant::now();
+
+        // The first line always publishes: a running job with no stamp reads "Starting…", and it should
+        // stop doing that as soon as it has actually said something.
+        assert!(activity.claim_persist_slot(start));
+
+        // Ten thousand lines inside the window, and not one more write.
+        let claims = (1..10_000u64)
+            .filter(|i| activity.claim_persist_slot(start + Duration::from_micros(i * 100)))
+            .count();
+        assert_eq!(
+            claims, 0,
+            "no line inside the interval may reach SQLite after the first"
+        );
+
+        // The window closes exactly at the interval, not a tick before it.
+        assert!(!activity
+            .claim_persist_slot(start + LAST_OUTPUT_PERSIST_INTERVAL - Duration::from_millis(1)));
+        assert!(activity.claim_persist_slot(start + LAST_OUTPUT_PERSIST_INTERVAL));
+
+        // And the next window is measured from the write that was made, not from the run's start.
+        assert!(!activity.claim_persist_slot(
+            start + LAST_OUTPUT_PERSIST_INTERVAL * 2 - Duration::from_millis(1)
+        ));
+        assert!(activity.claim_persist_slot(start + LAST_OUTPUT_PERSIST_INTERVAL * 2));
+    }
+
+    /// A silent stretch does not bank up credit: a job goes quiet for a minute and its next line still
+    /// costs exactly one write, not twelve.
+    #[test]
+    fn a_quiet_stretch_does_not_bank_up_writes() {
+        let activity = OutputActivity::new();
+        let start = Instant::now();
+        assert!(activity.claim_persist_slot(start));
+
+        let quiet = start + Duration::from_secs(60);
+        assert!(activity.claim_persist_slot(quiet));
+        assert!(!activity.claim_persist_slot(quiet + Duration::from_millis(1)));
+    }
+
+    /// The heartbeat stamps the in-memory record, not only the row.
+    ///
+    /// [`persist`] writes the whole `JobItem` its caller holds, and every caller takes that item from
+    /// this map — so a status message arriving between two heartbeats would write `LastOutputAt = NULL`
+    /// back over the row and drop the Jobs table's Agent Output cell to "Starting…" mid-run. Stamping
+    /// the map is what makes the value survive those writers.
+    #[tokio::test]
+    async fn a_heartbeat_stamps_the_record_a_status_write_would_otherwise_carry_forward() {
+        let home = std::env::temp_dir().join(format!(
+            "tendril-heartbeat-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&home).expect("temp home");
+
+        // A launch-time copy, exactly as `spawn_runner` holds one: Running, and no output yet.
+        let mut job = JobItem::new(
+            "00001".to_string(),
+            "ExecutePlan".to_string(),
+            String::new(),
+            "FixtureProject".to_string(),
+        );
+        job.status = JobStatus::Running;
+        assert!(job.last_output_at.is_none());
+        let jobs: Arc<RwLock<HashMap<String, JobItem>>> = Arc::new(RwLock::new(HashMap::new()));
+        jobs.write().await.insert(job.id.clone(), job.clone());
+
+        let activity = Arc::new(OutputActivity::new());
+        note_agent_output(&activity, &jobs, &home, "00001", "{\"type\":\"assistant\"}");
+
+        // The write is spawned so the output callback never blocks on SQLite.
+        let mut stamp = None;
+        for _ in 0..200 {
+            stamp = jobs
+                .read()
+                .await
+                .get("00001")
+                .and_then(|j| j.last_output_at);
+            if stamp.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert!(
+            stamp.is_some(),
+            "the first agent line must leave a stamp on the shared record"
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

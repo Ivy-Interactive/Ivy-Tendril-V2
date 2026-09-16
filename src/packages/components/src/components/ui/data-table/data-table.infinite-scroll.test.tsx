@@ -3,10 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import type { DataTableColumnFilters } from "./column-filters";
-import { columnFiltersToRemoteFilter } from "./column-filters";
 import { DataTable } from "./data-table";
-import type { RemoteTableFetcher, RemoteTableRequest } from "./remote-query";
+import type { RemoteTableFetcher, RemoteTableFilter, RemoteTableRequest } from "./remote-query";
 import type { DataTableColumn } from "./types";
 import { useRemoteDataTable } from "./use-remote-data-table";
 
@@ -49,10 +47,12 @@ const columns: DataTableColumn<Job>[] = [
   {
     name: "project",
     header: "Project",
-    // A column holding a joined list is not *equal* to any one project, so its facet says `contains`.
+    // A column holding a joined list is not *equal* to any one project, so its default says `contains`.
     filter: { kind: "select", options: [{ value: "web" }, { value: "api" }], function: "contains" },
   },
-  { name: "prompt", header: "Prompt", filter: { kind: "text" } },
+  // The wire name differs from the displayed one, which is the case that proves the expression is
+  // translated to the server's schema rather than passed through verbatim.
+  { name: "prompt", header: "Prompt", filter: { kind: "text", column: "reportedPlanTitle" } },
 ];
 
 function makeJob(index: number): Job {
@@ -91,8 +91,8 @@ interface HarnessProps {
 }
 
 function Harness({ fetchPage, pageSize = 20, onFilterChange }: HarnessProps) {
-  const [filters, setFilters] = React.useState<DataTableColumnFilters>({});
-  const filter = React.useMemo(() => columnFiltersToRemoteFilter(columns, filters), [filters]);
+  const [expression, setExpression] = React.useState("");
+  const [filter, setFilter] = React.useState<RemoteTableFilter | null>(null);
   const table = useRemoteDataTable<Job>({
     fetchPage,
     pageSize,
@@ -112,15 +112,39 @@ function Harness({ fetchPage, pageSize = 20, onFilterChange }: HarnessProps) {
         getRowId={(row) => row.id}
         virtualized={false}
         loadMoreThreshold={THRESHOLD_ROWS}
-        showColumnFilters
-        columnFilters={filters}
-        onColumnFiltersChange={(next) => {
-          setFilters(next);
-          onFilterChange?.(columnFiltersToRemoteFilter(columns, next));
+        showFilter
+        filterExpression={expression}
+        onFilterExpressionChange={(next, parsed) => {
+          setExpression(next);
+          setFilter(parsed);
+          onFilterChange?.(parsed);
         }}
       />
     </div>
   );
+}
+
+/**
+ * The editor, expanding the toolbar's filter option first if it is still collapsed — which is what a
+ * user does, and what the framework's `DataTableOption` requires of one.
+ */
+async function openFilterEditor(): Promise<HTMLElement> {
+  const existing = screen.queryByRole("textbox", { name: "Filter expression" });
+  if (existing) return existing;
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  });
+  return screen.getByRole("textbox", { name: "Filter expression" });
+}
+
+/** Types an expression into the toolbar's editor and commits it the way a user does. */
+async function commitExpression(text: string): Promise<HTMLElement> {
+  const box = await openFilterEditor();
+  await act(async () => {
+    fireEvent.change(box, { target: { value: text } });
+    fireEvent.keyDown(box, { key: "Enter" });
+  });
+  return box;
 }
 
 function scrollerFor(container: HTMLElement): HTMLDivElement {
@@ -292,35 +316,54 @@ describe("DataTable infinite scroll", () => {
   });
 });
 
-describe("DataTable header filters", () => {
-  it("renders a sticky filter row inside the header, under the labels", async () => {
+/**
+ * The filter, as the framework has it: **one** expression control at the top-left of the toolbar, not a
+ * band of per-column widgets. `DataTableWidget.tsx` renders it as the first child of the header's left
+ * group, and there is no filter row in `<thead>` anywhere in the framework's grid.
+ *
+ * The payload is what these assert. The front end changed; the wire filter — `inSet` for a set,
+ * `contains` for free text, an `and` group across columns, the daemon's own column names — did not.
+ */
+describe("DataTable filter expression", () => {
+  it("puts one filter control at the top-left of the toolbar, and no filter row in the header", async () => {
     const { fetchPage } = fakeServer(100);
     const { container } = render(<Harness fetchPage={fetchPage} />);
     await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
 
-    const headerRows = container.querySelectorAll("thead tr");
-    expect(headerRows).toHaveLength(2);
-    expect(headerRows[1]).toHaveAttribute("data-slot", "data-table-filter-row");
-    // One control per filterable column, and none for the column that declares no filter.
-    expect(screen.getByRole("button", { name: "Filter by Status" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Filter by Project" })).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Filter by Prompt" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Filter by Id" })).not.toBeInTheDocument();
+    // One header row: the labels. The filter is not in the table at all.
+    expect(container.querySelectorAll("thead tr")).toHaveLength(1);
+    expect(container.querySelector('[data-slot="data-table-filter-row"]')).not.toBeInTheDocument();
+
+    // And it is the *first* thing in the toolbar's left group, which is where the framework puts it.
+    const toolbar = container.querySelector('[data-slot="data-table-filter"]');
+    expect(toolbar).toBeInTheDocument();
+    expect(toolbar?.parentElement?.firstElementChild).toBe(toolbar);
+    expect(screen.getByRole("button", { name: "Filter" })).toBeInTheDocument();
+
+    // No per-column controls survive.
+    expect(screen.queryByRole("button", { name: "Filter by Status" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Filter by Prompt" })).not.toBeInTheDocument();
   });
 
-  it("sends a facet selection as one `inSet` condition, from the first window", async () => {
+  it("expands into an editor whose placeholder is built from the table's own columns", async () => {
+    const { fetchPage } = fakeServer(100);
+    render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
+
+    const box = await openFilterEditor();
+    // The first filterable column, so the syntax is learnable from the control rather than from docs.
+    expect(box).toHaveAttribute("placeholder", '[Status] contains "…"');
+  });
+
+  it("sends a set as one `inSet` condition, from the first window", async () => {
     const { requests, fetchPage } = fakeServer(100);
     render(<Harness fetchPage={fetchPage} />);
     await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Filter by Status" }));
-    });
-    await act(async () => {
-      fireEvent.click(await screen.findByLabelText("Running"));
-    });
+    await commitExpression('[Status] in ("Running")');
 
     await waitFor(() => expect(requests).toHaveLength(2));
+    // One `IN`, which the daemon serves from an index — not a tree of ORed equalities.
     expect(requests[1].filter).toEqual({
       condition: { column: "status", function: "inSet", args: ["Running"] },
     });
@@ -328,77 +371,101 @@ describe("DataTable header filters", () => {
     expect(requests[1].offset).toBe(0);
   });
 
-  it("ANDs two columns' filters", async () => {
+  it("ANDs two columns, and translates each to the server's own column name", async () => {
     const { requests, fetchPage } = fakeServer(100);
     render(<Harness fetchPage={fetchPage} />);
     await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Filter by Status" }));
-    });
-    await act(async () => {
-      fireEvent.click(await screen.findByLabelText("Completed"));
-    });
+    await commitExpression('[Status] = "Completed" AND [Prompt] contains "deploy"');
+
     await waitFor(() => expect(requests).toHaveLength(2));
-
-    const prompt = screen.getByRole("textbox", { name: "Filter by Prompt" });
-    await act(async () => {
-      fireEvent.change(prompt, { target: { value: "deploy" } });
-      fireEvent.keyDown(prompt, { key: "Enter" });
-    });
-
-    await waitFor(() => expect(requests).toHaveLength(3));
-    expect(requests[2].filter).toEqual({
+    expect(requests[1].filter).toEqual({
       group: {
         op: "and",
         filters: [
-          { condition: { column: "status", function: "inSet", args: ["Completed"] } },
-          { condition: { column: "prompt", function: "contains", args: ["deploy"] } },
+          { condition: { column: "status", function: "equals", args: ["Completed"] } },
+          // `Prompt` is displayed; `reportedPlanTitle` is what the schema calls it.
+          { condition: { column: "reportedPlanTitle", function: "contains", args: ["deploy"] } },
         ],
       },
     });
   });
 
-  it("commits a text filter on Enter and not on every keystroke", async () => {
+  it("ORs across columns, which a control per column could never express", async () => {
     const { requests, fetchPage } = fakeServer(100);
     render(<Harness fetchPage={fetchPage} />);
     await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
 
-    const prompt = screen.getByRole("textbox", { name: "Filter by Prompt" });
-    await act(async () => {
-      fireEvent.change(prompt, { target: { value: "d" } });
-      fireEvent.change(prompt, { target: { value: "de" } });
-      fireEvent.change(prompt, { target: { value: "dep" } });
-    });
-    // Typing is not filtering — the framework's editor commits on Enter, and a server-side filter is
-    // exactly where one request per keystroke is unaffordable.
-    expect(requests).toHaveLength(1);
+    await commitExpression('[Status] = "Running" OR [Project] contains "api"');
 
-    await act(async () => {
-      fireEvent.keyDown(prompt, { key: "Enter" });
-    });
     await waitFor(() => expect(requests).toHaveLength(2));
     expect(requests[1].filter).toEqual({
-      condition: { column: "prompt", function: "contains", args: ["dep"] },
+      group: {
+        op: "or",
+        filters: [
+          { condition: { column: "status", function: "equals", args: ["Running"] } },
+          { condition: { column: "project", function: "contains", args: ["api"] } },
+        ],
+      },
     });
   });
 
-  it("honours a column's function override for a joined-list column", async () => {
+  it("commits on Enter and not on every keystroke", async () => {
     const { requests, fetchPage } = fakeServer(100);
     render(<Harness fetchPage={fetchPage} />);
     await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
 
+    const box = await openFilterEditor();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Filter by Project" }));
+      fireEvent.change(box, { target: { value: '[Prompt] contains "d' } });
+      fireEvent.change(box, { target: { value: '[Prompt] contains "de' } });
+      fireEvent.change(box, { target: { value: '[Prompt] contains "dep"' } });
     });
-    await act(async () => {
-      fireEvent.click(await screen.findByLabelText("web"));
-    });
+    // Typing is not filtering — the framework's editor commits on Enter, and a server-side filter is
+    // exactly where one request per keystroke is unaffordable. Two of those three are not even valid.
+    expect(requests).toHaveLength(1);
 
+    await act(async () => {
+      fireEvent.keyDown(box, { key: "Enter" });
+    });
     await waitFor(() => expect(requests).toHaveLength(2));
     expect(requests[1].filter).toEqual({
-      condition: { column: "project", function: "contains", args: ["web"] },
+      condition: { column: "reportedPlanTitle", function: "contains", args: ["dep"] },
     });
+  });
+
+  it("refuses an expression it cannot read, and says which columns it accepts", async () => {
+    const { requests, fetchPage } = fakeServer(100);
+    render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
+
+    const box = await commitExpression('[Nope] = "x"');
+
+    // Not committed: the daemon would answer 400 and the table would empty for no visible reason.
+    expect(requests).toHaveLength(1);
+    const error = screen.getByTestId("data-table-filter-error");
+    expect(error).toHaveTextContent("Unknown column 'Nope'");
+    expect(error).toHaveTextContent("[Status]");
+    // The text survives, so the typo can be corrected rather than retyped.
+    expect(box).toHaveValue('[Nope] = "x"');
+    expect(box).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("clears the filter, restoring the whole table", async () => {
+    const { requests, fetchPage } = fakeServer(100);
+    render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
+
+    await commitExpression('[Status] = "Running"');
+    await waitFor(() => expect(requests).toHaveLength(2));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    });
+
+    await waitFor(() => expect(requests).toHaveLength(3));
+    // No constraint, never "matches nothing".
+    expect(requests[2].filter).toBeNull();
   });
 
   it("drops the rows it holds when a filter narrows the table", async () => {
@@ -408,16 +475,75 @@ describe("DataTable header filters", () => {
     scrollTo(scrollerFor(container), 400);
     await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("40"));
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Filter by Status" }));
-    });
-    await act(async () => {
-      fireEvent.click(await screen.findByLabelText("Running"));
-    });
+    await commitExpression('[Status] = "Running"');
 
     // Forty rows of the old result set are not the first forty of the new one, so the accumulation is
     // dropped and the scroll starts again — which is what the framework does on a filter change too
     // (`useDataLoading.ts` resets its loaded-row count).
     await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
+  });
+});
+
+/**
+ * The row actions sit above the row on the z axis, and their column has a real width.
+ *
+ * The bug this pins: `w-0` on the actions column is taken literally under `table-layout: fixed`, and a
+ * collapsed `justify-end` cell lays its buttons out overflowing *leftwards* over the previous cell,
+ * where a ghost button's transparent fill lets that cell's text read straight through the controls.
+ */
+describe("DataTable row actions stacking", () => {
+  function ActionsHarness({ fixed }: { fixed: boolean }) {
+    const { fetchPage } = fakeServer(4);
+    const table = useRemoteDataTable<Job>({
+      fetchPage,
+      pageSize: 4,
+      infinite: true,
+      getRowKey: (row) => row.id,
+    });
+    return (
+      <DataTable<Job>
+        {...table.tableProps}
+        columns={columns}
+        getRowId={(row) => row.id}
+        virtualized={false}
+        className={fixed ? "[&_table.ivy-data-table]:table-fixed" : undefined}
+        selectable
+        rowActions={[
+          { tag: "menu", label: "Job actions", children: [{ tag: "stop", label: "Stop" }] },
+        ]}
+      />
+    );
+  }
+
+  it("gives the action and selection columns a real width, windowed or not", async () => {
+    const { container } = render(<ActionsHarness fixed />);
+    await waitFor(() => expect(dataRows(container)).toHaveLength(4));
+
+    // Four rows is far below the windowing threshold, which is exactly the case that used to fall back
+    // to `w-0` while the call site had already forced fixed layout.
+    expect(container.querySelector("table")).not.toHaveClass("ivy-data-table-virtualized");
+    for (const row of dataRows(container)) {
+      const actions = row.querySelector("td.ivy-data-table-fit-actions");
+      expect(actions).toBeInTheDocument();
+      expect(actions).not.toHaveClass("w-0");
+      expect(row.querySelector("td.ivy-data-table-fit-select")).toBeInTheDocument();
+    }
+    // And the header cells, which is where fixed layout actually reads the widths from.
+    expect(container.querySelector("th.ivy-data-table-fit-actions")).toBeInTheDocument();
+  });
+
+  it("keeps the actions reachable on a selected row", async () => {
+    const { container } = render(<ActionsHarness fixed={false} />);
+    await waitFor(() => expect(dataRows(container)).toHaveLength(4));
+
+    const row = dataRows(container)[3];
+    await act(async () => {
+      fireEvent.click(row.querySelector('button[role="checkbox"]') ?? row);
+    });
+
+    // A selected row paints `bg-muted`; the actions cell is a stacking level above the row's content, so
+    // the trigger is still there and still labelled.
+    expect(row.querySelector("td.ivy-data-table-fit-actions")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Job actions" })).toHaveLength(4);
   });
 });

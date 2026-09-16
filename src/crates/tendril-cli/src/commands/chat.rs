@@ -372,7 +372,7 @@ async fn stream_via_server(
         anyhow::bail!("Failed to start chat turn on server: {}", err_text);
     }
 
-    let mut streamed = String::new();
+    let mut printer = TurnPrinter::new();
     while let Some(msg_res) = read.next().await {
         match msg_res {
             Ok(WsMessage::Text(txt)) => {
@@ -383,15 +383,20 @@ async fn stream_via_server(
                             delta,
                             ..
                         } if sid == session_id => {
-                            streamed.push_str(&delta);
-                            print!("{}", delta);
-                            std::io::stdout().flush().ok();
+                            printer.write_prose(&delta);
+                        }
+                        ChatEvent::StreamEvent {
+                            session_id: sid,
+                            line,
+                            ..
+                        } if sid == session_id => {
+                            printer.write_tool_activity(&line);
                         }
                         ChatEvent::MessageAdded {
                             session_id: sid,
                             message,
                         } if sid == session_id && message.role == "assistant" => {
-                            print_finalized_tail(&streamed, &message.content);
+                            printer.finish(&message.content);
                         }
                         ChatEvent::GeneratingState {
                             session_id: sid,
@@ -427,6 +432,8 @@ async fn stream_via_local(
         model_id: args.model.clone(),
         effort: args.effort.clone(),
         working_directory: None,
+        // `tendril chat send` is always the user talking; events are injected by the daemon.
+        role: None,
     };
 
     let target_session_id = session_id.to_string();
@@ -436,7 +443,7 @@ async fn stream_via_local(
             .await
     });
 
-    let mut streamed = String::new();
+    let mut printer = TurnPrinter::new();
     while let Ok(event) = rx.recv().await {
         match event {
             ChatEvent::StreamDelta {
@@ -444,15 +451,20 @@ async fn stream_via_local(
                 delta,
                 ..
             } if sid == target_session_id => {
-                streamed.push_str(&delta);
-                print!("{}", delta);
-                std::io::stdout().flush().ok();
+                printer.write_prose(&delta);
+            }
+            ChatEvent::StreamEvent {
+                session_id: sid,
+                line,
+                ..
+            } if sid == target_session_id => {
+                printer.write_tool_activity(&line);
             }
             ChatEvent::MessageAdded {
                 session_id: sid,
                 message,
             } if sid == target_session_id && message.role == "assistant" => {
-                print_finalized_tail(&streamed, &message.content);
+                printer.finish(&message.content);
             }
             ChatEvent::GeneratingState {
                 session_id: sid,
@@ -468,6 +480,79 @@ async fn stream_via_local(
     let res = turn_handle.await?;
     res?;
     Ok(())
+}
+
+/// The one-line rendering of an eventwire tool event, or `None` for every event that is not one.
+pub(crate) fn tool_activity_line(wire_line: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(wire_line.trim()).ok()?;
+    match value.get("kind").and_then(|k| k.as_str())? {
+        "tool_call" => {
+            let name = value
+                .get("tool_name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("tool");
+            Some(match summarize_tool_input(value.get("input")) {
+                Some(input) => format!("· {} ({})", name, input),
+                None => format!("· {}", name),
+            })
+        }
+        // Only a failure: a result that worked adds nothing the call line did not already say.
+        "tool_result" => {
+            if !value
+                .get("is_error")
+                .and_then(|e| e.as_bool())
+                .unwrap_or(false)
+            {
+                return None;
+            }
+            let name = value
+                .get("tool_name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("tool");
+            let output = value
+                .get("output")
+                .and_then(|o| o.as_str())
+                .unwrap_or("")
+                .trim();
+            Some(if output.is_empty() {
+                format!("  ! {} failed", name)
+            } else {
+                format!("  ! {} failed: {}", name, first_line_capped(output, 160))
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The first argument or two of a tool call, short enough to sit on one line.
+fn summarize_tool_input(input: Option<&serde_json::Value>) -> Option<String> {
+    let map = input?.as_object()?;
+    if map.is_empty() {
+        return None;
+    }
+    let mut parts: Vec<String> = map
+        .iter()
+        .take(2)
+        .map(|(key, value)| match value {
+            serde_json::Value::String(text) => format!("{}: {}", key, first_line_capped(text, 60)),
+            other => format!("{}: {}", key, first_line_capped(&other.to_string(), 60)),
+        })
+        .collect();
+    parts.sort();
+    Some(parts.join(", "))
+}
+
+/// The first non-empty line of `text`, truncated on a character boundary.
+fn first_line_capped(text: &str, max: usize) -> String {
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    if line.chars().count() <= max {
+        return line.to_string();
+    }
+    format!("{}…", line.chars().take(max).collect::<String>())
 }
 
 /// What a finished turn's content still owes the terminal, given everything the deltas already
@@ -490,16 +575,171 @@ pub(crate) fn finalized_tail(streamed: &str, content: &str) -> Option<String> {
     })
 }
 
-fn print_finalized_tail(streamed: &str, content: &str) {
-    if let Some(tail) = finalized_tail(streamed, content) {
-        print!("{}", tail);
+/// Writes one turn to the terminal, keeping the agent's prose apart from everything else printed
+/// around it.
+///
+/// The distinction is load-bearing. [`finalized_tail`] works out what the finished message still owes
+/// the terminal by comparing it against the prose already printed, so the tool lines — which are not
+/// part of the message at all — must not be counted in it. Mixing them made every turn print its
+/// answer a second time, because the transcript no longer prefixed the content.
+#[derive(Default)]
+pub(crate) struct TurnPrinter {
+    /// The agent's prose, and nothing else.
+    prose: String,
+    /// Whether the cursor is at the start of a line, so a tool line can claim one of its own without
+    /// leaving a blank one behind.
+    at_line_start: bool,
+}
+
+impl TurnPrinter {
+    pub(crate) fn new() -> Self {
+        Self {
+            prose: String::new(),
+            at_line_start: true,
+        }
+    }
+
+    /// One streamed chunk of the agent's answer.
+    pub(crate) fn write_prose(&mut self, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        self.prose.push_str(delta);
+        self.at_line_start = delta.ends_with('\n');
+        print!("{}", delta);
         std::io::stdout().flush().ok();
+    }
+
+    /// One eventwire line's worth of tool activity, if it carries any.
+    pub(crate) fn write_tool_activity(&mut self, wire_line: &str) {
+        let Some(line) = tool_activity_line(wire_line) else {
+            return;
+        };
+        if self.at_line_start {
+            println!("{}", line);
+        } else {
+            // Prose is streamed without a trailing newline, so the line breaks out of it first.
+            println!("\n{}", line);
+        }
+        self.at_line_start = true;
+        std::io::stdout().flush().ok();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn prose_for_test(&self) -> &str {
+        &self.prose
+    }
+
+    /// Whatever the finished message still owes the terminal.
+    pub(crate) fn finish(&mut self, content: &str) {
+        if let Some(tail) = finalized_tail(&self.prose, content) {
+            if !self.at_line_start && !tail.starts_with('\n') {
+                println!();
+            }
+            print!("{}", tail);
+            self.at_line_start = tail.ends_with('\n');
+            std::io::stdout().flush().ok();
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::finalized_tail;
+    use super::{finalized_tail, tool_activity_line, TurnPrinter};
+
+    /// The regression this pins: tool lines are printed *around* the prose, not counted as part of it.
+    /// Counting them made `finalized_tail` stop recognising the prose as a prefix of the finished
+    /// message, so every turn printed its answer a second time underneath.
+    #[test]
+    fn test_tool_activity_does_not_count_as_prose() {
+        let mut printer = TurnPrinter::new();
+        printer.write_prose("The command printed:\n");
+        printer.write_tool_activity(
+            r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"run_command","input":{"CommandLine":"echo hello"}}"#,
+        );
+        printer.write_prose("hello");
+        // The finished message is exactly the prose, so there is nothing left to print.
+        assert_eq!(
+            finalized_tail(printer.prose_for_test(), "The command printed:\nhello"),
+            None
+        );
+        // And a message that *did* grow still owes only the growth.
+        assert_eq!(
+            finalized_tail(
+                printer.prose_for_test(),
+                "The command printed:\nhello\n\nDone."
+            )
+            .as_deref(),
+            Some("\n\nDone.")
+        );
+    }
+
+    /// A streaming client has no tool cards, so it gets the live equivalent: the call as it starts and
+    /// its error if it reported one. This is what replaced the prose summary the message used to carry.
+    #[test]
+    fn test_tool_activity_lines() {
+        assert_eq!(
+            tool_activity_line(
+                r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"run_command","input":{"CommandLine":"tendril doctor"}}"#
+            )
+            .as_deref(),
+            Some("· run_command (CommandLine: tendril doctor)")
+        );
+        // No arguments worth showing, and a non-object input, both still name the tool.
+        assert_eq!(
+            tool_activity_line(r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"finish"}"#)
+                .as_deref(),
+            Some("· finish")
+        );
+        assert_eq!(
+            tool_activity_line(
+                r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"view_file","input":{}}"#
+            )
+            .as_deref(),
+            Some("· view_file")
+        );
+
+        // A result that worked adds nothing the call line did not already say.
+        assert_eq!(
+            tool_activity_line(
+                r#"{"kind":"tool_result","tool_use_id":"t1","tool_name":"run_command","output":"ok","is_error":false}"#
+            ),
+            None
+        );
+        assert_eq!(
+            tool_activity_line(
+                r#"{"kind":"tool_result","tool_use_id":"t1","tool_name":"run_command","output":"command not found","is_error":true}"#
+            )
+            .as_deref(),
+            Some("  ! run_command failed: command not found")
+        );
+
+        // Long and multi-line values are capped to one readable line.
+        let long = tool_activity_line(&format!(
+            r#"{{"kind":"tool_result","tool_use_id":"t1","tool_name":"x","output":"{}","is_error":true}}"#,
+            "e".repeat(400)
+        ))
+        .expect("a failure line");
+        assert!(
+            long.chars().count() < 200,
+            "got {} chars",
+            long.chars().count()
+        );
+        assert!(long.ends_with('…'));
+
+        // Everything that is not a tool event is silent: prose is streamed separately, and metadata is
+        // not something a terminal reader asked for.
+        for line in [
+            r#"{"kind":"text","text":"hello","delta":true}"#,
+            r#"{"kind":"session_init","session_id":"s"}"#,
+            r#"{"kind":"result","is_success":true}"#,
+            r#"{"kind":"thinking","content":"hmm"}"#,
+            "not json",
+            "{}",
+        ] {
+            assert_eq!(tool_activity_line(line), None, "line: {}", line);
+        }
+    }
 
     #[test]
     fn test_finalized_tail_only_reports_what_is_new() {

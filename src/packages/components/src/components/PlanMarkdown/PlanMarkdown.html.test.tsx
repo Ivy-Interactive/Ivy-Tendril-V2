@@ -1,6 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { render, waitFor } from "@testing-library/react";
+import { loadRehypeKatex } from "@/lib/math";
 import { PlanMarkdown as DraftMarkdown } from "./PlanMarkdown";
+
+// KaTeX is loaded on demand (see `src/lib/math.ts`); resolving the import up front lets the maths
+// assertion below stay synchronous. Everything else in this file is unaffected.
+beforeAll(async () => {
+  await loadRehypeKatex();
+});
 
 const renderContent = (content: string, props: Record<string, unknown> = {}) => {
   const { container } = render(<DraftMarkdown id="w1" content={content} {...props} />);

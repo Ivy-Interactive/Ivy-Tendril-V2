@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Flame, Search, Trash2 } from "lucide-react";
 import { bridge } from "../api/bridge";
 import { describeBridgeError, type PlanSummary, type VerificationStatus } from "../types/api";
-import { EmptyState } from "../components/EmptyState";
+import { NoContentView } from "../components/NoContentView";
 import { DeletePlanDialog } from "./dialogs";
 import { formatPlanId, parseProjects, planStateBadgeClass } from "./PlansView";
 
@@ -208,15 +208,16 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
 
       {/* Content */}
       {filtered.length === 0 ? (
-        <EmptyState
-          icon="🧊"
+        <NoContentView
+          data-testid="icebox-empty"
           // `NoContentView("Icebox is empty", "Plans you put on ice will appear here")` is V1's copy
           // for an empty icebox; the filter message is the other case, when a filter hid a set that
-          // is not empty.
+          // is not empty. V1 passes this one no `cta`, so it carries no process wallpaper: the
+          // pipeline has no icebox stage, and V1 hangs it only off Plans and Review.
           title={iceboxPlans.length === 0 ? "Icebox is empty" : "No plans match"}
           description={
             iceboxPlans.length === 0
-              ? "Plans you put on ice will appear here."
+              ? "Plans you put on ice will appear here"
               : "No icebox plans match the current filters."
           }
         />

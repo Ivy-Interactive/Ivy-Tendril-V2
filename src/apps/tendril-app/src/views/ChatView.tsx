@@ -3,22 +3,15 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { ChatInput, ChatMessageList } from "@ivy-interactive/components/renderers";
 import { VoiceRecorder, type VoiceStatus } from "@ivy-interactive/components/tendril";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   Input,
 } from "@ivy-interactive/components/ui";
+import { bridge } from "../api/bridge";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
-import { chatStore, type ChatState } from "../state/chatStore";
+import { chatStore, type ChatState, type ChatStore } from "../state/chatStore";
 import { jobsStore } from "../state/jobsStore";
 import { plansStore } from "../state/plansStore";
 import type { ChatMessage, ChatSession, ChatAttachment, ChatQueuedItem } from "../types/chat";
@@ -29,8 +22,9 @@ import {
   CHAT_VIRTUALIZATION_MIN_MESSAGES,
   estimateChatMessageHeight,
 } from "../hooks/useChatMessageWindow";
+import { ConfirmDialog } from "./dialogs/ConfirmDialog";
 import { ChatMessageRow } from "./ChatMessageRow";
-import { ChatHeader } from "./ChatHeader";
+import { ChatHeader, JobsMenu } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
 import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
 import { useWebviewFileDrop } from "../hooks/useWebviewFileDrop";
@@ -58,6 +52,39 @@ interface ChatViewProps {
   onCreatePlan?: (initialDescription: string) => void;
   /** Opens the plan a system event or a spawned job refers to. */
   onOpenPlan?: (planId: string) => void;
+  /**
+   * The store this conversation is read from and written through. Defaults to the app-wide one the
+   * Chat page owns; the chat beside a plan passes a plan-scoped instance, which is what V1's
+   * `PlanChatView` does by holding its own `activeSessionId` over the one shared history service.
+   */
+  store?: ChatStore;
+  /**
+   * `Chat.ContentView(embedded: true)`: this chat is hosted inside another page rather than being
+   * the page. The table above {@link ChatView} says exactly what that turns off.
+   */
+  embedded?: boolean;
+  /**
+   * `ContentView`'s `greeting`. The Chat page passes the time-of-day line; the plan panel passes
+   * `$"#{plan.Id} {plan.Title}"`, which is where the plan's name is shown — V1's embedded chat has
+   * no title bar to put it in.
+   */
+  greeting?: string;
+  /** `ContentView`'s `headline`: `PlanChatView.Headline` embedded, V1's chat headline otherwise. */
+  headline?: string;
+  /** `ContentView`'s `samplePrompts`. Absent means `SamplePrompts.ForChat` off the live plan list. */
+  samplePrompts?: SamplePrompt[];
+  /**
+   * A line the host wants drafted into the composer, not sent — "Discuss with agent" on a plan page
+   * is the one thing that asks for it. The token is what makes a repeat request work: an unchanged
+   * string compares equal and nothing would move.
+   */
+  draftPrompt?: { text: string; token: number };
+}
+
+/** One chip of the empty state: the label is the button, the prompt is what it drafts. */
+export interface SamplePrompt {
+  label: string;
+  prompt: string;
 }
 
 /** `ChatSearchDialog.MaxResults`: the search dialog never lists more than fifteen chats. */
@@ -99,6 +126,14 @@ const MAX_SAMPLE_PROMPTS = 5;
 /** `#21`, not `#00021`, as `PlansView.formatPlanId` explains; inlined to keep the chunks apart. */
 const shortPlanId = (id: string): string => id.replace(/^0+(?=\d)/, "") || id;
 
+/**
+ * Whether an attachment's path is a real path on the machine, POSIX or Windows.
+ *
+ * A `File` from an `<input>` or a paste reports only its base name, and staging a base name would ask
+ * the app to read a file relative to a working directory nothing here can reason about.
+ */
+const isAbsolutePath = (path: string): boolean => /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(path);
+
 const newestByUpdated = (plans: PlanSummary[]): PlanSummary | undefined =>
   [...plans].sort(
     (a, b) => new Date(b.updated ?? 0).getTime() - new Date(a.updated ?? 0).getTime(),
@@ -112,11 +147,8 @@ const newestByUpdated = (plans: PlanSummary[]): PlanSummary | undefined =>
  * V1's fifth rule - the newest plan with `PartialDelivery` - has no counterpart here: `PlanSummary`
  * carries no partial-delivery flag, so that chip is absent rather than guessed at.
  */
-export function buildChatSamplePrompts(
-  plans: PlanSummary[],
-  jobs: Job[],
-): { label: string; prompt: string }[] {
-  const prompts: { label: string; prompt: string }[] = [];
+export function buildChatSamplePrompts(plans: PlanSummary[], jobs: Job[]): SamplePrompt[] {
+  const prompts: SamplePrompt[] = [];
   const labels = new Set<string>();
   const add = (label: string, prompt: string) => {
     if (labels.has(label)) return;
@@ -162,6 +194,81 @@ export function buildChatSamplePrompts(
   for (const fallback of SAMPLE_PROMPTS) {
     add(fallback.label, fallback.prompt);
   }
+
+  return prompts.slice(0, MAX_SAMPLE_PROMPTS);
+}
+
+/**
+ * The plan a chip can be written about: whatever `SamplePrompts.ForPlan` reads off a `PlanFile`.
+ * Both `PlanDetail` and `PlanSummary` satisfy it, which is what lets the plan page and the review
+ * page share one panel.
+ */
+export interface SamplePromptPlan {
+  state: string;
+  verifications?: { name: string; status: string }[];
+  prs?: string[];
+  dependsOn?: string[];
+}
+
+/**
+ * Port of `SamplePrompts.ForPlan`, in V1's order — the list is append-only, so source order *is*
+ * priority, and `labels.Add(label)` is what suppresses a duplicate. Capped at `SamplePrompts.Max`.
+ *
+ * The rules, in order: the first failed verification in list order, then the first PR, then the
+ * dependencies of a Blocked plan, then a Draft plan's scope, then the two unconditional fallbacks.
+ * At most one of Blocked and Draft can fire, so the cap can only ever drop the last fallback.
+ *
+ * V1's second rule — `plan.PartialDelivery` → "What is missing?" — has no counterpart here, for the
+ * same reason `buildChatSamplePrompts` is missing its fifth: neither `PlanDetail` nor `PlanSummary`
+ * carries a partial-delivery flag, so that chip is absent rather than guessed at.
+ */
+export function buildPlanSamplePrompts(plan: SamplePromptPlan): SamplePrompt[] {
+  const prompts: SamplePrompt[] = [];
+  const labels = new Set<string>();
+  const add = (label: string, prompt: string) => {
+    if (labels.has(label)) return;
+    labels.add(label);
+    prompts.push({ label, prompt });
+  };
+
+  const failed = (plan.verifications ?? []).find((v) => v.status === "Fail");
+  if (failed) {
+    add(
+      `Why did ${failed.name} fail?`,
+      `The ${failed.name} verification failed for this plan. Read its report in Verification/${failed.name}.md and explain the failure and how to fix it.`,
+    );
+  }
+
+  const firstPr = (plan.prs ?? [])[0];
+  if (firstPr) {
+    add(
+      "Summarize the PR feedback",
+      `Read the review comments on ${firstPr} and list the changes they ask for.`,
+    );
+  }
+
+  if (plan.state === "Blocked") {
+    add(
+      "What is blocking this?",
+      `This plan is blocked on ${(plan.dependsOn ?? []).join(", ")}. Tell me what each dependency still needs.`,
+    );
+  }
+
+  if (plan.state === "Draft") {
+    add(
+      "Tighten the scope",
+      "Read the latest revision of this plan and point out anything out of scope or under specified.",
+    );
+  }
+
+  add(
+    "Explain the solution",
+    "Explain the Solution section of this plan in plain terms, and list every file it will touch.",
+  );
+  add(
+    "What could go wrong?",
+    "What are the riskiest parts of this plan, and what should I check in review?",
+  );
 
   return prompts.slice(0, MAX_SAMPLE_PROMPTS);
 }
@@ -243,11 +350,41 @@ export const buildChatSidebarList = (
 });
 
 /**
+ * How many lines the textarea is currently rendering, from its own metrics.
+ *
+ * `scrollHeight` includes the padding, so the padding comes back off before dividing by the line
+ * height. Rounding matters: a line box can report a fractional height, and comparing a *total* against
+ * a constant puts the single-line case exactly on the boundary — one line of 14px text with `leading-5`
+ * and `py-1.5` is precisely 32px, so a half-pixel anywhere flips the composer to multiline on the first
+ * character typed. Counting lines cannot land on a boundary, and does not care what the font size is.
+ */
+const renderedLineCount = (textarea: HTMLTextAreaElement): number => {
+  const style = getComputedStyle(textarea);
+  const lineHeight = Number.parseFloat(style.lineHeight);
+  const padding =
+    (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+  // `line-height: normal` resolves to no number; V1's single-line total is the only thing left to
+  // measure against, and its own padding is what this subtracts.
+  const perLine =
+    Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : SINGLE_LINE_HEIGHT - padding;
+  if (perLine <= 0) return 1;
+  return Math.max(1, Math.round((textarea.scrollHeight - padding) / perLine));
+};
+
+/**
  * Whether the prompt needs more than one line beside the composer's buttons. It is measured at the
  * width the textarea has inline, whichever layout is showing, so the composer does not flip back
  * and forth once the toolbar has moved above the text and widened it.
+ *
+ * That hysteresis is the whole reason for the temporary style swap below, and it is the part a port
+ * loses first: the multiline layout is *wider*, so text that wrapped inline stops wrapping once the
+ * toolbar moves above it, and a naive measurement of the live element would immediately decide one line
+ * is enough and flip back. So the question is always asked at the inline width.
  */
-const needsMultipleLines = (textarea: HTMLTextAreaElement, row: HTMLElement | null): boolean => {
+export const needsMultipleLines = (
+  textarea: HTMLTextAreaElement,
+  row: HTMLElement | null,
+): boolean => {
   if (!textarea.value) return false;
   if (textarea.value.includes("\n")) return true;
   // Before the composer has a width nothing can be measured; the placeholder would wrap.
@@ -267,15 +404,47 @@ const needsMultipleLines = (textarea: HTMLTextAreaElement, row: HTMLElement | nu
   textarea.style.flex = "0 0 auto";
   textarea.style.width = `${Math.max(inlineWidth, 0)}px`;
   textarea.style.height = "auto";
-  const wraps = textarea.scrollHeight > SINGLE_LINE_HEIGHT;
+  const wraps = renderedLineCount(textarea) > 1;
   textarea.style.flex = previous.flex;
   textarea.style.width = previous.width;
   textarea.style.height = previous.height;
   return wraps;
 };
 
-export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) => {
-  const [storeState, setStoreState] = useState<ChatState>(chatStore.getState());
+/**
+ * The conversation, which is `Apps/Chat/ContentView` — the *same* view whether it is the Chat page or
+ * the panel beside a plan. V1 has exactly one chat view and two callers; `embedded` is the whole of
+ * the difference, and `Apps/Views/PlanChatView` is the second caller.
+ *
+ * Every effect here that reaches outside this subtree, and what an embedded instance does with it.
+ * Written out in full rather than gated where noticed: a sidebar publish or a webview listener
+ * leaking out of the panel beside a plan is a bug nobody would think to look for in this file.
+ *
+ * | effect | embedded |
+ * | --- | --- |
+ * | `store.subscribe` / `store.init()` | **kept** — it is the conversation. The panel's store is its own, so `init()` opens a second `chat-event` listener; unmount `destroy()`s it, so a visit leaks nothing. |
+ * | `store.pruneEmptySessions()` on unmount | **off**. V1 prunes in `ChatApp`, not in `ContentView`, and an embedded prune would reach chats the panel does not own. |
+ * | `usePublishSidebarList` | **off**, and the list is not even built. `PlanChatView` publishes none, which is exactly why V1's embedded chat shows no session list. |
+ * | the Chats search dialog | **off**. Only the published list's `onSearch` opens it, so it is already unreachable; not rendering it keeps a second `Dialog` off the plan page. |
+ * | `useWebviewFileDrop` | **off**. It listens on the *webview*, not on this subtree, so a second registration would answer drops made anywhere in the app. The React drag handlers stay — those are scoped — and the paperclip still opens the file dialog. |
+ * | `ChatHeader` | **off**: V1 swaps the whole header for a right-aligned `JobsMenu` that appears only once the conversation has jobs. So no rename, no delete menu, and no new-chat button — `PlanChatView` passes `startNewChat: () => { }`. |
+ * | composer keys, voice recorder, autoscroll, lightbox, `ResizeObserver` | **kept**: all of them are this instance's own DOM. |
+ * | `jobsStore` / `plansStore` subscriptions | **kept**. Read-only, and `PlanChatView` subscribes to `JobsChanged` for the same reason — the jobs pill follows the live list. |
+ *
+ * There is no keyboard shortcut to gate: the composer's Enter handling is a `keydown` on its own
+ * textarea, and every registered `useShortcut` in the app belongs to `App.tsx` or `PlanWorkspace`.
+ */
+export const ChatView: React.FC<ChatViewProps> = ({
+  onCreatePlan,
+  onOpenPlan,
+  store = chatStore,
+  embedded = false,
+  greeting: greetingOverride,
+  headline = EMPTY_STATE_HEADLINE,
+  samplePrompts: samplePromptsOverride,
+  draftPrompt,
+}) => {
+  const [storeState, setStoreState] = useState<ChatState>(() => store.getState());
   const [inputPrompt, setInputPrompt] = useState("");
   /** `ChatApp`'s own search trigger, opened from the Chats section's search icon. */
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -289,6 +458,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [activeLightboxImage, setActiveLightboxImage] = useState<LightboxImage | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [deleteSessionError, setDeleteSessionError] = useState<string | null>(null);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
   const [jobs, setJobs] = useState<Job[]>(jobsStore.getState().jobs);
   const [plans, setPlans] = useState<PlanSummary[]>(plansStore.getState().plans);
   const [multiline, setMultiline] = useState(false);
@@ -300,6 +471,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queuedEditFocusedIdRef = useRef<string | null>(null);
   const pinnedMessageRef = useRef<{ id: string; content: string } | null>(null);
+  /** The copy being made of each attached file, keyed by the path the user attached it by. */
+  const stagingRef = useRef(new Map<string, Promise<string>>());
 
   const requestComposerFocus = useCallback(() => {
     textareaRef.current?.focus();
@@ -340,16 +513,32 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
 
   useEffect(() => () => recorderRef.current?.stop(), []);
 
+  // Keyed on the token, not the text, so asking twice re-drafts the same line over an edited one.
+  const draftToken = draftPrompt?.token ?? 0;
+  const draftText = draftPrompt?.text ?? "";
   useEffect(() => {
-    const unsub = chatStore.subscribe(() => {
-      setStoreState({ ...chatStore.getState() });
+    if (draftToken > 0) setInputPrompt(draftText);
+  }, [draftToken, draftText]);
+
+  useEffect(() => {
+    setStoreState({ ...store.getState() });
+    const unsub = store.subscribe(() => {
+      setStoreState({ ...store.getState() });
     });
-    chatStore.init().catch(() => {});
+    store.init().catch(() => {});
     return () => {
       unsub();
-      void chatStore.pruneEmptySessions();
+      if (embedded) {
+        // The panel owns this store, so it takes the `chat-event` subscription down with it rather
+        // than leaving one behind per visit to a plan page. And it prunes nothing: V1 prunes in
+        // `ChatApp`, not in the `ContentView` the panel is, and a prune here would reach chats the
+        // panel never showed.
+        store.destroy();
+      } else {
+        void store.pruneEmptySessions();
+      }
     };
-  }, []);
+  }, [store, embedded]);
 
   // The spawned jobs pill reads its statuses from the live job list.
   useEffect(() => {
@@ -435,8 +624,61 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     });
   };
 
+  /**
+   * Swaps the path of the chip added for `source` for the path the file was staged at.
+   *
+   * If a chip already carries the staged path — the same file attached twice — the second row is
+   * dropped rather than duplicated: `addAttachments` de-duplicates on the path it was given, which is
+   * the source path, and by the time this runs the first row no longer carries it.
+   */
+  const useStagedPath = (source: string, staged: string) => {
+    setAttachments((prev) => {
+      if (prev.some((a) => a.path === staged)) {
+        return prev.filter((a) => a.path !== source);
+      }
+      return prev.map((a) => (a.path === source ? { ...a, path: staged } : a));
+    });
+  };
+
+  /**
+   * Copies each picked file into Tendril's attachment directory and re-points its chip at the copy.
+   *
+   * This is what makes an attachment previewable. The daemon only serves a file inside a configured
+   * local-file root — the Tendril home, the plans folder, the project repos — and a screenshot picked
+   * from `~/Desktop` is in none of them, so a message that referenced the original path could never
+   * render more than a paperclip chip. V1 has the same constraint and answers it the same way: its
+   * composer uploads every attachment into `<TendrilHome>/Attachments/<sessionId>/` and references the
+   * copy. The staged path is also what the turn's `[Attached Files]:` block carries, so the agent reads
+   * the same bytes the thumbnail shows.
+   *
+   * A staging failure is not fatal and not reported: the chip keeps the path the user picked, so the
+   * agent is still told about a file that exists and only the thumbnail falls back to a chip.
+   *
+   * In-flight uploads are keyed by source path so that two drops of one file — or a drop of a file
+   * already attached — settle on a single copy instead of racing into `shot.png` and `shot_1.png`.
+   */
+  const stageAttachments = async (paths: string[]) => {
+    const sessionId = activeSession?.id;
+    await Promise.all(
+      paths.map(async (source) => {
+        let pending = stagingRef.current.get(source);
+        if (!pending) {
+          pending = bridge.uploadChatAttachment(source, sessionId).then((staged) => staged.path);
+          stagingRef.current.set(source, pending);
+        }
+        try {
+          useStagedPath(source, await pending);
+        } catch {
+          // Retried if the file is attached again.
+          stagingRef.current.delete(source);
+        }
+      }),
+    );
+  };
+
   const addAttachmentPaths = (paths: string[]) => {
     addAttachments(paths.map((path) => ({ name: path.split(/[/\\]/).pop() || path, path })));
+    void stageAttachments(paths);
   };
 
   const processFiles = (fileList: FileList | File[]) => {
@@ -446,11 +688,16 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
       mimeType: file.type || undefined,
     }));
     addAttachments(incoming);
+    // A `File` from an `<input>` or a paste is bytes without a path in a Tauri webview, and there is
+    // nothing on disk to stage; only the ones that did arrive with a real path are copied.
+    void stageAttachments(incoming.map((a) => a.path).filter(isAbsolutePath));
   };
 
+  // Webview-wide, not subtree-wide: see the table above. An embedded panel registers nothing.
   const nativeDropActive = useWebviewFileDrop({
     onPaths: addAttachmentPaths,
     onDragStateChange: setIsDraggingOver,
+    enabled: !embedded,
   });
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -510,7 +757,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
 
   const handleCreateSession = async () => {
     try {
-      await chatStore.createSession("New Chat");
+      await store.createSession("New Chat");
       requestComposerFocus();
     } catch {
       // Handled in store
@@ -518,14 +765,23 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   };
 
   /** Deleting a conversation is confirmed first: V1 puts a dialog in front of it. */
+  /**
+   * Deletes the session the dialog is asking about, keeping the dialog open on failure so the
+   * rejection can be read where the button was pressed — the whole reason this went through
+   * `ConfirmDialog` rather than a bare `AlertDialog`, which had nowhere to report one.
+   */
   const confirmDeleteSession = async () => {
     const id = deletingSessionId;
-    setDeletingSessionId(null);
     if (!id) return;
+    setDeleteSessionError(null);
+    setIsDeletingSession(true);
     try {
-      await chatStore.deleteSession(id);
-    } catch {
-      // Handled in store
+      await store.deleteSession(id);
+      setDeletingSessionId(null);
+    } catch (err) {
+      setDeleteSessionError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsDeletingSession(false);
     }
   };
 
@@ -533,6 +789,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   const resetComposer = () => {
     setInputPrompt("");
     setAttachments([]);
+    // The next message attaching the same file gets its own copy: this one has been sent, and a second
+    // chip pointing at the first message's file would be re-using something the user cannot see.
+    stagingRef.current.clear();
     setMultiline(false);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   };
@@ -549,7 +808,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     if (isGenerating) {
       resetComposer();
       try {
-        await chatStore.sendMessage(text, { enqueue: true, attachments: currentAttachments });
+        await store.sendMessage(text, { enqueue: true, attachments: currentAttachments });
       } catch {
         // Handled in store
       }
@@ -561,10 +820,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     try {
       // The store appends its optimistic user message synchronously, so the row to pin exists by
       // the time this returns to us — pin it so the question sits at the top while the reply grows.
-      const pending = chatStore.sendMessage(text, {
+      const pending = store.sendMessage(text, {
         attachments: currentAttachments,
       });
-      const optimistic = chatStore.getState().activeSession?.messages.at(-1);
+      const optimistic = store.getState().activeSession?.messages.at(-1);
       if (optimistic?.role === "user") {
         pinnedMessageRef.current = { id: optimistic.id, content: optimistic.content };
         pinMessage(optimistic.id);
@@ -644,7 +903,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
    * put-it-back-on-failure, so the prompt cannot be lost between the two calls.
    */
   const handleSendQueuedNow = async (item: ChatQueuedItem) => {
-    await chatStore.sendQueuedNow(item.id);
+    await store.sendQueuedNow(item.id);
   };
 
   const handleStartEditQueued = (itemId: string, prompt: string) => {
@@ -665,7 +924,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     queuedEditFocusedIdRef.current = null;
     try {
       // An empty commit drops the item, which is how a queued prompt is cleared.
-      await chatStore.updateQueuedMessage(itemId, next);
+      await store.updateQueuedMessage(itemId, next);
     } catch {
       // Handled in store
     }
@@ -754,25 +1013,60 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
     [scrollToIndex],
   );
 
-  /** The picker appears twice — icon-only in the header, labelled in the composer. */
+  /**
+   * The composer's agent pill. `compact` is icon-only, and V1 turns it on for exactly one case —
+   * `compact={embedded}` in `ChatWidget.tsx` — because the panel beside a plan has no room for the
+   * agent's name beside the mic and the send button.
+   */
   const renderAgentPicker = (compact: boolean) => (
     <AgentPicker
-      instanceId={compact ? "agent-picker-header" : "agent-picker"}
+      instanceId={compact ? "agent-picker-compact" : "agent-picker"}
       compact={compact}
       agents={agents}
       selectedAgentId={selectedAgentId}
       selectedModelId={selectedModelId}
       selectedEffort={selectedEffort}
-      onAgentChange={(agentId) => chatStore.setAgent(agentId)}
-      onModelChange={(agentId, modelId) => chatStore.setModelForAgent(agentId, modelId)}
-      onEffortChange={(agentId, effort) => chatStore.setEffortForAgent(agentId, effort)}
-      rememberedFor={(agentId) => chatStore.getAgentPreference(agentId)}
+      onAgentChange={(agentId) => store.setAgent(agentId)}
+      onModelChange={(agentId, modelId) => store.setModelForAgent(agentId, modelId)}
+      onEffortChange={(agentId, effort) => store.setEffortForAgent(agentId, effort)}
+      rememberedFor={(agentId) => store.getAgentPreference(agentId)}
     />
   );
 
-  const greeting = useMemo(() => buildGreeting(new Date()), []);
-  const samplePrompts = useMemo(() => buildChatSamplePrompts(plans, jobs), [plans, jobs]);
+  const timeOfDayGreeting = useMemo(() => buildGreeting(new Date()), []);
+  const greeting = greetingOverride ?? timeOfDayGreeting;
+  const chatSamplePrompts = useMemo(() => buildChatSamplePrompts(plans, jobs), [plans, jobs]);
+  const samplePrompts = samplePromptsOverride ?? chatSamplePrompts;
   const hasComposerContent = inputPrompt.trim().length > 0 || attachments.length > 0;
+
+  /**
+   * The composer's embedded measurements, from `chat-widget.css`'s embedded block: "the composer
+   * takes the prototype's tighter measurements (16px icons, 28px buttons)", a 12px radius rather than
+   * 16px, the paperclip flush rather than hung at -6px, 6px between the tools rather than 12px, and
+   * 0.9 opacity on the two ghost buttons rather than 0.6.
+   *
+   * The textarea's own metrics are deliberately left alone. V1 also shrinks it to 28px/14px there,
+   * but `needsMultipleLines` measures the live element against its own padding and line height, and
+   * that measurement is what decides whether the toolbar sits beside the prompt or above it. Four
+   * pixels of field height is not worth putting a second set of numbers under that.
+   */
+  const composerStyle = embedded
+    ? {
+        box: "rounded-xl",
+        button: "size-7 rounded-md",
+        icon: "size-4",
+        attachOffset: "",
+        ghost: "opacity-90 hover:opacity-100",
+        tools: "gap-1.5",
+      }
+    : {
+        box: "rounded-2xl",
+        button: "size-8 rounded-lg",
+        icon: "size-5",
+        attachOffset: "-ml-1.5",
+        ghost: "opacity-60 hover:opacity-100",
+        tools: "gap-3",
+      };
 
   const sessionPendingDeletion = sessions.find((s) => s.id === deletingSessionId);
   const sessionPendingDeletionLabel = sessionPendingDeletion?.title.trim()
@@ -788,26 +1082,28 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
    */
   const sidebarList = useMemo(
     () =>
-      buildChatSidebarList(
-        sessions,
-        activeSessionId ?? null,
-        (id) => chatStore.sessionRowState(id),
-        {
-          onNew: () => void handleCreateSession(),
-          onSearch: () => {
-            setSearchQuery("");
-            setIsSearchOpen(true);
-          },
-          onSelect: (id) => void chatStore.selectSession(id),
-          onRename: (id, title) => void chatStore.renameSession(id, title),
-          onDelete: (id) => setDeletingSessionId(id),
-          onTogglePin: (id) => chatStore.togglePinSession(id),
-        },
-      ),
+      embedded
+        ? null
+        : buildChatSidebarList(
+            sessions,
+            activeSessionId ?? null,
+            (id) => store.sessionRowState(id),
+            {
+              onNew: () => void handleCreateSession(),
+              onSearch: () => {
+                setSearchQuery("");
+                setIsSearchOpen(true);
+              },
+              onSelect: (id) => void store.selectSession(id),
+              onRename: (id, title) => void store.renameSession(id, title),
+              onDelete: (id) => setDeletingSessionId(id),
+              onTogglePin: (id) => store.togglePinSession(id),
+            },
+          ),
     // The row states are read through the store on each build, so a re-render caused by a
     // generating-state event rebuilds the list even though `sessions` is the same array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessions, activeSessionId, storeState],
+    [sessions, activeSessionId, storeState, embedded],
   );
 
   usePublishSidebarList(sidebarList);
@@ -821,7 +1117,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
   }, [sessions, searchQuery]);
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-background text-foreground">
+    <div
+      className="flex h-full w-full overflow-hidden bg-background text-foreground"
+      data-embedded={embedded}
+      data-testid={embedded ? "embedded-chat-view" : "chat-view"}
+    >
       {/* Main Chat Thread Area. A file may be dropped anywhere in it, not only on the composer. */}
       <main
         className="relative flex flex-1 flex-col overflow-hidden"
@@ -845,37 +1145,88 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
           </div>
         )}
 
-        {/* Header Toolbar */}
-        <ChatHeader
-          key={activeSessionId ?? "none"}
-          title={activeSession ? displayTitle(activeSession) : "No Active Chat"}
-          editable={Boolean(activeSession)}
-          autoScrollEnabled={autoScrollEnabled}
-          onToggleAutoScroll={toggleAutoScroll}
-          jobs={spawnedJobs}
-          onOpenPlan={onOpenPlan}
-          onReviewJobs={handleReviewJobs}
-          onNewChat={handleCreateSession}
-          onRename={(next) => {
-            if (activeSession) void chatStore.renameSession(activeSession.id, next);
-          }}
-          onDelete={() => activeSession && setDeletingSessionId(activeSession.id)}
-        />
+        {/*
+          Header Toolbar. Embedded there is none: `ChatWidget` renders
+          `activeSession && headerJobs.length > 0 && <div className="chat-header--embedded"><JobsMenu/></div>`
+          in its place, right-aligned with no border, because the page hosting the panel already
+          carries the plan's name and its actions. That is also where the new-chat button goes — the
+          plan's chat is the plan's, and `PlanChatView` passes `startNewChat: () => { }`.
+        */}
+        {embedded ? (
+          activeSession &&
+          spawnedJobs.length > 0 && (
+            <div
+              data-testid="embedded-chat-jobs"
+              className="flex shrink-0 items-center justify-end px-4 pb-2"
+            >
+              <JobsMenu
+                jobs={spawnedJobs}
+                spawned
+                onOpenPlan={onOpenPlan}
+                onReviewJobs={handleReviewJobs}
+              />
+            </div>
+          )
+        ) : (
+          <ChatHeader
+            key={activeSessionId ?? "none"}
+            title={activeSession ? displayTitle(activeSession) : "No Active Chat"}
+            editable={Boolean(activeSession)}
+            autoScrollEnabled={autoScrollEnabled}
+            onToggleAutoScroll={toggleAutoScroll}
+            jobs={spawnedJobs}
+            onOpenPlan={onOpenPlan}
+            onReviewJobs={handleReviewJobs}
+            onNewChat={handleCreateSession}
+            onRename={(next) => {
+              if (activeSession) void store.renameSession(activeSession.id, next);
+            }}
+            onDelete={() => activeSession && setDeletingSessionId(activeSession.id)}
+          />
+        )}
 
         {/* Message Thread List */}
         <div className="flex-1 overflow-hidden relative">
           {!activeSession || activeSession.messages.length === 0 ? (
             /* V1's empty thread: the greeting, the headline, and the prompts it suggests. No
-               explanation of what a chat is - the composer below says that. */
-            <div className="flex h-full flex-col items-center justify-center gap-1 px-4 py-12 text-center">
-              <div className="text-2xl font-normal leading-tight text-muted-foreground">
+               explanation of what a chat is - the composer below says that.
+
+               `chat-widget.css`'s embedded block gives the same markup the panel's measurements:
+               20px/26px instead of 24px, `gap: 0` instead of 4px, `padding: 32px 16px` instead of
+               48px, the greeting truncated to one line (it is the plan's title, which is long), and
+               the chips flush left in a horizontal scroller rather than centred and wrapped -
+               "centering an overflowing nowrap scroller would push leading chips past the scroll
+               origin". */
+            <div
+              className={`flex h-full flex-col items-center justify-center px-4 text-center ${
+                embedded ? "gap-0 py-8" : "gap-1 py-12"
+              }`}
+            >
+              <div
+                className={
+                  embedded
+                    ? "w-full truncate text-xl font-light leading-relaxed text-muted-foreground"
+                    : "text-2xl font-normal leading-tight text-muted-foreground"
+                }
+                title={embedded ? greeting : undefined}
+              >
                 {greeting}
               </div>
-              <div className="text-2xl font-semibold leading-tight text-foreground">
-                {EMPTY_STATE_HEADLINE}
+              <div
+                className={
+                  embedded
+                    ? "text-xl font-medium leading-relaxed text-foreground"
+                    : "text-2xl font-semibold leading-tight text-foreground"
+                }
+              >
+                {headline}
               </div>
               <div
-                className="mt-4 flex flex-wrap justify-center gap-2"
+                className={`mt-4 flex gap-2 ${
+                  embedded
+                    ? "w-full flex-nowrap justify-start overflow-x-auto"
+                    : "flex-wrap justify-center"
+                }`}
                 data-testid="sample-prompts"
               >
                 {samplePrompts.map((item) => (
@@ -887,7 +1238,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                       setInputPrompt(item.prompt);
                       requestComposerFocus();
                     }}
-                    className="rounded-2xl border border-border bg-background px-4 py-2 font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent"
+                    className={`rounded-2xl border border-border bg-background px-4 py-2 font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent ${
+                      embedded ? "shrink-0 whitespace-nowrap" : ""
+                    }`}
                   >
                     {item.label}
                   </button>
@@ -897,7 +1250,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
           ) : (
             <ChatMessageList
               ref={scrollContainerRef}
-              className="h-full"
+              /* `.chat-thread` embedded is `padding: 10px var(--tch-embedded-inset) 0` — the rows
+                 inset themselves 16px because `.pws-chat` adds no horizontal padding, so the list
+                 scrolls at the panel's full width and the scrollbar sits clear of the text. */
+              className={embedded ? "h-full px-4" : "h-full"}
               style={{ paddingTop: PIN_TOP_PADDING }}
               enableAutoScroll={false}
               showScrollButton={false}
@@ -929,7 +1285,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                           onCopy={handleCopyMessage}
                           onCreatePlan={handleCreatePlanFromMessage}
                           inProgressAnswers={storeState.inProgressAnswers[msg.id]}
-                          isSubmittingAnswer={chatStore.isSubmittingAnswer(msg.id)}
+                          isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
                           onOpenPlan={onOpenPlan}
                           onOpenImage={setActiveLightboxImage}
                           jobs={jobs}
@@ -948,7 +1304,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                       onCopy={handleCopyMessage}
                       onCreatePlan={handleCreatePlanFromMessage}
                       inProgressAnswers={storeState.inProgressAnswers[msg.id]}
-                      isSubmittingAnswer={chatStore.isSubmittingAnswer(msg.id)}
+                      isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
                       onOpenPlan={onOpenPlan}
                       onOpenImage={setActiveLightboxImage}
                       jobs={jobs}
@@ -1026,8 +1382,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
           prompt, and the agent picker, mic and send button, with the queue that feeds it directly
           above and the whole thing capped to the thread's width.
         */}
-        {/* No divider above the composer: its own surface separates it from the thread. */}
-        <div data-testid="chat-composer-area" className="shrink-0 px-3 py-4">
+        {/* No divider above the composer: its own surface separates it from the thread.
+            `.chat-footer` embedded is `padding: 12px var(--tch-embedded-inset) 0` — no bottom
+            padding, because `.pws-chat` already ends in `padding: 0 0 14px`. */}
+        <div
+          data-testid="chat-composer-area"
+          className={embedded ? "shrink-0 px-4 pt-3" : "shrink-0 px-3 py-4"}
+        >
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-2.5">
             {queuedItems.length > 0 && (
               <div className="rounded-2xl border border-border bg-muted/60 p-2.5">
@@ -1149,7 +1510,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                               </button>
                               <button
                                 type="button"
-                                onClick={() => chatStore.deleteQueuedMessage(item.id)}
+                                onClick={() => store.deleteQueuedMessage(item.id)}
                                 className="text-muted-foreground hover:text-destructive"
                                 title="Remove from queue"
                               >
@@ -1166,7 +1527,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
             )}
 
             <div
-              className={`flex flex-col gap-2 rounded-2xl border bg-muted py-2 pl-3.5 pr-2 transition-colors ${
+              className={`flex flex-col gap-2 ${composerStyle.box} border bg-muted py-2 pl-3.5 pr-2 transition-colors ${
                 isDraggingOver
                   ? "border-dashed border-foreground"
                   : "border-transparent focus-within:border-input"
@@ -1246,11 +1607,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                   onClick={handleAttachClick}
                   title="Attach file"
                   aria-label="Attach file"
-                  className={`-ml-1.5 inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-foreground opacity-60 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  className={`${composerStyle.attachOffset} inline-flex ${composerStyle.button} shrink-0 items-center justify-center text-foreground ${composerStyle.ghost} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                     multiline ? "order-0" : ""
                   }`}
                 >
-                  <Paperclip className="size-5" />
+                  <Paperclip className={composerStyle.icon} />
                 </button>
 
                 <ChatInput
@@ -1266,9 +1627,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                 />
 
                 <div
-                  className={`flex shrink-0 items-center gap-3 ${multiline ? "order-1 ml-auto" : ""}`}
+                  className={`flex shrink-0 items-center ${composerStyle.tools} ${multiline ? "order-1 ml-auto" : ""}`}
                 >
-                  {renderAgentPicker(false)}
+                  {/* `compact={embedded}` in `ChatWidget.tsx`: icon-only beside a plan. */}
+                  {renderAgentPicker(embedded)}
 
                   <button
                     type="button"
@@ -1276,20 +1638,20 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                     onClick={() => void toggleVoiceRecording()}
                     title="Voice input"
                     aria-label="Voice input"
-                    className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    className={`inline-flex ${composerStyle.button} shrink-0 items-center justify-center transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                       voiceStatus === "recording"
                         ? "animate-pulse text-destructive opacity-100"
                         : voiceStatus === "idle"
-                          ? "text-foreground opacity-60 hover:opacity-100"
+                          ? `text-foreground ${composerStyle.ghost}`
                           : "text-foreground opacity-100"
                     }`}
                   >
                     {voiceStatus === "connecting" || voiceStatus === "processing" ? (
-                      <Loader2 className="size-5 animate-spin" />
+                      <Loader2 className={`${composerStyle.icon} animate-spin`} />
                     ) : voiceStatus === "recording" ? (
-                      <Square className="size-5" />
+                      <Square className={composerStyle.icon} />
                     ) : (
-                      <Mic className="size-5" />
+                      <Mic className={composerStyle.icon} />
                     )}
                   </button>
 
@@ -1302,17 +1664,17 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                           onClick={() => void handleSendMessage()}
                           title="Queue message"
                           aria-label="Queue message"
-                          className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          className={`inline-flex ${composerStyle.button} shrink-0 items-center justify-center bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
                         >
                           <ListPlus className="size-4" />
                         </button>
                       )}
                       <button
                         type="button"
-                        onClick={() => chatStore.cancelGeneration()}
+                        onClick={() => store.cancelGeneration()}
                         title="Stop agent"
                         aria-label="Stop agent"
-                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-input bg-muted text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className={`inline-flex ${composerStyle.button} shrink-0 items-center justify-center border border-input bg-muted text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
                       >
                         <Square className="size-3 fill-current" />
                       </button>
@@ -1324,7 +1686,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
                       disabled={!hasComposerContent}
                       title="Send message"
                       aria-label="Send message"
-                      className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className={`inline-flex ${composerStyle.button} shrink-0 items-center justify-center bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
                     >
                       <SendHorizontal className="size-4" />
                     </button>
@@ -1337,79 +1699,78 @@ export const ChatView: React.FC<ChatViewProps> = ({ onCreatePlan, onOpenPlan }) 
 
         <ImageLightbox image={activeLightboxImage} onClose={() => setActiveLightboxImage(null)} />
 
-        <AlertDialog
-          open={deletingSessionId !== null}
-          onOpenChange={(open) => {
-            if (!open) setDeletingSessionId(null);
+        {/* The app's confirmation contract, rather than a bare `AlertDialog`: `AlertDialogAction`
+            renders the *primary* treatment, so deleting a chat looked like the safe choice, and a
+            rejected delete had nowhere to report itself. `ConfirmDialog` carries the destructive
+            variant, the inline error surface, and the Escape/outside-click rules from `DialogShell`. */}
+        <ConfirmDialog
+          isOpen={deletingSessionId !== null}
+          onClose={() => {
+            setDeletingSessionId(null);
+            setDeleteSessionError(null);
           }}
-        >
-          <AlertDialogContent data-testid="chat-delete-session-dialog">
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Session</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete {sessionPendingDeletionLabel}? This action cannot be
-                undone.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                data-testid="chat-delete-session-confirm"
-                onClick={() => void confirmDeleteSession()}
-              >
-                Delete
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+          title="Delete Session"
+          body={`Are you sure you want to delete ${sessionPendingDeletionLabel}? This action cannot be undone.`}
+          confirmLabel="Delete"
+          confirmVariant="destructive"
+          onConfirm={() => void confirmDeleteSession()}
+          isBusy={isDeletingSession}
+          error={deleteSessionError}
+          testId="chat-delete-session-dialog"
+        />
 
         {/* `Apps/Chat/Dialogs/ChatSearchDialog`: search over chat titles, opened from the Chats
             section's search icon, and picking a row selects that chat. It belongs to the chat app,
             not the shell - the shell's own search icon opens the *plan* search dialog, which is why
-            the published list carries its own `onSearch`. */}
-        <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-          <DialogContent data-testid="chat-search-dialog" className="max-w-[560px]">
-            <DialogHeader>
-              <DialogTitle>Search Chats</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-2">
-              <Input
-                autoFocus
-                type="search"
-                aria-label="Search chats"
-                placeholder="Search chats"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              {searchResults.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No chats found.</p>
-              ) : (
-                <div className="flex max-h-80 flex-col overflow-y-auto">
-                  {searchResults.map((session) => (
-                    <button
-                      key={session.id}
-                      type="button"
-                      data-testid="chat-search-result"
-                      onClick={() => {
-                        setIsSearchOpen(false);
-                        void chatStore.selectSession(session.id);
-                      }}
-                      className="flex items-center justify-between gap-2 rounded-selector px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
-                    >
-                      <span className="truncate">{displayTitle(session)}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        {new Date(session.updatedAt).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+            the published list carries its own `onSearch`.
+
+            Embedded there is no published list, so nothing can open this; it is also the wrong
+            offer, since the panel follows the plan's session and cannot be pointed at another. */}
+        {!embedded && (
+          <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+            <DialogContent data-testid="chat-search-dialog" className="max-w-[560px]">
+              <DialogHeader>
+                <DialogTitle>Search Chats</DialogTitle>
+              </DialogHeader>
+              <div className="flex flex-col gap-2">
+                <Input
+                  autoFocus
+                  type="search"
+                  aria-label="Search chats"
+                  placeholder="Search chats"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {searchResults.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No chats found.</p>
+                ) : (
+                  <div className="flex max-h-80 flex-col overflow-y-auto">
+                    {searchResults.map((session) => (
+                      <button
+                        key={session.id}
+                        type="button"
+                        data-testid="chat-search-result"
+                        onClick={() => {
+                          setIsSearchOpen(false);
+                          void store.selectSession(session.id);
+                        }}
+                        className="flex items-center justify-between gap-2 rounded-selector px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
+                      >
+                        <span className="truncate">{displayTitle(session)}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {new Date(session.updatedAt).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </main>
     </div>
   );

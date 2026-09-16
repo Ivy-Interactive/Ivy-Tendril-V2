@@ -273,10 +273,15 @@ pub async fn update_plan_field(
         }
     };
 
+    // Set when this request moves the plan *into* `Skipped`, so the worktree reclaim below can be
+    // spawned only after `plan.yaml` has actually been written.
+    let mut reclaim_worktrees = false;
+
     if body.field.eq_ignore_ascii_case("state") {
         if let Some(new_state) = PlanStatus::from_str_loose(&body.value) {
             let was_completed = plan.state.eq_ignore_ascii_case("completed");
             let will_be_completed = new_state == PlanStatus::Completed;
+            let was_skipped = plan.state.eq_ignore_ascii_case("skipped");
             match PlanCompletionGuard::apply_state(
                 &mut plan,
                 new_state,
@@ -284,6 +289,19 @@ pub async fn update_plan_field(
                 &plan_id,
             ) {
                 Ok(_) => {
+                    // V1's `DiscardPlanDialog` paired its `Skipped` transition with
+                    // `WorktreeCleanupService.RemoveWorktreesInBackground`, with the reason: "Discard
+                    // is an explicit 'I don't want this' — reclaim the worktree promptly instead of
+                    // waiting for the background reaper." Discard is gone from the UI, but the
+                    // behaviour belongs to the *transition*, not to the button that used to make it,
+                    // so it lives here now and covers every route to `Skipped` — the delete dialog's
+                    // "Move to Skipped", the CLI, and anything else that writes the field.
+                    //
+                    // `spawn_worktree_reaper` would get there eventually, but only after
+                    // `worktreeReaperGrace`; a plan the operator has explicitly given up on should
+                    // not hold a checkout for that long.
+                    reclaim_worktrees = !was_skipped && new_state == PlanStatus::Skipped;
+
                     if !was_completed && will_be_completed {
                         let folder_name = folder
                             .file_name()
@@ -379,6 +397,27 @@ pub async fn update_plan_field(
         if let Ok(conn) = open_database(&state.db_path) {
             let _ = sync_plan(&conn, &pf);
         }
+    }
+
+    // Fire-and-forget, as V1's `Task.Run(() => RemoveWorktrees(...))` is: the caller gets its 200 for
+    // a state change that has already been persisted, and does not wait on `git worktree remove` plus
+    // a recursive delete. Ordered after the write on purpose — reclaiming for a transition that then
+    // failed to persist would destroy a checkout the plan still believes it has.
+    //
+    // `cleanup_worktrees` is best-effort per directory and leaves branches alone, which is the same
+    // call `reset_plan_handler` makes: the branch is often the only ref holding what execution
+    // produced, and the reaper's configured `worktreeBranchDeleteMode` is what decides its fate.
+    if reclaim_worktrees {
+        let plan_folder = folder.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = cleanup_worktrees(&plan_folder) {
+                tracing::warn!(
+                    "Background worktree cleanup failed for {}: {}",
+                    plan_folder.display(),
+                    e
+                );
+            }
+        });
     }
 
     (

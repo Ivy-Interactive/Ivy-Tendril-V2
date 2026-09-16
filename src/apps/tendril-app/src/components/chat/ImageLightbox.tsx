@@ -3,7 +3,12 @@ import { Dialog, DialogClose, DialogContent, DialogTitle } from "@ivy-interactiv
 import { X } from "lucide-react";
 
 export interface LightboxImage {
-  /** A URL the webview can load — a local path must already be through `convertFileSrc`. */
+  /**
+   * A URL the webview can load. A file on this machine is not one: the thumbnail that opens the
+   * lightbox has already resolved its path to a `data:` URL through the daemon's `/ivy/local-file`
+   * guard (`bridge.getLocalFilePreview`), and passes that same URL here, so the full-size view costs no
+   * second read and cannot show an image the guard refused.
+   */
   url: string;
   title?: string;
 }

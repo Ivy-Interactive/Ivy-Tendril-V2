@@ -1,21 +1,34 @@
-//! The share tunnel's lifecycle — a port of `Services/Tunnel/ShareTunnelService.cs`.
+//! A tunnel's lifecycle — a port of `Services/Tunnel/ShareTunnelService.cs` *and*
+//! `Services/Tunnel/CloudflaredService.cs`, which in the original are two near-identical classes.
 //!
 //! One supervisor task per activation. It resolves the binary, works out what to publish, starts a
 //! [`super::session::TunnelSession`], waits for the URL to actually route, and then restarts the
 //! session with exponential backoff if cloudflared dies — giving up after `maxRestarts` consecutive
 //! failures, exactly as the original does.
 //!
-//! What the original does that this does not: it also runs a *second*, non-share tunnel
-//! (`CloudflaredService`), which publishes the whole app rather than a read-only view. That is not
-//! ported. The two classes are near-identical copies of each other, and the share tunnel is the one
-//! with a defensible authorisation story (see [`crate::share::policy`]); a switch that exposes an
-//! authenticated daemon wholesale is a different feature with a different threat model.
+//! # Why the two tunnels are one type
+//!
+//! `TunnelSetupView` renders a block for each, and the original backs them with two copies of the same
+//! class. Everything that is actually hard — the supervisor loop, the exponential backoff, the
+//! registered-connection fallback in the health probe, the binary resolution — is identical, and
+//! duplicating it would mean fixing every tunnel bug twice. [`TunnelKind`] is the discriminator, and
+//! exactly three things branch on it:
+//!
+//! 1. **The precondition.** A [`TunnelKind::FullAccess`] tunnel refuses to start unless a session
+//!    password is configured. See [`TunnelService::start`].
+//! 2. **What is recorded.** A share writes [`super::share_state`], which *grants* a narrow capability. A
+//!    full-access tunnel writes [`super::full_state`], which grants nothing and exists so the daemon can
+//!    recognise its own public host and reap an orphaned child.
+//! 3. **The log line**, because the two publish very different things.
+//!
+//! Nothing else in this file knows which one it is running.
 
 use super::config::TunnelConfig;
+use super::full_state::{self, FullTunnelSession};
 use super::installer;
 use super::session::{host_of, SessionOptions, TunnelSession};
 use super::share_state::{self, ShareSession};
-use super::status::TunnelStatus;
+use super::status::{TunnelKind, TunnelStatus};
 use super::TunnelError;
 use futures_util::future::BoxFuture;
 use std::path::PathBuf;
@@ -113,11 +126,14 @@ impl TunnelProbe for HttpProbe {
 /// the ready-made share link the original builds in `GetShareUrlForPlan`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TunnelSnapshot {
+    /// Which tunnel this is. Serialised so a client that reads both statuses cannot mix them up.
+    pub kind: TunnelKind,
     pub status: TunnelStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    /// The visitor's capability token, present only while connected. It is returned to the *owner*,
-    /// who is already authenticated, so that the app can build a link; it is never logged.
+    /// The visitor's capability token, present only while a *share* is connected. It is returned to the
+    /// *owner*, who is already authenticated, so that the app can build a link; it is never logged.
+    /// Always `None` for [`TunnelKind::FullAccess`], which mints no token at all.
     #[serde(rename = "shareToken", skip_serializing_if = "Option::is_none")]
     pub share_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -129,6 +145,11 @@ pub struct TunnelSnapshot {
     /// [`super::config::share_port`].
     #[serde(rename = "sharePort")]
     pub share_port: u16,
+    /// Whether a session password is configured. Only meaningful for
+    /// [`TunnelKind::FullAccess`], where it is the precondition for starting: the settings screen reads
+    /// it to explain *why* the Activate button is unavailable rather than just disabling it.
+    #[serde(rename = "passwordConfigured")]
+    pub password_configured: bool,
 }
 
 impl TunnelSnapshot {
@@ -203,7 +224,8 @@ struct Supervisor {
     handle: tokio::task::JoinHandle<()>,
 }
 
-pub struct ShareTunnelService {
+pub struct TunnelService {
+    kind: TunnelKind,
     tendril_home: PathBuf,
     timings: TunnelTimings,
     probe: Arc<dyn TunnelProbe>,
@@ -213,23 +235,34 @@ pub struct ShareTunnelService {
     supervisor: Mutex<Option<Supervisor>>,
 }
 
-impl ShareTunnelService {
-    pub fn new(tendril_home: PathBuf) -> Self {
-        Self::with_parts(tendril_home, TunnelTimings::default(), Arc::new(HttpProbe))
+impl TunnelService {
+    pub fn new(kind: TunnelKind, tendril_home: PathBuf) -> Self {
+        Self::with_parts(
+            kind,
+            tendril_home,
+            TunnelTimings::default(),
+            Arc::new(HttpProbe),
+        )
     }
 
     pub fn with_parts(
+        kind: TunnelKind,
         tendril_home: PathBuf,
         timings: TunnelTimings,
         probe: Arc<dyn TunnelProbe>,
     ) -> Self {
         Self {
+            kind,
             tendril_home,
             timings,
             probe,
             live: Arc::new(RwLock::new(Live::default())),
             supervisor: Mutex::new(None),
         }
+    }
+
+    pub fn kind(&self) -> TunnelKind {
+        self.kind
     }
 
     pub fn tendril_home(&self) -> &std::path::Path {
@@ -257,6 +290,7 @@ impl ShareTunnelService {
         let config = self.config();
         let daemon_port = self.daemon_port().unwrap_or(config.port);
         TunnelSnapshot {
+            kind: self.kind,
             status: live.status,
             url: live.url,
             share_token: live.token,
@@ -267,7 +301,18 @@ impl ShareTunnelService {
                 }),
             started_at: live.started_at,
             share_port: super::config::share_port(daemon_port, config.port),
+            password_configured: self.password_configured(),
         }
+    }
+
+    /// Whether `auth` in `config.yaml` holds a usable credential.
+    ///
+    /// Read per call rather than cached for the same reason [`Self::config`] is: an operator who sets a
+    /// password expects the Activate button to come alive without restarting the daemon.
+    fn password_configured(&self) -> bool {
+        crate::auth::credentials::is_password_active(&crate::config::get_config_path(
+            &self.tendril_home,
+        ))
     }
 
     /// `shareTunnel:` as of now. Re-read per call rather than cached, so an operator can fix a wrong
@@ -307,11 +352,30 @@ impl ShareTunnelService {
         Ok(format!("{}://{}:{}", master.scheme, host, master.port))
     }
 
-    /// Port of `ActivateAsync`. Idempotent: activating an already-connected share is a no-op that
+    /// Port of `ActivateAsync`. Idempotent: activating an already-connected tunnel is a no-op that
     /// returns the existing snapshot, so a double click cannot produce two tunnels.
     ///
     /// Unlike the original, this does **not** write `shareTunnel.enabled = true` to `config.yaml`. See
     /// the module docs on [`super`].
+    ///
+    /// # The full-access precondition
+    ///
+    /// A [`TunnelKind::FullAccess`] tunnel refuses to start unless `auth` in `config.yaml` holds a usable
+    /// password ([`crate::config::AuthConfig::is_active`]). V1 has no such check — `TunnelSetupView`'s
+    /// Activate button calls straight through — and this is a deliberate divergence for two reasons that
+    /// point the same way:
+    ///
+    /// - **It is the only credential a remote caller can hold.** V1 renders its UI server-side, so
+    ///   tunnelling the server tunnels the app and a browser session is enough. V2's daemon is an API;
+    ///   its bearer secret lives in `.master` on the daemon's own machine, and no remote client can read
+    ///   it. Without a password there is no way to *use* a full-access tunnel — only to expose one.
+    /// - **What is left exposed is exactly the part with no credential.** `/api/ping`, `/api/health`,
+    ///   `/api/auth/login`, `/api/auth/status` and the WebViewer proxy sit outside `auth_middleware`. So
+    ///   a full-access tunnel with no password published is all downside: the unauthenticated surface
+    ///   reaches the internet and nothing else becomes usable.
+    ///
+    /// The refusal is here, in the service, rather than in the route or the UI, because it is the
+    /// invariant and not the presentation of it: the CLI and any future caller get it for free.
     pub async fn start(&self) -> Result<TunnelSnapshot, TunnelError> {
         let mut guard = self.supervisor.lock().await;
         if guard.is_some() && self.read_live().status != TunnelStatus::Disabled {
@@ -319,39 +383,67 @@ impl ShareTunnelService {
         }
 
         // Fail before anything is spawned or announced, so the error the caller sees is the real one
-        // rather than "connecting" followed by a status they have to poll for.
+        // rather than "connecting" followed by a status they have to poll for. The password check comes
+        // first of all: it is the cheapest and the one whose failure is a decision rather than an
+        // environment problem.
+        if self.kind == TunnelKind::FullAccess && !self.password_configured() {
+            return Err(TunnelError::PasswordRequired);
+        }
+
         let config = self.config();
         let binary = installer::resolve_binary(&self.tendril_home, config.binary_override())?;
         let origin = self.origin_url()?;
 
         // A cloudflared left behind by a previous daemon would keep the old URL live alongside the new
-        // one. Reaping happens here, where a share is being started deliberately, and never on a
-        // timer: killing a process is not something to do speculatively.
-        if let Some(pid) = share_state::reap_orphan(&self.tendril_home) {
-            tracing::warn!("Reaped orphaned cloudflared (pid {pid}) before starting a new share");
+        // one. Reaping happens here, where a tunnel is being started deliberately, and never on a
+        // timer: killing a process is not something to do speculatively. Each kind reaps only its own
+        // record, so starting a share cannot kill a live full-access tunnel or the reverse.
+        let reaped = match self.kind {
+            TunnelKind::Share => share_state::reap_orphan(&self.tendril_home),
+            TunnelKind::FullAccess => full_state::reap_orphan(&self.tendril_home),
+        };
+        if let Some(pid) = reaped {
+            tracing::warn!(
+                "Reaped orphaned cloudflared (pid {pid}) before starting a new {}",
+                self.kind.label()
+            );
         }
 
-        // Said out loud on every start, because a share is the one action in Tendril that makes a
-        // local daemon reachable from the internet, and the routes below are the ones no credential
-        // guards. See the security note on [`super`].
-        tracing::warn!(
-            "Starting a share tunnel: this publishes {origin} on a public URL. Routes that require \
-no credential become publicly reachable: /api/ping, /api/health, /api/auth/login, \
-/api/auth/status, and the WebViewer proxy (/__proxy, /__view/*, /__lib/:file, /__capture, \
-/__captures/:file, /__resolve, /sw.js). Stop the share when you are done."
-        );
+        // Said out loud on every start, because a tunnel is the one action in Tendril that makes a
+        // local daemon reachable from the internet. See the security note on [`super`].
+        match self.kind {
+            TunnelKind::Share => tracing::warn!(
+                "Starting a share tunnel: this publishes {origin} on a public URL. Routes that require \
+no credential become publicly reachable: /api/ping, /api/health, and /api/auth/status. \
+/api/auth/login and the WebViewer proxy are refused on the share host. Stop the share when you are \
+done."
+            ),
+            TunnelKind::FullAccess => tracing::warn!(
+                "Starting a FULL-ACCESS tunnel: this publishes the whole of {origin} on a public URL. \
+Every route is reachable by anyone holding the session password or the bearer secret, and \
+/api/ping, /api/health, /api/auth/login and /api/auth/status are reachable with no credential at \
+all. The WebViewer proxy and /api/auth/password are refused on the tunnel host. This is not a \
+read-only share — stop it as soon as you are done."
+            ),
+        }
 
-        let token = share_state::mint_token();
+        // Only a share mints a capability token. A full-access tunnel authorises nothing by existing,
+        // so there is nothing to mint and nothing that could leak.
+        let token = match self.kind {
+            TunnelKind::Share => Some(share_state::mint_token()),
+            TunnelKind::FullAccess => None,
+        };
         self.update_live(|live| {
             live.status = TunnelStatus::Connecting;
             live.url = None;
-            live.token = Some(token.clone());
+            live.token = token.clone();
             live.error = None;
             live.started_at = Some(chrono::Utc::now().to_rfc3339());
         });
 
         let stop = Arc::new(StopSignal::new());
         let task = SupervisorTask {
+            kind: self.kind,
             tendril_home: self.tendril_home.clone(),
             timings: self.timings.clone(),
             probe: self.probe.clone(),
@@ -381,7 +473,8 @@ no credential become publicly reachable: /api/ping, /api/health, /api/auth/login
             match tokio::time::timeout(self.timings.stop_timeout, supervisor.handle).await {
                 Ok(_) => {}
                 Err(_) => tracing::warn!(
-                    "Share tunnel supervisor did not stop within {:?}; abandoning it",
+                    "{} supervisor did not stop within {:?}; abandoning it",
+                    self.kind.label(),
                     self.timings.stop_timeout
                 ),
             }
@@ -389,7 +482,7 @@ no credential become publicly reachable: /api/ping, /api/health, /api/auth/login
 
         // Belt and braces: the supervisor clears these on its way out, but a supervisor that was
         // abandoned above did not, and a live record is a live capability.
-        share_state::clear(&self.tendril_home);
+        self.clear_record();
         self.update_live(|live| {
             live.status = TunnelStatus::Disabled;
             live.url = None;
@@ -398,6 +491,16 @@ no credential become publicly reachable: /api/ping, /api/health, /api/auth/login
             live.started_at = None;
         });
         self.snapshot()
+    }
+
+    /// Removes this kind's on-disk record. A share's record is a live capability, so this is the
+    /// revocation; a full-access tunnel's is not, but a stale one would make the daemon go on refusing
+    /// the WebViewer proxy for a hostname it no longer answers on.
+    fn clear_record(&self) {
+        match self.kind {
+            TunnelKind::Share => share_state::clear(&self.tendril_home),
+            TunnelKind::FullAccess => full_state::clear(&self.tendril_home),
+        }
     }
 
     /// Port of `GetShareUrlForPlan`: the link a reviewer is sent.
@@ -463,13 +566,15 @@ impl SharedLive {
 }
 
 struct SupervisorTask {
+    kind: TunnelKind,
     tendril_home: PathBuf,
     timings: TunnelTimings,
     probe: Arc<dyn TunnelProbe>,
     live: SharedLive,
     binary: PathBuf,
     origin: String,
-    token: String,
+    /// A share's capability token. `None` for [`TunnelKind::FullAccess`], which mints none.
+    token: Option<String>,
     max_restarts: u32,
     stop: Arc<StopSignal>,
 }
@@ -489,7 +594,10 @@ impl SupervisorTask {
                     if self.stop.is_stopped() {
                         break;
                     }
-                    tracing::warn!("Share tunnel process exited unexpectedly; restarting");
+                    tracing::warn!(
+                        "{} process exited unexpectedly; restarting",
+                        self.kind.label()
+                    );
                     consecutive_failures = 0;
                 }
                 Err(err) => {
@@ -499,7 +607,8 @@ impl SupervisorTask {
                     consecutive_failures += 1;
                     let message = err.to_string();
                     tracing::warn!(
-                        "Share tunnel session failed (attempt {consecutive_failures}/{}): {message}",
+                        "{} session failed (attempt {consecutive_failures}/{}): {message}",
+                        self.kind.label(),
                         self.max_restarts
                     );
                     self.live.set(|live| {
@@ -510,7 +619,7 @@ impl SupervisorTask {
                 }
             }
 
-            share_state::clear(&self.tendril_home);
+            self.clear_record();
 
             if self.stop.is_stopped() {
                 break;
@@ -525,7 +634,8 @@ impl SupervisorTask {
 
         if consecutive_failures >= self.max_restarts {
             tracing::error!(
-                "Share tunnel exceeded max restarts ({}), giving up",
+                "{} exceeded max restarts ({}), giving up",
+                self.kind.label(),
                 self.max_restarts
             );
             self.live.set(|live| {
@@ -542,8 +652,16 @@ impl SupervisorTask {
             });
         }
 
-        // Whatever ended the loop, nothing may be left claiming to be an active share.
-        share_state::clear(&self.tendril_home);
+        // Whatever ended the loop, nothing may be left claiming to be an active tunnel.
+        self.clear_record();
+    }
+
+    /// This kind's record, and only this kind's.
+    fn clear_record(&self) {
+        match self.kind {
+            TunnelKind::Share => share_state::clear(&self.tendril_home),
+            TunnelKind::FullAccess => full_state::clear(&self.tendril_home),
+        }
     }
 
     /// `min(5 * 2^(n-1), max)`, the original's formula — including `n = 0` giving 2.5s, which is the
@@ -567,23 +685,36 @@ impl SupervisorTask {
         self.wait_until_routable(&url, &session).await?;
 
         let host = host_of(&url).unwrap_or_default();
-        share_state::write(
-            &self.tendril_home,
-            &ShareSession {
-                url: url.clone(),
-                host,
-                token: self.token.clone(),
-                pid: session.pid(),
-                started_at: chrono::Utc::now().to_rfc3339(),
-            },
-        )?;
+        let started_at = chrono::Utc::now().to_rfc3339();
+        match self.kind {
+            TunnelKind::Share => share_state::write(
+                &self.tendril_home,
+                &ShareSession {
+                    url: url.clone(),
+                    host,
+                    // A share always has one: `start` mints it before spawning this task.
+                    token: self.token.clone().unwrap_or_default(),
+                    pid: session.pid(),
+                    started_at,
+                },
+            )?,
+            TunnelKind::FullAccess => full_state::write(
+                &self.tendril_home,
+                &FullTunnelSession {
+                    url: url.clone(),
+                    host,
+                    pid: session.pid(),
+                    started_at,
+                },
+            )?,
+        }
 
         self.live.set(|live| {
             live.status = TunnelStatus::Connected;
             live.url = Some(url.clone());
             live.error = None;
         });
-        tracing::info!("Share tunnel is live at {url}");
+        tracing::info!("{} is live at {url}", self.kind.label());
 
         // Either cloudflared exits or a stop arrives; both leave through the same `Drop`.
         tokio::select! {
@@ -622,22 +753,26 @@ impl SupervisorTask {
             attempt += 1;
             match self.probe.probe(url.to_string()).await {
                 ProbeOutcome::Routable => {
-                    tracing::info!("Share tunnel is routable after {attempt} attempt(s)");
+                    tracing::info!(
+                        "{} is routable after {attempt} attempt(s)",
+                        self.kind.label()
+                    );
                     return Ok(());
                 }
                 ProbeOutcome::NotReady => {
-                    tracing::debug!("Share tunnel not ready yet (attempt {attempt})");
+                    tracing::debug!("{} not ready yet (attempt {attempt})", self.kind.label());
                 }
                 ProbeOutcome::Failed(err) => {
-                    tracing::debug!("Share tunnel probe {attempt} failed: {err}");
+                    tracing::debug!("{} probe {attempt} failed: {err}", self.kind.label());
                 }
             }
 
             if Instant::now() >= deadline {
                 if session.is_registered() {
                     tracing::warn!(
-                        "Share tunnel probe timed out but cloudflared reports a registered \
-connection; treating it as up"
+                        "{} probe timed out but cloudflared reports a registered \
+connection; treating it as up",
+                        self.kind.label()
                     );
                     return Ok(());
                 }
@@ -669,8 +804,17 @@ mod tests {
         }
     }
 
-    fn service(home: PathBuf) -> ShareTunnelService {
-        ShareTunnelService::with_parts(home, TunnelTimings::default(), Arc::new(AlwaysRoutable))
+    fn service(home: PathBuf) -> TunnelService {
+        of_kind(TunnelKind::Share, home)
+    }
+
+    fn of_kind(kind: TunnelKind, home: PathBuf) -> TunnelService {
+        TunnelService::with_parts(
+            kind,
+            home,
+            TunnelTimings::default(),
+            Arc::new(AlwaysRoutable),
+        )
     }
 
     fn temp_home(label: &str) -> PathBuf {
@@ -768,13 +912,14 @@ mod tests {
     fn the_backoff_matches_the_originals_formula() {
         let home = temp_home("backoff");
         let task = SupervisorTask {
+            kind: TunnelKind::Share,
             tendril_home: home.clone(),
             timings: TunnelTimings::default(),
             probe: Arc::new(AlwaysRoutable),
             live: SharedLive(Arc::new(RwLock::new(Live::default()))),
             binary: PathBuf::from("cloudflared"),
             origin: "http://127.0.0.1:5010".to_string(),
-            token: "t".to_string(),
+            token: Some("t".to_string()),
             max_restarts: 10,
             stop: Arc::new(StopSignal::new()),
         };
@@ -797,6 +942,90 @@ mod tests {
             .unwrap()
             .block_on(service(home.clone()).stop());
         assert_eq!(snapshot.status, TunnelStatus::Disabled);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// The invariant this whole section exists for: a full-access tunnel publishes the entire daemon,
+    /// and with no password there is no credential a remote caller could hold, so all it can do is
+    /// expose the unauthenticated surface.
+    #[tokio::test]
+    async fn a_full_access_tunnel_refuses_to_start_without_a_password() {
+        let home = temp_home("full-no-password");
+        // A resolvable binary and a `.master`, so the only thing that can fail is the password check.
+        let shell = if cfg!(windows) { "cmd" } else { "sh" };
+        std::fs::write(
+            crate::config::get_config_path(&home),
+            format!("shareTunnel:\n  binaryPath: {shell}\n"),
+        )
+        .unwrap();
+
+        let svc = of_kind(TunnelKind::FullAccess, home.clone());
+        assert!(!svc.snapshot().password_configured);
+
+        let err = svc.start().await.unwrap_err();
+        assert!(
+            matches!(err, TunnelError::PasswordRequired),
+            "expected PasswordRequired, got {err:?}"
+        );
+        // Nothing was announced and nothing was recorded.
+        assert_eq!(svc.snapshot().status, TunnelStatus::Disabled);
+        assert!(full_state::read(&home).is_none());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// The same start with a password gets *past* the precondition and fails on the next one, which is
+    /// what proves the gate is the password and not something incidental.
+    #[tokio::test]
+    async fn a_configured_password_clears_the_precondition() {
+        let home = temp_home("full-with-password");
+        let shell = if cfg!(windows) { "cmd" } else { "sh" };
+        let config = crate::config::get_config_path(&home);
+        std::fs::write(&config, format!("shareTunnel:\n  binaryPath: {shell}\n")).unwrap();
+        crate::auth::credentials::set_password(&config, None, "a-real-password").expect("set");
+
+        let svc = of_kind(TunnelKind::FullAccess, home.clone());
+        assert!(svc.snapshot().password_configured);
+
+        let err = svc.start().await.unwrap_err();
+        assert!(
+            matches!(err, TunnelError::NoOrigin(_)),
+            "the password gate is cleared; the next failure is the missing .master: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A share is deny-by-default and safe to hand to somebody who is not the operator, so it has never
+    /// needed a password and must not start needing one.
+    #[tokio::test]
+    async fn a_share_still_needs_no_password() {
+        let home = temp_home("share-no-password");
+        let shell = if cfg!(windows) { "cmd" } else { "sh" };
+        std::fs::write(
+            crate::config::get_config_path(&home),
+            format!("shareTunnel:\n  binaryPath: {shell}\n"),
+        )
+        .unwrap();
+
+        let err = service(home.clone()).start().await.unwrap_err();
+        assert!(
+            matches!(err, TunnelError::NoOrigin(_)),
+            "a share must not be gated on a password: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn the_snapshot_names_its_kind_and_a_full_access_one_never_carries_a_token() {
+        let home = temp_home("kinds");
+        let share = service(home.clone()).snapshot();
+        assert_eq!(share.kind, TunnelKind::Share);
+
+        let full = of_kind(TunnelKind::FullAccess, home.clone()).snapshot();
+        assert_eq!(full.kind, TunnelKind::FullAccess);
+        assert!(
+            full.share_token.is_none(),
+            "a full-access tunnel mints no capability token"
+        );
         let _ = std::fs::remove_dir_all(&home);
     }
 

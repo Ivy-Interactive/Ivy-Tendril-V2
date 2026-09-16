@@ -1,42 +1,29 @@
 import * as React from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button, Callout } from "@ivy-interactive/components/ui";
 import { ClipboardCopy, ExternalLink, Loader2, Share2 } from "lucide-react";
 import { describeBridgeError, bridgeErrorCode } from "../../types/api";
 import { notificationsStore } from "../../state/notificationsStore";
+import { tunnelApi, type TunnelSnapshot, type TunnelStatus } from "../../api/tunnelApi";
 import { DialogShell } from "./DialogShell";
 
 /** `tendril_core::tunnel::TunnelStatus`, as the daemon serialises it. */
-export type ShareTunnelStatus = "disabled" | "connecting" | "connected";
+export type ShareTunnelStatus = TunnelStatus;
 
 /** `GET /api/tunnel/share`'s payload, via `cmd_get_share_tunnel`. */
-export interface ShareTunnelSnapshot {
-  status: ShareTunnelStatus;
-  url?: string | null;
-  shareToken?: string | null;
-  error?: string | null;
-  installed: boolean;
-  startedAt?: string | null;
-  sharePort: number;
-}
+export type ShareTunnelSnapshot = TunnelSnapshot;
 
 /**
- * The four commands this dialog drives, gathered so a test can substitute them.
+ * The three commands this dialog drives, gathered so a test can substitute them.
  *
- * Deliberately not added to `src/api/bridge.ts`: that module is shared ground and this is a
- * self-contained surface. It should move there when the file is next open — see the report.
+ * Delegates to `src/api/tunnelApi.ts`, which is where the `invoke` names live now that the Security &
+ * Tunneling section needs the same three. The narrow `getStatus`/`start`/`stop` shape is kept because it
+ * is what this dialog's `api` prop is typed on.
  */
 export const shareTunnelApi = {
-  async getStatus(): Promise<ShareTunnelSnapshot> {
-    return invoke<ShareTunnelSnapshot>("cmd_get_share_tunnel");
-  },
-  async start(): Promise<ShareTunnelSnapshot> {
-    return invoke<ShareTunnelSnapshot>("cmd_start_share_tunnel");
-  },
-  async stop(): Promise<ShareTunnelSnapshot> {
-    return invoke<ShareTunnelSnapshot>("cmd_stop_share_tunnel");
-  },
+  getStatus: (): Promise<ShareTunnelSnapshot> => tunnelApi.getShareTunnel(),
+  start: (): Promise<ShareTunnelSnapshot> => tunnelApi.startShareTunnel(),
+  stop: (): Promise<ShareTunnelSnapshot> => tunnelApi.stopShareTunnel(),
 };
 
 export type ShareTunnelApi = typeof shareTunnelApi;

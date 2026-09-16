@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 use tendril_core::config::{
-    delete_master, dirs_home, dirs_home_with_env, ensure_home_directories, expand_variables,
-    expand_variables_with_env, find_projects_referencing_verification, get_config_path,
-    get_config_path_with_env, get_default_tendril_home, get_default_tendril_home_with_env,
-    get_hooks_dir, get_plans_dir, get_plans_dir_with_env, get_plans_dir_with_settings,
-    get_tendril_home, get_tendril_home_with_env, load_config, normalize_slashes, read_master,
-    remove_verification_from_projects, save_config, write_master, EnvSource, LoginRateLimitConfig,
-    SystemEnv, TendrilSettings,
+    chat_mode_is_terminal, delete_master, dirs_home, dirs_home_with_env, ensure_home_directories,
+    expand_variables, expand_variables_with_env, find_projects_referencing_verification,
+    get_config_path, get_config_path_with_env, get_default_tendril_home,
+    get_default_tendril_home_with_env, get_hooks_dir, get_plans_dir, get_plans_dir_with_env,
+    get_plans_dir_with_settings, get_tendril_home, get_tendril_home_with_env, load_config,
+    normalize_slashes, read_master, remove_verification_from_projects, save_config, write_master,
+    EnvSource, LoginRateLimitConfig, SystemEnv, TendrilSettings,
 };
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, ReviewActionConfig};
 
@@ -973,4 +973,43 @@ fn test_ensure_home_directories_creates_hooks_and_is_idempotent() {
     );
 
     let _ = std::fs::remove_dir_all(home);
+}
+
+/// `chatMode` is the key V1's `ChatLauncher.TargetFor` reads to decide whether the Chat button opens
+/// the chat view or the agent's own terminal. Modeled rather than left in `extra` so an unrecognised
+/// value resolves here instead of reaching the client.
+#[test]
+fn test_chat_mode_defaults_to_chat_and_round_trips() {
+    let settings = TendrilSettings::default();
+    assert_eq!(settings.chat_mode, "chat");
+    assert!(!chat_mode_is_terminal(&settings.chat_mode));
+
+    // Only the exact opt-in counts, case-insensitively; `ChatModes.Normalize` collapses the rest.
+    assert!(chat_mode_is_terminal("terminal"));
+    assert!(chat_mode_is_terminal("Terminal"));
+    assert!(chat_mode_is_terminal("  terminal "));
+    for other in ["chat", "", "pty", "Chat", "terminals"] {
+        assert!(!chat_mode_is_terminal(other), "mode: {:?}", other);
+    }
+
+    let dir = std::env::temp_dir().join(format!(
+        "tendril-chat-mode-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&dir).expect("create test dir");
+    let path = dir.join("config.yaml");
+
+    let mut settings = TendrilSettings::default();
+    settings.chat_mode = "terminal".to_string();
+    save_config(&path, &settings).expect("save");
+
+    // The on-disk key is camelCase, as V1's `CamelCaseNamingConvention` writes it.
+    let raw = std::fs::read_to_string(&path).expect("read");
+    assert!(raw.contains("chatMode: terminal"), "got:\n{}", raw);
+
+    let loaded = load_config(&path).expect("load");
+    assert_eq!(loaded.chat_mode, "terminal");
+    assert!(chat_mode_is_terminal(&loaded.chat_mode));
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

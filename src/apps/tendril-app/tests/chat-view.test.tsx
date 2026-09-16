@@ -754,9 +754,40 @@ questions:
     expect(dialog).toHaveTextContent('Are you sure you want to delete "Architecture Planning"?');
     expect(deleteSpy).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByTestId("chat-delete-session-confirm"));
+    // Deleting a chat goes through the app's `ConfirmDialog`, so the confirm carries the destructive
+    // treatment and the shared `dialog-confirm` id rather than a primary-styled one of its own.
+    const confirm = screen.getByTestId("dialog-confirm");
+    expect(confirm).toHaveTextContent("Delete");
+    expect(confirm.className).toContain("destructive");
+    fireEvent.click(confirm);
     await waitFor(() => {
       expect(deleteSpy).toHaveBeenCalledWith("session-10");
+    });
+  });
+
+  it("keeps the delete dialog open and shows why when the daemon refuses", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    vi.spyOn(chatApi, "deleteSession").mockRejectedValue(new Error("session is still generating"));
+
+    render(<ChatView />);
+    await waitFor(() => {
+      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      sidebarListStore.getState()?.onDelete?.("session-10");
+    });
+    await screen.findByTestId("chat-delete-session-dialog");
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
+
+    // A rejected delete used to have nowhere to report itself: the bare `AlertDialog` closed on
+    // click and swallowed the error.
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-delete-session-dialog")).toHaveTextContent(
+        "session is still generating",
+      );
     });
   });
 

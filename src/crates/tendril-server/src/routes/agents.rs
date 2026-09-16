@@ -3,7 +3,10 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::Json;
+use serde::Deserialize;
 use tendril_core::agents::catalog::{all_agents_for_proxy_base_url, OPENAI_PROXY_AGENT_ID};
+use tendril_core::agents::provider_models::discover_provider_models;
+use tendril_core::agents::resolution::normalize_agent_name;
 use tendril_core::config::TendrilSettings;
 
 use crate::state::AppState;
@@ -15,6 +18,93 @@ pub async fn get_agents_handler(State(state): State<Arc<AppState>>) -> impl Into
     let snapshot = state.settings_snapshot();
     let proxy_base_url = openai_proxy_base_url(&snapshot.settings);
     Json(all_agents_for_proxy_base_url(proxy_base_url.as_deref()))
+}
+
+/// What the Coding Agent pane asks for when it wants the models an endpoint really serves.
+///
+/// Both fields are optional and both default to what is already in `config.yaml`, because the point of
+/// this route is that the operator does not have to re-enter a key they have already saved. A key sent
+/// here is one the operator just typed and has not saved yet.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchProviderModelsRequest {
+    /// The agent entry whose environment holds the credentials — `openaiproxy` or `ivy`.
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    /// Only ever an inbound field. It is never echoed, never logged, and never part of a reply.
+    #[serde(default)]
+    pub api_key: Option<String>,
+}
+
+/// `POST /api/agents/models` — V1's onboarding "Continue": ask the endpoint for its models, and if it
+/// has none, ping it with a real prompt so the failure can be attributed to the key, the URL or neither.
+///
+/// This runs in the daemon rather than the webview for two reasons: the credential lives in
+/// `config.yaml` and the daemon is what may read it, and a provider call from a webview would be a
+/// cross-origin request with the key in the renderer. Nothing in the reply carries the key — see
+/// `provider_models::redact`, which every message passes through.
+pub async fn fetch_provider_models_handler(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<FetchProviderModelsRequest>,
+) -> impl IntoResponse {
+    let snapshot = state.settings_snapshot();
+    let agent = normalize_agent_name(request.agent.as_deref().unwrap_or(OPENAI_PROXY_AGENT_ID));
+
+    let base_url = request
+        .base_url
+        .filter(|url| !url.trim().is_empty())
+        .or_else(|| agent_environment(&snapshot.settings, &agent, BASE_URL_KEYS))
+        .unwrap_or_default();
+    let api_key = request
+        .api_key
+        .filter(|key| !key.trim().is_empty())
+        .or_else(|| agent_environment(&snapshot.settings, &agent, API_KEY_KEYS))
+        .unwrap_or_default();
+
+    // Deliberately no `tracing` line carrying either value: the URL is harmless but the key is not,
+    // and a log line with one and not the other invites the next edit to add it.
+    Json(discover_provider_models(&base_url, &api_key).await)
+}
+
+/// The variables `codingAgents.ts`'s `byoEnvironment` writes, in the order `readApiKey` /
+/// `readBaseUrl` read them.
+const API_KEY_KEYS: &[&str] = &["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "IVY_API_KEY"];
+const BASE_URL_KEYS: &[&str] = &["ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "IVY_BASE_URL"];
+
+/// The first of `keys` set on `agent`'s entry. Falls back to the sibling proxy entry, because the Ivy
+/// card writes its credentials to both `ivy` and `openaiproxy` and either may be the configured id.
+fn agent_environment(settings: &TendrilSettings, agent: &str, keys: &[&str]) -> Option<String> {
+    let siblings: &[&str] = match agent {
+        "ivy" => &["ivy", OPENAI_PROXY_AGENT_ID],
+        OPENAI_PROXY_AGENT_ID | "proxy" => &[OPENAI_PROXY_AGENT_ID, "proxy", "ivy"],
+        other => &[other],
+    };
+
+    for name in siblings {
+        let entry = settings
+            .coding_agents
+            .iter()
+            .find(|candidate| normalize_agent_name(&candidate.name) == *name);
+        let Some(entry) = entry else { continue };
+        for key in keys {
+            if let Some(value) = entry
+                .environment_variables
+                .get(*key)
+                .filter(|value| !value.trim().is_empty())
+            {
+                return Some(value.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Whether a saved key exists for an agent, so the pane can offer to fetch without asking for one.
+/// Reports only the fact, never the value.
+pub fn has_saved_api_key(settings: &TendrilSettings, agent: &str) -> bool {
+    agent_environment(settings, &normalize_agent_name(agent), API_KEY_KEYS).is_some()
 }
 
 /// The `ANTHROPIC_BASE_URL` configured for the `openaiproxy` agent, which is what decides that
@@ -72,8 +162,16 @@ mod tests {
         assert_eq!(claude["label"], "Claude Code");
         assert_eq!(claude["icon"], "ClaudeCode");
         assert_eq!(claude["supportsEffort"], true);
-        assert_eq!(claude["models"][0]["id"], "default");
-        assert_eq!(claude["models"][0]["displayName"], "Default");
+        // No synthetic `default` row: the first model is the real one V1 flags `IsDefault`, and
+        // `defaultModel` names it so a client never has to invent a sentinel.
+        assert_eq!(claude["models"][0]["id"], "claude-opus-5");
+        assert_eq!(claude["models"][0]["displayName"], "Claude Opus 5");
+        assert_eq!(claude["defaultModel"], "claude-opus-5");
+        assert!(!claude["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|model| model["id"] == "default"));
         assert!(claude["efforts"]
             .as_array()
             .unwrap()
@@ -151,6 +249,74 @@ mod tests {
 
         assert_eq!(proxy["label"], "Berget AI");
         assert_eq!(proxy["icon"], "ChevronUp");
+    }
+
+    /// The saved key is the one the operator "already gave", and reading it here is what lets the pane
+    /// ask for models without asking for a credential again.
+    ///
+    /// Proven without a provider: with no key anywhere the route refuses before making a request, and
+    /// with one in `config.yaml` it gets as far as the endpoint — so reaching the endpoint at all is the
+    /// evidence that the configured key was found.
+    #[tokio::test]
+    async fn the_saved_api_key_is_read_from_config_rather_than_asked_for() {
+        let unconfigured = scratch_state("tendril-agents-fetch-nokey", None);
+        let refusal = body_json(
+            fetch_provider_models_handler(
+                State(unconfigured),
+                Json(FetchProviderModelsRequest {
+                    base_url: Some("http://127.0.0.1:1/v1".to_string()),
+                    ..Default::default()
+                }),
+            )
+            .await
+            .into_response(),
+        )
+        .await;
+        assert_eq!(refusal["status"], "apiKeyError");
+        assert_eq!(refusal["message"], "API Key is required.");
+
+        let configured = scratch_state(
+            "tendril-agents-fetch-key",
+            Some(
+                "codingAgents:\n  - name: openaiproxy\n    environmentVariables:\n      OPENAI_API_KEY: sk-configured-0123456789\n      ANTHROPIC_BASE_URL: http://127.0.0.1:1/v1\n",
+            ),
+        );
+        let reached = body_json(
+            fetch_provider_models_handler(
+                State(configured),
+                Json(FetchProviderModelsRequest::default()),
+            )
+            .await
+            .into_response(),
+        )
+        .await;
+        // Nothing is listening on port 1, so the configured key got as far as a connection attempt.
+        assert_eq!(reached["status"], "baseUrlError");
+
+        // And the whole reply is free of it, in every form.
+        let serialized = reached.to_string();
+        assert!(
+            !serialized.contains("sk-configured-0123456789"),
+            "{serialized}"
+        );
+        assert!(!serialized.contains("sk-configured"), "{serialized}");
+    }
+
+    /// The Ivy card writes its credentials to both the `ivy` and the `openaiproxy` entries, so either id
+    /// must find them.
+    #[tokio::test]
+    async fn either_proxy_id_finds_the_credentials_the_other_saved() {
+        let state = scratch_state(
+            "tendril-agents-fetch-ivy",
+            Some(
+                "codingAgents:\n  - name: ivy\n    environmentVariables:\n      ANTHROPIC_API_KEY: sk-ivy-0123456789\n      ANTHROPIC_BASE_URL: https://llmproxy.ivy.app\n",
+            ),
+        );
+        let snapshot = state.settings_snapshot();
+        let settings = snapshot.settings.as_ref();
+        assert!(has_saved_api_key(&settings, "ivy"));
+        assert!(has_saved_api_key(&settings, "openaiproxy"));
+        assert!(!has_saved_api_key(&settings, "claude"));
     }
 
     #[tokio::test]
