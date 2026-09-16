@@ -79,6 +79,7 @@ async fn test_exit_zero_job_with_dangling_tasks_transitions_to_failed() {
         JobStatus::Completed,
         "Finished normally".to_string(),
         Some(10),
+        None,
     )
     .await;
 
@@ -140,6 +141,7 @@ async fn test_exit_zero_job_with_completed_tasks_succeeds() {
         JobStatus::Completed,
         "Finished normally".to_string(),
         Some(10),
+        None,
     )
     .await;
 

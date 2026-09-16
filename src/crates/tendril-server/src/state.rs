@@ -32,6 +32,45 @@ pub struct CachedSettings {
     pub local_file_roots: Arc<Vec<PathBuf>>,
 }
 
+/// Forwards one in-process event source onto the WebSocket, stamping and buffering each event
+/// through [`event_buffer::dispatch_event`] so a resuming client sees it too.
+///
+/// **A lag is not fatal.** `recv` reports [`broadcast::error::RecvError::Lagged`] when this task fell
+/// behind the sender, and the obvious `while let Ok(evt) = rx.recv().await` exits on it just as it
+/// exits on `Closed` — so one burst (and `chat.stream_delta` fires per agent output line) would end
+/// the only route that source has to any client, for the whole life of the daemon. The dropped events
+/// are unrecoverable, but the next one is not: it is forwarded, and the `seq` gap tells a client to
+/// top up through `GET /api/events/backfill`, which reports `gap: true` for exactly this case.
+/// `routes::changes::stream_changes` and `watch::spawn_change_watcher` make the same choice.
+pub fn spawn_event_forwarder<T>(
+    label: &'static str,
+    mut rx: broadcast::Receiver<T>,
+    seq_counter: Arc<AtomicU64>,
+    ring_buffer: Arc<EventRingBuffer>,
+    ws_tx: broadcast::Sender<String>,
+) where
+    T: serde::Serialize + Clone + Send + 'static,
+{
+    tokio::spawn(async move {
+        loop {
+            let evt = match rx.recv().await {
+                Ok(evt) => evt,
+                Err(broadcast::error::RecvError::Lagged(dropped)) => {
+                    tracing::warn!(
+                        "{label} event forwarder lagged by {dropped} events; continuing with the next one"
+                    );
+                    continue;
+                }
+                // Only the sender going away ends the forwarder.
+                Err(broadcast::error::RecvError::Closed) => break,
+            };
+            if let Ok(payload) = serde_json::to_value(&evt) {
+                event_buffer::dispatch_event(&seq_counter, &ring_buffer, &ws_tx, payload);
+            }
+        }
+    });
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub tendril_home: PathBuf,
@@ -149,22 +188,25 @@ impl AppState {
 
         // Forward chat events to WebSocket clients, through the same ring buffer/seq path every
         // other event source uses so a resuming client sees chat events too.
-        let mut chat_rx = chat_manager.subscribe_events();
-        let ws_tx_clone = ws_tx.clone();
-        let ring_buffer_clone = ring_buffer.clone();
-        let seq_counter_clone = seq_counter.clone();
-        tokio::spawn(async move {
-            while let Ok(evt) = chat_rx.recv().await {
-                if let Ok(payload) = serde_json::to_value(&evt) {
-                    event_buffer::dispatch_event(
-                        &seq_counter_clone,
-                        &ring_buffer_clone,
-                        &ws_tx_clone,
-                        payload,
-                    );
-                }
-            }
-        });
+        spawn_event_forwarder(
+            "chat",
+            chat_manager.subscribe_events(),
+            seq_counter.clone(),
+            ring_buffer.clone(),
+            ws_tx.clone(),
+        );
+
+        // Job lifecycle events take the same route. Without this the WebSocket surface carries no
+        // job events at all and the app is left polling: a job that starts, fails or completes while
+        // no job view is open is invisible until the next fetch. See
+        // [`tendril_core::jobs::manager::JobEvent`] on why the names are `job.`-prefixed.
+        spawn_event_forwarder(
+            "job",
+            job_manager.subscribe_events(),
+            seq_counter.clone(),
+            ring_buffer.clone(),
+            ws_tx.clone(),
+        );
 
         // Reconcile tracked pull requests on a timer. The task captures clones rather than the
         // `AppState` it is being constructed inside, so nothing here has to be `Arc`ed early.

@@ -46,12 +46,13 @@ use crate::plans::writer::write_plan_yaml;
 use crate::promptware::compiler::compile_firmware_with_skills;
 use crate::telemetry::Track;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::{Duration, Instant};
-use tokio::sync::{watch, Mutex, Notify, OwnedSemaphorePermit, RwLock, Semaphore};
+use tokio::sync::{broadcast, watch, Mutex, Notify, OwnedSemaphorePermit, RwLock, Semaphore};
 
 /// Grace on top of `staleOutputTimeout` before the maintenance pass reaps a `Running` job whose own
 /// per-job watchdog never armed, because the launch itself hung.
@@ -70,6 +71,91 @@ const LAST_OUTPUT_PERSIST_INTERVAL: Duration = Duration::from_secs(5);
 /// Builds the process spec for an agent launch. Injectable so tests can exercise the whole launch
 /// path against a throwaway script instead of a real agent CLI.
 pub type SpecBuilder = Arc<dyn Fn(&str, &AgentLaunchConfig) -> AgentProcessSpec + Send + Sync>;
+
+/// How many job events the manager buffers for a slow subscriber.
+///
+/// Job events are per-transition, not per-output-line, so this is generous: a subscriber would have
+/// to sleep through 256 transitions to lag. The server's forwarder survives a lag anyway rather than
+/// ending, which is the failure mode that actually matters (see `AppState::new`).
+const JOB_EVENT_CHANNEL_CAPACITY: usize = 256;
+
+/// Emitted on every status transition the manager writes.
+pub const JOB_EVENT_STATUS_CHANGED: &str = "job.status_changed";
+/// Emitted alongside [`JOB_EVENT_STATUS_CHANGED`] when a job settles on `Completed`.
+pub const JOB_EVENT_COMPLETED: &str = "job.completed";
+/// Emitted alongside [`JOB_EVENT_STATUS_CHANGED`] when a job settles on `Failed`, `Timeout` or
+/// `Stopped`.
+pub const JOB_EVENT_FAILED: &str = "job.failed";
+
+/// A job lifecycle notification, broadcast to anything watching a [`JobManager`].
+///
+/// The `job.` prefix is load-bearing rather than decorative. The desktop bridge
+/// (`ws_bridge.rs::route_ws_message`) claims `chat.`, `plan.`, `state` and `status` for their own
+/// channels and routes *everything else* to `job-event` — so an unprefixed name would reach the Jobs
+/// area by falling through a match rather than by matching one, and a future `plan.`-shaped name
+/// added to that list would silently steal it.
+///
+/// A subscriber gets both a generic transition event and, for a terminal status, a second event
+/// naming the outcome: a client that only cares about "did this finish" does not have to know which
+/// of `Failed`, `Timeout` and `Stopped` count as failure.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct JobEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub job_id: String,
+    pub job_type: String,
+    pub status: JobStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_message: Option<String>,
+    /// The plan folder the job is working on, if any — the name, not the absolute path, because that
+    /// is what a client keys a plan on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_folder: Option<String>,
+}
+
+impl JobEvent {
+    fn of_type(event_type: &str, job: &JobItem) -> Self {
+        Self {
+            event_type: event_type.to_string(),
+            job_id: job.id.clone(),
+            job_type: job.job_type.clone(),
+            status: job.status,
+            status_message: job.status_message.clone(),
+            plan_folder: Path::new(&job.plan_file)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string()),
+        }
+    }
+
+    /// The transition event every status write produces.
+    pub fn status_changed(job: &JobItem) -> Self {
+        Self::of_type(JOB_EVENT_STATUS_CHANGED, job)
+    }
+
+    /// The outcome event a terminal status produces, or `None` while the job is still live.
+    pub fn terminal(job: &JobItem) -> Option<Self> {
+        match job.status {
+            JobStatus::Completed => Some(Self::of_type(JOB_EVENT_COMPLETED, job)),
+            JobStatus::Failed | JobStatus::Timeout | JobStatus::Stopped => {
+                Some(Self::of_type(JOB_EVENT_FAILED, job))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Publishes the events for one status write. A send failure only means nobody is subscribed.
+fn emit_job_event(events: Option<&broadcast::Sender<JobEvent>>, job: &JobItem) {
+    let Some(tx) = events else {
+        return;
+    };
+    let _ = tx.send(JobEvent::status_changed(job));
+    if let Some(terminal) = JobEvent::terminal(job) {
+        let _ = tx.send(terminal);
+    }
+}
 
 /// Live control surface for a queued or running job.
 ///
@@ -154,6 +240,7 @@ struct DispatchContext {
     stale_output_timeout_override: Option<Duration>,
     plans_dir_override: Option<PathBuf>,
     self_handle: Weak<JobManager>,
+    events: broadcast::Sender<JobEvent>,
 }
 
 pub struct JobManager {
@@ -193,11 +280,16 @@ pub struct JobManager {
     /// Empty unless the manager was published with [`JobManager::share`]; empty simply means no
     /// restarts happen, which is what a manager nobody can reach should do.
     self_handle: OnceLock<Weak<JobManager>>,
+    /// Job lifecycle events, for anything that would otherwise have to poll — the daemon forwards
+    /// them onto the WebSocket. See [`JobEvent`]. The channel exists whether or not anyone is
+    /// listening, so a send is always safe and a CLI invocation simply drops every event.
+    events: broadcast::Sender<JobEvent>,
 }
 
 impl JobManager {
     pub fn new(tendril_home: PathBuf, settings: TendrilSettings) -> Self {
         let max_jobs = settings.max_concurrent_jobs.max(1) as usize;
+        let (events, _) = broadcast::channel(JOB_EVENT_CHANNEL_CAPACITY);
         Self {
             tendril_home,
             settings: Arc::new(RwLock::new(settings)),
@@ -215,7 +307,17 @@ impl JobManager {
             stale_output_timeout_override: None,
             plans_dir_override: None,
             self_handle: OnceLock::new(),
+            events,
         }
+    }
+
+    /// Subscribes to this manager's job lifecycle events.
+    ///
+    /// A receiver only sees events published after it subscribes, and it may lag: a subscriber that
+    /// treats [`broadcast::error::RecvError::Lagged`] as fatal silences itself permanently, so
+    /// forward the next event instead and let the client reconcile.
+    pub fn subscribe_events(&self) -> broadcast::Receiver<JobEvent> {
+        self.events.subscribe()
     }
 
     /// Publishes the manager as an `Arc` and records a weak handle to itself.
@@ -295,6 +397,7 @@ impl JobManager {
             stale_output_timeout_override: self.stale_output_timeout_override,
             plans_dir_override: self.plans_dir_override.clone(),
             self_handle: self.self_handle.get().cloned().unwrap_or_else(Weak::new),
+            events: self.events.clone(),
         }
     }
 
@@ -621,8 +724,16 @@ impl JobManager {
         self.dispatch_notify.notify_one();
     }
 
+    /// Moves a plan into its in-flight state as a job claims it, and mirrors that to SQLite.
+    ///
+    /// The mirror is the point: `apply_plan_state` writes `plan.yaml` and nothing else, and the plan
+    /// list, the Kanban columns and `?status=` all read `Plans.State` out of the database. Without
+    /// this the row still says `Draft` while the plan is executing, and no refetch fixes it — the
+    /// watcher cannot compensate either, because `write_plan_yaml` marks the write as ours and the
+    /// watcher skips self-writes.
     fn set_plan_state(&self, plan_folder: &Path, state: PlanStatus) {
         apply_plan_state(plan_folder, state);
+        sync_plan_state_to_db(&self.tendril_home, plan_folder);
     }
 
     pub async fn get_job(&self, id: &str) -> Result<Option<JobItem>> {
@@ -657,7 +768,7 @@ impl JobManager {
             job.reported_plan_title = Some(title.to_string());
         }
 
-        persist(&self.tendril_home, &self.jobs, &job).await;
+        persist(&self.tendril_home, &self.jobs, &job, Some(&self.events)).await;
         Ok(true)
     }
 
@@ -670,7 +781,7 @@ impl JobManager {
         job.reported_failure_reason = Some(message.to_string());
         job.completed_at = Some(Utc::now());
 
-        persist(&self.tendril_home, &self.jobs, &job).await;
+        persist(&self.tendril_home, &self.jobs, &job, Some(&self.events)).await;
         Ok(true)
     }
 
@@ -733,7 +844,10 @@ impl JobManager {
         job.status_message = Some(message.unwrap_or("Cancelled").to_string());
         job.completed_at = Some(Utc::now());
         revert_plan_state(&job);
-        persist(&self.tendril_home, &self.jobs, &job).await;
+        // A cancellation ends the run, so the plan's row moves with it exactly as it does in
+        // `finish_job` — this path never reaches that function.
+        sync_plan_state_to_db(&self.tendril_home, Path::new(&job.plan_file));
+        persist(&self.tendril_home, &self.jobs, &job, Some(&self.events)).await;
         self.handles.write().await.remove(id);
 
         // A stopped job is terminal, so jobs waiting on it have to be told: they will never be
@@ -998,7 +1112,7 @@ impl JobManager {
             if let Some(state) = in_flight_plan_state(&job.job_type) {
                 self.set_plan_state(Path::new(&job.plan_file), state);
             }
-            persist(&self.tendril_home, &self.jobs, &job).await;
+            persist(&self.tendril_home, &self.jobs, &job, Some(&self.events)).await;
         }
 
         ensure_handle(&self.handles, id).await;
@@ -1174,7 +1288,7 @@ impl JobManager {
                     failed.status_message = Some(reason);
                     failed.completed_at = Some(Utc::now());
                     revert_plan_state(&failed);
-                    persist(&self.tendril_home, &self.jobs, &failed).await;
+                    persist(&self.tendril_home, &self.jobs, &failed, Some(&self.events)).await;
                 }
                 Some(WaitOutcome::Blocked(_)) => {}
             }
@@ -1472,14 +1586,20 @@ async fn release_wait_dependents(ctx: &DispatchContext, finished_id: &str) -> Ve
                 failed.status_message = Some(reason);
                 failed.completed_at = Some(Utc::now());
                 revert_plan_state(&failed);
-                persist(&ctx.tendril_home, &ctx.jobs, &failed).await;
+                persist(&ctx.tendril_home, &ctx.jobs, &failed, Some(&ctx.events)).await;
             }
             Some(WaitOutcome::Blocked(reason)) => {
                 // Still waiting on something else; keep the message current.
                 if job.status_message.as_deref() != Some(reason.as_str()) {
                     let mut still_blocked = job;
                     still_blocked.status_message = Some(reason);
-                    persist(&ctx.tendril_home, &ctx.jobs, &still_blocked).await;
+                    persist(
+                        &ctx.tendril_home,
+                        &ctx.jobs,
+                        &still_blocked,
+                        Some(&ctx.events),
+                    )
+                    .await;
                 }
             }
         }
@@ -1496,8 +1616,11 @@ async fn release_blocked_job(ctx: &DispatchContext, mut job: JobItem) {
     job.started_at = Some(Utc::now());
     if let Some(state) = in_flight_plan_state(&job.job_type) {
         apply_plan_state(Path::new(&job.plan_file), state);
+        // The other end of `JobManager::set_plan_state`: a job released from `Blocked` claims its
+        // plan here instead, and its row has to move with it.
+        sync_plan_state_to_db(&ctx.tendril_home, Path::new(&job.plan_file));
     }
-    persist(&ctx.tendril_home, &ctx.jobs, &job).await;
+    persist(&ctx.tendril_home, &ctx.jobs, &job, Some(&ctx.events)).await;
 
     ensure_handle(&ctx.handles, &job.id).await;
     ctx.queue.lock().await.push(job.id.clone(), job.priority);
@@ -1759,6 +1882,7 @@ fn spawn_runner(
         .unwrap_or_else(|| get_plans_dir_with_settings(&tendril_home, Some(&settings)));
     let jobs_map = ctx.jobs.clone();
     let handles = ctx.handles.clone();
+    let job_events = ctx.events.clone();
     let spec_builder = ctx.spec_builder.clone();
     let hook_executor = ctx.hook_executor.clone();
     let dispatch_notify = ctx.dispatch_notify.clone();
@@ -1787,7 +1911,9 @@ fn spawn_runner(
         }
 
         job.status = JobStatus::Running;
-        persist(&tendril_home, &jobs_map, &job).await;
+        // The dispatch path's own announcement: without it a job that starts while no job view is
+        // open is invisible until the next poll.
+        persist(&tendril_home, &jobs_map, &job, Some(&job_events)).await;
 
         // `before` hooks fire once the job is genuinely starting: past the queue and the cancel
         // check, ahead of everything that can still fail. A hook cannot stop the job — a failing one
@@ -1820,6 +1946,7 @@ fn spawn_runner(
                 JobStatus::Failed,
                 msg,
                 None,
+                Some(&job_events),
             )
             .await;
             release_wait_dependents(&ctx, &job_id).await;
@@ -1849,6 +1976,7 @@ fn spawn_runner(
                         JobStatus::Failed,
                         msg,
                         None,
+                        Some(&job_events),
                     )
                     .await;
                     release_wait_dependents(&ctx, &job_id).await;
@@ -1960,7 +2088,9 @@ fn spawn_runner(
                 let mut with_pid = job_for_pid;
                 with_pid.process_id = Some(spawned_pid);
                 tokio::spawn(async move {
-                    persist(&home_for_pid, &jobs_for_pid, &with_pid).await;
+                    // No sender: the status has not moved since the `Running` write above, so this
+                    // would be a duplicate event even before `persist`'s own guard sees it.
+                    persist(&home_for_pid, &jobs_for_pid, &with_pid, None).await;
                 });
             },
             cancel_rx,
@@ -2011,6 +2141,7 @@ fn spawn_runner(
             final_status,
             msg,
             Some(duration),
+            Some(&job_events),
         )
         .await;
 
@@ -2128,6 +2259,7 @@ async fn run_detached_supervisor(ctx: DispatchContext, job: JobItem, pid: u32) {
         final_status,
         msg,
         duration_seconds,
+        Some(&ctx.events),
     )
     .await;
 
@@ -2448,6 +2580,50 @@ pub fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
             );
         }
         Err(e) => tracing::warn!("Plan {} state transition refused: {}", plan_id, e),
+    }
+}
+
+/// Mirrors a plan folder's current `plan.yaml` into the `Plans` table.
+///
+/// Every HTTP route that writes a plan pairs `write_plan_yaml` with `sync_plan`; the job engine did
+/// not, so a state it moved reached `plan.yaml` and stopped there. This is that pairing, for the job
+/// engine's own transitions.
+///
+/// Never fails a job: a plan whose row could not be refreshed is a stale list entry, which the 30s
+/// rescan and the watcher's re-sync both still repair, whereas a job failed over a database hiccup
+/// discards real work. Every failure path is therefore a `warn` and a return.
+pub fn sync_plan_state_to_db(tendril_home: &Path, plan_folder: &Path) {
+    if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
+        return;
+    }
+
+    // Locked, like the watcher's re-sync: the state write that led here released the lock, but a
+    // concurrent writer may hold it, and mirroring a half-written document is worse than not
+    // mirroring at all.
+    let plan = match crate::plans::reader::read_plan_file_locked(plan_folder) {
+        Ok(plan) => plan,
+        Err(e) => {
+            tracing::warn!(
+                "Not mirroring {} to the database: {}",
+                plan_folder.display(),
+                e
+            );
+            return;
+        }
+    };
+
+    let db_path = crate::config::get_database_path(tendril_home);
+    match open_database(&db_path) {
+        Ok(conn) => {
+            if let Err(e) = crate::db::plans::sync_plan(&conn, &plan) {
+                tracing::warn!("Failed to mirror plan {} state: {}", plan.folder_name, e);
+            }
+        }
+        Err(e) => tracing::warn!(
+            "Failed to open the database to mirror plan {}: {}",
+            plan.folder_name,
+            e
+        ),
     }
 }
 
@@ -2960,6 +3136,7 @@ pub async fn finish_job(
     final_status: JobStatus,
     msg: String,
     duration_seconds: Option<i64>,
+    events: Option<&broadcast::Sender<JobEvent>>,
 ) -> Option<JobItem> {
     if !claim(completion_claimed) {
         // Cancellation got there first and has already written the terminal state.
@@ -3098,11 +3275,20 @@ pub async fn finish_job(
         revert_plan_state(&job);
     }
 
+    // Whatever the branches above decided, the plan's state on disk is now its final one for this
+    // job. Mirroring it here rather than inside `apply_plan_state` is deliberate: a job holds a
+    // plan's state for its whole run, so the two moments the mirror can be wrong are the transition
+    // into the run (`JobManager::set_plan_state`) and this one out of it — and one sync per job beats
+    // one per write from a function that is also called by the CLI, where there is nothing to serve.
+    sync_plan_state_to_db(tendril_home, Path::new(&job.plan_file));
+
     extract_and_record_usage(tendril_home, &mut job);
 
     track_job_completion(tendril_home, &job, deliverable_present);
 
-    persist(tendril_home, jobs_map, &job).await;
+    // Emits `job.status_changed` plus `job.completed`/`job.failed`, so a client hears the outcome
+    // rather than waiting for its next poll.
+    persist(tendril_home, jobs_map, &job, events).await;
     handles.write().await.remove(&job.id);
 
     // Written last, so the record carries the final status, usage and plan outcome. Never fails a job.
@@ -3218,13 +3404,31 @@ fn cleanup_empty_create_plan(
     }
 }
 
-/// Writes a job to the in-memory map and SQLite.
+/// Writes a job to the in-memory map and SQLite, and announces the transition.
+///
+/// Every status a job reaches after it is created is written through here, which is why the event is
+/// published here too: an emission bolted onto individual call sites is one `return` away from a
+/// status that reaches the database and nothing else. `events` is `None` for a caller that has no
+/// manager to publish through — the free-function test entry points, and nothing in production.
 async fn persist(
     tendril_home: &Path,
     jobs_map: &Arc<RwLock<HashMap<String, JobItem>>>,
     job: &JobItem,
+    events: Option<&broadcast::Sender<JobEvent>>,
 ) {
-    jobs_map.write().await.insert(job.id.clone(), job.clone());
+    let previous = jobs_map.write().await.insert(job.id.clone(), job.clone());
+
+    // Announce only a write that changed something a client renders. Several writes are re-persists
+    // of a job whose status has not moved (the PID write during launch, a blocked job whose reason
+    // was re-checked), and each would otherwise cost every connected client an event.
+    let moved = match &previous {
+        Some(prev) => prev.status != job.status || prev.status_message != job.status_message,
+        // Not seen by this process before: the first write is always news.
+        None => true,
+    };
+    if moved {
+        emit_job_event(events, job);
+    }
 
     let db_path = crate::config::get_database_path(tendril_home);
     match open_database(&db_path) {

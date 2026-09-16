@@ -241,3 +241,64 @@ async fn test_rest_backfill_endpoint() {
     // it; here nothing has been evicted, so `since=0` must not be reported as one.
     assert_eq!(body2["gap"], false);
 }
+
+/// A client that falls behind the broadcast channel must be told to resync and keep receiving.
+///
+/// The per-client sender task used `while let Ok(msg) = rx.recv().await`, which exits on
+/// `RecvError::Lagged` as readily as on `Closed` — but the socket stays open, so the client never sees
+/// a close, never reconnects, and goes silently deaf for the rest of its life. This asserts the two
+/// things that fixes it: the client is told, and later events still arrive.
+#[tokio::test]
+async fn test_ws_client_survives_a_lagged_broadcast() {
+    let server = start_test_server().await;
+
+    let (mut socket, _) = tokio_tungstenite::connect_async(server.ws_url(""))
+        .await
+        .expect("connection must succeed");
+
+    // Dispatched in one synchronous burst on a current-thread runtime, so the per-client task cannot
+    // be scheduled in between: it is guaranteed to still be at the start of the channel when the
+    // burst overruns `ws_tx`'s 500-slot capacity.
+    let overrun = 600;
+    for i in 0..overrun {
+        server
+            .state
+            .dispatch_ws_event(json!({"type": "flood", "i": i}));
+    }
+    let live = server.state.dispatch_ws_event(json!({"type": "after_lag"}));
+
+    // Read until the event dispatched after the lag arrives. Reaching it at all is the assertion:
+    // before the fix the task had already returned and nothing further was ever written.
+    let mut saw_resync = false;
+    let mut saw_live = false;
+    for _ in 0..(overrun + 32) {
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+            .await
+            .expect("the client must keep receiving after a lag")
+            .expect("stream must not end")
+            .expect("frame must not be an error");
+        if let WsMessage::Text(text) = msg {
+            let value: Value = serde_json::from_str(&text).unwrap();
+            if value["type"] == "resync" {
+                saw_resync = true;
+                assert!(
+                    value["dropped"].as_u64().unwrap_or(0) > 0,
+                    "a resync hint names how many events were lost: {value}"
+                );
+            }
+            if value["seq"].as_u64() == Some(live.seq) {
+                saw_live = true;
+                break;
+            }
+        }
+    }
+
+    assert!(
+        saw_resync,
+        "a client that lost events must be told, or it cannot know to refetch"
+    );
+    assert!(
+        saw_live,
+        "events dispatched after a lag must still reach the client"
+    );
+}

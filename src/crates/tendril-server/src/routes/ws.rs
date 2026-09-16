@@ -6,6 +6,15 @@ use axum::Json;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tokio::sync::broadcast::error::RecvError;
+
+/// Sent to a single client that fell too far behind the broadcast channel to be told what it missed.
+///
+/// It carries no state of its own: the client is expected to re-fetch, or to top up through
+/// `GET /api/events/backfill?since=<its last seq>`, which reports `gap: true` for exactly this case.
+/// Deliberately not `plan.`/`chat.`-prefixed — the desktop bridge routes anything else to
+/// `job-event`, and a resync is not a plan or chat event.
+pub const RESYNC_EVENT_TYPE: &str = "resync";
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct WSClientMessage {
@@ -61,15 +70,39 @@ async fn handle_socket(socket: WebSocket, state: Arc<AppState>, since: Option<u6
     }
 
     tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            // A live broadcast can race the replay above and repeat an event already sent; the
-            // replayed copy's `seq` is authoritative, so drop anything at or below it.
-            let seq = serde_json::from_str::<serde_json::Value>(&msg)
-                .ok()
-                .and_then(|v| v.get("seq").and_then(|s| s.as_u64()));
-            if let Some(seq) = seq {
-                if seq <= max_replayed_seq {
+        loop {
+            let msg = match rx.recv().await {
+                Ok(msg) => msg,
+                // This client fell behind a burst. Returning here would leave the socket open with
+                // nothing ever written to it again — the client would never see a close, never
+                // reconnect, and go silently deaf. So it is told to resync and the loop continues:
+                // `recv` resumes at the oldest event still retained.
+                Err(RecvError::Lagged(dropped)) => {
+                    tracing::warn!("WebSocket client lagged by {dropped} events; sending a resync");
+                    let hint = serde_json::json!({
+                        "type": RESYNC_EVENT_TYPE,
+                        "dropped": dropped,
+                    })
+                    .to_string();
+                    if sender.send(Message::Text(hint)).await.is_err() {
+                        break;
+                    }
                     continue;
+                }
+                Err(RecvError::Closed) => break,
+            };
+            // A live broadcast can race the replay above and repeat an event already sent; the
+            // replayed copy's `seq` is authoritative, so drop anything at or below it. Parsed only
+            // when there was a replay: a client that sent no `since` has nothing to deduplicate
+            // against, and a `serde_json` pass per event is exactly what makes this loop lag.
+            if max_replayed_seq > 0 {
+                let seq = serde_json::from_str::<serde_json::Value>(&msg)
+                    .ok()
+                    .and_then(|v| v.get("seq").and_then(|s| s.as_u64()));
+                if let Some(seq) = seq {
+                    if seq <= max_replayed_seq {
+                        continue;
+                    }
                 }
             }
             if sender.send(Message::Text(msg)).await.is_err() {
