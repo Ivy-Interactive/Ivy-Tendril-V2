@@ -17,12 +17,17 @@ export interface StubInvocation {
   pid: number;
 }
 
+/** Subset of the daemon's `.master` claim the suite asserts on. */
 export interface MasterInfo {
   pid: number;
   port: number;
+  host?: string;
   scheme?: string;
-  heartbeat?: string;
+  secret?: string;
 }
+
+/** The bearer secret the stub daemon publishes in `.master` and requires on `/api/*`. */
+export const STUB_SECRET = 'stub-secret';
 
 function realPath(p: string): string {
   try {
@@ -100,14 +105,22 @@ export function killStubServer(home: string): void {
 
 const STUB_SOURCE = `'use strict';
 // Stand-in for the tendril binary, used by the VS Code extension test suite so no test ever
-// launches a real Tendril daemon. Writes a .master into TENDRIL_HOME and answers /api/ping.
+// launches a real Tendril daemon.
+//
+// Deliberately imitates the V2 daemon rather than V1's service, so the suite catches a client that
+// is still on the old contracts:
+//   - the .master it writes has the fields \`write_master_info\` writes and no \`heartbeat\`;
+//   - /api/ping is unauthenticated and every other /api route 401s without the bearer secret;
+//   - GET / is a 404, because the Rust daemon registers no static or SPA routes.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
 
 const args = process.argv.slice(2);
 const home = process.env.TENDRIL_HOME;
-const isServer = args.includes('--web') || args[0] === 'serve';
+const SECRET = ${JSON.stringify('stub-secret')};
+// \`tendril run\` / \`tendril serve\` are the V2 launch verbs; V1's \`--web\` flag no longer exists.
+const isServer = args[0] === 'run' || args[0] === 'serve';
 
 if (home) {
   try {
@@ -133,33 +146,56 @@ if (!home) {
 const portArg = args.find(a => a.startsWith('--port='));
 const requestedPort = portArg ? Number(portArg.slice('--port='.length)) : 0;
 
+function isAuthorized(req) {
+  const authorization = req.headers['authorization'] || '';
+  if (authorization === 'Bearer ' + SECRET) {
+    return true;
+  }
+  return req.headers['x-api-key'] === SECRET;
+}
+
 const server = http.createServer((req, res) => {
-  if (req.url && req.url.startsWith('/api/ping')) {
+  const url = req.url || '/';
+
+  if (url.startsWith('/api/ping')) {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('pong');
     return;
   }
+
+  if (!url.startsWith('/api/')) {
+    // No web UI: the V2 daemon has no route here.
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end('{"error":"Not Found"}');
+    return;
+  }
+
+  if (!isAuthorized(req)) {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end('{"error":"Unauthorized","message":"Missing or invalid credentials."}');
+    return;
+  }
+
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end('[]');
 });
 
 server.listen(Number.isFinite(requestedPort) && requestedPort > 0 ? requestedPort : 0, '127.0.0.1', () => {
   const port = server.address().port;
-  const now = new Date().toISOString();
+  // Mirrors \`MasterInfo\`: no heartbeat, and \`capabilities\` as \`default_capabilities()\` lists them.
   fs.writeFileSync(
     path.join(home, '.master'),
     JSON.stringify(
       {
-        pid: process.pid,
         port,
-        scheme: 'http',
+        pid: process.pid,
+        secret: SECRET,
+        startedAt: new Date().toISOString(),
         host: '127.0.0.1',
-        secret: 'stub-secret',
-        startedAt: now,
-        heartbeat: now,
         version: '0.0.0-stub',
         apiVersion: 1,
-        capabilities: []
+        capabilities: ['jobs', 'plans', 'projects', 'ws', 'auth_bearer', 'auth_api_key'],
+        scheme: 'http'
       },
       null,
       2
@@ -168,22 +204,7 @@ server.listen(Number.isFinite(requestedPort) && requestedPort > 0 ? requestedPor
   process.stdout.write('tendril stub listening on ' + port + '\\n');
 });
 
-const heartbeat = setInterval(() => {
-  try {
-    const file = path.join(home, '.master');
-    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    if (data.pid !== process.pid) {
-      return;
-    }
-    data.heartbeat = new Date().toISOString();
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
-  } catch {
-    // Home may already be gone.
-  }
-}, 5000);
-
 function shutdown() {
-  clearInterval(heartbeat);
   try {
     const file = path.join(home, '.master');
     const data = JSON.parse(fs.readFileSync(file, 'utf-8'));

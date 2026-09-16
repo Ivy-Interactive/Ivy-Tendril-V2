@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { IJobRunner, JobStreamEvent } from '../jobs/jobRunner';
+import { IJobRunner, isTerminalJobStatus, JobStreamEvent } from '../jobs/jobRunner';
 import { ServerManager } from '../server/serverManager';
 
 export const CHAT_PARTICIPANT_ID = 'tendril.chatParticipant';
@@ -61,11 +61,18 @@ export async function streamJobProgress(
     nextStep = `\n- **Next Command:** \`@tendril /retry ${planId} <feedback>\``;
   }
 
+  // `Stopped` and `Timeout` are terminal too (`JobStatus` in tendril-core's models/job.rs, and the
+  // set `stream_job_events` ends a stream on). V1 badged only Completed and Failed, so a cancelled
+  // or timed-out job rendered as a bare word with no indication it had finished badly.
   const statusBadge =
     finalStatus.status === 'Completed'
       ? 'Completed ✅'
       : finalStatus.status === 'Failed'
       ? 'Failed ❌'
+      : finalStatus.status === 'Stopped'
+      ? 'Stopped ⏹'
+      : finalStatus.status === 'Timeout'
+      ? 'Timed out ⏱'
       : finalStatus.status;
 
   const planInfo = planId ? `\n- **Plan:** \`${planId}\`` : '';
@@ -178,10 +185,10 @@ export async function handleChatRequest(
             `- **Message:** ${status.message || 'No status message'}`
         );
 
-        if (
-          !noFollow &&
-          (status.status === 'Running' || status.status === 'Pending' || status.status === 'Queued')
-        ) {
+        // Anything the daemon has not marked terminal is still worth following. V1 enumerated
+        // Running/Pending/Queued and so silently refused to follow a `Blocked` job, which is the
+        // status a job waiting on `--wait-for` or on a plan lock sits in before it runs.
+        if (!noFollow && status.status !== 'Unknown' && !isTerminalJobStatus(status.status)) {
           await streamJobProgress(jobId, response, jobRunner, _token);
         }
       } else {

@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import * as http from 'http';
 import * as vscode from 'vscode';
 import { COMMANDS } from '../../constants';
 import { ServerManager } from '../../server/serverManager';
@@ -106,20 +107,74 @@ describe('Tendril Sidebar & Browser Action Suite', () => {
     });
 
     it('should open external browser with baseUrl on openInBrowser', async () => {
+      // A real listener that answers HTML, because the command now confirms the daemon actually
+      // serves a dashboard before opening a tab at it.
+      const uiServer = http.createServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end('<!DOCTYPE html><html><body>Tendril</body></html>');
+      });
+      const port = await new Promise<number>(resolve => {
+        uiServer.listen(0, '127.0.0.1', () => {
+          const address = uiServer.address();
+          resolve(typeof address === 'object' && address ? address.port : 0);
+        });
+      });
+      const baseUrl = `http://127.0.0.1:${port}`;
+
       ServerManager.prototype.ensureServerRunning = async () => ({
-        port: 4567,
+        port,
         pid: 9999,
-        baseUrl: 'http://localhost:4567',
-        scheme: 'http',
-        heartbeat: new Date()
+        baseUrl,
+        host: '127.0.0.1',
+        scheme: 'http'
       });
 
-      await vscode.commands.executeCommand(COMMANDS.openInBrowser);
+      try {
+        await vscode.commands.executeCommand(COMMANDS.openInBrowser);
+      } finally {
+        await new Promise<void>(resolve => uiServer.close(() => resolve()));
+      }
 
       const openedUri = vscodeMock.env.lastOpenedUri as { fsPath?: string } | undefined;
       assert.ok(openedUri, 'External URI must be opened');
-      assert.strictEqual(openedUri?.toString(), 'http://localhost:4567');
+      assert.strictEqual(openedUri?.toString(), baseUrl);
       assert.strictEqual(vscodeMock.window.lastErrorMessage, undefined);
+    });
+
+    it('should report that the daemon serves no dashboard instead of opening a 404', async () => {
+      // The V2 daemon registers API routes only: `GET /` is a bare 404, so V1's "open the server
+      // root" behaviour transplanted unchanged would show an empty page and say nothing.
+      const apiOnly = http.createServer((_req, res) => {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end('{"error":"Not Found"}');
+      });
+      const port = await new Promise<number>(resolve => {
+        apiOnly.listen(0, '127.0.0.1', () => {
+          const address = apiOnly.address();
+          resolve(typeof address === 'object' && address ? address.port : 0);
+        });
+      });
+      const baseUrl = `http://127.0.0.1:${port}`;
+
+      ServerManager.prototype.ensureServerRunning = async () => ({
+        port,
+        pid: 9999,
+        baseUrl,
+        host: '127.0.0.1',
+        scheme: 'http'
+      });
+
+      try {
+        await vscode.commands.executeCommand(COMMANDS.openInBrowser);
+      } finally {
+        await new Promise<void>(resolve => apiOnly.close(() => resolve()));
+      }
+
+      assert.strictEqual(vscodeMock.env.lastOpenedUri, undefined);
+      assert.ok(
+        vscodeMock.window.lastErrorMessage?.includes('does not serve a web dashboard'),
+        `Expected an explanatory message, got: ${vscodeMock.window.lastErrorMessage}`
+      );
     });
 
     it('should show error message if ensureServerRunning throws', async () => {

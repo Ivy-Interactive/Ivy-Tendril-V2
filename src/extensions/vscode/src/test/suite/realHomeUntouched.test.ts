@@ -28,13 +28,15 @@ describe('Real Tendril Home Untouched Suite', () => {
     const masterFile = path.join(fakeTendrilHome, '.master');
     const seeded = JSON.stringify(
       {
-        pid: process.pid,
         port: 5010,
-        scheme: 'http',
-        host: '127.0.0.1',
+        pid: process.pid,
         secret: 'production-secret-do-not-touch',
         startedAt: new Date().toISOString(),
-        heartbeat: new Date().toISOString()
+        host: '127.0.0.1',
+        version: '0.2.0',
+        apiVersion: 1,
+        capabilities: ['jobs', 'plans', 'projects', 'ws', 'auth_bearer', 'auth_api_key'],
+        scheme: 'http'
       },
       null,
       2

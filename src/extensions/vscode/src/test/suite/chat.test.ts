@@ -105,17 +105,19 @@ class TestJobRunner implements IJobRunner {
 
 const mockServerManager: any = {
   ensureServerRunning: async () => ({
-    baseUrl: 'http://localhost:5000',
+    baseUrl: 'http://127.0.0.1:5000',
     port: 5000,
     pid: 1234,
+    host: '127.0.0.1',
     scheme: 'http',
-    heartbeat: new Date()
+    secret: 'bearer-secret-abc'
   }),
   getHealthInfo: async () => ({
     isAlive: true,
-    baseUrl: 'http://localhost:5000',
+    baseUrl: 'http://127.0.0.1:5000',
     port: 5000,
-    pid: 1234
+    pid: 1234,
+    activeJobsCount: 0
   }),
   tendrilHome: '/mock/tendril'
 };

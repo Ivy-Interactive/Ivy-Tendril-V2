@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { fetchProjects, isWorkspaceManaged } from '../../server/masterDiscovery';
+import { fetchActiveJobsCount, fetchProjects, fetchRecentPlans, isWorkspaceManaged } from '../../server/masterDiscovery';
 import { TendrilProjectSummary } from '../../server/types';
 
 describe('Unmanaged Project Detection Suite', () => {
@@ -10,16 +10,24 @@ describe('Unmanaged Project Detection Suite', () => {
       globalThis.fetch = originalFetch;
     });
 
-    it('should parse valid /api/projects response correctly', async () => {
+    it('should read repo paths out of the V2 RepoRef objects', async () => {
+      // `GET /api/projects` returns `ProjectConfig`, whose `repos` is `Vec<RepoRef>`:
+      // `[{ path, baseBranch }]`. V1 returned a bare `string[]`, and stringifying a RepoRef gives
+      // "[object Object]", so every workspace looked unmanaged.
       const mockProjects = [
         {
           name: 'ProjectAlpha',
           color: 'green',
-          repos: ['/repos/alpha', '/repos/alpha-docs']
+          repos: [
+            { path: '/repos/alpha', baseBranch: 'main' },
+            { path: '/repos/alpha-docs' }
+          ]
         },
         {
+          // `color` is a non-optional String on the daemon side, empty when unset.
           name: 'ProjectBeta',
-          repos: ['/repos/beta']
+          color: '',
+          repos: [{ path: '/repos/beta', baseBranch: 'develop' }]
         }
       ];
 
@@ -31,7 +39,7 @@ describe('Unmanaged Project Detection Suite', () => {
         } as Response;
       }) as typeof fetch;
 
-      const result = await fetchProjects('http://localhost:5000');
+      const result = await fetchProjects('http://127.0.0.1:5010');
       assert.strictEqual(result.length, 2);
       assert.strictEqual(result[0].name, 'ProjectAlpha');
       assert.strictEqual(result[0].color, 'green');
@@ -41,16 +49,120 @@ describe('Unmanaged Project Detection Suite', () => {
       assert.deepStrictEqual(result[1].repos, ['/repos/beta']);
     });
 
+    it('should still accept bare path strings', async () => {
+      globalThis.fetch = (async () =>
+        ({
+          ok: true,
+          json: async () => [{ name: 'Legacy', repos: ['/repos/legacy'] }]
+        }) as Response) as typeof fetch;
+
+      const result = await fetchProjects('http://127.0.0.1:5010');
+      assert.deepStrictEqual(result[0].repos, ['/repos/legacy']);
+    });
+
+    it('should send the bearer secret and the configured api key', async () => {
+      let sent: Record<string, string> = {};
+      globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+        sent = (init?.headers ?? {}) as Record<string, string>;
+        return { ok: true, json: async () => [] } as Response;
+      }) as typeof fetch;
+
+      await fetchProjects('http://127.0.0.1:5010', { secret: 'abc', apiKey: 'xyz' });
+
+      assert.strictEqual(sent['Authorization'], 'Bearer abc');
+      assert.strictEqual(sent['X-Api-Key'], 'xyz');
+    });
+
     it('should return empty array on non-ok HTTP response', async () => {
       globalThis.fetch = (async () => {
         return {
           ok: false,
-          status: 500
+          status: 401
         } as Response;
       }) as typeof fetch;
 
-      const result = await fetchProjects('http://localhost:5000');
+      const result = await fetchProjects('http://127.0.0.1:5010');
       assert.deepStrictEqual(result, []);
+    });
+  });
+
+  describe('fetchRecentPlans', () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('should read the nested snake_case PlanFile the V2 daemon returns', async () => {
+      // V1 returned a flat camelCase plan; V2 returns `PlanFile { metadata, ... }` with an integer
+      // `metadata.id`, so every field here comes out of `metadata` and the id is padded back to the
+      // five-digit form Tendril displays everywhere else.
+      const plans = [
+        {
+          metadata: {
+            id: 399,
+            project: 'Ivy-Tendril',
+            level: 'Feature',
+            title: 'Add dark mode support',
+            state: 'Review',
+            related_plans: [],
+            depends_on: [],
+            initial_prompt: 'add dark mode'
+          },
+          folder_name: '00399-AddDarkMode',
+          revision_count: 2
+        }
+      ];
+
+      let requestedUrl = '';
+      globalThis.fetch = (async (url: RequestInfo | URL) => {
+        requestedUrl = String(url);
+        return { ok: true, json: async () => plans } as Response;
+      }) as typeof fetch;
+
+      const result = await fetchRecentPlans('http://127.0.0.1:5010', 5, { secret: 'abc' });
+
+      assert.ok(requestedUrl.endsWith('/api/plans?limit=5'));
+      assert.strictEqual(result.length, 1);
+      assert.strictEqual(result[0].id, '00399');
+      assert.strictEqual(result[0].title, 'Add dark mode support');
+      assert.strictEqual(result[0].state, 'Review');
+      assert.strictEqual(result[0].project, 'Ivy-Tendril');
+      assert.strictEqual(result[0].level, 'Feature');
+    });
+
+    it('should return an empty list when the daemon rejects the request', async () => {
+      globalThis.fetch = (async () => ({ ok: false, status: 401 }) as Response) as typeof fetch;
+      assert.deepStrictEqual(await fetchRecentPlans('http://127.0.0.1:5010'), []);
+    });
+  });
+
+  describe('fetchActiveJobsCount', () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it('should count the running jobs the daemon reports', async () => {
+      let requestedUrl = '';
+      globalThis.fetch = (async (url: RequestInfo | URL) => {
+        requestedUrl = String(url);
+        return { ok: true, json: async () => [{ id: '00001' }, { id: '00002' }] } as Response;
+      }) as typeof fetch;
+
+      const count = await fetchActiveJobsCount('http://127.0.0.1:5010', { secret: 'abc' });
+
+      assert.ok(requestedUrl.includes('status=Running'));
+      assert.strictEqual(count, 2);
+    });
+
+    it('should read as zero when the request fails', async () => {
+      globalThis.fetch = (async () => {
+        throw new Error('connection refused');
+      }) as typeof fetch;
+
+      assert.strictEqual(await fetchActiveJobsCount('http://127.0.0.1:5010'), 0);
     });
   });
 

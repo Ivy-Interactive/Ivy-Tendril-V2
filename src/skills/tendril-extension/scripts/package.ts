@@ -1,36 +1,24 @@
 #!/usr/bin/env node
-import { existsSync, readdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+/**
+ * Build a .vsix for the Ivy Tendril extension.
+ *
+ * Usage:
+ *   pnpm tsx src/skills/tendril-extension/scripts/package.ts [--out <path>] [--no-build]
+ *
+ * This is a thin wrapper over package-vsix.sh so the shell and Node entry
+ * points cannot drift. The shell script owns the logic: manifest validation,
+ * build, then the workspace-local vsce.
+ */
 import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const HERE = dirname(fileURLToPath(import.meta.url));
+const script = resolve(HERE, 'package-vsix.sh');
 
-let extDir = resolve(__dirname, '../../../extensions/vscode');
-if (!existsSync(extDir)) {
-  extDir = resolve(__dirname, '../../..');
+const res = spawnSync('bash', [script, ...process.argv.slice(2)], { stdio: 'inherit' });
+if (res.error) {
+  console.error(`error: could not run ${script}: ${res.error.message}`);
+  process.exit(1);
 }
-
-console.log(`==> Packaging Ivy Tendril VSIX archive in ${extDir}...`);
-
-function run(cmd: string, args: string[]): void {
-  console.log(`> ${cmd} ${args.join(' ')}`);
-  const res = spawnSync(cmd, args, { cwd: extDir, stdio: 'inherit', shell: true });
-  if (res.status !== 0) {
-    console.error(`Command failed with exit code ${res.status}`);
-    process.exit(res.status ?? 1);
-  }
-}
-
-run('pnpm', ['install']);
-run('pnpm', ['run', 'build']);
-run('npx', ['@vscode/vsce', 'package', '--no-dependencies']);
-
-const files = existsSync(extDir) ? readdirSync(extDir) : [];
-const vsixFile = files.filter((f) => f.endsWith('.vsix')).pop();
-if (vsixFile) {
-  console.log(`==> VSIX Package created successfully: ${vsixFile}`);
-} else {
-  console.log('==> Packaging complete.');
-}
+process.exit(res.status ?? 1);
