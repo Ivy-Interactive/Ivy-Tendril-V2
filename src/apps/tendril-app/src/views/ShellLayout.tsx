@@ -532,7 +532,15 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
             ),
             SidebarBody: (
               <>
-                <ShellNewPlanButton id="new-plan-btn" eventHandler={onNewPlan} />
+                {/* `events` is required, not optional decoration: every shell widget gates its
+                    callback on `events.includes(...)` so the server can declare which events it
+                    subscribed to, and the prop defaults to `[]`. Omitting it here made the primary
+                    New Plan button swallow every click. */}
+                <ShellNewPlanButton
+                  id="new-plan-btn"
+                  events={["OnClick"]}
+                  eventHandler={onNewPlan}
+                />
                 {/* V1's chatButton: label "Chat", the MessageCircle glyph, active while the
                     chat page is showing, with session count badge. */}
                 <ShellAgentButton
