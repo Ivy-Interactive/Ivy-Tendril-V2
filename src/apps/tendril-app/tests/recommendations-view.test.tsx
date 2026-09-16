@@ -2,9 +2,19 @@
  * The recommendation inbox's state machine and action guards, against
  * `Apps/Recommendations/RecommendationsApp.cs` and `Apps/Recommendations/ContentView.cs`.
  */
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+/*
+ * Loaded first on purpose, and side-effect only. `@radix-ui/react-dialog` resolves out of
+ * `packages/components/node_modules` when nothing from `@ivy-interactive/components` is in the module
+ * graph yet, and binds that package's own React copy - so the note dialog renders against a null hook
+ * dispatcher ("Cannot read properties of null (reading 'useRef')"). Pulling the components entry in
+ * first makes radix bind the deduped React. The real fix is one word in `vitest.config.ts`'s
+ * `test.server.deps.inline` (see the report); this area does not own that file.
+ */
+import "@ivy-interactive/components/tendril";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { RecommendationsView } from "../src/views/RecommendationsView";
+import { sidebarListStore } from "../src/state/sidebarListStore";
 import { bridge } from "../src/api/bridge";
 import { bridgeError } from "./fixtures/recommendation.fixture";
 import type { CrossPlanRecommendation } from "../src/types/api";
@@ -29,12 +39,20 @@ const renderView = (props: Partial<React.ComponentProps<typeof RecommendationsVi
     />,
   );
 
+beforeEach(() => {
+  sidebarListStore.resetForTesting();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** The list the page published into the shell sidebar, which is where its rows live now. */
+const publishedTitles = (): string[] =>
+  (sidebarListStore.getState()?.items ?? []).map((item) => item.title);
+
 describe("RecommendationsView source-plan gate", () => {
-  it("shows only recommendations whose source plan completed", async () => {
+  it("lists only recommendations whose source plan completed", async () => {
     vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([
       rec({ title: "From a completed plan", sourcePlanStatus: "Completed" }),
       rec({ planId: "00022", title: "From a failed plan", sourcePlanStatus: "Failed" }),
@@ -45,9 +63,7 @@ describe("RecommendationsView source-plan gate", () => {
 
     // `RecommendationsApp.Build`: `r.SourcePlanStatus == PlanStatus.Completed`. Accepting starts a
     // CreatePlan job, and a plan still running may do the work itself.
-    await waitFor(() => expect(screen.getByText("From a completed plan")).toBeInTheDocument());
-    expect(screen.queryByText("From a failed plan")).not.toBeInTheDocument();
-    expect(screen.queryByText("From a running plan")).not.toBeInTheDocument();
+    await waitFor(() => expect(publishedTitles()).toEqual(["From a completed plan"]));
   });
 
   it("keeps a row whose source status the transport did not carry", async () => {
@@ -57,16 +73,15 @@ describe("RecommendationsView source-plan gate", () => {
 
     renderView();
 
-    await waitFor(() => expect(screen.getByText("No source status")).toBeInTheDocument());
+    await waitFor(() => expect(publishedTitles()).toEqual(["No source status"]));
   });
 
-  it("says the set is empty rather than blaming the filters when nothing loaded", async () => {
+  it("says the set is empty rather than blaming a filter when nothing loaded", async () => {
     vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([]);
 
     renderView();
 
-    // The status chips default to Pending, so keying the copy off the controls told a fresh install
-    // its filters were at fault. V1's `NoContentView` copy is unconditional for an empty set.
+    // V1's `NoContentView` copy, and unconditional: this page has no filters to blame.
     await waitFor(() =>
       expect(
         screen.getByText("Recommendations from completed plans will appear here."),
@@ -75,26 +90,82 @@ describe("RecommendationsView source-plan gate", () => {
   });
 });
 
-describe("RecommendationsView status filter", () => {
-  it("filters by the status the badge select emits", async () => {
+describe("RecommendationsView sidebar list", () => {
+  it("publishes `recommendations` rows tagged with the source plan and badged as V1 badges them", async () => {
     vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([
-      rec({ title: "Still pending", state: "Pending" }),
-      rec({ planId: "00022", title: "Already declined", state: "Declined" }),
+      rec({ title: "High impact", impact: "High" }),
+      rec({ planId: "00022", title: "No impact recorded", impact: undefined }),
     ]);
 
     renderView();
-    await waitFor(() => expect(screen.getByText("Still pending")).toBeInTheDocument());
+
+    await waitFor(() => expect(publishedTitles()).toHaveLength(2));
+    const list = sidebarListStore.getState();
+    expect(list?.appId).toBe("recommendations");
+    expect(list?.title).toBe("Recommendations");
+    expect(list?.items[0]).toMatchObject({
+      // `RecommendationsApp.RecommendationId`: plan plus title.
+      id: "00021::High impact",
+      tag: "#21",
+      badges: [
+        { label: "Tendril-App", kind: "project" },
+        { label: "High", kind: "success" },
+      ],
+    });
+    expect(list?.items[1].badges).toEqual([{ label: "Tendril-App", kind: "project" }]);
+    // The first row is selected, as `allPending[0]` is in V1, and that titles the page tab.
+    expect(list?.selectedId).toBe("00021::High impact");
+  });
+
+  it("never lists a recommendation that has already been decided", async () => {
+    vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([
+      rec({ title: "Still pending", state: "Pending" }),
+      rec({ planId: "00022", title: "Already declined", state: "Declined" }),
+      rec({ planId: "00023", title: "Already accepted", state: "Accepted" }),
+    ]);
+
+    renderView();
+
+    // V1's list is `allPending`; a decided recommendation is not something this page can act on.
+    await waitFor(() => expect(publishedTitles()).toEqual(["Still pending"]));
     expect(screen.queryByText("Already declined")).not.toBeInTheDocument();
+  });
 
-    // BadgeSelect emits through `eventHandler`, not an `onChange` prop. Without that wiring the
-    // trigger opened and no selection ever arrived, so the filter was inert. With a selection
-    // showing, BadgeSelect's trigger is a combobox rather than a button.
-    fireEvent.click(screen.getByRole("combobox", { name: /filter by status/i }));
-    fireEvent.click(screen.getByRole("option", { name: "Declined" }));
-    fireEvent.click(screen.getByRole("option", { name: "Pending" }));
+  it("renders no list of its own: the content area is the selected recommendation", async () => {
+    vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([
+      rec({ title: "First one", description: "Its description." }),
+      rec({ planId: "00022", title: "Second one" }),
+    ]);
 
-    await waitFor(() => expect(screen.getByText("Already declined")).toBeInTheDocument());
-    expect(screen.queryByText("Still pending")).not.toBeInTheDocument();
+    renderView();
+
+    await waitFor(() => expect(publishedTitles()).toHaveLength(2));
+    expect(screen.getByTestId("recommendation-title")).toHaveTextContent("#21 First one");
+    expect(screen.getByText("Its description.")).toBeInTheDocument();
+    // The other recommendation is a sidebar row, not a card on this page.
+    expect(screen.queryByText("Second one")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/search recommendations/i)).not.toBeInTheDocument();
+    // `BuildControls`' "{index}/{count} recommendations".
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+  });
+
+  it("shows the recommendation a sidebar row selects", async () => {
+    vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([
+      rec({ title: "First one" }),
+      rec({ planId: "00022", title: "Second one", description: "The second." }),
+    ]);
+
+    renderView();
+    await waitFor(() => expect(publishedTitles()).toHaveLength(2));
+
+    let args: unknown;
+    act(() => {
+      args = sidebarListStore.getState()?.buildSelectArgs("00022::Second one");
+    });
+
+    expect(args).toEqual({ recommendationId: "00022::Second one" });
+    expect(screen.getByTestId("recommendation-title")).toHaveTextContent("#22 Second one");
+    expect(sidebarListStore.getState()?.selectedId).toBe("00022::Second one");
   });
 });
 
@@ -104,7 +175,9 @@ describe("RecommendationsView actions", () => {
       .spyOn(bridge, "listCrossPlanRecommendations")
       .mockResolvedValue([rec({ description: "Do the thing." })]);
     const setState = vi.spyOn(bridge, "setRecommendationState").mockResolvedValue(undefined);
-    const startJob = vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "00500", status: "Queued" });
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "00500", status: "Queued" });
     const onJobStarted = vi.fn();
 
     renderView({ onJobStarted });
@@ -136,7 +209,9 @@ describe("RecommendationsView actions", () => {
       rec({ description: "Do the thing." }),
     ]);
     const setState = vi.spyOn(bridge, "setRecommendationState").mockResolvedValue(undefined);
-    const startJob = vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "00501", status: "Queued" });
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "00501", status: "Queued" });
 
     renderView();
     await waitFor(() =>
@@ -168,7 +243,9 @@ describe("RecommendationsView actions", () => {
   it("declines with a reason and starts no job", async () => {
     vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([rec()]);
     const setState = vi.spyOn(bridge, "setRecommendationState").mockResolvedValue(undefined);
-    const startJob = vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "nope", status: "Queued" });
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "nope", status: "Queued" });
 
     renderView();
     await waitFor(() =>
@@ -242,7 +319,9 @@ describe("RecommendationsView actions", () => {
   it("starts no job when the state write itself is refused", async () => {
     vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([rec()]);
     vi.spyOn(bridge, "setRecommendationState").mockRejectedValue(bridgeError({}));
-    const startJob = vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "nope", status: "Queued" });
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "nope", status: "Queued" });
 
     renderView();
     await waitFor(() => expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument());
@@ -255,22 +334,39 @@ describe("RecommendationsView actions", () => {
     expect(screen.getByRole("button", { name: "Accept" })).toBeEnabled();
   });
 
-  it("offers no actions on a recommendation already in a terminal state", async () => {
+  it("offers no actions once every recommendation has been decided", async () => {
     vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([
       rec({ state: "Declined", declineReason: "Superseded." }),
     ]);
 
     renderView();
-    // The status chips default to Pending, so the terminal row has to be filtered into view first.
-    await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: /filter by status/i })).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole("combobox", { name: /filter by status/i }));
-    fireEvent.click(screen.getByRole("option", { name: "Declined" }));
 
-    const row = await screen.findByTestId("recommendation-row-Tauri WebDriver E2E Automation");
-    expect(within(row).queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
-    expect(within(row).queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
-    expect(within(row).getByText(/Superseded\./)).toBeInTheDocument();
+    // `ContentView` only ever renders its Accept/Decline bar for the selected recommendation, and the
+    // app only ever selects from the pending set - so a decided one leaves the page with nothing to
+    // show and nothing to press.
+    await waitFor(() => expect(screen.getByText("No recommendations")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
+  });
+
+  it("moves to the next recommendation after a decision, as `GoToNext` does", async () => {
+    vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([
+      rec({ title: "First one" }),
+      rec({ planId: "00022", title: "Second one" }),
+    ]);
+    vi.spyOn(bridge, "setRecommendationState").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "00503", status: "Queued" });
+
+    renderView();
+    await waitFor(() =>
+      expect(screen.getByTestId("recommendation-title")).toHaveTextContent("First one"),
+    );
+
+    fireEvent.click(screen.getByTestId("recommendation-accept"));
+
+    // The operator works down the list rather than being thrown back to the top.
+    await waitFor(() =>
+      expect(screen.getByTestId("recommendation-title")).toHaveTextContent("Second one"),
+    );
   });
 });

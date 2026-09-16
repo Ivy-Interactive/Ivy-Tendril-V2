@@ -1,14 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Ban,
-  CircleCheck,
-  ExternalLink,
-  GitPullRequest,
-  MessageSquare,
-  RotateCcw,
-  Trash,
-} from "lucide-react";
-import { useShortcut } from "@ivy-interactive/components/tendril";
+  PlanWorkspace,
+  useShortcut,
+  type PlanActionDto,
+  type PlanTabDto,
+  type ShellBadgeDto,
+} from "@ivy-interactive/components/tendril";
 import { Callout } from "@ivy-interactive/components/ui";
 import {
   describeBridgeError,
@@ -29,7 +26,8 @@ import { EmptyState } from "../components/EmptyState";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
-import { formatPlanId, parseProjects, planStateBadgeClass } from "./PlansView";
+import { formatPlanId, parseProjects } from "./PlansView";
+import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import type { ReviewActionTarget } from "./ReviewActionView";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
 import { DiscardPlanDialog } from "./dialogs/DiscardPlanDialog";
@@ -94,6 +92,59 @@ const isVerified = (verifications: PlanVerification[] | undefined): boolean =>
   verifications.every((v) => v.status === "Pass" || v.status === "Skipped");
 
 /**
+ * `ReviewApp.BuildRowBadges`: the project, then Verified or Unverified.
+ *
+ * The state badge is V2's own and deliberate. V1's queue also holds Failed plans and tells them
+ * apart by the row's state glyph, which `ShellItemState` only spells for a chat that is working or
+ * finished - so without this a failed execution and a clean one read identically in the list.
+ */
+const reviewRowBadges = (plan: PlanSummary): ShellBadgeDto[] => {
+  const badges: ShellBadgeDto[] = parseProjects(plan.project).map((project) => ({
+    label: project,
+    kind: "project",
+  }));
+  badges.push(
+    isVerified(plan.verifications)
+      ? { label: "Verified", kind: "success" }
+      : { label: "Unverified", kind: "warning" },
+  );
+  if (plan.state !== "Review") badges.push({ label: plan.state, kind: "warning" });
+  return badges;
+};
+
+/**
+ * `ReviewApp.BuildSidebarList`, field for field: `new ShellSidebarListState("review", "Review",
+ * items, selected?.FolderName, planId => new ReviewAppArgs(planId))`, where a row is the plan's
+ * title with `#{Id}` as its tag.
+ *
+ * Nothing else is set: the default `Searchable` with no `OnSearch` is what makes the shell's search
+ * icon open the plan search dialog, which is right for a plan list.
+ */
+export const buildReviewSidebarList = (
+  plans: PlanSummary[],
+  selectedId: string | null,
+  select: (planId: string) => void,
+): ShellSidebarList => ({
+  appId: "review",
+  title: "Review",
+  items: plans.map((plan) => ({
+    id: plan.id,
+    title: plan.title,
+    tag: formatPlanId(plan.id),
+    badges: reviewRowBadges(plan),
+  })),
+  selectedId,
+  buildSelectArgs: (planId) => {
+    /* The shell routes a click as `OpenApp(new NavigateArgs("review", BuildSelectArgs(id)))` and V1's
+       `ReviewApp` reads `ReviewAppArgs.PlanId` back out. V2 has no arg-carrying navigation yet, so
+       the selection is applied here too; the returned object is still V1's args, so this drops out
+       once the shell can hand args to a view. */
+    select(planId);
+    return { planId };
+  },
+});
+
+/**
  * `Constants.VerificationStatusBadgeVariants` (V1 `src/Ivy.Tendril/Constants.cs`): Pass is Success,
  * Fail is Destructive, Pending and Skipped are Outline. Same mapping as the plan page's
  * verification rows, so one outcome never has two looks.
@@ -105,6 +156,26 @@ const VERIFICATION_BADGE_CLASS: Record<VerificationStatus, string> = {
   Skipped: "border-border text-muted-foreground",
 };
 
+/** `ContentView`'s `RecommendationsTab`. */
+const RECOMMENDATIONS_TAB = "recommendations";
+
+/**
+ * `ContentView.BuildRecommendationChangeRequest`, verbatim in shape: a numbered heading per
+ * recommendation with its description under it, which becomes one RetryPlan's change request.
+ */
+export const buildRecommendationChangeRequest = (
+  selected: { title: string; description: string }[],
+): string => {
+  const lines = [
+    `Implement the following ${selected.length} recommendation(s) from the review:`,
+    "",
+  ];
+  selected.forEach((rec, index) => {
+    lines.push(`## ${index + 1}. ${rec.title}`, "", rec.description, "");
+  });
+  return lines.join("\n").trimEnd();
+};
+
 /**
  * The shortcuts `ReviewActions.Build` and `ContentView.AddPrimaryAction` bind, letter for letter:
  * the primary CTA on `m`, Request Changes on `c`, Reset to Draft on `r`, Discard on `Backspace`,
@@ -114,30 +185,6 @@ const PRIMARY_SHORTCUT = "m";
 const REQUEST_CHANGES_SHORTCUT = "c";
 const RESET_SHORTCUT = "r";
 const DISCARD_SHORTCUT = "Backspace";
-
-/** `.pws-btn`: 32px high, 8px radius, 14px medium label, 6px gap to its icon. */
-const BTN_BASE =
-  "inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50";
-/** `.pws-btn--primary`, whose `--pws-cta-bg` is `--primary`: the CTA is the one filled button. */
-const BTN_PRIMARY = `${BTN_BASE} bg-primary text-primary-foreground hover:bg-primary/90`;
-/** `.pws-btn--secondary`: transparent, bordered, foreground text, hover on the accent. */
-const BTN_SECONDARY = `${BTN_BASE} border border-border text-foreground hover:bg-accent`;
-/** `.pws-menu-item[data-danger="true"]`, whose `--pws-danger` is `--destructive`. */
-const BTN_DANGER = `${BTN_BASE} border border-border text-destructive hover:bg-destructive/10`;
-
-/**
- * The `TuiKbd` a `LabeledButton` trails its shortcut with (`.pws-btn-kbd`, 18px square, `bare`
- * variant). `border-current` so the cap reads on the filled CTA as well as on a bordered button,
- * and `aria-hidden` so the button's accessible name stays the action's label.
- */
-const KbdHint: React.FC<{ keys: string }> = ({ keys }) => (
-  <kbd
-    aria-hidden="true"
-    className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-sm border border-current/30 px-1 text-[10px] font-medium opacity-70"
-  >
-    {keys}
-  </kbd>
-);
 
 interface ReviewViewProps {
   plans: PlanSummary[];
@@ -184,6 +231,23 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const selectedPlan = selectedIndex >= 0 ? reviewPlans[selectedIndex] : undefined;
   const selectedId = selectedPlan?.id;
 
+  /**
+   * The queue itself goes to the shell sidebar, not into this page: `ReviewApp.Build` renders no
+   * list of its own, it sends one (`sidebarListSignal.Send(BuildSidebarList(plans, selected))`) and
+   * returns a `ContentView` that shows the selected plan.
+   *
+   * Published on every render, as `ShellSidebarListSignal`'s doc comment says the shell expects
+   * ("The active app publishes this on every build"), which also keeps the closure over the current
+   * selection fresh. `selectedId` is what highlights the row and titles the page tab
+   * (`TendrilAppShell.PageTabTitle`).
+   */
+  const sidebarList = useMemo(
+    () => buildReviewSidebarList(reviewPlans, selectedId ?? null, setSelectedPlanId),
+    [reviewPlans, selectedId],
+  );
+
+  usePublishSidebarList(sidebarList);
+
   // Recommendations come from the selected plan's plan.yaml via the bridge.
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
   /**
@@ -195,6 +259,11 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const [recsError, setRecsError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  /**
+   * `ContentView`'s `selectedRecTitles`: which pending recommendations Implement will act on. Held by
+   * title, which is `RecommendationsTabView`'s own key, and cleared whenever the plan changes.
+   */
+  const [selectedRecTitles, setSelectedRecTitles] = useState<ReadonlySet<string>>(new Set());
   const [activeNoteDialog, setActiveNoteDialog] = useState<{
     title: string;
     action: "Accept" | "Decline";
@@ -204,6 +273,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     // Cleared up front: the outgoing plan's recommendations must not sit under the incoming plan's
     // heading while its own fetch is out.
     setRecommendations([]);
+    setSelectedRecTitles(new Set());
     setLoadedRecsFor(null);
     setRecsError(null);
     if (!selectedId) return;
@@ -417,6 +487,75 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     onPlanChanged?.(planId);
   };
 
+  const toggleRecSelection = (title: string) => {
+    setSelectedRecTitles((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+  };
+
+  /**
+   * `ContentView.ImplementSelectedRecommendations` (`Apps/Review/ContentView.cs`): accept the ticked
+   * recommendations and retry the plan once with all of them as the change request.
+   *
+   * Both of V1's refusals are here, and both are decided against a **re-read** of the plan's
+   * recommendations rather than the list in hand - the selection may have been made minutes ago and
+   * another operator may have acted on the same rows since:
+   *
+   * - nothing ticked: "Select at least one recommendation to implement." ("Nothing Selected")
+   * - the ticked rows are no longer pending: "Selected recommendations are no longer pending. Refresh
+   *   and try again." ("Nothing to Implement")
+   *
+   * V1 marks them accepted in one service call (`AcceptRecommendationsAndRetry`) and V2 has no such
+   * route, so they are written one at a time before the job starts - the same order V1 uses, and the
+   * same reason: a recommendation marked accepted whose job never started is recoverable, one left
+   * Pending after a job ran gets implemented twice.
+   */
+  const implementSelectedRecommendations = async () => {
+    if (!selectedPlan || pendingAction !== null) return;
+    setActionError(null);
+
+    if (selectedRecTitles.size === 0) {
+      setActionError("Select at least one recommendation to implement.");
+      return;
+    }
+
+    setPendingAction("implementRecs");
+    try {
+      const current = await bridge
+        .listRecommendations(selectedPlan.id)
+        .catch(() => recommendations);
+      const selected = (current ?? []).filter(
+        (rec) => selectedRecTitles.has(rec.title) && (!rec.state || rec.state === "Pending"),
+      );
+
+      if (selected.length === 0) {
+        setActionError("Selected recommendations are no longer pending. Refresh and try again.");
+        return;
+      }
+
+      for (const rec of selected) {
+        await bridge.setRecommendationState(selectedPlan.id, rec.title, "Accepted");
+      }
+
+      const response = await PlanActionsController.retryPlan(
+        selectedPlan,
+        buildRecommendationChangeRequest(selected),
+      );
+      setSelectedRecTitles(new Set());
+      onJobStarted?.(response);
+      onPlanChanged?.(selectedPlan.id);
+    } catch (err) {
+      setActionError(
+        `Could not implement the selected recommendations: ${describeBridgeError(err)}`,
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   const handleExecuteReviewAction = async (actionName: string) => {
     if (!selectedPlan) return;
     setActionError(null);
@@ -571,28 +710,13 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     [draftComments],
   );
 
-  // A shortcut must not fire behind a dialog: the dialog owns the keyboard while it is open, as
-  // `useActionShortcuts`' `hostModalOpen()` gate does for the workspace's own actions.
+  /*
+   * Only the queue walk is bound here. Every other key on this page belongs to a workspace action and
+   * is registered by the widget itself from that action's `shortcut` (`useActionShortcuts`), gated on
+   * its own `hostModalOpen()` - so binding them here too would fire each action twice.
+   */
   const modalOpen = activeDialog !== null || activeNoteDialog !== null;
 
-  useShortcut("review:primary-action", PRIMARY_SHORTCUT, firePrimary, {
-    description: primaryLabel,
-    disabled: modalOpen || primaryDisabled,
-  });
-  useShortcut(
-    "review:request-changes",
-    REQUEST_CHANGES_SHORTCUT,
-    () => setActiveDialog("suggestChanges"),
-    { description: "Request Changes", disabled: modalOpen || !selectedPlan },
-  );
-  useShortcut("review:reset-to-draft", RESET_SHORTCUT, () => setActiveDialog("reset"), {
-    description: "Reset to Draft",
-    disabled: modalOpen || !canReset.allowed,
-  });
-  useShortcut("review:discard", DISCARD_SHORTCUT, () => setActiveDialog("discard"), {
-    description: "Discard",
-    disabled: modalOpen || !canDiscard.allowed,
-  });
   useShortcut(
     "review:previous-plan",
     "ArrowLeft",
@@ -609,6 +733,112 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     },
   );
 
+  /**
+   * The topbar's action row, assembled as `ReviewActions.Build` assembles it: Request Changes as an
+   * icon action (badged with the unresolved comment count), Reset to Draft and Discard in the
+   * overflow menu, and the CTA on its own.
+   *
+   * Every entry is a `PlanActionDto` reporting back through one `OnAction` event, and each carries
+   * its own `shortcut` so the widget binds the keys V1 binds.
+   */
+  const iconActions: PlanActionDto[] = selectedPlan
+    ? [
+        {
+          tag: "RequestChanges",
+          label: "Request Changes",
+          icon: "MessageSquare",
+          shortcut: REQUEST_CHANGES_SHORTCUT,
+          badge: draftComments.length > 0 ? String(draftComments.length) : undefined,
+        },
+      ]
+    : [];
+
+  const workspaceMenu: PlanActionDto[] = [];
+  if (canReset.allowed)
+    workspaceMenu.push({
+      tag: "ResetToDraft",
+      label: "Reset to Draft",
+      icon: "RotateCcw",
+      shortcut: RESET_SHORTCUT,
+    });
+  if (canDiscard.allowed)
+    workspaceMenu.push({
+      tag: "Discard",
+      label: "Discard",
+      icon: "Trash",
+      shortcut: DISCARD_SHORTCUT,
+      danger: true,
+    });
+  /*
+   * V2's own, in the place V1 keeps its file-manager / terminal / copy-path / plan.yaml items: this
+   * page carries the review decision, and everything else about the plan - its spec, diff, commits
+   * and artifacts, which V1 has as tabs here - is on the plan's own page. See the report.
+   */
+  workspaceMenu.push({ tag: "OpenPlanPage", label: "Open Full Spec & Diff", icon: "ExternalLink" });
+
+  const secondaryActions: PlanActionDto[] = [];
+  if (canPartial.allowed)
+    secondaryActions.push({
+      tag: "PartialDelivery",
+      label: "Accept Partial Delivery",
+      icon: "TriangleAlert",
+    });
+
+  const primaryAction: PlanActionDto | null = selectedPlan
+    ? {
+        tag: "Primary",
+        label:
+          pendingAction === "complete"
+            ? "Completing…"
+            : pendingAction === "updatePr"
+              ? "Pushing…"
+              : primaryLabel,
+        // `Icons.GitPullRequest`, `Icons.Ban`, `Icons.CircleCheck`, in `AddPrimaryAction`'s order.
+        icon: prIsPrimary ? "GitPullRequest" : skipIsPrimary ? "Ban" : "CircleCheck",
+        shortcut: PRIMARY_SHORTCUT,
+        disabled: primaryDisabled,
+        loading: pendingAction !== null,
+      }
+    : null;
+
+  /**
+   * Why the CTA is refused, when it is. V1 states this in a toast on the click
+   * (`PlanTransitionBlockedException`); a `PlanActionDto` has nowhere to put it and a disabled button
+   * cannot be clicked, so it is said once in the toolbar instead of being lost.
+   */
+  const primaryRefusal =
+    primaryDisabled && pendingAction === null
+      ? prIsPrimary
+        ? canPr.reason
+        : skipIsPrimary
+          ? canDiscard.reason
+          : undefined
+      : undefined;
+
+  /** One `OnAction` event serves the icon actions, the menu and the buttons: tags are unique. */
+  const handleWorkspaceAction = (tag: string) => {
+    switch (tag) {
+      case "RequestChanges":
+        setActiveDialog("suggestChanges");
+        return;
+      case "ResetToDraft":
+        setActiveDialog("reset");
+        return;
+      case "Discard":
+        setActiveDialog("discard");
+        return;
+      case "PartialDelivery":
+        setActiveDialog("partialDelivery");
+        return;
+      case "OpenPlanPage":
+        if (selectedPlan) onSelectPlan(selectedPlan.id);
+        return;
+      case "Primary":
+        firePrimary();
+        return;
+    }
+  };
+
   if (reviewPlans.length === 0) {
     return (
       <div data-testid="review-view">
@@ -624,222 +854,89 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const verifications = selectedPlan?.verifications ?? [];
   const pendingRecs = recommendations.filter((r) => !r.state || r.state === "Pending");
 
+  const recommendationTabs: PlanTabDto[] = [
+    {
+      id: RECOMMENDATIONS_TAB,
+      label: "Recommendations",
+      // `ContentView`: the tab is badged with how many are still pending.
+      badge: pendingRecs.length > 0 ? String(pendingRecs.length) : undefined,
+    },
+  ];
+
   return (
-    <div className="space-y-4" data-testid="review-view">
-      <div className="grid gap-4 lg:grid-cols-3">
-        {/* The queue. `ReviewApp.BuildSidebarList` renders it as the shell's sidebar list, so a row
-            is a title with its `#id` tag opposite, its badges underneath, and selection is a filled
-            row (`.tsh-section-item[data-selected="true"]` on `--tsh-row-active`) rather than a
-            coloured outline. */}
-        <div className="rounded-xl border border-border bg-card/40 p-2">
-          <div className="flex items-center justify-between px-3 py-1">
-            <span className="text-sm font-medium text-foreground">Review</span>
-            <span className="text-xs text-muted-foreground">{reviewPlans.length}</span>
-          </div>
-          <div className="mt-1 space-y-0.5">
-            {reviewPlans.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                data-selected={p.id === selectedId}
-                aria-current={p.id === selectedId}
-                onClick={() => setSelectedPlanId(p.id)}
-                className={`flex w-full flex-col gap-1 rounded-md px-3 py-2.5 text-left transition ${
-                  p.id === selectedId ? "bg-accent text-accent-foreground" : "hover:bg-accent/60"
-                }`}
+    <div className="h-full min-h-0" data-testid="review-view">
+      {/*
+        The plan page's frame, as `Review/ContentView.BuildPage` composes it: the topbar
+        (`PlanWorkspace`'s `.pws-topbar`) with the plan id, title, meta and project badges on the left
+        and the action row on the right, the toolbar slot above the tab strip, the verifications panel
+        in the strip's corner (`ReviewVerificationsPanelView`), and the tab content below.
+
+        The queue is gone from this page entirely: it is the shell's sidebar list now.
+      */}
+      {selectedPlan && (
+        <PlanWorkspace
+          id="review-workspace"
+          // `.PlanId($"#{plan.Id}")` — `#21`, not `#00021`.
+          planId={formatPlanId(selectedPlan.id)}
+          title={selectedPlan.title}
+          // `.Meta($"{currentIndex + 1}/{allPlans.Count} plans")`.
+          meta={`${selectedIndex + 1}/${reviewPlans.length} plans`}
+          // `.Source(SourceUrl, IsPullRequestSource ? "PR" : "Issue")`.
+          sourceUrl={planDetail?.sourceUrl || undefined}
+          sourceLabel={isPrUpdate ? "PR" : "Issue"}
+          actions={iconActions}
+          menuItems={workspaceMenu}
+          secondary={secondaryActions}
+          primary={primaryAction}
+          tabs={recommendationTabs}
+          selectedTab={RECOMMENDATIONS_TAB}
+          events={["OnAction", "OnTabSelect"]}
+          eventHandler={(evt: string, _id: string, args?: unknown[]) => {
+            if (evt !== "OnAction") return;
+            const tag = args?.[0];
+            if (typeof tag === "string") handleWorkspaceAction(tag);
+          }}
+          slots={{
+            /* `.ProjectBadges(ProjectHelper.BuildBadges(plan.Project, config))`. The state is not one
+               of them: this page only ever shows a plan in Review or Failed, and the row's badges in
+               the sidebar already say which. */
+            ProjectBadges: parseProjects(selectedPlan.project).map((project) => (
+              <span
+                key={project}
+                className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
               >
-                <span className="flex items-start justify-between gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.title}</span>
-                  <span className="shrink-0 text-sm font-medium">{formatPlanId(p.id)}</span>
-                </span>
-                <span className="flex flex-wrap items-center gap-1.5">
-                  {/* `BuildRowBadges`: the project, then whether the gates passed. A Failed plan
-                      also carries its state, which V1's shell row shows as the row's own state
-                      rather than as a badge. */}
-                  {parseProjects(p.project).map((project) => (
-                    <span
-                      key={project}
-                      className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-                    >
-                      {project}
-                    </span>
-                  ))}
-                  {isVerified(p.verifications) ? (
-                    <span className="rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs text-success">
-                      Verified
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs text-warning">
-                      Unverified
-                    </span>
-                  )}
-                  {p.state !== "Review" && (
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-xs font-medium ${planStateBadgeClass(
-                        p.state,
-                      )}`}
-                    >
-                      {p.state}
-                    </span>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* The plan under review. */}
-        {selectedPlan && (
-          <div className="space-y-4 lg:col-span-2">
-            <div className="rounded-xl border border-border bg-card/60">
-              {/* `PlanWorkspace`'s title bar (`.pws-topbar`): the plan id unemphasised, the title
-                  semibold beside it, then the source link and where the plan sits in the queue
-                  (`.Meta($"{currentIndex + 1}/{allPlans.Count} plans")`). */}
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border py-2 pl-5 pr-2">
-                <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2 text-base text-foreground">
-                    <span className="shrink-0 font-normal">{formatPlanId(selectedPlan.id)}</span>
-                    <span className="truncate font-semibold" title={selectedPlan.title}>
-                      {selectedPlan.title}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    {planDetail?.sourceUrl && (
-                      <a
-                        href={planDetail.sourceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={planDetail.sourceUrl}
-                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
-                      >
-                        <ExternalLink size={14} />
-                        {isPrUpdate ? "PR" : "Issue"}
-                      </a>
-                    )}
-                    <span className="text-foreground">
-                      {selectedIndex + 1}/{reviewPlans.length} plans
-                    </span>
-                    {parseProjects(selectedPlan.project).map((project) => (
-                      <span
-                        key={project}
-                        className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-                      >
-                        {project}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* The action cluster, in the order `.pws-topbar-right` renders it: the icon
-                    actions and menu items first, the CTA last. V2 has no tabbed workspace on this
-                    page, so the link to the plan's own page rides along as a secondary button. */}
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setActiveDialog("suggestChanges")}
-                    className={BTN_SECONDARY}
-                    title="Request Changes"
-                  >
-                    <MessageSquare size={16} />
-                    Request Changes
-                    {draftComments.length > 0 && (
-                      <span
-                        data-testid="request-changes-comment-count"
-                        className="rounded-full bg-muted px-1.5 text-xs tabular-nums"
-                      >
-                        {draftComments.length}
-                      </span>
-                    )}
-                    <KbdHint keys="C" />
-                  </button>
-                  {canPartial.allowed && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveDialog("partialDelivery")}
-                      className={`${BTN_BASE} border border-warning/40 text-warning hover:bg-warning/10`}
-                    >
-                      Accept Partial Delivery
-                    </button>
-                  )}
-                  {canReset.allowed && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveDialog("reset")}
-                      className={BTN_SECONDARY}
-                    >
-                      <RotateCcw size={16} />
-                      Reset to Draft
-                      <KbdHint keys="R" />
-                    </button>
-                  )}
-                  {canDiscard.allowed && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveDialog("discard")}
-                      className={BTN_DANGER}
-                    >
-                      <Trash size={16} />
-                      Discard
-                      <KbdHint keys="⌫" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => onSelectPlan(selectedPlan.id)}
-                    className={BTN_SECONDARY}
-                  >
-                    View Full Spec &amp; Diff →
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="review-primary-action"
-                    disabled={primaryDisabled}
-                    title={
-                      prIsPrimary ? canPr.reason : skipIsPrimary ? canDiscard.reason : undefined
-                    }
-                    onClick={firePrimary}
-                    className={BTN_PRIMARY}
-                  >
-                    {/* `Icons.GitPullRequest`, `Icons.Ban`, `Icons.CircleCheck`, in
-                        `AddPrimaryAction`'s own order. */}
-                    {prIsPrimary ? (
-                      <GitPullRequest size={16} />
-                    ) : skipIsPrimary ? (
-                      <Ban size={16} />
-                    ) : (
-                      <CircleCheck size={16} />
-                    )}
-                    {pendingAction === "complete"
-                      ? "Completing…"
-                      : pendingAction === "updatePr"
-                        ? "Pushing…"
-                        : primaryLabel}
-                    <KbdHint keys="M" />
-                  </button>
-                </div>
-              </div>
-
-              {/* `ContentView.BuildPage`'s toolbar slot opens with this when the plan's completion is
-                  blocked: `Callout.Info(..., "No Changes Needed")` above the review actions, with the
-                  primary CTA already switched to Skip Plan. The two are one decision shown twice, so
-                  they are computed once (`completionBlocked`). */}
-              {completionBlocked && (
-                <div className="border-b border-border px-5 pb-1 pt-2">
-                  <Callout.Info title="No Changes Needed" data-testid="review-completion-blocked">
-                    Pre-execution validation found no changes needed because the issue or task is
-                    already resolved. You can discard or skip this plan.
-                  </Callout.Info>
-                </div>
-              )}
-
-              {/* `ContentView.BuildPage`'s toolbar slot: the project's review actions sit above the
-                  content as a bare button row (`ReviewActionsBarView`, `Padding(3, 2, 1, 0)`), with
-                  no heading over them - the buttons are named after what they run. */}
-              {reviewActions.length > 0 && (
-                <div
-                  className="border-b border-border px-5 pb-1 pt-2"
-                  data-testid="review-actions-bar-container"
+                {project}
+              </span>
+            )),
+            Toolbar: [
+              /* `ContentView.BuildPage`'s toolbar slot opens with this when the plan's completion is
+                 blocked: `Callout.Info(..., "No Changes Needed")` above the review actions, with the
+                 primary CTA already switched to Skip Plan. The two are one decision shown twice, so
+                 they are computed once (`completionBlocked`). */
+              completionBlocked ? (
+                <Callout.Info
+                  key="completion-blocked"
+                  title="No Changes Needed"
+                  data-testid="review-completion-blocked"
                 >
+                  Pre-execution validation found no changes needed because the issue or task is
+                  already resolved. You can discard or skip this plan.
+                </Callout.Info>
+              ) : null,
+              primaryRefusal ? (
+                <p
+                  key="primary-refusal"
+                  data-testid="review-primary-refusal"
+                  className="text-xs text-muted-foreground"
+                >
+                  {primaryLabel} is unavailable: {primaryRefusal}
+                </p>
+              ) : null,
+              /* The project's review actions sit above the content as a bare button row
+                 (`ReviewActionsBarView`, `Padding(3, 2, 1, 0)`), with no heading over them - the
+                 buttons are named after what they run. */
+              reviewActions.length > 0 ? (
+                <div key="review-actions" data-testid="review-actions-bar-container">
                   <ReviewActionsBarView
                     project={selectedPlan.project}
                     planId={selectedPlan.id}
@@ -848,99 +945,134 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     onExecuteAction={handleExecuteReviewAction}
                   />
                 </div>
-              )}
-
-              {/* `ReviewVerificationsPanelView`: the outcome badge in an auto-width column, the
-                  verification's name in the rest of the row, and "No verifications" when the plan
-                  has none. V1 opens the report in a sheet; this page has none, so the report stays
-                  on the plan page's Verifications tab. */}
-              <div className="border-b border-border px-5 py-3">
-                <div className="mb-2 text-sm font-medium text-foreground">Verifications</div>
-                {verifications.length === 0 ? (
-                  <p data-testid="no-verifications" className="text-sm text-muted-foreground">
-                    No verifications
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-[auto_1fr] items-center gap-2">
-                    {verifications.map((v) => (
-                      <React.Fragment key={v.name}>
-                        <span
-                          data-testid={`review-verification-${v.name}`}
-                          className={`justify-self-start rounded border px-2 py-0.5 text-xs font-medium ${
-                            VERIFICATION_BADGE_CLASS[v.status]
-                          }`}
-                        >
-                          {v.status}
-                        </span>
-                        <span className="truncate text-sm text-foreground">{v.name}</span>
-                      </React.Fragment>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {actionError && (
+              ) : null,
+              actionError ? (
                 <div
+                  key="action-error"
                   role="alert"
                   data-testid="review-action-error"
-                  className="m-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+                  className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
                 >
                   {actionError}
                 </div>
-              )}
-            </div>
-
-            {/* `RecommendationsTabView`: the tab is labelled "Recommendations" and badged with how
-                many are still pending. V1 lists only the pending ones; this page keeps the decided
-                rows visible because the accept/decline triage happens here, and a decision that
-                vanishes the row it was made on gives the operator nothing to check it by. */}
-            <div className="rounded-xl border border-border bg-card/60 p-4">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-medium text-foreground">Recommendations</h3>
-                {pendingRecs.length > 0 && (
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
-                    {pendingRecs.length}
-                  </span>
-                )}
-              </div>
-
-              {recsError && (
-                <div
-                  role="alert"
-                  data-testid="recommendations-error"
-                  className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+              ) : null,
+            ].filter((node): node is React.ReactElement => node !== null),
+            /* `ReviewVerificationsPanelView`, in the tab strip's corner where V1 puts it: the outcome
+               badge in an auto-width column, the verification's name in the rest of the row, and "No
+               verifications" when the plan has none. V1 opens the report in a sheet; this page has
+               none, so the report stays on the plan page's Verifications tab. */
+            Verifications: [
+              verifications.length === 0 ? (
+                <p
+                  key="none"
+                  data-testid="no-verifications"
+                  className="text-sm text-muted-foreground"
                 >
-                  {recsError}
-                </div>
-              )}
-
-              {/* `Text.Muted("Loading...")` while the plan's content query is in flight. */}
-              {loadedRecsFor !== selectedId && !recsError && (
-                <p className="mt-3 text-sm text-muted-foreground">Loading...</p>
-              )}
-
-              {loadedRecsFor === selectedId && !recsError && recommendations.length === 0 && (
-                <p data-testid="no-recommendations" className="mt-3 text-sm text-muted-foreground">
-                  No recommendations.
+                  No verifications
                 </p>
-              )}
-
-              {recommendations.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {recommendations.map((rec) => (
-                    <RecommendationCard
-                      key={rec.title}
-                      recommendation={rec}
-                      onAccept={(title) => setActiveNoteDialog({ title, action: "Accept" })}
-                      onDecline={(title) => setActiveNoteDialog({ title, action: "Decline" })}
-                    />
+              ) : (
+                <div key="rows" className="grid grid-cols-[auto_1fr] items-center gap-2">
+                  {verifications.map((v) => (
+                    <React.Fragment key={v.name}>
+                      <span
+                        data-testid={`review-verification-${v.name}`}
+                        className={`justify-self-start rounded border px-2 py-0.5 text-xs font-medium ${
+                          VERIFICATION_BADGE_CLASS[v.status]
+                        }`}
+                      >
+                        {v.status}
+                      </span>
+                      <span className="truncate text-sm text-foreground">{v.name}</span>
+                    </React.Fragment>
                   ))}
                 </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+              ),
+            ],
+            Content: [
+              /* `RecommendationsTabView`: the pending rows are selectable and Implement acts on the
+                 selection; V1 lists only the pending ones, and this page keeps the decided rows
+                 visible because the accept/decline triage happens here, and a decision that vanishes
+                 the row it was made on gives the operator nothing to check it by. */
+              <div key="recommendations" className="space-y-3 p-4">
+                {recsError && (
+                  <div
+                    role="alert"
+                    data-testid="recommendations-error"
+                    className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+                  >
+                    {recsError}
+                  </div>
+                )}
+
+                {/* `Text.Muted("Loading...")` while the plan's content query is in flight. */}
+                {loadedRecsFor !== selectedId && !recsError && (
+                  <p className="text-sm text-muted-foreground">Loading...</p>
+                )}
+
+                {loadedRecsFor === selectedId && !recsError && recommendations.length === 0 && (
+                  <p data-testid="no-recommendations" className="text-sm text-muted-foreground">
+                    No recommendations.
+                  </p>
+                )}
+
+                {pendingRecs.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid="implement-recommendations"
+                      disabled={pendingAction !== null}
+                      onClick={() => void implementSelectedRecommendations()}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {pendingAction === "implementRecs" ? "Starting…" : "Implement"}
+                      {selectedRecTitles.size > 0 && (
+                        <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums">
+                          {selectedRecTitles.size}
+                        </span>
+                      )}
+                    </button>
+                    <span className="text-xs text-muted-foreground">
+                      Accepts the ticked recommendations and retries the plan with them as the
+                      change request.
+                    </span>
+                  </div>
+                )}
+
+                {recommendations.length > 0 && (
+                  <div className="space-y-2">
+                    {recommendations.map((rec) => {
+                      const isPending = !rec.state || rec.state === "Pending";
+                      return (
+                        <div key={rec.title} className="flex items-start gap-2">
+                          {/* `RecommendationRowView`'s checkbox, which only a pending row carries. */}
+                          {isPending && (
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${rec.title}`}
+                              checked={selectedRecTitles.has(rec.title)}
+                              onChange={() => toggleRecSelection(rec.title)}
+                              className="mt-4 size-4 shrink-0 accent-primary"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <RecommendationCard
+                              recommendation={rec}
+                              onAccept={(title) => setActiveNoteDialog({ title, action: "Accept" })}
+                              onDecline={(title) =>
+                                setActiveNoteDialog({ title, action: "Decline" })
+                              }
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>,
+            ],
+          }}
+        />
+      )}
 
       <RecommendationNoteDialog
         isOpen={activeNoteDialog !== null}

@@ -1,13 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { act, render, screen } from "@testing-library/react";
 import { PlansView, normalizePlanState } from "../src/views/PlansView";
+import { sidebarListStore } from "../src/state/sidebarListStore";
 import { planSummary } from "./fixtures/plan.fixture";
+import { job } from "./fixtures/job.fixture";
 import type { PlanSummary } from "../src/types/api";
 
 /**
- * Behavioural parity for the plans list: the legacy state names V1 renamed, the selection surviving a
- * list that shrinks (`PlanSelectionHelper.ResolveSelection`), and the arrow keys leaving the search
- * box alone.
+ * Behavioural parity for the Plans page: the legacy state names V1 renamed, and the list it
+ * publishes into the shell sidebar instead of drawing itself (`PlansApp.BuildSidebarList`).
  */
 describe("normalizePlanState", () => {
   // V1's `PlanMigration_001_RenameLegacyStateNames`: Building -> Creating, ReadyForReview -> Review.
@@ -23,97 +24,121 @@ describe("normalizePlanState", () => {
   });
 });
 
-describe("PlansView lifecycle states", () => {
-  it("badges a plan recorded under a legacy state as the state it now is", () => {
-    const legacy = {
-      ...planSummary({ id: "00031", title: "Legacy plan" }),
-      state: "ReadyForReview",
-    } as unknown as PlanSummary;
-
-    render(<PlansView plans={[legacy]} onSelectPlan={() => {}} />);
-
-    expect(screen.getByText("Review")).toBeInTheDocument();
-    expect(screen.queryByText("ReadyForReview")).not.toBeInTheDocument();
-  });
-
-  it("finds a legacy-named plan through the current state's filter", () => {
-    const legacy = {
-      ...planSummary({ id: "00031", title: "Legacy plan" }),
-      state: "ReadyForReview",
-    } as unknown as PlanSummary;
-    const draft = planSummary({ id: "00032", title: "A draft", state: "Draft" });
-
-    render(<PlansView plans={[legacy, draft]} onSelectPlan={() => {}} />);
-
-    // BadgeSelect drives the filter through its event handler, so the assertion goes through the
-    // rendered control rather than internal state: with no filter both rows show.
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getByText("Legacy plan")).toBeInTheDocument();
-  });
-});
-
-describe("PlansView selection", () => {
-  const three: PlanSummary[] = [
+describe("PlansView sidebar list", () => {
+  const drafts: PlanSummary[] = [
     planSummary({ id: "00003", title: "Third", state: "Draft" }),
-    planSummary({ id: "00002", title: "Second", state: "Draft" }),
     planSummary({ id: "00001", title: "First", state: "Draft" }),
+    planSummary({ id: "00002", title: "Second", state: "Draft" }),
   ];
 
-  it("keeps the highlight on a row that still exists when the list shrinks", () => {
-    const onSelectPlan = vi.fn();
-    const { rerender } = render(<PlansView plans={three} onSelectPlan={onSelectPlan} />);
-
-    // Walk to the last row.
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-    fireEvent.keyDown(window, { key: "ArrowUp" });
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-
-    // Two plans are deleted underneath the selection. `Math.Min(oldIndex, count - 1)` in V1.
-    rerender(<PlansView plans={[three[0]]} onSelectPlan={onSelectPlan} />);
-
-    fireEvent.keyDown(window, { key: "Enter" });
-
-    expect(onSelectPlan).toHaveBeenCalledTimes(1);
-    expect(onSelectPlan).toHaveBeenCalledWith("00003");
+  beforeEach(() => {
+    sidebarListStore.resetForTesting();
   });
 
-  it("selects nothing rather than throwing when every plan goes", () => {
-    const onSelectPlan = vi.fn();
-    const { rerender } = render(<PlansView plans={three} onSelectPlan={onSelectPlan} />);
+  it("publishes the Draft and Blocked plans as the shell's `plans` list, newest first", () => {
+    render(
+      <PlansView
+        plans={[
+          ...drafts,
+          planSummary({ id: "00009", title: "Blocked one", state: "Blocked" }),
+          // Neither of these is on this page in V1: the list is Draft or Blocked only.
+          planSummary({ id: "00010", title: "In review", state: "Review" }),
+          planSummary({ id: "00011", title: "Done", state: "Completed" }),
+        ]}
+        onSelectPlan={() => {}}
+      />,
+    );
 
-    fireEvent.keyDown(window, { key: "ArrowDown" });
-    rerender(<PlansView plans={[]} onSelectPlan={onSelectPlan} />);
-    fireEvent.keyDown(window, { key: "Enter" });
-
-    expect(onSelectPlan).not.toHaveBeenCalled();
+    const list = sidebarListStore.getState();
+    expect(list?.appId).toBe("plans");
+    expect(list?.title).toBe("Plans");
+    expect(list?.items.map((i) => i.id)).toEqual(["00009", "00003", "00002", "00001"]);
+    expect(list?.items.map((i) => i.tag)).toEqual(["#9", "#3", "#2", "#1"]);
+    // `PlansApp` sets neither `OnSearch` nor `OnNew`: the shell's search icon opens the plan search
+    // dialog, and New Plan is the shell's own button.
+    expect(list?.onSearch).toBeUndefined();
+    expect(list?.onNew).toBeUndefined();
+    expect(list?.collapsedMenu).toBeFalsy();
   });
 
-  it("leaves the arrow keys to the search box while it has focus", () => {
-    const onSelectPlan = vi.fn();
-    render(<PlansView plans={three} onSelectPlan={onSelectPlan} />);
+  it("drops a plan a job still holds, as `activePlanFolders` does", () => {
+    render(
+      <PlansView
+        plans={drafts}
+        jobs={[
+          job({ id: "j1", planId: "00002", status: "Queued" }),
+          // A finished job releases the plan again.
+          job({ id: "j2", planId: "00001", status: "Completed" }),
+        ]}
+        onSelectPlan={() => {}}
+      />,
+    );
 
-    const search = screen.getByRole("searchbox");
-    search.focus();
-
-    // Down twice from the search box: the caret's business, not the list's.
-    fireEvent.keyDown(search, { key: "ArrowDown" });
-    fireEvent.keyDown(search, { key: "ArrowDown" });
-    // Blur, then open whatever is highlighted. Still the first row.
-    search.blur();
-    fireEvent.keyDown(window, { key: "Enter" });
-
-    expect(onSelectPlan).toHaveBeenCalledWith("00003");
+    expect(sidebarListStore.getState()?.items.map((i) => i.id)).toEqual(["00003", "00001"]);
   });
 
-  it("does not open a plan on Enter typed into the search box", () => {
+  it("badges a row as `BuildRowBadges` does, under the state's current name", () => {
+    const legacy = {
+      ...planSummary({ id: "00031", title: "Legacy plan", level: "Bugfix" }),
+      state: "Blocked",
+    } as unknown as PlanSummary;
+
+    render(
+      <PlansView
+        plans={[legacy, planSummary({ id: "00032", title: "A draft", state: "Draft" })]}
+        onSelectPlan={() => {}}
+      />,
+    );
+
+    const items = sidebarListStore.getState()?.items ?? [];
+    // Newest first, so the draft leads and the blocked plan follows.
+    expect(items.map((i) => i.id)).toEqual(["00032", "00031"]);
+    expect(items[1].badges).toEqual([
+      { label: "Blocked", kind: "warning" },
+      { label: "Tendril-App", kind: "project" },
+      { label: "Bugfix", kind: "neutral" },
+    ]);
+    // Draft carries no state badge: it is where every plan starts.
+    expect(items[0].badges?.map((b) => b.label)).toEqual(["Tendril-App", "Feature"]);
+  });
+
+  it("renders no list of its own: the content area is the selection", () => {
+    render(<PlansView plans={drafts} onSelectPlan={() => {}} />);
+
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("Third")).not.toBeInTheDocument();
+    expect(screen.getByTestId("plans-no-selection")).toHaveTextContent(
+      "Select a plan from the sidebar",
+    );
+  });
+
+  it("shows V1's empty state when there is nothing to list", () => {
+    render(<PlansView plans={[]} onSelectPlan={() => {}} />);
+
+    expect(screen.getByText("No plans")).toBeInTheDocument();
+    expect(screen.getByText("Plans you create will appear here")).toBeInTheDocument();
+  });
+
+  it("opens the plan a sidebar row selects, and marks that row selected", () => {
     const onSelectPlan = vi.fn();
-    render(<PlansView plans={three} onSelectPlan={onSelectPlan} />);
+    render(<PlansView plans={drafts} onSelectPlan={onSelectPlan} />);
 
-    const search = screen.getByRole("searchbox");
-    search.focus();
-    fireEvent.keyDown(search, { key: "Enter" });
+    // What the shell does with a click: `BuildSelectArgs(id)` then navigate to `appId`.
+    let args: unknown;
+    act(() => {
+      args = sidebarListStore.getState()?.buildSelectArgs("00002");
+    });
 
-    expect(onSelectPlan).not.toHaveBeenCalled();
+    expect(args).toEqual({ planId: "00002" });
+    expect(onSelectPlan).toHaveBeenCalledWith("00002");
+    expect(sidebarListStore.getState()?.selectedId).toBe("00002");
+  });
+
+  it("lets the host drive the selected row", () => {
+    render(<PlansView plans={drafts} selectedPlanId="00001" onSelectPlan={() => {}} />);
+
+    expect(sidebarListStore.getState()?.selectedId).toBe("00001");
   });
 });

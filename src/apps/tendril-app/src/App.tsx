@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
+import { sidebarListStore, usePublishedSidebarList } from "./state/sidebarListStore";
+import { toAddressArgs } from "./state/navigation";
 import { plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
 import { notificationsStore } from "./state/notificationsStore";
@@ -53,12 +55,6 @@ const Toaster = React.lazy(() =>
   import("@ivy-interactive/components/ui").then((m) => ({ default: m.Toaster })),
 );
 
-/** An outline button, written out rather than imported: pulling `components/ui` into App.tsx for
- *  two buttons is what the lazy dialogs above exist to avoid. */
-const JOB_SWEEP_BUTTON_CLASS =
-  "inline-flex h-8 items-center rounded-md border border-border bg-transparent px-3 text-sm " +
-  "font-medium text-foreground transition hover:bg-muted disabled:pointer-events-none disabled:opacity-50";
-
 /** How often the job list is re-read to spot exits. Short enough that a finished job is announced
  *  while the operator still has it in mind, long enough to be a rounding error on the daemon. */
 const JOB_POLL_INTERVAL_MS = 5000;
@@ -96,14 +92,43 @@ const RecommendationsView = React.lazy(() =>
 const IceboxView = React.lazy(() =>
   import("./views/IceboxView").then((m) => ({ default: m.IceboxView })),
 );
+const JobsView = React.lazy(() =>
+  import("./views/JobsView").then((m) => ({ default: m.JobsView })),
+);
 // Lazy for the same reason as the rest, with more at stake: this is the only
 // view that pulls in xterm.js, which nothing else in the shell needs.
 const ReviewActionView = React.lazy(() =>
   import("./views/ReviewActionView").then((m) => ({ default: m.ReviewActionView })),
 );
 
-/** Nav id for the review-action view. One at a time, so it needs no per-target suffix. */
-const REVIEW_ACTION_NAV = "review-action";
+/**
+ * V1's `ReviewActionApp` id. It is `[App(..., isVisible: false, allowDuplicateTabs: true)]`, so the
+ * router opens it as a session tab rather than a page, and a second action can run beside the first.
+ */
+const REVIEW_ACTION_APP_ID = "review-action";
+
+/**
+ * The session a review action's pane is keyed by. Router rule 3 keys a pane by its session id, so
+ * reopening the same action reveals the terminal already running it instead of spawning a second
+ * run - V1 keys an agent pane by its chat session id for exactly that reason. Two *different*
+ * actions get different ids and therefore their own panes, which is what `allowDuplicateTabs: true`
+ * buys and what V2's previous single `review-action` nav could not express.
+ */
+const reviewActionSessionId = (target: ReviewActionTarget): string =>
+  `${REVIEW_ACTION_APP_ID}:${target.project}:${target.planId ?? ""}:${target.actionName}`;
+
+/** V1 `ResolveArgsTabTitle`: a review-action tab reads "#74 Run Tests", or "[Project] Run Tests". */
+const reviewActionTabTitle = (target: ReviewActionTarget): string =>
+  target.planId
+    ? `#${Number.parseInt(target.planId, 10) || target.planId} ${target.actionName}`
+    : `[${target.project}] ${target.actionName}`;
+
+/** Reads one string field out of a sidebar row's `buildSelectArgs` result. */
+const selectArgField = (args: unknown, field: string): string | undefined => {
+  if (typeof args !== "object" || args === null) return undefined;
+  const value = (args as Record<string, unknown>)[field];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+};
 
 export const App: React.FC = () => {
   const [uiState, setUiState] = useState<UiState>(uiStore.getState());
@@ -131,7 +156,9 @@ export const App: React.FC = () => {
   // Which review action the review-action view is running. Held here rather than encoded into the nav
   // id: it is three values, and it is deliberately not persisted — a restored nav pointing at a
   // process that died with the last session has nothing to show.
-  const [reviewActionTarget, setReviewActionTarget] = useState<ReviewActionTarget | null>(null);
+  const [reviewActionTargets, setReviewActionTargets] = useState<
+    Record<string, ReviewActionTarget>
+  >({});
   // Null means "no wizard": either it is not needed, or the status call failed. An unreachable
   // daemon must never produce a first-run wizard, and must never block the shell.
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
@@ -140,6 +167,8 @@ export const App: React.FC = () => {
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [recommendationsCount, setRecommendationsCount] = useState<number>(0);
   const [chatSessionsCount, setChatSessionsCount] = useState<number>(0);
+  // The list the active sidebar-section app published into the shell (V1's ShellSidebarListSignal).
+  const sidebarList = usePublishedSidebarList();
 
   // Subscribe to stores
   useEffect(() => {
@@ -357,7 +386,9 @@ export const App: React.FC = () => {
   // Handle plan selection (fetches plan detail and opens tab)
   const handleSelectPlan = async (planId: string) => {
     uiStore.setSelectedPlanId(planId);
-    uiStore.setActiveNav(`plan-${planId}`);
+    // The plan travels as `appArgs`, which is V1's `PlansAppArgs(planId)` reaching the page it opens
+    // rather than being smuggled in through the nav id alone.
+    uiStore.navigate({ appId: `plan-${planId}`, args: { planId } });
     try {
       await plansStore.fetchPlanDetail(planId);
     } catch {
@@ -370,14 +401,27 @@ export const App: React.FC = () => {
    * before it, so its output has somewhere to go from the first byte.
    */
   const handleOpenReviewAction = (target: ReviewActionTarget) => {
-    setReviewActionTarget(target);
-    uiStore.openTab(REVIEW_ACTION_NAV);
-    uiStore.setActiveNav(REVIEW_ACTION_NAV);
+    const sessionId = reviewActionSessionId(target);
+    setReviewActionTargets((current) => ({ ...current, [sessionId]: target }));
+    // The router decides this is a session, not a page, and reveals the existing pane when this
+    // action is already running (`AppShellRouter` rules 3 and 4).
+    uiStore.navigate({
+      appId: REVIEW_ACTION_APP_ID,
+      args: toAddressArgs({ sessionId, ...target }),
+    });
   };
 
+  const handleCloseReviewAction = (sessionId: string) => {
+    setReviewActionTargets(({ [sessionId]: _closed, ...rest }) => rest);
+    uiStore.closeTab(sessionId);
+  };
+
+  /**
+   * Opens a job's output. V1 shows it in a sheet (`Apps/Jobs/Sheets/OutputSheet.cs`), not a tab, so
+   * this navigates a page and creates no tab; the sheet itself is the Jobs area's to build.
+   */
   const handleSelectJob = (jobId: string) => {
-    uiStore.openTab(`job-${jobId}`);
-    uiStore.setActiveNav(`job-${jobId}`);
+    uiStore.navigate({ appId: `job-${jobId}`, args: { jobId } });
     // The list endpoint omits reportedFailureReason, so pull the detail.
     jobsStore.fetchJobDetail(jobId).catch(() => {
       // Detail is supplementary; the session view falls back to the list entry.
@@ -444,15 +488,88 @@ export const App: React.FC = () => {
 
   const activeNav = uiState.activeNav;
 
-  // The nav and its tabs are persisted; the run behind them is not. A restored session therefore
-  // lands on the review-action nav with nothing to show, so the tab is dropped and Review takes over
-  // — the process that view was watching does not exist any more.
+  // V1 `TendrilAppShell.HandleOpenPage`: the sidebar section belongs to the page app, so it is
+  // dropped when the page moves to an app with no list of its own, and retained between apps that
+  // both show sidebar sections so the header and search button do not flicker. Without this the
+  // list would only be hidden, and coming back to Plans would flash a stale one.
   useEffect(() => {
-    if (activeNav === REVIEW_ACTION_NAV && !reviewActionTarget) {
-      uiStore.closeTab(REVIEW_ACTION_NAV);
-      uiStore.setActiveNav("review");
+    sidebarListStore.retainFor(activeNav);
+  }, [activeNav]);
+
+  /**
+   * V1's section click handler: `OpenApp(new NavigateArgs(list.AppId, list.BuildSelectArgs(itemId)))`.
+   *
+   * V2 has no arg-carrying navigation, so the args are resolved to the nav that stands in for the
+   * V1 app-plus-args pair: `{ planId }` opens that plan (V2 renders V1's `PlansApp` with a `PlanId`
+   * under its own `plan-<id>` nav), `{ sessionId }` selects that chat session, and anything else is
+   * a plain navigation to the publishing app. `chatStore` is imported dynamically because App.tsx
+   * is the shell's only eager module and the chat store is a lazy view's dependency.
+   */
+  const handleSelectSidebarItem = (appId: string, itemId: string, args: unknown) => {
+    const planId = selectArgField(args, "planId");
+    if (planId) {
+      void handleSelectPlan(planId);
+      return;
     }
-  }, [activeNav, reviewActionTarget]);
+
+    const sessionId = selectArgField(args, "sessionId");
+    if (sessionId) {
+      uiStore.navigate({ appId, args: toAddressArgs(args) });
+      void import("./state/chatStore").then((m) => m.chatStore.selectSession(sessionId));
+      return;
+    }
+
+    // Anything else is V1's plain "navigate to the list's app with these args": the args reach the
+    // page as `pageArgs`, and the row id is only what produced them.
+    void itemId;
+    uiStore.navigate({ appId, args: toAddressArgs(args) });
+  };
+
+  // A session pane whose target this render does not have is a pane with nothing to show, so it is
+  // retired rather than left as an empty tab. `uiStore` persists no session tabs, so the only way to
+  // get here is a target cleared without its tab, which this keeps in step.
+  useEffect(() => {
+    for (const session of uiState.sessionTabs) {
+      if (!reviewActionTargets[session.id]) uiStore.closeTab(session.id);
+    }
+  }, [uiState.sessionTabs, reviewActionTargets]);
+
+  /**
+   * V1's `sessionContents`: one pane per session tab, all mounted, only the active one visible. A
+   * review action's terminal therefore keeps running while the reviewer reads the plan behind it,
+   * which is the behaviour V1 calls out on `ShowPage` and which V2 lost by rendering the review
+   * action as the page.
+   */
+  const sessionPanes = uiState.sessionTabs.map((session) => {
+    const target = reviewActionTargets[session.id];
+    if (!target) return <div key={session.id} />;
+    return (
+      <React.Suspense
+        key={session.id}
+        fallback={
+          <div className="flex h-full items-center justify-center text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin text-success" />
+          </div>
+        }
+      >
+        <ReviewActionView
+          target={target}
+          plan={
+            target.planId
+              ? // Detail where it is the plan already loaded, the summary otherwise: RetryPlan's
+                // gate reads `state`, which both carry.
+                ((plansState.selectedPlan?.id === target.planId
+                  ? plansState.selectedPlan
+                  : undefined) ?? plansState.plans.find((p) => p.id === target.planId))
+              : undefined
+          }
+          jobs={jobsState.jobs}
+          onClose={() => handleCloseReviewAction(session.id)}
+          onJobStarted={(res) => handleSelectJob(res.jobId)}
+        />
+      </React.Suspense>
+    );
+  });
 
   // Render view depending on navigation/tab
   const renderActiveView = () => {
@@ -484,7 +601,7 @@ export const App: React.FC = () => {
           }}
           onPlanDeleted={() => {
             plansStore.fetchPlans().catch(() => {});
-            uiStore.closeTab(activeNav);
+            // A plan is a page, not a tab, so there is nothing to close - just go back to Plans.
             uiStore.setActiveNav("plans");
           }}
           onBack={() => uiStore.setActiveNav("plans")}
@@ -507,8 +624,10 @@ export const App: React.FC = () => {
         };
       const events = jobsStore.getSessionEvents(jobId);
 
+      // A job's output is a page here and a sheet in V1, so "close" goes back to the Jobs list
+      // rather than removing a strip tab that no longer exists.
       return (
-        <JobSessionView job={job} events={events} onCloseTab={() => uiStore.closeTab(activeNav)} />
+        <JobSessionView job={job} events={events} onCloseTab={() => uiStore.setActiveNav("jobs")} />
       );
     }
 
@@ -562,6 +681,9 @@ export const App: React.FC = () => {
         return (
           <PlansView
             plans={plansState.plans}
+            // V1's `PlansAppArgs.PlanId`, now that a navigation carries args: the page reads its
+            // selection from them instead of the publisher having to apply it as a side effect.
+            selectedPlanId={uiState.pageArgs.planId ?? uiState.selectedPlanId}
             onSelectPlan={handleSelectPlan}
             onNewPlan={() => {
               setNewPlanPrefill({});
@@ -587,33 +709,6 @@ export const App: React.FC = () => {
             }}
           />
         );
-
-      case REVIEW_ACTION_NAV: {
-        // No target: a restored nav, which the effect above is already navigating away from.
-        if (!reviewActionTarget) return null;
-        return (
-          <ReviewActionView
-            target={reviewActionTarget}
-            plan={
-              reviewActionTarget.planId
-                ? // Detail where it is the plan already loaded, the summary otherwise: RetryPlan's
-                  // gate reads `state`, which both carry.
-                  ((plansState.selectedPlan?.id === reviewActionTarget.planId
-                    ? plansState.selectedPlan
-                    : undefined) ??
-                  plansState.plans.find((p) => p.id === reviewActionTarget.planId))
-                : undefined
-            }
-            jobs={jobsState.jobs}
-            onClose={() => {
-              setReviewActionTarget(null);
-              uiStore.closeTab(REVIEW_ACTION_NAV);
-              uiStore.setActiveNav("review");
-            }}
-            onJobStarted={(res) => handleSelectJob(res.jobId)}
-          />
-        );
-      }
 
       case "pull-requests":
         return (
@@ -647,56 +742,22 @@ export const App: React.FC = () => {
         );
 
       case "jobs":
+        // V1's Jobs app composes exactly one thing, the `DataTable` from `JobsApp.DataTable.cs`, and
+        // that table owns its own header actions (`Stop All Queued (n)`, `Stop All (n)`, the two
+        // Clears and the status progress bar), its row menu and the output sheet it opens over
+        // itself. So there is no page header here and no card grid: the view is the table.
         return (
-          <div className="space-y-4">
-            {/* V1's header actions (`JobsApp.DataTable`): the counts are in the labels, and each is
-                hidden when it would read `(0)`. Stop All Queued deliberately leaves running jobs
-                alone — its confirm copy promises that, which is also why neither is built on the
-                daemon's stop-all route. */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h1 className="text-2xl font-bold text-foreground">Jobs Activity</h1>
-              <div className="flex flex-wrap items-center gap-2">
-                {jobsStore.queuedJobCount() > 0 && (
-                  <button
-                    type="button"
-                    className={JOB_SWEEP_BUTTON_CLASS}
-                    data-testid="jobs-stop-all-queued"
-                    onClick={() => setStopQueuedOpen(true)}
-                  >
-                    Stop All Queued ({jobsStore.queuedJobCount()})
-                  </button>
-                )}
-                {jobsStore.activeJobCount() > 0 && (
-                  <button
-                    type="button"
-                    className={JOB_SWEEP_BUTTON_CLASS}
-                    data-testid="jobs-stop-all"
-                    onClick={() => setStopAllOpen(true)}
-                  >
-                    Stop All ({jobsStore.activeJobCount()})
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="grid gap-3">
-              {jobsState.jobs.map((j) => (
-                <div
-                  key={j.id}
-                  onClick={() => handleSelectJob(j.id)}
-                  className="cursor-pointer rounded-xl border border-border bg-card/60 p-4 transition hover:border-ring"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs text-muted-foreground">{j.id}</span>
-                    <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                      {j.status}
-                    </span>
-                  </div>
-                  <h3 className="mt-1 text-sm font-semibold text-foreground">{j.type}</h3>
-                  <p className="text-xs text-muted-foreground">{j.planTitle || j.project}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+          <JobsView
+            jobs={jobsState.jobs}
+            // For the `detached` flag, which only `GET /api/jobs/:id` reports.
+            jobDetails={jobsState.jobDetails}
+            isLoading={jobsState.isLoading}
+            onSelectPlan={handleSelectPlan}
+            // The two sweeps' confirms stay here: they are the only ones the shell itself owns, and
+            // both dialogs are already mounted below.
+            onStopAllQueued={() => setStopQueuedOpen(true)}
+            onStopAll={() => setStopAllOpen(true)}
+          />
         );
 
       case "settings":
@@ -751,13 +812,23 @@ export const App: React.FC = () => {
     <>
       <ShellLayout
         activeNav={activeNav}
-        activeTabs={uiState.activeTabIds}
+        sessionTabs={uiState.sessionTabs.map((session) => ({
+          ...session,
+          // V1 `ResolveArgsTabTitle`: the tab names the action, not the app.
+          title: reviewActionTargets[session.id]
+            ? reviewActionTabTitle(reviewActionTargets[session.id])
+            : session.title,
+        }))}
+        activeSessionId={uiState.activeSessionId}
+        sessionContents={sessionPanes}
+        pageNav={uiState.pageNav}
         serviceInfo={serviceState.info}
         connectionStatus={serviceState.status}
         reconnectCountdown={serviceState.reconnectCountdown}
         onSelectNav={(nav) => uiStore.setActiveNav(nav)}
         onSelectTab={(tab) => uiStore.setActiveNav(tab)}
         onCloseTab={(tab) => uiStore.closeTab(tab)}
+        onShowPage={() => uiStore.showPage()}
         onNewPlan={() => {
           setNewPlanPrefill({});
           setIsNewPlanOpen(true);
@@ -791,7 +862,32 @@ export const App: React.FC = () => {
         jobCount={jobCount}
         chatCount={chatSessionsCount}
         onCheckForUpdates={handleCheckForUpdates}
+        sidebarList={sidebarList}
+        onSelectSidebarItem={handleSelectSidebarItem}
+        // V1's `showPlanSearchDialog`, which V2 does not have yet. Until it does, the section's
+        // search goes to the Plans page, which is where plan search lives in V2 - the same place
+        // Ctrl+K already went.
+        onPlanSearch={() => uiStore.setActiveNav("plans")}
       >
+        {/* V1's `RouteAction.Error` reaches `client.Error(...)`; here it shares the shell's own
+            error banner, which is the only place the shell reports its own failures. */}
+        {uiState.navError && (
+          <div
+            role="alert"
+            data-testid="nav-error"
+            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          >
+            <span>{uiState.navError}</span>
+            <button
+              type="button"
+              onClick={() => uiStore.clearNavError()}
+              aria-label="Dismiss navigation error"
+              className="text-destructive hover:text-destructive/80"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {shellError && (
           <div
             role="alert"

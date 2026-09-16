@@ -12,6 +12,17 @@ export { BrandIcon, brandIcons } from "./brandIcons.tsx";
 export { ShellRailFlyout } from "./ShellRailFlyout.tsx";
 export type { RailFlyoutTrigger } from "./ShellRailFlyout.tsx";
 export { ShellSectionItems, sectionItemIcons } from "./ShellSectionItems.tsx";
+export {
+  SidebarListRow,
+  SidebarListRowExpandable,
+  SidebarListRowSubItem,
+} from "./SidebarListRow.tsx";
+export type {
+  SidebarListRowIcon,
+  SidebarListRowProps,
+  SidebarListRowExpandableProps,
+  SidebarListRowSubItemProps,
+} from "./SidebarListRow.tsx";
 export { ShellTooltip, formatShortcut } from "./ShellTooltip.tsx";
 export type { ShellTooltipProps } from "./ShellTooltip.tsx";
 export type {

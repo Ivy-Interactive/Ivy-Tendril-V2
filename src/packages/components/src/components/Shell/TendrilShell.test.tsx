@@ -12,6 +12,11 @@ import { ShellNewPlanButton } from "./ShellNewPlanButton.tsx";
 import { ShellSettingsButton } from "./ShellSettingsButton.tsx";
 import { ShellSidebarHeader } from "./ShellSidebarHeader.tsx";
 import { ShellSidebarSection } from "./ShellSidebarSection.tsx";
+import {
+  SidebarListRow,
+  SidebarListRowExpandable,
+  SidebarListRowSubItem,
+} from "./SidebarListRow.tsx";
 import { ShellTabs } from "./ShellTabs.tsx";
 import { TendrilShell } from "./TendrilShell.tsx";
 import type { ShellNavItemDto, ShellSectionItemDto, ShellTabDto } from "./types.ts";
@@ -547,5 +552,75 @@ describe("useShell", () => {
       root.render(<Consumer />);
     });
     expect(ctxValue).toEqual({ collapsed: false, toggle: expect.any(Function) });
+  });
+});
+
+describe("SidebarListRow", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  const Icon: React.FC<{ className?: string }> = ({ className }) => (
+    <span className={className} data-testid="row-icon" />
+  );
+
+  it("renders V1's three forms, and suppresses a zero count as `Build` does", () => {
+    const onClick = vi.fn();
+    act(() => {
+      root.render(
+        <div>
+          <SidebarListRow label="Assigned" icon={Icon} count={3} selected onClick={onClick} />
+          <SidebarListRow label="Empty" icon={Icon} count={0} onClick={vi.fn()} />
+          <SidebarListRowExpandable label="Projects" icon={Icon} expanded onClick={vi.fn()} />
+          <SidebarListRowSubItem label="Tendril" onClick={vi.fn()} />
+          <SidebarListRowSubItem label="Static" />
+        </div>,
+      );
+    });
+
+    expect(container.textContent).toContain("Assigned");
+    expect(container.textContent).toContain("3");
+    // V1 adds the badge only for `count is > 0`.
+    expect(container.textContent).not.toContain("0");
+
+    const rows = container.querySelectorAll<HTMLButtonElement>("button");
+    // Selected rows are V1's `Secondary`, the rest its `Ghost`.
+    expect(rows[0].dataset.selected).toBe("true");
+    expect(rows[1].dataset.selected).toBe("false");
+    // BuildExpandable reports its open state, which is what swaps the chevron.
+    expect(container.querySelector("[aria-expanded=true]")).not.toBeNull();
+    // A sub-item with no handler is static text, not a button.
+    expect(rows).toHaveLength(4);
+
+    act(() => {
+      rows[0].click();
+    });
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("only claims a tab role when the list is a tab set", () => {
+    act(() => {
+      root.render(
+        <div>
+          <SidebarListRow label="Tabbed" icon={Icon} role="tab" selected onClick={vi.fn()} />
+          <SidebarListRow label="Plain" icon={Icon} onClick={vi.fn()} />
+        </div>,
+      );
+    });
+
+    expect(container.querySelectorAll("[role=tab]")).toHaveLength(1);
+    expect(container.querySelector("[role=tab]")?.getAttribute("aria-selected")).toBe("true");
   });
 });

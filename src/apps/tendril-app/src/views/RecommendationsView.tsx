@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw, Search, ExternalLink } from "lucide-react";
-import { BadgeSelect, type BadgeSelectOption } from "@ivy-interactive/components/tendril";
+import { Check, CircleCheck, ExternalLink, RefreshCw, X } from "lucide-react";
+import type { ShellBadgeDto } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
 import {
   describeBridgeError,
@@ -8,14 +8,10 @@ import {
   type RecommendationState,
 } from "../types/api";
 import { EmptyState } from "../components/EmptyState";
+import { REC_IMPACT_CLASS } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
+import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import { formatPlanId } from "./PlansView";
-
-const STATUS_OPTIONS: BadgeSelectOption[] = [
-  { value: "Pending", label: "Pending" },
-  { value: "Accepted", label: "Accepted" },
-  { value: "Declined", label: "Declined" },
-];
 
 /**
  * Which recommendation the inbox will show at all, from
@@ -37,23 +33,76 @@ const isActionableSource = (rec: CrossPlanRecommendation): boolean =>
   rec.sourcePlanStatus === "" ||
   rec.sourcePlanStatus === "Completed";
 
-export const REC_STATUS_CLASS: Record<string, string> = {
-  Accepted: "bg-success/10 text-success border border-success/40",
-  AcceptedWithNotes: "bg-success/10 text-success border border-success/40",
-  Declined: "bg-muted text-muted-foreground border border-border",
-  Pending: "bg-warning/10 text-warning border border-warning/40",
+/**
+ * The identity `RecommendationsApp.RecommendationId` uses: plan plus title, since a title is only
+ * unique within its plan.
+ */
+export const recommendationId = (rec: CrossPlanRecommendation): string =>
+  `${rec.planId}::${rec.title}`;
+
+/**
+ * `RecommendationsApp.BuildRowBadges`, which deliberately mirrors the detail header's badge row
+ * (Project + Impact) so each row is self-describing: High is Success, Medium is Warning, anything
+ * else neutral.
+ */
+const recommendationRowBadges = (rec: CrossPlanRecommendation): ShellBadgeDto[] => {
+  const badges: ShellBadgeDto[] = [];
+  if (rec.project) badges.push({ label: rec.project, kind: "project" });
+  if (rec.impact) {
+    badges.push({
+      label: rec.impact,
+      kind: rec.impact === "High" ? "success" : rec.impact === "Medium" ? "warning" : "neutral",
+    });
+  }
+  return badges;
 };
 
-export const REC_IMPACT_CLASS: Record<string, string> = {
-  High: "bg-success/10 text-success border border-success/40",
-  Medium: "bg-warning/10 text-warning border border-warning/40",
-};
+/**
+ * `RecommendationsApp.BuildSidebarList`, field for field: `new ShellSidebarListState(
+ * "recommendations", "Recommendations", items, selected != null ? RecommendationId(selected) : null,
+ * id => new RecommendationsAppArgs(id))`, where a row's tag is `#{ShortPlanId}` - the source plan,
+ * which is the only context a recommendation's title needs.
+ */
+export const buildRecommendationsSidebarList = (
+  recommendations: CrossPlanRecommendation[],
+  selectedId: string | null,
+  select: (id: string) => void,
+): ShellSidebarList => ({
+  appId: "recommendations",
+  title: "Recommendations",
+  items: recommendations.map((rec) => ({
+    id: recommendationId(rec),
+    title: rec.title,
+    tag: formatPlanId(rec.planId),
+    badges: recommendationRowBadges(rec),
+  })),
+  selectedId,
+  buildSelectArgs: (id) => {
+    /* The shell routes a click as `OpenApp(new NavigateArgs("recommendations", BuildSelectArgs(id)))`
+       and V1's app reads `RecommendationsAppArgs.RecommendationId` back out. V2 has no arg-carrying
+       navigation yet, so the selection is applied here too; the returned object is still V1's args,
+       so this drops out once the shell can hand args to a view. */
+    select(id);
+    return { recommendationId: id };
+  },
+});
 
 export interface RecommendationsViewProps {
   onSelectPlan: (planId: string) => void;
   onJobStarted?: (res: { jobId: string }) => void;
 }
 
+/**
+ * The Recommendations page.
+ *
+ * `RecommendationsApp.Build` renders no list: it publishes one into the shell sidebar on every build
+ * and returns a `ContentView` showing the selected recommendation, with Accept, Decline and Accept
+ * with Notes acting on that one. So does this.
+ *
+ * Only pending recommendations from a Completed plan are ever listed (V1's `allPending`), which is
+ * also why this page has no status filter: a decided recommendation is not something the page can
+ * act on, and V1 never shows one here.
+ */
 export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   onSelectPlan,
   onJobStarted,
@@ -63,9 +112,8 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
-  const [selectedStatuses, setSelectedStatuses] = useState<string[]>(["Pending"]);
-  const [selectedProject, setSelectedProject] = useState<string>("all");
+  /** The row the operator picked, as `"planId::title"`; null means "whatever is first". */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Dialog state for Accept With Notes or Decline
   const [activeDialog, setActiveDialog] = useState<{
@@ -77,10 +125,10 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
    * The recommendation an action is mid-flight on, as `"planId::title"`.
    *
    * V1 gets this guard for free: `ContentView`'s Accept and Decline both call `refresh()` and
-   * `GoToNext()`, so the row the operator just acted on is no longer the selected one and its buttons
-   * are gone before a second click can land. This page is a list, so the buttons stay under the
-   * cursor — and Accept writes a state *and* starts a CreatePlan job, which means a double click
-   * costs two plans and two agent runs.
+   * `GoToNext()`, so the row the operator just acted on is no longer the selected one and its
+   * buttons are gone before a second click can land. The selection moves here too, but only once
+   * the service has answered — and Accept writes a state *and* starts a CreatePlan job, which means
+   * a double click costs two plans and two agent runs.
    */
   const [pendingId, setPendingId] = useState<string | null>(null);
 
@@ -101,45 +149,51 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
     void load();
   }, [load]);
 
-  /** The identity `RecommendationsApp.RecommendationId` uses: plan plus title, since a title is only unique within its plan. */
-  const recId = (rec: CrossPlanRecommendation): string => `${rec.planId}::${rec.title}`;
+  /** `RecommendationsApp.Build`'s `allPending`: Pending, and from a plan that finished. */
+  const pending = useMemo(
+    () =>
+      recommendations.filter(
+        (rec) => isActionableSource(rec) && (rec.state ?? "Pending") === "Pending",
+      ),
+    [recommendations],
+  );
 
-  const actionable = useMemo(() => recommendations.filter(isActionableSource), [recommendations]);
+  /**
+   * The selection, re-resolved on every render as V1 does: an explicit pick wins while it is still
+   * pending, and otherwise the first row is selected (`if (selectedState.Value == null &&
+   * allPending.Count > 0) selectedState.Set(allPending[0])`, plus the block below it that drops a
+   * selection which has left the list).
+   */
+  const explicitIndex = selectedId
+    ? pending.findIndex((r) => recommendationId(r) === selectedId)
+    : -1;
+  const selectedIndex = explicitIndex >= 0 ? explicitIndex : pending.length > 0 ? 0 : -1;
+  const selected = selectedIndex >= 0 ? pending[selectedIndex] : undefined;
 
-  const projects = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of actionable) {
-      if (r.project) set.add(r.project);
-    }
-    return Array.from(set).sort();
-  }, [actionable]);
+  const sidebarList = useMemo(
+    () =>
+      buildRecommendationsSidebarList(
+        pending,
+        selected ? recommendationId(selected) : null,
+        setSelectedId,
+      ),
+    [pending, selected],
+  );
 
-  const filtered = useMemo(() => {
-    return actionable.filter((r) => {
-      const state = r.state || "Pending";
-      if (selectedStatuses.length > 0 && !selectedStatuses.includes(state)) {
-        if (!selectedStatuses.includes("Accepted") || state !== "AcceptedWithNotes") {
-          return false;
-        }
-      }
+  /* Published on every render, which is what `ShellSidebarListSignal` documents the shell as
+     expecting ("The active app publishes this on every build"). `selectedId` drives both the
+     highlighted row and the page tab's title (`TendrilAppShell.PageTabTitle`). */
+  usePublishSidebarList(sidebarList);
 
-      if (selectedProject !== "all" && r.project !== selectedProject) {
-        return false;
-      }
-
-      if (search.trim()) {
-        const query = search.toLowerCase();
-        const matchesTitle = r.title.toLowerCase().includes(query);
-        const matchesDesc = r.description.toLowerCase().includes(query);
-        const matchesPlan = r.planTitle?.toLowerCase().includes(query) || r.planId.includes(query);
-        if (!matchesTitle && !matchesDesc && !matchesPlan) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [actionable, selectedStatuses, selectedProject, search]);
+  /**
+   * `ContentView.GoToNext`, which every decision ends with: the operator works down the list
+   * instead of being thrown back to the top, and the row just acted on is the one that leaves.
+   */
+  const goToNext = () => {
+    if (pending.length === 0) return;
+    const next = pending[(Math.max(selectedIndex, 0) + 1) % pending.length];
+    setSelectedId(next ? recommendationId(next) : null);
+  };
 
   /**
    * The whole state machine, mirroring `Recommendations/ContentView`'s two handlers and its
@@ -164,7 +218,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
     state: RecommendationState,
     noteOrReason?: string,
   ) => {
-    const id = recId(rec);
+    const id = recommendationId(rec);
     if (pendingId != null) return;
     setActionError(null);
     setPendingId(id);
@@ -180,8 +234,8 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
       return;
     }
 
-    // Reflected immediately so the row stops offering actions it has already taken; the reload
-    // below is what makes it true rather than merely hopeful.
+    // Reflected immediately so the row leaves the list it is no longer pending in; the reload below
+    // is what makes it true rather than merely hopeful.
     setRecommendations((prev) =>
       prev.map((item) =>
         item.planId === rec.planId && item.title === rec.title
@@ -189,6 +243,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
           : item,
       ),
     );
+    goToNext();
 
     if (state === "Accepted" || state === "AcceptedWithNotes") {
       const description = notes
@@ -215,35 +270,26 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
     await load();
   };
 
-  return (
-    <div data-testid="recommendations-view" className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Recommendations</h1>
-          <p className="text-sm text-muted-foreground">
-            Follow-up tasks identified during plan execution waiting for operator review.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
-      </div>
+  const isBusy = pendingId != null;
+  const impactClass = selected?.impact
+    ? (REC_IMPACT_CLASS[selected.impact] ?? "border border-border text-muted-foreground")
+    : "border border-border text-muted-foreground";
 
+  return (
+    <div data-testid="recommendations-view" className="space-y-4">
       {actionError && (
         <div
           role="alert"
           className="flex items-center justify-between rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           <span>{actionError}</span>
-          <button type="button" onClick={() => setActionError(null)} className="ml-2 font-bold">
-            ✕
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            aria-label="Dismiss error"
+            className="ml-2 font-bold"
+          >
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
@@ -257,165 +303,109 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
         </div>
       )}
 
-      {/* Filter Bar */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search recommendations..."
-            className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
-          />
-        </div>
-
-        <BadgeSelect
-          // BadgeSelect has no `onChange`: it is an Ivy widget and emits only the events it was
-          // opted into. Without `id`, `events` and `eventHandler` the trigger opened, the options
-          // highlighted and no selection ever arrived — the filter was inert. Same wiring as
-          // `PullRequestsView`'s status filter, so the two behave alike.
-          id="recommendation-status-filter"
-          options={STATUS_OPTIONS}
-          value={selectedStatuses}
-          multiple
-          placeholder="Filter by status..."
-          events={["OnChange"]}
-          eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-            if (args && Array.isArray(args[0])) setSelectedStatuses(args[0] as string[]);
-          }}
-        />
-
-        {projects.length > 0 && (
-          <select
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-xs text-foreground focus:border-ring focus:outline-none"
-          >
-            <option value="all">All Projects</option>
-            {projects.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {/* List */}
-      {filtered.length === 0 ? (
+      {!selected ? (
         <EmptyState
           // EmptyState renders its icon as text. Passing the lucide component made React drop it
           // with "Functions are not valid as a React child", so the empty state had no icon at all.
           icon="💡"
-          title="No recommendations"
           // `NoContentView("No recommendations", "Recommendations from completed plans will appear
-          // here")` is what V1 shows when the *set* is empty, and the filter message belongs to the
-          // separate case where a filter hid a set that is not. Keying this off the filter controls
-          // instead got it backwards: the status chips default to Pending, so a fresh install with
-          // no recommendations at all was told its filters were at fault.
-          description={
-            actionable.length === 0
-              ? "Recommendations from completed plans will appear here."
-              : "No recommendations match the current filters."
-          }
+          // here")`. There is no second "nothing matches your filter" case any more: the page has no
+          // filters, because V1's list is always exactly the pending recommendations.
+          title="No recommendations"
+          description="Recommendations from completed plans will appear here."
         />
       ) : (
-        <div className="grid gap-3">
-          {filtered.map((rec) => {
-            const statusKey = rec.state || "Pending";
-            // Every row's buttons go down while one action is in flight: the reload that follows
-            // rewrites the whole list, so a second action started against the old list would be
-            // acting on a stale row.
-            const isBusy = pendingId != null;
-            const badgeClass = REC_STATUS_CLASS[statusKey] ?? REC_STATUS_CLASS.Pending;
-            const impactClass = rec.impact
-              ? (REC_IMPACT_CLASS[rec.impact] ?? "border border-border text-muted-foreground")
-              : "border border-border text-muted-foreground";
+        <>
+          {/* `ResponsiveHeader.Build(BuildTitleArea, BuildControls)`: the title is `#{ShortPlanId}
+              {Title}` and carries no badges (they are on the sidebar row), and the controls are the
+              project badge, where the operator is in the list, then Decline and Accept. */}
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
+            <h1
+              data-testid="recommendation-title"
+              className="min-w-0 truncate text-base font-semibold text-foreground"
+              title={selected.title}
+            >
+              {formatPlanId(selected.planId)} {selected.title}
+            </h1>
 
-            return (
-              <div
-                key={`${rec.planId}::${rec.title}`}
-                data-testid={`recommendation-row-${rec.title}`}
-                className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-card/60 p-4 transition hover:border-border/80 sm:flex-row sm:items-start"
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {selected.project && (
+                <span className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                  {selected.project}
+                </span>
+              )}
+              {selected.impact && (
+                <span className={`rounded px-2 py-0.5 text-xs font-medium ${impactClass}`}>
+                  {selected.impact}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">
+                  {selectedIndex + 1}/{pending.length}
+                </span>{" "}
+                recommendations
+              </span>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => setActiveDialog({ rec: selected, action: "Decline" })}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
               >
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onSelectPlan(rec.planId)}
-                      className="inline-flex items-center gap-1 font-mono text-xs font-semibold text-primary hover:underline"
-                    >
-                      <span>{formatPlanId(rec.planId)}</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </button>
-                    {rec.project && (
-                      <span className="rounded bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                        {rec.project}
-                      </span>
-                    )}
-                    {rec.impact && (
-                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${impactClass}`}>
-                        {rec.impact}
-                      </span>
-                    )}
-                    <span className={`rounded px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
-                      {statusKey}
-                    </span>
-                  </div>
+                <X className="h-3.5 w-3.5" />
+                Decline
+              </button>
+              <button
+                type="button"
+                data-testid="recommendation-accept"
+                disabled={isBusy}
+                onClick={() => void handleSetState(selected, "Accepted")}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90 disabled:opacity-50"
+              >
+                <Check className="h-3.5 w-3.5" />
+                {pendingId === recommendationId(selected) ? "Accepting..." : "Accept"}
+              </button>
+            </div>
+          </div>
 
-                  <h3 className="text-sm font-semibold text-foreground">{rec.title}</h3>
-                  <p className="text-xs text-muted-foreground">{rec.description}</p>
+          {/* `FooterLayout`'s action bar: Accept with Notes, then View Plan. Refresh is V2's own -
+              V1 re-reads on the inbox auto-refresh hook instead of a button. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isBusy}
+              onClick={() => setActiveDialog({ rec: selected, action: "Accept" })}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              <CircleCheck className="h-3.5 w-3.5" />
+              Accept with Notes
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectPlan(selected.planId)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              View Plan
+            </button>
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={isLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
 
-                  {rec.notes && (
-                    <p className="text-xs text-muted-foreground/90">
-                      <span className="font-semibold text-foreground">Notes: </span>
-                      {rec.notes}
-                    </p>
-                  )}
-                  {rec.declineReason && (
-                    <p className="text-xs text-muted-foreground/90">
-                      <span className="font-semibold text-foreground">Decline reason: </span>
-                      {rec.declineReason}
-                    </p>
-                  )}
-                </div>
-
-                {/* Actions. Only a Pending recommendation has any: `ContentView` renders its
-                    Accept/Decline bar for the selected recommendation, and the app only ever selects
-                    from the Pending set, so the three terminal states are read-only. */}
-                {statusKey === "Pending" && (
-                  <div className="flex flex-wrap items-center gap-2 sm:self-center">
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => void handleSetState(rec, "Accepted")}
-                      className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {pendingId === recId(rec) ? "Accepting..." : "Accept"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => setActiveDialog({ rec, action: "Accept" })}
-                      className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
-                    >
-                      Accept with Notes
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => setActiveDialog({ rec, action: "Decline" })}
-                      className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
-                    >
-                      Decline
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+          {/* The recommendation itself, which is the whole scrollable content in V1. */}
+          <div
+            data-testid={`recommendation-detail-${selected.title}`}
+            className="whitespace-pre-wrap text-sm text-muted-foreground"
+          >
+            {selected.description}
+          </div>
+        </>
       )}
 
       {/* Note dialog */}
