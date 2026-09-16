@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, execSync, type ChildProcess } from "node:child_process";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -32,6 +33,46 @@ async function waitForService(p: number, timeoutMs = 60000): Promise<boolean> {
   return false;
 }
 
+function isPortFree(p: number, host = "127.0.0.1"): Promise<boolean> {
+  return new Promise((resolve) => {
+    const tester = net.createServer();
+    tester.once("error", () => {
+      tester.close(() => resolve(false));
+    });
+    tester.once("listening", () => {
+      tester.close(() => resolve(true));
+    });
+    tester.listen(p, host);
+  });
+}
+
+async function freePortIfOccupied(p: number) {
+  const free = await isPortFree(p);
+  if (!free) {
+    console.log(`\x1b[33m[dev-desktop] Port ${p} is in use by a stale process, freeing it...\x1b[0m`);
+    try {
+      if (process.platform !== "win32") {
+        const pids = execSync(`lsof -ti :${p}`, { stdio: ["ignore", "pipe", "ignore"] })
+          .toString()
+          .trim()
+          .split(/\s+/);
+        for (const pid of pids) {
+          if (pid) {
+            try {
+              process.kill(Number(pid), "SIGTERM");
+            } catch {}
+          }
+        }
+      } else {
+        execSync(`for /f "tokens=5" %a in ('netstat -aon ^| findstr :${p}') do taskkill /F /PID %a`, {
+          stdio: "ignore",
+        });
+      }
+      await new Promise((r) => setTimeout(r, 800));
+    } catch {}
+  }
+}
+
 let serverProcess: ChildProcess | null = null;
 let appProcess: ChildProcess | null = null;
 let shuttingDown = false;
@@ -61,6 +102,23 @@ function cleanup() {
     } catch {}
   }
 
+  // Also clean up any lingering Vite frontend processes on port 5173
+  try {
+    if (process.platform !== "win32") {
+      const pids = execSync("lsof -ti :5173", { stdio: ["ignore", "pipe", "ignore"] })
+        .toString()
+        .trim()
+        .split(/\s+/);
+      for (const pid of pids) {
+        if (pid) {
+          try {
+            process.kill(Number(pid), "SIGTERM");
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+
   process.exit(0);
 }
 
@@ -70,6 +128,9 @@ process.on("exit", cleanup);
 
 async function main() {
   console.log("\x1b[36m[dev-desktop] Initializing Tendril desktop development environment...\x1b[0m");
+
+  // Ensure port 5173 (Vite dev server) is free before starting
+  await freePortIfOccupied(5173);
 
   const isAlreadyRunning = await checkServiceHealth(port);
   if (isAlreadyRunning) {

@@ -28,7 +28,9 @@
   },
   "devDependencies": {
     "playwright": "1.63.0",
-    "tsx": "^4.23.13"
+    "tsx": "^4.23.13",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   },
   "packageManager": "pnpm@11.25.0"
 }
