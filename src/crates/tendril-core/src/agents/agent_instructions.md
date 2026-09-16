@@ -513,8 +513,9 @@ When you edit an existing plan's revision with `write-revision`, follow the plan
   top of the revision. The folder's `SafeTitle` is derived by the CLI from the title (first 24
   alphanumeric characters, capped for Windows path limits inside worktrees); it is a folder name
   only and must never be passed back as the title.
-- **Fields:** do not invent `plan.yaml` fields. Unknown fields are stripped by the normalizer and
-  can cause parse errors.
+- **Fields:** do not invent `plan.yaml` fields. An unknown field is preserved verbatim on a
+  round-trip, but nothing reads it, validates it or shows it — so it is invisible rather than useful.
+  Put the information in the revision markdown instead.
 
 ## Important Notes
 

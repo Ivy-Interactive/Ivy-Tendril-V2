@@ -116,7 +116,8 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
       id: "recommendations",
       label: "Recommendations",
       icon: "Lightbulb",
-      badge: recommendationsCount && recommendationsCount > 0 ? String(recommendationsCount) : undefined,
+      badge:
+        recommendationsCount && recommendationsCount > 0 ? String(recommendationsCount) : undefined,
       isActive: activeNav === "recommendations",
     },
     {
