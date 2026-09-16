@@ -594,6 +594,25 @@ impl JobManager {
         Ok(job_id)
     }
 
+    /// Puts a job that was still waiting in the queue when the daemon stopped back onto it.
+    ///
+    /// The queue itself is in-memory, so a restart loses it; the `Queued` rows in the database are
+    /// the durable record, and this is how they are read back. Without it such a job never runs
+    /// again, and it does not fail either — it sits `Queued` forever, which is worse than losing it:
+    /// startup reconciliation treats its plan as live and so never reverts it out of `Executing`,
+    /// and the conflict guard counts the row as in-flight and rejects every resubmission naming a
+    /// job that will never start. The only way out was `force-start` on each one.
+    ///
+    /// The in-memory insert is not optional. `drain_queue` re-reads the job from `self.jobs` after
+    /// popping its id and silently drops an id it cannot find, and that map is empty on a fresh
+    /// process — so enqueueing alone would lose the job a second time, quietly.
+    pub async fn requeue_restored(&self, job: JobItem) {
+        let id = job.id.clone();
+        let priority = job.priority;
+        self.jobs.write().await.insert(id.clone(), job);
+        self.enqueue(&id, priority).await;
+    }
+
     /// Pushes a `Queued` job onto the priority queue and wakes the dispatcher.
     async fn enqueue(&self, job_id: &str, priority: i32) {
         ensure_handle(&self.handles, job_id).await;
