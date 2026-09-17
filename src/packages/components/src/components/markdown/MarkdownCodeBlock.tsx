@@ -1,4 +1,5 @@
 import React, { memo, Suspense } from "react";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { prismTheme } from "@/lib/prismTheme";
 import { extractTextContent } from "@/lib/markdown-utils";
@@ -85,7 +86,7 @@ export const MarkdownCodeBlock = memo(
               fallback={
                 <div className="rounded-md border bg-background p-4">
                   <div className="flex items-center justify-center p-8 text-muted-foreground">
-                    <div className="animate-spin rounded-full size-6 border-b-2 border-primary"></div>
+                    <Spinner size="xl" color="var(--primary)" />
                     <span className="ml-2 text-sm">Loading Mermaid...</span>
                   </div>
                 </div>
@@ -105,7 +106,7 @@ export const MarkdownCodeBlock = memo(
               fallback={
                 <div className="rounded-md border bg-background p-4">
                   <div className="flex items-center justify-center p-8 text-muted-foreground">
-                    <div className="animate-spin rounded-full size-6 border-b-2 border-primary"></div>
+                    <Spinner size="xl" color="var(--primary)" />
                     <span className="ml-2 text-sm">Loading Graphviz...</span>
                   </div>
                 </div>
