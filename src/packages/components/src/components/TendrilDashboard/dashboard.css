@@ -4,7 +4,6 @@
    follows the host theme. */
 
 .tdb-root {
-  --tdb-bg: var(--background);
   --tdb-block-bg: color-mix(in srgb, var(--foreground) 2%, var(--background));
   --tdb-block-border: color-mix(in srgb, var(--foreground) 6%, var(--background));
   --tdb-fg: var(--foreground);
@@ -12,14 +11,12 @@
   --tdb-faint: color-mix(in srgb, var(--foreground) 28%, transparent);
   --tdb-divider: color-mix(in srgb, var(--foreground) 20%, transparent);
   --tdb-pill-bg: color-mix(in srgb, var(--foreground) 6%, transparent);
-  --tdb-popover: var(--popover);
 
   /* Grey intensity ramp shared by the activity grid and the PR bars.
      Mixing from the foreground keeps it legible in both themes. */
   --tdb-ramp-1: color-mix(in srgb, var(--foreground) 10%, transparent);
   --tdb-ramp-2: color-mix(in srgb, var(--foreground) 26%, transparent);
   --tdb-ramp-3: var(--foreground-muted);
-  --tdb-ramp-4: var(--foreground);
 
   /* KPI card tints. All four derive from the host theme's --primary so
      alternate themes (neon, retro, cupcake...) recolor the cards
@@ -34,7 +31,7 @@
 
   font-family: var(--font-sans);
   color: var(--tdb-fg);
-  background: var(--tdb-bg);
+  background: var(--background);
   container-type: inline-size;
   container-name: tdb;
   height: 100%;
@@ -458,7 +455,7 @@ button.tdb-kpi:focus-visible {
 .tdb-chart-tooltip {
   position: absolute;
   pointer-events: none;
-  background: var(--tdb-popover);
+  background: var(--popover);
   border: var(--border-width) solid var(--tdb-block-border);
   border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px color-mix(in srgb, var(--tdb-fg) 10%, transparent);
@@ -594,7 +591,7 @@ button.tdb-kpi:focus-visible {
   background: var(--tdb-ramp-3);
 }
 .tdb-activity-cell[data-level="4"] {
-  background: var(--tdb-ramp-4);
+  background: var(--foreground);
 }
 
 .tdb-activity-labels {
@@ -704,7 +701,7 @@ button.tdb-kpi:focus-visible {
   background: var(--tdb-ramp-3);
 }
 .tdb-bar[data-level="4"] {
-  background: var(--tdb-ramp-4);
+  background: var(--foreground);
 }
 
 .tdb-bar-label {
