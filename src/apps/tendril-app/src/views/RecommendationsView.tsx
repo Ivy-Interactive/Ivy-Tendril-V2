@@ -7,6 +7,7 @@ import {
   type CrossPlanRecommendation,
   type RecommendationState,
 } from "../types/api";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { REC_IMPACT_CLASS } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
@@ -278,30 +279,10 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   return (
     <div data-testid="recommendations-view" className="space-y-4">
       {actionError && (
-        <div
-          role="alert"
-          className="flex items-center justify-between rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss error"
-            className="ml-2 font-bold"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <ErrorBanner onDismiss={() => setActionError(null)}>{actionError}</ErrorBanner>
       )}
 
-      {error && (
-        <div
-          role="alert"
-          className="rounded-box border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       {!selected ? (
         <NoContentView

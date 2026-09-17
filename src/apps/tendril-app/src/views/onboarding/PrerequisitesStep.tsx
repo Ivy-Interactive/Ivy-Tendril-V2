@@ -1,5 +1,6 @@
 import type { DoctorCheck, DoctorCheckStatus } from "../../types/api";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { ErrorBanner } from "../../components/ErrorBanner";
 
 /**
  * This module owns two things V1 keeps in two different places:
@@ -95,15 +96,7 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
         </button>
       </div>
 
-      {error && (
-        <div
-          role="alert"
-          data-testid="onboarding-checks-error"
-          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner data-testid="onboarding-checks-error">{error}</ErrorBanner>}
 
       {!error && checks.length === 0 && !loading && (
         <p className="text-xs text-muted-foreground">No checks reported.</p>

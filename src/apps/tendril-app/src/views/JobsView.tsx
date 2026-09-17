@@ -38,6 +38,7 @@ import {
   UNMAPPED_COLOR,
   projectColor,
 } from "../utils/jobStatus";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
@@ -1211,31 +1212,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-testid="jobs-view">
       {tableError && (
-        <div
-          role="alert"
-          data-testid="jobs-table-error"
-          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
+        <ErrorBanner data-testid="jobs-table-error">
           Could not read the jobs table: {tableError}
-        </div>
+        </ErrorBanner>
       )}
 
       {actionError && (
-        <div
-          role="alert"
-          data-testid="jobs-action-error"
-          className="flex items-start justify-between gap-3 rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss error"
-            className="text-destructive hover:text-destructive/80"
-          >
-            ✕
-          </button>
-        </div>
+        <ErrorBanner data-testid="jobs-action-error" onDismiss={() => setActionError(null)}>
+          {actionError}
+        </ErrorBanner>
       )}
 
       <DataTable<JobRow>

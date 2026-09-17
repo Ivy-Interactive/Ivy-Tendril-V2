@@ -21,6 +21,7 @@ import {
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { VERIFICATION_BADGE_CLASS } from "../utils/verificationStatus";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
@@ -974,14 +975,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 </div>
               ) : null,
               actionError ? (
-                <div
-                  key="action-error"
-                  role="alert"
-                  data-testid="review-action-error"
-                  className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-                >
+                <ErrorBanner key="action-error" data-testid="review-action-error">
                   {actionError}
-                </div>
+                </ErrorBanner>
               ) : null,
             ].filter((node): node is React.ReactElement => node !== null),
             /* `ReviewVerificationsPanelView`, in the tab strip's corner where V1 puts it: the outcome
@@ -1046,13 +1042,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                  the row it was made on gives the operator nothing to check it by. */
               <div key="recommendations" className="space-y-3 p-4">
                 {recsError && (
-                  <div
-                    role="alert"
-                    data-testid="recommendations-error"
-                    className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-                  >
-                    {recsError}
-                  </div>
+                  <ErrorBanner data-testid="recommendations-error">{recsError}</ErrorBanner>
                 )}
 
                 {/* `Text.Muted("Loading...")` while the plan's content query is in flight. */}

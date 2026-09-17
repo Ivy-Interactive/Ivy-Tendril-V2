@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { bridge } from "../../api/bridge";
 import { jobsStore } from "../../state/jobsStore";
 import { describeBridgeError, type DoctorCheck, type OnboardingStatus } from "../../types/api";
+import { ErrorBanner } from "../../components/ErrorBanner";
 import { DataStorageStep, blockingChecks } from "./PrerequisitesStep";
 import { CodingAgentStep, agentCheck, agentLabel, machinePrerequisites } from "./CodingAgentStep";
 import { FirstProjectStep } from "./FirstProjectStep";
@@ -539,15 +540,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
           </ol>
         </nav>
 
-        {error && (
-          <div
-            role="alert"
-            data-testid="onboarding-error"
-            className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-          >
-            {error}
-          </div>
-        )}
+        {error && <ErrorBanner data-testid="onboarding-error">{error}</ErrorBanner>}
 
         {step === AGENT_STEP && (
           <CodingAgentStep

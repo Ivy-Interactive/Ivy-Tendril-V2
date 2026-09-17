@@ -38,6 +38,7 @@ import {
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
 import { formatPlanId, isReviewState, normalizePlanState, planStateBadgeClass } from "./PlansView";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
@@ -127,11 +128,7 @@ const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }> = ({ p
     .pop();
   const reason = lastFailure?.statusMessage?.trim();
   return (
-    <div
-      role="alert"
-      data-testid="plan-failure-callout"
-      className="mb-4 rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-    >
+    <ErrorBanner data-testid="plan-failure-callout" className="mb-4">
       <p className="font-semibold">Execution Failed</p>
       {failed.length > 0 ? (
         <ul className="mt-1 space-y-0.5">
@@ -147,7 +144,7 @@ const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }> = ({ p
           {reason || "No details available. Check the job logs."}
         </p>
       )}
-    </div>
+    </ErrorBanner>
   );
 };
 
@@ -1696,14 +1693,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               : []),
             ...(actionError
               ? [
-                  <div
-                    key="error"
-                    role="alert"
-                    data-testid="plan-action-error"
-                    className="flex-1 rounded-box border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
-                  >
+                  <ErrorBanner key="error" data-testid="plan-action-error" className="flex-1">
                     {actionError}
-                  </div>,
+                  </ErrorBanner>,
                 ]
               : []),
           ],

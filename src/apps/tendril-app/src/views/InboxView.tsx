@@ -34,6 +34,7 @@ import { ivyColorVar } from "@ivy-interactive/components";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 import type { GitHubIssue, InboxProposal, ProjectSummary, SweepReport } from "../types/api";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { AutoAcceptSettingsDialog } from "./dialogs/AutoAcceptSettingsDialog";
 
@@ -1357,13 +1358,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         )}
 
         {isMyIssues && proposalError && (
-          <div
-            role="alert"
-            data-testid="inbox-proposal-error"
-            className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-          >
-            {proposalError}
-          </div>
+          <ErrorBanner data-testid="inbox-proposal-error">{proposalError}</ErrorBanner>
         )}
 
         {isMyIssues && proposals.length > 0 && (
@@ -1443,11 +1438,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             Loading issues from GitHub...
           </div>
         ) : error ? (
-          <div
-            role="alert"
-            data-testid="inbox-error"
-            className="space-y-2 rounded-box border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive"
-          >
+          <ErrorBanner data-testid="inbox-error" className="space-y-2">
             <div className="font-semibold text-destructive">Failed to load GitHub issues</div>
             <p>{error}</p>
             {error.toLowerCase().includes("auth login") && (
@@ -1464,7 +1455,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             >
               Retry
             </Button>
-          </div>
+          </ErrorBanner>
         ) : filteredIssues.length === 0 && issues.length === 0 && page === 1 ? (
           <div data-testid="inbox-empty">
             {/* V1's `NoContentView` strings, per category, and V1 passes neither of them a `cta`:

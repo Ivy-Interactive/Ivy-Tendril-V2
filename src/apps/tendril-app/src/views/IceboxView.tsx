@@ -4,6 +4,7 @@ import { bridge } from "../api/bridge";
 import { describeBridgeError, type PlanSummary } from "../types/api";
 import { VERIFICATION_DOT_CLASS } from "../utils/verificationStatus";
 import { NoContentView } from "../components/NoContentView";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { DeletePlanDialog } from "./dialogs";
 import { formatPlanId, parseProjects, planStateBadgeClass } from "./PlansView";
 
@@ -138,20 +139,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
       </div>
 
       {actionError && (
-        <div
-          role="alert"
-          className="flex items-start justify-between gap-3 rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss error"
-            className="font-bold"
-          >
-            ✕
-          </button>
-        </div>
+        <ErrorBanner onDismiss={() => setActionError(null)}>{actionError}</ErrorBanner>
       )}
 
       {/* Filter Bar */}

@@ -9,6 +9,7 @@ import {
   type VerificationStatus,
 } from "../types/api";
 import { TERMINAL_VERIFICATION_CLASS } from "../utils/verificationStatus";
+import { ErrorBanner } from "../components/ErrorBanner";
 
 interface PlanVerificationsProps {
   planId: string;
@@ -195,15 +196,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
 
   return (
     <div className="space-y-3" data-testid="plan-verifications">
-      {error && (
-        <div
-          role="alert"
-          data-testid="verification-reports-error"
-          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner data-testid="verification-reports-error">{error}</ErrorBanner>}
 
       {orderedVerifications.map((v) => {
         const report = reports[v.name];

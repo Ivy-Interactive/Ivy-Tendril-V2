@@ -3,6 +3,7 @@ import { ContentInput } from "@ivy-interactive/components/tendril";
 import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
 import { firstStringArg, submitValueArg } from "../utils/eventArgs";
+import { ErrorBanner } from "../components/ErrorBanner";
 
 interface NewPlanModalProps {
   isOpen: boolean;
@@ -196,11 +197,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           </button>
         </div>
 
-        {error && (
-          <div className="mt-4 rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-            {error}
-          </div>
-        )}
+        {error && <ErrorBanner className="mt-4">{error}</ErrorBanner>}
 
         {/* `Layout.Vertical().Gap(2) | projectPickerWidget | contentInputWidget` */}
         <div className="mt-4 space-y-2">
