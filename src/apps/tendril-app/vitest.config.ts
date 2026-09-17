@@ -31,6 +31,10 @@ export default defineConfig({
           /@dnd-kit/,
           /@radix-ui/,
           /@tanstack\/react-virtual/,
+          // Radix's popper positions itself with this, and it is ESM — so `mainFields` does not reach
+          // it. Left externalized, Node loads it and its `react` import resolves next to the nested
+          // copy, which is a null `useState` the moment a popover or dropdown opens.
+          /@floating-ui/,
         ],
       },
     },
