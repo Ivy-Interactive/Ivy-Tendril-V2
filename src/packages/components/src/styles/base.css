@@ -74,6 +74,14 @@
   .rounded-field {
     border-radius: var(--radius-fields);
   }
+  .rounded-l-field {
+    border-top-left-radius: var(--radius-fields);
+    border-bottom-left-radius: var(--radius-fields);
+  }
+  .rounded-r-field {
+    border-top-right-radius: var(--radius-fields);
+    border-bottom-right-radius: var(--radius-fields);
+  }
   .rounded-selector {
     border-radius: var(--radius-selectors);
   }
