@@ -3,17 +3,12 @@
 
 /* ─── Sortable verification list (uses framework CSS variables, adapts to light/dark) ─ */
 .svl-root {
-  --svl-bg: var(--card);
   --svl-bg-hover: color-mix(in srgb, var(--muted) 60%, transparent);
-  --svl-border: var(--border);
-  --svl-fg: var(--foreground);
-  --svl-fg-muted: var(--muted-foreground);
-  --svl-accent: var(--primary);
 
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  color: var(--svl-fg);
+  color: var(--foreground);
   /* Scrolling is owned by the surrounding fixed-height container so that the
      dialog title, tab bar, and Add Verification button stay pinned at the top
      and only this list scrolls. A little padding keeps focus rings and drag
@@ -26,10 +21,10 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  background: var(--svl-bg);
-  border: var(--border-width) solid var(--svl-border);
+  background: var(--card);
+  border: var(--border-width) solid var(--border);
   border-radius: var(--radius-fields);
-  color: var(--svl-fg);
+  color: var(--foreground);
 }
 
 .svl-row:hover {
@@ -42,7 +37,7 @@
   justify-content: center;
   cursor: grab;
   touch-action: none;
-  color: var(--svl-fg-muted);
+  color: var(--muted-foreground);
   background: transparent;
   border: none;
   padding: 0;
@@ -73,13 +68,13 @@
   gap: 0.5rem;
   cursor: pointer;
   font-size: var(--text-sm);
-  color: var(--svl-fg-muted);
+  color: var(--muted-foreground);
 }
 
 .svl-checkbox {
   width: 1rem;
   height: 1rem;
-  accent-color: var(--svl-accent);
+  accent-color: var(--primary);
   cursor: pointer;
 }
 
