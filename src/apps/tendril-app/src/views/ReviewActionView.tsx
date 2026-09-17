@@ -327,7 +327,6 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
           id="review-action-preview"
           url={appUrl}
           device={device}
-          proxy="auto"
           toolbar
           width="100%"
           height="100%"

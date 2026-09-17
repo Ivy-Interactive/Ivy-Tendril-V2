@@ -132,7 +132,7 @@ pub(crate) fn match_view_token(rest: &str) -> Option<ViewToken> {
     })
 }
 
-/// Loopback only.
+/// The app under review: loopback only.
 ///
 /// The endpoints are unauthenticated (see the module docs), so this is the only thing standing
 /// between the proxy and being an open SSRF relay to the internet or the host's own network. Every
@@ -142,7 +142,7 @@ pub(crate) fn match_view_token(rest: &str) -> Option<ViewToken> {
 ///
 /// `*.localhost` is accepted because RFC 6761 reserves it for loopback too, and some dev servers
 /// print URLs in that form.
-pub(crate) fn is_target_allowed(url: &Url) -> bool {
+fn is_loopback_target(url: &Url) -> bool {
     let Some(host) = url.host_str() else {
         return false;
     };
@@ -153,6 +153,54 @@ pub(crate) fn is_target_allowed(url: &Url) -> bool {
     let bare = host.trim_start_matches('[').trim_end_matches(']');
     bare.parse::<std::net::IpAddr>()
         .is_ok_and(|ip| ip.is_loopback())
+}
+
+/// The public hosts an app under review may pull static assets from.
+///
+/// A local app is not a self-contained one: it links its fonts, its icon set and often a library or
+/// two from a CDN. With only [`is_loopback_target`] in force those are refused, and the page renders
+/// in fallback fonts with its icons missing — which is not the app the reviewer was asked to review,
+/// and a review of the wrong thing is worse than no review.
+///
+/// A fixed list rather than "anything, so long as it is a subresource": the proxy fetches as this
+/// machine. Every host here serves versioned static files to whoever asks, so relaying them gives up
+/// nothing that was not already public. HTTPS is required — there is no reason for one of these to be
+/// addressed over http, and insisting costs nothing.
+///
+/// This does not widen what a tunnel visitor can reach. `share_exposure::refuse_on_any_tunnel_host`
+/// turns the whole proxy away on either tunnel host before any of this is consulted.
+const ASSET_HOSTS: &[&str] = &[
+    // Fonts
+    "fonts.googleapis.com",
+    "fonts.gstatic.com",
+    "use.typekit.net",
+    "p.typekit.net",
+    // Script and stylesheet CDNs
+    "cdn.jsdelivr.net",
+    "fastly.jsdelivr.net",
+    "unpkg.com",
+    "cdnjs.cloudflare.com",
+    "ajax.googleapis.com",
+    "code.jquery.com",
+    "esm.sh",
+    "cdn.skypack.dev",
+    "cdn.tailwindcss.com",
+    // Icons
+    "kit.fontawesome.com",
+    "ka-f.fontawesome.com",
+];
+
+fn is_asset_host(url: &Url) -> bool {
+    url.scheme() == "https"
+        && url
+            .host_str()
+            .is_some_and(|host| ASSET_HOSTS.iter().any(|a| host.eq_ignore_ascii_case(a)))
+}
+
+/// Whether the proxy may fetch `url` at all: the app under review ([`is_loopback_target`]), or one of
+/// the asset hosts it links ([`ASSET_HOSTS`]).
+pub(crate) fn is_target_allowed(url: &Url) -> bool {
+    is_loopback_target(url) || is_asset_host(url)
 }
 
 /// Routes the Tendril app must hand to this proxy rather than route as API endpoints. Merged into the
@@ -247,7 +295,7 @@ async fn handle_proxy_core(
     if !is_target_allowed(&target_uri) {
         return text(
             StatusCode::FORBIDDEN,
-            "Blocked by the target allow-list: only loopback targets may be proxied",
+            "Blocked by the target allow-list: only a loopback app, or one of the known static-asset hosts over https, may be proxied",
         );
     }
 
@@ -585,7 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn allow_list_admits_loopback_only() {
+    fn allow_list_admits_loopback_apps_only() {
         for allowed in [
             "http://127.0.0.1:5173/",
             "http://127.0.0.1/",
@@ -609,6 +657,40 @@ mod tests {
             "http://[fe80::1]/",
             "http://localhost.evil.test/",
             "http://notlocalhost/",
+        ] {
+            assert!(
+                !is_target_allowed(&Url::parse(blocked).unwrap()),
+                "should block {blocked}"
+            );
+        }
+    }
+
+    #[test]
+    fn allow_list_admits_asset_hosts_over_https_only() {
+        // A proxied app that links its fonts or icon set from a CDN renders without them otherwise,
+        // which is not the app the reviewer was asked to look at.
+        for allowed in [
+            "https://fonts.googleapis.com/css2?family=Inter",
+            "https://fonts.gstatic.com/s/inter/v13/font.woff2",
+            "https://cdn.jsdelivr.net/npm/chart.js",
+            "https://unpkg.com/react@19/umd/react.production.min.js",
+            "https://KIT.FontAwesome.com/abc.js",
+        ] {
+            assert!(
+                is_target_allowed(&Url::parse(allowed).unwrap()),
+                "should allow {allowed}"
+            );
+        }
+
+        for blocked in [
+            // http, not https: no asset host needs it, and insisting costs nothing.
+            "http://fonts.googleapis.com/css2?family=Inter",
+            // Not on the list, however asset-shaped it looks.
+            "https://evil.test/font.woff2",
+            // The list is matched whole: a subdomain of an allowed host is a different host.
+            "https://attacker.unpkg.com/x.js",
+            // And it must not have opened a door to the metadata endpoint.
+            "https://169.254.169.254/latest/meta-data/",
         ] {
             assert!(
                 !is_target_allowed(&Url::parse(blocked).unwrap()),

@@ -18,6 +18,42 @@
     } catch(e){}
   }
 
+  // View-space is /__view/[@<viewer>[/<device>]/]<absolute-url>. The optional token names
+  // which mounted WebViewer this document belongs to and which device it emulates, so two
+  // viewers on one Ivy page never answer for each other's traffic. Only the document URL
+  // carries it — subresources are rewritten bare and the service worker resolves them
+  // through the client that asked. Same grammar in sw.js and the Rust ViewToken parser.
+  //
+  // Declared here, above its first use: the registration below scopes the worker to it, and a
+  // hoisted-but-unassigned VIEW would scope it to '/' instead — a worker over the whole origin,
+  // which is the one thing sw.js's own comments say must never happen.
+  var VIEW = '/__view/';
+
+  // ---- register the proxy's own service worker ----
+  //
+  // This document is same-origin with the proxy that served it, whatever origin the viewer's own
+  // shell is on. That is the whole reason the registration lives here rather than in the shell: the
+  // Tauri build runs on tauri://localhost, which serves no /sw.js, and a page cannot register a
+  // worker for an origin that is not its own. Registering from the page the proxy served works the
+  // same in Tauri, in a browser and in Storybook, and needs nothing from any of them.
+  //
+  // Nothing waits on this. The document holding this script was itself rewritten server-side, and
+  // every static URL in it already points into view-space, so the page is correct before the worker
+  // exists. What the worker adds is the requests the rewriter could not reach — fetch, XHR, a URL
+  // built at runtime — which are made after load, by which time it has claimed this client.
+  //
+  // It must run BEFORE the shim below: that shim replaces navigator.serviceWorker with an inert
+  // object whose register() rejects, and it does not distinguish us from the page.
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.register){
+      // Nothing holds the registration: it is not unregistered on unload either. A worker scoped to
+      // /__view/ only ever answers for proxied documents, and leaving it installed is what lets the
+      // next one be controlled from its very first subresource instead of its second load.
+      navigator.serviceWorker.register('/sw.js', { scope: VIEW })
+        .catch(function(){ /* the page still works; only runtime-built URLs go unproxied */ });
+    }
+  } catch(e){}
+
   // ---- protect the proxy's own service worker ----
   // The proxied page runs on the VIEWER's origin, so navigator.serviceWorker hands it
   // control of the very registration the proxy depends on. Plenty of sites ship
@@ -49,12 +85,6 @@
 
   function fixProto(s){ return s.replace(/^(https?:)\/(?!\/)/, '$1//'); }
 
-  // View-space is /__view/[@<viewer>[/<device>]/]<absolute-url>. The optional token names
-  // which mounted WebViewer this document belongs to and which device it emulates, so two
-  // viewers on one Ivy page never answer for each other's traffic. Only the document URL
-  // carries it — subresources are rewritten bare and the service worker resolves them
-  // through the client that asked. Same grammar in sw.js and the Rust ViewToken parser.
-  var VIEW = '/__view/';
   var VIEW_TOKEN_RE = /^@([A-Za-z0-9]{1,16})(?:\/(desktop|tablet|mobile))?\//;
   function stripViewToken(rest){ return rest.replace(VIEW_TOKEN_RE, ''); }
   // This document's own token, kept so links we redirect stay inside the same viewer.

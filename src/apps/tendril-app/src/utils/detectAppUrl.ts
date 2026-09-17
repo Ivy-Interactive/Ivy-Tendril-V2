@@ -31,14 +31,19 @@ export function stripAnsi(text: string): string {
 }
 
 /**
- * `Uri.IsLoopback`'s cases: the `localhost` name, anything in `127.0.0.0/8`, and IPv6 `::1`.
+ * The hosts the WebViewer proxy will actually fetch, which is what makes a detected URL usable
+ * rather than merely printed.
  *
- * Deliberately not `*.localhost` subdomains — .NET does not treat those as loopback either, and a
- * dev server that prints one is naming a host that has to resolve like any other.
+ * This is deliberately `is_target_allowed` in `tendril-server/src/webviewer/mod.rs`, rule for rule,
+ * and the two have to stay that way: a URL this accepts but the proxy refuses is detected, framed
+ * and then answered with a 403, which the reviewer sees as a blank viewer with no explanation.
+ *
+ * It therefore parts from V1's `Uri.IsLoopback` in one direction. `*.localhost` is accepted, because
+ * RFC 6761 reserves it for loopback and the proxy honours that — V1 did not, since .NET does not.
  */
-function isLoopbackHost(hostname: string): boolean {
+function isProxyableHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
-  if (host === "localhost") return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
   // `URL.hostname` keeps IPv6 in brackets; both forms are checked so a caller passing a bare host
   // gets the same answer.
   if (host === "[::1]" || host === "::1") return true;
@@ -52,21 +57,18 @@ function isLoopbackHost(hostname: string): boolean {
  * `Local: http://localhost:5173/` — and that line is the only signal available that the app is up and
  * where. Two rules keep the other URLs a build prints out of the result:
  *
- * - **A loopback host wins outright**, wherever it appears in the transcript. A dev server that also
- *   prints its LAN address prints the local one too, and the local one is the one that works.
- * - **Anything else needs an explicit port.** `https://aka.ms/some-error` in an exception's help text,
- *   a docs link, a package feed: none of them name a port, and a dev server always does. This is what
- *   makes the LAN fallback safe rather than a coin toss over whatever URL was printed first.
- *
- * Note that a portless *loopback* URL is still accepted — the loopback rule is checked first, exactly
- * as in the legacy implementation. An app served on port 80 of this machine is still this machine's
- * app; the port rule exists to filter public hosts, which loopback by definition is not.
+ * - **The host must be one the proxy will fetch** (see `isProxyableHost`). This is what V1 called the
+ *   loopback rule, narrowed to match the server: V1 also took a LAN address as a fallback, because its
+ *   proxy would fetch one. V2's will not, so detecting one only produces a viewer that frames a 403.
+ *   A dev server on a LAN address prints its local address too, and that is the one that works.
+ * - **A portless URL is still accepted**, exactly as in V1. An app served on port 80 of this machine is
+ *   still this machine's app. The port rule V1 used to filter public hosts is gone with the hosts it
+ *   filtered: `https://aka.ms/some-error` in an exception's help text is no longer a candidate at all.
  */
 export function detectAppUrl(transcript: string): string | null {
   if (!transcript) return null;
 
   const text = stripAnsi(transcript);
-  let portedFallback: string | null = null;
 
   for (const match of text.matchAll(URL_PATTERN)) {
     const candidate = match[0].replace(TRAILING_PUNCTUATION, "");
@@ -78,13 +80,8 @@ export function detectAppUrl(transcript: string): string | null {
       continue;
     }
     if (url.protocol !== "http:" && url.protocol !== "https:") continue;
-
-    if (isLoopbackHost(url.hostname)) return candidate;
-    // A dev server bound to a LAN address (`Network: http://192.168.1.9:5173/`) is still the app, but
-    // only worth taking if nothing local turns up later. `URL.port` is empty for the scheme's default
-    // port, which is the same test as .NET's `IsDefaultPort`.
-    if (url.port !== "" && portedFallback === null) portedFallback = candidate;
+    if (isProxyableHost(url.hostname)) return candidate;
   }
 
-  return portedFallback;
+  return null;
 }
