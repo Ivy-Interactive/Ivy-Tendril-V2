@@ -85,7 +85,8 @@ const Checkbox = React.forwardRef<
       onCheckedChange?.(nextVal);
     };
 
-    const isInvalid = className?.includes("border-destructive") || className?.includes("bg-destructive");
+    const isInvalid =
+      className?.includes("border-destructive") || className?.includes("bg-destructive");
     const baseClass = `peer ${getSizeClasses(effectiveDensity)} shrink-0 rounded-checkbox border border-border shadow transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary data-[state=checked]:hover:bg-primary/90 dark:border-input`;
     const finalClass = isInvalid
       ? baseClass

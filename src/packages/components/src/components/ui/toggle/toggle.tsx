@@ -16,7 +16,8 @@ const Toggle = React.forwardRef<
   const effectiveDensity = density ?? contextDensity;
 
   let toggleClass = toggleVariant({ variant, density: effectiveDensity, className });
-  const isInvalid = className?.includes("border-destructive") || className?.includes("bg-destructive");
+  const isInvalid =
+    className?.includes("border-destructive") || className?.includes("bg-destructive");
   if (isInvalid) {
     toggleClass = toggleClass
       .replace("data-[state=on]:bg-primary", "data-[state=on]:bg-destructive")

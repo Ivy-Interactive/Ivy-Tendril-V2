@@ -1008,9 +1008,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
     >
       {showFileDropdown && (
         <div className="sticky top-0 z-20 flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-border font-sans">
-          <span className="text-xs text-muted-foreground shrink-0">
-            {fileMeta.length} files
-          </span>
+          <span className="text-xs text-muted-foreground shrink-0">{fileMeta.length} files</span>
           <select
             aria-label="Jump to file"
             className="flex-1 min-w-0 text-xs px-2 py-1 rounded bg-background text-foreground border border-border font-sans"
