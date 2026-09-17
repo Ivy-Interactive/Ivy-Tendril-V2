@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Spinner } from "../ui/spinner";
+import { TuiKbd } from "../ui/TuiKbd";
 import { VoiceRecorder, type VoiceStatus } from "./voice-recorder";
 import "./content-input.css";
-
-const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
 
 type PdfJsLib = typeof import("pdfjs-dist");
 let pdfjsPromise: Promise<PdfJsLib> | null = null;
@@ -174,23 +173,6 @@ const parseValue = (val: string) => {
     return "";
   });
   return { cleanText, filePaths };
-};
-
-const renderShortcut = (isMac: boolean) => {
-  if (isMac) {
-    return (
-      <>
-        <span>⌘</span>
-        <span className="civ-shortcut-enter">↵</span>
-      </>
-    );
-  }
-  return (
-    <>
-      <span>Ctrl</span>
-      <span className="civ-shortcut-enter">↵</span>
-    </>
-  );
 };
 
 export const ContentInput: React.FC<ContentInputProps> = ({
@@ -945,7 +927,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   title={submitLabel || "Send"}
                 >
                   <span className="civ-submit-text">{submitLabel}</span>
-                  <kbd className="civ-submit-shortcut">{renderShortcut(isMac)}</kbd>
+                  <TuiKbd keys="Ctrl+Enter" platform variant="outline" className="civ-submit-shortcut" />
                 </button>
                 <button
                   className="civ-split-btn-arrow"
@@ -989,7 +971,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                 {submitLabel ? (
                   <>
                     <span className="civ-submit-text">{submitLabel}</span>
-                    <kbd className="civ-submit-shortcut">{renderShortcut(isMac)}</kbd>
+                    <TuiKbd keys="Ctrl+Enter" platform variant="outline" className="civ-submit-shortcut" />
                   </>
                 ) : (
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

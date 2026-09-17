@@ -462,27 +462,9 @@
   line-height: 1;
 }
 
-/* Matches the Ivy Framework key cap (Kbd / ShortcutKeys, `inherit` variant):
-   16px tall, 10px text, 0.25rem corners, transparent fill with a current-color
-   border, on a colored surface. Keep these values in sync with Kbd.tsx keyCapBase. */
+/* The shared outline key cap (ui.css), plus this button's own spacing. */
 .civ-submit-shortcut {
   margin-left: 6px;
-  box-sizing: border-box;
-  height: 16px;
-  min-width: 16px;
-  padding: 0 4px;
-  font-size: var(--text-2xs);
-  font-weight: 400;
-  line-height: 0.5;
-  border: var(--border-width) solid color-mix(in srgb, currentColor 30%, transparent);
-  border-radius: var(--radius-sm);
-  opacity: var(--opacity-soft);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  background: transparent;
-  color: inherit;
 }
 
 /* Animations */
@@ -816,7 +798,3 @@
   width: fit-content;
 }
 
-.civ-shortcut-enter {
-  display: inline-flex;
-  align-items: center;
-}

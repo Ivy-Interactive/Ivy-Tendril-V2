@@ -1,44 +1,9 @@
 import { cn } from "@/lib/utils";
-import { isMac } from "@/lib/shortcut";
+import { formatShortcut as formatShortcutWithPlatform } from "@/components/ui/TuiKbd";
 import type React from "react";
 
-const KEY_SYMBOLS: Record<string, string> = {
-  enter: "↵",
-  return: "↵",
-  backspace: "⌫",
-  ...(isMac
-    ? {
-        ctrl: "⌘",
-        control: "⌘",
-        cmd: "⌘",
-        command: "⌘",
-        meta: "⌘",
-        win: "⌘",
-        super: "⌘",
-        alt: "⌥",
-        option: "⌥",
-        shift: "⇧",
-      }
-    : {}),
-};
-
-const labelForKey = (raw: string): string => {
-  const key = raw.trim();
-  const symbol = KEY_SYMBOLS[key.toLowerCase()];
-  if (symbol) return symbol;
-  return key.length === 1 ? key.toUpperCase() : key;
-};
-
-const formatShortcut = (value: string): string => {
-  const keys = value
-    .split("+")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0)
-    .map(labelForKey);
-  if (keys.length === 0) return "";
-  const allSingle = keys.every((k) => k.length === 1);
-  return allSingle ? keys.join("\u2009") : keys.join("+");
-};
+/** `TuiKbd`'s platform-aware key formatting (same ⌘/⌥/⇧/↵/⌫ mapping), single-string call shape. */
+const formatShortcut = (value: string): string => formatShortcutWithPlatform(value, true);
 
 const keyCapBase =
   "box-border inline-flex h-4 min-w-4 items-center justify-center rounded-[0.25rem] px-1 text-[10px] leading-[0.5]";
