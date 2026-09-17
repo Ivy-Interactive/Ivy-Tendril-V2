@@ -162,8 +162,8 @@ td.diff-gutter-delete::after {
   /* Two bars instead of a "+" text glyph: text ink is positioned by font
      metrics, not by the box, so the glyph rendered 1.5px low (#1941). */
   background-image:
-    linear-gradient(var(--primary-foreground, #ffffff), var(--primary-foreground, #ffffff)),
-    linear-gradient(var(--primary-foreground, #ffffff), var(--primary-foreground, #ffffff));
+    linear-gradient(var(--primary-foreground), var(--primary-foreground)),
+    linear-gradient(var(--primary-foreground), var(--primary-foreground));
   background-size:
     8px 2px,
     2px 8px;
