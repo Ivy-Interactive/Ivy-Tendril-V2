@@ -16,7 +16,7 @@ happens when a command lives only in someone's shell history.
 - GitHub CLI (`gh`), for the PR and issue paths
 
 ```bash
-pnpm install
+vp i
 ```
 
 ## The one you probably want
