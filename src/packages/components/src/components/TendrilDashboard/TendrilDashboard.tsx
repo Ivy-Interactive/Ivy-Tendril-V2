@@ -19,6 +19,7 @@ import { TrendChart } from "./TrendChart.tsx";
 import { ActivityGrid } from "./ActivityGrid.tsx";
 import { PillBars } from "./PillBars.tsx";
 import { ChartSkeleton, KpiSkeletonGrid } from "./DashboardSkeleton.tsx";
+import "../ui/ui.css";
 import "./dashboard.css";
 
 interface StatusItemProps {

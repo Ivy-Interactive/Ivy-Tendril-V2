@@ -395,20 +395,6 @@
   background: color-mix(in srgb, var(--destructive) 15%, transparent);
 }
 
-/* Spinner */
-.civ-spinner {
-  width: 14px;
-  height: 14px;
-  border: var(--border-width-thick) solid var(--civ-border);
-  border-top-color: var(--civ-accent);
-  border-radius: 50%;
-  animation: civ-spin 0.8s linear infinite;
-}
-
-.civ-spinner.processing {
-  border-top-color: var(--civ-error);
-}
-
 /* Submit Button */
 .civ-submit-btn {
   width: 32px;
@@ -545,12 +531,6 @@
   to {
     opacity: 1;
     transform: scale(1.1);
-  }
-}
-
-@keyframes civ-spin {
-  to {
-    transform: rotate(360deg);
   }
 }
 

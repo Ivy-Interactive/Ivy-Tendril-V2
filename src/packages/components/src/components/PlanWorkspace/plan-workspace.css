@@ -48,14 +48,8 @@
   pointer-events: none;
 }
 
-@keyframes pws-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .pws-spin {
-  animation: pws-spin 1.2s linear infinite;
+  animation: tui-spin 1.2s linear infinite;
 }
 
 /* ---------- Top bar ---------- */

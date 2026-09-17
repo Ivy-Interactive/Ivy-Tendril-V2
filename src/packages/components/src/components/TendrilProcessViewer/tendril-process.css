@@ -198,16 +198,7 @@
 
 /* Spinner animation */
 .tpv-spinner {
-  animation: tpv-spin 1.5s linear infinite;
-}
-
-@keyframes tpv-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  animation: tui-spin 1.5s linear infinite;
 }
 
 /* Mobile responsive layout */

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "../ui/ui.css";
 import "./agent-output.css";
 import "../PlanMarkdown/plan-markdown.css";
 import type { EventHandler } from "./types.ts";

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Spinner } from "../ui/spinner";
 import { VoiceRecorder, type VoiceStatus } from "./voice-recorder";
 import "./content-input.css";
 
@@ -899,9 +900,19 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                 title="Voice input transcription"
               >
                 {voiceStatus === "connecting" ? (
-                  <div className="civ-spinner" />
+                  <Spinner
+                    size={14}
+                    duration="0.8s"
+                    color="var(--civ-accent)"
+                    trackColor="var(--civ-border)"
+                  />
                 ) : voiceStatus === "processing" ? (
-                  <div className="civ-spinner processing" />
+                  <Spinner
+                    size={14}
+                    duration="0.8s"
+                    color="var(--civ-error)"
+                    trackColor="var(--civ-border)"
+                  />
                 ) : voiceStatus === "recording" ? (
                   <svg
                     viewBox="0 0 24 24"

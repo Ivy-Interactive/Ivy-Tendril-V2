@@ -8,7 +8,8 @@
 .tui-kbd,
 .tui-badge,
 .tui-dot,
-.tui-status {
+.tui-status,
+.tui-spinner {
   --tui-fg: var(--foreground);
   --tui-muted: var(--foreground-muted);
   --tui-border: var(--border);
@@ -350,14 +351,8 @@
   flex-shrink: 0;
 }
 
-@keyframes tui-status-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .tui-status-icon[data-spin="true"] {
-  animation: tui-status-spin 1s linear infinite;
+  animation: tui-spin 1s linear infinite;
 }
 
 .tui-status[data-complete="true"] {
@@ -409,5 +404,30 @@
   .tui-status[data-complete="false"] .tui-status-text {
     background: none;
     color: var(--tui-muted);
+  }
+}
+
+/* ---------- Spinner ---------- */
+
+@keyframes tui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tui-spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--tui-spinner-size, 14px);
+  height: var(--tui-spinner-size, 14px);
+  border-radius: 50%;
+  border: var(--tui-spinner-border-width, 2px) solid var(--tui-spinner-track, var(--tui-border));
+  border-top-color: var(--tui-spinner-color, var(--tui-fg));
+  animation: tui-spin var(--tui-spinner-duration, 0.8s) linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tui-spinner {
+    animation-duration: calc(var(--tui-spinner-duration, 0.8s) * 3);
   }
 }

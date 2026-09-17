@@ -2,6 +2,7 @@ import React from "react";
 import { Plus, Feather, ThumbsUp, LoaderCircle } from "lucide-react";
 import type { TendrilProcessViewerProps } from "./types.ts";
 import { getWidth, getHeight } from "@/lib/styles";
+import "../ui/ui.css";
 import "./tendril-process.css";
 
 interface ArrowProps {

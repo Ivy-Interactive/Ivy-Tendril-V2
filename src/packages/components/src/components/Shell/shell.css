@@ -1342,17 +1342,8 @@
   color: var(--tsh-row-active-fg);
 }
 
-@keyframes tsh-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .tsh-spin {
-  animation: tsh-spin 1.2s linear infinite;
+  animation: tui-spin 1.2s linear infinite;
 }
 
 .tsh-section-item-state {
