@@ -72,22 +72,3 @@
   color: var(--muted-foreground);
 }
 
-.ivy-devtools-icon-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: var(--radius-selectors);
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all var(--duration-base);
-}
-
-.ivy-devtools-icon-btn:hover {
-  color: var(--foreground);
-  background: var(--accent);
-}
