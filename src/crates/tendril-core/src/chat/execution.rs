@@ -362,22 +362,26 @@ impl ChatExecutionManager {
     /// plan's chats (`storage::broadcast_system_message_to_plan_sessions`), but nothing ran a turn
     /// afterwards, so the agent never saw the event and never advised on it.
     ///
-    /// A session that is mid-turn is left alone rather than interrupted: the event is stored so the
-    /// thread and the *next* turn's replayed history both carry it, which is where V1's queue would
-    /// have put it anyway.
+    /// A session that is mid-turn is not interrupted — it is queued behind the turn that is running, as
+    /// a `system` item, so the agent reacts to the event as soon as it is free. Storing the message and
+    /// stopping there was not equivalent: nothing runs a turn afterwards, so a job that finished while
+    /// the user was still talking got a line in the transcript and no reaction to it ever — the agent
+    /// only ever saw it as replayed history the next time the user happened to type something.
+    ///
+    /// Returns whether a turn was started immediately.
     pub async fn notify_event(self: &Arc<Self>, session_id: &str, content: &str) -> Result<bool> {
         if self.is_generating(session_id).await {
-            let message = ChatMessage {
-                id: Uuid::new_v4().to_string(),
-                role: "system".to_string(),
-                content: content.to_string(),
-                timestamp: Utc::now(),
-                agent_id: None,
-                model_id: None,
-                raw_stream: None,
-                effort: None,
-            };
-            self.add_message(session_id, message).await?;
+            self.enqueue_message(
+                session_id,
+                ChatQueuedItem {
+                    id: Uuid::new_v4().to_string(),
+                    prompt: content.to_string(),
+                    attachments: None,
+                    created_at: Utc::now(),
+                    role: Some("system".to_string()),
+                },
+            )
+            .await;
             return Ok(false);
         }
 
@@ -807,13 +811,16 @@ impl ChatExecutionManager {
                 // Check if there are queued messages to dequeue
                 if let Some(next_item) = mgr.dequeue_message(&s_id).await {
                     current_prompt = next_item.prompt;
-                    current_role = "user".to_string();
+                    // Almost always the user's, but not necessarily: a job that finished while this turn
+                    // was running is queued behind it as a `system` item, and replaying that as a user
+                    // prompt is what made the agent answer the event rather than react to it.
+                    current_role = next_item.role.unwrap_or_else(|| "user".to_string());
                     let next_a_id = Uuid::new_v4().to_string();
                     current_assistant_msg_id = next_a_id.clone();
                     let now = Utc::now();
                     let next_user_msg = ChatMessage {
                         id: Uuid::new_v4().to_string(),
-                        role: "user".to_string(),
+                        role: current_role.clone(),
                         content: current_prompt.clone(),
                         timestamp: now,
                         agent_id: None,

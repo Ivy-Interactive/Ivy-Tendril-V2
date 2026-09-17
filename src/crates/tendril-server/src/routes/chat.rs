@@ -163,6 +163,8 @@ pub async fn post_message_handler(
             prompt: body.prompt,
             attachments: body.attachments,
             created_at: Utc::now(),
+            // The composer only ever enqueues the user's own prompts.
+            role: None,
         };
         state.chat_manager.enqueue_message(&id, item.clone()).await;
         (
@@ -484,6 +486,8 @@ pub async fn enqueue_handler(
         prompt: body.prompt,
         attachments: body.attachments,
         created_at: Utc::now(),
+        // The composer only ever enqueues the user's own prompts.
+        role: None,
     };
     state.chat_manager.enqueue_message(&id, item.clone()).await;
     (StatusCode::CREATED, Json(json!(item)))

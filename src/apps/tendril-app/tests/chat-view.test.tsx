@@ -923,5 +923,42 @@ questions:
 
       expect(screen.queryByTestId("chat-jobs-badge")).not.toBeInTheDocument();
     });
+
+    /**
+     * The live path: the daemon announces a job mid-turn and the pill appears without waiting for the
+     * job list to catch up. This is the case a `push` onto `spawnedJobIds` could not serve — the memo
+     * is keyed on that array, so mutating it in place left the key referentially equal and the memo
+     * returned its previous value however many times the component re-rendered.
+     */
+    it("shows a job announced by chat.job_spawned, before it reaches the job list", async () => {
+      await renderWith(session([]), []);
+      expect(screen.queryByTestId("chat-jobs-badge")).not.toBeInTheDocument();
+
+      await act(async () => {
+        chatStore.handleChatEvent({
+          type: "chat.job_spawned",
+          sessionId: "session-10",
+          jobId: "03589",
+        });
+      });
+
+      // Resolved from the transcript's terminal event, since the live list has not caught up yet.
+      await act(async () => {
+        chatStore.handleChatEvent({
+          type: "chat.message_added",
+          sessionId: "session-10",
+          message: {
+            id: "sys-1",
+            role: "system",
+            content:
+              "[System Event] Job 03589 (CreatePlan) for '00681: Add Test Coverage' has finished " +
+              "with status: Completed. Review the outcome and advise on next steps.",
+            timestamp: "2026-09-17T10:39:00Z",
+          },
+        });
+      });
+
+      expect(await screen.findByTestId("chat-jobs-badge")).toBeInTheDocument();
+    });
   });
 });

@@ -35,15 +35,27 @@ const INSERT_SQL: &str = r#"
 /// be able to clear or rewrite them.
 const UPSERT_TAIL: &str = r#"
     ON CONFLICT(Id) DO UPDATE SET
+        -- A `CreatePlan` starts with no plan and is given one by `verify_create_plan`, so unlike every
+        -- other column here this one has to be writable *and* protected: a write carrying the empty
+        -- string is a record that predates the back-fill, and must not erase the folder a later one
+        -- found. Without this the plan a `CreatePlan` produced was unreachable from its own job row.
+        PlanFile = CASE WHEN excluded.PlanFile != '' THEN excluded.PlanFile ELSE Jobs.PlanFile END,
         Status = excluded.Status,
         CompletedAt = excluded.CompletedAt,
         DurationSeconds = excluded.DurationSeconds,
         Cost = excluded.Cost,
         Tokens = excluded.Tokens,
         StatusMessage = excluded.StatusMessage,
-        ReportedPlanId = excluded.ReportedPlanId,
-        ReportedPlanTitle = excluded.ReportedPlanTitle,
-        ReportedFailureReason = excluded.ReportedFailureReason,
+        -- Coalesced for the same reason as `ChatSessionId` below: these three are reported by the
+        -- *running* agent — `tendril job status --plan-id/--plan-title`, `tendril job fail --message` —
+        -- and only ever set, never deliberately cleared. The write that ends a job is made from the
+        -- snapshot its runner took before any of them existed, so taking `excluded` here erased the plan
+        -- a `CreatePlan` had just announced, at the moment it finished and the chat came to look for it.
+        ReportedPlanId = COALESCE(excluded.ReportedPlanId, Jobs.ReportedPlanId),
+        ReportedPlanTitle = COALESCE(excluded.ReportedPlanTitle, Jobs.ReportedPlanTitle),
+        ReportedFailureReason = COALESCE(
+            excluded.ReportedFailureReason, Jobs.ReportedFailureReason
+        ),
         Model = excluded.Model,
         InputTokens = excluded.InputTokens,
         OutputTokens = excluded.OutputTokens,

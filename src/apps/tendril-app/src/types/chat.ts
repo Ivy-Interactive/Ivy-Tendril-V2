@@ -23,6 +23,12 @@ export interface ChatQueuedItem {
   prompt: string;
   attachments?: ChatAttachment[];
   createdAt: string;
+  /**
+   * `system` for an event the daemon queued behind a turn that was already running — a job finishing
+   * while the user was still talking. Absent for everything the composer enqueues, which is the
+   * user's own prompts.
+   */
+  role?: string;
 }
 
 export interface ChatSession {

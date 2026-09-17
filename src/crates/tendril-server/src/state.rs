@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64};
 // The settings snapshot is read from synchronous middleware, so it uses the std lock; `version_info`
@@ -93,6 +94,15 @@ fn spawn_chat_job_notifier(
     mut rx: broadcast::Receiver<tendril_core::jobs::manager::JobEvent>,
 ) {
     tokio::spawn(async move {
+        // One announcement per conversation per job outcome, keyed as V1's `OnJobFinished` keys it
+        // (`"{sessionId}:{jobId}:{status}"`). A terminal status can be written more than once — a
+        // reconciled or re-supervised job re-persists its row, and every such write republishes the
+        // event — and each announcement here does not just append a message, it runs a whole agent turn.
+        // Bounded so a long-lived daemon cannot grow it without limit; far above any plausible number of
+        // jobs one conversation announces.
+        const MAX_ANNOUNCED: usize = 4096;
+        let mut announced: HashSet<String> = HashSet::new();
+
         loop {
             let event = match rx.recv().await {
                 Ok(event) => event,
@@ -163,6 +173,13 @@ fn spawn_chat_job_notifier(
             }
 
             for session_id in recipients {
+                let key = format!("{}:{}:{:?}", session_id, event.job_id, event.status);
+                if !announced.insert(key) {
+                    continue;
+                }
+                if announced.len() > MAX_ANNOUNCED {
+                    announced.clear();
+                }
                 if let Err(err) = chat_manager.notify_event(&session_id, &message).await {
                     tracing::debug!("Could not notify chat session {session_id}: {err}");
                 }

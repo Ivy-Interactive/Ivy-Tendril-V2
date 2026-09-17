@@ -604,7 +604,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
         };
       })
       .filter((job): job is Job => job !== undefined);
-  }, [activeSession?.id, activeSession?.spawnedJobIds, activeSession?.messages, jobs]);
+    // `messages.length` rather than `messages`: the store appends to that array in place, so its identity
+    // does not change when a message arrives and a memo keyed on it alone keeps its previous value
+    // however many times the component re-renders. A job whose outcome is only knowable from a
+    // just-arrived `[System Event]` would never appear.
+  }, [
+    activeSession?.id,
+    activeSession?.spawnedJobIds,
+    activeSession?.messages,
+    activeSession?.messages.length,
+    jobs,
+  ]);
 
   const latestMessage = activeSession?.messages[activeSession.messages.length - 1];
   const streamContentKey = `${activeSession?.id ?? ""}-${activeSession?.messages.length ?? 0}-${latestMessage?.id ?? ""}-${latestMessage?.content.length ?? 0}-${isGenerating}`;

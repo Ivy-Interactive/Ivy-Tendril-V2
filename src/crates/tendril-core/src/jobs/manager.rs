@@ -2270,16 +2270,30 @@ fn spawn_runner(
 
         finished.store(true, Ordering::SeqCst);
         job.process_id = Some(pid.load(Ordering::SeqCst)).filter(|p| *p != 0);
-        // This task's own copy predates every heartbeat, and `finish_job` persists the whole record —
-        // so without this the terminal write erases the last-output stamp `note_agent_output` spent the
-        // run maintaining, and a job's row would remember when it started but not when it last spoke.
-        if let Some(at) = jobs_map
-            .read()
-            .await
-            .get(&job_id)
-            .and_then(|current| current.last_output_at)
-        {
-            job.last_output_at = Some(at);
+        // This task's own copy predates every write the run made, and `finish_job` persists the whole
+        // record — so anything the *running agent* reported has to be taken from the live record here or
+        // the terminal write erases it.
+        //
+        // `last_output_at` is the heartbeat `note_agent_output` maintains: without it a job's row
+        // remembers when it started but not when it last spoke. The other three are what the promptware
+        // reports over HTTP while it works — `tendril job status --plan-id/--plan-title` and
+        // `tendril job fail --message` — and losing them is why a `CreatePlan` that really did produce a
+        // plan came out with `ReportedPlanId` NULL: the chat then had no plan to name in its follow-up
+        // turn, `adopt_plan_into_chat_session` had nothing to stamp the plan with, and
+        // `resolve_created_plan_folder` lost the candidate it needed to recognise the plan at all.
+        if let Some(current) = jobs_map.read().await.get(&job_id) {
+            if let Some(at) = current.last_output_at {
+                job.last_output_at = Some(at);
+            }
+            if current.reported_plan_id.is_some() {
+                job.reported_plan_id = current.reported_plan_id.clone();
+            }
+            if current.reported_plan_title.is_some() {
+                job.reported_plan_title = current.reported_plan_title.clone();
+            }
+            if current.reported_failure_reason.is_some() {
+                job.reported_failure_reason = current.reported_failure_reason.clone();
+            }
         }
 
         // A tool_call that never received a tool_result leaves its card spinning forever in

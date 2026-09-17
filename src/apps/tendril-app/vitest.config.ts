@@ -18,17 +18,22 @@ export default defineConfig({
         // `useRef`. The root cause is the nested store under `packages/components`; this is the fix
         // that works without a reinstall.
         //
-        // The list has to name every package that reaches React from that nested store, not just the
-        // ones imported directly: `@tanstack/react-virtual` is pulled in by `DataTable`'s virtualizer
-        // and `react-remove-scroll` by Radix's dialog/popover, and both were resolving to the nested
-        // copy — so every test that rendered a table died on a null `useReducer` and every test that
-        // opened a dialog on a null `useRef`, in both cases reported as "more than one copy of React".
+        // The list has to name packages that reach React from that nested store even when nothing
+        // imports them directly. `@tanstack/react-virtual` is one: `DataTable`'s virtualizer pulls it
+        // in, it bound the nested copy, and every test that rendered a table died on a null
+        // `useReducer`. Naming it here fixes 169 of them.
+        //
+        // `react-remove-scroll` is the same shape and is deliberately *not* listed: Radix's dialog and
+        // popover pull it in and it still binds the nested copy, but inlining it changes nothing,
+        // because the build that gets loaded is its CJS `dist/es5`, whose `require("react")` the alias
+        // below never sees. Those tests stay red until the nested copy goes away — `react` is in
+        // `packages/components`'s `dependencies` as well as its `peerDependencies`, and belongs in
+        // `devDependencies` instead, which is a lockfile change rather than a config one.
         inline: [
           /@ivy-interactive\/components/,
           /@dnd-kit/,
           /@radix-ui/,
           /@tanstack\/react-virtual/,
-          /react-remove-scroll/,
         ],
       },
     },

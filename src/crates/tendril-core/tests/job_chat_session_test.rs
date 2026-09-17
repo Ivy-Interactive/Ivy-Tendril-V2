@@ -213,8 +213,8 @@ async fn listing_a_conversations_jobs_leaves_out_other_conversations_and_cleared
     );
 }
 
-/// A status write carries no chat session, and must not be able to erase one — the reason the upsert
-/// coalesces this column instead of taking `excluded`.
+/// A write that does not know about the conversation must not be able to erase it — the reason the
+/// upsert coalesces this column instead of taking `excluded`.
 #[tokio::test]
 async fn a_later_write_cannot_clear_an_established_link() {
     let home = HomeFixture::new("chat-session-preserved");
@@ -237,6 +237,85 @@ async fn a_later_write_cannot_clear_an_established_link() {
         "a status report must leave the conversation link alone"
     );
     assert_eq!(row.reported_plan_id.as_deref(), Some("00042"));
+
+    // The case that actually needs `COALESCE`, and which the manager path above cannot reach because
+    // `update_job_status` re-reads the live record and so carries the link with it: a write from a
+    // record that never had one. `finish_job`'s pre-run snapshot is exactly that shape.
+    let conn = open_database(&get_database_path(&home.path)).expect("open fixture database");
+    let mut unaware = row.clone();
+    unaware.chat_session_id = None;
+    unaware.status = JobStatus::Completed;
+    insert_job(&conn, &unaware).expect("persist a write that knows no conversation");
+
+    assert_eq!(
+        row_of(&home, &id).chat_session_id.as_deref(),
+        Some("sess-alpha"),
+        "a write carrying no conversation must leave the established one alone"
+    );
+}
+
+/// The plan a running job reported has to survive the job finishing.
+///
+/// `spawn_runner` hands `finish_job` the copy of the job it took at dispatch, and `finish_job` persists
+/// the whole record — so anything written to the *live* record mid-run is erased by the terminal write
+/// unless it is merged back first. `tendril job status --plan-id` is exactly that: it is how a
+/// `CreatePlan` says which plan it produced. Losing it left the chat unable to name the plan in its
+/// follow-up turn, left `adopt_plan_into_chat_session` with nothing to stamp, and left
+/// `resolve_created_plan_folder` without the candidate it needs to recognise the plan at all.
+///
+/// Driven through the DB rather than the manager because the clobber is in the persistence path: the
+/// terminal write is an upsert of a record that predates the report.
+#[tokio::test]
+async fn a_terminal_write_keeps_what_the_running_job_reported() {
+    let home = HomeFixture::new("chat-session-reported-plan");
+    let conn = open_database(&get_database_path(&home.path)).expect("open fixture database");
+
+    let mut job = JobItem::new(
+        "00042".to_string(),
+        "CreatePlan".to_string(),
+        String::new(),
+        "FixtureProject".to_string(),
+    );
+    job.status = JobStatus::Running;
+    job.chat_session_id = Some("sess-alpha".to_string());
+    insert_job(&conn, &job).expect("insert the running row");
+
+    // What `tendril job status 00042 --plan-id 00682 --plan-title …` writes while the agent works.
+    let mut reported = job.clone();
+    reported.reported_plan_id = Some("00682".to_string());
+    reported.reported_plan_title = Some("Add Test Coverage".to_string());
+    reported.plan_file = home
+        .plans_dir()
+        .join("00682-AddTestCoverage")
+        .to_string_lossy()
+        .to_string();
+    insert_job(&conn, &reported).expect("persist the report");
+
+    // The terminal write, from a record that predates the report — `finish_job`'s stale snapshot.
+    let mut finishing = job.clone();
+    finishing.status = JobStatus::Completed;
+    finishing.status_message = Some("done".to_string());
+    insert_job(&conn, &finishing).expect("persist the completion");
+
+    let row = get_job(&conn, "00042")
+        .expect("query job row")
+        .expect("job row exists");
+    assert_eq!(row.status, JobStatus::Completed);
+    assert_eq!(
+        row.reported_plan_id.as_deref(),
+        Some("00682"),
+        "the plan the job reported must outlive the job"
+    );
+    assert_eq!(
+        row.reported_plan_title.as_deref(),
+        Some("Add Test Coverage")
+    );
+    assert!(
+        row.plan_file.ends_with("00682-AddTestCoverage"),
+        "the plan folder a CreatePlan was given must outlive it too, got {:?}",
+        row.plan_file
+    );
+    assert_eq!(row.chat_session_id.as_deref(), Some("sess-alpha"));
 }
 
 /// The wire name the app reads. `chatSessionId` is what `JobDto`/`Job` expect, and a mismatch here
