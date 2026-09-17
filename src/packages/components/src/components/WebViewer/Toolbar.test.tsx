@@ -208,6 +208,22 @@ describe("Toolbar tools and actions", () => {
     }
   });
 
+  it("does not open a tooltip for focus that came from a pointer press", () => {
+    vi.useFakeTimers();
+    try {
+      renderToolbar();
+      const reload = screen.getByRole("button", { name: "Reload" });
+      fireEvent.pointerDown(reload);
+      fireEvent.focus(reload);
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(screen.queryByRole("tooltip")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the viewport tooltip away while its menu is open", () => {
     vi.useFakeTimers();
     try {

@@ -67,43 +67,54 @@
   }
 }
 
+@utility rounded-box {
+  border-radius: var(--radius-boxes);
+}
+
+@utility rounded-t-box {
+  border-top-left-radius: var(--radius-boxes);
+  border-top-right-radius: var(--radius-boxes);
+}
+
+@utility rounded-field {
+  border-radius: var(--radius-fields);
+}
+
+@utility rounded-l-field {
+  border-top-left-radius: var(--radius-fields);
+  border-bottom-left-radius: var(--radius-fields);
+}
+
+@utility rounded-r-field {
+  border-top-right-radius: var(--radius-fields);
+  border-bottom-right-radius: var(--radius-fields);
+}
+
+@utility rounded-selector {
+  border-radius: var(--radius-selectors);
+}
+
+@utility rounded-checkbox {
+  border-radius: calc(var(--radius-selectors) / 2);
+}
+
+@utility rounded-bubble {
+  border-radius: var(--radius-bubble);
+}
+
+@utility shadow-box {
+  box-shadow: var(--shadow-boxes);
+}
+
+@utility shadow-field {
+  box-shadow: var(--shadow-fields);
+}
+
+@utility shadow-selector {
+  box-shadow: var(--shadow-selectors);
+}
+
 @layer utilities {
-  .rounded-box {
-    border-radius: var(--radius-boxes);
-  }
-  .rounded-t-box {
-    border-top-left-radius: var(--radius-boxes);
-    border-top-right-radius: var(--radius-boxes);
-  }
-  .rounded-field {
-    border-radius: var(--radius-fields);
-  }
-  .rounded-l-field {
-    border-top-left-radius: var(--radius-fields);
-    border-bottom-left-radius: var(--radius-fields);
-  }
-  .rounded-r-field {
-    border-top-right-radius: var(--radius-fields);
-    border-bottom-right-radius: var(--radius-fields);
-  }
-  .rounded-selector {
-    border-radius: var(--radius-selectors);
-  }
-  .rounded-checkbox {
-    border-radius: calc(var(--radius-selectors) / 2);
-  }
-  .rounded-bubble {
-    border-radius: var(--radius-bubble);
-  }
-  .shadow-box {
-    box-shadow: var(--shadow-boxes);
-  }
-  .shadow-field {
-    box-shadow: var(--shadow-fields);
-  }
-  .shadow-selector {
-    box-shadow: var(--shadow-selectors);
-  }
   .alert-animate-enter {
     animation: alertGrowIn 200ms ease-out;
   }

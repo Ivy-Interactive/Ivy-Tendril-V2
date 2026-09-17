@@ -8,7 +8,7 @@ import {
   type StartJobResponse,
 } from "../../types/api";
 import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS, FIELD_CLASS } from "./fieldStyles";
+import { ALERT_CLASS, FIELD_CLASS, SELECT_FIELD_CLASS } from "./fieldStyles";
 
 export interface CreateIssueDialogProps {
   isOpen: boolean;
@@ -138,7 +138,7 @@ export function CreateIssueDialog({
             aria-label="Repository"
             value={repo}
             onChange={(event) => setRepo(event.target.value)}
-            className={FIELD_CLASS}
+            className={SELECT_FIELD_CLASS}
           >
             {repos.map((path) => (
               <option key={path} value={path}>

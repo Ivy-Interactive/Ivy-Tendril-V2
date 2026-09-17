@@ -8,6 +8,8 @@
 export const FIELD_CLASS =
   "w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
+export const SELECT_FIELD_CLASS = `${FIELD_CLASS} focus:outline-none focus:ring-1 focus:ring-ring`;
+
 /** An error the backend reported, rendered where the operator pressed the button. */
 export const ALERT_CLASS =
   "mt-4 rounded-box border border-destructive/50 bg-destructive/10 p-3 text-sm text-foreground";

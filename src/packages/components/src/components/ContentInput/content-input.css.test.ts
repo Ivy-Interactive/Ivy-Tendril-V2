@@ -5,6 +5,7 @@ import { dirname, join } from "path";
 
 const cssPath = join(dirname(fileURLToPath(import.meta.url)), "content-input.css");
 const css = readFileSync(cssPath, "utf-8");
+const uiCss = readFileSync(join(dirname(cssPath), "..", "ui", "ui.css"), "utf-8");
 
 describe("content-input.css theming and responsive variables", () => {
   it("uses var(--font-sans) or inherit for typography", () => {
@@ -23,6 +24,9 @@ describe("content-input.css theming and responsive variables", () => {
   });
 
   it("applies --accent-foreground on hover/active states for interactive elements", () => {
+    expect(uiCss).toMatch(
+      /\.tui-icon-btn\[data-variant="outline"\]:hover:not\(:disabled\)\s*\{[^}]*color:\s*var\(--accent-foreground\);/,
+    );
     expect(css).toMatch(
       /\.civ-project-ghost-btn:hover\s*\{[^}]*color:\s*var\(--accent-foreground\);/,
     );

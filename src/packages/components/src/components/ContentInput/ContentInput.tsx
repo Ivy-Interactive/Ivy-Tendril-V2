@@ -740,7 +740,6 @@ export const ContentInput: React.FC<ContentInputProps> = ({
           <IconButton
             className="civ-error-close"
             label="Dismiss error"
-            tooltip={false}
             size="2xs"
             onClick={() => setRecordError(null)}
           >
@@ -860,7 +859,6 @@ export const ContentInput: React.FC<ContentInputProps> = ({
               <IconButton
                 className="civ-plus-btn"
                 label="Attach files"
-                tooltip={false}
                 size="lg"
                 shape="round"
                 variant="outline"
@@ -893,7 +891,6 @@ export const ContentInput: React.FC<ContentInputProps> = ({
               <IconButton
                 className={`civ-mic-btn civ-status-${voiceStatus}`}
                 label="Voice input transcription"
-                tooltip={false}
                 size="lg"
                 shape="round"
                 variant="outline"

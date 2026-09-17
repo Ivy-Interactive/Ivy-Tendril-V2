@@ -79,7 +79,7 @@ const PanelSelect: React.FC<{
         aria-label={title}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-full cursor-pointer appearance-none truncate whitespace-nowrap rounded-selector border border-border bg-popover pl-2.5 pr-7 text-sm text-popover-foreground outline-none hover:bg-accent focus-visible:border-foreground"
+        className="h-7 w-full cursor-pointer appearance-none truncate whitespace-nowrap rounded-selector border border-border bg-popover pl-2.5 pr-7 text-sm text-popover-foreground outline-none hover:bg-accent focus:border-foreground"
       >
         {/* A value the list does not contain still has to be showable, or the select silently
             snaps to its first option and reports a model the host never chose. */}

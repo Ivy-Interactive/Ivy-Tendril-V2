@@ -1296,7 +1296,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   setSelectedRepo(e.target.value);
                   resetToFirstPage();
                 }}
-                className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 {activeProjectRepos.map((r) => (
                   <option key={r} value={r}>
@@ -1326,7 +1326,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               aria-label="Auto-refresh interval"
               value={pollInterval}
               onChange={(e) => handlePollIntervalChange(e.target.value as PollInterval)}
-              className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
               {(Object.keys(POLL_INTERVAL_LABELS) as PollInterval[]).map((opt) => (
                 <option key={opt} value={opt}>

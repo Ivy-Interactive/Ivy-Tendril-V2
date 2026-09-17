@@ -973,7 +973,7 @@
 }
 
 .pmv-search-highlight {
-  background: var(--highlight);
+  background: var(--highlight-strong);
   color: inherit;
   border-radius: var(--radius-xs);
   padding: 0 0.1rem;

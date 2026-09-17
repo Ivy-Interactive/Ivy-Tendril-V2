@@ -205,6 +205,7 @@
 
   /* Annotation / search-hit highlight */
   --highlight: hsl(48 96% 76% / 0.7);
+  --highlight-strong: hsl(48 96% 76% / 0.85);
   --highlight-active: hsl(25 95% 53% / 0.95);
 
   /* Badge solid-tint steps: a light fill + dark text in light mode, a dark fill + light text in
@@ -353,6 +354,7 @@
 
   /* Annotation / search-hit highlight */
   --highlight: hsl(48 80% 20% / 0.5);
+  --highlight-strong: hsl(48 80% 30% / 0.85);
   --highlight-active: hsl(25 95% 53% / 0.95);
 }
 
