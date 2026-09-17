@@ -545,16 +545,11 @@
 }
 
 /* ─── Annotation popovers ─────────────────────────────────────────────── */
+/* Shared chrome (ui.css .tui-popover-shell) plus this popover's own sizing and positioning. */
 .pmv-popover {
   position: fixed;
   z-index: 9999;
   width: 18rem;
-  border-radius: var(--radius-lg);
-  border: var(--border-width) solid var(--border);
-  background: var(--popover);
-  color: var(--popover-foreground);
-  padding: 0.75rem;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
 }
 
 .pmv-popover-author {
@@ -632,53 +627,25 @@
   justify-content: space-between;
 }
 
-.pmv-popover-btn {
-  border-radius: var(--radius-sm);
-  padding: 0.25rem 0.625rem;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-}
-
-.pmv-popover-btn--ghost {
-  background: transparent;
-  color: var(--muted-foreground);
-}
-
-.pmv-popover-btn--ghost:hover {
-  background: var(--muted);
-}
-
-.pmv-popover-btn--primary {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-
-.pmv-popover-btn--primary:hover {
-  opacity: var(--opacity-hover);
-}
-
-.pmv-popover-btn--danger {
-  background: transparent;
+/* Base box, ghost and primary are the shared .tui-btn (ui.css). Danger keeps its own softer
+   hover tint here instead of .tui-btn--danger's solid one — the compound selector outranks
+   .tui-btn--danger:hover regardless of the two files' load order. */
+.tui-btn.pmv-popover-btn--danger:hover {
+  background: hsl(0 84% 60% / 0.1);
   color: var(--destructive);
 }
 
-.pmv-popover-btn--danger:hover {
-  background: hsl(0 84% 60% / 0.1);
-}
-
-.pmv-popover-btn--success {
+.tui-btn.pmv-popover-btn--success {
   background: hsl(142 71% 45% / 0.15);
   color: hsl(142 76% 36%);
   border: var(--border-width) solid hsl(142 71% 45% / 0.3);
 }
 
-:root.dark .pmv-popover-btn--success {
+:root.dark .tui-btn.pmv-popover-btn--success {
   color: hsl(142 76% 56%);
 }
 
-.pmv-popover-btn--success:hover {
+.tui-btn.pmv-popover-btn--success:hover {
   background: hsl(142 71% 45% / 0.25);
 }
 

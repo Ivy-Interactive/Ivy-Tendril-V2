@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import "../ui/ui.css";
 import "./web-viewer.css";
 import { getHeight, getWidth } from "@/lib/styles";
 import { canonicalPageUrl } from "./pageUrl";
@@ -892,7 +893,10 @@ export const WebViewer: React.FC<WebViewerProps> = ({
 
       {pending && (
         <div className="wvr-overlay" onMouseDown={cancelComment}>
-          <div className="wvr-comment-box" onMouseDown={(e) => e.stopPropagation()}>
+          <div
+            className="tui-popover-shell wvr-comment-box"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <div className="wvr-comment-title">
               {pending.mode === "edit" && (
                 <span className="wvr-comment-pin">
@@ -977,16 +981,16 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                 // Left of the gap, away from Save: this one cannot be undone.
                 <button
                   type="button"
-                  className="wvr-btn wvr-btn--danger wvr-comment-delete"
+                  className="tui-btn tui-btn--danger wvr-comment-delete"
                   onClick={deleteComment}
                 >
                   Delete
                 </button>
               )}
-              <button type="button" className="wvr-btn wvr-btn--ghost" onClick={cancelComment}>
+              <button type="button" className="tui-btn tui-btn--ghost" onClick={cancelComment}>
                 Cancel
               </button>
-              <button type="button" className="wvr-btn wvr-btn--primary" onClick={submitComment}>
+              <button type="button" className="tui-btn tui-btn--primary" onClick={submitComment}>
                 {pending.mode === "edit" ? "Save" : "Add"}
               </button>
             </div>

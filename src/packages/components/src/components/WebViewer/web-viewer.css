@@ -373,16 +373,11 @@
   background: rgb(0 0 0 / 0.25);
 }
 
+/* Shared chrome (ui.css .tui-popover-shell) plus this popover's own sizing. */
 .wvr-comment-box {
   width: min(38rem, 92%);
   max-height: 86%;
   overflow-y: auto;
-  border-radius: var(--radius-lg);
-  border: var(--border-width) solid var(--border);
-  background: var(--popover);
-  color: var(--popover-foreground);
-  padding: 0.75rem;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
   font-size: var(--text-sm);
 }
 
@@ -507,44 +502,8 @@
   margin-top: 0.75rem;
 }
 
-.wvr-btn {
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 0.25rem 0.625rem;
-  font-family: inherit;
-  font-size: var(--text-xs);
-  cursor: pointer;
-}
-
-.wvr-btn--ghost {
-  background: transparent;
-  color: var(--muted-foreground);
-}
-
-.wvr-btn--ghost:hover {
-  background: var(--muted);
-}
-
-.wvr-btn--primary {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-
-.wvr-btn--primary:hover {
-  opacity: var(--opacity-hover);
-}
-
-.wvr-btn--danger {
-  background: transparent;
-  color: var(--destructive);
-}
-
-.wvr-btn--danger:hover {
-  background: var(--destructive);
-  color: var(--destructive-foreground);
-}
-
-/* Pushed away from Save/Cancel: deleting a comment is not undoable. */
+/* The shared button box (ui.css .tui-btn) plus its own layout. Pushed away from Save/Cancel:
+   deleting a comment is not undoable. */
 .wvr-comment-delete {
   margin-right: auto;
 }

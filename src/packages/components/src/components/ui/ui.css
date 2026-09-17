@@ -9,7 +9,9 @@
 .tui-badge,
 .tui-dot,
 .tui-status,
-.tui-spinner {
+.tui-spinner,
+.tui-btn,
+.tui-popover-shell {
   --tui-fg: var(--foreground);
   --tui-muted: var(--foreground-muted);
   --tui-border: var(--border);
@@ -470,4 +472,61 @@
   .tui-spinner {
     animation-duration: calc(var(--tui-spinner-duration, 0.8s) * 3);
   }
+}
+
+/* ---------- Plain button ---------- */
+
+/* The small ghost/primary/danger button shared by WebViewer's comment popover and
+   PlanMarkdown's annotation popover — the same box in both (`.wvr-btn`, `.pmv-popover-btn`). */
+.tui-btn {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.625rem;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.tui-btn--ghost {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.tui-btn--ghost:hover {
+  background: var(--muted);
+}
+
+.tui-btn--primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.tui-btn--primary:hover {
+  opacity: var(--opacity-hover);
+}
+
+.tui-btn--danger {
+  background: transparent;
+  color: var(--destructive);
+}
+
+/* Solid destructive hover (WebViewer's own choice). PlanMarkdown's annotation popover uses a
+   softer tint instead — see .pmv-popover-btn--danger:hover in plan-markdown.css. */
+.tui-btn--danger:hover {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+/* ---------- Popover shell ---------- */
+
+/* The card chrome shared by WebViewer's comment popover (.wvr-comment-box) and PlanMarkdown's
+   annotation popover (.pmv-popover) — identical border/background/padding/shadow; each keeps
+   its own width, max-height and positioning. */
+.tui-popover-shell {
+  border-radius: var(--radius-lg);
+  border: var(--border-width) solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 0.75rem;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
 }

@@ -60,7 +60,7 @@ export const AddAnnotationPopover: React.FC<AddAnnotationPopoverProps> = ({
   return createPortal(
     <div
       ref={popoverRef}
-      className="pmv-popover"
+      className="tui-popover-shell pmv-popover"
       style={{ top: position.top, left: position.left, visibility: visible ? "visible" : "hidden" }}
     >
       <div className="pmv-popover-quote">
@@ -82,12 +82,12 @@ export const AddAnnotationPopover: React.FC<AddAnnotationPopoverProps> = ({
         }}
       />
       <div className="pmv-popover-actions pmv-popover-actions--end">
-        <button type="button" className="pmv-popover-btn pmv-popover-btn--ghost" onClick={onCancel}>
+        <button type="button" className="tui-btn tui-btn--ghost pmv-popover-btn" onClick={onCancel}>
           Cancel
         </button>
         <button
           type="button"
-          className="pmv-popover-btn pmv-popover-btn--primary"
+          className="tui-btn tui-btn--primary pmv-popover-btn"
           onClick={handleSubmit}
         >
           Add
@@ -162,7 +162,7 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
   return createPortal(
     <div
       ref={popoverRef}
-      className="pmv-popover"
+      className="tui-popover-shell pmv-popover"
       style={{ top: position.top, left: position.left, visibility: visible ? "visible" : "hidden" }}
     >
       <div className="pmv-popover-header">
@@ -172,9 +172,7 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
             <span className="pmv-popover-author-name">{annotation.author.trim()}</span>
           </div>
         )}
-        {isResolved && (
-          <TuiBadge kind="success">✓ Resolved</TuiBadge>
-        )}
+        {isResolved && <TuiBadge kind="success">✓ Resolved</TuiBadge>}
       </div>
       <div className="pmv-popover-quote">
         &ldquo;{annotation.selectedText.slice(0, 50)}
@@ -200,7 +198,7 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
             <Tooltip content={isResolved ? "Reopen annotation" : "Mark annotation as resolved"}>
               <button
                 type="button"
-                className={`pmv-popover-btn ${isResolved ? "pmv-popover-btn--ghost" : "pmv-popover-btn--success"}`}
+                className={`tui-btn pmv-popover-btn ${isResolved ? "tui-btn--ghost" : "pmv-popover-btn--success"}`}
                 onClick={onToggleResolve}
               >
                 {isResolved ? "Unresolve" : "Resolve"}
@@ -211,7 +209,7 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
             <Tooltip content="Delete annotation">
               <button
                 type="button"
-                className="pmv-popover-btn pmv-popover-btn--danger"
+                className="tui-btn tui-btn--danger pmv-popover-btn pmv-popover-btn--danger"
                 onClick={onRemove}
               >
                 Delete
@@ -222,14 +220,14 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
         <div className="pmv-popover-actions pmv-popover-actions--end">
           <button
             type="button"
-            className="pmv-popover-btn pmv-popover-btn--ghost"
+            className="tui-btn tui-btn--ghost pmv-popover-btn"
             onClick={onCancel}
           >
             Cancel
           </button>
           <button
             type="button"
-            className="pmv-popover-btn pmv-popover-btn--primary"
+            className="tui-btn tui-btn--primary pmv-popover-btn"
             onClick={handleSave}
           >
             Save
