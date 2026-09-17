@@ -141,16 +141,10 @@ async function main() {
   await freePortIfOccupied(5173);
 
   // Ensure @ivy-interactive/components is built before launching the desktop app
-  const componentsDist = path.resolve(__dirname, "../packages/components/dist");
-  if (!fs.existsSync(componentsDist)) {
-    console.log(
-      "\x1b[36m[dev-desktop] Building @ivy-interactive/components (required for desktop app)...\x1b[0m",
-    );
-    try {
-      execSync("pnpm --filter @ivy-interactive/components build", { stdio: "inherit" });
-    } catch {
-      console.error("\x1b[31m[dev-desktop] Could not build @ivy-interactive/components\x1b[0m");
-    }
+  try {
+    execSync(`node "${path.resolve(__dirname, "ensure-components.mjs")}"`, { stdio: "inherit" });
+  } catch {
+    console.error("\x1b[31m[dev-desktop] Could not build @ivy-interactive/components\x1b[0m");
   }
 
   const isAlreadyRunning = await checkServiceHealth(port);
