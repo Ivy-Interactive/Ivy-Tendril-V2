@@ -217,6 +217,27 @@ impl JobArgs {
         }
     }
 
+    /// Replaces the plan reference with the resolved folder, so everything downstream reads one
+    /// spelling of it. Used by [`crate::jobs::manager::JobManager::start_job_with`] to canonicalize a
+    /// submission that named a plan by its bare id.
+    ///
+    /// Deliberately does **not** cover `SetupProject`, whose `folder_path` holds a *project name* and
+    /// not a plan reference — `resolve_project` reads it as one and `resolve_working_directory` looks
+    /// the project up by it, so rewriting it would point a setup job at a plan folder.
+    pub fn set_plan_folder(&mut self, folder: String) {
+        match self {
+            Self::ExecutePlan(a) => a.folder_path = folder,
+            Self::RetryPlan(a) => a.folder_path = folder,
+            Self::ExpandPlan(a) => a.folder_path = folder,
+            Self::UpdatePlan(a) => a.folder_path = folder,
+            Self::SplitPlan(a) => a.folder_path = folder,
+            Self::CreatePr(a) => a.folder_path = folder,
+            Self::CreateIssue(a) => a.folder_path = folder,
+            Self::SyncRepo(a) => a.plan_folder_path = Some(folder),
+            Self::SetupProject(_) | Self::CreatePlan(_) | Self::AddProject(_) => {}
+        }
+    }
+
     /// Canonical identity of the *work* this submission asks for, or `None` for a job type that is
     /// not deduplicated. Two submissions with equal keys are the same work, so the second one is a
     /// conflict rather than a second job, worktree and agent.
