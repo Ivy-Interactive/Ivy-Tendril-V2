@@ -3,17 +3,9 @@
    dark mode and alternate themes recolor it. */
 
 .pws-root {
-  --pws-bg: var(--background);
-  --pws-fg: var(--foreground);
-  --pws-fg-title: var(--foreground);
   --pws-muted: var(--foreground-muted);
-  --pws-border: var(--border);
   --pws-active-bg: color-mix(in srgb, var(--foreground) 4%, var(--background));
   --pws-hover-bg: color-mix(in srgb, var(--foreground) 7%, var(--background));
-  --pws-popover: var(--popover);
-  --pws-cta-bg: var(--primary);
-  --pws-cta-fg: var(--primary-foreground);
-  --pws-danger: var(--destructive);
   --pws-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.1);
   --pws-chat-width: 420px;
 
@@ -24,8 +16,8 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  background: var(--pws-bg);
-  color: var(--pws-fg);
+  background: var(--background);
+  color: var(--foreground);
   font-family: var(--font-sans);
 }
 
@@ -62,7 +54,7 @@
   flex-shrink: 0;
   height: 48px;
   padding: 8px 8px 8px 20px;
-  border-bottom: var(--border-width) solid var(--pws-border);
+  border-bottom: var(--border-width) solid var(--border);
 }
 
 .pws-title-wrap {
@@ -80,7 +72,7 @@
   min-width: 0;
   font-size: var(--text-base);
   line-height: normal;
-  color: var(--pws-fg-title);
+  color: var(--foreground);
 }
 
 .pws-plan-id {
@@ -110,13 +102,13 @@
 
 .pws-source:hover {
   background: var(--pws-hover-bg);
-  color: var(--pws-fg);
+  color: var(--foreground);
 }
 
 .pws-meta {
   flex-shrink: 0;
   font-size: var(--text-sm);
-  color: var(--pws-fg-title);
+  color: var(--foreground);
   white-space: nowrap;
 }
 
@@ -165,8 +157,8 @@
 }
 
 .pws-btn--primary {
-  background: var(--pws-cta-bg);
-  color: var(--pws-cta-fg);
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .pws-btn--primary:hover:not(:disabled) {
@@ -175,8 +167,8 @@
 
 .pws-btn--secondary {
   background: transparent;
-  border-color: var(--pws-border);
-  color: var(--pws-fg);
+  border-color: var(--border);
+  color: var(--foreground);
 }
 
 .pws-btn--secondary:hover:not(:disabled) {
@@ -191,8 +183,8 @@
 /* A count on the CTA reads on its dark surface; elsewhere the shared badge is used as is. */
 .pws-btn--primary .pws-btn-badge {
   border-color: transparent;
-  background: color-mix(in srgb, var(--pws-cta-fg) 22%, transparent);
-  color: var(--pws-cta-fg);
+  background: color-mix(in srgb, var(--primary-foreground) 22%, transparent);
+  color: var(--primary-foreground);
 }
 
 .pws-btn-kbd {
@@ -250,9 +242,9 @@
   z-index: var(--z-dropdown);
   min-width: 232px;
   padding: 4px;
-  border: var(--border-width) solid var(--pws-border);
+  border: var(--border-width) solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--pws-popover);
+  background: var(--popover);
   box-shadow: var(--pws-shadow);
 }
 
@@ -265,7 +257,7 @@
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--pws-fg);
+  color: var(--foreground);
   font: inherit;
   font-size: var(--text-sm);
   text-align: left;
@@ -282,7 +274,7 @@
 }
 
 .pws-menu-item[data-danger="true"] {
-  color: var(--pws-danger);
+  color: var(--destructive);
 }
 
 .pws-menu-item-icon {
@@ -365,7 +357,7 @@
   border: none;
   border-bottom: var(--border-width-thick) solid transparent;
   background: transparent;
-  color: var(--pws-fg);
+  color: var(--foreground);
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -381,7 +373,7 @@
 }
 
 .pws-tab[aria-selected="true"] {
-  border-bottom-color: var(--pws-fg);
+  border-bottom-color: var(--foreground);
   opacity: 1;
 }
 
@@ -411,7 +403,7 @@
   position: absolute;
   top: 2px;
   right: 2px;
-  box-shadow: 0 0 0 2px var(--pws-bg);
+  box-shadow: 0 0 0 2px var(--background);
 }
 
 .pws-dropdown {
@@ -424,9 +416,9 @@
   max-height: min(60vh, 520px);
   overflow: auto;
   padding: 12px 14px 14px;
-  border: var(--border-width) solid var(--pws-border);
+  border: var(--border-width) solid var(--border);
   border-radius: var(--radius-xl);
-  background: var(--pws-popover);
+  background: var(--popover);
   box-shadow: var(--pws-shadow);
 }
 
@@ -486,7 +478,7 @@
 
 .pws-resizer:hover::after,
 .pws-root[data-dragging="true"] .pws-resizer::after {
-  background: color-mix(in srgb, var(--pws-fg) 35%, transparent);
+  background: color-mix(in srgb, var(--foreground) 35%, transparent);
 }
 
 .pws-chat {
@@ -499,8 +491,8 @@
   /* No horizontal padding: the embedded widget insets its own rows so the message list can
      scroll at the panel's full width and the scrollbar sits by the edge, clear of the text. */
   padding: 0 0 14px;
-  border-left: var(--border-width) solid var(--pws-border);
-  background: var(--pws-bg);
+  border-left: var(--border-width) solid var(--border);
+  background: var(--background);
 }
 
 .pws-chat > * {
@@ -527,7 +519,7 @@
   min-height: 220px;
   padding: 0 0 12px;
   border-left: none;
-  border-top: var(--border-width) solid var(--pws-border);
+  border-top: var(--border-width) solid var(--border);
 }
 
 .pws-root[data-compact="true"] .pws-meta,
