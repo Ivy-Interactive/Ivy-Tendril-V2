@@ -63,16 +63,9 @@
 }
 
 .bselect-count {
-  display: inline-flex;
-  align-items: center;
   flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: var(--radius-md);
   background: var(--secondary);
   color: var(--muted-foreground);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  line-height: 1.4;
 }
 
 .bselect-placeholder {
@@ -83,40 +76,15 @@
 }
 
 .bselect-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
   flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: var(--radius-md);
   background: var(--secondary);
   color: var(--secondary-foreground);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  line-height: 1.4;
 }
 
 .bselect-badge-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.bselect-badge-x {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
-  border-radius: var(--radius-xs);
-}
-
-.bselect-badge-x:hover {
-  color: var(--foreground);
 }
 
 .bselect-menu {

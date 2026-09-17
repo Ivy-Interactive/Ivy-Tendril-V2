@@ -33,6 +33,7 @@ export interface TuiBadgeProps {
   onRemove?: () => void;
   removeLabel?: string;
   className?: string;
+  style?: React.CSSProperties;
   /** Native title, for a badge whose label is abbreviated. */
   title?: string;
   "aria-label"?: string;
@@ -58,6 +59,7 @@ export const TuiBadge: React.FC<TuiBadgeProps> = ({
   onRemove,
   removeLabel = "Remove",
   className = "",
+  style,
   title,
   "aria-label": ariaLabel,
 }) => (
@@ -71,7 +73,9 @@ export const TuiBadge: React.FC<TuiBadgeProps> = ({
     data-floating={floating ? "true" : undefined}
     data-mono={mono ? "true" : undefined}
     data-caps={caps ? "true" : undefined}
-    style={color ? ({ "--tui-badge-color": ivyColorVar(color) } as React.CSSProperties) : undefined}
+    style={
+      color ? ({ "--tui-badge-color": ivyColorVar(color), ...style } as React.CSSProperties) : style
+    }
     title={title}
     aria-label={ariaLabel}
   >
