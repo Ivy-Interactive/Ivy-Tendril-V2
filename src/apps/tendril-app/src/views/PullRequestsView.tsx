@@ -275,7 +275,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         cell: (_value, row) => (
           <span
             title={statusTooltip(row)}
-            className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+            className={`rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide ${
               STATE_CLASS[row.status] ?? STATE_CLASS.Unknown
             }`}
           >

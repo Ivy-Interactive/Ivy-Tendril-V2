@@ -1483,7 +1483,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                                     : "")}
                               </span>
                               {item.attachments && item.attachments.length > 0 && (
-                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-xs-tight text-muted-foreground">
                                   <Paperclip className="size-2.5" />
                                   {item.attachments.length}
                                 </span>
@@ -1578,7 +1578,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setAttachments([])}
-                      className="rounded-selector px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-destructive"
+                      className="rounded-selector px-1.5 py-0.5 text-xs-tight text-muted-foreground transition-colors hover:text-destructive"
                     >
                       Clear all
                     </button>

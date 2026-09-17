@@ -28,7 +28,7 @@ const Switch = React.forwardRef<
       <SwitchPrimitives.Thumb className={cn(switchThumbVariant({ density }))}>
         {icon && (
           <div className="flex items-center justify-center w-full h-full">
-            {typeof icon === "string" ? <span className="text-[10px]">{icon}</span> : icon}
+            {typeof icon === "string" ? <span className="text-2xs">{icon}</span> : icon}
           </div>
         )}
       </SwitchPrimitives.Thumb>

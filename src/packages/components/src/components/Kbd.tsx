@@ -6,7 +6,7 @@ import type React from "react";
 const formatShortcut = (value: string): string => formatShortcutWithPlatform(value, true);
 
 const keyCapBase =
-  "box-border inline-flex h-4 min-w-4 items-center justify-center rounded-[0.25rem] px-1 text-[10px] leading-[0.5]";
+  "box-border inline-flex h-4 min-w-4 items-center justify-center rounded-selector px-1 text-2xs leading-[0.5]";
 
 const keyCapColor = ({ inherit, ghost }: { inherit?: boolean; ghost?: boolean }) => {
   if (ghost) return "border-0 bg-transparent text-current";

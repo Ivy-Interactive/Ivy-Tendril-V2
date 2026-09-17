@@ -252,7 +252,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                       {formatPlanId(plan.id)}
                     </span>
                     {plan.priority !== undefined && (
-                      <span className="text-[11px] text-muted-foreground/80">P{plan.priority}</span>
+                      <span className="text-xs-tight text-muted-foreground/80">P{plan.priority}</span>
                     )}
                   </div>
 
@@ -262,7 +262,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
 
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <span
-                      className={`inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-medium ${planStateBadgeClass(
+                      className={`inline-flex items-center rounded border px-2 py-0.5 text-xs-tight font-medium ${planStateBadgeClass(
                         plan.state,
                       )}`}
                     >
@@ -272,7 +272,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                     {projectList.map((proj) => (
                       <span
                         key={proj}
-                        className="inline-flex items-center rounded border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground"
+                        className="inline-flex items-center rounded border border-border bg-muted/40 px-2 py-0.5 text-xs-tight text-muted-foreground"
                       >
                         {proj}
                       </span>

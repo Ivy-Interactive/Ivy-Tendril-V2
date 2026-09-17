@@ -271,7 +271,7 @@ const RailExpander: React.FC<{
  * The colour box is V1's, literally: `new Box().Background(color).BorderRadius(BorderRadius.Rounded)
  * .Width(Size.Units(3)).Height(Size.Units(3))` — a 0.75rem square at Ivy's `Rounded` radius, which
  * resolves to 0.5rem, so it reads as a dot without being a circle. That is why this is
- * `size-3 rounded-[0.5rem]` and not `size-2 rounded-full`, and it is the same marker the Settings
+ * `size-3 rounded-box` and not `size-2 rounded-full`, and it is the same marker the Settings
  * sidebar draws (`views/settings/SidebarListRow.tsx`) for the same projects.
  *
  * `color` is an Ivy `Colors` name, resolved through the package's `ivyColorVar` — the one
@@ -300,7 +300,7 @@ const RailSubItem: React.FC<{
       aria-hidden
       data-testid={testId ? `${testId}-dot` : undefined}
       data-color={color}
-      className="size-3 shrink-0 rounded-[0.5rem]"
+      className="size-3 shrink-0 rounded-box"
       style={{ backgroundColor: ivyColorVar(color) }}
     />
   ) : (

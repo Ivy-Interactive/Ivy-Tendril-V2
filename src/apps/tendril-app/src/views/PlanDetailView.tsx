@@ -239,7 +239,7 @@ const PlanQuestionsPanel: React.FC<{
               {question.optional ? `${label(question)} (Optional)` : label(question)}
             </button>
             {savingIds.has(question.id) && (
-              <span className="text-[10px] text-muted-foreground">saving…</span>
+              <span className="text-2xs text-muted-foreground">saving…</span>
             )}
           </li>
         ))}

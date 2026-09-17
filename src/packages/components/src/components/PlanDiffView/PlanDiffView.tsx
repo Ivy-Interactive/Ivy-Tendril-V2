@@ -581,7 +581,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
   const isAuthor = !currentAuthor || !currentAuthor.trim();
 
   return (
-    <div className="diff-comment-widget p-3 bg-[var(--background)] border border-[var(--border)] rounded-md m-2 shadow-sm max-w-[600px] text-xs font-sans">
+    <div className="diff-comment-widget p-3 bg-background border border-border rounded-md m-2 shadow-sm max-w-[600px] text-xs font-sans">
       {hasComment && !isEditing ? (
         <div className="flex flex-col gap-2">
           {comments.map((comment, idx) => {
@@ -596,22 +596,22 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
             return (
               <div
                 key={idx}
-                className={`flex flex-col gap-1 border-b border-[var(--border)] pb-2 last:border-0 last:pb-0 ${
+                className={`flex flex-col gap-1 border-b border-border pb-2 last:border-0 last:pb-0 ${
                   isResolved ? "opacity-75" : ""
                 }`}
               >
-                <div className="flex items-center justify-between text-xs text-[var(--muted-foreground)]">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <div className="flex items-center gap-1.5 min-w-0">
                     {comment.author?.trim() && (
                       <div className="pmv-comment-avatar" title={comment.author.trim()}>
                         {getInitials(comment.author.trim())}
                       </div>
                     )}
-                    <span className="font-medium text-[var(--foreground)] truncate">
+                    <span className="font-medium text-foreground truncate">
                       {comment.author?.trim() ? comment.author.trim() : "Agent Instruction (Draft)"}
                     </span>
                     {isResolved && (
-                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[10px] font-medium rounded bg-success/10 text-success border border-success/20">
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-2xs font-medium rounded bg-success/10 text-success border border-success/20">
                         ✓ Resolved
                       </span>
                     )}
@@ -621,7 +621,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                       <>
                         <button
                           type="button"
-                          className="hover:underline hover:text-[var(--foreground)] cursor-pointer"
+                          className="hover:underline hover:text-foreground cursor-pointer"
                           onClick={() => onStartEdit(comment)}
                         >
                           Edit
@@ -638,7 +638,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                             type="button"
                             className={`hover:underline cursor-pointer ${
                               isResolved
-                                ? "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                                ? "text-muted-foreground hover:text-foreground"
                                 : "text-success hover:text-success/80 font-medium"
                             }`}
                             onClick={() =>
@@ -668,7 +668,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                     )}
                   </div>
                 </div>
-                <div className="diff-comment-markdown leading-relaxed text-sm text-[var(--foreground)] mt-1">
+                <div className="diff-comment-markdown leading-relaxed text-sm text-foreground mt-1">
                   <Markdown {...getMarkdownPlugins(comment.content)}>{comment.content}</Markdown>
                 </div>
               </div>
@@ -678,13 +678,13 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
       ) : (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between pb-1">
-            <span className="text-xs font-medium text-[var(--foreground)]">
+            <span className="text-xs font-medium text-foreground">
               {isEditing ? "Edit Agent Instruction" : "Agent Instruction"}
             </span>
           </div>
 
           <textarea
-            className="w-full min-h-[80px] p-2 text-sm font-sans bg-[var(--background)] border border-[var(--border)] rounded focus:outline-none focus:ring-1 focus:ring-[var(--primary)] resize-y"
+            className="w-full min-h-[80px] p-2 text-sm font-sans bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary resize-y"
             placeholder="Enter instruction for the agent at this line..."
             value={isEditing ? (editingText ?? "") : inputText}
             onChange={(e) => {
@@ -700,7 +700,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
           <div className="flex items-center justify-end gap-2 mt-1">
             <button
               type="button"
-              className="px-3 py-1 text-xs font-medium border border-[var(--border)] rounded hover:bg-[var(--muted)] transition-colors cursor-pointer"
+              className="px-3 py-1 text-xs font-medium border border-border rounded hover:bg-muted transition-colors cursor-pointer"
               onClick={() => {
                 if (isEditing) {
                   onCancelEdit();
@@ -713,7 +713,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
             </button>
             <button
               type="button"
-              className="px-3 py-1 text-xs font-medium bg-[var(--primary)] text-[var(--primary-foreground)] rounded hover:opacity-90 transition-colors disabled:opacity-50 cursor-pointer"
+              className="px-3 py-1 text-xs font-medium bg-primary text-primary-foreground rounded hover:opacity-90 transition-colors disabled:opacity-50 cursor-pointer"
               disabled={isEditing ? !editingText?.trim() : !inputText.trim()}
               onClick={() => {
                 if (isEditing && editingComment) {
@@ -976,7 +976,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
 
   if (!diff || files.length === 0) {
     return (
-      <div ref={containerRef} style={style} className="text-[var(--muted-foreground)] p-4 text-sm">
+      <div ref={containerRef} style={style} className="text-muted-foreground p-4 text-sm">
         No diff to display
       </div>
     );
@@ -988,14 +988,14 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
     const normalized = path.replace(/\\/g, "/");
     const parts = normalized.split("/");
     if (parts.length === 1) {
-      return <span className="font-semibold text-[var(--foreground)]">{path}</span>;
+      return <span className="font-semibold text-foreground">{path}</span>;
     }
     const dir = parts.slice(0, -1).join("/") + "/";
     const file = parts[parts.length - 1];
     return (
-      <span className="font-medium text-[var(--muted-foreground)]">
+      <span className="font-medium text-muted-foreground">
         {dir}
-        <span className="font-semibold text-[var(--foreground)]">{file}</span>
+        <span className="font-semibold text-foreground">{file}</span>
       </span>
     );
   }
@@ -1007,13 +1007,13 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
       className={`ivy-diff-view text-sm${effectiveWordWrap ? " diff-wrap" : ""}`}
     >
       {showFileDropdown && (
-        <div className="sticky top-0 z-20 flex items-center gap-2 px-3 py-1.5 bg-[var(--muted)] border-b border-[var(--border)] font-sans">
-          <span className="text-xs text-[var(--muted-foreground)] shrink-0">
+        <div className="sticky top-0 z-20 flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-border font-sans">
+          <span className="text-xs text-muted-foreground shrink-0">
             {fileMeta.length} files
           </span>
           <select
             aria-label="Jump to file"
-            className="flex-1 min-w-0 text-xs px-2 py-1 rounded bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)] font-sans"
+            className="flex-1 min-w-0 text-xs px-2 py-1 rounded bg-background text-foreground border border-border font-sans"
             defaultValue=""
             onChange={(e) => {
               if (e.target.value) scrollToFile(e.target.value);
@@ -1065,14 +1065,14 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
           const total = add + del;
           const squares = [];
           for (let i = 0; i < 5; i++) {
-            let colorClass = "bg-[var(--border)]"; // neutral grey
+            let colorClass = "bg-border"; // neutral grey
             if (total > 0) {
               const ratio = add / total;
               const threshold = (i + 0.5) / 5;
               if (ratio >= threshold) {
-                colorClass = "bg-[var(--success)]";
+                colorClass = "bg-success";
               } else if (del / total >= (5 - i - 0.5) / 5) {
-                colorClass = "bg-[var(--destructive)]";
+                colorClass = "bg-destructive";
               }
             }
             squares.push(<span key={i} className={`w-1.5 h-1.5 rounded-sm ${colorClass}`} />);
@@ -1084,12 +1084,12 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
           <div
             key={fileIndex}
             id={elementId}
-            className={`ivy-diff-file border border-[var(--border)] rounded-md ${isCollapsed ? "mb-0" : "mb-1.5"} bg-[var(--background)] overflow-clip`}
+            className={`ivy-diff-file border border-border rounded-md ${isCollapsed ? "mb-0" : "mb-1.5"} bg-background overflow-clip`}
             style={{ scrollMarginTop: showFileDropdown ? "2rem" : 0 }}
           >
             {hasHeader && (
               <div
-                className="flex items-center justify-between px-3 py-1 text-xs bg-[var(--muted)] text-[var(--muted-foreground)] border-b border-[var(--border)] sticky z-10 font-sans"
+                className="flex items-center justify-between px-3 py-1 text-xs bg-muted text-muted-foreground border-b border-border sticky z-10 font-sans"
                 style={{
                   top: showFileDropdown ? "2rem" : "-1px",
                 }}
@@ -1103,7 +1103,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                       width="12"
                       height="12"
                       viewBox="0 0 12 12"
-                      className="shrink-0 transition-transform duration-150 text-[var(--muted-foreground)]"
+                      className="shrink-0 transition-transform duration-150 text-muted-foreground"
                       style={{ transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)" }}
                     >
                       <path
@@ -1148,13 +1148,13 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                       e.stopPropagation();
                       toggleViewed();
                     }}
-                    className="flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] hover:text-[var(--foreground)] cursor-pointer select-none font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--ring)] rounded px-1 py-0.5"
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer select-none font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded px-1 py-0.5"
                   >
                     <span
                       className={`size-3.5 shrink-0 rounded-sm border transition-colors flex items-center justify-center ${
                         isViewed
-                          ? "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]"
-                          : "border-[var(--border)] bg-[var(--background)] hover:bg-[var(--accent)]"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "border-border bg-background hover:bg-accent"
                       }`}
                     >
                       {isViewed && (
@@ -1196,7 +1196,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                           aria-label={hidden ? "Show comments" : "Hide comments"}
                           aria-pressed={!hidden}
                           disabled={fileCommentCount === 0}
-                          className="flex items-center gap-1 p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
+                          className="flex items-center gap-1 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                           onClick={(e) => {
                             e.stopPropagation();
                             if (fileCommentCount === 0) return;

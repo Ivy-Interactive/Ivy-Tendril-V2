@@ -130,7 +130,7 @@ export function CodingAgentStep({
               {check && check.status !== "Ok" && (
                 <div className="flex w-full items-start gap-2">
                   <CheckBadge status={check.status} />
-                  <span className="min-w-0 flex-1 break-words text-[11px] text-muted-foreground">
+                  <span className="min-w-0 flex-1 break-words text-xs-tight text-muted-foreground">
                     {check.message}
                   </span>
                 </div>

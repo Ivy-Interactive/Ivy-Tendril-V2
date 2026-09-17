@@ -166,7 +166,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
           rows.map(({ url, key, status }) => (
             <li key={key} className="flex flex-wrap items-center gap-2">
               <span
-                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                className={`rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide ${
                   STATE_CLASS[status?.status ?? "Unknown"] ?? STATE_CLASS.Unknown
                 }`}
               >

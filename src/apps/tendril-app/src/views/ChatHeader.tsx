@@ -120,19 +120,19 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
           </div>
           <div className="flex items-center gap-1.5">
             {runningCount > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-selector bg-muted px-1.5 py-0.5 text-[10px] text-foreground">
+              <span className="inline-flex items-center gap-1 rounded-selector bg-muted px-1.5 py-0.5 text-2xs text-foreground">
                 <Loader2 className="size-2.5 animate-spin" aria-hidden="true" />
                 {runningCount} running
               </span>
             )}
             {completedCount > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-selector bg-success/15 px-1.5 py-0.5 text-[10px] text-success">
+              <span className="inline-flex items-center gap-1 rounded-selector bg-success/15 px-1.5 py-0.5 text-2xs text-success">
                 <Check className="size-2.5" aria-hidden="true" />
                 {completedCount} completed
               </span>
             )}
             {failedCount > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-selector bg-destructive/15 px-1.5 py-0.5 text-[10px] text-destructive">
+              <span className="inline-flex items-center gap-1 rounded-selector bg-destructive/15 px-1.5 py-0.5 text-2xs text-destructive">
                 <X className="size-2.5" aria-hidden="true" />
                 {failedCount} failed
               </span>
@@ -177,7 +177,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
                   </span>
                   {job.statusMessage && (
                     <span
-                      className="block truncate text-[11px] text-muted-foreground"
+                      className="block truncate text-xs-tight text-muted-foreground"
                       title={job.statusMessage}
                     >
                       {job.statusMessage}

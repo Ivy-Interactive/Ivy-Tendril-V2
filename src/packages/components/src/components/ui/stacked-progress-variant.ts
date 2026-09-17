@@ -3,7 +3,7 @@ import { cva } from "class-variance-authority";
 export const stackedProgressLabelVariant = cva("flex flex-wrap min-w-0", {
   variants: {
     density: {
-      Small: "text-[10px] gap-2",
+      Small: "text-2xs gap-2",
       Medium: "text-xs gap-3",
       Large: "text-sm gap-4",
     },

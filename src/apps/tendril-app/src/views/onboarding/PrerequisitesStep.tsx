@@ -37,7 +37,7 @@ const STATUS_LABELS: Record<DoctorCheckStatus, string> = {
 export function CheckBadge({ status }: { status: DoctorCheckStatus }) {
   return (
     <span
-      className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase ${CHECK_STATUS_CLASSES[status]}`}
+      className={`rounded border px-1.5 py-0.5 text-2xs font-bold uppercase ${CHECK_STATUS_CLASSES[status]}`}
     >
       {STATUS_LABELS[status]}
     </span>
@@ -122,7 +122,7 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
                 <div className="text-xs font-medium text-foreground">
                   {check.name}
                   {check.required && (
-                    <span className="ml-2 text-[10px] uppercase text-muted-foreground">
+                    <span className="ml-2 text-2xs uppercase text-muted-foreground">
                       required
                     </span>
                   )}

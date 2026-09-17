@@ -148,7 +148,7 @@ const CommitTable: React.FC<{
             <td className="py-1 pr-3 align-top text-foreground">
               {row.title || <span className="text-muted-foreground/70">(unresolved commit)</span>}
               {badge && (
-                <span className="ml-2 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                <span className="ml-2 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-destructive">
                   {badge}
                 </span>
               )}

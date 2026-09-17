@@ -177,7 +177,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
           <h3 className="text-sm font-semibold text-foreground">
             Daemon Diagnostics & Service Logs (Sensitive Tokens Redacted)
           </h3>
-          <span className="text-[11px] text-muted-foreground font-mono">
+          <span className="text-xs-tight text-muted-foreground font-mono">
             TENDRIL_HOME/Logs/service.log
           </span>
         </div>

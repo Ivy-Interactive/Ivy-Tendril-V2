@@ -205,6 +205,19 @@
   /* Annotation / search-hit highlight */
   --highlight: hsl(48 96% 76% / 0.7);
   --highlight-active: hsl(25 95% 53% / 0.95);
+
+  /* Badge solid-tint steps: a light fill + dark text in light mode, a dark fill + light text in
+     dark mode, for each status tone `Badge`'s solid variants use. */
+  --ivy-green-tint-bg: color-mix(in srgb, var(--ivy-green) 20%, var(--background));
+  --ivy-green-tint-fg: color-mix(in srgb, var(--ivy-green) 60%, var(--foreground));
+  --destructive-tint-bg: color-mix(in srgb, var(--destructive) 20%, var(--background));
+  --destructive-tint-fg: color-mix(in srgb, var(--destructive) 60%, var(--foreground));
+  --success-tint-bg: color-mix(in srgb, var(--success) 20%, var(--background));
+  --success-tint-fg: color-mix(in srgb, var(--success) 60%, var(--foreground));
+  --warning-tint-bg: color-mix(in srgb, var(--warning) 20%, var(--background));
+  --warning-tint-fg: color-mix(in srgb, var(--warning) 60%, var(--foreground));
+  --info-tint-bg: color-mix(in srgb, var(--info) 20%, var(--background));
+  --info-tint-fg: color-mix(in srgb, var(--info) 60%, var(--foreground));
 }
 
 .dark {
@@ -362,6 +375,9 @@
   --radius-boxes: var(--radius-boxes);
   --radius-fields: var(--radius-fields);
   --radius-selectors: var(--radius-selectors);
+  --text-3xs: var(--text-3xs);
+  --text-2xs: var(--text-2xs);
+  --text-xs-tight: var(--text-xs-tight);
   --font-family-sans: var(--font-sans);
   --font-family-mono: var(--font-mono);
   --font-family-serif: var(--font-serif);
@@ -370,6 +386,18 @@
   --animate-accordion-down: accordion-down 0.1s ease-out;
   --animate-accordion-up: accordion-up 0.1s ease-out;
   --animate-indeterminate: indeterminate 1.5s ease-in-out infinite;
+
+  /* Badge solid-tint steps */
+  --color-ivy-green-tint-bg: var(--ivy-green-tint-bg);
+  --color-ivy-green-tint-fg: var(--ivy-green-tint-fg);
+  --color-destructive-tint-bg: var(--destructive-tint-bg);
+  --color-destructive-tint-fg: var(--destructive-tint-fg);
+  --color-success-tint-bg: var(--success-tint-bg);
+  --color-success-tint-fg: var(--success-tint-fg);
+  --color-warning-tint-bg: var(--warning-tint-bg);
+  --color-warning-tint-fg: var(--warning-tint-fg);
+  --color-info-tint-bg: var(--info-tint-bg);
+  --color-info-tint-fg: var(--info-tint-fg);
 
   /* Neutral colors */
   --color-ivy-green: var(--ivy-green);
