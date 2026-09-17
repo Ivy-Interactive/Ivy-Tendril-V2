@@ -115,9 +115,7 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
                 <div className="text-xs font-medium text-foreground">
                   {check.name}
                   {check.required && (
-                    <span className="ml-2 text-2xs uppercase text-muted-foreground">
-                      required
-                    </span>
+                    <span className="ml-2 text-2xs uppercase text-muted-foreground">required</span>
                   )}
                 </div>
                 <div className="break-words text-xs text-muted-foreground">{check.message}</div>

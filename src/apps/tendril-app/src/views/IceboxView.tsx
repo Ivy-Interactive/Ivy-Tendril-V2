@@ -234,7 +234,9 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                       {formatPlanId(plan.id)}
                     </span>
                     {plan.priority !== undefined && (
-                      <span className="text-xs-tight text-muted-foreground/80">P{plan.priority}</span>
+                      <span className="text-xs-tight text-muted-foreground/80">
+                        P{plan.priority}
+                      </span>
                     )}
                   </div>
 

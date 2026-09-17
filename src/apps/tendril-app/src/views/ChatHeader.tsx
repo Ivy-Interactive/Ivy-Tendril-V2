@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { IconButton, Popover, PopoverContent, PopoverTrigger } from "@ivy-interactive/components/ui";
+import {
+  IconButton,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@ivy-interactive/components/ui";
 import {
   Activity,
   ArrowDownToLine,
