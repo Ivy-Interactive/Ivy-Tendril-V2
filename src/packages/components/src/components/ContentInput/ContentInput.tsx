@@ -885,15 +885,15 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   <Spinner
                     size={14}
                     duration="0.8s"
-                    color="var(--civ-accent)"
-                    trackColor="var(--civ-border)"
+                    color="var(--accent)"
+                    trackColor="var(--border)"
                   />
                 ) : voiceStatus === "processing" ? (
                   <Spinner
                     size={14}
                     duration="0.8s"
-                    color="var(--civ-error)"
-                    trackColor="var(--civ-border)"
+                    color="var(--destructive)"
+                    trackColor="var(--border)"
                   />
                 ) : voiceStatus === "recording" ? (
                   <svg
