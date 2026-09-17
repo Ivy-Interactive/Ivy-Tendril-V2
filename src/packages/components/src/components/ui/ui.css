@@ -336,6 +336,13 @@
   background: var(--info);
 }
 
+.tui-dot[data-floating="true"] {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  box-shadow: 0 0 0 2px var(--tui-dot-ring, var(--background));
+}
+
 @keyframes tui-dot-pulse {
   0%,
   100% {
@@ -355,6 +362,7 @@
 /* ---------- Icon button ---------- */
 
 .tui-icon-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;

@@ -59,7 +59,7 @@ const IconAction: React.FC<{ action: PlanActionDto; onFire: (tag: string) => voi
       <ActionIcon icon={action.icon} />
     )}
     {action.badge && (
-      <TuiBadge numeric className="pws-icon-badge">
+      <TuiBadge numeric floating>
         {action.badge}
       </TuiBadge>
     )}
@@ -252,7 +252,7 @@ const TabTool: React.FC<TabToolProps> = ({
         onPointerLeave={scheduleClose}
       >
         <Icon size={16} />
-        {indicator && <StatusDot tone="warning" className="pws-tool-dot" />}
+        {indicator && <StatusDot tone="warning" floating />}
       </IconButton>
       {open && (
         <div

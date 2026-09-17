@@ -130,6 +130,10 @@ export interface StatusDotProps {
   tone?: DotTone;
   /** Pulses while something is in flight. */
   pulse?: boolean;
+  /** Absolutely positions the dot at the top-right corner of a `position: relative` parent. */
+  floating?: boolean;
+  /** The ring color around a floating dot; defaults to the theme background. */
+  ring?: string;
   className?: string;
   label?: string;
 }
@@ -138,6 +142,8 @@ export interface StatusDotProps {
 export const StatusDot: React.FC<StatusDotProps> = ({
   tone = "neutral",
   pulse = false,
+  floating = false,
+  ring,
   className = "",
   label,
 }) => (
@@ -145,6 +151,8 @@ export const StatusDot: React.FC<StatusDotProps> = ({
     className={`tui-dot ${className}`.trim()}
     data-tone={tone}
     data-pulse={pulse}
+    data-floating={floating ? "true" : undefined}
+    style={ring ? ({ "--tui-dot-ring": ring } as React.CSSProperties) : undefined}
     role={label ? "img" : undefined}
     aria-label={label}
     aria-hidden={label ? undefined : true}
