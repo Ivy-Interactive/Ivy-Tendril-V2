@@ -778,13 +778,19 @@ describe("Jobs filter expression", () => {
     const { calls } = renderJobs([job("00021", "Running", { planId: "00638" })]);
     await waitForRows(1);
 
-    // The cell shows a plan id; the daemon's column is `PlanFile`, whose value only *starts* with it —
-    // which is why V1's condition here is `contains`.
+    // The cell shows a plan id, and the daemon has two columns that can hold it: `ReportedPlanId` when
+    // the promptware reported one, and `PlanFile` — a folder path — otherwise. Both are asked.
     await commitFilter('[Plan Id] contains "007"');
 
     await waitFor(() => expect(queries(calls)).toHaveLength(2));
-    expect(queries(calls)[1]).toMatchObject({
-      filter: { condition: { column: "planFile", function: "contains", args: ["007"] } },
+    expect(queries(calls)[1].filter).toEqual({
+      group: {
+        op: "or",
+        filters: [
+          { condition: { column: "reportedPlanId", function: "contains", args: ["007"] } },
+          { condition: { column: "planFile", function: "contains", args: ["007"] } },
+        ],
+      },
     });
   });
 
@@ -810,17 +816,61 @@ describe("Jobs filter expression", () => {
     const { calls } = renderJobs([job("00021", "Running")]);
     await waitForRows(1);
 
-    // `.Filterable(t => t.Id, false)` (`:83`), and Timer/Cost/Tokens/Timestamp/Agent Output declare no
-    // filter either — two are derived and three are numeric, so a `contains` over the *formatted* value
-    // would filter the rendering rather than the figure.
-    for (const column of ["Id", "Timer", "Cost", "Tokens", "Timestamp", "Agent Output"]) {
-      await commitFilter(`[${column}] is not blank`);
-      expect(screen.getByTestId("data-table-filter-error"), column).toHaveTextContent(
-        `Unknown column '${column}'`,
-      );
-    }
+    // `.Filterable(t => t.Id, false)` (`:83`) — the only column V1 keeps out of its expression that V2
+    // also has. `ErrorContext`, its other one, is not a column here.
+    await commitFilter("[Id] is not blank");
+    expect(screen.getByTestId("data-table-filter-error")).toHaveTextContent("Unknown column 'Id'");
+
     // Nothing was sent: a 400 the operator cannot read would empty the table for no visible reason.
     expect(queries(calls)).toHaveLength(1);
+  });
+
+  /**
+   * The five columns V1 could filter and V2 had dropped. V1 filtered them as their *rendered* strings,
+   * because every property on its row type is a string — `[Cost] contains "~"`, `[Timer] contains ":"`.
+   * These go to the real numeric and date columns instead, so `> 5` is five dollars and not a substring,
+   * which is the same question asked properly.
+   */
+  it("filters the cost, token, duration and date columns on their real values", async () => {
+    const { calls } = renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    for (const [column, wire] of [
+      ["Cost", "cost"],
+      ["Tokens", "tokens"],
+      ["Timer", "durationSeconds"],
+      ["Timestamp", "completedAt"],
+      ["Agent Output", "lastOutputAt"],
+    ] as const) {
+      const before = queries(calls).length;
+      await commitFilter(`[${column}] is not blank`);
+      expect(screen.queryByTestId("data-table-filter-error"), column).not.toBeInTheDocument();
+      await waitFor(() => expect(queries(calls).length).toBeGreaterThan(before));
+      expect(JSON.stringify(queries(calls).at(-1)), column).toContain(wire);
+    }
+  });
+
+  /**
+   * The Plan Id cell shows `reportedPlanId` when the promptware reported one and the id off `planFile`
+   * otherwise, so a filter has to ask both. Filtering `planFile` alone made `[Plan Id] = "00681"` match
+   * nothing at all — that column holds a folder path.
+   */
+  it("matches a plan id against both columns the cell can be showing", async () => {
+    const { calls } = renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    await commitFilter('[Plan Id] = "00681"');
+    await waitFor(() => expect(queries(calls)).toHaveLength(2));
+
+    expect(queries(calls)[1].filter).toEqual({
+      group: {
+        op: "or",
+        filters: [
+          { condition: { column: "reportedPlanId", function: "equals", args: ["00681"] } },
+          { condition: { column: "planFile", function: "equals", args: ["00681"] } },
+        ],
+      },
+    });
   });
 
   it("says a filter is narrowing when the table comes back empty", async () => {

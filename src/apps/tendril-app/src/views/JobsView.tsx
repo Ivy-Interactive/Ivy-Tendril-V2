@@ -1051,9 +1051,16 @@ export const JobsView: React.FC<JobsViewProps> = ({
         name: "planId",
         header: "Plan Id",
         width: "80px",
-        // `contains`, not `equals`: a plan id is typed a digit at a time, and the daemon's column is
-        // `PlanFile`, whose value only *starts* with the id.
-        filter: { kind: "text", column: "planFile", placeholder: "Id…" },
+        // Both columns the cell can be showing, ORed. The value rendered is `reportedPlanId` when the
+        // promptware reported one and the id read off `planFile` otherwise, so filtering either alone
+        // silently missed whichever jobs took the other route — and `[Plan Id] = "00681"` matched
+        // nothing at all, because `planFile` holds a folder path rather than a bare id.
+        filter: {
+          kind: "text",
+          column: "reportedPlanId",
+          alsoColumns: ["planFile"],
+          placeholder: "Id…",
+        },
         // V1's Plan Id cell action navigates (`JobsApp.DataTable.cs:95-141`), so this is the framework's
         // *link* cell: `cursor: pointer` on the cell and blue underlined text in it.
         clickable: Boolean(onSelectPlan),
@@ -1143,6 +1150,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
         // Derived from `StartedAt` for a running job, so the database's closest total order is the
         // recorded duration. See {@link SORT_COLUMNS}.
         sortColumn: "durationSeconds",
+        // Filtered as the recorded duration in seconds, so `> 300` asks for runs over five minutes.
+        // V1 could only match its formatted `1:04` as a string.
+        filter: { kind: "text", column: "durationSeconds", placeholder: "Seconds…" },
         accessor: (row) => row.timerSeconds,
         cell: (_value, row) => (
           <span className="font-mono text-xs text-muted-foreground">
@@ -1157,6 +1167,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
         // How long since the agent last wrote a line, not its status message — that has its own column.
         // `Status` is what groups the three forms this cell takes; see {@link SORT_COLUMNS}.
         sortColumn: "status",
+        // The cell counts up from `lastOutputAt`, so that is what a filter on it means.
+        filter: { kind: "text", column: "lastOutputAt", placeholder: "Date…" },
         // V1's cell action here opens the output sheet rather than navigating, which is the framework's
         // plain clickable cell: the cursor, and no link styling.
         clickable: true,
@@ -1191,6 +1203,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
         header: "Cost",
         width: "80px",
         align: "Right",
+        // The real numeric column, so `> 5` means five dollars. V1 filtered its rendered `~$1.23`.
+        filter: { kind: "text", column: "cost", placeholder: "Amount…" },
         accessor: (row) => row.costValue,
         cell: (_value, row) => (
           <span
@@ -1207,6 +1221,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
         header: "Tokens",
         width: "80px",
         align: "Right",
+        filter: { kind: "text", column: "tokens", placeholder: "Count…" },
         accessor: (row) => row.tokens,
         cell: (_value, row) => (
           <span
@@ -1229,6 +1244,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
         header: "Timestamp",
         width: "110px",
         sortColumn: "completedAt",
+        // The stored RFC 3339 stamp, so `starts with "2026-09-17"` asks for a day and `>` for a cutoff.
+        filter: { kind: "text", column: "completedAt", placeholder: "Date…" },
         accessor: (row) => row.completedAtMs,
         // `FormatTimestamp`: `MM-dd HH:mm` in the viewer's local time, "-" until the job finishes.
         cell: (_value, row) => (

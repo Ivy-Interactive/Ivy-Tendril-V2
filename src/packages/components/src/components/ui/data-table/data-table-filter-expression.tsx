@@ -10,6 +10,7 @@ import { Densities } from "@/types/density";
 
 import {
   filterExpressionColumns,
+  filterExpressionExamples,
   filterExpressionPlaceholder,
   parseFilterExpression,
 } from "./filter-expression";
@@ -197,11 +198,9 @@ function DataTableFilterExpressionInner<TRow>(
               <code>OR</code> and group with parentheses.
             </p>
             <ul className="mb-3 flex flex-col gap-1 font-mono">
-              <li>{'[Status] = "Running"'}</li>
-              <li>{'[Status] in ("Running", "Queued")'}</li>
-              <li>{'[Prompt] contains "rebuild"'}</li>
-              <li>{'[Cost] > 5 AND [Status] != "Failed"'}</li>
-              <li>{"[Status Message] is blank"}</li>
+              {filterExpressionExamples(columns).map((example) => (
+                <li key={example}>{example}</li>
+              ))}
             </ul>
             <p className="mb-1 font-medium">Filterable columns</p>
             <ul className="flex flex-col gap-1">
