@@ -2,7 +2,7 @@ import React from "react";
 import { Tooltip, type TooltipSide } from "./TuiTooltip";
 import "./ui.css";
 
-export type IconButtonSize = "sm" | "md" | "lg";
+export type IconButtonSize = "2xs" | "xs" | "sm" | "md" | "lg" | "xl";
 export type IconButtonVariant = "ghost" | "danger" | "solid";
 export type IconButtonShape = "square" | "round";
 export type IconButtonTone = "default" | "muted";

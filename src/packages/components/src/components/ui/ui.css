@@ -380,6 +380,18 @@
     opacity var(--duration-fast) var(--ease-standard);
 }
 
+.tui-icon-btn[data-size="2xs"] {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-xs);
+}
+
+.tui-icon-btn[data-size="xs"] {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+}
+
 .tui-icon-btn[data-size="sm"] {
   width: 24px;
   height: 24px;
@@ -394,6 +406,11 @@
 .tui-icon-btn[data-size="lg"] {
   width: 32px;
   height: 32px;
+}
+
+.tui-icon-btn[data-size="xl"] {
+  width: 40px;
+  height: 40px;
 }
 
 .tui-icon-btn[data-shape="round"] {
@@ -413,7 +430,7 @@
 .tui-icon-btn:hover:not(:disabled),
 .tui-icon-btn[data-active="true"],
 .tui-icon-btn[aria-expanded="true"] {
-  background: var(--tui-surface);
+  background: var(--tui-icon-btn-hover, var(--tui-surface));
   opacity: 1;
 }
 

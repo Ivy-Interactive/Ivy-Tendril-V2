@@ -310,24 +310,10 @@
 }
 
 .tsh-header-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  --tui-icon-btn-hover: var(--tsh-row-active);
   margin-right: -4px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-md);
   color: var(--foreground);
-  cursor: pointer;
-  transition: background-color var(--duration-base) var(--ease-standard);
-}
-
-.tsh-header-toggle:hover {
-  background: var(--tsh-row-active);
-  color: var(--foreground);
+  opacity: 1;
 }
 
 /* Rail header: the logo doubles as the expand control: hovering it fades the
@@ -894,24 +880,10 @@
 
 .tsh-section-search,
 .tsh-section-new {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
+  --tui-icon-btn-hover: var(--tsh-row-active);
   margin-right: -2px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-sm);
   color: var(--foreground);
-  cursor: pointer;
-  transition: background-color var(--duration-base) var(--ease-standard);
-}
-
-.tsh-section-search:hover,
-.tsh-section-new:hover {
-  background: var(--tsh-row-active);
-  color: var(--foreground);
+  opacity: 1;
 }
 
 /* No list to title (other apps, or an empty Review/Drafts list): the header
@@ -1290,26 +1262,9 @@
 }
 
 .tsh-tab-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  --tui-icon-btn-hover: var(--tsh-badge-bg-active);
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-sm);
   color: var(--foreground);
-  opacity: var(--opacity-muted);
-  cursor: pointer;
-  transition:
-    opacity var(--duration-base) var(--ease-standard),
-    background-color var(--duration-base) var(--ease-standard);
-}
-
-.tsh-tab-close:hover {
-  opacity: 1;
-  background: var(--tsh-badge-bg-active);
 }
 
 .tsh-tab-close:focus-visible {
@@ -1318,23 +1273,12 @@
 }
 
 .tsh-tab-new {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
+  --tui-icon-btn-hover: var(--tsh-row-active);
   flex-shrink: 0;
-  border: none;
   border-right: var(--border-width) solid var(--border);
-  background: transparent;
+  border-radius: 0;
   color: var(--foreground);
-  cursor: pointer;
-  transition: background-color var(--duration-base) var(--ease-standard);
-}
-
-.tsh-tab-new:hover {
-  background: var(--tsh-row-active);
-  color: var(--foreground);
+  opacity: 1;
 }
 
 .tsh-spin {
