@@ -233,7 +233,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
               aria-label="Target Project"
               value={selectedProject}
               onChange={(e) => handleProjectChange(e.target.value)}
-              className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
+              className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:border-ring focus-visible:outline-none"
             >
               {options.map((o) => (
                 <option key={o.value} value={o.value}>

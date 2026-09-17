@@ -105,7 +105,7 @@ export const RecommendationNoteDialog: React.FC<RecommendationNoteDialogProps> =
         placeholder={
           action === "Accept" ? "Enter optional notes..." : "Enter reason for declining..."
         }
-        className="w-full rounded-box border border-border bg-background p-3 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none"
+        className="w-full rounded-box border border-border bg-background p-3 text-sm text-foreground placeholder-muted-foreground/70 focus-visible:border-ring focus-visible:outline-none"
       />
     </DialogShell>
   );

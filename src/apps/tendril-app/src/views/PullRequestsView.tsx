@@ -432,7 +432,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
                   placeholder="Search by plan, project, repository, or branch..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-72 rounded-field border border-border bg-card px-4 py-2 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="w-72 rounded-field border border-border bg-card px-4 py-2 text-sm text-foreground placeholder-muted-foreground/70 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
                 <div className="min-w-[180px]">
                   <BadgeSelect

@@ -324,7 +324,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               if (e.key === "Escape") setIsEditingTitle(false);
             }}
             autoFocus
-            className="w-full max-w-[360px] rounded-field border border-border bg-background px-2 py-1 text-base font-semibold text-foreground outline-none focus:border-foreground"
+            className="w-full max-w-[360px] rounded-field border border-border bg-background px-2 py-1 text-base font-semibold text-foreground outline-none focus-visible:border-foreground"
           />
         ) : (
           <h1 className="truncate text-base font-semibold text-foreground" title={title}>

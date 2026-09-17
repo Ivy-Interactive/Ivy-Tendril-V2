@@ -1295,7 +1295,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   setSelectedRepo(e.target.value);
                   resetToFirstPage();
                 }}
-                className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
                 {activeProjectRepos.map((r) => (
                   <option key={r} value={r}>
@@ -1325,7 +1325,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               aria-label="Auto-refresh interval"
               value={pollInterval}
               onChange={(e) => handlePollIntervalChange(e.target.value as PollInterval)}
-              className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               {(Object.keys(POLL_INTERVAL_LABELS) as PollInterval[]).map((opt) => (
                 <option key={opt} value={opt}>
@@ -1538,7 +1538,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                       setSearchQuery(e.target.value);
                       resetToFirstPage();
                     }}
-                    className="w-72 rounded-field border border-input bg-transparent px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="w-72 rounded-field border border-input bg-transparent px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   />
                   {/* V1 sets `AllowFiltering = true` on the table, which gives the Labels and
                       Assignees columns a filter each; `BadgeSelect` is how `PullRequestsView`

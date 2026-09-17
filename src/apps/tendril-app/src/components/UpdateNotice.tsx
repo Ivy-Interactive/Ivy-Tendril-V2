@@ -33,14 +33,14 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({
         <button
           type="button"
           onClick={onCopyCommand}
-          className="rounded bg-info/60 px-3 py-1 text-xs font-medium text-info transition hover:bg-info/90 focus:outline-none focus:ring-2 focus:ring-info"
+          className="rounded bg-info/60 px-3 py-1 text-xs font-medium text-info transition hover:bg-info/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info"
         >
           Copy Command
         </button>
         <button
           type="button"
           onClick={() => onDismiss(info.latestVersion as string)}
-          className="rounded px-3 py-1 text-xs font-medium text-info transition hover:bg-info/20 focus:outline-none focus:ring-2 focus:ring-info"
+          className="rounded px-3 py-1 text-xs font-medium text-info transition hover:bg-info/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info"
         >
           Dismiss
         </button>

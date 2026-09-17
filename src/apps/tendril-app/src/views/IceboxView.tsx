@@ -163,7 +163,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search icebox plans..."
-            className="h-9 w-full rounded-field border border-border bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+            className="h-9 w-full rounded-field border border-border bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none"
           />
         </div>
 
@@ -172,7 +172,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
             aria-label="Project"
             value={selectedProject}
             onChange={(e) => setSelectedProject(e.target.value)}
-            className="h-9 rounded-field border border-border bg-background px-3 text-xs text-foreground focus:border-ring focus:outline-none"
+            className="h-9 rounded-field border border-border bg-background px-3 text-xs text-foreground focus-visible:border-ring focus-visible:outline-none"
           >
             <option value="all">All Projects</option>
             {projects.map((p) => (
@@ -188,7 +188,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
             aria-label="Level"
             value={selectedLevel}
             onChange={(e) => setSelectedLevel(e.target.value)}
-            className="h-9 rounded-field border border-border bg-background px-3 text-xs text-foreground focus:border-ring focus:outline-none"
+            className="h-9 rounded-field border border-border bg-background px-3 text-xs text-foreground focus-visible:border-ring focus-visible:outline-none"
           >
             <option value="all">All Levels</option>
             {levels.map((l) => (
