@@ -3,17 +3,11 @@
    token derives from the host theme so alternate themes recolor it; literals are fallbacks. */
 
 .tq-root {
-  --tq-fg: var(--foreground);
   --tq-muted: var(--foreground-muted);
   --tq-faint: color-mix(in srgb, var(--foreground) 40%, transparent);
   --tq-option-bg: color-mix(in srgb, var(--foreground) 4%, var(--background));
   --tq-option-bg-hover: color-mix(in srgb, var(--foreground) 7%, var(--background));
   --tq-option-bg-selected: color-mix(in srgb, var(--foreground) 10%, var(--background));
-  --tq-option-ring: var(--foreground);
-  --tq-input-bg: var(--background);
-  --tq-border: var(--border);
-  --tq-cta-bg: var(--primary);
-  --tq-cta-fg: var(--primary-foreground);
   --tq-chip-bg: color-mix(in srgb, var(--foreground) 6%, var(--background));
   --tq-recommended-bg: color-mix(in srgb, var(--success) 22%, var(--background));
   --tq-recommended-fg: color-mix(in srgb, var(--success) 45%, var(--foreground));
@@ -26,7 +20,7 @@
   font-family: var(--font-sans);
   font-size: var(--text-sm);
   line-height: 1.35;
-  color: var(--tq-fg);
+  color: var(--foreground);
 }
 
 .dark .tq-root {
@@ -141,7 +135,7 @@
 /* A selected card is told apart by its ring and a deeper tint only. */
 .tq-option[data-selected="true"] {
   background: var(--tq-option-bg-selected);
-  box-shadow: inset 0 0 0 1px var(--tq-option-ring);
+  box-shadow: inset 0 0 0 1px var(--foreground);
 }
 
 .tq-option:has(.tq-option-input:focus-visible) {
@@ -178,7 +172,7 @@
   height: 16px;
   border-radius: var(--radius-selectors);
   border: var(--border-width) solid var(--tq-faint);
-  color: var(--tq-cta-fg);
+  color: var(--primary-foreground);
   transition:
     background-color var(--duration-fast) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard);
@@ -189,8 +183,8 @@
 }
 
 .tq-option[data-selected="true"] .tq-option-box {
-  background: var(--tq-cta-bg);
-  border-color: var(--tq-cta-bg);
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .tq-option[data-selected="true"] .tq-option-box svg {
@@ -225,16 +219,16 @@
 .tq-text-input {
   width: 100%;
   padding: 8px 12px;
-  border: var(--border-width) solid var(--tq-border);
+  border: var(--border-width) solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--tq-input-bg);
+  background: var(--background);
   color: inherit;
   font: inherit;
   outline: none;
 }
 
 .tq-text-input:focus {
-  border-color: var(--tq-option-ring);
+  border-color: var(--foreground);
 }
 
 .tq-text-input::placeholder {
@@ -288,7 +282,7 @@
 
 .tq-clear:hover {
   background: var(--tq-option-bg);
-  color: var(--tq-fg);
+  color: var(--foreground);
 }
 
 .tq-submit {
@@ -298,8 +292,8 @@
   padding: 6px 14px;
   border: none;
   border-radius: var(--radius-lg);
-  background: var(--tq-cta-bg);
-  color: var(--tq-cta-fg);
+  background: var(--primary);
+  color: var(--primary-foreground);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
