@@ -133,6 +133,73 @@
   --sidebar-accent-foreground: #18181b;
   --sidebar-border: #e4e4e7;
   --sidebar-ring: #18181b;
+
+  /* Radius scale */
+  --radius-xs: 0.125rem; /* 2px */
+  --radius-sm: 0.25rem; /* 4px */
+  --radius-md: 0.375rem; /* 6px */
+  --radius-lg: 0.5rem; /* 8px */
+  --radius-menu: 0.625rem; /* 10px */
+  --radius-xl: 0.75rem; /* 12px */
+  --radius-2xl: 1rem; /* 16px */
+  --radius-full: 9999px;
+
+  /* Border */
+  --border-width: 1px;
+  --border-width-thick: 2px;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 1px;
+
+  /* Opacity */
+  --opacity-disabled: 0.5;
+  --opacity-dim: 0.5;
+  --opacity-muted: 0.6;
+  --opacity-subtle: 0.7;
+  --opacity-soft: 0.8;
+  --opacity-hover: 0.9;
+
+  /* Type scale */
+  --text-3xs: 0.5625rem;
+  --text-2xs: 0.625rem;
+  --text-xs-tight: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm-tight: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+
+  /* Motion */
+  --duration-instant: 100ms;
+  --duration-fast: 120ms;
+  --duration-base: 150ms;
+  --duration-moderate: 200ms;
+  --duration-slow: 300ms;
+  --ease-standard: ease;
+  --ease-out: ease-out;
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Z-index */
+  --z-base: 1;
+  --z-raised: 2;
+  --z-sticky: 10;
+  --z-rail: 20;
+  --z-dropdown: 40;
+  --z-overlay: 50;
+  --z-menu: 60;
+  --z-tooltip: 70;
+  --z-modal: 100;
+  --z-lightbox: 10000;
+  --z-devtools: 100001;
+
+  /* Derived colors */
+  --foreground-muted: color-mix(in srgb, var(--foreground) 60%, transparent);
+  --surface-chrome: color-mix(in srgb, var(--foreground) 3%, var(--background));
+  --surface-tint: color-mix(in srgb, var(--foreground) 6%, transparent);
+
+  /* Elevation */
+  --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-menu: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
 .dark {
@@ -236,6 +303,13 @@
   --sidebar-accent-foreground: #f4f4f5;
   --sidebar-border: #27272a;
   --sidebar-ring: #d4d4d8;
+
+  /* Derived colors */
+  --surface-chrome: var(--card);
+
+  /* Elevation */
+  --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-menu: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
 }
 
 @theme inline {
