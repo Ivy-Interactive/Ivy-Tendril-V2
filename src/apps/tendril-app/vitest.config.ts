@@ -21,14 +21,11 @@ export default defineConfig({
         // The list has to name packages that reach React from that nested store even when nothing
         // imports them directly. `@tanstack/react-virtual` is one: `DataTable`'s virtualizer pulls it
         // in, it bound the nested copy, and every test that rendered a table died on a null
-        // `useReducer`. Naming it here fixes 169 of them.
+        // `useReducer`.
         //
-        // `react-remove-scroll` is the same shape and is deliberately *not* listed: Radix's dialog and
-        // popover pull it in and it still binds the nested copy, but inlining it changes nothing,
-        // because the build that gets loaded is its CJS `dist/es5`, whose `require("react")` the alias
-        // below never sees. Those tests stay red until the nested copy goes away — `react` is in
-        // `packages/components`'s `dependencies` as well as its `peerDependencies`, and belongs in
-        // `devDependencies` instead, which is a lockfile change rather than a config one.
+        // The nested store itself is not a mistake to be removed: `packages/components` has its own
+        // `pnpm-workspace.yaml` and lockfile, so it is a separate project and installs its own React by
+        // design. Which is why the fix is `mainFields` below rather than a dependency change.
         inline: [
           /@ivy-interactive\/components/,
           /@dnd-kit/,
@@ -44,6 +41,21 @@ export default defineConfig({
     },
   },
   resolve: {
+    /**
+     * Prefer a dependency's ESM build over its CJS one, which is what stops a second React being
+     * loaded — the cause of "more than one copy of React in the same app" across this suite.
+     *
+     * Under Node, Vitest resolves `main` first, and `main` is the CJS build for a package that ships
+     * both. A CJS module is loaded by Node rather than processed by Vite, so its `require("react")`
+     * never reaches the `alias` below and resolves relative to *its own* location — for anything under
+     * `packages/components/node_modules`, that is that project's own React. `react-remove-scroll` (which
+     * Radix's dialog and popover pull in) is exactly that shape: `main` is `dist/es5`, `module` is
+     * `dist/es2015`, and every test that opened a dialog died on a null `useRef`.
+     *
+     * Taking `module` first puts those packages back in Vite's graph, where the alias applies and there
+     * is one React again. `main` stays last, so a package with no ESM build is unaffected.
+     */
+    mainFields: ["module", "jsnext:main", "jsnext", "main"],
     dedupe: ["react", "react-dom"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
