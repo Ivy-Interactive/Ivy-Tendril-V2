@@ -305,7 +305,9 @@
   --sidebar-ring: #d4d4d8;
 
   /* Derived colors */
+  --foreground-muted: color-mix(in srgb, var(--foreground) 60%, transparent);
   --surface-chrome: var(--card);
+  --surface-tint: color-mix(in srgb, var(--foreground) 6%, transparent);
 
   /* Elevation */
   --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
