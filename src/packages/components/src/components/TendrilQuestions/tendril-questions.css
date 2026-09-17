@@ -145,7 +145,7 @@
 }
 
 .tq-option:has(.tq-option-input:focus-visible) {
-  outline: var(--focus-ring-width) solid var(--tq-option-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
 

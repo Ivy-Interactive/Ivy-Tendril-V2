@@ -352,7 +352,7 @@
 }
 
 .tui-icon-btn:focus-visible {
-  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--tui-fg) 40%, transparent);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
   opacity: 1;
 }

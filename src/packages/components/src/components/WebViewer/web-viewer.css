@@ -93,7 +93,7 @@
 }
 
 .wvr-icon-btn:focus-visible {
-  outline: var(--focus-ring-width) solid var(--wvr-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
 
@@ -164,7 +164,7 @@
 }
 
 .wvr-address-display:focus-visible {
-  outline: var(--focus-ring-width) solid var(--wvr-ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
 

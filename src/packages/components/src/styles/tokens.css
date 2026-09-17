@@ -149,6 +149,7 @@
   --border-width-thick: 2px;
   --focus-ring-width: 2px;
   --focus-ring-offset: 1px;
+  --focus-ring-color: var(--ring);
 
   /* Opacity */
   --opacity-disabled: 0.5;

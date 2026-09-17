@@ -461,7 +461,7 @@
 }
 
 .aov-tool-header:focus-visible {
-  outline: var(--focus-ring-width) solid var(--ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
   border-radius: var(--radius-xs);
 }
@@ -577,7 +577,7 @@
 }
 
 .aov-tool-group-header:focus-visible {
-  outline: var(--focus-ring-width) solid var(--ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
   border-radius: var(--radius-xs);
 }

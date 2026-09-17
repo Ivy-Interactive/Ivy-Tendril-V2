@@ -173,8 +173,8 @@
 }
 
 .tdb-status-item:focus-visible {
-  outline: var(--focus-ring-width) solid var(--tdb-muted);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .tdb-status-item svg {
@@ -240,8 +240,8 @@ button.tdb-kpi:hover {
 }
 
 button.tdb-kpi:focus-visible {
-  outline: var(--focus-ring-width) solid var(--tdb-focus, var(--tdb-muted));
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .tdb-kpi[data-tone="0"] {
@@ -754,8 +754,8 @@ button.tdb-kpi:focus-visible {
 }
 
 .tdb-job-row:focus-visible {
-  outline: var(--focus-ring-width) solid var(--tdb-muted);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .tdb-job-spinner {

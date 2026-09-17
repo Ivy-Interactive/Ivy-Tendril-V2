@@ -150,7 +150,7 @@
 /* V2 only: the handle is a real focusable separator (arrow keys resize it), so it
    needs a ring V1's pointer-only handle never did. */
 .tsh-sidebar-resizer:focus-visible {
-  outline: var(--focus-ring-width) solid var(--ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
   border-radius: var(--radius-xs);
 }
@@ -1269,7 +1269,7 @@
    (role="tab", tabIndex 0); the inner selectors cover a host that focuses them. */
 .tsh-tab:focus-visible,
 .tsh-tab-main:focus-visible {
-  outline: var(--focus-ring-width) solid var(--ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: -2px;
   border-radius: var(--radius-xs);
 }
@@ -1318,7 +1318,7 @@
 }
 
 .tsh-tab-close:focus-visible {
-  outline: var(--focus-ring-width) solid var(--ring);
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
 }
 
