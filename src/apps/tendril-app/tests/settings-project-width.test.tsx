@@ -186,3 +186,32 @@ describe("the repositories list, which is a flex row rather than a table", () =>
     expect(path).toHaveClass("min-w-0", "flex-1", "truncate");
   });
 });
+
+/**
+ * The per-cell caps above bound the *tables*, and are not enough on their own: the screen also holds
+ * prose with no cap — the ports merge note, the delete-unavailable note — and `SubSection`'s header is
+ * `justify-between`, so its "Add …" button is pinned to the right edge of whatever width the body has.
+ *
+ * With no cap on the body the blade row (`BladeContainer`, `w-max`) took its width from that content, so
+ * the pane laid out ~1200px of screen inside ~950px of window: the "Add Verification" and "Add Port"
+ * buttons and the tables' Edit/Delete column sat off the right edge, unreachable because both
+ * `ScrollArea`s render a vertical scrollbar only and Radix therefore sets `overflow-x: hidden`.
+ *
+ * So the cap belongs on the body root, where it bounds every child at once. Pinned here because it is a
+ * single class on a container that no other assertion in this file would miss.
+ */
+describe("the project screen as a whole", () => {
+  it("caps its own width rather than growing to fit its widest child", async () => {
+    // A project with no table rows: the cap is on the body root, so it does not depend on any one
+    // section's content, and this keeps the assertion off the `DataTable` the cases above need.
+    await renderProject(projectConfig({}));
+
+    const body = screen.getByTestId("project-settings-Tendril");
+    // `max-w-170` is the width the forms and tables inside it already use, and the same one every other
+    // settings section applies to its body.
+    expect(body.className).toMatch(/\bmax-w-170\b/);
+    // Without `min-w-0` the cap still holds, but the body cannot shrink below its content as a flex
+    // item, which is how the same overflow returns in the collapsed layout.
+    expect(body).toHaveClass("min-w-0");
+  });
+});

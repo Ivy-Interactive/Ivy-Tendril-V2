@@ -9,6 +9,14 @@ const ScrollArea = React.forwardRef<
     viewportClassName?: string;
     viewportStyle?: React.CSSProperties;
     hideScrollbar?: boolean;
+    /**
+     * Also scroll sideways. Opt-in because it is not only a scrollbar: Radix sets the viewport's
+     * `overflow-x` to `hidden` until a horizontal scrollbar is mounted, so without this an area whose
+     * content is too wide *clips* it with no way to reach it — not even by wheel or trackpad. Left off
+     * by default so a container that only ever grows downwards keeps overflowing content clipped rather
+     * than gaining a scrollbar it has no use for.
+     */
+    horizontal?: boolean;
   }
 >(
   (
@@ -19,6 +27,7 @@ const ScrollArea = React.forwardRef<
       viewportClassName,
       viewportStyle,
       hideScrollbar,
+      horizontal,
       ...props
     },
     ref,
@@ -40,6 +49,12 @@ const ScrollArea = React.forwardRef<
         {children}
       </ScrollAreaPrimitive.Viewport>
       <ScrollBar className={hideScrollbar ? "invisible-scrollbar" : undefined} />
+      {horizontal && (
+        <ScrollBar
+          orientation="horizontal"
+          className={hideScrollbar ? "invisible-scrollbar" : undefined}
+        />
+      )}
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>
   ),

@@ -395,6 +395,63 @@ describe("BladeContainer", () => {
     expect(input).toHaveFocus();
   });
 
+  /**
+   * How the row is sized, which is what decides whether a `width: "flex"` blade matches its pane.
+   *
+   * `w-max` alone made the row's main size intrinsic, and a `flex-1 min-w-0` item inside a max-content
+   * flex container is sized by its own max-content contribution (CSS Flexbox §9.9.1) — `min-w-0` removes
+   * the automatic *minimum* and does nothing about that. So the root blade came out as wide as its
+   * content wanted rather than as wide as the pane: Tendril's project settings screen laid ~1200px of
+   * content inside a ~950px window, and the "Add …" buttons on its right edge went off-screen.
+   *
+   * `min-w-full` is the floor that makes the row match the pane, while leaving `w-max` free to exceed it
+   * when a stack of fixed-width blades genuinely needs more room.
+   */
+  describe("the blade row's width", () => {
+    const rowOf = (): HTMLElement => {
+      const row = sectionAt(0).parentElement;
+      if (!row) throw new Error("blade row not found");
+      return row;
+    };
+
+    it("fills the container at least, so a flex blade is not sized by its content", () => {
+      renderStack();
+
+      const row = rowOf();
+      expect(row).toHaveClass("w-max");
+      expect(row).toHaveClass("min-w-full");
+    });
+
+    it("is a plain full-width row when collapsed, where there is only one blade", () => {
+      renderStack();
+      resizeViewport(NARROW);
+
+      const row = rowOf();
+      expect(row).toHaveClass("w-full");
+      // `w-max` would let the single visible blade exceed a phone's viewport.
+      expect(row).not.toHaveClass("w-max");
+    });
+
+    /**
+     * Radix leaves a viewport's `overflow-x` at `hidden` until a horizontal scrollbar is *rendered*, so
+     * without one a row wider than the pane was clipped: the blades past the right edge could only be
+     * reached by the container's own `scrollIntoView`, never by the user.
+     *
+     * The viewport's style is what is asserted, not a scrollbar element. `type="hover"` defers the
+     * thumb's DOM until the pointer is over the area, but `ScrollAreaScrollbar` flips
+     * `scrollbarXEnabled` from its mount effect either way — so the style is both the thing that
+     * actually fixes the clipping and the thing that is observable without layout.
+     */
+    it("lets the viewport scroll sideways, since the stack grows that way", () => {
+      const { ref } = renderStack();
+      pushAll(ref, blade("Detail"), blade("Edit"));
+
+      const viewport = document.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]");
+      expect(viewport).not.toBeNull();
+      expect(viewport!.style.overflowX).toBe("scroll");
+    });
+  });
+
   it("closes a blade on a middle-click of its header", () => {
     const { ref } = renderStack();
     pushAll(ref, blade("Detail"));
