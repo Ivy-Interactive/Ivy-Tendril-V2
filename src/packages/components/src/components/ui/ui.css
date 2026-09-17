@@ -16,11 +16,6 @@
   --tui-muted: var(--foreground-muted);
   --tui-border: var(--border);
   --tui-surface: color-mix(in srgb, var(--foreground) 6%, transparent);
-  --tui-muted-bg: var(--muted);
-  --tui-danger: var(--destructive);
-  --tui-success: var(--success);
-  --tui-warning: var(--warning);
-  --tui-info: var(--info);
 
   box-sizing: border-box;
   font-family: var(--font-sans);
@@ -121,7 +116,7 @@
   padding: 0 4px;
   border: var(--border-width) solid var(--tui-border);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--tui-muted-bg) 40%, transparent);
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
   color: var(--card-foreground);
   font-size: var(--text-2xs);
   font-weight: 400;
@@ -200,7 +195,7 @@
   padding: 2px 5px;
   border: 0.5px solid transparent;
   border-radius: var(--radius-sm);
-  background: var(--tui-muted-bg);
+  background: var(--muted);
   color: var(--tui-fg);
   font-size: var(--text-2xs);
   font-weight: 400;
@@ -277,19 +272,19 @@
 }
 
 .tui-dot[data-tone="success"] {
-  background: var(--tui-success);
+  background: var(--success);
 }
 
 .tui-dot[data-tone="warning"] {
-  background: var(--tui-warning);
+  background: var(--warning);
 }
 
 .tui-dot[data-tone="danger"] {
-  background: var(--tui-danger);
+  background: var(--destructive);
 }
 
 .tui-dot[data-tone="info"] {
-  background: var(--tui-info);
+  background: var(--info);
 }
 
 @keyframes tui-dot-pulse {
@@ -363,8 +358,8 @@
 }
 
 .tui-icon-btn[data-variant="danger"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--tui-danger) 14%, transparent);
-  color: var(--tui-danger);
+  background: color-mix(in srgb, var(--destructive) 14%, transparent);
+  color: var(--destructive);
 }
 
 .tui-icon-btn[data-variant="solid"] {
