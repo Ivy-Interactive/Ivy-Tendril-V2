@@ -42,13 +42,9 @@
 
 .civ-error-close {
   margin-left: auto;
-  background: none;
-  border: none;
   color: var(--destructive);
   font-size: 1.2rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 4px;
+  opacity: 1;
 }
 
 /* Main Input Card */
@@ -118,34 +114,7 @@
 }
 
 .civ-plus-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: var(--border-width) solid var(--border);
-  background: var(--muted);
   color: var(--foreground);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    transform var(--duration-moderate),
-    background-color var(--duration-moderate),
-    color var(--duration-moderate),
-    border-color var(--duration-moderate);
-}
-
-.civ-plus-btn:hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
-  transform: scale(1.05);
-}
-
-.civ-plus-btn.active {
-  transform: rotate(45deg);
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-foreground);
 }
 
 .civ-plus-btn svg {
@@ -322,28 +291,7 @@
 
 /* Mic button */
 .civ-mic-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: var(--border-width) solid var(--border);
-  background: var(--muted);
   color: var(--foreground);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    transform var(--duration-moderate),
-    background-color var(--duration-moderate),
-    color var(--duration-moderate),
-    border-color var(--duration-moderate);
-  position: relative;
-}
-
-.civ-mic-btn:hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
-  transform: scale(1.05);
 }
 
 .civ-mic-btn svg {
@@ -351,17 +299,16 @@
   height: 16px;
 }
 
-/* Active State overrides for Mic Button inside active container */
-.civ-voice-container.active .civ-mic-btn {
+/* Recording/processing shrinks the pill to a plain icon button. */
+.civ-mic-btn[data-active="true"] {
   width: 28px;
   height: 28px;
   border: none;
   background: transparent;
 }
 
-.civ-voice-container.active .civ-mic-btn:hover {
+.civ-mic-btn[data-active="true"]:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
-  transform: none;
 }
 
 .civ-mic-btn.civ-status-recording {
@@ -369,7 +316,7 @@
   background: transparent;
 }
 
-.civ-mic-btn.civ-status-recording:hover {
+.civ-mic-btn.civ-status-recording:hover:not(:disabled) {
   background: color-mix(in srgb, var(--destructive) 15%, transparent);
 }
 
@@ -650,32 +597,17 @@
 }
 
 .civ-thumbnail-card-remove {
+  --tui-icon-btn-outline-bg: var(--background);
   position: absolute;
   top: 6px;
   right: 6px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--background);
-  border: var(--border-width) solid var(--border);
   color: var(--muted-foreground);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
   font-size: 0.75rem;
-  line-height: 1;
-  padding: 0;
   z-index: var(--z-sticky);
-  transition:
-    background-color var(--duration-base),
-    color var(--duration-base),
-    border-color var(--duration-base);
   pointer-events: auto;
-  /* Enable specifically for close button */
 }
 
-.civ-thumbnail-card-remove:hover {
+.civ-thumbnail-card-remove:hover:not(:disabled) {
   background: color-mix(in srgb, var(--destructive) 15%, transparent);
   color: var(--destructive);
   border-color: var(--destructive);

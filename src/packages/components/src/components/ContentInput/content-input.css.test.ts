@@ -23,8 +23,6 @@ describe("content-input.css theming and responsive variables", () => {
   });
 
   it("applies --accent-foreground on hover/active states for interactive elements", () => {
-    expect(css).toMatch(/\.civ-plus-btn:hover\s*\{[^}]*color:\s*var\(--accent-foreground\);/);
-    expect(css).toMatch(/\.civ-mic-btn:hover\s*\{[^}]*color:\s*var\(--accent-foreground\);/);
     expect(css).toMatch(
       /\.civ-project-ghost-btn:hover\s*\{[^}]*color:\s*var\(--accent-foreground\);/,
     );

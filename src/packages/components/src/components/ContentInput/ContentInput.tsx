@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Spinner } from "../ui/spinner";
 import { TuiKbd } from "../ui/TuiKbd";
+import { IconButton } from "../ui/IconButton";
 import { VoiceRecorder, type VoiceStatus } from "./voice-recorder";
 import "./content-input.css";
 
@@ -735,9 +736,15 @@ export const ContentInput: React.FC<ContentInputProps> = ({
             />
           </svg>
           <span>{recordError}</span>
-          <button className="civ-error-close" onClick={() => setRecordError(null)}>
+          <IconButton
+            className="civ-error-close"
+            label="Dismiss error"
+            tooltip={false}
+            size="2xs"
+            onClick={() => setRecordError(null)}
+          >
             ×
-          </button>
+          </IconButton>
         </div>
       )}
 
@@ -776,14 +783,16 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   )}
 
                   {/* Overlaid Close Button */}
-                  <button
+                  <IconButton
                     className="civ-thumbnail-card-remove"
+                    label="Remove file"
+                    size="2xs"
+                    shape="round"
+                    variant="outline"
                     onClick={() => handleRemoveFile(filePath)}
-                    type="button"
-                    title="Remove file"
                   >
                     ×
-                  </button>
+                  </IconButton>
 
                   {/* Overlaid File Metadata & Badge */}
                   <div className="civ-thumbnail-content">
@@ -845,16 +854,19 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   }
                 }}
               />
-              <button
+              <IconButton
                 className="civ-plus-btn"
+                label="Attach files"
+                tooltip={false}
+                size="lg"
+                shape="round"
+                variant="outline"
                 onClick={() => fileInputRef.current?.click()}
-                type="button"
-                title="Attach files"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                 </svg>
-              </button>
+              </IconButton>
             </div>
 
             {slots?.ProjectPicker || slots?.LeftActions}
@@ -875,11 +887,15 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   </div>
                 </div>
               )}
-              <button
+              <IconButton
                 className={`civ-mic-btn civ-status-${voiceStatus}`}
+                label="Voice input transcription"
+                tooltip={false}
+                size="lg"
+                shape="round"
+                variant="outline"
+                active={voiceStatus !== "idle"}
                 onClick={toggleRecording}
-                type="button"
-                title="Voice input transcription"
               >
                 {voiceStatus === "connecting" ? (
                   <Spinner
@@ -910,7 +926,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                     <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v3M8 22h8" />
                   </svg>
                 )}
-              </button>
+              </IconButton>
             </div>
 
             {/* Submit Button or Split Button */}

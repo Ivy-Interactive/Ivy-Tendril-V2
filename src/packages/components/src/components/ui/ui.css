@@ -460,6 +460,18 @@
   background: color-mix(in srgb, var(--primary) 85%, var(--background));
 }
 
+.tui-icon-btn[data-variant="outline"] {
+  border: var(--border-width) solid var(--tui-border);
+  background: var(--tui-icon-btn-outline-bg, var(--muted));
+  opacity: 1;
+}
+
+.tui-icon-btn[data-variant="outline"]:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--accent);
+}
+
 /* ---------- Status line ---------- */
 
 .tui-status {
