@@ -644,24 +644,6 @@
   padding-bottom: 6px;
 }
 
-/* Custom Scrollbar for attachments list */
-.civ-attachments-list::-webkit-scrollbar {
-  height: 4px;
-}
-
-.civ-attachments-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.civ-attachments-list::-webkit-scrollbar-thumb {
-  background: var(--civ-border);
-  border-radius: var(--radius-xs);
-}
-
-.civ-attachments-list::-webkit-scrollbar-thumb:hover {
-  background: var(--civ-placeholder);
-}
-
 /* Document layout details inside thumbnail card */
 .civ-thumbnail-card {
   position: relative;

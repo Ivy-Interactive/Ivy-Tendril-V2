@@ -554,6 +554,10 @@ button.tdb-kpi:focus-visible {
   padding-right: 4px;
 }
 
+.tdb-activity-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .tdb-activity {
   display: flex;
   align-items: flex-end;
@@ -732,6 +736,10 @@ button.tdb-kpi:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.tdb-jobs-list::-webkit-scrollbar {
+  display: none;
 }
 
 .tdb-job-row {

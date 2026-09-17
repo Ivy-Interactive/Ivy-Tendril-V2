@@ -750,7 +750,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
       >
         {/* Render Attached Files as Thumbnails */}
         {files.length > 0 && (
-          <div className="civ-attachments-list">
+          <div className="civ-attachments-list thin-scrollbar">
             {files.map((filePath, idx) => {
               const isImage = isImageFile(filePath);
               const isPdf = isPdfFile(filePath);

@@ -40,26 +40,6 @@
   }
 }
 
-/* Slim scrollbar */
-.slim-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-.slim-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.slim-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
-}
-.slim-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
-}
-.slim-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-
 /* Native scrollbar styling */
 @layer base {
   ::-webkit-scrollbar {

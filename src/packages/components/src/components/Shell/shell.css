@@ -747,6 +747,10 @@
   scrollbar-width: none;
 }
 
+.tsh-rail-list::-webkit-scrollbar {
+  display: none;
+}
+
 .tsh-rail-item {
   display: flex;
   align-items: center;

@@ -103,4 +103,54 @@
     background-color: var(--badge-tint-bg-dark);
     color: var(--badge-tint-fg-dark);
   }
+
+  /* Thin themed scrollbar: was `.slim-scrollbar` in index.css only, which meant the Tendril
+     app and Storybook (both load globals.css) never actually got it. */
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: var(--radius-xs);
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+  }
+
+  /* Fully hidden scrollbar: still scrollable, just without a visible track/thumb. */
+  .hidden-scrollbar {
+    scrollbar-width: none;
+  }
+  .hidden-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Back-compat alias: `.slim-scrollbar` moved here (from index.css) so it reaches every consumer
+   of either entry point, not just index.css's. Prefer `.thin-scrollbar` in new code. */
+.slim-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.slim-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.slim-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-xs);
+}
+.slim-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
 }
