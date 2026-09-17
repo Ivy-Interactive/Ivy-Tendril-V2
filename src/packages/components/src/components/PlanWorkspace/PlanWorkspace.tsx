@@ -478,9 +478,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
                   >
                     <span>{tab.label}</span>
                     {tab.badge && (
-                      <TuiBadge numeric className="pws-tab-badge">
-                        {tab.badge}
-                      </TuiBadge>
+                      <TuiBadge numeric>{tab.badge}</TuiBadge>
                     )}
                   </button>
                 ))}

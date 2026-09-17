@@ -53,7 +53,7 @@
   color: var(--destructive);
   font-size: 0.85rem;
   font-weight: 500;
-  animation: slideDown var(--duration-moderate) var(--ease-out);
+  animation: civ-slideDown var(--duration-moderate) var(--ease-out);
 }
 
 .civ-icon-error {
@@ -235,7 +235,7 @@
   box-shadow: 0 4px 16px color-mix(in srgb, var(--foreground) 15%, transparent);
   padding: 4px;
   z-index: 99999;
-  animation: slideDown var(--duration-base) var(--ease-out);
+  animation: civ-slideDown var(--duration-base) var(--ease-out);
 }
 
 .civ-project-menu-item {
@@ -312,7 +312,7 @@
   height: 6px;
   background: var(--civ-error);
   border-radius: 50%;
-  animation: flashPulse 1s infinite alternate;
+  animation: civ-flashPulse 1s infinite alternate;
 }
 
 .civ-timer {
@@ -402,7 +402,7 @@
   border: var(--border-width-thick) solid var(--civ-border);
   border-top-color: var(--civ-accent);
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: civ-spin 0.8s linear infinite;
 }
 
 .civ-spinner.processing {
@@ -500,7 +500,7 @@
 }
 
 /* Animations */
-@keyframes slideDown {
+@keyframes civ-slideDown {
   from {
     opacity: 0;
     transform: translateY(-8px);
@@ -512,7 +512,7 @@
   }
 }
 
-@keyframes scaleIn {
+@keyframes civ-scaleIn {
   from {
     opacity: 0;
     transform: scale(0.95);
@@ -524,7 +524,7 @@
   }
 }
 
-@keyframes menuFadeIn {
+@keyframes civ-menuFadeIn {
   from {
     opacity: 0;
     transform: translateY(10px) scale(0.98);
@@ -536,7 +536,7 @@
   }
 }
 
-@keyframes flashPulse {
+@keyframes civ-flashPulse {
   from {
     opacity: 0.3;
     transform: scale(0.8);
@@ -548,7 +548,7 @@
   }
 }
 
-@keyframes spin {
+@keyframes civ-spin {
   to {
     transform: rotate(360deg);
   }
@@ -636,7 +636,7 @@
   padding: 4px 0;
   min-width: 160px;
   z-index: var(--z-overlay);
-  animation: menuFadeIn var(--duration-base) var(--ease-out);
+  animation: civ-menuFadeIn var(--duration-base) var(--ease-out);
   display: flex;
   flex-direction: column;
 }

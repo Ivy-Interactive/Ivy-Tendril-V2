@@ -1,11 +1,11 @@
-import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vite-plus/test";
+import { readCssInlined } from "../../../../tests/read-css.ts";
 
 const cssPath = join(dirname(fileURLToPath(import.meta.url)), "../../../styles/globals.css");
-const css = readFileSync(cssPath, "utf-8");
+const css = readCssInlined(cssPath);
 
 describe("blade animations in globals.css", () => {
   it("defines the horizontal slide keyframes", () => {

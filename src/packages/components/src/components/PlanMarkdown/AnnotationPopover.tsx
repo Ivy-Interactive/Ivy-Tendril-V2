@@ -173,9 +173,7 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
           </div>
         )}
         {isResolved && (
-          <TuiBadge kind="success" className="pmv-resolved-badge">
-            ✓ Resolved
-          </TuiBadge>
+          <TuiBadge kind="success">✓ Resolved</TuiBadge>
         )}
       </div>
       <div className="pmv-popover-quote">
