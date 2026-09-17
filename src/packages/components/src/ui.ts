@@ -72,3 +72,12 @@ export * from "./components/ui/IconButton";
 export * from "./components/ui/StatusLine";
 export * from "./components/ui/withTooltipScope";
 export * from "./components/ui/TuiBadge";
+export * from "./components/ui/TuiKbd";
+export * from "./components/ui/spinner";
+export {
+  Tooltip as TuiTooltip,
+  TooltipScope,
+  type TooltipScopeProps,
+  type TooltipSide as TuiTooltipSide,
+  type TooltipProps as TuiTooltipProps,
+} from "./components/ui/TuiTooltip";
