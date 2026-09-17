@@ -27,7 +27,7 @@
 
   .docs-article :where(h2) {
     padding-bottom: 0.35rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: var(--border-width) solid var(--border);
   }
 
   /* Anchor offset so an in-page jump does not tuck the heading under the sticky header. */

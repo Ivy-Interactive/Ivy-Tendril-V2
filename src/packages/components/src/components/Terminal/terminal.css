@@ -70,7 +70,7 @@
     Monaco,
     "Courier New",
     monospace;
-  font-size: 13px;
+  font-size: var(--text-sm-tight);
 }
 
 .ivy-terminal-spinner {

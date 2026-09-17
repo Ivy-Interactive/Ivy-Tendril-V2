@@ -27,8 +27,8 @@
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
   background: var(--svl-bg);
-  border: 1px solid var(--svl-border);
-  border-radius: var(--radius-fields, 0.375rem);
+  border: var(--border-width) solid var(--svl-border);
+  border-radius: var(--radius-fields);
   color: var(--svl-fg);
 }
 
@@ -72,7 +72,7 @@
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--svl-fg-muted);
 }
 

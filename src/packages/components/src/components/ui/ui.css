@@ -9,18 +9,18 @@
 .tui-badge,
 .tui-dot,
 .tui-status {
-  --tui-fg: var(--foreground, #000000);
-  --tui-muted: color-mix(in srgb, var(--foreground, #000000) 60%, transparent);
-  --tui-border: var(--border, #e0e0e0);
-  --tui-surface: color-mix(in srgb, var(--foreground, #000000) 6%, transparent);
-  --tui-muted-bg: var(--muted, #f0f0f0);
-  --tui-danger: var(--destructive, #ef4444);
-  --tui-success: var(--success, #16a34a);
-  --tui-warning: var(--warning, #f59e0b);
-  --tui-info: var(--info, #2563eb);
+  --tui-fg: var(--foreground);
+  --tui-muted: var(--foreground-muted);
+  --tui-border: var(--border);
+  --tui-surface: color-mix(in srgb, var(--foreground) 6%, transparent);
+  --tui-muted-bg: var(--muted);
+  --tui-danger: var(--destructive);
+  --tui-success: var(--success);
+  --tui-warning: var(--warning);
+  --tui-info: var(--info);
 
   box-sizing: border-box;
-  font-family: var(--font-sans, "Geist", sans-serif);
+  font-family: var(--font-sans);
 }
 
 /* ---------- Tooltip ---------- */
@@ -46,35 +46,31 @@
 }
 
 .tui-tooltip-content {
-  z-index: 70;
-  border-radius: var(--radius-selectors, 6px);
-  border: 1px solid var(--border, #e0e0e0);
-  background: var(--card, #ffffff);
-  color: var(--card-foreground, #000000);
+  z-index: var(--z-tooltip);
+  border-radius: var(--radius-selectors);
+  border: var(--border-width) solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 16px;
   font-weight: 500;
-  box-shadow:
-    0 4px 6px -1px rgb(0 0 0 / 0.1),
-    0 2px 4px -2px rgb(0 0 0 / 0.1);
+  box-shadow: var(--shadow-popover);
   max-width: 320px;
   pointer-events: none;
-  animation: tui-tooltip-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: tui-tooltip-in var(--duration-base) var(--ease-emphasized);
   transform-origin: var(--radix-tooltip-content-transform-origin);
 }
 
 .dark .tui-tooltip-content {
-  background: var(--card, #0a0a0a);
-  color: var(--card-foreground, #f8f8f8);
-  border-color: var(--border, #27272a);
-  box-shadow:
-    0 4px 6px -1px rgb(0 0 0 / 0.4),
-    0 2px 4px -2px rgb(0 0 0 / 0.4);
+  background: var(--card);
+  color: var(--card-foreground);
+  border-color: var(--border);
+  box-shadow: var(--shadow-popover);
 }
 
 .tui-tooltip-content[data-state="closed"] {
-  animation: tui-tooltip-out 100ms ease-in;
+  animation: tui-tooltip-out var(--duration-instant) ease-in;
 }
 
 .tui-tooltip-inner {
@@ -109,9 +105,9 @@
 /* Bare: the key letters alone, for hints that sit inside a button's own chrome. */
 .tui-kbd--bare {
   gap: 2px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   letter-spacing: -0.24px;
-  opacity: 0.8;
+  opacity: var(--opacity-soft);
 }
 
 /* Boxed: a key cap, for hints that stand on their own (tooltips, toolbars). */
@@ -120,19 +116,19 @@
   min-width: 16px;
   justify-content: center;
   padding: 0 4px;
-  border: 1px solid var(--tui-border);
-  border-radius: 4px;
+  border: var(--border-width) solid var(--tui-border);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--tui-muted-bg) 40%, transparent);
-  color: var(--card-foreground, #000000);
-  font-size: 10px;
+  color: var(--card-foreground);
+  font-size: var(--text-2xs);
   font-weight: 400;
   line-height: 1;
 }
 
 .dark .tui-kbd--boxed {
-  border-color: var(--border, #27272a);
-  background: color-mix(in srgb, var(--muted, #27272a) 40%, transparent);
-  color: var(--card-foreground, #f8f8f8);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+  color: var(--card-foreground);
 }
 
 /* ---------- Badges, counts and status dots ---------- */
@@ -141,27 +137,15 @@
    bundle. A tint that dark rides on the surface rather than the raw color, which would drown
    text at this size. */
 .tui-badge {
-  --tui-badge-project-bg: color-mix(in srgb, var(--info, #bcd6ff) 18%, var(--card, #ffffff));
-  --tui-badge-project-fg: color-mix(in srgb, var(--info, #183b75) 40%, var(--foreground, #000000));
-  --tui-badge-success-bg: color-mix(in srgb, var(--success, #b7e4b9) 18%, var(--card, #ffffff));
-  --tui-badge-success-fg: color-mix(
-    in srgb,
-    var(--success, #1f4924) 40%,
-    var(--foreground, #000000)
-  );
-  --tui-badge-warning-bg: color-mix(in srgb, var(--warning, #fce4b5) 18%, var(--card, #ffffff));
-  --tui-badge-warning-fg: color-mix(
-    in srgb,
-    var(--warning, #6b4e14) 40%,
-    var(--foreground, #000000)
-  );
-  --tui-badge-danger-bg: color-mix(in srgb, var(--destructive, #f9c0c0) 18%, var(--card, #ffffff));
-  --tui-badge-danger-fg: color-mix(
-    in srgb,
-    var(--destructive, #7f1d1d) 40%,
-    var(--foreground, #000000)
-  );
-  --tui-badge-border: color-mix(in srgb, var(--foreground, #000000) 30%, transparent);
+  --tui-badge-project-bg: color-mix(in srgb, var(--info) 18%, var(--card));
+  --tui-badge-project-fg: color-mix(in srgb, var(--info) 40%, var(--foreground));
+  --tui-badge-success-bg: color-mix(in srgb, var(--success) 18%, var(--card));
+  --tui-badge-success-fg: color-mix(in srgb, var(--success) 40%, var(--foreground));
+  --tui-badge-warning-bg: color-mix(in srgb, var(--warning) 18%, var(--card));
+  --tui-badge-warning-fg: color-mix(in srgb, var(--warning) 40%, var(--foreground));
+  --tui-badge-danger-bg: color-mix(in srgb, var(--destructive) 18%, var(--card));
+  --tui-badge-danger-fg: color-mix(in srgb, var(--destructive) 40%, var(--foreground));
+  --tui-badge-border: color-mix(in srgb, var(--foreground) 30%, transparent);
   /* A badge in a host colour gets the same pale fill the status kinds use. */
   --tui-badge-color-mix-bg: 18%;
   --tui-badge-color-mix-fg: 60%;
@@ -172,37 +156,25 @@
   gap: 4px;
   padding: 2px 5px;
   border: 0.5px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--tui-muted-bg);
   color: var(--tui-fg);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 400;
   line-height: 13px;
   white-space: nowrap;
 }
 
 .dark .tui-badge {
-  --tui-badge-project-bg: color-mix(in srgb, var(--info, #1e3a6d) 28%, var(--card, #000000));
-  --tui-badge-project-fg: color-mix(in srgb, var(--info, #bcd6ff) 40%, var(--foreground, #ffffff));
-  --tui-badge-success-bg: color-mix(in srgb, var(--success, #1f4924) 28%, var(--card, #000000));
-  --tui-badge-success-fg: color-mix(
-    in srgb,
-    var(--success, #b7e4b9) 40%,
-    var(--foreground, #ffffff)
-  );
-  --tui-badge-warning-bg: color-mix(in srgb, var(--warning, #6b4e14) 28%, var(--card, #000000));
-  --tui-badge-warning-fg: color-mix(
-    in srgb,
-    var(--warning, #fce4b5) 40%,
-    var(--foreground, #ffffff)
-  );
-  --tui-badge-danger-bg: color-mix(in srgb, var(--destructive, #7f1d1d) 28%, var(--card, #000000));
-  --tui-badge-danger-fg: color-mix(
-    in srgb,
-    var(--destructive, #f9c0c0) 40%,
-    var(--foreground, #ffffff)
-  );
-  --tui-badge-border: color-mix(in srgb, var(--foreground, #ffffff) 25%, transparent);
+  --tui-badge-project-bg: color-mix(in srgb, var(--info) 28%, var(--card));
+  --tui-badge-project-fg: color-mix(in srgb, var(--info) 40%, var(--foreground));
+  --tui-badge-success-bg: color-mix(in srgb, var(--success) 28%, var(--card));
+  --tui-badge-success-fg: color-mix(in srgb, var(--success) 40%, var(--foreground));
+  --tui-badge-warning-bg: color-mix(in srgb, var(--warning) 28%, var(--card));
+  --tui-badge-warning-fg: color-mix(in srgb, var(--warning) 40%, var(--foreground));
+  --tui-badge-danger-bg: color-mix(in srgb, var(--destructive) 28%, var(--card));
+  --tui-badge-danger-fg: color-mix(in srgb, var(--destructive) 40%, var(--foreground));
+  --tui-badge-border: color-mix(in srgb, var(--foreground) 25%, transparent);
   --tui-badge-color-mix-bg: 28%;
   --tui-badge-color-mix-fg: 60%;
 }
@@ -244,15 +216,11 @@
 }
 
 .tui-badge[data-kind="color"] {
-  background: color-mix(
-    in srgb,
-    var(--tui-badge-color) var(--tui-badge-color-mix-bg),
-    var(--card, #ffffff)
-  );
+  background: color-mix(in srgb, var(--tui-badge-color) var(--tui-badge-color-mix-bg), var(--card));
   color: color-mix(
     in srgb,
     var(--tui-badge-color) var(--tui-badge-color-mix-fg),
-    var(--foreground, #000000)
+    var(--foreground)
   );
 }
 
@@ -306,21 +274,21 @@
   flex-shrink: 0;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--tui-fg);
-  opacity: 0.7;
+  opacity: var(--opacity-subtle);
   cursor: pointer;
   transition:
-    background-color 120ms ease,
-    color 120ms ease,
-    opacity 120ms ease;
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
 }
 
 .tui-icon-btn[data-size="sm"] {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tui-icon-btn[data-size="md"] {
@@ -341,8 +309,8 @@
 }
 
 .tui-icon-btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--tui-fg) 40%, transparent);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid color-mix(in srgb, var(--tui-fg) 40%, transparent);
+  outline-offset: var(--focus-ring-offset);
   opacity: 1;
 }
 
@@ -357,13 +325,13 @@
 }
 
 .tui-icon-btn[data-variant="solid"] {
-  background: var(--primary, #000000);
-  color: var(--primary-foreground, #ffffff);
+  background: var(--primary);
+  color: var(--primary-foreground);
   opacity: 1;
 }
 
 .tui-icon-btn[data-variant="solid"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary, #000000) 85%, var(--background, #ffffff));
+  background: color-mix(in srgb, var(--primary) 85%, var(--background));
 }
 
 /* ---------- Status line ---------- */
@@ -373,7 +341,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--text-sm-tight);
   color: var(--tui-muted);
 }
 

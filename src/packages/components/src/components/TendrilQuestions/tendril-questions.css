@@ -3,55 +3,39 @@
    token derives from the host theme so alternate themes recolor it; literals are fallbacks. */
 
 .tq-root {
-  --tq-fg: var(--foreground, #000000);
-  --tq-muted: color-mix(in srgb, var(--foreground, #000000) 60%, transparent);
-  --tq-faint: color-mix(in srgb, var(--foreground, #000000) 40%, transparent);
-  --tq-option-bg: color-mix(in srgb, var(--foreground, #000000) 4%, var(--background, #ffffff));
-  --tq-option-bg-hover: color-mix(
-    in srgb,
-    var(--foreground, #000000) 7%,
-    var(--background, #ffffff)
-  );
-  --tq-option-bg-selected: color-mix(
-    in srgb,
-    var(--foreground, #000000) 10%,
-    var(--background, #ffffff)
-  );
-  --tq-option-ring: var(--foreground, #000000);
-  --tq-input-bg: var(--background, #ffffff);
-  --tq-border: var(--border, #e0e0e0);
-  --tq-cta-bg: var(--primary, #000000);
-  --tq-cta-fg: var(--primary-foreground, #ffffff);
-  --tq-chip-bg: color-mix(in srgb, var(--foreground, #000000) 6%, var(--background, #ffffff));
-  --tq-recommended-bg: color-mix(in srgb, var(--success, #b7e4b9) 22%, var(--background, #ffffff));
-  --tq-recommended-fg: color-mix(in srgb, var(--success, #1f4924) 45%, var(--foreground, #000000));
-  --tq-mono: var(--font-mono, "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace);
+  --tq-fg: var(--foreground);
+  --tq-muted: var(--foreground-muted);
+  --tq-faint: color-mix(in srgb, var(--foreground) 40%, transparent);
+  --tq-option-bg: color-mix(in srgb, var(--foreground) 4%, var(--background));
+  --tq-option-bg-hover: color-mix(in srgb, var(--foreground) 7%, var(--background));
+  --tq-option-bg-selected: color-mix(in srgb, var(--foreground) 10%, var(--background));
+  --tq-option-ring: var(--foreground);
+  --tq-input-bg: var(--background);
+  --tq-border: var(--border);
+  --tq-cta-bg: var(--primary);
+  --tq-cta-fg: var(--primary-foreground);
+  --tq-chip-bg: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  --tq-recommended-bg: color-mix(in srgb, var(--success) 22%, var(--background));
+  --tq-recommended-fg: color-mix(in srgb, var(--success) 45%, var(--foreground));
+  --tq-mono: var(--font-mono);
 
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding: 8px 0;
-  font-family: var(--font-sans, "Geist", sans-serif);
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
   line-height: 1.35;
   color: var(--tq-fg);
 }
 
 .dark .tq-root {
-  --tq-option-bg: color-mix(in srgb, var(--foreground, #f8f8f8) 7%, var(--background, #000000));
-  --tq-option-bg-hover: color-mix(
-    in srgb,
-    var(--foreground, #f8f8f8) 11%,
-    var(--background, #000000)
-  );
-  --tq-option-bg-selected: color-mix(
-    in srgb,
-    var(--foreground, #f8f8f8) 15%,
-    var(--background, #000000)
-  );
-  --tq-chip-bg: color-mix(in srgb, var(--foreground, #f8f8f8) 10%, var(--background, #000000));
-  --tq-recommended-bg: color-mix(in srgb, var(--success, #1f4924) 30%, var(--background, #000000));
-  --tq-recommended-fg: color-mix(in srgb, var(--success, #b7e4b9) 45%, var(--foreground, #ffffff));
+  --tq-option-bg: color-mix(in srgb, var(--foreground) 7%, var(--background));
+  --tq-option-bg-hover: color-mix(in srgb, var(--foreground) 11%, var(--background));
+  --tq-option-bg-selected: color-mix(in srgb, var(--foreground) 15%, var(--background));
+  --tq-chip-bg: color-mix(in srgb, var(--foreground) 10%, var(--background));
+  --tq-recommended-bg: color-mix(in srgb, var(--success) 30%, var(--background));
+  --tq-recommended-fg: color-mix(in srgb, var(--success) 45%, var(--foreground));
 }
 
 .tq-root * {
@@ -68,7 +52,7 @@
 }
 
 .tq-question-header {
-  font-size: 11px;
+  font-size: var(--text-xs-tight);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -89,13 +73,13 @@
   content: "Unanswered";
   margin-left: 8px;
   font-weight: 400;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--tq-faint);
 }
 
 .tq-question-hint {
   margin-top: -4px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--tq-muted);
 }
 
@@ -142,12 +126,12 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--tq-option-bg);
   cursor: pointer;
   transition:
-    background-color 120ms ease,
-    box-shadow 120ms ease;
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
 }
 
 .tq-option:hover {
@@ -161,8 +145,8 @@
 }
 
 .tq-option:has(.tq-option-input:focus-visible) {
-  outline: 2px solid var(--tq-option-ring);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--tq-option-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .tq-option-main {
@@ -192,12 +176,12 @@
   flex-shrink: 0;
   width: 16px;
   height: 16px;
-  border-radius: 4px;
-  border: 1px solid var(--tq-faint);
+  border-radius: var(--radius-selectors);
+  border: var(--border-width) solid var(--tq-faint);
   color: var(--tq-cta-fg);
   transition:
-    background-color 120ms ease,
-    border-color 120ms ease;
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
 }
 
 .tq-option-box svg {
@@ -224,10 +208,10 @@
 
 .tq-option-recommended {
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--tq-recommended-bg);
   color: var(--tq-recommended-fg);
-  font-size: 11px;
+  font-size: var(--text-xs-tight);
   font-weight: 600;
   line-height: 16px;
 }
@@ -241,8 +225,8 @@
 .tq-text-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--tq-border);
-  border-radius: 8px;
+  border: var(--border-width) solid var(--tq-border);
+  border-radius: var(--radius-lg);
   background: var(--tq-input-bg);
   color: inherit;
   font: inherit;
@@ -267,7 +251,7 @@
 
 .tq-answer-value {
   padding: 4px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--tq-chip-bg);
   font-weight: 500;
 }
@@ -288,14 +272,14 @@
 
 .tq-footer-note {
   margin-right: auto;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--tq-muted);
 }
 
 .tq-clear {
   padding: 6px 10px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--tq-muted);
   font: inherit;
@@ -313,17 +297,17 @@
   gap: 6px;
   padding: 6px 14px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--tq-cta-bg);
   color: var(--tq-cta-fg);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
-  transition: opacity 120ms ease;
+  transition: opacity var(--duration-fast) var(--ease-standard);
 }
 
 .tq-submit:hover:not(:disabled) {
-  opacity: 0.9;
+  opacity: var(--opacity-hover);
 }
 
 .tq-submit:disabled {

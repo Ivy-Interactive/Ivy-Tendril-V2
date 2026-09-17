@@ -10,26 +10,26 @@
   /* Every token derives from the host theme's variables so alternate themes
      (Retro, etc.) recolor the shell; the literals are only fallbacks for when
      the widget renders outside a themed host, and match the Figma prototype. */
-  --tsh-bg: color-mix(in srgb, var(--foreground, #000000) 3%, var(--background, #fafafa));
-  --tsh-surface: var(--card, #ffffff);
+  --tsh-bg: var(--surface-chrome);
+  --tsh-surface: var(--card);
   /* Tab strip and popovers track the shell/card colors independently of the
      bg/surface pair, which dark theme swaps. */
-  --tsh-shell-chrome: color-mix(in srgb, var(--foreground, #000000) 3%, var(--background, #fafafa));
-  --tsh-popover: var(--popover, #ffffff);
-  --tsh-border: var(--border, #e0e0e0);
-  --tsh-tab-border: var(--border, #d1d1d1);
-  --tsh-fg: var(--foreground, #000000);
-  --tsh-fg-title: var(--foreground, #202221);
+  --tsh-shell-chrome: var(--surface-chrome);
+  --tsh-popover: var(--popover);
+  --tsh-border: var(--border);
+  --tsh-tab-border: var(--border);
+  --tsh-fg: var(--foreground);
+  --tsh-fg-title: var(--foreground);
   --tsh-row-active: color-mix(
     in srgb,
-    var(--accent, #f0f0f0) 22%,
-    color-mix(in srgb, var(--foreground, #000000) 6%, var(--background, #ffffff))
+    var(--accent) 22%,
+    color-mix(in srgb, var(--foreground) 6%, var(--background))
   );
-  --tsh-row-active-fg: var(--foreground, #000000);
+  --tsh-row-active-fg: var(--foreground);
   --tsh-badge-bg: color-mix(in srgb, var(--tsh-fg) 8%, var(--tsh-bg));
   --tsh-badge-bg-active: color-mix(in srgb, var(--tsh-fg) 14%, var(--tsh-bg));
-  --tsh-cta-bg: var(--primary, #000000);
-  --tsh-cta-fg: var(--primary-foreground, #f8f8f8);
+  --tsh-cta-bg: var(--primary);
+  --tsh-cta-fg: var(--primary-foreground);
   --tsh-sidebar-width: 320px;
   --tsh-rail-width: 56px;
   /* Sidebar and row padding are the same at both widths, and every row lays its
@@ -42,9 +42,9 @@
   /* A row clips at its padding box, so the label has to start a full row-padding
      past the icon: any smaller gap and its first glyph peeks out on the rail. */
   --tsh-row-gap: var(--tsh-row-pad-x);
-  --tsh-anim: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --tsh-anim: 300ms var(--ease-in-out-standard);
 
-  font-family: var(--font-sans, "Geist", sans-serif);
+  font-family: var(--font-sans);
   color: var(--tsh-fg);
 }
 
@@ -56,24 +56,17 @@
   /* Dark theme swaps these two roles relative to light: the shell backdrop
      takes the lighter grey and the content frame sits darker inside it, so the
      frame reads as inset rather than as a lighter card on black. */
-  --tsh-bg: var(--card, #0a0a0a);
-  --tsh-surface: var(--background, #000000);
-  --tsh-shell-chrome: var(--card, #0a0a0a);
-  --tsh-popover: var(--card, #0a0a0a);
-  --tsh-border: var(--border, #27272a);
-  --tsh-tab-border: var(--border, #27272a);
-  --tsh-fg: var(--foreground, #f8f8f8);
-  --tsh-fg-title: var(--foreground, #f8f8f8);
+  --tsh-bg: var(--surface-chrome);
+  --tsh-surface: var(--background);
+  --tsh-shell-chrome: var(--surface-chrome);
+  --tsh-popover: var(--card);
   --tsh-row-active: color-mix(
     in srgb,
-    var(--accent, #27272a) 30%,
-    color-mix(in srgb, var(--foreground, #f8f8f8) 8%, var(--background, #000000))
+    var(--accent) 30%,
+    color-mix(in srgb, var(--foreground) 8%, var(--background))
   );
-  --tsh-row-active-fg: var(--foreground, #f8f8f8);
   --tsh-badge-bg: color-mix(in srgb, var(--tsh-fg) 10%, var(--tsh-bg));
   --tsh-badge-bg-active: color-mix(in srgb, var(--tsh-fg) 16%, var(--tsh-bg));
-  --tsh-cta-bg: var(--primary, #f8f8f8);
-  --tsh-cta-fg: var(--primary-foreground, #000000);
 }
 
 .tsh-root *,
@@ -144,8 +137,8 @@
   width: 1px;
   background: transparent;
   transition:
-    background-color 150ms ease,
-    width 150ms ease;
+    background-color var(--duration-base) var(--ease-standard),
+    width var(--duration-base) var(--ease-standard);
 }
 
 .tsh-sidebar-resizer:hover::after,
@@ -157,9 +150,9 @@
 /* V2 only: the handle is a real focusable separator (arrow keys resize it), so it
    needs a ring V1's pointer-only handle never did. */
 .tsh-sidebar-resizer:focus-visible {
-  outline: 2px solid var(--ring, var(--primary));
-  outline-offset: 1px;
-  border-radius: 2px;
+  outline: var(--focus-ring-width) solid var(--ring);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-xs);
 }
 
 .tsh-sidebar-resizer:focus-visible::after {
@@ -230,8 +223,8 @@
   min-height: 0;
   min-width: 0;
   background: var(--tsh-shell-chrome);
-  border: 1px solid var(--tsh-border);
-  border-radius: 12px;
+  border: var(--border-width) solid var(--tsh-border);
+  border-radius: var(--radius-xl);
   overflow: hidden;
 }
 
@@ -241,14 +234,14 @@
   min-width: 0;
   position: relative;
   background: var(--tsh-surface);
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
   overflow: hidden;
 }
 
 /* The bottom border only exists to separate the frame from the tab strip, so it
    appears only while there are tabs to separate from. */
 .tsh-frame[data-has-tabs="true"] {
-  border-bottom: 1px solid var(--tsh-border);
+  border-bottom: var(--border-width) solid var(--tsh-border);
 }
 
 .tsh-frame-pane {
@@ -309,18 +302,18 @@
 }
 
 .tsh-header-title {
-  font-size: 16px;
+  font-size: var(--text-base);
   font-weight: 600;
   line-height: 18px;
   color: var(--tsh-fg);
 }
 
 .tsh-header-version {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 400;
   line-height: 14px;
   color: var(--tsh-fg);
-  opacity: 0.6;
+  opacity: var(--opacity-muted);
 }
 
 .tsh-header-toggle {
@@ -333,10 +326,10 @@
   margin-right: -4px;
   border: none;
   background: transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--tsh-fg);
   cursor: pointer;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-header-toggle:hover {
@@ -361,13 +354,13 @@
   border: none;
   padding: 0;
   background: transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--tsh-fg);
   cursor: pointer;
 }
 
 .tsh-logo-toggle .tsh-header-logo {
-  transition: opacity 150ms ease;
+  transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .tsh-logo-toggle-icon {
@@ -377,7 +370,7 @@
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity 150ms ease;
+  transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .tsh-logo-toggle:hover .tsh-header-logo {
@@ -415,12 +408,12 @@
   height: 40px;
   padding: 4px var(--tsh-row-pad-x);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--tsh-cta-bg);
   color: var(--tsh-cta-fg);
   cursor: pointer;
   overflow: hidden;
-  transition: opacity 150ms ease;
+  transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .tsh-newplan:hover {
@@ -436,7 +429,7 @@
 }
 
 .tsh-newplan-label {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -462,12 +455,12 @@
   height: 38px;
   padding: 10px var(--tsh-row-pad-x);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--tsh-fg);
   cursor: pointer;
   overflow: hidden;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-agent:hover,
@@ -486,11 +479,11 @@
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: opacity 150ms ease;
+  transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .tsh-agent-icon > svg {
-  transition: opacity 150ms ease;
+  transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .tsh-agent[data-has-list="true"]:hover .tsh-agent-icon > svg,
@@ -528,7 +521,7 @@
 }
 
 .tsh-agent-label {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -577,13 +570,13 @@
   min-height: 38px;
   padding: 10px var(--tsh-row-pad-x);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--tsh-fg);
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-nav-item:hover {
@@ -617,7 +610,7 @@
 }
 
 .tsh-nav-label {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -654,8 +647,8 @@
   border-radius: 1px;
   background: var(--tsh-border);
   transition:
-    background-color 150ms ease,
-    height 150ms ease;
+    background-color var(--duration-base) var(--ease-standard),
+    height var(--duration-base) var(--ease-standard);
 }
 
 /* Between the nav and the plan list the divider is a drag handle: on hover
@@ -687,7 +680,7 @@
   right: auto;
   min-width: 13px;
   padding: 1px 2px;
-  font-size: 9px;
+  font-size: var(--text-3xs);
   line-height: 12px;
   z-index: 1;
 }
@@ -701,7 +694,7 @@
   min-height: 0;
   padding-top: 6px;
   overflow: hidden;
-  transition: opacity 200ms ease;
+  transition: opacity var(--duration-moderate) var(--ease-standard);
 }
 
 /* Headerless usage (e.g. inside the plan search dialog): plain list, no inset. */
@@ -730,11 +723,11 @@
   padding: 6px var(--tsh-row-pad-x);
   border: none;
   background: transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   color: var(--tsh-fg);
   cursor: pointer;
   overflow: hidden;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-rail-search:hover {
@@ -763,11 +756,11 @@
   width: 100%;
   padding: 6px 2px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--tsh-fg);
-  opacity: 0.6;
-  font-size: 11px;
+  opacity: var(--opacity-muted);
+  font-size: var(--text-xs-tight);
   font-weight: 500;
   line-height: 14px;
   white-space: nowrap;
@@ -780,8 +773,8 @@
   text-overflow: ellipsis;
   cursor: pointer;
   transition:
-    opacity 150ms ease,
-    background-color 150ms ease;
+    opacity var(--duration-base) var(--ease-standard),
+    background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-rail-item-text {
@@ -806,24 +799,16 @@
    the content frame can clip it. */
 .tsh-rail-menu {
   position: fixed;
-  z-index: 60;
+  z-index: var(--z-menu);
   display: flex;
   flex-direction: column;
   min-height: 0;
   padding: 6px;
-  border: 1px solid var(--tsh-border);
-  border-radius: 10px;
+  border: var(--border-width) solid var(--tsh-border);
+  border-radius: var(--radius-menu);
   background: var(--tsh-popover);
-  box-shadow:
-    0 10px 15px -3px rgb(0 0 0 / 0.1),
-    0 4px 6px -4px rgb(0 0 0 / 0.1);
-  animation: tui-tooltip-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.dark .tsh-rail-menu {
-  box-shadow:
-    0 10px 15px -3px rgb(0 0 0 / 0.5),
-    0 4px 6px -4px rgb(0 0 0 / 0.5);
+  box-shadow: var(--shadow-menu);
+  animation: tui-tooltip-in var(--duration-base) var(--ease-emphasized);
 }
 
 .tsh-rail-menu-bar {
@@ -832,7 +817,7 @@
   gap: 6px;
   flex-shrink: 0;
   padding: 2px 2px 6px;
-  border-bottom: 1px solid var(--tsh-border);
+  border-bottom: var(--border-width) solid var(--tsh-border);
 }
 
 .tsh-rail-menu-steps {
@@ -844,7 +829,7 @@
 .tsh-rail-menu-title {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 500;
   line-height: 18px;
   color: var(--tsh-fg);
@@ -875,7 +860,7 @@
 }
 
 .tsh-rail-tooltip-title {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   line-height: 16px;
 }
@@ -897,7 +882,7 @@
 }
 
 .tsh-section-title {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 500;
   line-height: 18px;
   color: var(--tsh-fg);
@@ -920,10 +905,10 @@
   margin-right: -2px;
   border: none;
   background: transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   color: var(--tsh-fg);
   cursor: pointer;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-section-search:hover,
@@ -947,12 +932,12 @@
   min-height: 38px;
   padding: 10px var(--tsh-row-pad-x);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--tsh-fg);
   cursor: pointer;
   overflow: hidden;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-section-search-button:hover {
@@ -968,7 +953,7 @@
 }
 
 .tsh-section-search-button-label {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -994,13 +979,13 @@
   width: 100%;
   padding: 10px 12px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   /* Buttons don't inherit color, so the row icon needs the theme's explicitly. */
   color: var(--tsh-fg);
   cursor: pointer;
   text-align: left;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-section-item:hover {
@@ -1060,12 +1045,12 @@
   min-width: 0;
   padding: 0 4px;
   margin: -1px 0;
-  border: 1px solid var(--tsh-border);
-  border-radius: 4px;
+  border: var(--border-width) solid var(--tsh-border);
+  border-radius: var(--radius-sm);
   background: var(--tsh-surface);
   color: var(--tsh-fg-title);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   line-height: 16px;
   outline: none;
@@ -1077,19 +1062,19 @@
 
 .tsh-item-menu {
   position: fixed;
-  z-index: 70;
+  z-index: var(--z-tooltip);
   display: flex;
   flex-direction: column;
   min-width: 150px;
   padding: 4px;
-  border: 1px solid var(--tsh-border);
-  border-radius: 10px;
+  border: var(--border-width) solid var(--tsh-border);
+  border-radius: var(--radius-menu);
   background: var(--tsh-popover);
   box-shadow:
     0 10px 15px -3px rgb(0 0 0 / 0.1),
     0 4px 6px -4px rgb(0 0 0 / 0.1);
-  animation: tui-tooltip-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
-  font-family: var(--font-sans, "Geist", sans-serif);
+  animation: tui-tooltip-in var(--duration-base) var(--ease-emphasized);
+  font-family: var(--font-sans);
 }
 
 .tsh-item-menu-item {
@@ -1098,11 +1083,11 @@
   gap: 8px;
   padding: 8px 10px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--tsh-fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm-tight);
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
@@ -1113,19 +1098,19 @@
 }
 
 .tsh-item-menu-item--danger {
-  color: var(--destructive, #ef4444);
+  color: var(--destructive);
 }
 
 .tsh-section-item-icon {
   flex-shrink: 0;
-  opacity: 0.7;
+  opacity: var(--opacity-subtle);
   display: flex;
 }
 
 .tsh-section-item-title {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   line-height: 16px;
   color: var(--tsh-fg-title);
@@ -1136,7 +1121,7 @@
 
 .tsh-section-item-tag {
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   line-height: 16px;
   color: var(--tsh-fg);
@@ -1151,31 +1136,31 @@
 
 .tsh-section-item-pin {
   flex-shrink: 0;
-  opacity: 0.5;
+  opacity: var(--opacity-dim);
   display: flex;
 }
 
 .tsh-section-item:hover .tsh-section-item-pin,
 .tsh-section-item[data-selected="true"] .tsh-section-item-pin {
-  opacity: 0.8;
+  opacity: var(--opacity-soft);
 }
 
 .tsh-section-group-label {
   padding: 8px 12px 4px;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--tsh-fg);
-  opacity: 0.5;
+  opacity: var(--opacity-dim);
   user-select: none;
 }
 
 .tsh-section-empty {
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--tsh-fg);
-  opacity: 0.5;
+  opacity: var(--opacity-dim);
 }
 
 /* ---------- Settings button ---------- */
@@ -1186,12 +1171,12 @@
   min-height: 38px;
   padding: 6px var(--tsh-row-pad-x);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--tsh-fg);
   cursor: pointer;
   overflow: hidden;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-settings .tsh-row {
@@ -1225,7 +1210,7 @@
 }
 
 .tsh-settings-label {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -1257,10 +1242,10 @@
   min-width: 0;
   padding: 10px 16px;
   border: none;
-  border-right: 1px solid var(--tsh-tab-border);
+  border-right: var(--border-width) solid var(--tsh-tab-border);
   background: transparent;
   cursor: pointer;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-tab:hover {
@@ -1277,16 +1262,16 @@
 }
 
 .tsh-tab[data-active="false"] .tsh-tab-main {
-  opacity: 0.6;
+  opacity: var(--opacity-muted);
 }
 
 /* V2 only: keyboard focus rings for the strip. The tab itself is the focus target
    (role="tab", tabIndex 0); the inner selectors cover a host that focuses them. */
 .tsh-tab:focus-visible,
 .tsh-tab-main:focus-visible {
-  outline: 2px solid var(--ring, var(--primary));
+  outline: var(--focus-ring-width) solid var(--ring);
   outline-offset: -2px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 /* The page tab has no close button, so it needn't reserve a 200px column for one. */
@@ -1302,7 +1287,7 @@
 }
 
 .tsh-tab-label {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
@@ -1320,11 +1305,11 @@
   background: transparent;
   border-radius: 3px;
   color: var(--tsh-fg);
-  opacity: 0.6;
+  opacity: var(--opacity-muted);
   cursor: pointer;
   transition:
-    opacity 150ms ease,
-    background-color 150ms ease;
+    opacity var(--duration-base) var(--ease-standard),
+    background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-tab-close:hover {
@@ -1333,8 +1318,8 @@
 }
 
 .tsh-tab-close:focus-visible {
-  outline: 2px solid var(--ring, var(--primary));
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .tsh-tab-new {
@@ -1345,11 +1330,11 @@
   height: 40px;
   flex-shrink: 0;
   border: none;
-  border-right: 1px solid var(--tsh-tab-border);
+  border-right: var(--border-width) solid var(--tsh-tab-border);
   background: transparent;
   color: var(--tsh-fg);
   cursor: pointer;
-  transition: background-color 150ms ease;
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-tab-new:hover {
@@ -1378,10 +1363,10 @@
   width: 14px;
   height: 16px;
   color: var(--tsh-fg);
-  opacity: 0.6;
+  opacity: var(--opacity-muted);
 }
 
 .tsh-section-item-state[data-state="completed"] {
-  color: color-mix(in srgb, var(--success, #1f4924) 60%, var(--tsh-fg));
+  color: color-mix(in srgb, var(--success) 60%, var(--tsh-fg));
   opacity: 1;
 }
