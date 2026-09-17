@@ -3,6 +3,7 @@ import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
 import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
 import { PR_STATE_CLASS } from "../utils/prStatus";
+import { CARD_SURFACE } from "../utils/surfaces";
 
 interface PlanPullRequestsProps {
   planId: string;
@@ -128,7 +129,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
   });
 
   return (
-    <div className="rounded-box border border-border bg-card/40 p-4">
+    <div className={`${CARD_SURFACE} p-4`}>
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Pull Requests
