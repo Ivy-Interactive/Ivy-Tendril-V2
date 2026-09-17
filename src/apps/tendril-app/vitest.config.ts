@@ -17,7 +17,19 @@ export default defineConfig({
         // from a test whose graph does not already pull in the components entry dies on a null
         // `useRef`. The root cause is the nested store under `packages/components`; this is the fix
         // that works without a reinstall.
-        inline: [/@ivy-interactive\/components/, /@dnd-kit/, /@radix-ui/],
+        //
+        // The list has to name every package that reaches React from that nested store, not just the
+        // ones imported directly: `@tanstack/react-virtual` is pulled in by `DataTable`'s virtualizer
+        // and `react-remove-scroll` by Radix's dialog/popover, and both were resolving to the nested
+        // copy — so every test that rendered a table died on a null `useReducer` and every test that
+        // opened a dialog on a null `useRef`, in both cases reported as "more than one copy of React".
+        inline: [
+          /@ivy-interactive\/components/,
+          /@dnd-kit/,
+          /@radix-ui/,
+          /@tanstack\/react-virtual/,
+          /react-remove-scroll/,
+        ],
       },
     },
   },
