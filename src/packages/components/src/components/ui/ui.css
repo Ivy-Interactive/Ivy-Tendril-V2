@@ -262,6 +262,55 @@
   );
 }
 
+.tui-badge[data-kind="primary"] {
+  border-color: transparent;
+  background: var(--tui-badge-primary-bg, var(--primary));
+  color: var(--tui-badge-primary-fg, var(--primary-foreground));
+}
+
+.tui-badge[data-size="md"] {
+  padding: 1px 6px;
+  font-size: var(--text-xs);
+  line-height: 16px;
+}
+
+.tui-badge[data-mono="true"] {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.tui-badge[data-caps="true"] {
+  text-transform: uppercase;
+}
+
+.tui-badge[data-shape="pill"] {
+  border-radius: var(--radius-lg);
+}
+
+.tui-badge[data-floating="true"] {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  border-width: var(--border-width-thick);
+  pointer-events: none;
+}
+
+.tui-badge-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.tui-badge-remove:hover {
+  color: var(--foreground);
+}
+
 .tui-dot {
   display: inline-block;
   width: 6px;

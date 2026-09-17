@@ -10,7 +10,8 @@ import {
   TabletSmartphone,
   type LucideIcon,
 } from "lucide-react";
-import { Tooltip } from "./Tooltip";
+import { IconButton as TuiIconButton } from "../ui/IconButton";
+import { TuiBadge } from "../ui/TuiBadge";
 import { Floating } from "./floating";
 import { actionIcon } from "./icons";
 import { addressParts } from "./address";
@@ -63,20 +64,24 @@ interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> 
 
 const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ label, icon: Icon, active, primary, badge, tooltipDisabled, ...rest }, ref) => (
-    <Tooltip label={label} disabled={tooltipDisabled}>
-      <button
-        ref={ref}
-        type="button"
-        className="wvr-icon-btn"
-        aria-label={label}
-        data-active={active ? "true" : undefined}
-        data-primary={primary ? "true" : undefined}
-        {...rest}
-      >
-        <Icon size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
-        {badge && <span className="wvr-badge">{badge}</span>}
-      </button>
-    </Tooltip>
+    <TuiIconButton
+      ref={ref}
+      label={label}
+      size="md"
+      variant={primary ? "solid" : "ghost"}
+      tone="muted"
+      active={active}
+      tooltipOpen={tooltipDisabled ? false : undefined}
+      data-primary={primary ? "true" : undefined}
+      {...rest}
+    >
+      <Icon size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
+      {badge && (
+        <TuiBadge kind="primary" size="sm" floating className="wvr-badge">
+          {badge}
+        </TuiBadge>
+      )}
+    </TuiIconButton>
   ),
 );
 IconButton.displayName = "IconButton";

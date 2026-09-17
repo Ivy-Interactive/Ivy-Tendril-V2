@@ -1,8 +1,18 @@
 import React from "react";
+import { X } from "lucide-react";
 import { ivyColorVar } from "@/lib/ivy-color";
 import "./ui.css";
 
-export type BadgeKind = "neutral" | "project" | "success" | "warning" | "danger" | "color";
+export type BadgeKind =
+  | "neutral"
+  | "primary"
+  | "project"
+  | "success"
+  | "warning"
+  | "danger"
+  | "color";
+export type BadgeSize = "sm" | "md";
+export type BadgeShape = "rounded" | "pill";
 
 export interface TuiBadgeProps {
   kind?: BadgeKind;
@@ -11,6 +21,17 @@ export interface TuiBadgeProps {
   children: React.ReactNode;
   /** Numeric styling: a fixed minimum width and tabular figures, so a ticking count is steady. */
   numeric?: boolean;
+  size?: BadgeSize;
+  shape?: BadgeShape;
+  /** Absolutely positions the badge at the top-right corner of a `position: relative` parent. */
+  floating?: boolean;
+  mono?: boolean;
+  caps?: boolean;
+  /** A leading icon, rendered before the label. */
+  icon?: React.ReactNode;
+  /** Renders an accessible remove button after the label. */
+  onRemove?: () => void;
+  removeLabel?: string;
   className?: string;
   /** Native title, for a badge whose label is abbreviated. */
   title?: string;
@@ -28,6 +49,14 @@ export const TuiBadge: React.FC<TuiBadgeProps> = ({
   color,
   children,
   numeric = false,
+  size,
+  shape,
+  floating = false,
+  mono = false,
+  caps = false,
+  icon,
+  onRemove,
+  removeLabel = "Remove",
   className = "",
   title,
   "aria-label": ariaLabel,
@@ -37,11 +66,27 @@ export const TuiBadge: React.FC<TuiBadgeProps> = ({
       .replace(/\s+/g, " ")
       .trim()}
     data-kind={color ? "color" : kind}
+    data-size={size}
+    data-shape={shape}
+    data-floating={floating ? "true" : undefined}
+    data-mono={mono ? "true" : undefined}
+    data-caps={caps ? "true" : undefined}
     style={color ? ({ "--tui-badge-color": ivyColorVar(color) } as React.CSSProperties) : undefined}
     title={title}
     aria-label={ariaLabel}
   >
+    {icon}
     {children}
+    {onRemove && (
+      <button
+        type="button"
+        className="tui-badge-remove"
+        aria-label={removeLabel}
+        onClick={onRemove}
+      >
+        <X size={10} aria-hidden="true" />
+      </button>
+    )}
   </span>
 );
 
