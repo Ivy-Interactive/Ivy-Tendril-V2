@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@ivy-interactive/components/ui";
+import { IconButton, Popover, PopoverContent, PopoverTrigger } from "@ivy-interactive/components/ui";
 import {
   Activity,
   ArrowDownToLine,
@@ -21,21 +21,6 @@ import type { Job } from "../types/api";
 import { isCompletedJob, isFailedJob, isRunningJob } from "../utils/jobStatus";
 
 const jobsLabel = (count: number) => `${count} job${count === 1 ? "" : "s"}`;
-
-/** The header's icon buttons: one square, ghost-filled control, sized as V1's 32px IconButton. */
-const HeaderIconButton: React.FC<
-  React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string }
-> = ({ label, className = "", children, ...props }) => (
-  <button
-    type="button"
-    aria-label={label}
-    title={label}
-    className={`inline-flex size-8 shrink-0 items-center justify-center rounded-selector text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className}`}
-    {...props}
-  >
-    {children}
-  </button>
-);
 
 export interface JobsMenuProps {
   jobs: Job[];
@@ -340,32 +325,34 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         )}
         <div className="flex items-center">
           {onNewChat && (
-            <HeaderIconButton label="New chat" onClick={onNewChat}>
+            <IconButton label="New chat" size="lg" onClick={onNewChat}>
               <MessageSquarePlus className="size-4" aria-hidden="true" />
-            </HeaderIconButton>
+            </IconButton>
           )}
           {/* V2-only: V1 detaches from the tail on a scroll up and has no control for it. The
               desktop app keeps an explicit lock, as an icon button so the header stays as V1's. */}
-          <HeaderIconButton
+          <IconButton
             data-testid="chat-autoscroll-toggle"
             label="Toggle auto-scrolling to streaming deltas"
+            size="lg"
+            tone={autoScrollEnabled ? "default" : "muted"}
             aria-pressed={autoScrollEnabled}
             onClick={onToggleAutoScroll}
-            className={autoScrollEnabled ? "text-foreground" : "text-muted-foreground"}
           >
             <ArrowDownToLine className="size-4" aria-hidden="true" />
             <span className="sr-only">Auto-scroll: {autoScrollEnabled ? "ON" : "OFF"}</span>
-          </HeaderIconButton>
+          </IconButton>
           {editable && (
             <div className="relative" ref={menuRef}>
-              <HeaderIconButton
+              <IconButton
                 label="Chat options"
+                size="lg"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((value) => !value)}
               >
                 <Ellipsis className="size-4" aria-hidden="true" />
-              </HeaderIconButton>
+              </IconButton>
               {menuOpen && (
                 <div
                   role="menu"

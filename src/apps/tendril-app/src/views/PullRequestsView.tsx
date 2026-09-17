@@ -18,7 +18,8 @@ import {
 import { bridge } from "../api/bridge";
 import { onPrStatusEvent } from "../api/events";
 import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
-import { EmptyState } from "../components/EmptyState";
+import { ErrorBanner } from "../components/ErrorBanner";
+import { NoContentView } from "../components/NoContentView";
 import { PR_STATE_CLASS } from "../utils/prStatus";
 
 /** The original's `BatchSize` — a cross-plan PR list is long, so the page holds more than the default 10. */
@@ -351,26 +352,12 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         <h1 className="text-2xl font-bold text-foreground">Pull Requests</h1>
       </div>
 
-      {error && (
-        <div
-          role="alert"
-          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
-      {syncError && (
-        <div
-          role="alert"
-          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          {syncError}
-        </div>
-      )}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+      {syncError && <ErrorBanner>{syncError}</ErrorBanner>}
       {notice && <p className="text-xs text-warning">{notice}</p>}
 
       {!isLoading && rows.length === 0 && !error ? (
-        <EmptyState
+        <NoContentView
           title="No pull requests"
           description="No plan has a pull request recorded yet. Create one from the Review tab and it will appear here."
         />
