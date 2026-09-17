@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import { Copy, GitBranchPlus, GitCommitHorizontal } from "lucide-react";
+import { IconButton } from "../ui/IconButton";
 
 /**
  * Whether a ref still holds a commit the plan recorded, in the repo it was made in.
@@ -250,14 +251,16 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
               <div key={worktree.path} className="rounded-xl border border-border bg-card/40 p-4">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-foreground">{worktree.name}</span>
-                  <button
-                    type="button"
+                  <IconButton
+                    label={`Copy path to ${worktree.name}`}
+                    tooltip={false}
+                    size="xs"
+                    variant="outline"
+                    className="border-border bg-transparent hover:bg-muted"
                     onClick={() => copyPath(normalizePath(worktree.path))}
-                    aria-label={`Copy path to ${worktree.name}`}
-                    className="rounded-md border border-border p-1 text-muted-foreground hover:bg-muted"
                   >
                     <Copy className="h-3 w-3" />
-                  </button>
+                  </IconButton>
                 </div>
 
                 <dl className="mt-2 space-y-1 text-xs">

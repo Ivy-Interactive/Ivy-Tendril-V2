@@ -20,6 +20,7 @@ import { refractor, type Syntax } from "refractor/core";
 import { prismTheme } from "@/lib/prismTheme";
 import { getInitials } from "../PlanMarkdown/annotationUtils";
 import { Tooltip } from "../ui/TuiTooltip";
+import { IconButton } from "../ui/IconButton";
 
 export type LanguageModule = { default: Syntax } | Syntax;
 export type CustomLanguageLoader = () => Promise<LanguageModule>;
@@ -1180,35 +1181,29 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                     const fileCommentCount = comments.length;
                     const hidden = commentsHidden[fileKey] ?? false;
                     return (
-                      <Tooltip
-                        wrapTrigger
-                        triggerDisabled={fileCommentCount === 0}
-                        content={
+                      <IconButton
+                        label={hidden ? "Show comments" : "Hide comments"}
+                        tooltip={
                           fileCommentCount === 0
                             ? "No comments on this file"
                             : hidden
                               ? `Show ${fileCommentCount} comment(s)`
                               : `Hide ${fileCommentCount} comment(s)`
                         }
+                        size="xs"
+                        aria-pressed={!hidden}
+                        disabled={fileCommentCount === 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (fileCommentCount === 0) return;
+                          setCommentsHidden((prev) => ({ ...prev, [fileKey]: !hidden }));
+                        }}
                       >
-                        <button
-                          type="button"
-                          aria-label={hidden ? "Show comments" : "Hide comments"}
-                          aria-pressed={!hidden}
-                          disabled={fileCommentCount === 0}
-                          className="flex items-center gap-1 p-1 rounded hover:bg-[var(--muted)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[var(--muted-foreground)]"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (fileCommentCount === 0) return;
-                            setCommentsHidden((prev) => ({ ...prev, [fileKey]: !hidden }));
-                          }}
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                          <span className="font-mono text-xs tabular-nums min-w-4 text-left">
-                            {fileCommentCount > 0 ? fileCommentCount : ""}
-                          </span>
-                        </button>
-                      </Tooltip>
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span className="font-mono text-xs tabular-nums min-w-4 text-left">
+                          {fileCommentCount > 0 ? fileCommentCount : ""}
+                        </span>
+                      </IconButton>
                     );
                   })()}
                 </div>
