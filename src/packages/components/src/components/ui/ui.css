@@ -413,6 +413,11 @@
   height: 40px;
 }
 
+.tui-icon-btn[data-size="2xl"] {
+  width: 48px;
+  height: 48px;
+}
+
 .tui-icon-btn[data-shape="round"] {
   border-radius: var(--radius-full);
 }
@@ -470,6 +475,16 @@
   background: var(--accent);
   color: var(--accent-foreground);
   border-color: var(--accent);
+}
+
+.tui-icon-btn[data-variant="overlay"] {
+  background: color-mix(in srgb, black 50%, transparent);
+  color: white;
+  opacity: 1;
+}
+
+.tui-icon-btn[data-variant="overlay"]:hover:not(:disabled) {
+  background: color-mix(in srgb, black 70%, transparent);
 }
 
 /* ---------- Status line ---------- */

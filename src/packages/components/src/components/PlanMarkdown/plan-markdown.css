@@ -336,35 +336,15 @@
   top: 0.5rem;
   right: 0.5rem;
   z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
   opacity: 0;
-  transition: opacity var(--duration-moderate) ease-in-out;
 }
 .pmv-code-block:hover .pmv-code-copy,
 .pmv-code-copy:focus-visible,
 .pmv-code-copy:focus-within {
   opacity: 1;
 }
-.pmv-code-copy:hover {
-  background: var(--accent);
-  color: var(--foreground);
-}
 .pmv-code-copy--copied {
-  background: var(--primary);
-  color: var(--primary-foreground);
   opacity: 1;
-}
-.pmv-code-copy--copied:hover {
-  background: var(--primary);
-  color: var(--primary-foreground);
 }
 .pmv-code-copy svg {
   width: 1rem;
@@ -883,22 +863,8 @@
   position: absolute;
   top: 1rem;
   right: 1rem;
-  background: rgba(255, 255, 255, 0.1);
-  border: var(--border-width) solid rgba(255, 255, 255, 0.2);
-  color: white;
   font-size: 2rem;
   line-height: 1;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background var(--duration-moderate) var(--ease-standard);
-}
-.pmv-img-overlay-close:hover {
-  background: rgba(255, 255, 255, 0.2);
 }
 
 /* ─── In-page Search Overlay ────────────────────────────────────────── */
