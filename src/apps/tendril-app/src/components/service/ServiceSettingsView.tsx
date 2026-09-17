@@ -81,7 +81,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
 
   return (
     <div className="space-y-6" data-testid="service-settings-view">
-      <div className="rounded-xl border border-border bg-card/60 p-6">
+      <div className="rounded-box border border-border bg-card/60 p-6">
         <div className="flex items-center justify-between border-b border-border pb-4">
           <div>
             <h2 className="text-base font-semibold text-foreground">
@@ -109,7 +109,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             type="button"
             disabled={isBusy}
             onClick={handleRestart}
-            className="rounded-lg bg-muted px-3.5 py-2 text-xs font-medium text-accent-foreground hover:bg-accent disabled:opacity-50 transition"
+            className="rounded-field bg-muted px-3.5 py-2 text-xs font-medium text-accent-foreground hover:bg-accent disabled:opacity-50 transition"
           >
             Restart Service
           </button>
@@ -118,7 +118,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             type="button"
             disabled={isBusy}
             onClick={handleRepair}
-            className="rounded-lg bg-warning/80 px-3.5 py-2 text-xs font-medium text-warning-foreground hover:bg-warning/90 disabled:opacity-50 transition"
+            className="rounded-field bg-warning/80 px-3.5 py-2 text-xs font-medium text-warning-foreground hover:bg-warning/90 disabled:opacity-50 transition"
           >
             Repair Service
           </button>
@@ -129,7 +129,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             onClick={() =>
               handleSwitchMode(serviceInfo?.ownership === "Managed" ? "external" : "managed")
             }
-            className="rounded-lg border border-border bg-background px-3.5 py-2 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50 transition"
+            className="rounded-field border border-border bg-background px-3.5 py-2 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50 transition"
           >
             {serviceInfo?.ownership === "Managed"
               ? "Switch to External Daemon"
@@ -140,7 +140,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             type="button"
             disabled={isLoadingLogs}
             onClick={fetchLogs}
-            className="rounded-lg border border-border bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground hover:bg-card disabled:opacity-50 transition"
+            className="rounded-field border border-border bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground hover:bg-card disabled:opacity-50 transition"
           >
             {isLoadingLogs ? "Loading Logs..." : "Refresh Logs"}
           </button>
@@ -148,23 +148,23 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
 
         {/* Service Details */}
         <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 text-xs">
-          <div className="rounded-lg border border-border bg-background/60 p-3">
+          <div className="rounded-box border border-border bg-background/60 p-3">
             <dt className="text-muted-foreground/70">Ownership</dt>
             <dd className="mt-1 font-semibold text-foreground">
               {serviceInfo?.ownership || "External / Standalone"}
             </dd>
           </div>
-          <div className="rounded-lg border border-border bg-background/60 p-3">
+          <div className="rounded-box border border-border bg-background/60 p-3">
             <dt className="text-muted-foreground/70">Endpoint</dt>
             <dd className="mt-1 font-mono text-muted-foreground">
               {serviceInfo?.host || "127.0.0.1"}:{serviceInfo?.port || "N/A"}
             </dd>
           </div>
-          <div className="rounded-lg border border-border bg-background/60 p-3">
+          <div className="rounded-box border border-border bg-background/60 p-3">
             <dt className="text-muted-foreground/70">Process PID</dt>
             <dd className="mt-1 font-mono text-muted-foreground">{serviceInfo?.pid || "N/A"}</dd>
           </div>
-          <div className="rounded-lg border border-border bg-background/60 p-3">
+          <div className="rounded-box border border-border bg-background/60 p-3">
             <dt className="text-muted-foreground/70">Crash Count</dt>
             <dd className="mt-1 font-semibold text-foreground">{serviceInfo?.crashCount ?? 0}</dd>
           </div>
@@ -172,7 +172,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       </div>
 
       {/* Diagnostics Log Viewer */}
-      <div className="rounded-xl border border-border bg-card/60 p-6">
+      <div className="rounded-box border border-border bg-card/60 p-6">
         <div className="flex items-center justify-between border-b border-border pb-3">
           <h3 className="text-sm font-semibold text-foreground">
             Daemon Diagnostics & Service Logs (Sensitive Tokens Redacted)
@@ -184,7 +184,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
 
         <div
           data-testid="service-logs-container"
-          className="mt-4 max-h-72 overflow-y-auto rounded-lg border border-border bg-background p-3 font-mono text-xs text-muted-foreground space-y-1"
+          className="mt-4 max-h-72 overflow-y-auto rounded-box border border-border bg-background p-3 font-mono text-xs text-muted-foreground space-y-1"
         >
           {logs.length === 0 ? (
             <p className="text-muted-foreground/70 italic">No logs recorded yet in service.log.</p>

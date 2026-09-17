@@ -130,7 +130,7 @@ const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }> = ({ p
     <div
       role="alert"
       data-testid="plan-failure-callout"
-      className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+      className="mb-4 rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
     >
       <p className="font-semibold">Execution Failed</p>
       {failed.length > 0 ? (
@@ -1443,13 +1443,13 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const otherTabsPane = (
     <div key="tab-pane" className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
       {effectiveTab === "diff" && (
-        <div className="rounded-xl border border-border bg-card/40 p-6">
+        <div className="rounded-box border border-border bg-card/40 p-6">
           <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
         </div>
       )}
 
       {effectiveTab === "recommendations" && (
-        <div className="space-y-4 rounded-xl border border-border bg-card/40 p-6">
+        <div className="space-y-4 rounded-box border border-border bg-card/40 p-6">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
             <p className="text-xs text-muted-foreground">
@@ -1477,7 +1477,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       )}
 
       {effectiveTab === "git" && (
-        <div className="rounded-xl border border-border bg-card/40 p-6">
+        <div className="rounded-box border border-border bg-card/40 p-6">
           {gitError ? (
             <p data-testid="git-tab-error" className="text-xs text-destructive">
               {gitError}
@@ -1499,7 +1499,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         <div className="space-y-4">
           {/* `DetailsTabView.Build`'s own field order, and its `RemoveEmpty()`: a row the plan
               has no value for is dropped rather than rendered blank. */}
-          <dl className="rounded-xl border border-border bg-card/40 p-4">
+          <dl className="rounded-box border border-border bg-card/40 p-4">
             <DetailRow label="Plan ID">
               <button
                 type="button"
@@ -1570,7 +1570,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               because V2's Git tab is the only other place they appear and it is hidden while a
               plan has nothing in git yet. */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-xl border border-border bg-card/40 p-4">
+            <div className="rounded-box border border-border bg-card/40 p-4">
               <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Repositories
               </h4>
@@ -1583,7 +1583,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               </ul>
             </div>
 
-            <div className="rounded-xl border border-border bg-card/40 p-4">
+            <div className="rounded-box border border-border bg-card/40 p-4">
               <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Commits
               </h4>
@@ -1688,7 +1688,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                   <span
                     key="in-flight"
                     data-testid="plan-in-flight-notice"
-                    className="rounded-lg border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-medium text-info"
+                    className="rounded-box border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-medium text-info"
                   >
                     A job is running on this plan.
                   </span>,
@@ -1700,7 +1700,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                     key="error"
                     role="alert"
                     data-testid="plan-action-error"
-                    className="flex-1 rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
+                    className="flex-1 rounded-box border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
                   >
                     {actionError}
                   </div>,

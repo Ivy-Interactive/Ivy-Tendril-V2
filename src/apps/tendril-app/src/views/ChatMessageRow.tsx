@@ -136,7 +136,7 @@ const AttachmentChip: React.FC<{ attachment: ChatAttachment; isUser: boolean }> 
   isUser,
 }) => (
   <div
-    className={`flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 ${
+    className={`flex max-w-full items-center gap-1.5 rounded-selector px-1.5 py-1 ${
       isUser ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
     }`}
     title={attachment.path}
@@ -170,7 +170,7 @@ const MessageAttachment: React.FC<{
     return (
       <div
         data-testid="attachment-thumbnail-pending"
-        className="size-16 animate-pulse rounded-md bg-muted"
+        className="size-16 animate-pulse rounded-selector bg-muted"
         title={attachment.name}
       />
     );
@@ -183,7 +183,7 @@ const MessageAttachment: React.FC<{
       onClick={() => onOpenImage?.({ url, title: attachment.name })}
       title={`Open ${attachment.name}`}
       aria-label={`Open ${attachment.name}`}
-      className={`overflow-hidden rounded-md transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 ${
+      className={`overflow-hidden rounded-selector transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 ${
         isUser ? "focus-visible:ring-primary-foreground" : "focus-visible:ring-ring"
       }`}
     >

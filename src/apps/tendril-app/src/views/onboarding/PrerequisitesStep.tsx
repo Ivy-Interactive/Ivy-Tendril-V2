@@ -89,7 +89,7 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
           onClick={onRecheck}
           disabled={loading}
           data-testid="onboarding-recheck"
-          className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+          className="shrink-0 rounded-field border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
         >
           {loading ? "Checking…" : "Re-check"}
         </button>
@@ -99,7 +99,7 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
         <div
           role="alert"
           data-testid="onboarding-checks-error"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {error}
         </div>
@@ -110,7 +110,7 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
       )}
 
       {checks.length > 0 && (
-        <ul className="divide-y divide-border rounded-lg border border-border">
+        <ul className="divide-y divide-border rounded-box border border-border">
           {checks.map((check) => (
             <li
               key={`${check.category}-${check.name}`}
@@ -134,7 +134,7 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
                   type="button"
                   onClick={() => openInstall(check.installUrl as string)}
                   data-testid={`onboarding-install-${check.name}`}
-                  className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted"
+                  className="shrink-0 rounded-field border border-border px-2 py-1 text-xs text-foreground hover:bg-muted"
                 >
                   Install
                 </button>
@@ -181,7 +181,7 @@ export function DataStorageStep({ tendrilHome }: DataStorageStepProps) {
           readOnly
           value={tendrilHome}
           data-testid="onboarding-tendril-home"
-          className="w-full rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm text-foreground"
+          className="w-full rounded-field border border-border bg-muted px-3 py-2 font-mono text-sm text-foreground"
         />
         {tendrilHome ? (
           <p className="text-xs text-muted-foreground">

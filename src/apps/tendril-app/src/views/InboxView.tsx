@@ -1360,7 +1360,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
           <div
             role="alert"
             data-testid="inbox-proposal-error"
-            className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
           >
             {proposalError}
           </div>
@@ -1386,7 +1386,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               <div
                 key={proposal.id}
                 data-testid={`proposal-card-${proposal.id}`}
-                className="rounded-lg border border-info/40 bg-info/5 p-3"
+                className="rounded-box border border-info/40 bg-info/5 p-3"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
@@ -1446,7 +1446,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
           <div
             role="alert"
             data-testid="inbox-error"
-            className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive"
+            className="space-y-2 rounded-box border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive"
           >
             <div className="font-semibold text-destructive">Failed to load GitHub issues</div>
             <p>{error}</p>

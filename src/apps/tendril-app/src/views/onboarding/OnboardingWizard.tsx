@@ -380,7 +380,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       onClick={() => goTo(Math.max(AGENT_STEP, step - 1))}
       disabled={busy}
       data-testid="onboarding-back"
-      className="flex items-center gap-1.5 rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+      className="flex items-center gap-1.5 rounded-field border border-border px-4 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
     >
       <ArrowLeft className="size-4" aria-hidden="true" />
       Back
@@ -404,7 +404,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             onClick={() => goTo(PROJECT_STEP)}
             disabled={busy || !canLeaveHomeStep}
             data-testid="onboarding-continue"
-            className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-field bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             Next
             <ArrowRight className="size-4" aria-hidden="true" />
@@ -426,7 +426,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
               onClick={() => goTo(COMPLETE_STEP)}
               disabled={busy}
               data-testid="onboarding-continue"
-              className="flex items-center gap-1.5 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-field bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
             >
               Next
               <ArrowRight className="size-4" aria-hidden="true" />
@@ -443,7 +443,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             onClick={() => goTo(COMPLETE_STEP)}
             disabled={busy}
             data-testid="onboarding-skip"
-            className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            className="rounded-field px-4 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
             Skip
           </button>
@@ -454,7 +454,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             onClick={() => void registerProject()}
             disabled={busy || !canCreateProject}
             data-testid="onboarding-continue"
-            className="flex items-center gap-1.5 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-field bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
           >
             Create Project
             <ArrowRight className="size-4" aria-hidden="true" />
@@ -472,7 +472,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
           onClick={() => void finish(true)}
           disabled={busy}
           data-testid="onboarding-continue"
-          className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-field bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           Finish
           <Check className="size-4" aria-hidden="true" />
@@ -543,7 +543,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
           <div
             role="alert"
             data-testid="onboarding-error"
-            className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
           >
             {error}
           </div>

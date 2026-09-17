@@ -19,7 +19,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
     <div
       role="region"
       aria-label={title}
-      className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/30 p-12 text-center"
+      className="flex flex-col items-center justify-center rounded-box border border-dashed border-border bg-card/30 p-12 text-center"
     >
       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted/80 text-2xl text-muted-foreground">
         {icon}
@@ -30,7 +30,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         <button
           type="button"
           onClick={onAction}
-          className="mt-6 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring"
+          className="mt-6 rounded-field bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {actionLabel}
         </button>

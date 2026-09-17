@@ -1028,7 +1028,7 @@ export const App: React.FC = () => {
           <div
             role="alert"
             data-testid="nav-error"
-            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            className="mb-4 flex items-start justify-between gap-3 rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
           >
             <span>{uiState.navError}</span>
             <button
@@ -1045,7 +1045,7 @@ export const App: React.FC = () => {
           <div
             role="alert"
             data-testid="shell-error"
-            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            className="mb-4 flex items-start justify-between gap-3 rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
           >
             <span>{shellError}</span>
             <button

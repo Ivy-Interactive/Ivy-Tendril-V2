@@ -30,7 +30,7 @@ const HeaderIconButton: React.FC<
     type="button"
     aria-label={label}
     title={label}
-    className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className}`}
+    className={`inline-flex size-8 shrink-0 items-center justify-center rounded-selector text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className}`}
     {...props}
   >
     {children}
@@ -77,7 +77,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
           aria-label="View running jobs"
           aria-expanded={open}
           title={runningCount > 0 ? `${runningCount} job(s) running` : "View jobs"}
-          className={`inline-flex h-8 select-none items-center gap-1.5 whitespace-nowrap rounded-lg bg-muted px-3 transition-colors hover:bg-accent ${
+          className={`inline-flex h-8 select-none items-center gap-1.5 whitespace-nowrap rounded-selector bg-muted px-3 transition-colors hover:bg-accent ${
             failedCount > 0 && runningCount === 0 ? "text-destructive" : "text-foreground"
           }`}
         >
@@ -324,7 +324,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               if (e.key === "Escape") setIsEditingTitle(false);
             }}
             autoFocus
-            className="w-full max-w-[360px] rounded-lg border border-border bg-background px-2 py-1 text-base font-semibold text-foreground outline-none focus:border-foreground"
+            className="w-full max-w-[360px] rounded-field border border-border bg-background px-2 py-1 text-base font-semibold text-foreground outline-none focus:border-foreground"
           />
         ) : (
           <h1 className="truncate text-base font-semibold text-foreground" title={title}>

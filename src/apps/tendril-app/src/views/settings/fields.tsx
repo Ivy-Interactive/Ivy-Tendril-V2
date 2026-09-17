@@ -27,7 +27,7 @@ export const SectionCard: React.FC<{
   action?: React.ReactNode;
   children: React.ReactNode;
 }> = ({ title, hint, testId, action, children }) => (
-  <div className="rounded-xl border border-border bg-card/60 p-6" data-testid={testId}>
+  <div className="rounded-box border border-border bg-card/60 p-6" data-testid={testId}>
     <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
       <div>
         <h2 className="text-base font-semibold text-foreground">{title}</h2>

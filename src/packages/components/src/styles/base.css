@@ -71,6 +71,10 @@
   .rounded-box {
     border-radius: var(--radius-boxes);
   }
+  .rounded-t-box {
+    border-top-left-radius: var(--radius-boxes);
+    border-top-right-radius: var(--radius-boxes);
+  }
   .rounded-field {
     border-radius: var(--radius-fields);
   }
@@ -87,6 +91,9 @@
   }
   .rounded-checkbox {
     border-radius: calc(var(--radius-selectors) / 2);
+  }
+  .rounded-bubble {
+    border-radius: var(--radius-bubble);
   }
   .shadow-box {
     box-shadow: var(--shadow-boxes);

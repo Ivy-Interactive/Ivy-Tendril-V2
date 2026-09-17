@@ -35,9 +35,9 @@ describe("NewPlanModal surface", () => {
     const surface = screen.getByTestId("new-plan-surface");
     // `Size.Fit()` height on mobile, `Size.Rem(30)` width on the dialog.
     expect(surface.className).toContain("max-h-[90vh]");
-    expect(surface.className).toContain("rounded-t-2xl");
+    expect(surface.className).toContain("rounded-t-box");
     expect(surface.className).toContain("sm:max-w-[30rem]");
-    expect(surface.className).toContain("sm:rounded-2xl");
+    expect(surface.className).toContain("sm:rounded-box");
   });
 
   it("dismisses on a backdrop click but not on a click inside the surface", () => {

@@ -63,13 +63,13 @@ export function NewsletterSignup({ className }: NewsletterSignupProps) {
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+              className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
             />
             <button
               type="submit"
               data-testid="newsletter-submit"
               disabled={!canSubmit}
-              className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+              className="rounded-field bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
             >
               {status === "sending" ? "Subscribing…" : "Subscribe"}
             </button>

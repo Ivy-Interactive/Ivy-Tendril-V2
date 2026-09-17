@@ -278,7 +278,7 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
       {error && (
         <div
           data-testid="diff-error"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {error}
         </div>

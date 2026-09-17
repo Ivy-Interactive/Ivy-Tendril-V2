@@ -1053,15 +1053,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const composerStyle = embedded
     ? {
         box: "rounded-xl",
-        button: "size-7 rounded-md",
+        button: "size-7 rounded-field",
         icon: "size-4",
         attachOffset: "",
         ghost: "opacity-90 hover:opacity-100",
         tools: "gap-1.5",
       }
     : {
-        box: "rounded-2xl",
-        button: "size-8 rounded-lg",
+        box: "rounded-bubble",
+        button: "size-8 rounded-box",
         icon: "size-5",
         attachOffset: "-ml-1.5",
         ghost: "opacity-60 hover:opacity-100",
@@ -1131,7 +1131,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         onDrop={handleDrop}
       >
         {isDraggingOver && (
-          <div className="absolute inset-2 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-foreground bg-background/90 backdrop-blur-xs pointer-events-none">
+          <div className="absolute inset-2 z-50 flex items-center justify-center rounded-box border-2 border-dashed border-foreground bg-background/90 backdrop-blur-xs pointer-events-none">
             <div className="flex flex-col items-center gap-2.5 text-center text-foreground">
               <Upload className="size-9 opacity-80" />
               <span className="font-medium">Drop files here to attach to message</span>
@@ -1238,7 +1238,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       setInputPrompt(item.prompt);
                       requestComposerFocus();
                     }}
-                    className={`rounded-2xl border border-border bg-background px-4 py-2 font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent ${
+                    className={`rounded-bubble border border-border bg-background px-4 py-2 font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent ${
                       embedded ? "shrink-0 whitespace-nowrap" : ""
                     }`}
                   >
@@ -1391,7 +1391,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         >
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-2.5">
             {queuedItems.length > 0 && (
-              <div className="rounded-2xl border border-border bg-muted/60 p-2.5">
+              <div className="rounded-box border border-border bg-muted/60 p-2.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="font-medium text-foreground">Queued Messages</span>
@@ -1559,7 +1559,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   {attachments.map((att, index) => (
                     <div
                       key={`${att.path}-${index}`}
-                      className="flex max-w-full items-center gap-1.5 rounded-md bg-background px-1.5 py-1 text-foreground"
+                      className="flex max-w-full items-center gap-1.5 rounded-selector bg-background px-1.5 py-1 text-foreground"
                       title={att.path}
                     >
                       <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />

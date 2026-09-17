@@ -113,7 +113,7 @@ export function CodingAgentStep({
               disabled={busy}
               onClick={() => onSelectAgent(agent.id)}
               data-testid={`onboarding-agent-${agent.id}`}
-              className={`flex flex-col items-start gap-2 rounded-lg border p-3 text-left transition-colors disabled:opacity-50 ${
+              className={`flex flex-col items-start gap-2 rounded-field border p-3 text-left transition-colors disabled:opacity-50 ${
                 selected
                   ? "border-primary bg-primary/10"
                   : "border-border bg-card hover:bg-muted/50"

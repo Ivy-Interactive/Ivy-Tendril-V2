@@ -375,7 +375,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <button
                     type="button"
                     aria-label="Close breakdown"
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    className="rounded-selector p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
                     onClick={() => setSelectedKpi(null)}
                   >
                     <X className="size-4" />
