@@ -927,7 +927,12 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   title={submitLabel || "Send"}
                 >
                   <span className="civ-submit-text">{submitLabel}</span>
-                  <TuiKbd keys="Ctrl+Enter" platform variant="outline" className="civ-submit-shortcut" />
+                  <TuiKbd
+                    keys="Ctrl+Enter"
+                    platform
+                    variant="outline"
+                    className="civ-submit-shortcut"
+                  />
                 </button>
                 <button
                   className="civ-split-btn-arrow"
@@ -971,7 +976,12 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                 {submitLabel ? (
                   <>
                     <span className="civ-submit-text">{submitLabel}</span>
-                    <TuiKbd keys="Ctrl+Enter" platform variant="outline" className="civ-submit-shortcut" />
+                    <TuiKbd
+                      keys="Ctrl+Enter"
+                      platform
+                      variant="outline"
+                      className="civ-submit-shortcut"
+                    />
                   </>
                 ) : (
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
