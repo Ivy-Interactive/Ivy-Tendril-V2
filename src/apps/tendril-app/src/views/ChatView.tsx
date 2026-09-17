@@ -576,7 +576,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
    * the header is worse than showing one with a thinner label.
    */
   const spawnedJobs = useMemo(() => {
-    const ids = activeSession?.spawnedJobIds ?? [];
+    const sessionId = activeSession?.id;
+    // Two sources for the same fact, unioned as V1's `ToSessionDto` unions them. The job's own
+    // `chatSessionId` is the durable one — the daemon recorded it when the job was submitted — and it
+    // is what makes the header right after a reload, or when the `chat.job_spawned` announcing a job
+    // arrived while another conversation was on screen. The session's `spawnedJobIds` then adds back
+    // the jobs that have aged out of the live list, whose outcome the transcript still holds.
+    const ids = [
+      ...(sessionId ? jobs.filter((job) => job.chatSessionId === sessionId).map((j) => j.id) : []),
+      ...(activeSession?.spawnedJobIds ?? []),
+    ].filter((id, index, all) => all.indexOf(id) === index);
     if (ids.length === 0) return [];
     const history = activeSession?.messages ?? [];
 
@@ -595,7 +604,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         };
       })
       .filter((job): job is Job => job !== undefined);
-  }, [activeSession?.spawnedJobIds, activeSession?.messages, jobs]);
+  }, [activeSession?.id, activeSession?.spawnedJobIds, activeSession?.messages, jobs]);
 
   const latestMessage = activeSession?.messages[activeSession.messages.length - 1];
   const streamContentKey = `${activeSession?.id ?? ""}-${activeSession?.messages.length ?? 0}-${latestMessage?.id ?? ""}-${latestMessage?.content.length ?? 0}-${isGenerating}`;
@@ -1221,11 +1230,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
               >
                 {headline}
               </div>
+              {/* Wraps in both modes. Embedded, the panel is only as wide as the plan page leaves it,
+                  so a nowrap row put the later chips off the edge — and with no room for a horizontal
+                  scrollbar they were simply unreachable. A chip that does not fit takes the next line. */}
               <div
-                className={`mt-4 flex gap-2 ${
-                  embedded
-                    ? "w-full flex-nowrap justify-start overflow-x-auto"
-                    : "flex-wrap justify-center"
+                className={`mt-4 flex flex-wrap gap-2 ${
+                  embedded ? "w-full justify-start" : "justify-center"
                 }`}
                 data-testid="sample-prompts"
               >
@@ -1238,9 +1248,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       setInputPrompt(item.prompt);
                       requestComposerFocus();
                     }}
-                    className={`rounded-2xl border border-border bg-background px-4 py-2 font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent ${
-                      embedded ? "shrink-0 whitespace-nowrap" : ""
-                    }`}
+                    className="max-w-full rounded-2xl border border-border bg-background px-4 py-2 text-left font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent"
                   >
                     {item.label}
                   </button>

@@ -170,6 +170,9 @@ const JOB_ROW_FIELDS: &[(&str, &str, &str)] = &[
     ("reasoningTokens", "reasoningTokens", "ReasoningTokens"),
     ("model", "model", "Model"),
     ("processId", "processId", "ProcessId"),
+    // The conversation that started the job, so the chat header can list a job it started without
+    // depending on having caught the `chat.job_spawned` event that announced it.
+    ("chatSessionId", "chatSessionId", "ChatSessionId"),
     // Runtime state with no column: `JobManager::supervise_detached` rehydrates it in memory, so a row
     // read from SQLite cannot know. Sent only when true, never as `false` — the app reads
     // `job.detached ?? details[id]?.detached`, so a `false` from here would suppress the one source
@@ -242,6 +245,11 @@ pub struct StartJobRequest {
     /// timed-out response safe. `#[serde(default)]` keeps every existing body valid.
     #[serde(rename = "idempotencyKey", default)]
     pub idempotency_key: Option<String>,
+    /// The conversation this job was started from, so the chat can list it and be notified when it
+    /// finishes. Optional: a job started from a terminal has none, and one that names a plan can still
+    /// inherit the plan's own chat session.
+    #[serde(rename = "chatSessionId", default)]
+    pub chat_session_id: Option<String>,
 }
 
 /// `?force=true` is the operator's override of the duplicate gates, for the job types that carry no
@@ -291,6 +299,10 @@ pub async fn start_job(
         priority: req.priority,
         force: query.force || req.args.force_flag(),
         idempotency_key,
+        chat_session_id: req
+            .chat_session_id
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty()),
     };
 
     match state.job_manager.start_job_with(req.args, opts).await {

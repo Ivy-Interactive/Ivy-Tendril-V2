@@ -455,7 +455,7 @@ When the user asks you to create a plan in an interactive session (or after disc
 
 ## Tracking Spawned Jobs & Guiding the User
 
-Jobs you start from a chat session are tracked for that session by the server; `tendril job start` takes no session argument.
+Jobs you start from a chat session are tracked for that session, so the chat can list them in its header and tell you when they finish. Pass `--chat-session <id>` when the turn's prompt gives you one; otherwise `tendril job start` reads `$TENDRIL_CHAT_SESSION_ID` from your environment, so a job you start from a chat is tracked either way.
 - Once spawned jobs have executed and completed, **proactively guide the user through the completed plans/code**:
   - Ask the user if they would like you to review the plan changes, inspect the diffs, check verification test outputs, or create a PR.
   - Help the user review decisions, or guide them through reviewing the implementation themselves.

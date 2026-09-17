@@ -143,6 +143,26 @@ describe("the plan chat is the chat view, embedded", () => {
     expect(screen.queryByText("Add a new project")).not.toBeInTheDocument();
   });
 
+  /**
+   * The panel is only as wide as the plan page leaves it, and three chips do not fit on one line. Laid
+   * out `flex-nowrap … overflow-x-auto` the later ones sat off the right edge, and with no room for a
+   * horizontal scrollbar there was no way to reach them — the chips existed and could not be clicked.
+   */
+  it("wraps its chips onto another line rather than off the edge", async () => {
+    render(<PlanChatPanel plan={plan()} />);
+
+    const chips = await screen.findByTestId("sample-prompts");
+    expect(chips).toHaveClass("flex-wrap");
+    expect(chips).not.toHaveClass("flex-nowrap");
+    expect(chips.className).not.toMatch(/overflow-x-auto/);
+    // A chip that cannot shrink and cannot break its text overflows a narrow panel on its own, so the
+    // per-chip escapes have to go too.
+    for (const chip of chips.querySelectorAll("button")) {
+      expect(chip).not.toHaveClass("whitespace-nowrap");
+      expect(chip).not.toHaveClass("shrink-0");
+    }
+  });
+
   it("drafts a chip into the composer instead of sending it", async () => {
     const executeTurn = vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
     render(<PlanChatPanel plan={plan()} />);

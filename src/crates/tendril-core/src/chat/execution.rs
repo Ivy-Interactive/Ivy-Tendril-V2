@@ -317,24 +317,33 @@ impl ChatExecutionManager {
     /// skipped rather than guessed at: a prompt claiming a job is `Pending` when the row is gone would
     /// be worse than not mentioning it.
     ///
-    /// The ids come from the cached session, which is where `spawned_job_ids` is maintained as the
-    /// stream reports them, so a job started earlier in this same turn is already listed.
+    /// Two sources, unioned, the same pair the app's header unions. `Jobs.ChatSessionId` is the durable
+    /// one and the only one that knows about a job the stream never announced — started through the MCP
+    /// tool, started from the interactive terminal, inherited from the plan, or submitted on a request
+    /// whose confirmation was lost. The cached session's `spawned_job_ids` then adds the job started
+    /// moments ago in this same turn, which the stream reports before the row is queryable.
     pub async fn spawned_jobs(&self, session_id: &str) -> Vec<ChatSpawnedJob> {
-        let ids = match self.sessions.read().await.get(session_id) {
+        let cached_ids = match self.sessions.read().await.get(session_id) {
             Some(session) => session.spawned_job_ids.clone(),
             None => Vec::new(),
         };
-        if ids.is_empty() {
-            return Vec::new();
-        }
 
         let db_path = crate::config::get_database_path(&self.tendril_home);
         let Ok(conn) = crate::db::open_database(&db_path) else {
             return Vec::new();
         };
 
-        ids.iter()
-            .filter_map(|id| crate::db::jobs::get_job(&conn, id).ok().flatten())
+        let mut jobs =
+            crate::db::jobs::list_jobs_for_chat_session(&conn, session_id).unwrap_or_default();
+        for id in cached_ids {
+            if !jobs.iter().any(|job| job.id == id) {
+                if let Ok(Some(job)) = crate::db::jobs::get_job(&conn, &id) {
+                    jobs.push(job);
+                }
+            }
+        }
+
+        jobs.into_iter()
             .map(|job| ChatSpawnedJob {
                 id: job.id,
                 job_type: job.job_type,
@@ -591,10 +600,13 @@ impl ChatExecutionManager {
             let mut current_assistant_msg_id = initial_assistant_msg_id;
             let current_options = options;
             let mut is_first_turn = true;
-            let job_regex = Regex::new(
-                r"(?i)(?:job started:\s*(?:id\s*)?|tendril job start\s+\w+\s+)([0-9a-zA-Z_-]+)",
-            )
-            .ok();
+            // Anchored on the CLI's own confirmation (`StartOutcome::render`) and nothing else, which
+            // is V1's `JobStartedRegex` rule. It used to also match `tendril job start <type> <next
+            // token>`, i.e. the *command* rather than its result — so it captured whatever followed the
+            // job type: `--chat-session` and `--description` for a `CreatePlan`, and the plan id for an
+            // `ExecutePlan`. Each of those was recorded as a spawned job, resolved against no real job,
+            // and then silently dropped by the header, which is why the header stayed empty.
+            let job_regex = Regex::new(r"(?i)\bjob started:\s*(?:id\s+)?([0-9a-zA-Z_-]+)").ok();
 
             loop {
                 let this_cancel_rx = if is_first_turn {
@@ -690,15 +702,30 @@ impl ChatExecutionManager {
                                         if let Some(caps) = re.captures(&evt.raw_line) {
                                             if let Some(m) = caps.get(1) {
                                                 let job_id = m.as_str().to_string();
-                                                let mut sessions_map = mgr.sessions.write().await;
-                                                if let Some(s) = sessions_map.get_mut(&s_id) {
-                                                    if !s.spawned_job_ids.contains(&job_id) {
-                                                        s.spawned_job_ids.push(job_id.clone());
-                                                        let _ = mgr.event_tx.send(ChatEvent::JobSpawned {
-                                                            session_id: s_id.clone(),
-                                                            job_id,
-                                                        });
+                                                // Written to disk here rather than left for the turn's
+                                                // final save: `list_sessions` reloads this map from disk,
+                                                // and the app calls it whenever the chat view mounts, so
+                                                // an id held only in memory was lost by any session list
+                                                // that landed mid-turn — and then written back out empty.
+                                                let saved = {
+                                                    let mut sessions_map = mgr.sessions.write().await;
+                                                    match sessions_map.get_mut(&s_id) {
+                                                        Some(s) if !s.spawned_job_ids.contains(&job_id) => {
+                                                            s.spawned_job_ids.push(job_id.clone());
+                                                            Some(s.clone())
+                                                        }
+                                                        _ => None,
                                                     }
+                                                };
+                                                if let Some(session) = saved {
+                                                    let _ = crate::chat::storage::save_session(
+                                                        &mgr.tendril_home,
+                                                        &session,
+                                                    );
+                                                    let _ = mgr.event_tx.send(ChatEvent::JobSpawned {
+                                                        session_id: s_id.clone(),
+                                                        job_id,
+                                                    });
                                                 }
                                             }
                                         }
@@ -1338,9 +1365,13 @@ pub fn build_chat_agent_prompt(
 
     out.push_str("# Current Chat Session\n");
     out.push_str(&format!("Chat Session ID: {}\n", session_id));
+    // The whole command, in one code span, rather than the subcommand and the flag in two. That is what
+    // the agent copies, and it is also what `promptware_contract_test` can hand to clap — the split
+    // form named a flag the CLI did not have for as long as it took someone to notice the chat's jobs
+    // menu was always empty, because neither half was a command anything could check.
     out.push_str(&format!(
-        "When starting jobs using `tendril job start`, always include `--chat-session {}` so the job is tracked in this chat session.\n",
-        session_id
+        "When starting jobs, always pass `--chat-session {session_id}` so the job is tracked in \
+         this chat session, e.g. `tendril job start ExecutePlan 00042 --chat-session {session_id}`.\n"
     ));
     out.push_str("---\n\n");
 

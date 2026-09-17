@@ -91,6 +91,12 @@ export interface Job {
    * output by up to that much. Invisible in a cell whose smallest unit is a second.
    */
   lastOutputAt?: string;
+  /**
+   * The chat conversation this job was started from, when one was. The chat header lists a
+   * conversation's jobs by this, so the header is correct on a reload and after a missed
+   * `chat.job_spawned` — the session's own `spawnedJobIds` is a cache over the same fact.
+   */
+  chatSessionId?: string;
   cost?: number;
   tokens?: number;
   processId?: number;

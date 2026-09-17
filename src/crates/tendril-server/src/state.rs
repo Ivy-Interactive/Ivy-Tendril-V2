@@ -114,30 +114,53 @@ fn spawn_chat_job_notifier(
             ) {
                 continue;
             }
-            let Some(folder_name) = event.plan_folder.clone() else {
-                // A job with no plan has no chat to report to; V2 has no per-job chat association.
-                continue;
-            };
+            // The plan the event is *about*. A `CreatePlan` starts with no plan folder and only learns
+            // its plan through `tendril job status --plan-id`, so the reported id is the fallback —
+            // without it the one job type whose whole purpose is to produce a plan was the one type
+            // that could never announce it.
+            let folder_name = event.plan_folder.clone().or_else(|| {
+                event.reported_plan_id.as_deref().and_then(|plan_id| {
+                    tendril_core::plans::helpers::resolve_plan_folder_name(plan_id, &plans_dir).ok()
+                })
+            });
 
-            let message = describe_job_event(&event, &plans_dir, &folder_name);
-            let plan_chat_session_id =
-                tendril_core::plans::reader::read_plan_yaml(&plans_dir.join(&folder_name))
-                    .ok()
-                    .and_then(|(plan, _)| plan.chat_session_id.clone());
+            let message = describe_job_event(&event, &plans_dir, folder_name.as_deref());
 
-            // The same recipient rule the pull-request case uses: every session attached to the plan's
-            // folder, plus the plan's own chat.
-            let recipients = match tendril_core::chat::storage::plan_session_recipients(
-                &tendril_home,
-                &folder_name,
-                plan_chat_session_id.as_deref(),
-            ) {
-                Ok(recipients) => recipients,
-                Err(err) => {
-                    tracing::debug!("Could not resolve chat recipients for {folder_name}: {err}");
-                    continue;
+            // Two ways a conversation can own this event, and a job may match either: it was started
+            // from that conversation (`chat_session_id`, which is the only route open to a job with no
+            // plan), or the conversation is attached to the plan the job worked on.
+            let mut recipients: Vec<String> = Vec::new();
+            if let Some(folder_name) = folder_name.as_deref() {
+                let plan_chat_session_id =
+                    tendril_core::plans::reader::read_plan_yaml(&plans_dir.join(folder_name))
+                        .ok()
+                        .and_then(|(plan, _)| plan.chat_session_id.clone());
+                match tendril_core::chat::storage::plan_session_recipients(
+                    &tendril_home,
+                    folder_name,
+                    plan_chat_session_id.as_deref(),
+                ) {
+                    Ok(found) => recipients = found,
+                    Err(err) => {
+                        tracing::debug!(
+                            "Could not resolve chat recipients for {folder_name}: {err}"
+                        );
+                    }
                 }
-            };
+            }
+            if let Some(chat_session_id) = event
+                .chat_session_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+            {
+                if !recipients.iter().any(|id| id == chat_session_id) {
+                    recipients.push(chat_session_id.to_string());
+                }
+            }
+            if recipients.is_empty() {
+                continue;
+            }
 
             for session_id in recipients {
                 if let Err(err) = chat_manager.notify_event(&session_id, &message).await {
@@ -148,40 +171,68 @@ fn spawn_chat_job_notifier(
     });
 }
 
-/// The sentence a job event becomes in a chat, in the shape V1's injected events take: an
-/// `[System Event]` prefix, the job and what it was, the plan it was for, and the reason when it failed.
+/// The sentence a job event becomes in a chat.
+///
+/// The wording is V1's to the character, because it is a parsed format and not just prose: the app
+/// reads it back with `formatSystemEvent`'s `FINISHED` regex to render the line as a completed/failed
+/// event with a clickable plan chip, and `resolveJobState` uses the job id it recovers to keep a job
+/// that has aged out of the live list in the conversation's header. A sentence this function words
+/// differently still *reads* fine and silently loses both.
+///
+/// `Job <id> (<Type>) for '<plan-id>: <title>' has finished with status: <Status> (<reason>)`, then a
+/// trailing instruction that is addressed to the agent and dropped from the display.
 fn describe_job_event(
     event: &tendril_core::jobs::manager::JobEvent,
     plans_dir: &Path,
-    folder_name: &str,
+    folder_name: Option<&str>,
 ) -> String {
-    let plan_id: u32 = folder_name
-        .split('-')
-        .next()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    let title = tendril_core::plans::reader::read_plan_yaml(&plans_dir.join(folder_name))
-        .ok()
-        .map(|(plan, _)| plan.title.clone())
-        .filter(|t| !t.trim().is_empty());
-    let plan = match title {
-        Some(title) => format!(" for plan '{}' (#{:05})", title, plan_id),
-        None => format!(" for plan #{:05}", plan_id),
-    };
+    // `<plan-id>: <title>` is what the app's `PLAN_INFO` looks for to offer "open plan"; anything else
+    // in these quotes renders as a plain name, which is what a job with no plan wants.
+    let subject = folder_name
+        .map(|folder_name| {
+            // A plan folder is `<5-digit id>-<TitleInPascalCase>`. The split is guarded on those digits
+            // rather than taken at the first `-`, or a folder that is not a plan at all
+            // (`not-a-plan-folder`) would lose its first segment and be named `a-plan-folder`.
+            let (plan_id, name_part) = match folder_name.split_once('-') {
+                Some((id, rest)) => match id.parse::<u32>() {
+                    Ok(plan_id) => (Some(plan_id), rest),
+                    Err(_) => (None, folder_name),
+                },
+                None => (None, folder_name),
+            };
+            // The plan's real title when it can be read; otherwise its folder's name, which is derived
+            // from that title and is the best available stand-in for a plan that is gone or unreadable.
+            let title = tendril_core::plans::reader::read_plan_yaml(&plans_dir.join(folder_name))
+                .ok()
+                .map(|(plan, _)| plan.title.clone())
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or_else(|| name_part.to_string());
+            match plan_id {
+                Some(plan_id) => format!("{:05}: {}", plan_id, title),
+                // Not a plan folder at all, so there is no id to offer — name it and stop there.
+                None => title,
+            }
+        })
+        .unwrap_or_else(|| event.job_type.clone());
 
-    let outcome = if event.event_type == tendril_core::jobs::manager::JOB_EVENT_COMPLETED {
-        "completed".to_string()
-    } else {
-        format!("ended as {:?}", event.status)
-    };
     let reason = match &event.status_message {
-        Some(message) if !message.trim().is_empty() => format!(" Reason: {}.", message.trim()),
+        Some(message) if !message.trim().is_empty() => format!(" ({})", message.trim()),
         _ => String::new(),
+    };
+    let advice = if event.event_type == tendril_core::jobs::manager::JOB_EVENT_COMPLETED {
+        "Review the outcome and advise on next steps."
+    } else {
+        "Diagnose the failure and advise on next steps."
     };
 
     format!(
-        "[System Event] Job {} ({}) {}{}.{}",
-        event.job_id, event.job_type, outcome, plan, reason
+        "[System Event] Job {} ({}) for '{}' has finished with status: {}{}. {}",
+        event.job_id,
+        event.job_type,
+        subject,
+        event.status.as_str(),
+        reason,
+        advice
     )
 }
 
@@ -453,27 +504,62 @@ mod tests {
             status,
             status_message: status_message.map(str::to_string),
             plan_folder: Some("00007-PortTheChat".to_string()),
+            chat_session_id: None,
+            reported_plan_id: None,
         }
     }
 
-    /// The sentence a job event becomes in a chat. The `[System Event]` prefix is what V1's injected
-    /// events carry, and the plan id is the padded form a plan is known by everywhere else.
+    /// The app's `FINISHED` pattern from `utils/systemEvents.ts`, copied here rather than described,
+    /// because this sentence exists to be parsed by it. A wording change that still reads well but no
+    /// longer matches costs the timeline its completed/failed styling and its clickable plan chip, and
+    /// costs the chat header the job ids `resolveJobState` recovers from the transcript.
+    fn parses_as_finished(message: &str) -> Option<(String, String, String, String)> {
+        let body = message.strip_prefix("[System Event] ")?;
+        let rest = body.strip_prefix("Job ")?;
+        let (job_id, rest) = rest.split_once(' ')?;
+        let rest = rest.strip_prefix('(')?;
+        let (job_type, rest) = rest.split_once(')')?;
+        let rest = rest.strip_prefix(" for '")?;
+        let (info, rest) = rest.split_once('\'')?;
+        let rest = rest.strip_prefix(" has finished with status: ")?;
+        let status: String = rest.chars().take_while(|c| c.is_alphanumeric()).collect();
+        Some((
+            job_id.to_string(),
+            job_type.to_string(),
+            info.to_string(),
+            status,
+        ))
+    }
+
+    /// The sentence a job event becomes in a chat, in V1's exact shape.
     #[test]
     fn a_finished_job_reads_as_an_event_naming_its_plan() {
-        // No plan on disk here, so the title is absent and the id alone identifies it.
+        // No plan on disk here, so the title falls back to the folder's own name.
         let dir = std::path::Path::new("/nonexistent-plans-dir");
 
         let completed = describe_job_event(
             &event(JOB_EVENT_COMPLETED, JobStatus::Completed, None),
             dir,
-            "00007-PortTheChat",
+            Some("00007-PortTheChat"),
         );
         assert_eq!(
             completed,
-            "[System Event] Job 00042 (ExecutePlan) completed for plan #00007."
+            "[System Event] Job 00042 (ExecutePlan) for '00007: PortTheChat' has finished with \
+             status: Completed. Review the outcome and advise on next steps."
+        );
+        assert_eq!(
+            parses_as_finished(&completed),
+            Some((
+                "00042".to_string(),
+                "ExecutePlan".to_string(),
+                "00007: PortTheChat".to_string(),
+                "Completed".to_string()
+            ))
         );
 
         // A failure names the outcome and carries the reason, which is the whole value of the event.
+        // The reason goes in parentheses directly after the status because that is the group the app
+        // renders as the event's detail line.
         let failed = describe_job_event(
             &event(
                 JOB_EVENT_FAILED,
@@ -481,35 +567,59 @@ mod tests {
                 Some("verification failed"),
             ),
             dir,
-            "00007-PortTheChat",
+            Some("00007-PortTheChat"),
         );
         assert_eq!(
             failed,
-            "[System Event] Job 00042 (ExecutePlan) ended as Failed for plan #00007. Reason: verification failed."
+            "[System Event] Job 00042 (ExecutePlan) for '00007: PortTheChat' has finished with \
+             status: Failed (verification failed). Diagnose the failure and advise on next steps."
         );
 
         // Timeout and Stopped are failures too, and say which they were rather than "failed".
         let timed_out = describe_job_event(
             &event(JOB_EVENT_FAILED, JobStatus::Timeout, None),
             dir,
-            "00007-PortTheChat",
+            Some("00007-PortTheChat"),
         );
-        assert!(timed_out.contains("ended as Timeout"), "got: {}", timed_out);
+        assert_eq!(
+            parses_as_finished(&timed_out).map(|p| p.3),
+            Some("Timeout".to_string())
+        );
 
-        // A blank status message adds no dangling "Reason:".
+        // A blank status message adds no empty parentheses.
         let blank = describe_job_event(
             &event(JOB_EVENT_FAILED, JobStatus::Failed, Some("   ")),
             dir,
-            "00007-PortTheChat",
+            Some("00007-PortTheChat"),
         );
-        assert!(!blank.contains("Reason:"), "got: {}", blank);
+        assert!(!blank.contains("()"), "got: {}", blank);
 
-        // An unparseable folder still produces a sentence rather than nothing.
+        // A folder that is not a plan folder is named, but offers no plan id to open.
         let odd = describe_job_event(
             &event(JOB_EVENT_COMPLETED, JobStatus::Completed, None),
             dir,
-            "not-a-plan-folder",
+            Some("not-a-plan-folder"),
         );
-        assert!(odd.contains("#00000"), "got: {}", odd);
+        assert_eq!(
+            parses_as_finished(&odd).map(|p| p.2),
+            Some("not-a-plan-folder".to_string())
+        );
+
+        // A job with no plan at all — `SetupProject`, or a `CreatePlan` that failed before it made
+        // one — still produces a parseable sentence, named by what the job was.
+        let planless = describe_job_event(
+            &event(JOB_EVENT_FAILED, JobStatus::Failed, Some("no repo")),
+            dir,
+            None,
+        );
+        assert_eq!(
+            parses_as_finished(&planless),
+            Some((
+                "00042".to_string(),
+                "ExecutePlan".to_string(),
+                "ExecutePlan".to_string(),
+                "Failed".to_string()
+            ))
+        );
     }
 }

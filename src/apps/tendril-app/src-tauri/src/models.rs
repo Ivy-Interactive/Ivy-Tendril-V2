@@ -332,6 +332,10 @@ pub struct JobDto {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub process_id: Option<i64>,
+    /// The conversation that started this job, when one did. What the chat header lists its jobs by, so
+    /// a header survives a reload and a missed `chat.job_spawned`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_session_id: Option<String>,
     /// Set only for a job whose process survived a daemon restart. Absent rather than `false`
     /// otherwise, matching the daemon.
     #[serde(skip_serializing_if = "Option::is_none")]

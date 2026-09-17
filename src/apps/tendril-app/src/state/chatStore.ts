@@ -1008,12 +1008,19 @@ export class ChatStore {
       }
 
       case "chat.job_spawned": {
-        if (this.state.activeSessionId === event.sessionId && this.state.activeSession) {
-          if (!this.state.activeSession.spawnedJobIds.includes(event.jobId)) {
-            this.state.activeSession.spawnedJobIds.push(event.jobId);
-            this.notify();
-          }
-        }
+        // Recorded on whichever copies of the session are loaded, not only the active one: a turn keeps
+        // running after the user navigates away, and a job announced in that window used to be dropped
+        // here — so switching back showed a conversation with no jobs in its header.
+        let changed = false;
+        const record = (session: ChatSession | null | undefined) => {
+          if (!session || session.id !== event.sessionId) return;
+          if (session.spawnedJobIds.includes(event.jobId)) return;
+          session.spawnedJobIds.push(event.jobId);
+          changed = true;
+        };
+        record(this.state.activeSession);
+        this.state.sessions.forEach(record);
+        if (changed) this.notify();
         break;
       }
 

@@ -656,17 +656,27 @@ impl McpDispatcher {
             no_artifacts: bool_arg(args, "no_artifacts"),
             draft: bool_arg(args, "draft"),
             idempotency_key: str_arg(args, "idempotency_key").map(|s| s.to_string()),
+            // The tool takes an explicit argument, but the environment is the path that actually
+            // carries this: the MCP server is a child of the agent the chat launched, so it inherits
+            // `TENDRIL_CHAT_SESSION_ID` and a job started through the tool is tracked exactly as one
+            // started through the CLI.
+            chat_session_id: resolve_chat_session_id(str_arg(args, "chat_session_id")),
         };
 
         let job_args = build_job_args(&request, &self.plans_dir)?;
         let mut body = serde_json::to_value(&job_args).map_err(|e| e.to_string())?;
-        // The key is not part of `JobArgs`, so it is inserted alongside the flattened args — the same
-        // shape the CLI posts. Only reached for a keyed submission, so the unkeyed path is untouched.
-        if let Some(key) = &request.idempotency_key {
+        // Neither key is part of `JobArgs`, so both are inserted alongside the flattened args — the
+        // same shape the CLI posts.
+        if request.idempotency_key.is_some() || request.chat_session_id.is_some() {
             let map = body
                 .as_object_mut()
                 .ok_or("Job args did not serialize to an object")?;
-            map.insert("idempotencyKey".to_string(), json!(key));
+            if let Some(key) = &request.idempotency_key {
+                map.insert("idempotencyKey".to_string(), json!(key));
+            }
+            if let Some(chat_session_id) = &request.chat_session_id {
+                map.insert("chatSessionId".to_string(), json!(chat_session_id));
+            }
         }
         let response = self.post("/api/jobs", &body).await?;
         Ok(ToolOutcome::structured(response))
@@ -860,6 +870,22 @@ async fn read_daemon_response(
     serde_json::from_str(&body).map_err(|e| format!("Malformed response from daemon: {}", e))
 }
 
+/// The environment variable a chat exports into its agent's process so anything that agent runs can
+/// say which conversation it is acting for. Set by both chat modes — the turn-based one in
+/// [`crate::chat::execution`] and the interactive pty one in the server's chat routes.
+pub const CHAT_SESSION_ENV: &str = "TENDRIL_CHAT_SESSION_ID";
+
+/// The conversation a command belongs to: what the caller passed, else what the chat exported into the
+/// environment. One rule, shared by `tendril job start`, `tendril plan …` and the MCP tools, so a job
+/// is tracked whether or not the agent remembered the flag.
+pub fn resolve_chat_session_id(explicit: Option<&str>) -> Option<String> {
+    explicit
+        .map(str::to_string)
+        .or_else(|| std::env::var(CHAT_SESSION_ENV).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// The arguments `tendril_start_job` and `tendril job start` share.
 #[derive(Debug, Clone, Default)]
 pub struct JobStartRequest {
@@ -889,6 +915,10 @@ pub struct JobStartRequest {
     /// [`build_job_args`] ignores it — the caller puts it on the request body alongside the flattened
     /// `JobArgs`, the same way `waitForJobs` and `priority` ride along.
     pub idempotency_key: Option<String>,
+    /// The conversation that asked for this job, carried so the chat can list the job and be told
+    /// when it finishes. Like `idempotency_key` it belongs to the submission rather than to any job
+    /// type's args, so [`build_job_args`] ignores it and the caller sends it alongside them.
+    pub chat_session_id: Option<String>,
 }
 
 /// Builds the `JobArgs` for a job start request. The CLI and the MCP dispatcher both call this, so

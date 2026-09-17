@@ -650,6 +650,10 @@ impl TendrilClient {
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
                     process_id: num("processId"),
+                    chat_session_id: val
+                        .get("chatSessionId")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                     // Absent rather than `false` when the daemon does not say, so "not detached" and
                     // "the list endpoint cannot tell" stay distinguishable.
                     detached: val.get("detached").and_then(|v| v.as_bool()),
