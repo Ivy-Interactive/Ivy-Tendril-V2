@@ -743,14 +743,6 @@
   max-width: 100%;
 }
 
-.aov-status-event-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--aov-info);
-  flex-shrink: 0;
-}
-
 /* One line, ellipsised — which needs `min-width: 0`: without it the flex item's automatic minimum is
    the min-content width of a `nowrap` string, so it refuses to shrink, the ellipsis never engages and
    the pill overflows its own `max-width: 100%`. Nothing is lost, because the full text is the status

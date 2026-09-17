@@ -9,6 +9,7 @@ import { BlockHandler } from "../PlanMarkdown/BlockHandler.tsx";
 import { AlertBlockquote } from "../PlanMarkdown/AlertBlockquote.tsx";
 import { tagQuestionBlocks } from "../PlanMarkdown/questionsSource.ts";
 import { QuestionsAnswerContext, type AnswerCallback } from "../PlanMarkdown/questionsContext.ts";
+import { StatusDot } from "../ui/TuiBadge";
 import { getMarkdownPlugins } from "@/lib/math";
 import { useMathReady } from "@/hooks/use-math-ready";
 
@@ -95,7 +96,7 @@ export const AgentNode: React.FC<AgentNodeProps> = ({ node, answerCallback }) =>
     case "status":
       return (
         <div className="aov-status-event" data-testid="agent-status-event">
-          <span className="aov-status-event-dot" />
+          <StatusDot tone="info" className="aov-status-event-dot" />
           <span className="aov-status-event-text">{event.text}</span>
         </div>
       );
