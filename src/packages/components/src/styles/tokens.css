@@ -328,6 +328,25 @@
   --surface-chrome: var(--card);
   --surface-tint: color-mix(in srgb, var(--foreground) 6%, transparent);
 
+  /* Badge tint defaults and focus ring */
+  --badge-tint-bg-light: var(--muted);
+  --badge-tint-fg-light: var(--foreground);
+  --badge-tint-bg-dark: var(--muted);
+  --badge-tint-fg-dark: var(--foreground);
+  --focus-ring-color: var(--ring);
+
+  /* Badge solid-tint steps */
+  --ivy-green-tint-bg: color-mix(in srgb, var(--ivy-green) 20%, var(--background));
+  --ivy-green-tint-fg: color-mix(in srgb, var(--ivy-green) 60%, var(--foreground));
+  --destructive-tint-bg: color-mix(in srgb, var(--destructive) 20%, var(--background));
+  --destructive-tint-fg: color-mix(in srgb, var(--destructive) 60%, var(--foreground));
+  --success-tint-bg: color-mix(in srgb, var(--success) 20%, var(--background));
+  --success-tint-fg: color-mix(in srgb, var(--success) 60%, var(--foreground));
+  --warning-tint-bg: color-mix(in srgb, var(--warning) 20%, var(--background));
+  --warning-tint-fg: color-mix(in srgb, var(--warning) 60%, var(--foreground));
+  --info-tint-bg: color-mix(in srgb, var(--info) 20%, var(--background));
+  --info-tint-fg: color-mix(in srgb, var(--info) 60%, var(--foreground));
+
   /* Elevation */
   --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
   --shadow-menu: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
