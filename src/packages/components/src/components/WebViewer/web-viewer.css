@@ -316,15 +316,7 @@
 }
 
 .wvr-comment-tag {
-  display: inline-block;
   margin: 0 0.375rem;
-  padding: 0 0.3125rem;
-  border-radius: var(--radius-sm);
-  background: var(--muted);
-  color: var(--foreground);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  font-weight: 600;
 }
 
 /* One labelled block per locator: the value gets a full line to wrap into rather than

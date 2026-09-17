@@ -5,6 +5,7 @@ import { getHeight, getWidth } from "@/lib/styles";
 import { canonicalPageUrl } from "./pageUrl";
 import { Toolbar, type ToolbarAction } from "./Toolbar";
 import { DEVICE_LABELS, DEVICE_VIEWPORTS, toDeviceKey, type DeviceKey } from "./devices";
+import { TuiBadge } from "../ui/TuiBadge";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -904,7 +905,11 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                 </span>
               )}
               Comment on
-              {pending.meta?.tag && <span className="wvr-comment-tag">{pending.meta.tag}</span>}
+              {pending.meta?.tag && (
+                <TuiBadge className="wvr-comment-tag" size="md" mono>
+                  {pending.meta.tag}
+                </TuiBadge>
+              )}
               {pending.meta?.text && (
                 <span className="wvr-comment-snippet">{quote(pending.meta.text)}</span>
               )}

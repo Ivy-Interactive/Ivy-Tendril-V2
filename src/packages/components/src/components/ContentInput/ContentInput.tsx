@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Spinner } from "../ui/spinner";
 import { TuiKbd } from "../ui/TuiKbd";
 import { IconButton } from "../ui/IconButton";
+import { TuiBadge } from "../ui/TuiBadge";
 import { VoiceRecorder, type VoiceStatus } from "./voice-recorder";
 import "./content-input.css";
 
@@ -804,7 +805,9 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                     ) : (
                       <div />
                     )}
-                    <div className="civ-thumbnail-doc-badge">{meta.badge}</div>
+                    <TuiBadge className="civ-thumbnail-doc-badge" caps>
+                      {meta.badge}
+                    </TuiBadge>
                   </div>
                 </div>
               );

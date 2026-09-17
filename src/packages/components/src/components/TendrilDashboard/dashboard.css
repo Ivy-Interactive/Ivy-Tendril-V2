@@ -774,14 +774,9 @@ button.tdb-kpi:focus-visible {
 }
 
 .tdb-job-tag {
-  font-size: var(--text-xs);
-  font-weight: 500;
   color: var(--tdb-muted);
   background: var(--tdb-pill-bg);
-  border-radius: var(--radius-md);
-  padding: 2px 6px;
   flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
 }
 
 .tdb-job-title {

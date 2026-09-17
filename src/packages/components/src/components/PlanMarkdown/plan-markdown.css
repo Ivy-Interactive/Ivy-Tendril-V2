@@ -504,17 +504,7 @@
 }
 
 .pmv-annotation-initials-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   margin-left: 0.25rem;
-  padding: 0.05rem 0.3rem;
-  font-size: var(--text-2xs);
-  font-weight: 700;
-  line-height: 1.1;
-  border-radius: var(--radius-sm);
-  background: var(--primary);
-  color: var(--primary-foreground);
   vertical-align: middle;
   user-select: none;
   cursor: pointer;
@@ -639,7 +629,8 @@
 }
 
 .pmv-annotation-initials-badge.pmv-badge-resolved {
-  background: var(--success);
+  --tui-badge-primary-bg: var(--success);
+  --tui-badge-primary-fg: var(--primary-foreground);
 }
 
 /* ─── Selection toolbar ───────────────────────────────────────────────── */
