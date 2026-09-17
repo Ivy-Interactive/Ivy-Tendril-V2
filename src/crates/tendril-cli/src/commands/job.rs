@@ -98,6 +98,16 @@ pub struct JobStartArgs {
     )]
     pub priority: Option<i32>,
 
+    /// The conversation this job belongs to, so the chat that started it can list it in its header
+    /// and be told when it finishes. Every chat turn's prompt asks the agent for this flag by name
+    /// (`build_chat_agent_prompt`), and `TENDRIL_CHAT_SESSION_ID` is exported into the agent's
+    /// environment, so an agent that omits it is still linked — the same rule `tendril plan` uses.
+    #[arg(
+        long,
+        help = "Chat session ID if spawned from chat (defaults to $TENDRIL_CHAT_SESSION_ID)"
+    )]
+    pub chat_session: Option<String>,
+
     #[arg(
         long = "wait-for",
         help = "Job id this job must wait for before it is queued (repeatable)"
@@ -572,6 +582,9 @@ pub async fn start_job_via_daemon(
         no_artifacts: args.no_artifacts,
         draft: args.draft,
         idempotency_key: args.idempotency_key.clone(),
+        chat_session_id: crate::commands::plan::resolve_source_chat_session(
+            args.chat_session.as_deref(),
+        ),
     };
     let job_args = build_job_args(&request, &plans_dir).map_err(anyhow::Error::msg)?;
 
@@ -602,6 +615,15 @@ pub async fn start_job_via_daemon(
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())),
     );
+    // Absent for a job started from a terminal, which is the case the server's plan-inheritance
+    // fallback covers; present whenever a chat's agent started it, whether it passed the flag or only
+    // inherited the environment variable.
+    if let Some(chat_session_id) = request.chat_session_id.as_deref() {
+        map.insert(
+            "chatSessionId".to_string(),
+            serde_json::json!(chat_session_id),
+        );
+    }
 
     let mut url = format!("{}/api/jobs", master.base_url());
     // `CreatePlanArgs` carries `force` in the body; every other job type needs the query

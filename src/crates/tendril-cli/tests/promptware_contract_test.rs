@@ -79,6 +79,29 @@ fn sources() -> Vec<(String, String)> {
         "src/crates/tendril-core/src/agents/agent_instructions.md".to_string(),
         tendril_core::agents::instructions::TEMPLATE.to_string(),
     ));
+    // The chat turn's prompt is markdown too, and it is assembled in Rust rather than read from a file,
+    // which is exactly why it escaped this test once already: it told the agent to pass
+    // `--chat-session` to `tendril job start` for as long as that flag did not exist, so every job an
+    // obedient agent started died on `error: unexpected argument '--chat-session' found` and the chat's
+    // jobs menu was always empty. Built with a spawned job present so the block that describes them is
+    // included rather than skipped.
+    out.push((
+        "src/crates/tendril-core/src/chat/execution.rs (build_chat_agent_prompt)".to_string(),
+        tendril_core::chat::execution::build_chat_agent_prompt(
+            &[],
+            "make a test job",
+            "sess-1",
+            "user",
+            &[tendril_core::chat::execution::ChatSpawnedJob {
+                id: "00042".to_string(),
+                job_type: "CreatePlan".to_string(),
+                status: "Running".to_string(),
+                plan_id: Some("00007".to_string()),
+                plan_title: Some("Port The Chat".to_string()),
+                status_message: None,
+            }],
+        ),
+    ));
     out
 }
 

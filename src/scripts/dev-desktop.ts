@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 import { spawn, execSync, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const port = Number(process.env.PORT) || 5010;
 const tendrilHome = process.env.TENDRIL_HOME || path.join(os.homedir(), ".tendril");
@@ -49,7 +53,9 @@ function isPortFree(p: number, host = "127.0.0.1"): Promise<boolean> {
 async function freePortIfOccupied(p: number) {
   const free = await isPortFree(p);
   if (!free) {
-    console.log(`\x1b[33m[dev-desktop] Port ${p} is in use by a stale process, freeing it...\x1b[0m`);
+    console.log(
+      `\x1b[33m[dev-desktop] Port ${p} is in use by a stale process, freeing it...\x1b[0m`,
+    );
     try {
       if (process.platform !== "win32") {
         const pids = execSync(`lsof -ti :${p}`, { stdio: ["ignore", "pipe", "ignore"] })
@@ -64,9 +70,12 @@ async function freePortIfOccupied(p: number) {
           }
         }
       } else {
-        execSync(`for /f "tokens=5" %a in ('netstat -aon ^| findstr :${p}') do taskkill /F /PID %a`, {
-          stdio: "ignore",
-        });
+        execSync(
+          `for /f "tokens=5" %a in ('netstat -aon ^| findstr :${p}') do taskkill /F /PID %a`,
+          {
+            stdio: "ignore",
+          },
+        );
       }
       await new Promise((r) => setTimeout(r, 800));
     } catch {}
@@ -127,27 +136,44 @@ process.on("SIGTERM", cleanup);
 process.on("exit", cleanup);
 
 async function main() {
-  console.log("\x1b[36m[dev-desktop] Initializing Tendril desktop development environment...\x1b[0m");
+  console.log(
+    "\x1b[36m[dev-desktop] Initializing Tendril desktop development environment...\x1b[0m",
+  );
 
   // Ensure port 5173 (Vite dev server) is free before starting
   await freePortIfOccupied(5173);
 
+  // Ensure @ivy-interactive/components is built before launching the desktop app
+  try {
+    execSync(`node "${path.resolve(__dirname, "ensure-components.mjs")}"`, { stdio: "inherit" });
+  } catch (err) {
+    console.error("\x1b[31m[dev-desktop] Could not build @ivy-interactive/components:\x1b[0m", err);
+  }
+
   const isAlreadyRunning = await checkServiceHealth(port);
   if (isAlreadyRunning) {
-    console.log(`\x1b[32m[dev-desktop] Tendril service is already active on http://127.0.0.1:${port}\x1b[0m`);
+    console.log(
+      `\x1b[32m[dev-desktop] Tendril service is already active on http://127.0.0.1:${port}\x1b[0m`,
+    );
   } else {
     // The agents this daemon launches get `target/debug` at the front of their PATH, so `tendril` in a
     // promptware resolves to this workspace's CLI rather than to whatever the developer has installed
     // (see `agents::providers::agent_path`). `cargo run -p tendril-server` does not build the CLI, so
     // without this the binary that PATH entry points at may be missing or stale.
-    console.log("\x1b[36m[dev-desktop] Building the Tendril CLI so agents resolve this workspace's binary...\x1b[0m");
+    console.log(
+      "\x1b[36m[dev-desktop] Building the Tendril CLI so agents resolve this workspace's binary...\x1b[0m",
+    );
     try {
       execSync("cargo build -p tendril-cli", { stdio: "inherit" });
     } catch {
-      console.error("\x1b[31m[dev-desktop] Could not build the CLI; agents will fall back to the `tendril` on your PATH\x1b[0m");
+      console.error(
+        "\x1b[31m[dev-desktop] Could not build the CLI; agents will fall back to the `tendril` on your PATH\x1b[0m",
+      );
     }
 
-    console.log(`\x1b[36m[dev-desktop] Starting Tendril service (cargo run -p tendril-server)...\x1b[0m`);
+    console.log(
+      `\x1b[36m[dev-desktop] Starting Tendril service (cargo run -p tendril-server)...\x1b[0m`,
+    );
     serverProcess = spawn("cargo", ["run", "-p", "tendril-server", "--", "--port", String(port)], {
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
@@ -181,7 +207,9 @@ async function main() {
     process.stdout.write("\x1b[36m[dev-desktop] Waiting for Tendril service to be ready...\x1b[0m");
     const ready = await waitForService(port);
     if (!ready) {
-      console.error(`\n\x1b[31m[dev-desktop] Service failed to respond on http://127.0.0.1:${port}/api/health within 60s\x1b[0m`);
+      console.error(
+        `\n\x1b[31m[dev-desktop] Service failed to respond on http://127.0.0.1:${port}/api/health within 60s\x1b[0m`,
+      );
       cleanup();
       return;
     }
@@ -194,9 +222,7 @@ async function main() {
     rawArgs.includes("--no-reload") ||
     process.env.NO_WATCH === "1";
   const noHmr =
-    rawArgs.includes("--no-hmr") ||
-    rawArgs.includes("--no-reload") ||
-    process.env.NO_HMR === "1";
+    rawArgs.includes("--no-hmr") || rawArgs.includes("--no-reload") || process.env.NO_HMR === "1";
 
   // Filter out npm/vp forwarding delimiter "--" and custom flags Tauri CLI doesn't know about
   const cleanArgs = rawArgs.filter(
@@ -221,15 +247,19 @@ async function main() {
   }
 
   console.log("\x1b[36m[dev-desktop] Launching desktop app (Tauri dev)...\x1b[0m");
-  appProcess = spawn("pnpm", ["--filter", "@ivy-interactive/tendril-app", "tauri", "dev", ...tauriArgs], {
-    stdio: "inherit",
-    detached: process.platform !== "win32",
-    env: {
-      ...process.env,
-      TENDRIL_HOME: tendrilHome,
-      ...(noHmr ? { NO_HMR: "1", VITE_HMR: "false" } : {}),
+  appProcess = spawn(
+    "pnpm",
+    ["--filter", "@ivy-interactive/tendril-app", "tauri", "dev", ...tauriArgs],
+    {
+      stdio: "inherit",
+      detached: process.platform !== "win32",
+      env: {
+        ...process.env,
+        TENDRIL_HOME: tendrilHome,
+        ...(noHmr ? { NO_HMR: "1", VITE_HMR: "false" } : {}),
+      },
     },
-  });
+  );
 
   appProcess.on("exit", (code) => {
     if (!shuttingDown) {

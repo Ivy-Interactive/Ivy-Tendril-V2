@@ -33,12 +33,14 @@ async fn test_chat_queue_management() {
         prompt: "First prompt".to_string(),
         attachments: None,
         created_at: chrono::Utc::now(),
+        role: None,
     };
     let item2 = ChatQueuedItem {
         id: "q-2".to_string(),
         prompt: "Second prompt".to_string(),
         attachments: None,
         created_at: chrono::Utc::now(),
+        role: None,
     };
 
     mgr.enqueue_message(session_id, item1.clone()).await;
@@ -1708,29 +1710,41 @@ async fn test_injected_event_is_framed_as_an_event_and_never_names_the_session()
     let _ = std::fs::remove_dir_all(&test_dir);
 }
 
-/// An event arriving while a turn is running is stored but does not interrupt it — the running turn's
-/// answer is what the user is waiting for, and the next turn replays the event in its history.
+/// An event arriving while a turn is running does not interrupt it — the running turn's answer is what
+/// the user is waiting for — but it is still *reacted to*, on the next turn, as an event.
+///
+/// It queues rather than merely being written into the transcript. Storing it and stopping there left
+/// the agent no reason to run again, so a job that finished while the user was still typing got a line
+/// in the thread and no reaction to it until the user happened to say something else. V1 runs a turn.
 #[tokio::test]
-async fn test_injected_event_during_a_turn_is_stored_without_interrupting_it() {
+async fn test_injected_event_during_a_turn_is_answered_after_it_rather_than_interrupting_it() {
     let test_dir = std::env::temp_dir().join(format!(
         "tendril-chat-event-busy-test-{}",
         uuid::Uuid::new_v4().simple()
     ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
+    let captured: Arc<Mutex<Vec<AgentLaunchConfig>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = captured.clone();
+
     let mgr = Arc::new(
         ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
-            |_agent, config| AgentProcessSpec {
-                command: "sh".to_string(),
-                args: vec![
-                    "-c".to_string(),
-                    r#"sleep 0.4; echo '{"kind":"text","text":"done"}'"#.to_string(),
-                ],
-                environment: HashMap::new(),
-                working_directory: config.working_directory.clone(),
-                stdin_content: None,
-                redirect_stdin: false,
-                temp_files: vec![],
+            move |_agent, config| {
+                if !is_naming_call(config) {
+                    captured_clone.lock().unwrap().push(config.clone());
+                }
+                AgentProcessSpec {
+                    command: "sh".to_string(),
+                    args: vec![
+                        "-c".to_string(),
+                        r#"sleep 0.4; echo '{"kind":"text","text":"done"}'"#.to_string(),
+                    ],
+                    environment: HashMap::new(),
+                    working_directory: config.working_directory.clone(),
+                    stdin_content: None,
+                    redirect_stdin: false,
+                    temp_files: vec![],
+                }
             },
         )),
     );
@@ -1751,8 +1765,9 @@ async fn test_injected_event_during_a_turn_is_stored_without_interrupting_it() {
         .await
         .expect("Failed to start session turn");
 
+    let event = "[System Event] Job 1 completed.";
     let ran = mgr
-        .notify_event(&session.id, "[System Event] Job 1 completed.")
+        .notify_event(&session.id, event)
         .await
         .expect("Failed to inject the event");
     assert!(
@@ -1760,6 +1775,8 @@ async fn test_injected_event_during_a_turn_is_stored_without_interrupting_it() {
         "a busy session must not have a second turn started under it"
     );
 
+    // One settle, not two: the turn loop dequeues inside itself and reports `is_generating: false` once
+    // the queue is empty, so this single wait already covers the user's turn *and* the event's.
     while let Ok(evt) = rx.recv().await {
         if let ChatEvent::GeneratingState {
             is_generating: false,
@@ -1769,6 +1786,7 @@ async fn test_injected_event_during_a_turn_is_stored_without_interrupting_it() {
             break;
         }
     }
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
     let roles: Vec<&str> = loaded.messages.iter().map(|m| m.role.as_str()).collect();
@@ -1777,7 +1795,33 @@ async fn test_injected_event_during_a_turn_is_stored_without_interrupting_it() {
         "the event must still be recorded, got roles: {:?}",
         roles
     );
-    assert_eq!(roles.iter().filter(|r| **r == "assistant").count(), 1);
+    // The user's turn answered, then the event's — and the event is stored as `system`, so it renders
+    // as a timeline note rather than as something the user said.
+    assert_eq!(
+        roles.iter().filter(|r| **r == "assistant").count(),
+        2,
+        "got roles: {:?}",
+        roles
+    );
+    assert_eq!(
+        loaded
+            .messages
+            .iter()
+            .find(|m| m.role == "system")
+            .map(|m| m.content.as_str()),
+        Some(event)
+    );
+
+    // And the second turn was framed as an event, not as a request the user made.
+    let calls = captured.lock().unwrap();
+    assert_eq!(calls.len(), 2, "expected the user's turn and the event's");
+    assert!(
+        calls[1].prompt.contains("# Current Event Notification"),
+        "got: {}",
+        calls[1].prompt
+    );
+    assert!(!calls[1].prompt.contains("# Current User Request"));
+    assert!(calls[1].prompt.contains(event));
 
     let _ = std::fs::remove_dir_all(&test_dir);
 }

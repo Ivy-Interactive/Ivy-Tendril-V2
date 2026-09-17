@@ -10,7 +10,8 @@ const JOB_COLUMNS: &str = "Id, Type, PlanFile, Project, Status, Provider, Starte
      CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, \
      Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, \
      ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState, \
-     Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey";
+     Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey, \
+     ChatSessionId";
 
 const INSERT_SQL: &str = r#"
     INSERT INTO Jobs (
@@ -19,11 +20,12 @@ const INSERT_SQL: &str = r#"
         CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
         Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
         ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState,
-        Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey
+        Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey,
+        ChatSessionId
     ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
         ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
-        ?31, ?32, ?33, ?34, ?35, ?36
+        ?31, ?32, ?33, ?34, ?35, ?36, ?37
     )
 "#;
 
@@ -33,15 +35,27 @@ const INSERT_SQL: &str = r#"
 /// be able to clear or rewrite them.
 const UPSERT_TAIL: &str = r#"
     ON CONFLICT(Id) DO UPDATE SET
+        -- A `CreatePlan` starts with no plan and is given one by `verify_create_plan`, so unlike every
+        -- other column here this one has to be writable *and* protected: a write carrying the empty
+        -- string is a record that predates the back-fill, and must not erase the folder a later one
+        -- found. Without this the plan a `CreatePlan` produced was unreachable from its own job row.
+        PlanFile = CASE WHEN excluded.PlanFile != '' THEN excluded.PlanFile ELSE Jobs.PlanFile END,
         Status = excluded.Status,
         CompletedAt = excluded.CompletedAt,
         DurationSeconds = excluded.DurationSeconds,
         Cost = excluded.Cost,
         Tokens = excluded.Tokens,
         StatusMessage = excluded.StatusMessage,
-        ReportedPlanId = excluded.ReportedPlanId,
-        ReportedPlanTitle = excluded.ReportedPlanTitle,
-        ReportedFailureReason = excluded.ReportedFailureReason,
+        -- Coalesced for the same reason as `ChatSessionId` below: these three are reported by the
+        -- *running* agent — `tendril job status --plan-id/--plan-title`, `tendril job fail --message` —
+        -- and only ever set, never deliberately cleared. The write that ends a job is made from the
+        -- snapshot its runner took before any of them existed, so taking `excluded` here erased the plan
+        -- a `CreatePlan` had just announced, at the moment it finished and the chat came to look for it.
+        ReportedPlanId = COALESCE(excluded.ReportedPlanId, Jobs.ReportedPlanId),
+        ReportedPlanTitle = COALESCE(excluded.ReportedPlanTitle, Jobs.ReportedPlanTitle),
+        ReportedFailureReason = COALESCE(
+            excluded.ReportedFailureReason, Jobs.ReportedFailureReason
+        ),
         Model = excluded.Model,
         InputTokens = excluded.InputTokens,
         OutputTokens = excluded.OutputTokens,
@@ -56,7 +70,12 @@ const UPSERT_TAIL: &str = r#"
         Priority = excluded.Priority,
         LastOutputAt = excluded.LastOutputAt,
         WaitForJobIds = excluded.WaitForJobIds,
-        PermissionDenials = excluded.PermissionDenials;
+        PermissionDenials = excluded.PermissionDenials,
+        -- `COALESCE`, not `excluded`, because this one is both *set later* and *never unset*: a job
+        -- can learn its chat session after it starts (a `CreatePlan` that inherits it from the plan it
+        -- just produced), while every ordinary status or cost write carries `None` and must leave an
+        -- established link alone.
+        ChatSessionId = COALESCE(excluded.ChatSessionId, Jobs.ChatSessionId);
 "#;
 
 fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
@@ -116,6 +135,7 @@ fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
             permission_denials_json,
             job.dedupe_key,
             job.idempotency_key,
+            job.chat_session_id,
         ],
     )?;
 
@@ -196,6 +216,7 @@ fn row_to_job(row: &Row<'_>) -> Result<JobItem> {
         .filter(|d| !d.is_empty());
     item.dedupe_key = row.get(34)?;
     item.idempotency_key = row.get(35)?;
+    item.chat_session_id = row.get(36)?;
 
     // `typed_args` has no column of its own; it is rehydrated from the Args JSON so a job loaded
     // after a daemon restart still knows what it was launched with.
@@ -379,6 +400,22 @@ pub fn list_non_terminal_jobs_for_plan(
 /// else — would turn a retry after completion into a second run.
 ///
 /// Parameterised, since the key comes from a client.
+/// Every job a chat session started, oldest first — the durable answer to "what has this conversation
+/// set running", as against the session file's `spawned_job_ids`, which is only as complete as the
+/// stream-scraping that maintains it. Served by `idx_jobs_chatsession`.
+pub fn list_jobs_for_chat_session(
+    conn: &Connection,
+    chat_session_id: &str,
+) -> Result<Vec<JobItem>> {
+    let sql = format!(
+        "SELECT {} FROM Jobs WHERE ChatSessionId = ?1 AND Cleared = 0 ORDER BY Id ASC",
+        JOB_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([chat_session_id], row_to_job)?;
+    rows.collect()
+}
+
 pub fn find_job_by_idempotency_key(conn: &Connection, key: &str) -> Result<Option<JobItem>> {
     let sql = format!(
         "SELECT {} FROM Jobs WHERE IdempotencyKey = ?1 ORDER BY Id ASC LIMIT 1",

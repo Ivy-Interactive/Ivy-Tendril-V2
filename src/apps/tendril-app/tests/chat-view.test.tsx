@@ -5,7 +5,9 @@ import { ChatView } from "../src/views/ChatView";
 import { chatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
 import { sidebarListStore } from "../src/state/sidebarListStore";
+import { jobsStore } from "../src/state/jobsStore";
 import type { ChatSession } from "../src/types/chat";
+import type { Job } from "../src/types/api";
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn(),
@@ -852,5 +854,111 @@ questions:
     expect(threadContainer?.className).toContain("flex-1 overflow-hidden relative");
 
     expect(screen.queryByLabelText("Scroll to bottom")).not.toBeInTheDocument();
+  });
+
+  /**
+   * The header's jobs pill, and the two independent sources it is allowed to believe — V1's
+   * `ChatApp.ToSessionDto` unions the same pair.
+   *
+   * `spawnedJobIds` alone is not enough: it is maintained by scraping `Job started: <id>` out of the
+   * agent's stream, so it is empty for a job started through the MCP tool, from the interactive
+   * terminal, on a request whose confirmation was lost, or in a turn that was running while another
+   * conversation was on screen. The job's own `chatSessionId` is the durable record the daemon wrote
+   * when it accepted the submission, and it is what makes the pill right after a reload.
+   */
+  describe("the header's spawned-jobs pill", () => {
+    const session = (spawnedJobIds: string[]): ChatSession => ({
+      id: "session-10",
+      title: "Architecture Planning",
+      createdAt: "2026-09-07T12:00:00Z",
+      updatedAt: "2026-09-07T12:00:00Z",
+      spawnedJobIds,
+      messages: [],
+    });
+
+    const job = (overrides: Partial<Job> = {}): Job => ({
+      id: "03589",
+      type: "CreatePlan",
+      project: "namecheap-cli",
+      status: "Running",
+      ...overrides,
+    });
+
+    const renderWith = async (active: ChatSession, jobs: Job[]) => {
+      jobsStore.getState().jobs = jobs;
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([active]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(active);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+      });
+    };
+
+    afterEach(() => {
+      jobsStore.getState().jobs = [];
+    });
+
+    it("lists a job the daemon linked to this chat even with nothing scraped from the stream", async () => {
+      await renderWith(session([]), [job({ chatSessionId: "session-10" })]);
+
+      expect(await screen.findByTestId("chat-jobs-badge")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-jobs-badge")).toHaveTextContent("1 running");
+    });
+
+    it("leaves another conversation's jobs out of this one's header", async () => {
+      await renderWith(session([]), [job({ chatSessionId: "session-99" })]);
+
+      expect(screen.queryByTestId("chat-jobs-badge")).not.toBeInTheDocument();
+    });
+
+    it("counts a job once when both sources name it", async () => {
+      await renderWith(session(["03589"]), [job({ chatSessionId: "session-10" })]);
+
+      expect(await screen.findByTestId("chat-jobs-badge")).toHaveTextContent("1 running");
+    });
+
+    it("still hides the pill when a chat has started nothing", async () => {
+      await renderWith(session([]), [job({ chatSessionId: undefined })]);
+
+      expect(screen.queryByTestId("chat-jobs-badge")).not.toBeInTheDocument();
+    });
+
+    /**
+     * The live path: the daemon announces a job mid-turn and the pill appears without waiting for the
+     * job list to catch up. This is the case a `push` onto `spawnedJobIds` could not serve — the memo
+     * is keyed on that array, so mutating it in place left the key referentially equal and the memo
+     * returned its previous value however many times the component re-rendered.
+     */
+    it("shows a job announced by chat.job_spawned, before it reaches the job list", async () => {
+      await renderWith(session([]), []);
+      expect(screen.queryByTestId("chat-jobs-badge")).not.toBeInTheDocument();
+
+      await act(async () => {
+        chatStore.handleChatEvent({
+          type: "chat.job_spawned",
+          sessionId: "session-10",
+          jobId: "03589",
+        });
+      });
+
+      // Resolved from the transcript's terminal event, since the live list has not caught up yet.
+      await act(async () => {
+        chatStore.handleChatEvent({
+          type: "chat.message_added",
+          sessionId: "session-10",
+          message: {
+            id: "sys-1",
+            role: "system",
+            content:
+              "[System Event] Job 03589 (CreatePlan) for '00681: Add Test Coverage' has finished " +
+              "with status: Completed. Review the outcome and advise on next steps.",
+            timestamp: "2026-09-17T10:39:00Z",
+          },
+        });
+      });
+
+      expect(await screen.findByTestId("chat-jobs-badge")).toBeInTheDocument();
+    });
   });
 });

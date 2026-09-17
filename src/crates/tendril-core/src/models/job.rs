@@ -361,6 +361,13 @@ pub struct JobItem {
     /// once, at insert.
     #[serde(rename = "idempotencyKey", skip_serializing_if = "Option::is_none")]
     pub idempotency_key: Option<String>,
+    /// The chat conversation this job was started from, so that conversation can list the job in its
+    /// header and be told when it finishes. Supplied by `tendril job start --chat-session` (or the
+    /// `TENDRIL_CHAT_SESSION_ID` the chat exports into its agent's environment); inherited from the
+    /// plan the job names when neither was given. `None` for a job started from a terminal or by the
+    /// scheduler, which have no conversation to report to.
+    #[serde(rename = "chatSessionId", skip_serializing_if = "Option::is_none")]
+    pub chat_session_id: Option<String>,
 }
 
 fn default_provider() -> String {
@@ -408,6 +415,7 @@ impl JobItem {
             wait_for_job_ids: Vec::new(),
             dedupe_key: None,
             idempotency_key: None,
+            chat_session_id: None,
         }
     }
 

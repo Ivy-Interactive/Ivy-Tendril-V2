@@ -797,7 +797,11 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   ];
 
   return (
-    <div className="space-y-6" data-testid={`project-settings-${project.name}`}>
+    // `max-w-170` is the width the forms and tables below already use, lifted to the pane so the
+    // whole section shares it. Without it only the *content* was bounded while `SubSection`'s header
+    // stretched to the pane, so on a wide window every "Add …" button sat far out to the right of the
+    // fields it belonged to, and a wide table pushed rows past the edge with no way to scroll to them.
+    <div className="min-w-0 max-w-170 space-y-6" data-testid={`project-settings-${project.name}`}>
       {/* Section 1: header. V1 renders a colour swatch, the name and a Rename pencil. */}
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-lg font-bold text-foreground">{project.name}</h2>

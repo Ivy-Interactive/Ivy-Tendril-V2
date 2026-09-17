@@ -41,6 +41,7 @@ use crate::plans::dependencies::{
     check_dependencies, check_dependencies_with, get_gh_pr_state, unblock_satisfied_plans_with,
 };
 use crate::plans::guards::PlanCompletionGuard;
+use crate::plans::helpers::resolve_plan_folder;
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::verification_gate::resolve_post_execution_state;
 use crate::plans::writer::write_plan_yaml;
@@ -131,6 +132,14 @@ pub struct JobEvent {
     /// is what a client keys a plan on.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_folder: Option<String>,
+    /// The conversation that started the job, so a subscriber can route the event to it without
+    /// re-reading the job. Carried on the event because the chat notifier needs it for a `CreatePlan`,
+    /// which has no `plan_folder` to resolve a conversation through.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_session_id: Option<String>,
+    /// The plan the job ended up holding, for a job whose `plan_folder` was empty when it started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reported_plan_id: Option<String>,
 }
 
 impl JobEvent {
@@ -145,6 +154,11 @@ impl JobEvent {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .map(|s| s.to_string()),
+            chat_session_id: job.chat_session_id.clone(),
+            reported_plan_id: job
+                .reported_plan_id
+                .clone()
+                .filter(|id| !id.trim().is_empty()),
         }
     }
 
@@ -229,6 +243,10 @@ pub struct StartOptions {
     /// work already running", which stops helping the moment the first job finishes. A key answers
     /// "have I already sent this request", which stays true forever.
     pub idempotency_key: Option<String>,
+    /// The conversation that started this job. `None` for a job started from a terminal or by the
+    /// scheduler; a job that names a plan then inherits the plan's own chat session instead, so the
+    /// link survives an agent that forgot to pass one.
+    pub chat_session_id: Option<String>,
 }
 
 /// Why a job may not be queued yet.
@@ -586,6 +604,13 @@ impl JobManager {
         job.wait_for_job_ids = opts.wait_for_jobs.clone();
         job.priority = resolve_job_priority(&args, &plan_folder, opts.priority);
         job.idempotency_key = opts.idempotency_key.clone();
+        // What the caller said, else what the plan it names already knows. The second half is what
+        // links a job an agent started without the flag — `tendril job start ExecutePlan 00042` from a
+        // plan's own side-panel chat — back to the conversation watching that plan.
+        job.chat_session_id = opts
+            .chat_session_id
+            .clone()
+            .or_else(|| plan_chat_session_id(&plan_folder));
 
         // The wait-for gate only runs when the plan dependency gate let the job through: a blocked
         // plan is the more specific reason and should be the one the user sees.
@@ -1564,6 +1589,58 @@ fn resolve_job_priority(args: &JobArgs, plan_folder: &Path, override_priority: O
         .unwrap_or(0)
 }
 
+/// Records `chat_session_id` on the plan a finished job produced or worked on, so the plan's own later
+/// events reach the conversation too. Never overwrites a session the plan already names: a plan opened
+/// in its own side-panel chat belongs to that conversation, not to whichever chat last ran a job on it.
+fn adopt_plan_into_chat_session(plans_dir: &Path, job: &JobItem, chat_session_id: &str) {
+    // `plan_file` is empty for the `CreatePlan` that produced the plan, so fall back to the id the
+    // promptware reported through `tendril job status --plan-id`.
+    let folder = {
+        let named = PathBuf::from(&job.plan_file);
+        if named.is_dir() {
+            Some(named)
+        } else {
+            let plan_id = job.resolve_plan_id();
+            (!plan_id.is_empty())
+                .then(|| resolve_plan_folder(&plan_id, plans_dir).ok())
+                .flatten()
+        }
+    };
+    let Some(folder) = folder else { return };
+
+    let Ok((mut plan, _)) = read_plan_yaml(&folder) else {
+        return;
+    };
+    if plan
+        .chat_session_id
+        .as_deref()
+        .is_some_and(|id| !id.trim().is_empty())
+    {
+        return;
+    }
+    plan.chat_session_id = Some(chat_session_id.to_string());
+    if let Err(e) = write_plan_yaml(&folder, &plan) {
+        tracing::debug!(
+            "Could not record chat session {chat_session_id} on plan {}: {e}",
+            folder.display()
+        );
+    }
+}
+
+/// The conversation a plan already belongs to, used to link a job that names the plan but was started
+/// without a `--chat-session` of its own. Empty for a job with no plan — a `CreatePlan` has none yet,
+/// which is why [`JobManager::finish_job`] stamps the link the other way round once the plan exists.
+fn plan_chat_session_id(plan_folder: &Path) -> Option<String> {
+    if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
+        return None;
+    }
+    read_plan_yaml(plan_folder)
+        .ok()
+        .and_then(|(plan, _)| plan.chat_session_id)
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+}
+
 /// Human-readable dependency description: `"ExecutePlan of plan 00123 (job 00456)"`, or
 /// `"CreatePr (job 00456)"` when no plan id can be resolved.
 pub fn describe_wait_dependency(dep: &JobItem) -> String {
@@ -2193,16 +2270,30 @@ fn spawn_runner(
 
         finished.store(true, Ordering::SeqCst);
         job.process_id = Some(pid.load(Ordering::SeqCst)).filter(|p| *p != 0);
-        // This task's own copy predates every heartbeat, and `finish_job` persists the whole record —
-        // so without this the terminal write erases the last-output stamp `note_agent_output` spent the
-        // run maintaining, and a job's row would remember when it started but not when it last spoke.
-        if let Some(at) = jobs_map
-            .read()
-            .await
-            .get(&job_id)
-            .and_then(|current| current.last_output_at)
-        {
-            job.last_output_at = Some(at);
+        // This task's own copy predates every write the run made, and `finish_job` persists the whole
+        // record — so anything the *running agent* reported has to be taken from the live record here or
+        // the terminal write erases it.
+        //
+        // `last_output_at` is the heartbeat `note_agent_output` maintains: without it a job's row
+        // remembers when it started but not when it last spoke. The other three are what the promptware
+        // reports over HTTP while it works — `tendril job status --plan-id/--plan-title` and
+        // `tendril job fail --message` — and losing them is why a `CreatePlan` that really did produce a
+        // plan came out with `ReportedPlanId` NULL: the chat then had no plan to name in its follow-up
+        // turn, `adopt_plan_into_chat_session` had nothing to stamp the plan with, and
+        // `resolve_created_plan_folder` lost the candidate it needed to recognise the plan at all.
+        if let Some(current) = jobs_map.read().await.get(&job_id) {
+            if let Some(at) = current.last_output_at {
+                job.last_output_at = Some(at);
+            }
+            if current.reported_plan_id.is_some() {
+                job.reported_plan_id = current.reported_plan_id.clone();
+            }
+            if current.reported_plan_title.is_some() {
+                job.reported_plan_title = current.reported_plan_title.clone();
+            }
+            if current.reported_failure_reason.is_some() {
+                job.reported_failure_reason = current.reported_failure_reason.clone();
+            }
         }
 
         // A tool_call that never received a tool_result leaves its card spinning forever in
@@ -3372,6 +3463,14 @@ pub async fn finish_job(
         if matches!(job.job_type.as_str(), "CreatePlan" | "UpdatePlan") {
             move_attachments_to_plan_folder(tendril_home, plans_dir, &job);
         }
+
+        // A `CreatePlan` had no plan to inherit a conversation from when it started, so the link is
+        // made in this direction instead: the plan it just produced takes on the chat that asked for
+        // it. That is what later plan events — a pull request, an edit — resolve their recipients by,
+        // so without this only *this* job's completion would ever reach the conversation.
+        if let Some(chat_session_id) = job.chat_session_id.as_deref() {
+            adopt_plan_into_chat_session(plans_dir, &job, chat_session_id);
+        }
     } else if matches!(deliverable, Deliverable::Missing { .. })
         && matches!(job.job_type.as_str(), "ExecutePlan" | "RetryPlan")
     {
@@ -3529,7 +3628,17 @@ async fn persist(
     // of a job whose status has not moved (the PID write during launch, a blocked job whose reason
     // was re-checked), and each would otherwise cost every connected client an event.
     let moved = match &previous {
-        Some(prev) => prev.status != job.status || prev.status_message != job.status_message,
+        Some(prev) => {
+            prev.status != job.status
+                || prev.status_message != job.status_message
+                // The plan a job holds is news too, and for a `CreatePlan` it is the only news it has
+                // before it finishes: `tendril job status --plan-id` is how the promptware reports the
+                // plan it just created, and repeating the same `--message` alongside it left the status
+                // unmoved — so the plan reached the database and no client heard about it until the
+                // next poll.
+                || prev.reported_plan_id != job.reported_plan_id
+                || prev.reported_plan_title != job.reported_plan_title
+        }
         // Not seen by this process before: the first write is always news.
         None => true,
     };

@@ -125,6 +125,8 @@ fn queued_item_and_attachment_serialize_camel_case() {
             mime_type: Some("image/png".to_string()),
         }]),
         created_at: Utc.with_ymd_and_hms(2026, 9, 15, 12, 0, 0).unwrap(),
+        // The composer's items carry no role; only an event Tendril queued behind a running turn does.
+        role: None,
     };
 
     let json = serde_json::to_value(&item).unwrap();

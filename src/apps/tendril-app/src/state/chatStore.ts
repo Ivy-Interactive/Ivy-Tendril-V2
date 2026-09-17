@@ -1008,12 +1008,25 @@ export class ChatStore {
       }
 
       case "chat.job_spawned": {
-        if (this.state.activeSessionId === event.sessionId && this.state.activeSession) {
-          if (!this.state.activeSession.spawnedJobIds.includes(event.jobId)) {
-            this.state.activeSession.spawnedJobIds.push(event.jobId);
-            this.notify();
-          }
-        }
+        // Recorded on whichever copies of the session are loaded, not only the active one: a turn keeps
+        // running after the user navigates away, and a job announced in that window used to be dropped
+        // here — so switching back showed a conversation with no jobs in its header.
+        //
+        // The list is *replaced* rather than pushed to. `ChatView` derives the header's jobs in a
+        // `useMemo` keyed on `activeSession.spawnedJobIds`, so a push left the key referentially equal
+        // and the memo kept its previous value: the re-render happened and the pill still did not
+        // appear. A new array is what makes the change visible.
+        let changed = false;
+        const record = (session: ChatSession | null | undefined) => {
+          if (!session || session.id !== event.sessionId) return false;
+          if (session.spawnedJobIds.includes(event.jobId)) return false;
+          session.spawnedJobIds = [...session.spawnedJobIds, event.jobId];
+          changed = true;
+          return true;
+        };
+        record(this.state.activeSession);
+        this.state.sessions.forEach(record);
+        if (changed) this.notify();
         break;
       }
 

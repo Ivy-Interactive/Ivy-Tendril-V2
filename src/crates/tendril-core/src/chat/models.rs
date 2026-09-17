@@ -32,6 +32,14 @@ pub struct ChatQueuedItem {
     pub attachments: Option<Vec<ChatAttachment>>,
     #[serde(alias = "created_at")]
     pub created_at: DateTime<Utc>,
+    /// `system` for an event Tendril queued behind a turn that was already running — a job finishing
+    /// while the user was still talking. Absent means the user typed it, which is every item the
+    /// composer enqueues, so an existing queue file loads unchanged.
+    ///
+    /// It matters because the role decides how the turn is framed: dequeued as a user prompt, "Job 03589
+    /// has finished" reads as something the user said and the agent answers it instead of reacting to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

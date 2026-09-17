@@ -221,13 +221,27 @@ export const BladeContainer = React.forwardRef<BladeContainerHandle, BladeContai
           onKeyDown={handleKeyDown}
           {...props}
         >
+          {/* `horizontal` because this is the axis the stack grows along: pushing a child blade makes
+              the row wider than the pane on purpose. Without it Radix left the viewport
+              `overflow-x: hidden`, so the blades past the edge could only be reached by the
+              `scrollIntoView` below — a blade the user had not just opened was unreachable. */}
           <ScrollArea
             ref={scrollAreaRef}
             type="hover"
+            horizontal
             className="h-full w-full overflow-y-hidden"
             viewportClassName="[&>div]:!block [&>div]:!h-full"
           >
-            <div ref={rowRef} className={cn("flex h-full", isCollapsed ? "w-full" : "w-max")}>
+            {/* `w-max` is what lets a stack of fixed-width blades grow past the container and be
+                scrolled through. `min-w-full` is what stops it collapsing *below* the container: a
+                `width: "flex"` blade is `flex-1`, and inside a bare max-content row that resolves to
+                the blade's own max-content width, so the row — and the blade — came out narrower or
+                wider than the pane rather than equal to it. A blade that wants to be wider than the
+                pane still is, and still scrolls. */}
+            <div
+              ref={rowRef}
+              className={cn("flex h-full", isCollapsed ? "w-full" : "w-max min-w-full")}
+            >
               {visibleBlades.map((blade, index) => {
                 const stackIndex = isCollapsed ? blades.length - 1 : index;
                 return (

@@ -608,16 +608,11 @@ pub enum PlanEnvCommands {
 }
 
 pub fn resolve_source_chat_session(chat_session: Option<&str>) -> Option<String> {
-    if let Some(cs) = chat_session {
-        let trimmed = cs.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
-    }
-    std::env::var("TENDRIL_CHAT_SESSION_ID")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
+    // An explicit empty `--chat-session ""` falls through to the environment rather than counting as
+    // "no session", which is why the argument is filtered before it is offered.
+    tendril_core::mcp::dispatch::resolve_chat_session_id(
+        chat_session.map(str::trim).filter(|s| !s.is_empty()),
+    )
 }
 
 /// Resolves a `depends-on` / `related-plan` reference to its canonical folder name, failing the same

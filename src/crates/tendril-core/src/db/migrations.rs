@@ -80,6 +80,10 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             ("PermissionDenials", "TEXT"),
             ("DedupeKey", "TEXT"),
             ("IdempotencyKey", "TEXT"),
+            // The conversation a job was started from. Spelled exactly as the original app's
+            // `Migration_026_JobsInboxFileAndChatSessionId` spells it, so a database shared with V1
+            // has one column rather than two.
+            ("ChatSessionId", "TEXT"),
         ],
     )?;
     ensure_columns(
@@ -294,9 +298,14 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             WaitForJobIds TEXT,
             PermissionDenials TEXT,
             DedupeKey TEXT,
-            IdempotencyKey TEXT
+            IdempotencyKey TEXT,
+            ChatSessionId TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
+        -- The chat header asks "which jobs belong to this conversation" on every job event, so the
+        -- lookup is indexed. Partial, because only a job started from a chat carries one.
+        CREATE INDEX IF NOT EXISTS idx_jobs_chatsession ON Jobs(ChatSessionId)
+            WHERE ChatSessionId IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_jobs_completed ON Jobs(CompletedAt DESC);
         CREATE INDEX IF NOT EXISTS idx_jobs_planfile ON Jobs(PlanFile);
         -- `idx_jobs_planfile` above is declared without a collation, so it cannot serve the

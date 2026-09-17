@@ -85,6 +85,7 @@ async fn test_job_completion_cost_extraction() {
         wait_for_job_ids: Vec::new(),
         dedupe_key: None,
         idempotency_key: None,
+        chat_session_id: None,
     };
 
     let jobs_map = Arc::new(RwLock::new(HashMap::new()));
