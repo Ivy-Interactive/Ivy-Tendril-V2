@@ -515,16 +515,12 @@
 
 /* ─── Annotation highlights ────────────────────────────────────────────── */
 .pmv-annotation-highlight {
-  background: hsl(48 96% 76% / 0.7);
+  background: var(--highlight);
   color: var(--foreground);
   border-radius: var(--radius-xs);
   cursor: pointer;
   padding: 0 0 0.125rem;
   display: inline;
-}
-
-:root.dark .pmv-annotation-highlight {
-  background: hsl(48 80% 20% / 0.5);
 }
 
 .pmv-annotation-initials-badge {
@@ -631,22 +627,18 @@
    hover tint here instead of .tui-btn--danger's solid one — the compound selector outranks
    .tui-btn--danger:hover regardless of the two files' load order. */
 .tui-btn.pmv-popover-btn--danger:hover {
-  background: hsl(0 84% 60% / 0.1);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
   color: var(--destructive);
 }
 
 .tui-btn.pmv-popover-btn--success {
-  background: hsl(142 71% 45% / 0.15);
-  color: hsl(142 76% 36%);
-  border: var(--border-width) solid hsl(142 71% 45% / 0.3);
-}
-
-:root.dark .tui-btn.pmv-popover-btn--success {
-  color: hsl(142 76% 56%);
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--green);
+  border: var(--border-width) solid color-mix(in srgb, var(--success) 30%, transparent);
 }
 
 .tui-btn.pmv-popover-btn--success:hover {
-  background: hsl(142 71% 45% / 0.25);
+  background: color-mix(in srgb, var(--success) 25%, transparent);
 }
 
 .pmv-popover-header {
@@ -662,16 +654,12 @@
 }
 
 .pmv-annotation-highlight.pmv-annotation-resolved {
-  background: hsl(142 60% 70% / 0.35);
+  background: color-mix(in srgb, var(--success) 35%, transparent);
   opacity: var(--opacity-subtle);
 }
 
-:root.dark .pmv-annotation-highlight.pmv-annotation-resolved {
-  background: hsl(142 60% 25% / 0.35);
-}
-
 .pmv-annotation-initials-badge.pmv-badge-resolved {
-  background: hsl(142 70% 45%);
+  background: var(--success);
 }
 
 /* ─── Selection toolbar ───────────────────────────────────────────────── */
@@ -734,7 +722,7 @@
 .pmv-diagram-error {
   border-radius: var(--radius-md);
   border: var(--border-width) solid var(--destructive);
-  background: hsl(0 84% 60% / 0.1);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
   padding: 0.75rem;
   color: var(--destructive);
   font-size: var(--text-sm);
@@ -846,15 +834,15 @@
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: hsl(0 0% 96%);
+  background: var(--muted);
   border: var(--border-width) dashed var(--border);
   border-radius: var(--radius-md);
   margin: 1rem auto;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   max-width: 100%;
 }
 .pmv-img-error svg {
-  color: hsl(0 0% 60%);
+  color: var(--muted-foreground);
   margin-bottom: 0.75rem;
 }
 .pmv-img-error-text {
@@ -865,7 +853,7 @@
 .pmv-img-error-title {
   font-size: var(--text-xs);
   margin-top: 0.5rem;
-  color: var(--text-tertiary);
+  color: var(--muted-foreground);
   text-align: center;
 }
 
@@ -1028,19 +1016,14 @@
 }
 
 .pmv-search-highlight {
-  background: hsl(48 96% 76% / 0.85);
+  background: var(--highlight);
   color: inherit;
   border-radius: var(--radius-xs);
   padding: 0 0.1rem;
 }
 
-:root.dark .pmv-search-highlight {
-  background: hsl(48 80% 30% / 0.85);
-  color: inherit;
-}
-
 .pmv-search-highlight--active {
-  background: hsl(25 95% 53% / 0.95);
+  background: var(--highlight-active);
   color: white;
   border-radius: var(--radius-xs);
   padding: 0 0.1rem;

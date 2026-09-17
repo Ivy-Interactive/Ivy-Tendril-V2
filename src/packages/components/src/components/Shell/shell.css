@@ -1070,9 +1070,7 @@
   border: var(--border-width) solid var(--tsh-border);
   border-radius: var(--radius-menu);
   background: var(--tsh-popover);
-  box-shadow:
-    0 10px 15px -3px rgb(0 0 0 / 0.1),
-    0 4px 6px -4px rgb(0 0 0 / 0.1);
+  box-shadow: var(--shadow-menu);
   animation: tui-tooltip-in var(--duration-base) var(--ease-emphasized);
   font-family: var(--font-sans);
 }

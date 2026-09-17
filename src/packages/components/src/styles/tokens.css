@@ -201,6 +201,10 @@
   /* Elevation */
   --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-menu: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Annotation / search-hit highlight */
+  --highlight: hsl(48 96% 76% / 0.7);
+  --highlight-active: hsl(25 95% 53% / 0.95);
 }
 
 .dark {
@@ -313,6 +317,10 @@
   /* Elevation */
   --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
   --shadow-menu: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+
+  /* Annotation / search-hit highlight */
+  --highlight: hsl(48 80% 20% / 0.5);
+  --highlight-active: hsl(25 95% 53% / 0.95);
 }
 
 @theme inline {
