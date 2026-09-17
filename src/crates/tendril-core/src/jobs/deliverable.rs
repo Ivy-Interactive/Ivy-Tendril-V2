@@ -38,8 +38,24 @@ pub enum Cleanup {
     PreserveWork,
 }
 
+/// The `PlanId: <id>` line `tendril plan create` prints, which `promptwares/CreatePlan/Program.md`
+/// documents as the marker to parse.
+///
+/// **No `\b` before `PlanId`, deliberately.** The lines this is matched against are raw JSONL frames,
+/// where a newline inside a tool result is the escaped *two-character* sequence `\` `n`. So a marker on
+/// its own line reads `...job 03589\nPlanId: 00682` in the frame, and the character immediately before
+/// `P` is `n` — a word character, so a word boundary does not exist there and the assertion failed.
+///
+/// That made a successful CreatePlan fail intermittently, in a way that looked like the agent's fault:
+/// with `tendril plan create` run alone the marker sits just after the opening quote (a non-word
+/// character, boundary present, match) but chain anything before it — `tendril job status ... ; tendril
+/// plan create ...` — and the id became invisible, so the run was recorded
+/// "completed but no plan revision was written" over a plan that was on disk with its revision.
+///
+/// Dropping the assertion cannot admit a wrong id: every candidate must still resolve to a real folder
+/// under `plans_dir` (see `find_plan_folder_by_id`), so a stray `SomePlanId: 3` yields nothing.
 static PLAN_ID_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\bPlanId:\s*(\d{1,5})").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i)PlanId:\s*(\d{1,5})").unwrap());
 static DUPLICATE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)identified as duplicate:\s*(\S+)").unwrap());
 static PR_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -391,6 +407,71 @@ mod tests {
             &dir, &plans_dir, &unnamed
         ));
         assert!(unnamed.is_dir(), "the folder must be left alone");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The reported bug, reduced to its cause.
+    ///
+    /// `tendril plan create` prints `PlanId: <id>` on its own line, and the lines this scans are raw
+    /// JSONL frames, where that newline is the escaped two-character sequence `\` `n`. So the marker
+    /// arrives as `...job 03589\nPlanId: 00682` and the character before `P` is `n` — a word character.
+    /// A `\bPlanId:` assertion therefore failed, and a CreatePlan run that had written its plan *and*
+    /// its revision was recorded "completed but no plan revision was written".
+    ///
+    /// It looked intermittent because it depended on what preceded the marker in the same tool result:
+    /// `plan create` alone puts it after the opening quote, where a boundary does exist.
+    #[test]
+    fn a_plan_id_after_an_escaped_newline_still_resolves() {
+        let dir = std::env::temp_dir().join(format!("tendril-planid-{}", uuid::Uuid::new_v4()));
+        let plans_dir = dir.join("Plans");
+        let folder =
+            plans_dir.join("00682-AddCIVerificationWorkflowAndMakeTheSourceTreeRustfmtClean");
+        std::fs::create_dir_all(folder.join("Revisions")).unwrap();
+        std::fs::write(folder.join("Revisions").join("001.md"), "# A Plan\n").unwrap();
+
+        let mut j = job("CreatePlan", "");
+        // Verbatim shape of the frame from job 03589: the agent chained `tendril job status` before
+        // `tendril plan create`, so a word character sits immediately before the escaped newline.
+        let frame = r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"Status updated for job 03589\nPlanId: 00682\nDirectory: /x/Plans/00682-AddCIVerificationWorkflowAndMakeTheSourceTreeRustfmtClean\n"}]}}"#.to_string();
+
+        assert_eq!(
+            resolve_created_plan_folder(&plans_dir, &j, &[frame.clone()]),
+            Some(folder.clone()),
+            "the id must be found even when no word boundary precedes the marker"
+        );
+
+        // And end to end: the job is Present, with the folder it verified recorded on it.
+        assert_eq!(
+            verify_deliverable(&plans_dir, &mut j, &[frame]),
+            Deliverable::Present
+        );
+        assert_eq!(j.plan_file, folder.to_string_lossy().to_string());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Dropping the boundary must not start accepting ids the agent never reported. Every candidate is
+    /// still checked against `plans_dir`, so noise resolves to nothing.
+    #[test]
+    fn a_plan_id_that_names_no_folder_is_still_no_deliverable() {
+        let dir =
+            std::env::temp_dir().join(format!("tendril-planid-none-{}", uuid::Uuid::new_v4()));
+        let plans_dir = dir.join("Plans");
+        std::fs::create_dir_all(&plans_dir).unwrap();
+        let j = job("CreatePlan", "");
+
+        // The documentation placeholder the agent reads out of `Program.md` carries no digits.
+        let placeholder =
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"tendril plan write-revision <PlanId> --file=x"}]}}"#.to_string();
+        assert_eq!(
+            resolve_created_plan_folder(&plans_dir, &j, &[placeholder]),
+            None
+        );
+
+        // A well-formed marker for a plan that does not exist resolves to nothing rather than guessing.
+        let absent = r#"{"content":"PlanId: 09999"}"#.to_string();
+        assert_eq!(resolve_created_plan_folder(&plans_dir, &j, &[absent]), None);
 
         std::fs::remove_dir_all(&dir).ok();
     }

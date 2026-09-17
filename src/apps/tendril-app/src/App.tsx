@@ -520,6 +520,11 @@ export const App: React.FC = () => {
    */
   const startJobAndOpenSession = async (args: Parameters<typeof bridge.startJob>[0]) => {
     const res = await jobsStore.startJob(args);
+    // `refreshPlans()`, which every one of V1's launchers ends with (`ContentView.LaunchExecute`,
+    // `LaunchWithSync`, `SubmitAnnotationsUpdate`). The job the daemon just accepted moves the plan out
+    // of Draft, and without re-reading the list the page it was launched from keeps showing it as a
+    // draft awaiting execution. `jobsStore.startJob` already re-reads the jobs half.
+    plansStore.fetchPlans().catch(() => {});
     handleSelectJob(res.jobId);
   };
 

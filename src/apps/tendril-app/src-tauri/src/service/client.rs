@@ -563,11 +563,28 @@ impl TendrilClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown")
                     .to_string();
+                // Which plan this job holds. `reportedPlanId` is what the *agent* reported, so it is
+                // empty until the agent has run — and `planId` is not a key the daemon sends at all.
+                // So a job dispatched a moment ago had no plan id, and everything keyed on it silently
+                // did nothing: the Plans list never dropped the plan a job had just taken
+                // (`draftQueueFor`), `hasActiveJob` never disabled Update/Expand/Split, and the failure
+                // callout never found its job.
+                //
+                // `planFile` is the association the daemon always sets from the dispatch arguments. It
+                // arrives in two shapes — a bare id (`00681`) or a folder name
+                // (`00610-PortTunnelAndShareSubsys`) — so it is normalised to the 5-digit id the app
+                // compares against `PlanSummary.id`.
                 let plan_id = val
                     .get("reportedPlanId")
                     .or_else(|| val.get("planId"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        val.get("planFile")
+                            .and_then(|v| v.as_str())
+                            .and_then(plan_id_from_folder)
+                    });
                 let plan_title = val
                     .get("reportedPlanTitle")
                     .or_else(|| val.get("planTitle"))
@@ -763,11 +780,21 @@ impl TendrilClient {
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown")
             .to_string();
+        // Same fallback as `list_jobs`: `reportedPlanId` is empty until the agent has reported, so a
+        // job detail opened right after dispatch would otherwise claim to hold no plan. `plan_folder`
+        // below keeps the raw `planFile`; this is the normalised id.
         let plan_id = details
             .get("reportedPlanId")
             .or_else(|| details.get("planId"))
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                details
+                    .get("planFile")
+                    .and_then(|v| v.as_str())
+                    .and_then(plan_id_from_folder)
+            });
         let plan_title = details
             .get("reportedPlanTitle")
             .or_else(|| details.get("planTitle"))
@@ -3034,6 +3061,27 @@ fn job_artifact_path(job_id: &str, suffix: &str) -> Option<String> {
     let home = crate::daemon::resolve_tendril_home();
     tendril_core::jobs::logger::find_log_file(&home, job_id, suffix)
         .map(|path| path.to_string_lossy().to_string())
+}
+
+/// The 5-digit plan id a job's `planFile` names, or `None` if it names no plan.
+///
+/// `planFile` is whatever the dispatch passed, so it is a bare id (`00681`) as often as a folder name
+/// (`00610-PortTunnelAndShareSubsys`), and occasionally an absolute path. Only the leading digit run
+/// matters, zero-padded to five so it compares equal to `PlanSummary.id`.
+///
+/// Empty is `None` rather than `Some("00000")`: a CreatePlan job holds no plan until it has made one,
+/// and a job claiming to hold plan zero would be filtered against a plan that cannot exist.
+pub(crate) fn plan_id_from_folder(plan_file: &str) -> Option<String> {
+    let name = plan_file
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(plan_file)
+        .trim();
+    let digits: String = name.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    Some(format!("{:0>5}", digits.parse::<u32>().ok()?))
 }
 
 fn urlencoding(s: &str) -> String {

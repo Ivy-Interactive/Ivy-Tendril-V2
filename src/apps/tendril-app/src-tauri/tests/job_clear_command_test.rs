@@ -274,3 +274,73 @@ async fn list_jobs_carries_last_output_at_and_leaves_it_absent_when_the_job_is_s
     let silent = serde_json::to_value(&jobs[1]).expect("serialize");
     assert!(silent.get("lastOutputAt").is_none());
 }
+
+/// Which plan a job holds, and why `planFile` has to be part of the answer.
+///
+/// The daemon sends no `planId` key at all — the association is `reportedPlanId`, which the *agent*
+/// fills in and so is empty until the agent has run, plus `planFile`, which the dispatch always sets.
+/// Reading only the former meant a job dispatched a moment ago claimed to hold no plan, and everything
+/// keyed on that quietly did nothing: the Plans list never dropped the plan whose Execute had just been
+/// pressed, `hasActiveJob` never disabled Update/Expand/Split, and the failure callout never found its
+/// job.
+#[tokio::test]
+async fn a_job_reports_the_plan_it_holds_before_its_agent_has_reported_anything() {
+    let _guard = env_lock().await;
+    let temp = tempfile::tempdir().expect("tempdir");
+
+    let observed: Shared = Arc::new(Mutex::new(Observed::default()));
+    let app = Router::new()
+        .route(
+            "/api/jobs",
+            get(|| async {
+                (
+                    StatusCode::OK,
+                    // Exactly the four shapes the live daemon serves. Note not one carries `planId`.
+                    Json(json!([
+                        // Just dispatched: only the bare id the caller passed.
+                        { "id": "03590", "type": "ExecutePlan", "project": "p", "status": "Queued",
+                          "planFile": "00682" },
+                        // Mid-run: the agent has reported, and that still wins.
+                        { "id": "03588", "type": "ExecutePlan", "project": "p", "status": "Running",
+                          "planFile": "00681", "reportedPlanId": "00681" },
+                        // A folder name rather than a bare id.
+                        { "id": "03555", "type": "ExecutePlan", "project": "p", "status": "Timeout",
+                          "planFile": "00610-PortTunnelAndShareSubsys" },
+                        // CreatePlan holds no plan until it has made one.
+                        { "id": "03589", "type": "CreatePlan", "project": "p", "status": "Failed",
+                          "planFile": "" }
+                    ])),
+                )
+            }),
+        )
+        .with_state(observed);
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.ok();
+    });
+    write_master(temp.path(), addr.port(), SECRET);
+    std::env::set_var("TENDRIL_HOME", temp.path());
+
+    let client = TendrilClient::new(
+        format!("http://127.0.0.1:{}", addr.port()),
+        Some(SECRET.to_string()),
+    );
+    let jobs = client.list_jobs(None, None).await.expect("list jobs");
+
+    let of = |id: &str| {
+        jobs.iter()
+            .find(|j| j.id == id)
+            .unwrap_or_else(|| panic!("job {id}"))
+            .plan_id
+            .clone()
+    };
+    // The one that was broken: a bare `planFile` and nothing else still names the plan.
+    assert_eq!(of("03590").as_deref(), Some("00682"));
+    assert_eq!(of("03588").as_deref(), Some("00681"));
+    // Normalised to the 5-digit id the app compares against `PlanSummary.id`, not the folder name.
+    assert_eq!(of("03555").as_deref(), Some("00610"));
+    // And a job holding no plan says so, rather than claiming plan zero.
+    assert_eq!(of("03589"), None);
+}

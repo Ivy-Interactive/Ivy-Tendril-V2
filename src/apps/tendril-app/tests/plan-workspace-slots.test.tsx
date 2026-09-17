@@ -526,6 +526,7 @@ describe("the Chat slot", () => {
    */
   it("creates the plan's session on the first message, attached to the plan", async () => {
     const created = session({ id: "sess-new", messages: [] });
+    const listSessions = vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
     const createSession = vi.spyOn(chatApi, "createSession").mockResolvedValue(created);
     const executeTurn = vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(created);
@@ -533,7 +534,7 @@ describe("the Chat slot", () => {
     const { container } = render(<PlanDetailView plan={plan()} />);
 
     // Nothing is created merely by opening the panel.
-    await waitFor(() => expect(chatApi.listSessions).toHaveBeenCalled());
+    await waitFor(() => expect(listSessions).toHaveBeenCalled());
     expect(createSession).not.toHaveBeenCalled();
 
     const composer = container.querySelector<HTMLTextAreaElement>(".pws-chat textarea")!;
@@ -583,8 +584,9 @@ describe("the Chat slot", () => {
   /** `ChatStore.sendMessage` reports a refused turn in the chat's own error banner. */
   it("reports a refused session creation rather than losing the message silently", async () => {
     vi.spyOn(chatApi, "createSession").mockRejectedValue(new Error("daemon unreachable"));
+    const listSessions = vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
     const { container } = render(<PlanDetailView plan={plan()} />);
-    await waitFor(() => expect(chatApi.listSessions).toHaveBeenCalled());
+    await waitFor(() => expect(listSessions).toHaveBeenCalled());
 
     const composer = container.querySelector<HTMLTextAreaElement>(".pws-chat textarea")!;
     fireEvent.change(composer, { target: { value: "Tighten the approach" } });
