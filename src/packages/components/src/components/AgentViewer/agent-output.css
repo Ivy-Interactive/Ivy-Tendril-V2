@@ -69,7 +69,7 @@
 }
 
 .aov-body > * {
-  animation: aov-stream-in 0.25s var(--ease-out) both;
+  animation: aov-stream-in var(--duration-moderate) var(--ease-out) both;
   min-width: 0;
   max-width: 100%;
 }

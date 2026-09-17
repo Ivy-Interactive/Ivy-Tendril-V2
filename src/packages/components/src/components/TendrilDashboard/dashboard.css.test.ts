@@ -36,7 +36,7 @@ describe("dashboard.css KPI grid", () => {
     // font-size 13px == var(--text-sm-tight) (tokens.css); the computed value is unchanged.
     expect(css).toContain(".tdb-kpi-subvalue {");
     expect(css).toMatch(/\.tdb-kpi-subvalue\s*\{[^}]*font-size:\s*var\(--text-sm-tight\);/);
-    expect(css).toMatch(/\.tdb-kpi-subvalue\s*\{[^}]*opacity:\s*0\.75;/);
+    expect(css).toMatch(/\.tdb-kpi-subvalue\s*\{[^}]*opacity:\s*var\(--opacity-subtle\);/);
   });
 
   it("defines cursor pointer, transition, hover, and focus-visible on .tdb-kpi", () => {

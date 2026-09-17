@@ -396,7 +396,7 @@ td.diff-gutter-empty::after {
   font-family: var(--font-mono);
   background: color-mix(in srgb, var(--muted) 60%, transparent);
   border: var(--border-width) solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   padding: 0 3px;
   font-size: 0.9em;
 }
@@ -404,7 +404,7 @@ td.diff-gutter-empty::after {
 .diff-comment-markdown pre {
   background: color-mix(in srgb, var(--muted) 60%, transparent);
   border: var(--border-width) solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   padding: 0.5rem;
   overflow-x: auto;
   margin: 0.35rem 0;

@@ -311,7 +311,7 @@
 }
 
 .tq-submit:disabled {
-  opacity: 0.4;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 

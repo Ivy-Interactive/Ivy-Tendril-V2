@@ -302,7 +302,7 @@ button.tdb-kpi:focus-visible {
 .tdb-kpi-subvalue {
   font-size: var(--text-sm-tight);
   font-weight: 500;
-  opacity: 0.75;
+  opacity: var(--opacity-subtle);
   white-space: nowrap;
 }
 

@@ -358,7 +358,7 @@
 }
 
 .tui-icon-btn:disabled {
-  opacity: 0.35;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 
@@ -410,7 +410,7 @@
 }
 
 .tui-status-sep {
-  opacity: 0.55;
+  opacity: var(--opacity-muted);
 }
 
 .tui-status-text {

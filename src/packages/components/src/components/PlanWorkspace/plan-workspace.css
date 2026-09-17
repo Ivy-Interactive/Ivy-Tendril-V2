@@ -170,7 +170,7 @@
 }
 
 .pws-btn--primary:hover:not(:disabled) {
-  opacity: 0.88;
+  opacity: var(--opacity-hover);
 }
 
 .pws-btn--secondary {
@@ -304,7 +304,7 @@
 
 .pws-menu-kbd {
   margin-left: 12px;
-  opacity: 0.55;
+  opacity: var(--opacity-muted);
 }
 
 /* ---------- Body: plan pane + chat panel ---------- */

@@ -417,7 +417,7 @@
 }
 
 .tsh-newplan:hover {
-  opacity: 0.88;
+  opacity: var(--opacity-hover);
 }
 
 .tsh-newplan-label-group {
@@ -1303,7 +1303,7 @@
   height: 16px;
   border: none;
   background: transparent;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--tsh-fg);
   opacity: var(--opacity-muted);
   cursor: pointer;
