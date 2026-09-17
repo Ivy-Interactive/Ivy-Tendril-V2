@@ -6,6 +6,9 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const port = Number(process.env.PORT) || 5010;
 const tendrilHome = process.env.TENDRIL_HOME || path.join(os.homedir(), ".tendril");
@@ -143,8 +146,8 @@ async function main() {
   // Ensure @ivy-interactive/components is built before launching the desktop app
   try {
     execSync(`node "${path.resolve(__dirname, "ensure-components.mjs")}"`, { stdio: "inherit" });
-  } catch {
-    console.error("\x1b[31m[dev-desktop] Could not build @ivy-interactive/components\x1b[0m");
+  } catch (err) {
+    console.error("\x1b[31m[dev-desktop] Could not build @ivy-interactive/components:\x1b[0m", err);
   }
 
   const isAlreadyRunning = await checkServiceHealth(port);
