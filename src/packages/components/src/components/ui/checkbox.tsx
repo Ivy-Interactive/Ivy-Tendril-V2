@@ -85,8 +85,8 @@ const Checkbox = React.forwardRef<
       onCheckedChange?.(nextVal);
     };
 
-    const isInvalid = className?.includes("border-destructive") || className?.includes("bg-red-50");
-    const baseClass = `peer ${getSizeClasses(effectiveDensity)} shrink-0 rounded-checkbox border border-border shadow transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary data-[state=checked]:hover:bg-primary/90 dark:border-white/10`;
+    const isInvalid = className?.includes("border-destructive") || className?.includes("bg-destructive");
+    const baseClass = `peer ${getSizeClasses(effectiveDensity)} shrink-0 rounded-checkbox border border-border shadow transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=checked]:border-primary data-[state=checked]:hover:bg-primary/90 dark:border-input`;
     const finalClass = isInvalid
       ? baseClass
           .replace("data-[state=checked]:bg-primary", "data-[state=checked]:bg-destructive")
@@ -101,7 +101,7 @@ const Checkbox = React.forwardRef<
           )
           .replace("focus-visible:ring-ring", "focus-visible:ring-destructive")
           .replace("border-border", "border-destructive")
-          .replace("dark:border-white/10", "dark:border-destructive")
+          .replace("dark:border-input", "dark:border-destructive")
       : baseClass;
 
     return (

@@ -8,6 +8,7 @@ import {
   type VerificationReport,
   type VerificationStatus,
 } from "../types/api";
+import { TERMINAL_VERIFICATION_CLASS } from "../utils/verificationStatus";
 
 interface PlanVerificationsProps {
   planId: string;
@@ -51,16 +52,6 @@ export function orderByProjectConfig(
     .sort((a, b) => rank(a.v) - rank(b.v) || a.index - b.index)
     .map((entry) => entry.v);
 }
-
-/**
- * Badge classes for the two terminal outcomes, from `Constants.VerificationStatusBadgeVariants`
- * (V1 `src/Ivy.Tendril/Constants.cs`): Pass is Success and Fail is Destructive. Pending and
- * Skipped are Outline there and carry no badge here at all - see below.
- */
-const TERMINAL_STATUS_CLASS: Record<"Pass" | "Fail", string> = {
-  Pass: "border-success/40 bg-success/10 text-success",
-  Fail: "border-destructive/40 bg-destructive/10 text-destructive",
-};
 
 /**
  * Verifications, as V1's `VerificationsPanelView` presents them: one checkbox per
@@ -208,7 +199,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
         <div
           role="alert"
           data-testid="verification-reports-error"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {error}
         </div>
@@ -223,7 +214,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
         const terminal = v.status === "Pass" || v.status === "Fail" ? v.status : null;
 
         return (
-          <div key={v.name} className="rounded-lg border border-border bg-background">
+          <div key={v.name} className="rounded-box border border-border bg-background">
             <div className="flex items-center justify-between gap-3 p-3">
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -243,7 +234,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                 {terminal && (
                   <span
                     data-testid={`verification-status-${v.name}`}
-                    className={`rounded border px-2 py-0.5 text-xs font-medium ${TERMINAL_STATUS_CLASS[terminal]}`}
+                    className={`rounded border px-2 py-0.5 text-xs font-medium ${TERMINAL_VERIFICATION_CLASS[terminal]}`}
                   >
                     {terminal}
                   </span>

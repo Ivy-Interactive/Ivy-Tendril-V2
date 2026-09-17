@@ -1,4 +1,5 @@
-import type { Job } from "../types/api";
+import type { StackedProgressColor } from "@ivy-interactive/components/ui";
+import type { Job, JobStatus } from "../types/api";
 import type { ChatMessage } from "../types/chat";
 import { formatSystemEvent } from "./systemEvents";
 
@@ -48,3 +49,114 @@ export function resolveJobState(
 
   return "unknown";
 }
+
+/**
+ * Job status to badge classes, from `Constants.JobStatusColors` (V1 `src/Ivy.Tendril/Constants.cs`):
+ * Running is Blue, Completed is Green, Failed and Timeout are Red, Queued and Pending are Amber,
+ * Blocked is Orange, Stopped is Gray.
+ *
+ * Semantic tokens only, which collapses V1's Amber and Orange onto the one `warning` token the design
+ * system has. That keeps Blocked reading the same as it does on a plan (`PLAN_STATE_BADGE_CLASS` maps
+ * Blocked to warning too) at the cost of the amber/orange distinction, which carried no meaning V1
+ * relied on. `--primary` is Ivy green and is never reached for here: a status badge that borrowed it
+ * would read as "succeeded" on a job that has not run.
+ */
+export const JOB_STATUS_BADGE_CLASS: Record<JobStatus, string> = {
+  Running: "border-info/40 bg-info/10 text-info",
+  Completed: "border-success/40 bg-success/10 text-success",
+  Failed: "border-destructive/40 bg-destructive/10 text-destructive",
+  Timeout: "border-destructive/40 bg-destructive/10 text-destructive",
+  Queued: "border-warning/40 bg-warning/10 text-warning",
+  Pending: "border-warning/40 bg-warning/10 text-warning",
+  Blocked: "border-warning/40 bg-warning/10 text-warning",
+  Stopped: "border-border bg-transparent text-muted-foreground",
+};
+
+/**
+ * `Constants.JobStatusColors` (`src/Ivy.Tendril/Constants.cs:54-64`), value for value.
+ *
+ * V1 renders the Status cell through a `LabelsDisplayRenderer` whose `BadgeColorMapping` is this
+ * dictionary (`JobsApp.DataTable.cs:61-67`), so a status's colour *is* its name here. The design system
+ * publishes one token per Ivy colour (`styles/tokens.css`) and `Badge`'s `color` prop tints from it, so
+ * these are V1's colours rather than an approximation of them — including the two that no semantic
+ * token could tell apart: Queued/Pending **Amber** and Blocked **Orange**.
+ */
+export const JOB_STATUS_COLOR: Record<JobStatus, string> = {
+  Running: "Blue",
+  Completed: "Green",
+  Failed: "Red",
+  Timeout: "Red",
+  Queued: "Amber",
+  Pending: "Amber",
+  Stopped: "Gray",
+  Blocked: "Orange",
+};
+
+/**
+ * `Constants.JobTypeColors` (`Constants.cs:66-79`), the Type column's `BadgeColorMapping`
+ * (`JobsApp.DataTable.cs:68-74`). Eleven job types, eleven hues.
+ *
+ * A type not listed here renders on `Slate`, which is what V1's renderer does with a value its mapping
+ * has no entry for — a new job type gets a neutral chip rather than borrowing another type's colour.
+ */
+export const JOB_TYPE_COLOR: Record<string, string> = {
+  CreatePlan: "Purple",
+  ExecutePlan: "Blue",
+  UpdatePlan: "Cyan",
+  ExpandPlan: "Teal",
+  SplitPlan: "Indigo",
+  CreatePr: "Green",
+  CreateIssue: "Rose",
+  RetryPlan: "Orange",
+  SetupProject: "Slate",
+  SyncRepo: "Amber",
+  AddProject: "Purple",
+};
+
+/** V1's fallback hue for a value outside a `BadgeColorMapping`. */
+export const UNMAPPED_COLOR = "Slate";
+
+/**
+ * The Project column's palette.
+ *
+ * V1 colours each project from configuration (`ProjectHelper.BuildColorMapping(config)`, passed as the
+ * Project column's `BadgeColorMapping` at `JobsApp.DataTable.cs:75-78`), so two projects are always
+ * distinguishable at a glance. V2's `ProjectSummary` does not carry the configured colour — the daemon
+ * has one (`bridge.createProject` sets it) and the DTO drops it — so the colour is derived from the
+ * project's name instead: stable, distinct, and the same colour in every view that uses this. Reported
+ * rather than worked around: the moment the DTO carries `color`, this becomes a lookup.
+ */
+const PROJECT_COLORS = [
+  "Blue",
+  "Purple",
+  "Teal",
+  "Amber",
+  "Rose",
+  "Cyan",
+  "Indigo",
+  "Green",
+  "Orange",
+  "Violet",
+];
+
+export function projectColor(project: string): string {
+  let hash = 0;
+  for (let index = 0; index < project.length; index += 1) {
+    // The classic 31-multiplier string hash. Deterministic and stable across runs, which is the only
+    // property that matters: a project whose colour changed between renders would be worse than grey.
+    hash = (hash * 31 + project.charCodeAt(index)) | 0;
+  }
+  return PROJECT_COLORS[Math.abs(hash) % PROJECT_COLORS.length];
+}
+
+/** The same mapping for the header's `StackedProgress` segments (`JobsApp.Data.cs` `GetStatusColor`). */
+export const JOB_STATUS_SEGMENT_COLOR: Record<JobStatus, StackedProgressColor> = {
+  Running: "info",
+  Completed: "success",
+  Failed: "destructive",
+  Timeout: "destructive",
+  Queued: "warning",
+  Pending: "warning",
+  Blocked: "warning",
+  Stopped: "muted",
+};

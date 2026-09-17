@@ -17,8 +17,9 @@ import {
 } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
 import { onPrStatusEvent } from "../api/events";
-import { bridgeErrorCode, describeBridgeError, type PrState, type PrStatus } from "../types/api";
+import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
 import { EmptyState } from "../components/EmptyState";
+import { PR_STATE_CLASS } from "../utils/prStatus";
 
 /** The original's `BatchSize` — a cross-plan PR list is long, so the page holds more than the default 10. */
 const DEFAULT_PAGE_SIZE = 50;
@@ -29,21 +30,6 @@ const STATUS_OPTIONS: BadgeSelectOption[] = [
   { value: "Closed", label: "Closed" },
   { value: "Unknown", label: "Unknown" },
 ];
-
-/**
- * Shared with the per-plan card in `PlanPullRequests`, so the table and the card agree on colour.
- *
- * `Closed` is neutral, not destructive: `PullRequestApp`'s `BadgeColorMapping` gives it
- * `Colors.Zinc` beside `Green` for Open and `Purple` for Merged. A PR closed without merging is an
- * ordinary outcome — a superseded branch, a duplicate — and painting it the same red as a failure
- * makes an operator triage a row that needs nothing.
- */
-const STATE_CLASS: Record<PrState, string> = {
-  Open: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-  Merged: "bg-violet-500/10 text-violet-300 border-violet-500/30",
-  Closed: "bg-muted text-muted-foreground border-border",
-  Unknown: "bg-slate-700/40 text-slate-400 border-slate-600/40",
-};
 
 /** The Dashboard's format, so the app has one token format rather than two. */
 function formatTokens(tokens: number): string {
@@ -276,7 +262,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
           <span
             title={statusTooltip(row)}
             className={`rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide ${
-              STATE_CLASS[row.status] ?? STATE_CLASS.Unknown
+              PR_STATE_CLASS[row.status] ?? PR_STATE_CLASS.Unknown
             }`}
           >
             {row.status || "Unknown"}
@@ -368,7 +354,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       {error && (
         <div
           role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {error}
         </div>
@@ -376,12 +362,12 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       {syncError && (
         <div
           role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          className="rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {syncError}
         </div>
       )}
-      {notice && <p className="text-xs text-amber-300">{notice}</p>}
+      {notice && <p className="text-xs text-warning">{notice}</p>}
 
       {!isLoading && rows.length === 0 && !error ? (
         <EmptyState
@@ -446,7 +432,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
                   placeholder="Search by plan, project, repository, or branch..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-72 rounded-xl border border-border bg-card px-4 py-2 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="w-72 rounded-field border border-border bg-card px-4 py-2 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
                 />
                 <div className="min-w-[180px]">
                   <BadgeSelect
@@ -472,7 +458,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
                 type="button"
                 onClick={() => void handleSync()}
                 disabled={isSyncing}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                className="rounded-field border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted disabled:opacity-50"
               >
                 {/* "All" rather than "Resync": the row action carries that label, and one pass
                     covers every PR, so the toolbar control says which scope it has. */}

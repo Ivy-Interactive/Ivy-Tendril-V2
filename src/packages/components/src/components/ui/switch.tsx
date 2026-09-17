@@ -12,7 +12,7 @@ const Switch = React.forwardRef<
       icon?: React.ReactNode;
     }
 >(({ className, density, icon, ...props }, ref) => {
-  const isInvalid = className?.includes("border-destructive") || className?.includes("bg-red-50");
+  const isInvalid = className?.includes("border-destructive") || className?.includes("bg-destructive");
   const baseClass = switchVariant({ density });
   const finalClass = isInvalid
     ? baseClass

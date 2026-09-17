@@ -7,16 +7,14 @@ import {
   buildStatusSegments,
   formatJobCost,
   formatTokens,
-  projectColor,
   truncatePrompt,
   jobStatusMessage,
   agentOutputLabel,
   AGENT_OUTPUT_STARTING,
-  JOB_STATUS_COLOR,
-  JOB_TYPE_COLOR,
   RERUN_UNAVAILABLE_REASON,
   type JobRowActionCapabilities,
 } from "../src/views/JobsView";
+import { JOB_STATUS_COLOR, JOB_TYPE_COLOR, projectColor } from "../src/utils/jobStatus";
 import { bridge } from "../src/api/bridge";
 import {
   resetTableQueryTransport,

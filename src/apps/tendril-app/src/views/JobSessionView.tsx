@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
 import { Callout } from "@ivy-interactive/components/ui";
-import { describeBridgeError, type Job, type JobDetail, type JobStatus } from "../types/api";
+import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
+import { JOB_STATUS_BADGE_CLASS } from "../utils/jobStatus";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
@@ -22,28 +23,6 @@ interface JobSessionViewProps {
    */
   layout?: "page" | "sheet";
 }
-
-/**
- * Job status to badge classes, from `Constants.JobStatusColors` (V1 `src/Ivy.Tendril/Constants.cs`):
- * Running is Blue, Completed is Green, Failed and Timeout are Red, Queued and Pending are Amber,
- * Blocked is Orange, Stopped is Gray.
- *
- * Semantic tokens only, which collapses V1's Amber and Orange onto the one `warning` token the design
- * system has. That keeps Blocked reading the same as it does on a plan (`PLAN_STATE_BADGE_CLASS` maps
- * Blocked to warning too) at the cost of the amber/orange distinction, which carried no meaning V1
- * relied on. `--primary` is Ivy green and is never reached for here: a status badge that borrowed it
- * would read as "succeeded" on a job that has not run.
- */
-const JOB_STATUS_BADGE_CLASS: Record<JobStatus, string> = {
-  Running: "border-info/40 bg-info/10 text-info",
-  Completed: "border-success/40 bg-success/10 text-success",
-  Failed: "border-destructive/40 bg-destructive/10 text-destructive",
-  Timeout: "border-destructive/40 bg-destructive/10 text-destructive",
-  Queued: "border-warning/40 bg-warning/10 text-warning",
-  Pending: "border-warning/40 bg-warning/10 text-warning",
-  Blocked: "border-warning/40 bg-warning/10 text-warning",
-  Stopped: "border-border bg-transparent text-muted-foreground",
-};
 
 /** `JobsApp.Helpers.cs` `FormatTimeSpan`: hours drop the seconds, a sub-minute span is seconds only. */
 function formatTimeSpan(totalSeconds: number): string {
