@@ -4,6 +4,8 @@ import "./ui.css";
 
 export type IconButtonSize = "sm" | "md" | "lg";
 export type IconButtonVariant = "ghost" | "danger" | "solid";
+export type IconButtonShape = "square" | "round";
+export type IconButtonTone = "default" | "muted";
 
 export interface IconButtonProps extends Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
@@ -21,6 +23,9 @@ export interface IconButtonProps extends Omit<
   onTooltipOpenChange?: (open: boolean) => void;
   size?: IconButtonSize;
   variant?: IconButtonVariant;
+  shape?: IconButtonShape;
+  /** "muted" rests at the theme's muted-foreground color instead of a flat opacity dim. */
+  tone?: IconButtonTone;
   /** Held-open look for a button whose panel is showing. */
   active?: boolean;
   className?: string;
@@ -41,6 +46,8 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(f
     onTooltipOpenChange,
     size = "lg",
     variant = "ghost",
+    shape = "square",
+    tone = "default",
     active,
     className = "",
     type = "button",
@@ -56,6 +63,8 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(f
       className={`tui-icon-btn ${className}`.trim()}
       data-size={size}
       data-variant={variant}
+      data-shape={shape === "round" ? "round" : undefined}
+      data-tone={tone === "muted" ? "muted" : undefined}
       data-active={active ? "true" : undefined}
       aria-label={label}
     >

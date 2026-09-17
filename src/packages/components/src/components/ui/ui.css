@@ -339,6 +339,20 @@
   height: 32px;
 }
 
+.tui-icon-btn[data-shape="round"] {
+  border-radius: var(--radius-full);
+}
+
+.tui-icon-btn[data-tone="muted"] {
+  color: var(--tui-muted);
+  opacity: 1;
+}
+
+.tui-icon-btn[data-tone="muted"]:hover:not(:disabled),
+.tui-icon-btn[data-tone="muted"][data-active="true"] {
+  color: var(--tui-fg);
+}
+
 .tui-icon-btn:hover:not(:disabled),
 .tui-icon-btn[data-active="true"],
 .tui-icon-btn[aria-expanded="true"] {
