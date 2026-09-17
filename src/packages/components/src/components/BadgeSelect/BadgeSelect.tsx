@@ -159,7 +159,7 @@ export function BadgeSelect({
   useLayoutEffect(() => {
     const container = badgesRef.current;
     if (!container || selected.length === 0) return;
-    const badges = Array.from(container.querySelectorAll<HTMLElement>("[data-badge]"));
+    const badges = Array.from(container.querySelectorAll<HTMLElement>(".bselect-badge"));
     badges.forEach((b) => (b.style.display = ""));
     const gap = 4;
     const counterReserve = 40;
