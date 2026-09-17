@@ -283,7 +283,7 @@
 }
 
 .tui-badge[data-shape="pill"] {
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-full);
 }
 
 .tui-badge[data-floating="true"] {

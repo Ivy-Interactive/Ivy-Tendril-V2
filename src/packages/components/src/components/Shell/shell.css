@@ -659,6 +659,7 @@
   right: auto;
   min-width: 13px;
   padding: 1px 2px;
+  border-radius: var(--radius-full);
   font-size: var(--text-3xs);
   line-height: 12px;
   z-index: 1;

@@ -59,7 +59,7 @@ const IconAction: React.FC<{ action: PlanActionDto; onFire: (tag: string) => voi
       <ActionIcon icon={action.icon} />
     )}
     {action.badge && (
-      <TuiBadge numeric floating>
+      <TuiBadge numeric shape="pill" floating>
         {action.badge}
       </TuiBadge>
     )}

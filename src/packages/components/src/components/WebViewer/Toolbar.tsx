@@ -77,7 +77,7 @@ const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
     >
       <Icon size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
       {badge && (
-        <TuiBadge kind="primary" size="sm" floating className="wvr-badge">
+        <TuiBadge kind="primary" size="sm" shape="pill" numeric floating className="wvr-badge">
           {badge}
         </TuiBadge>
       )}
