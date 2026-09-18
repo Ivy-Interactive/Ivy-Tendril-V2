@@ -4,19 +4,46 @@
 //! Ported from V1's `Assets/AssetCatalog.cs`. All of it is produced at build time by
 //! `pipeline/vendor/build-all.mjs`, so nothing here needs node, npm or the network.
 //!
-//! One deliberate simplification. V1 embeds the payload as a zip resource in the assembly and keeps
-//! a decompressed-entry cache, because the dev server re-reads the same handful of files on every
-//! page load. `include_dir!` embeds the tree uncompressed and hands out `&'static [u8]`, so there is
-//! nothing to decompress and nothing to cache: a read is a slice, not a copy. The binary grows by
-//! the payload's ~3.7 MB rather than by its compressed size, which is the whole cost.
+//! Like V1, the payload is embedded as one blob rather than as a tree of separate statics. V1 zips
+//! it and caches decompressed entries; `build.rs` here packs it uncompressed, so a read is a slice
+//! into the binary's own image and there is nothing to decompress or cache. The binary grows by the
+//! payload's ~3.7 MB rather than by its compressed size, which is the whole cost.
+//!
+//! This started out using `include_dir!`. That worked, but a flat blob matches the shape V1 chose,
+//! removes a dependency, and gives a deterministic artifact: `build.rs` sorts by path, so the packed
+//! bytes are identical from one build to the next.
 
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use anyhow::{bail, Context, Result};
-use include_dir::{include_dir, Dir};
 use sha2::{Digest, Sha256};
 
-static PAYLOAD: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/artifacts");
+/// The packed payload: see `build.rs` for the format.
+static PAYLOAD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/payload.bin"));
+
+/// Parsed once: path -> a slice of PAYLOAD. Both are 'static, so a read never copies.
+fn index() -> &'static BTreeMap<&'static str, &'static [u8]> {
+    static INDEX: OnceLock<BTreeMap<&'static str, &'static [u8]>> = OnceLock::new();
+    INDEX.get_or_init(|| {
+        let mut map = BTreeMap::new();
+        let mut at = 0usize;
+        while at + 4 <= PAYLOAD.len() {
+            let path_len = u32::from_le_bytes(PAYLOAD[at..at + 4].try_into().unwrap()) as usize;
+            at += 4;
+            let Ok(path) = std::str::from_utf8(&PAYLOAD[at..at + path_len]) else {
+                break;
+            };
+            at += path_len;
+            let body_len = u64::from_le_bytes(PAYLOAD[at..at + 8].try_into().unwrap()) as usize;
+            at += 8;
+            map.insert(path, &PAYLOAD[at..at + body_len]);
+            at += body_len;
+        }
+        map
+    })
+}
 
 fn normalize(path: &str) -> String {
     path.replace('\\', "/").trim_start_matches('/').to_string()
@@ -24,42 +51,15 @@ fn normalize(path: &str) -> String {
 
 /// Case-insensitive lookup, matching V1's `OrdinalIgnoreCase` entry set. The exact match is tried
 /// first because it is the only one that costs nothing.
-fn find(path: &str) -> Option<&'static include_dir::File<'static>> {
+fn find(path: &str) -> Option<&'static [u8]> {
     let key = normalize(path);
-    if let Some(file) = PAYLOAD.get_file(&key) {
-        return Some(file);
+    if let Some(found) = index().get(key.as_str()) {
+        return Some(found);
     }
-    PAYLOAD
-        .files()
-        .chain(PAYLOAD.dirs().flat_map(|d| d.files()))
-        .find(|f| {
-            f.path()
-                .to_string_lossy()
-                .replace('\\', "/")
-                .eq_ignore_ascii_case(&key)
-        })
-        .or_else(|| {
-            all_files().into_iter().find(|f| {
-                f.path()
-                    .to_string_lossy()
-                    .replace('\\', "/")
-                    .eq_ignore_ascii_case(&key)
-            })
-        })
-}
-
-/// Every file in the payload, at any depth. `include_dir` only walks one level per call, so this
-/// flattens it once and the callers iterate the result.
-fn all_files() -> Vec<&'static include_dir::File<'static>> {
-    fn walk(dir: &'static Dir<'static>, out: &mut Vec<&'static include_dir::File<'static>>) {
-        out.extend(dir.files());
-        for child in dir.dirs() {
-            walk(child, out);
-        }
-    }
-    let mut out = Vec::new();
-    walk(&PAYLOAD, &mut out);
-    out
+    index()
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(&key))
+        .map(|(_, body)| *body)
 }
 
 pub fn exists(path: &str) -> bool {
@@ -73,23 +73,22 @@ pub fn list(prefix: &str) -> Vec<String> {
         prefix.push('/');
     }
 
-    let mut out: Vec<String> = all_files()
-        .into_iter()
-        .map(|f| f.path().to_string_lossy().replace('\\', "/"))
+    // The index is a BTreeMap, so its keys already come out sorted.
+    index()
+        .keys()
         .filter(|p| {
             prefix.is_empty()
                 || p.to_ascii_lowercase()
                     .starts_with(&prefix.to_ascii_lowercase())
         })
-        .collect();
-    out.sort();
-    out
+        .map(|p| p.to_string())
+        .collect()
 }
 
 /// Reads one asset. The result is a slice into the binary's own image: no copy, no cache.
 pub fn read(path: &str) -> Result<&'static [u8]> {
     match find(path) {
-        Some(file) => Ok(file.contents()),
+        Some(body) => Ok(body),
         None => bail!(
             "Asset '{}' is not in the embedded payload.",
             normalize(path)
@@ -103,7 +102,7 @@ pub fn read_text(path: &str) -> Result<&'static str> {
 }
 
 pub fn try_read(path: &str) -> Option<&'static [u8]> {
-    find(path).map(|f| f.contents())
+    find(path)
 }
 
 /// Writes every asset under `prefix` into `target_dir`, preserving relative structure. Used to
@@ -139,14 +138,12 @@ pub fn extract_to(prefix: &str, target_dir: &Path) -> Result<usize> {
 pub fn hash() -> &'static str {
     static HASH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     HASH.get_or_init(|| {
-        let mut files = all_files();
-        files.sort_by_key(|f| f.path().to_string_lossy().replace('\\', "/"));
-
+        // The index is already in sorted order, which is what makes this stable between builds.
         let mut hasher = Sha256::new();
-        for file in files {
-            hasher.update(file.path().to_string_lossy().replace('\\', "/").as_bytes());
+        for (path, body) in index() {
+            hasher.update(path.as_bytes());
             hasher.update([0u8]);
-            hasher.update(file.contents());
+            hasher.update(body);
         }
         let digest = hasher.finalize();
         digest[..8].iter().map(|b| format!("{b:02x}")).collect()
