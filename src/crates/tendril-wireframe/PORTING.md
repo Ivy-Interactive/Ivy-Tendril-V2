@@ -8,39 +8,50 @@ definitions are set aside. This file tracks what has landed.
 
 ## Done
 
-| Area | Module | V1 source |
+Everything in PR #2711 except the two items under **Not ported** below.
+
+| Area | Where it lives | V1 source |
 |---|---|---|
 | Project layout and settings | `project` | `Project/{WireframeProject,WireframeConfig}.cs` |
 | Scaffold templates | `project::templates`, `templates/*.template` | `Project/ScaffoldTemplates.cs` |
 | `setup` | `project::scaffolder` | `Project/ProjectScaffolder.cs` |
 | esbuild provisioning | `build::esbuild` | `Build/EsbuildProvisioner.cs` |
 | Bundling and watching | `build::bundler` | `Build/EsbuildBundler.cs` |
-| Embedded payload | `assets::catalog` | `Assets/AssetCatalog.cs` |
+| Embedded payload | `assets::catalog`, `build.rs` | `Assets/AssetCatalog.cs` |
 | Import map / externals | `assets::vendor_manifest` | `Assets/VendorManifest.cs` |
 | Payload pipeline | `pipeline/vendor/*.mjs`, `artifacts/` | `pipeline/vendor/*.mjs` |
 | Component manifest | `manifest` | `Manifest/{ComponentManifest,FlexibleString*}.cs` |
 | Agent reference | `manifest::agent_readme` | `Manifest/AgentReadmeRenderer.cs` |
 | Served document | `hosting::index_html` | `Hosting/IndexHtmlBuilder.cs` |
+| Route decisions | `hosting::serving` | `Hosting/WireframeEndpoints.cs` |
+| Live reload | `hosting::live_reload` | `Hosting/LiveReloadClient.cs` |
+| Standalone dev server | `hosting::server` | `Hosting/WireframeServer.cs` |
+| Plan preview host | `hosting::host` | `Hosting/WireframeHost.cs` |
 | Browser location | `browser::locator` | `Browser/BrowserLocator.cs` |
 | Headless launch | `browser::process` | `Browser/BrowserProcess.cs` |
 | CDP client | `browser::cdp` | `Browser/CdpConnection.cs` |
 | Capture determinism | `screenshot::determinism` | `Screenshot/DeterminismPayload.cs` |
 | Capture | `screenshot::runner` | `Screenshot/ScreenshotRunner.cs` |
+| CLI | `tendril-cli::commands::wireframe` | `Commands/Wireframe/*.cs` |
+| Plan folder rules | `tendril-core::wireframes` | `Services/Wireframes/PlanWireframes.cs` |
+| Leak guard | `tendril-core::wireframes::leak_guard` | `Services/Wireframes/WireframeLeakGuard.cs` |
+| Guard entry point | `tendril-core::wireframes::plan_guard` | `Services/Wireframes/PlanWireframeGuard.cs` |
+| Fence validator | `tendril-core::wireframes::fence` | `Services/Plans/WireframeFenceValidator.cs` |
+| Project settings | `ProjectConfig::{wireframes,wireframe_guard}` | `Services/ConfigService.cs` |
+| Execution gate | `plans::verification_gate` | `Services/Jobs/JobCompletionHandler.cs` |
+| PR launch gate | `jobs::manager` | `Services/Jobs/JobLauncher.cs` |
+| Completion gate | `PlanCompletionGuard::wireframe_refusal` | `Services/Plans/PlanCompletionGuard.cs` |
+| `plan check-wireframes` | `tendril-cli::commands::plan` | `Commands/PlanCheckWireframesCommand.cs` |
+| Daemon routes | `tendril-server::routes::wireframes` | `Hosting/WireframeEndpoints.cs` |
+| Fence renderer | `packages/components/.../WireframeBlock.tsx` | same file (fork-forward) |
+| Agent guidance | `promptware/plan_reference.md`, `src/promptwares/*` | `Prompts/Plans.md`, `Promptwares/*` |
 
-## Not started
+## Not ported
 
-| Area | V1 source | Notes |
+| Area | V1 source | Why |
 |---|---|---|
-| Standalone dev server | `Hosting/{WireframeServer,WireframeEndpoints,LiveReloadClient}.cs` | what `serve` runs |
-| Tendril's wireframe host | `Hosting/WireframeHost.cs` | `/__wireframes/{plan}/{name}/`, plan-scoped watchers |
-| Tailwind jit mode | `Build/{TailwindProvisioner,TailwindCompiler}.cs` | `--tailwind jit`, downloads the standalone CLI |
-| Utility class linter | `Build/{UtilityClassLinter,CssSelectorIndex}.cs` | warns on classes the superset does not contain |
-| CLI commands | `Commands/Wireframe/*.cs` | `setup`, `serve`, `screenshot`, `agent-readme` |
-| Fence validator | `Services/Plans/WireframeFenceValidator.cs` | rejects a malformed `wireframe` block on write |
-| Leak guard | `Services/Wireframes/WireframeLeakGuard.cs` | keeps a wireframe out of a product repo |
-| Plan wiring | `Services/Wireframes/PlanWireframes.cs`, job hooks, project settings | `wireframes`, `wireframeGuard` |
-| Frontend fence | `Ivy.Tendril.Widgets/frontend/src/PlanMarkdown/WireframeBlock.tsx` | lands in `packages/components` |
-| Promptwares | `Prompts/Plans.md`, `Promptwares/*/Program.md` | lands in `src/promptwares` |
+| Tailwind `jit` mode | `Build/{TailwindProvisioner,TailwindCompiler}.cs` | `--tailwind jit` refuses with a clear message rather than silently falling back to the superset, which would give a project whose arbitrary values quietly do nothing |
+| Utility class linter | `Build/{UtilityClassLinter,CssSelectorIndex}.cs` | warns when a class is not in the superset; the agent reference already documents the limitation |
 
 ## Deliberate deviations from V1
 
