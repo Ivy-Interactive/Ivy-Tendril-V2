@@ -318,6 +318,34 @@ async fn a_terminal_write_keeps_what_the_running_job_reported() {
     assert_eq!(row.chat_session_id.as_deref(), Some("sess-alpha"));
 }
 
+/// The ids an earlier version of the stream scrape wrote into every session file it touched.
+///
+/// That regex matched the job-start *command* as well as its result, so it captured whatever followed
+/// the job type — `--chat-session` for the flag the prompt asks for, `--description` for a `CreatePlan`.
+/// Those resolve to no job, and the header already dropped them, but they are still on disk and
+/// `tendril chat show` printed them as this conversation's jobs.
+#[test]
+fn a_flag_the_old_scrape_recorded_is_not_read_back_as_a_job() {
+    let wire = serde_json::json!({
+        "id": "sess-alpha",
+        "title": "Chat",
+        "createdAt": "2026-09-17T10:00:00Z",
+        "updatedAt": "2026-09-17T10:00:00Z",
+        "agentId": "claude",
+        "modelId": "default",
+        "spawnedJobIds": ["--chat-session", "03589", "--description", "  ", "03590"],
+    });
+
+    let session: tendril_core::chat::models::ChatSession =
+        serde_json::from_value(wire).expect("load a session written while the old regex was live");
+
+    assert_eq!(
+        session.spawned_job_ids,
+        vec!["03589".to_string(), "03590".to_string()],
+        "a flag is not a job id, and a real one must survive"
+    );
+}
+
 /// The wire name the app reads. `chatSessionId` is what `JobDto`/`Job` expect, and a mismatch here
 /// would leave the header with no way to tell whose job it is.
 #[test]

@@ -124,50 +124,9 @@ fn spawn_chat_job_notifier(
             ) {
                 continue;
             }
-            // The plan the event is *about*. A `CreatePlan` starts with no plan folder and only learns
-            // its plan through `tendril job status --plan-id`, so the reported id is the fallback —
-            // without it the one job type whose whole purpose is to produce a plan was the one type
-            // that could never announce it.
-            let folder_name = event.plan_folder.clone().or_else(|| {
-                event.reported_plan_id.as_deref().and_then(|plan_id| {
-                    tendril_core::plans::helpers::resolve_plan_folder_name(plan_id, &plans_dir).ok()
-                })
-            });
-
+            let folder_name = event_plan_folder(&event, &plans_dir);
             let message = describe_job_event(&event, &plans_dir, folder_name.as_deref());
-
-            // Two ways a conversation can own this event, and a job may match either: it was started
-            // from that conversation (`chat_session_id`, which is the only route open to a job with no
-            // plan), or the conversation is attached to the plan the job worked on.
-            let mut recipients: Vec<String> = Vec::new();
-            if let Some(folder_name) = folder_name.as_deref() {
-                let plan_chat_session_id =
-                    tendril_core::plans::reader::read_plan_yaml(&plans_dir.join(folder_name))
-                        .ok()
-                        .and_then(|(plan, _)| plan.chat_session_id.clone());
-                match tendril_core::chat::storage::plan_session_recipients(
-                    &tendril_home,
-                    folder_name,
-                    plan_chat_session_id.as_deref(),
-                ) {
-                    Ok(found) => recipients = found,
-                    Err(err) => {
-                        tracing::debug!(
-                            "Could not resolve chat recipients for {folder_name}: {err}"
-                        );
-                    }
-                }
-            }
-            if let Some(chat_session_id) = event
-                .chat_session_id
-                .as_deref()
-                .map(str::trim)
-                .filter(|id| !id.is_empty())
-            {
-                if !recipients.iter().any(|id| id == chat_session_id) {
-                    recipients.push(chat_session_id.to_string());
-                }
-            }
+            let recipients = notifier_recipients(&tendril_home, &plans_dir, &event);
             if recipients.is_empty() {
                 continue;
             }
@@ -186,6 +145,70 @@ fn spawn_chat_job_notifier(
             }
         }
     });
+}
+
+/// The plan an event is *about*.
+///
+/// A `CreatePlan` starts with no plan folder and only learns its plan through
+/// `tendril job status --plan-id`, so the reported id is the fallback — without it the one job type
+/// whose whole purpose is to produce a plan was the one type that could never announce it.
+fn event_plan_folder(
+    event: &tendril_core::jobs::manager::JobEvent,
+    plans_dir: &Path,
+) -> Option<String> {
+    event.plan_folder.clone().or_else(|| {
+        event.reported_plan_id.as_deref().and_then(|plan_id| {
+            tendril_core::plans::helpers::resolve_plan_folder_name(plan_id, plans_dir).ok()
+        })
+    })
+}
+
+/// The conversations a job event belongs to, in the order they are announced.
+///
+/// Two ways a conversation can own an event, and a job may match either: it was started *from* that
+/// conversation (`chat_session_id`, which is the only route open to a job with no plan — a `CreatePlan`
+/// has none until it finishes), or the conversation is attached to the plan the job worked on. The union
+/// is what makes both a plain chat and a plan's own side-panel chat hear about the same job, and the
+/// dedupe is what stops a conversation that matches both ways hearing about it twice — each announcement
+/// runs a whole agent turn.
+///
+/// Extracted from the notifier loop so it can be tested without a chat manager or a broadcast channel.
+fn notifier_recipients(
+    tendril_home: &Path,
+    plans_dir: &Path,
+    event: &tendril_core::jobs::manager::JobEvent,
+) -> Vec<String> {
+    let mut recipients: Vec<String> = Vec::new();
+
+    if let Some(folder_name) = event_plan_folder(event, plans_dir) {
+        let plan_chat_session_id =
+            tendril_core::plans::reader::read_plan_yaml(&plans_dir.join(&folder_name))
+                .ok()
+                .and_then(|(plan, _)| plan.chat_session_id.clone());
+        match tendril_core::chat::storage::plan_session_recipients(
+            tendril_home,
+            &folder_name,
+            plan_chat_session_id.as_deref(),
+        ) {
+            Ok(found) => recipients = found,
+            Err(err) => {
+                tracing::debug!("Could not resolve chat recipients for {folder_name}: {err}");
+            }
+        }
+    }
+
+    if let Some(chat_session_id) = event
+        .chat_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+    {
+        if !recipients.iter().any(|id| id == chat_session_id) {
+            recipients.push(chat_session_id.to_string());
+        }
+    }
+
+    recipients
 }
 
 /// The sentence a job event becomes in a chat.
@@ -509,7 +532,7 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
-    use super::describe_job_event;
+    use super::{describe_job_event, notifier_recipients};
     use tendril_core::jobs::manager::{JobEvent, JOB_EVENT_COMPLETED, JOB_EVENT_FAILED};
     use tendril_core::models::JobStatus;
 
@@ -524,6 +547,159 @@ mod tests {
             chat_session_id: None,
             reported_plan_id: None,
         }
+    }
+
+    /// A throwaway `TENDRIL_HOME` with a plans directory, removed on drop.
+    struct Home {
+        path: std::path::PathBuf,
+    }
+
+    impl Home {
+        fn new(label: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "tendril-notifier-{label}-{}",
+                uuid::Uuid::new_v4().simple()
+            ));
+            std::fs::create_dir_all(path.join("Plans")).expect("create Plans");
+            Self { path }
+        }
+
+        fn plans_dir(&self) -> std::path::PathBuf {
+            self.path.join("Plans")
+        }
+
+        /// A plan folder whose `plan.yaml` optionally names the conversation it belongs to.
+        fn write_plan(&self, folder_name: &str, chat_session_id: Option<&str>) {
+            let folder = self.plans_dir().join(folder_name);
+            std::fs::create_dir_all(&folder).expect("create plan folder");
+            let mut plan = tendril_core::models::PlanYaml {
+                schema_version: 3,
+                state: "Review".to_string(),
+                project: "FixtureProject".to_string(),
+                title: "Port The Chat".to_string(),
+                ..Default::default()
+            };
+            plan.chat_session_id = chat_session_id.map(str::to_string);
+            tendril_core::plans::writer::write_plan_yaml(&folder, &plan).expect("write plan.yaml");
+        }
+
+        /// A chat session, optionally attached to a plan's folder as a side-panel chat is.
+        fn write_session(&self, id: &str, plan_folder_name: Option<&str>) {
+            let now = chrono::Utc::now();
+            let session = tendril_core::chat::models::ChatSession {
+                id: id.to_string(),
+                title: id.to_string(),
+                created_at: now,
+                updated_at: now,
+                agent_id: "claude".to_string(),
+                model_id: "default".to_string(),
+                messages: Vec::new(),
+                effort: None,
+                spawned_job_ids: Vec::new(),
+                plan_folder_name: plan_folder_name.map(str::to_string),
+            };
+            tendril_core::chat::storage::save_session(&self.path, &session).expect("save session");
+        }
+    }
+
+    impl Drop for Home {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    /// Which conversations a job event reaches — the union that makes both a plain chat and a plan's own
+    /// side-panel chat hear about the same job, and the dedupe that stops one hearing about it twice.
+    #[test]
+    fn an_event_reaches_the_chat_that_started_it_and_the_plans_own_chat() {
+        let home = Home::new("recipients");
+        home.write_plan("00007-PortTheChat", Some("sess-plan"));
+        home.write_session("sess-plan", None);
+        home.write_session("sess-panel", Some("00007-PortTheChat"));
+        home.write_session("sess-caller", None);
+        home.write_session("sess-unrelated", None);
+
+        // A job on that plan, started from a third conversation: all three hear, and nobody else does.
+        let mut event = event(JOB_EVENT_COMPLETED, JobStatus::Completed, None);
+        event.chat_session_id = Some("sess-caller".to_string());
+        let recipients = notifier_recipients(&home.path, &home.plans_dir(), &event);
+        assert!(
+            recipients.contains(&"sess-plan".to_string()),
+            "{recipients:?}"
+        );
+        assert!(
+            recipients.contains(&"sess-panel".to_string()),
+            "{recipients:?}"
+        );
+        assert!(
+            recipients.contains(&"sess-caller".to_string()),
+            "{recipients:?}"
+        );
+        assert!(
+            !recipients.contains(&"sess-unrelated".to_string()),
+            "{recipients:?}"
+        );
+
+        // A conversation that owns the event both ways is named once: each announcement runs a turn.
+        event.chat_session_id = Some("sess-plan".to_string());
+        let recipients = notifier_recipients(&home.path, &home.plans_dir(), &event);
+        assert_eq!(
+            recipients.iter().filter(|id| *id == "sess-plan").count(),
+            1,
+            "{recipients:?}"
+        );
+    }
+
+    /// The case the notifier used to give up on entirely: a job with no plan folder. A `CreatePlan` has
+    /// none until it finishes, so before this it was the one job type that could never announce itself.
+    #[test]
+    fn a_job_with_no_plan_still_reaches_the_chat_that_started_it() {
+        let home = Home::new("planless");
+        home.write_session("sess-caller", None);
+
+        let mut event = event(JOB_EVENT_COMPLETED, JobStatus::Completed, None);
+        event.plan_folder = None;
+        event.chat_session_id = Some("sess-caller".to_string());
+
+        assert_eq!(
+            notifier_recipients(&home.path, &home.plans_dir(), &event),
+            vec!["sess-caller".to_string()]
+        );
+    }
+
+    /// And a `CreatePlan` that reported its plan reaches that plan's conversation too, resolved from the
+    /// bare id it reported rather than from a folder it never had.
+    #[test]
+    fn a_reported_plan_id_finds_the_plans_own_chat() {
+        let home = Home::new("reported");
+        home.write_plan("00042-SomePlan", Some("sess-plan"));
+        home.write_session("sess-plan", None);
+
+        let mut event = event(JOB_EVENT_COMPLETED, JobStatus::Completed, None);
+        event.plan_folder = None;
+        event.reported_plan_id = Some("00042".to_string());
+
+        assert_eq!(
+            notifier_recipients(&home.path, &home.plans_dir(), &event),
+            vec!["sess-plan".to_string()]
+        );
+    }
+
+    /// Nobody to tell is not an error — a job started from a terminal on a plan no chat is watching.
+    #[test]
+    fn a_job_no_conversation_owns_reaches_nobody() {
+        let home = Home::new("nobody");
+        home.write_plan("00007-PortTheChat", None);
+        home.write_session("sess-unrelated", None);
+
+        let mut event = event(
+            JOB_EVENT_FAILED,
+            JobStatus::Failed,
+            Some("verification failed"),
+        );
+        event.chat_session_id = None;
+
+        assert!(notifier_recipients(&home.path, &home.plans_dir(), &event).is_empty());
     }
 
     /// The app's `FINISHED` pattern from `utils/systemEvents.ts`, copied here rather than described,
