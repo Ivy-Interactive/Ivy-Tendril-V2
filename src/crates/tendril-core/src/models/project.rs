@@ -402,6 +402,27 @@ pub struct ProjectConfig {
     pub env_files: Vec<ProjectEnvFileConfig>,
     #[serde(rename = "mcpServers", default)]
     pub mcp_servers: Vec<ProjectMcpServerRef>,
+
+    /// Whether planning agents may make wireframes for this project's plans. Turn it off for a
+    /// project with no user interface: `tendril wireframe setup` then refuses inside its plans.
+    ///
+    /// `Option` rather than a `bool` with a serde default, so that absent means on *structurally* -
+    /// for a config.yaml written before wireframes existed, and equally for `ProjectConfig::default()`,
+    /// which `#[derive(Default)]` would otherwise give `false`. Read it through [`Self::wireframes`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wireframes: Option<bool>,
+
+    /// Whether Tendril checks this project's plan changes for wireframe code before they reach
+    /// Review, a PR or Completed. Off only for the repos that are the wireframe tooling itself,
+    /// where wireframe code in the diff is the product rather than a leak. Read it through
+    /// [`Self::wireframe_guard`].
+    #[serde(
+        rename = "wireframeGuard",
+        alias = "wireframe_guard",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub wireframe_guard: Option<bool>,
     #[serde(default)]
     pub skills: Vec<ProjectSkillRef>,
     /// The seven agent security controls — flattened so they still serialize as top-level project
@@ -466,6 +487,17 @@ pub struct ProjectSkillInfo {
 }
 
 impl ProjectConfig {
+    /// Whether planning agents may make wireframes for this project's plans. Absent means yes.
+    pub fn wireframes(&self) -> bool {
+        self.wireframes.unwrap_or(true)
+    }
+
+    /// Whether the wireframe leak guard runs for this project's plans. Absent means yes -- the
+    /// safe direction, since the guard is what keeps throwaway plan material out of a repo.
+    pub fn wireframe_guard(&self) -> bool {
+        self.wireframe_guard.unwrap_or(true)
+    }
+
     pub fn repo_paths(&self) -> Vec<String> {
         self.repos.iter().map(|r| r.path.clone()).collect()
     }

@@ -8,6 +8,7 @@
 
 pub mod fence;
 pub mod leak_guard;
+pub mod plan_guard;
 
 use std::path::{Path, PathBuf};
 
