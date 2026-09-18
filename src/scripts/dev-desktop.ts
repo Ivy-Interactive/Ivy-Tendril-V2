@@ -212,6 +212,75 @@ process.on("SIGTERM", () => void shutdown(0));
 // SIGHUP too: closing the terminal used to orphan the whole tree, daemon and all.
 process.on("SIGHUP", () => void shutdown(0));
 
+/**
+ * Make sure both Tauri sidecars exist before `tauri dev` looks for them.
+ *
+ * `tauri.conf.json` declares `binaries/tendril` and `binaries/opencode` as `externalBin`, and the
+ * Tauri CLI resolves each by host target triple at dev time as well as at bundle time - a missing
+ * one fails the run outright. Neither is committed (see `src-tauri/binaries/.gitignore`): the
+ * companion CLI is built from this workspace, and OpenCode is downloaded once and cached.
+ *
+ * Neither failure is fatal here. A developer who only wants the UI should still get a window, so
+ * each problem prints what to run and carries on.
+ */
+function ensureSidecars() {
+  const triple = (() => {
+    try {
+      const vv = execSync("rustc -vV", { encoding: "utf8" });
+      return /^host:\s*(.+)$/m.exec(vv)?.[1]?.trim() ?? null;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!triple) {
+    console.error("\x1b[31m[dev-desktop] Could not read the host target triple from rustc.\x1b[0m");
+    return;
+  }
+
+  const exe = triple.includes("windows") ? ".exe" : "";
+  const binDir = path.resolve(__dirname, "..", "apps", "tendril-app", "src-tauri", "binaries");
+  fs.mkdirSync(binDir, { recursive: true });
+
+  // The companion CLI, rebuilt every run: it is cheap once cargo has warmed up, and a stale copy
+  // means a promptware's `tendril` call runs code that no longer matches this checkout.
+  const cliDest = path.join(binDir, `tendril-${triple}${exe}`);
+  try {
+    execSync("cargo build -p tendril-cli", { stdio: "inherit" });
+    const built = path.resolve(__dirname, "..", "..", "target", "debug", `tendril${exe}`);
+    fs.copyFileSync(built, cliDest);
+    if (!exe) fs.chmodSync(cliDest, 0o755);
+  } catch (err) {
+    console.error(
+      `\x1b[31m[dev-desktop] Could not stage the tendril sidecar at ${cliDest}:\x1b[0m`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // OpenCode, downloaded once. ~140 MB, so the script no-ops when the file is already there.
+  const ocDest = path.join(binDir, `opencode-${triple}${exe}`);
+  if (fs.existsSync(ocDest)) return;
+  const fetchScript = path.resolve(
+    __dirname,
+    "..",
+    "apps",
+    "tendril-app",
+    "scripts",
+    "release",
+    "fetch-opencode-sidecar.sh",
+  );
+  console.log("\x1b[36m[dev-desktop] Downloading the bundled OpenCode agent (one time)...\x1b[0m");
+  try {
+    execSync(`bash "${fetchScript}" "${triple}"`, { stdio: "inherit" });
+  } catch (err) {
+    console.error(
+      "\x1b[31m[dev-desktop] Could not download OpenCode; the opencode/ivy/proxy agents will fall\n" +
+        `  back to whatever is on your PATH. Run it yourself with:\n    bash ${fetchScript}\x1b[0m`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 async function main() {
   console.log(
     "\x1b[36m[dev-desktop] Initializing Tendril desktop development environment...\x1b[0m",
@@ -227,26 +296,17 @@ async function main() {
     console.error("\x1b[31m[dev-desktop] Could not build @ivy-interactive/components:\x1b[0m", err);
   }
 
+  // Both Tauri sidecars, before the Tauri CLI goes looking for them.
+  ensureSidecars();
+
   const isAlreadyRunning = await checkServiceHealth(port);
   if (isAlreadyRunning) {
     console.log(
       `\x1b[32m[dev-desktop] Tendril service is already active on http://127.0.0.1:${port}\x1b[0m`,
     );
   } else {
-    // The agents this daemon launches get `target/debug` at the front of their PATH, so `tendril` in a
-    // promptware resolves to this workspace's CLI rather than to whatever the developer has installed
-    // (see `agents::providers::agent_path`). `cargo run -p tendril-server` does not build the CLI, so
-    // without this the binary that PATH entry points at may be missing or stale.
-    console.log(
-      "\x1b[36m[dev-desktop] Building the Tendril CLI so agents resolve this workspace's binary...\x1b[0m",
-    );
-    try {
-      execSync("cargo build -p tendril-cli", { stdio: "inherit" });
-    } catch {
-      console.error(
-        "\x1b[31m[dev-desktop] Could not build the CLI; agents will fall back to the `tendril` on your PATH\x1b[0m",
-      );
-    }
+    // The CLI the agents' PATH points at (`agents::providers::agent_path` puts `target/debug`
+    // first) is built by `ensureSidecars` above, which needs it anyway to stage the sidecar.
 
     console.log(
       `\x1b[36m[dev-desktop] Starting Tendril service (cargo run -p tendril-server)...\x1b[0m`,

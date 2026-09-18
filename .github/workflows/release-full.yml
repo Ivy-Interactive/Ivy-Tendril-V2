@@ -71,15 +71,21 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Resolved version: $VERSION"
           cd src/packages/components
-          npm version --no-git-tag-version "$VERSION"
+          # --allow-same-version: re-running a release at the version already in package.json is a
+          # normal retry, and npm exits non-zero on it otherwise.
+          npm version --no-git-tag-version --allow-same-version "$VERSION"
 
       - name: Build components package
         run: pnpm --filter @ivy-interactive/components build
 
       - name: Pack tarball
         run: |
+          # An absolute destination, because `pnpm --filter` runs `pack` with the *package* as its
+          # cwd: a relative `dist-pack` put the tarball in src/packages/components/dist-pack while
+          # the upload below looked for it at the repo root, and found nothing.
           mkdir -p dist-pack
-          pnpm --filter @ivy-interactive/components pack --pack-destination dist-pack
+          pnpm --filter @ivy-interactive/components pack --pack-destination "$GITHUB_WORKSPACE/dist-pack"
+          ls -la dist-pack
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
@@ -204,6 +210,11 @@ jobs:
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             use_cross: true
+          # Intel macOS, to match the CLI matrix. Without it a user on an Intel Mac could install
+          # the CLI but had no server build to pair with it.
+          - os: macos-13
+            target: x86_64-apple-darwin
+            use_cross: false
           - os: macos-latest
             target: aarch64-apple-darwin
             use_cross: false
@@ -292,8 +303,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-latest is Apple Silicon, so an arm64-only matrix shipped no installer at all for
+          # an Intel Mac. macos-13 is the x86_64 runner; the two produce distinct `platform` names
+          # so their artifacts do not collide on upload.
           - os: macos-latest
-            platform: macos
+            platform: macos-arm64
+          - os: macos-13
+            platform: macos-x64
           - os: windows-latest
             platform: windows
           - os: ubuntu-latest
@@ -345,6 +361,11 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Resolved version: $VERSION"
           jq --arg v "$VERSION" '.version = $v' src/apps/tendril-app/src-tauri/tauri.conf.json > src/apps/tendril-app/src-tauri/tauri.conf.json.tmp && mv src/apps/tendril-app/src-tauri/tauri.conf.json.tmp src/apps/tendril-app/src-tauri/tauri.conf.json
+          # The Cargo side too. Every crate inherits `[workspace.package].version`, and the app
+          # crate compiles that in as its own - so bumping only tauri.conf.json shipped an installer
+          # labelled $VERSION around a `tendril --version` that still said 0.1.0.
+          perl -0pi -e 's/^(\[workspace\.package\]\nversion = )"[^"]*"/${1}"'"$VERSION"'"/m' Cargo.toml
+          grep -A 1 '^\[workspace.package\]' Cargo.toml
 
       - name: Build components and frontend
         run: |
@@ -363,13 +384,35 @@ jobs:
             chmod +x "src/apps/tendril-app/src-tauri/binaries/tendril-${TARGET}"
           fi
 
+      # OpenCode is the agent behind the `opencode`, `ivy`, `openaiproxy` and `proxy` providers.
+      # Bundling it as a second sidecar is what makes those work on a machine that has installed
+      # nothing but Tendril - see `resolve_opencode_binary`, which looks next to the app executable
+      # first. The script pins the upstream version; bump it there, not here.
+      - name: Fetch bundled OpenCode sidecar
+        run: ./src/apps/tendril-app/scripts/release/fetch-opencode-sidecar.sh
+
       - name: Build Tauri desktop app
         run: pnpm --filter @ivy-interactive/tendril-app exec tauri build
 
       - name: Collect bundle installers
         run: |
           mkdir -p dist-bundles
-          find target/release/bundle src/apps/tendril-app/src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app" -o -name "*.msi" -o -name "*.exe" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} dist-bundles/ \; 2>/dev/null || true
+          # Only the bundle roots that exist. The old form passed both to one `find` and swallowed
+          # the "No such file or directory" with `2>/dev/null || true` - which also swallowed a
+          # build that produced no bundle at all, and published an empty release.
+          BUNDLE_DIRS=()
+          for d in target/release/bundle src/apps/tendril-app/src-tauri/target/release/bundle; do
+            [ -d "$d" ] && BUNDLE_DIRS+=("$d")
+          done
+          if [ ${#BUNDLE_DIRS[@]} -eq 0 ]; then
+            echo "::error::Tauri produced no bundle directory - nothing to release." >&2
+            exit 1
+          fi
+          find "${BUNDLE_DIRS[@]}" -type f \( -name "*.dmg" -o -name "*.app" -o -name "*.msi" -o -name "*.exe" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} dist-bundles/ \;
+          if [ -z "$(ls -A dist-bundles)" ]; then
+            echo "::error::No installers matched under ${BUNDLE_DIRS[*]}." >&2
+            exit 1
+          fi
           cd dist-bundles
           for f in *; do
             [ -f "$f" ] || continue
@@ -379,6 +422,8 @@ jobs:
               shasum -a 256 "$f" > "$f.sha256"
             fi
           done
+          echo "Collected:"
+          ls -la
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
@@ -498,6 +543,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VERSION }}
+          # Tag the exact commit this run built, not the default branch head.
+          target_commitish: ${{ github.sha }}
           name: Release v${{ env.VERSION }}
           body: ${{ inputs.release-notes }}
           generate_release_notes: ${{ inputs.release-notes == '' }}

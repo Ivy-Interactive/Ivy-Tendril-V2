@@ -61,23 +61,35 @@ pnpm dev:app
 That starts the Vite dev server and the Tauri shell together. The app launches the `tendril serve`
 daemon itself and supervises it, so there is nothing else to start.
 
-To produce an installable bundle, build the CLI first and drop it where Tauri expects the sidecar
-binary:
+To produce an installable bundle, stage both sidecars first:
 
 ```bash
 cargo build --release --bin tendril
 
-# Tauri resolves the sidecar per target triple; ask rustc for yours.
+# Tauri resolves a sidecar per target triple; ask rustc for yours.
 triple=$(rustc -vV | sed -n 's/^host: //p')
 mkdir -p src/apps/tendril-app/src-tauri/binaries
 cp target/release/tendril "src/apps/tendril-app/src-tauri/binaries/tendril-$triple"
 
+# The bundled OpenCode agent (~140 MB, downloaded once).
+./src/apps/tendril-app/scripts/release/fetch-opencode-sidecar.sh
+
 pnpm --filter @ivy-interactive/tendril-app exec tauri build
 ```
 
-The app declares `binaries/tendril` as an `externalBin`, which is why the copy step is not optional —
-without it the bundle builds but ships without a daemon. Bundle targets are `nsis` and `msi` on
-Windows, `dmg` and `app` on macOS, `deb` and `appimage` on Linux.
+The app declares `binaries/tendril` and `binaries/opencode` as `externalBin`, which is why these
+steps are not optional — without them the build fails on the missing sidecar. Neither binary is
+committed; `src-tauri/binaries/` is gitignored.
+
+`pnpm dev:desktop` does both for you, so this is only needed for a manual bundle. Check your work
+with `cd src/apps/tendril-app && ./scripts/release/release_packaging_smoke_test.sh`.
+
+The OpenCode sidecar is what backs the `opencode`, `ivy`, `openaiproxy` and `proxy` coding agents.
+Bundling it means a fresh install has a working agent with nothing else on the machine; the pinned
+version lives at the top of `fetch-opencode-sidecar.sh`.
+
+Bundle targets are `nsis` and `msi` on Windows, `dmg` and `app` on macOS, `deb` and `appimage` on
+Linux.
 
 ## Install the CLI
 

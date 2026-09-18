@@ -125,6 +125,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: cli-v${{ env.VERSION }}
+          # Tag the exact commit this run built, not the default branch head.
+          target_commitish: ${{ github.sha }}
           files: |
             ${{ env.ARCHIVE }}
             ${{ env.CHECKSUM }}

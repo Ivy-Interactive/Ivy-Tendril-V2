@@ -23,7 +23,7 @@ This skill automates the release preparation and deployment process for Ivy-Tend
 6. **Creates a Pull Request** from `development` into `main`.
 7. **Merges the PR** into `main` (if checks pass and approved).
 8. **Synchronizes the branches** by merging `main` back into `development`.
-9. **Triggers the GitHub release workflow** (`ci.yml` or release action) on `main`.
+9. **Triggers the GitHub release workflow** (`release-full.yml`) on the release ref.
 
 ## Prerequisites
 
@@ -99,16 +99,42 @@ git branch -d release/prepare-release
 git push origin --delete release/prepare-release
 ```
 
-### Phase 7: Trigger CI / Release Workflow
-Trigger the release Action workflow on `main`:
+### Phase 7: Trigger the Release Workflow
+
+`ci.yml` builds and tests; it publishes nothing. The workflow that cuts a release is
+`release-full.yml`, and it takes a version.
+
+Dry run first — `test-mode` defaults to `true`, which builds every artifact and prints a summary
+without creating a tag or a release:
+
 ```bash
-gh workflow run ci.yml --ref main
+gh workflow run release-full.yml --ref main -f version=0.2.0
 ```
+
+Publish for real by turning it off:
+
+```bash
+gh workflow run release-full.yml --ref main -f version=0.2.0 -f test-mode=false
+```
+
+`--ref` takes any branch, not just `main`, which is how a release is cut from a target branch. The
+release tag is created on the exact commit the run checked out (`target_commitish: github.sha`), so
+the tag matches the artifacts even when the branch moves on.
 
 Confirm that the workflow has been dispatched:
 ```bash
-gh run list --workflow=ci.yml --limit 1
+gh run list --workflow=release-full.yml --limit 1
 ```
+
+What it publishes, under a single `v<version>` tag: the `@ivy-interactive/components` npm tarball,
+the `tendril` CLI for five targets, `tendril-server` for five targets, the desktop installers for
+macOS (arm64 and x64), Windows and Linux, and the VS Code `.vsix`. Code signing is not wired up
+yet — macOS and Windows artifacts are unsigned, so a first launch needs the OS override.
+
+The desktop installers carry two sidecars: the `tendril` companion daemon, built from the same
+commit, and the OpenCode agent, downloaded by
+`src/apps/tendril-app/scripts/release/fetch-opencode-sidecar.sh` at the version pinned in that
+script. Bump the pin there to ship a newer agent.
 
 ---
 

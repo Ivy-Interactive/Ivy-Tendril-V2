@@ -1,9 +1,12 @@
 [package]
 name = "tendril-app"
-version = "0.1.0"
+# Inherited, like every other crate in the workspace. This was the one manifest carrying its own
+# copy, so a release that bumped `[workspace.package]` left the desktop crate behind - and the
+# "SpaceCorps" author string disagreed with the rest of the tree.
+version.workspace = true
 description = "Tendril Desktop Application"
-authors = ["SpaceCorps"]
-edition = "2021"
+authors.workspace = true
+edition.workspace = true
 
 [lib]
 name = "tendril_app_lib"
