@@ -167,7 +167,7 @@ pub fn validate(markdown: &str, plan_folder: Option<&Path>) -> Vec<QuestionIssue
     }
 
     for (index, (line, body)) in fences.iter().enumerate() {
-        let enclosing = sections.iter().filter(|h| h.line < *line).next_back();
+        let enclosing = sections.iter().rfind(|h| h.line < *line);
         let in_wireframe_section = enclosing
             .map(|h| h.level == 2 && is_wireframe_heading(&h.text))
             .unwrap_or(false);
