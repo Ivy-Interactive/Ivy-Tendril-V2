@@ -15,6 +15,7 @@
 
 pub mod assets;
 pub mod build;
+pub mod manifest;
 pub mod project;
 
 pub use project::{TailwindMode, WireframeConfig, WireframeProject};
