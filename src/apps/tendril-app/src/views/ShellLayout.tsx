@@ -4,6 +4,7 @@ import {
   BrandIcon,
   TendrilShell,
   ShellSidebarHeader,
+  TendrilLogo,
   ShellNav,
   ShellSidebarSection,
   ShellTabs,
@@ -529,10 +530,16 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
           activeSessionIndex={activeSessionIndex}
           slots={{
             // The header is the brand row alone. V1 formats the version as "v <x.y.z>".
+            //
+            // `logo` is V1's `.LogoUrl("/tendril/assets/Tendril.svg")` in `TendrilAppShell`, which
+            // V2 had simply never passed - hence the missing mark beside the name. Given as a
+            // component rather than a URL so it resolves identically in dev, in the bundle and
+            // inside Tauri, where a served path is the thing most likely to differ.
             SidebarHeader: (
               <ShellSidebarHeader
                 id="shell-sidebar-header"
                 title="Tendril"
+                logo={<TendrilLogo />}
                 version={serviceInfo?.apiVersion ? `v ${serviceInfo.apiVersion}` : undefined}
                 eventHandler={noop}
               />

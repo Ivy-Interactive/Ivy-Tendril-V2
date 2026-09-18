@@ -286,6 +286,16 @@
   width: 32px;
   height: 32px;
   flex-shrink: 0;
+  /* `display` matters because this class lands on an `<img>` for a `logoUrl` logo and on a `<span>`
+     for a node one, and an inline span ignores width and height. */
+  display: block;
+}
+
+/* An inlined mark sizes to its wrapper rather than to its own `width`/`height` attributes. */
+.tsh-header-logo > svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .tsh-header-text {

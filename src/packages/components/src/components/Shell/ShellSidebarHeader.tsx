@@ -10,6 +10,13 @@ interface ShellSidebarHeaderProps extends ShellWidgetProps {
   title?: string;
   version?: string;
   logoUrl?: string;
+  /**
+   * The brand mark as a node, for a logo that ships as a component rather than a file - an inline
+   * SVG carries no request to fail and no path to get wrong across dev, bundle and Tauri. Wins over
+   * {@link logoUrl} when both are given; the rail's hover-to-expand behaviour is the same either
+   * way, since the CSS keys off `.tsh-header-logo`.
+   */
+  logo?: React.ReactNode;
 }
 
 /**
@@ -22,6 +29,7 @@ export const ShellSidebarHeader: React.FC<ShellSidebarHeaderProps> = ({
   title = "Ivy Tendril",
   version,
   logoUrl,
+  logo,
 }) => {
   const { collapsed, toggle } = useShell();
   const shortcut = `${modKeyLabel()}+B`;
@@ -38,7 +46,11 @@ export const ShellSidebarHeader: React.FC<ShellSidebarHeaderProps> = ({
               aria-hidden={!collapsed}
               tabIndex={collapsed ? 0 : -1}
             >
-              {logoUrl && <img className="tsh-header-logo" src={logoUrl} alt="" />}
+              {logo ? (
+                <span className="tsh-header-logo">{logo}</span>
+              ) : (
+                logoUrl && <img className="tsh-header-logo" src={logoUrl} alt="" />
+              )}
               <span className="tsh-logo-toggle-icon">
                 <PanelLeftOpen size={16} />
               </span>

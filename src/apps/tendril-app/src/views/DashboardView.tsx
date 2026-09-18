@@ -87,16 +87,26 @@ const buildGreeting = (now: Date): string => {
  *
  * Zero-filled, so a day with no rows is a plotted 0 rather than a missing point; the *rolling*
  * series is the one that carries nulls, for the days its window would reach back past the earliest
- * record. Returns null when there is no daily series at all, because bucketed months cannot carry a
- * true 7-day average and plotting them under that label would be the misleading result the parity
- * contract exists to avoid.
+ * record. Returns null only when there is no activity payload at all - V1's
+ * `DailyCosts == null && DailyPlans == null`, which in C# means the daemon never supplied the
+ * fields.
+ *
+ * An *empty* pair of arrays is not that. V1's models declare them nullable and its repository
+ * always assigns a list, so null there means "absent"; V2's DTO types them `T[]`, and the daemon
+ * always sends them, so the only value a fresh install ever produces is `[]`. Porting the null
+ * check as `.length === 0` therefore turned "no payload" into "no rows yet" and withheld the card
+ * from exactly the installs that have nothing else on the page - a 28-day axis of zeroes is the
+ * honest answer there, and the same one V1 gives.
+ *
+ * Suppressing it also broke the layout: `.tdb-col:not(.tdb-col-side) > :last-child` stretches the
+ * main column's final child so the trend card absorbs the leftover height. With the card gone that
+ * fell to the KPI grid, which rendered 527px tall instead of 134px.
  */
 function buildDailyTrend(
   activity: DashboardActivity | null,
   today: number = todayDayNumber(),
 ): DashboardTrendDto | null {
   if (activity == null) return null;
-  if (activity.dailyCosts.length === 0 && activity.dailyPlans.length === 0) return null;
 
   const costByDay = new Map(activity.dailyCosts.map((day) => [day.date, day.cost]));
   const plansByDay = new Map(activity.dailyPlans.map((day) => [day.date, day.count]));

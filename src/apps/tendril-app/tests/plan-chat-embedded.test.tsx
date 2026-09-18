@@ -97,26 +97,26 @@ describe("the plan chat is the chat view, embedded", () => {
   });
 
   /**
-   * `ContentView` wires `onCreatePlan` into its embedded chat unconditionally, so "create plan from
-   * this message" works there and not only on the Chat page. The panel forwards it; a missing prop
-   * chain renders the action and does nothing, which is worse than not offering it.
+   * V1 hangs nothing off an assistant turn. `AssistantTurn.tsx` closes with a `chat-turn-meta` line
+   * carrying duration, tokens and cost, and that is the whole of it - no copy button, no "create
+   * plan from this message". V2 grew both, and they read as an extra row of chrome under every
+   * reply.
+   *
+   * Asserted on the embedded panel as well as the page because the panel is where they were wired
+   * "unconditionally", after V1's `ContentView`; that reading was of a prop V1 does not have.
    */
-  it("forwards onCreatePlan, so the message action is not inert", async () => {
-    const onCreatePlan = vi.fn();
-    // A delivered assistant message, which is what carries the Create Plan action.
+  it("hangs no per-message actions off an assistant turn, as V1 does not", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([session()]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue({
       ...session(),
       messages: [{ id: "m1", role: "assistant", content: "Add pagination to the jobs table." }],
     } as never);
 
-    render(<PlanChatPanel plan={plan()} onCreatePlan={onCreatePlan} />);
+    render(<PlanChatPanel plan={plan()} />);
 
-    const button = await screen.findByTitle("Create Plan from message");
-    fireEvent.click(button);
-
-    // The message's own text becomes the new plan's description, as on the standalone page.
-    expect(onCreatePlan).toHaveBeenCalledWith("Add pagination to the jobs table.");
+    await screen.findByText("Add pagination to the jobs table.");
+    expect(screen.queryByTitle("Create Plan from message")).toBeNull();
+    expect(screen.queryByTitle("Copy message")).toBeNull();
   });
 
   /** `greeting: $"#{plan.Id} {plan.Title}"` and `headline: PlanChatView.Headline`. */

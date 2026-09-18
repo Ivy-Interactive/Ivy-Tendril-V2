@@ -1,12 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ChatBubble,
-  ChatBubbleMessage,
-  ChatBubbleAction,
-  ChatBubbleActionWrapper,
-} from "@ivy-interactive/components/renderers";
+import { ChatBubble, ChatBubbleMessage } from "@ivy-interactive/components/renderers";
 import { PlanMarkdown } from "@ivy-interactive/components/tendril";
-import { CheckCheck, Copy, FilePlus, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
+import { CheckCheck, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
 import { bridge } from "../api/bridge";
 import { chatStore } from "../state/chatStore";
 import type { ChatAttachment, ChatMessage, InProgressQuestionAnswers } from "../types/chat";
@@ -19,9 +14,6 @@ import { TurnActivity } from "../components/chat/TurnActivity";
 
 export interface ChatMessageRowProps {
   message: ChatMessage;
-  isCopied: boolean;
-  onCopy: (message: ChatMessage) => void;
-  onCreatePlan: (content: string) => void;
   inProgressAnswers?: InProgressQuestionAnswers;
   isSubmittingAnswer?: boolean;
   /** Opens the plan a system event refers to. */
@@ -207,9 +199,6 @@ const systemEventIconTone = (kind: string, jobState: JobDisplayState): string =>
 
 export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function ChatMessageRow({
   message,
-  isCopied,
-  onCopy,
-  onCreatePlan,
   inProgressAnswers: propInProgressAnswers,
   isSubmittingAnswer: propIsSubmittingAnswer,
   onOpenPlan,
@@ -438,26 +427,6 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
             </div>
           )}
         </ChatBubbleMessage>
-
-        {/* The row's meta line. V1 shows the finished turn's metrics here; V2 has no per-turn
-            metrics yet, so the slot carries the two actions the desktop app adds. */}
-        <ChatBubbleActionWrapper className={isUser ? "justify-end" : "justify-start"}>
-          <ChatBubbleAction
-            icon={<Copy className="size-3.5" />}
-            title="Copy message"
-            onClick={() => onCopy(message)}
-            className={isCopied ? "text-foreground" : "text-muted-foreground"}
-          />
-          <button
-            type="button"
-            onClick={() => onCreatePlan(message.content)}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded px-1 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
-            title="Create Plan from message"
-          >
-            <FilePlus className="size-3.5" />
-            <span>Create Plan</span>
-          </button>
-        </ChatBubbleActionWrapper>
       </div>
     </ChatBubble>
   );

@@ -1,6 +1,9 @@
 // Tendril Entrypoint for components-storybook/tendril
 // Re-exports Tendril shell, agent viewers, inputs, plan widgets, and dashboard components
 
+// The Tendril brand mark, which the shell header renders.
+export { TendrilLogo, type TendrilLogoProps } from "./components/TendrilLogo";
+
 // Shell Components
 export {
   TendrilShell,

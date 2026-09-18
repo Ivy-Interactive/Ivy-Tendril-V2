@@ -53,12 +53,7 @@ export const PlanChatPanel: React.FC<{
   draft?: { text: string; token: number };
   /** Opens the plan a job in this conversation reports. */
   onOpenPlan?: (planId: string) => void;
-  /**
-   * `ContentView`'s unconditional `onCreatePlan`, which is what makes "create plan from this message"
-   * work in V1's embedded chat too. Without it the message action renders and does nothing.
-   */
-  onCreatePlan?: (initialDescription: string) => void;
-}> = ({ plan, draft, onOpenPlan, onCreatePlan }) => {
+}> = ({ plan, draft, onOpenPlan }) => {
   const folder = planFolderName(plan);
   const sessionTitle = `#${shortPlanId(plan.id)} ${plan.title}`;
 
@@ -120,7 +115,6 @@ export const PlanChatPanel: React.FC<{
         samplePrompts={samplePrompts}
         draftPrompt={draft}
         onOpenPlan={onOpenPlan}
-        onCreatePlan={onCreatePlan}
       />
     </div>
   );

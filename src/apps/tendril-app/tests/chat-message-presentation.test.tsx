@@ -53,14 +53,7 @@ describe("chat message presentation parity", () => {
     ].join("\n");
 
     it("renders what the turn did, from the raw stream V1 renders the whole turn from", () => {
-      render(
-        <ChatMessageRow
-          message={message({ rawStream })}
-          isCopied={false}
-          onCopy={() => {}}
-          onCreatePlan={() => {}}
-        />,
-      );
+      render(<ChatMessageRow message={message({ rawStream })} />);
 
       expect(screen.getByTestId("chat-turn-activity")).toBeInTheDocument();
       expect(screen.getByText("Read")).toBeInTheDocument();
@@ -70,9 +63,6 @@ describe("chat message presentation parity", () => {
       render(
         <ChatMessageRow
           message={message({ rawStream: JSON.stringify({ kind: "text", text: "hello" }) })}
-          isCopied={false}
-          onCopy={() => {}}
-          onCreatePlan={() => {}}
         />,
       );
 
@@ -80,14 +70,7 @@ describe("chat message presentation parity", () => {
     });
 
     it("survives a half-written trailing line", () => {
-      render(
-        <ChatMessageRow
-          message={message({ rawStream: `${rawStream}\n{"kind":"tool_ca` })}
-          isCopied={false}
-          onCopy={() => {}}
-          onCreatePlan={() => {}}
-        />,
-      );
+      render(<ChatMessageRow message={message({ rawStream: `${rawStream}\n{"kind":"tool_ca` })} />);
 
       expect(screen.getByTestId("chat-turn-activity")).toBeInTheDocument();
     });
@@ -103,9 +86,6 @@ describe("chat message presentation parity", () => {
             content: "Look at this\n\n[Attached Files]:\n- /tmp/notes.md",
             rawStream: undefined,
           })}
-          isCopied={false}
-          onCopy={() => {}}
-          onCreatePlan={() => {}}
         />,
       );
 

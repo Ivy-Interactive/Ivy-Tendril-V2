@@ -86,7 +86,14 @@ const unknownAgentMessage = (value: string): string =>
     .sort()
     .join(", ")}`;
 
-/** One card in either grid: `new Card(logo | label | Spacer | check).OnClick(...)`. */
+/**
+ * One card in either grid: `new Card(logo | label | Spacer | check).OnClick(...)`.
+ *
+ * `p-6` and `text-base` are what that `new Card` resolves to rather than arbitrary choices. Ivy's
+ * `CardWidget` at its default medium density pads a header-less card with `p-6` and applies no font
+ * override, so V1 draws an 82px card around its 32px logo. V2 had `p-3` and `text-sm`, which is the
+ * 56px card the operator is looking at - the same content in a box a third shorter.
+ */
 const AgentCard: React.FC<{
   id: string;
   label: string;
@@ -99,13 +106,13 @@ const AgentCard: React.FC<{
     aria-pressed={selected}
     onClick={onClick}
     data-testid={`coding-agent-${id}`}
-    className={`flex items-center gap-3 rounded-field border p-3 text-left transition-colors ${
+    className={`flex items-center gap-3 rounded-box border p-6 text-left transition-colors ${
       selected ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-muted/50"
     }`}
   >
-    <BrandIcon name={icon} size={32} className="text-foreground" />
-    <span className="text-sm font-medium text-foreground">{label}</span>
-    {selected && <Check className="ml-auto size-4 text-primary" aria-hidden="true" />}
+    <BrandIcon name={icon} size={32} className="shrink-0 text-foreground" />
+    <span className="min-w-0 truncate text-base font-medium text-foreground">{label}</span>
+    {selected && <Check className="ml-auto size-5 shrink-0 text-primary" aria-hidden="true" />}
   </button>
 );
 
@@ -626,12 +633,18 @@ export const CodingAgentSection: React.FC<{
 
           <div className="space-y-3">
             {PROFILE_TIERS.map((tier) => (
-              <div key={tier} className="flex flex-wrap items-end gap-2">
-                {/* `Width(Size.Fraction(0.65f))` against the effort select's `0.35f`, and the whole
-                    row when there is no effort select to sit beside. */}
+              <div key={tier} className="flex items-end gap-2">
+                {/* `Width(Size.Fraction(0.65f))` against the effort select's `0.35f`, expressed as
+                    grow weights over a zero basis rather than as percentage bases.
+                    `basis-[65%] + basis-[35%]` is exactly 100% of the line before the `gap-2`
+                    between them is counted, so on a wrapping row the pair never fit and the effort
+                    select dropped to a line of its own at *every* width - which is not the layout
+                    V1 draws. Weights divide what is left after the gap, so the ratio holds and the
+                    row stays one line; `min-w-0` lets a long model name shrink rather than push its
+                    neighbour out. */}
                 <div
                   className={
-                    effortEnabled ? "min-w-56 grow basis-[65%]" : "min-w-56 grow basis-full"
+                    effortEnabled ? "min-w-0 grow-[65] basis-0" : "min-w-0 grow basis-full"
                   }
                 >
                   {isCustomMode ? (
@@ -676,7 +689,7 @@ export const CodingAgentSection: React.FC<{
                     branch rather than a disabled control that would still look settable. Its options
                     are `GetEffortOptions(<this row's model>)`, so they follow the select beside them. */}
                 {effortEnabled && (
-                  <div className="min-w-32 basis-[35%]">
+                  <div className="min-w-0 grow-[35] basis-0">
                     <NativeSelectField
                       id={`profile-effort-${tier}`}
                       label="Effort"

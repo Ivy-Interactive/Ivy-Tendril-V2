@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { useState } from "react";
 import { TendrilShell } from "./TendrilShell.tsx";
 import { ShellSidebarHeader } from "./ShellSidebarHeader.tsx";
+import { TendrilLogo } from "../TendrilLogo.tsx";
 import { ShellNewPlanButton } from "./ShellNewPlanButton.tsx";
 import { ShellAgentButton } from "./ShellAgentButton.tsx";
 import { ShellNav } from "./ShellNav.tsx";
@@ -103,6 +104,7 @@ function InteractiveShellDemo({
             <ShellSidebarHeader
               id="sidebar-header"
               title="Tendril"
+              logo={<TendrilLogo />}
               version="v1.0.0"
               eventHandler={handleEvent}
             />

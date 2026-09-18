@@ -134,23 +134,25 @@ questions:
     });
   });
 
-  it("opens intake modal prefilled when clicking Create Plan button on message", async () => {
+  /**
+   * V1's assistant turn ends at its meta line - `AssistantTurn.tsx` renders duration, tokens and
+   * cost and stops. The Copy and Create Plan buttons V2 grew are not a V1 affordance, and a row of
+   * them under every reply is the difference the operator sees. Guarded rather than deleted because
+   * they have come back once already.
+   */
+  it("hangs no per-message actions off an assistant turn, as V1 does not", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-    const onCreatePlanMock = vi.fn();
 
-    render(<ChatView onCreatePlan={onCreatePlanMock} />);
+    render(<ChatView />);
 
     await waitFor(() => {
       expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
-    const createPlanButtons = screen.getAllByTitle("Create Plan from message");
-    expect(createPlanButtons.length).toBeGreaterThan(0);
-
-    fireEvent.click(createPlanButtons[0]);
-    expect(onCreatePlanMock).toHaveBeenCalledWith("What database should we use?");
+    expect(screen.queryByTitle("Create Plan from message")).toBeNull();
+    expect(screen.queryByTitle("Copy message")).toBeNull();
   });
 
   it("adds attachment chips to the list on drag-and-drop file drop onto composer", async () => {

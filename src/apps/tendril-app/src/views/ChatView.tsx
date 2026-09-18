@@ -14,7 +14,7 @@ import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarLi
 import { chatStore, type ChatState, type ChatStore } from "../state/chatStore";
 import { jobsStore } from "../state/jobsStore";
 import { plansStore } from "../state/plansStore";
-import type { ChatMessage, ChatSession, ChatAttachment, ChatQueuedItem } from "../types/chat";
+import type { ChatSession, ChatAttachment, ChatQueuedItem } from "../types/chat";
 import type { Job, PlanSummary } from "../types/api";
 import { PIN_TOP_PADDING, useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import {
@@ -49,7 +49,6 @@ import {
 import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 
 interface ChatViewProps {
-  onCreatePlan?: (initialDescription: string) => void;
   /** Opens the plan a system event or a spawned job refers to. */
   onOpenPlan?: (planId: string) => void;
   /**
@@ -435,7 +434,6 @@ export const needsMultipleLines = (
  * textarea, and every registered `useShortcut` in the app belongs to `App.tsx` or `PlanWorkspace`.
  */
 export const ChatView: React.FC<ChatViewProps> = ({
-  onCreatePlan,
   onOpenPlan,
   store = chatStore,
   embedded = false,
@@ -453,7 +451,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [isQueueExpanded, setIsQueueExpanded] = useState(true);
   const [editingQueuedId, setEditingQueuedId] = useState<string | null>(null);
   const [editingQueuedText, setEditingQueuedText] = useState("");
-  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [activeLightboxImage, setActiveLightboxImage] = useState<LightboxImage | null>(null);
@@ -949,23 +946,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
   };
 
-  const handleCopyMessage = useCallback((msg: ChatMessage) => {
-    void navigator.clipboard.writeText(msg.content);
-    setCopiedMessageId(msg.id);
-    setTimeout(() => {
-      setCopiedMessageId(null);
-    }, 2000);
-  }, []);
-
-  const handleCreatePlanFromMessage = useCallback(
-    (content: string) => {
-      if (onCreatePlan) {
-        onCreatePlan(content);
-      }
-    },
-    [onCreatePlan],
-  );
-
   const messages = activeSession?.messages ?? [];
 
   // The optimistic user message is superseded by the server's copy, which arrives under a
@@ -1299,9 +1279,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       >
                         <ChatMessageRow
                           message={msg}
-                          isCopied={copiedMessageId === msg.id}
-                          onCopy={handleCopyMessage}
-                          onCreatePlan={handleCreatePlanFromMessage}
                           inProgressAnswers={storeState.inProgressAnswers[msg.id]}
                           isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
                           onOpenPlan={onOpenPlan}
@@ -1318,9 +1295,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <div key={msg.id} data-index={index}>
                     <ChatMessageRow
                       message={msg}
-                      isCopied={copiedMessageId === msg.id}
-                      onCopy={handleCopyMessage}
-                      onCreatePlan={handleCreatePlanFromMessage}
                       inProgressAnswers={storeState.inProgressAnswers[msg.id]}
                       isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
                       onOpenPlan={onOpenPlan}

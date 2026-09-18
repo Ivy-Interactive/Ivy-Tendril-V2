@@ -751,10 +751,6 @@ export const App: React.FC = () => {
           onExecute={(id) =>
             startJobAndAdvance({ type: "ExecutePlan", folderPath: id }, detail.state)
           }
-          onCreatePlan={(initialDesc) => {
-            setNewPlanPrefill({ description: initialDesc });
-            setIsNewPlanOpen(true);
-          }}
           // The dialogs dispatch their own jobs — Update, Create PR, Retry — so the shell's part is
           // moving on from the plan they just acted on, exactly as `onExecute` does.
           onJobStarted={() => {
@@ -813,15 +809,7 @@ export const App: React.FC = () => {
         );
 
       case "chat":
-        return (
-          <ChatView
-            onCreatePlan={(initialDesc) => {
-              setNewPlanPrefill({ description: initialDesc });
-              setIsNewPlanOpen(true);
-            }}
-            onOpenPlan={handleSelectPlan}
-          />
-        );
+        return <ChatView onOpenPlan={handleSelectPlan} />;
 
       case "inbox":
         return (
@@ -868,10 +856,6 @@ export const App: React.FC = () => {
         return (
           <ReviewView
             plans={plansState.plans}
-            onCreatePlan={(initialDesc) => {
-              setNewPlanPrefill({ description: initialDesc });
-              setIsNewPlanOpen(true);
-            }}
             // The review queue excludes plans a job still holds, as V1's `activePlanFolders` does.
             // Without the list the exclusion is dead wiring, and the page offers Complete Plan and
             // Create PR on work an agent has not finished — a retry that is only Queued or Blocked

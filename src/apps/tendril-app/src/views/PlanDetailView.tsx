@@ -274,12 +274,6 @@ interface PlanDetailViewProps {
   onJobStarted?: (response: StartJobResponse) => void;
   /** The plan's state changed on the service; the caller should re-fetch it. */
   onPlanChanged?: (planId: string) => void;
-  /**
-   * V1's `ContentView` wires `onCreatePlan` into its embedded chat unconditionally, so "create plan
-   * from this message" works there as well as on the Chat page. Threaded through to
-   * {@link PlanChatPanel}; without it that message action is inert.
-   */
-  onCreatePlan?: (initialDescription: string) => void;
   onPlanDeleted?: (planId: string) => void;
 }
 
@@ -289,7 +283,6 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   projectRepos = [],
   jobs = [],
   onExecute,
-  onCreatePlan,
   onJobStarted,
   onPlanChanged,
   onPlanDeleted,
@@ -1740,9 +1733,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           /* `isShareMode ? null : new PlanChatView(selectedPlan)` — the plan's own conversation,
              hosted by the same view the Chat app is. V2 has no share mode, so there is no null arm
              yet. */
-          Chat: [
-            <PlanChatPanel key="chat" plan={plan} draft={chatDraft} onCreatePlan={onCreatePlan} />,
-          ],
+          Chat: [<PlanChatPanel key="chat" plan={plan} draft={chatDraft} />],
           Content: [effectiveTab === "plan" ? planPane : otherTabsPane],
         }}
       />
