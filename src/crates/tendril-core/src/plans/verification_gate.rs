@@ -74,12 +74,29 @@ pub fn incomplete_verifications(plan: &PlanYaml) -> Vec<String> {
 /// Yields `Failed` when the pre-execution report says `Fail`, or when any verification row is still
 /// `Pending` or is `Fail`. Required and optional rows are treated alike, so no settings are needed:
 /// a user who flips an optional row to `Pending` is asking for it to run.
-pub fn resolve_post_execution_state(plan: &PlanYaml, plan_folder: &Path) -> PlanStatus {
+pub fn resolve_post_execution_state(
+    plan: &PlanYaml,
+    plan_folder: &Path,
+    project: Option<&crate::models::project::ProjectConfig>,
+) -> PlanStatus {
     if read_pre_execution_result(plan_folder) == Some(VerificationStatus::Fail) {
         return PlanStatus::Failed;
     }
 
     if !incomplete_verifications(plan).is_empty() {
+        return PlanStatus::Failed;
+    }
+
+    // Wireframes are plan material only. A plan whose changes carry wireframe code does not reach
+    // Review however its verifications went, and the report this writes is what its failure callout
+    // shows. Placed here rather than at the caller because this function is the one decision point
+    // for where a plan lands, so the rule cannot be applied inconsistently by a second path.
+    let leaks = crate::wireframes::plan_guard::check_and_report(plan_folder, project);
+    if !leaks.is_empty() {
+        tracing::warn!(
+            "Plan {} carries wireframe code in its changes; failing rather than sending it to Review",
+            plan_folder.display()
+        );
         return PlanStatus::Failed;
     }
 

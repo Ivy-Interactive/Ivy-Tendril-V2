@@ -2718,7 +2718,7 @@ pub fn plan_state_on_success(
     plan_folder: &Path,
 ) -> Option<PlanStatus> {
     match job_type {
-        "ExecutePlan" | "RetryPlan" => Some(resolve_post_execution_state(plan, plan_folder)),
+        "ExecutePlan" | "RetryPlan" => Some(resolve_post_execution_state(plan, plan_folder, None)),
         "CreatePlan" | "UpdatePlan" | "ExpandPlan" => Some(PlanStatus::Draft),
         "SplitPlan" => Some(PlanStatus::Skipped),
         "CreateIssue" => Some(PlanStatus::Completed),
