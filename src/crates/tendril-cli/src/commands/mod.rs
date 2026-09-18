@@ -22,3 +22,4 @@ pub mod update;
 pub mod update_promptwares;
 pub mod vault;
 pub mod verification;
+pub mod wireframe;
