@@ -352,13 +352,16 @@ describe("project colour in the settings sidebar", () => {
     expect(dot(1)).toHaveAttribute("data-color", "Slate");
   });
 
-  /** `Size.Units(3)` with `BorderRadius.Rounded`, which `styles.ts` resolves to 0.5rem. */
+  /**
+   * `Size.Units(3)` with `BorderRadius.Rounded`, which `styles.ts` resolves to 0.5rem — now spelled as
+   * `rounded-box`, the utility for `--radius-boxes`, whose value is that same 0.5rem.
+   */
   it("matches V1's 0.75rem swatch rather than inventing a size", async () => {
     await renderSettings(withProjects([{ name: "Tendril", color: "Blue" }]));
 
     await click("settings-row-projects");
 
-    expect(dot(0)).toHaveClass("size-3", "rounded-[0.5rem]", "shrink-0");
+    expect(dot(0)).toHaveClass("size-3", "rounded-box", "shrink-0");
   });
 
   /** `BuildSubItem` renders the icon *or* the colour box: "Add Project" has an icon, so no dot. */

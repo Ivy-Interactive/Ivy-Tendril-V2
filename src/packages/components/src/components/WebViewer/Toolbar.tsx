@@ -71,6 +71,9 @@ const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       variant={primary ? "solid" : "ghost"}
       tone="muted"
       active={active}
+      // `tooltipOpen` is Radix's `open`, so the two values are its two modes and not a boolean flag:
+      // `false` is controlled-and-closed, which is how a tooltip is suppressed, and `undefined` is
+      // uncontrolled, which is how it goes back to opening on hover. `PlanWorkspace` says it the same way.
       tooltipOpen={tooltipDisabled ? false : undefined}
       data-primary={primary ? "true" : undefined}
       {...rest}

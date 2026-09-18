@@ -96,7 +96,7 @@ export const AgentNode: React.FC<AgentNodeProps> = ({ node, answerCallback }) =>
     case "status":
       return (
         <div className="aov-status-event" data-testid="agent-status-event">
-          <StatusDot tone="info" className="aov-status-event-dot" />
+          <StatusDot tone="info" />
           <span className="aov-status-event-text">{event.text}</span>
         </div>
       );

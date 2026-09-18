@@ -359,6 +359,11 @@ export function BadgeSelect({
           aria-expanded={open}
           aria-haspopup="listbox"
           onClick={(e) => {
+            // Removing a badge must not also open the menu. The remove button is inside this trigger,
+            // so its click bubbles here; rather than have `TuiBadge` stop propagation — which would
+            // change the event for every other consumer of a shared primitive — the trigger asks
+            // whether the click came from one. `closest` walks up from the *captured* target, so it
+            // answers correctly even though the badge is gone by the time React re-renders.
             if ((e.target as HTMLElement).closest(".tui-badge-remove")) return;
             setOpen((v) => !v);
           }}
