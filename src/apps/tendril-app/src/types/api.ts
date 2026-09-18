@@ -168,6 +168,32 @@ export interface ServiceInfo {
   crashCount?: number;
 }
 
+/**
+ * What the app's autostart registration did. Mirrors the Rust `AutostartOutcome`, which is tagged:
+ * `kind` names the case and `detail` carries the unit path or the reason.
+ */
+export interface AutostartOutcome {
+  kind: "registered" | "alreadyRegistered" | "skipped" | "failed";
+  detail: string;
+}
+
+/**
+ * The result of installing the bundled daemon into `<tendril home>/bin` and registering it to start
+ * with the session. The app does this on first run; the Service pane can retry it.
+ */
+export interface ProvisionReport {
+  /** Sidecars copied this run. */
+  installed: string[];
+  /** Sidecars that were already current. */
+  upToDate: string[];
+  /** Sidecars this build does not carry - ordinary in a dev build, a packaging bug in a bundle. */
+  missing: string[];
+  binDir: string;
+  autostart: AutostartOutcome;
+  /** Non-fatal failures: a run can install one binary, fail the other and still register autostart. */
+  errors: string[];
+}
+
 export interface ReviewActionConfig {
   name: string;
   condition: string;

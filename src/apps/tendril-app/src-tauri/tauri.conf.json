@@ -32,6 +32,11 @@
     "active": true,
     "targets": ["nsis", "msi", "dmg", "app", "deb", "appimage"],
     "externalBin": ["binaries/tendril", "binaries/opencode"],
+    "windows": {
+      "nsis": {
+        "installerHooks": "nsis/installer.nsh"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/64x64.png",

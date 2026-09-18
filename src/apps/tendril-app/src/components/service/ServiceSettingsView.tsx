@@ -1,6 +1,40 @@
 import React, { useState, useEffect } from "react";
 import { bridge } from "../../api/bridge";
-import type { ServiceInfo } from "../../types/api";
+import type { ProvisionReport, ServiceInfo } from "../../types/api";
+
+/**
+ * A one-line summary of what an install run did.
+ *
+ * Every part of a run is independently allowed to fail - one binary can land, the other can fail and
+ * autostart can still register - so this reports all of it rather than a bare "done".
+ */
+function describeProvision(report: ProvisionReport): string {
+  const parts: string[] = [];
+  if (report.installed.length > 0) {
+    parts.push(`Installed ${report.installed.join(", ")} into ${report.binDir}.`);
+  } else if (report.upToDate.length > 0) {
+    parts.push(`${report.upToDate.join(", ")} already up to date in ${report.binDir}.`);
+  }
+  if (report.missing.length > 0) {
+    parts.push(`This build does not bundle ${report.missing.join(", ")}.`);
+  }
+  switch (report.autostart.kind) {
+    case "registered":
+      parts.push(`Registered to start with your session (${report.autostart.detail}).`);
+      break;
+    case "alreadyRegistered":
+      parts.push("Already registered to start with your session.");
+      break;
+    case "failed":
+      parts.push(`Could not register start at login: ${report.autostart.detail}`);
+      break;
+    case "skipped":
+      parts.push(`Start at login skipped: ${report.autostart.detail}`);
+      break;
+  }
+  parts.push(...report.errors);
+  return parts.join(" ") || "Nothing to install.";
+}
 
 interface ServiceSettingsViewProps {
   serviceInfo: ServiceInfo | null;
@@ -57,6 +91,42 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       void fetchLogs();
     } catch (err) {
       setActionMessage(`Repair failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  /**
+   * Retries the install the app already attempted on first run.
+   *
+   * That run is silent and best-effort - a locked executable or a LaunchAgents directory that was not
+   * writable yet leaves the machine without a daemon and with nothing in the UI to try again with.
+   * This is that button.
+   */
+  const handleInstall = async () => {
+    setIsBusy(true);
+    setActionMessage(null);
+    try {
+      const report = await bridge.installService();
+      setActionMessage(describeProvision(report));
+      await onRefreshHealth();
+      void fetchLogs();
+    } catch (err) {
+      setActionMessage(`Install failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleDisableAutostart = async () => {
+    setIsBusy(true);
+    setActionMessage(null);
+    try {
+      setActionMessage(await bridge.uninstallServiceAutostart());
+    } catch (err) {
+      setActionMessage(
+        `Could not disable start at login: ${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       setIsBusy(false);
     }
@@ -134,6 +204,26 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             {serviceInfo?.ownership === "Managed"
               ? "Switch to External Daemon"
               : "Adopt Managed Companion"}
+          </button>
+
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={handleInstall}
+            title="Copy the bundled daemon into TENDRIL_HOME/bin and start it with your session"
+            className="rounded-field border border-border bg-background px-3.5 py-2 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50 transition"
+          >
+            Install Background Service
+          </button>
+
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={handleDisableAutostart}
+            title="Stop the daemon starting at login. The installed binaries stay where they are."
+            className="rounded-field border border-border bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground hover:bg-card disabled:opacity-50 transition"
+          >
+            Disable Start at Login
           </button>
 
           <button

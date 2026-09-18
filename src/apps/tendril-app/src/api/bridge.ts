@@ -31,6 +31,7 @@ import type {
   PrSyncReport,
   ProjectAssets,
   ProjectSummary,
+  ProvisionReport,
   RecentMergedPr,
   RecentPlanCost,
   RecommendationItem,
@@ -325,6 +326,20 @@ const tauriClient = {
 
   async switchServiceMode(this: void, mode: string): Promise<ServiceInfo> {
     return invoke<ServiceInfo>("cmd_switch_service_mode", { mode });
+  },
+
+  /**
+   * Installs the bundled `tendril` and `opencode` sidecars into `<tendril home>/bin` and registers
+   * the daemon to start with the session. The app already does this on first run; this is the retry
+   * for a machine that refused it then.
+   */
+  async installService(this: void): Promise<ProvisionReport> {
+    return invoke<ProvisionReport>("cmd_install_service");
+  },
+
+  /** Stops the daemon starting at login. The installed binaries stay where they are. */
+  async uninstallServiceAutostart(this: void): Promise<string> {
+    return invoke<string>("cmd_uninstall_service_autostart");
   },
 
   async listPlans(this: void, query?: PlanQuery): Promise<PlanSummary[]> {

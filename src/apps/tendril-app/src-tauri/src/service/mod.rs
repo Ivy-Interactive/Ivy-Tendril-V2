@@ -6,6 +6,7 @@ pub mod job_events_bridge;
 pub mod master;
 pub mod plan_mapping;
 pub mod platform;
+pub mod provision;
 pub mod review_action_bridge;
 pub mod supervisor;
 pub mod tunnel_client;
@@ -16,6 +17,8 @@ pub use client::TendrilClient;
 pub use compatibility::{SemVer, ServiceCompatibilityManager, VersionCheckResult};
 pub use master::MasterDiscovery;
 pub use plan_mapping::{map_plan_detail, map_plan_summary};
+pub use platform::PlatformServiceConfig;
+pub use provision::{provision, AutostartOutcome, ProvisionReport};
 pub use supervisor::{
     calculate_backoff_secs, redact_sensitive_tokens, CircuitBreaker, ServiceOwnership,
     ServiceSupervisor, SupervisorStateInfo, SupervisorStatus,

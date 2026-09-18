@@ -84,6 +84,38 @@ pub fn run() {
 
             let bridge = service::ChangeBridge::new(app.handle().clone(), base_url, secret);
             app.manage(bridge);
+
+            // Install the daemon the app is a client of.
+            //
+            // A Tendril installer puts the app on the machine and nothing else, so on first run the
+            // app copies its bundled `tendril` and `opencode` sidecars into `<home>/bin` and
+            // registers an autostart unit against them. That is what makes a fresh install able to
+            // serve plans and run agents without the user also installing the CLI - and what makes
+            // the daemon survive a reboot instead of dying with the window.
+            //
+            // On a background thread because it can copy ~250 MB on a version bump, and nothing
+            // about showing a window depends on it. Idempotent and entirely best-effort: a machine
+            // that refuses the copy or the LaunchAgent still gets the managed child the supervisor
+            // has always spawned. Off in debug builds unless `TENDRIL_PROVISION_SERVICE` is set,
+            // because a dev build should not copy its debug sidecars over a developer's real
+            // `~/.tendril/bin`.
+            if service::provision::should_provision_on_startup() {
+                std::thread::spawn(|| {
+                    let report = service::provision(&daemon::resolve_tendril_home());
+                    for err in &report.errors {
+                        tracing::warn!("Service provisioning: {err}");
+                    }
+                    if report.changed() {
+                        tracing::info!(
+                            "Service provisioning installed {:?} into {} ({:?})",
+                            report.installed,
+                            report.bin_dir,
+                            report.autostart
+                        );
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -156,6 +188,8 @@ pub fn run() {
             cmd_restart_service,
             cmd_repair_service,
             cmd_switch_service_mode,
+            cmd_install_service,
+            cmd_uninstall_service_autostart,
             cmd_list_chat_sessions,
             cmd_create_chat_session,
             cmd_get_chat_session,

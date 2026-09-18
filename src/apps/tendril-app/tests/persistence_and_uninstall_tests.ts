@@ -40,19 +40,28 @@ describe("Persistence and Uninstallation Tests", () => {
     }
   });
 
-  it("preserves TENDRIL_HOME workspace, database, and plans when uninstaller runs without --purge-data", () => {
+  // Every invocation goes through here so none can reach outside the scratch dir. Without
+  // TENDRIL_APP_PATH the script targets /Applications/Tendril.app, and running these tests on a
+  // machine with Tendril installed would uninstall the developer's own copy.
+  function runUninstaller(args: string[] = []): string {
     const uninstallScript = path.resolve(__dirname, "../scripts/packaging/uninstall-macos.sh");
-    expect(fs.existsSync(uninstallScript)).toBe(true);
-
-    // Execute uninstaller with TENDRIL_HOME pointing to our mock directory
-    const output = execSync(`bash "${uninstallScript}"`, {
+    return execSync(`bash "${uninstallScript}" ${args.join(" ")}`.trim(), {
       env: {
         ...process.env,
         TENDRIL_HOME: mockTendrilHome,
-        HOME: tempDir, // redirect launchd plist lookup away from real user home
+        HOME: tempDir, // redirect launchd plist lookup away from the real user home
+        TENDRIL_APP_PATH: path.join(tempDir, "Applications", "Tendril.app"),
       },
       encoding: "utf8",
     });
+  }
+
+  it("preserves TENDRIL_HOME workspace, database, and plans when uninstaller runs without --purge-data", () => {
+    expect(
+      fs.existsSync(path.resolve(__dirname, "../scripts/packaging/uninstall-macos.sh")),
+    ).toBe(true);
+
+    const output = runUninstaller();
 
     expect(output).toContain("Preserving user workspace and configuration data");
     expect(fs.existsSync(mockTendrilHome)).toBe(true);
@@ -64,33 +73,103 @@ describe("Persistence and Uninstallation Tests", () => {
   });
 
   it("purges user data only when explicit --purge-data flag is passed to uninstaller", () => {
-    const uninstallScript = path.resolve(__dirname, "../scripts/packaging/uninstall-macos.sh");
-
-    const output = execSync(`bash "${uninstallScript}" --purge-data`, {
-      env: {
-        ...process.env,
-        TENDRIL_HOME: mockTendrilHome,
-        HOME: tempDir,
-      },
-      encoding: "utf8",
-    });
+    const output = runUninstaller(["--purge-data"]);
 
     expect(output).toContain("Purging user workspace data");
     expect(fs.existsSync(mockTendrilHome)).toBe(false);
   });
 
-  it("verifies NSIS uninstaller defaults to preserving user profile data", () => {
+  it("wires the NSIS hooks into the bundle config under the names Tauri actually calls", () => {
+    // An earlier version of installer.nsh defined electron-builder's `customUnInstall` and was
+    // referenced from nowhere, so none of it ran. Tauri only inserts these four macros, and only
+    // when `bundle.windows.nsis.installerHooks` points at the file.
+    const confPath = path.resolve(__dirname, "../src-tauri/tauri.conf.json");
+    const conf = JSON.parse(fs.readFileSync(confPath, "utf8"));
+    expect(conf.bundle?.windows?.nsis?.installerHooks).toBe("nsis/installer.nsh");
+
     const nsisScript = path.resolve(__dirname, "../src-tauri/nsis/installer.nsh");
     expect(fs.existsSync(nsisScript)).toBe(true);
-
     const content = fs.readFileSync(nsisScript, "utf8");
 
-    // Must default checkbox to unchecked (0)
-    expect(content).toContain("${NSD_SetState} $CheckboxDeleteData 0");
-    // Must contain preservation message
+    for (const hook of [
+      "NSIS_HOOK_PREINSTALL",
+      "NSIS_HOOK_POSTINSTALL",
+      "NSIS_HOOK_PREUNINSTALL",
+      "NSIS_HOOK_POSTUNINSTALL",
+    ]) {
+      expect(content).toContain(`!macro ${hook}`);
+    }
+    // The electron-builder macro this file used to define, which Tauri never calls. Matched as a
+    // definition so the file's own comment explaining the history does not trip this.
+    expect(content).not.toContain("!macro customUnInstall");
+  });
+
+  it("verifies the NSIS uninstaller preserves user profile data unless explicitly opted in", () => {
+    const nsisScript = path.resolve(__dirname, "../src-tauri/nsis/installer.nsh");
+    const content = fs.readFileSync(nsisScript, "utf8");
+
+    // Purging is gated on Tauri's own checkbox, which ships unticked...
+    expect(content).toContain("${If} $DeleteAppDataCheckboxState <> 1");
+    expect(content).toContain("Goto keep_data");
+    // ...and then on a second explicit yes, defaulting to No for a silent uninstall.
+    expect(content).toContain("/SD IDNO IDYES purge_data IDNO keep_data");
     expect(content).toContain("Preserving user plans, repos, and configuration");
-    // Must only delete if explicitly state == 1
-    expect(content).toContain("${If} $DeleteDataState == 1");
+    // The only `rm -rf` equivalent must sit behind that confirmation.
+    const purgeIndex = content.indexOf("purge_data:");
+    expect(purgeIndex).toBeGreaterThan(-1);
+    expect(content.indexOf('RMDir /r "$PROFILE\\.tendril"')).toBeGreaterThan(purgeIndex);
+  });
+
+  it("leaves the autostart task and profile data alone when the uninstaller runs as an upgrade", () => {
+    // Tauri runs the old uninstaller with /UPDATE before laying down a new build. Tearing down the
+    // logon task or the provisioned binaries there would break the upgrade rather than clean up.
+    const nsisScript = path.resolve(__dirname, "../src-tauri/nsis/installer.nsh");
+    const content = fs.readFileSync(nsisScript, "utf8");
+
+    const preUninstall = content.slice(
+      content.indexOf("!macro NSIS_HOOK_PREUNINSTALL"),
+      content.indexOf("!macro NSIS_HOOK_POSTUNINSTALL"),
+    );
+    expect(preUninstall).toContain("${If} $UpdateMode <> 1");
+    // The /Delete must be inside that guard; stopping the service is unconditional by design.
+    expect(preUninstall.indexOf("schtasks.exe /Delete")).toBeGreaterThan(
+      preUninstall.indexOf("${If} $UpdateMode <> 1"),
+    );
+
+    const postUninstall = content.slice(content.indexOf("!macro NSIS_HOOK_POSTUNINSTALL"));
+    expect(postUninstall).toContain("${If} $UpdateMode <> 1");
+  });
+
+  it("removes provisioned sidecars but keeps a bin directory holding the user's own tools", () => {
+    const binDir = path.join(mockTendrilHome, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(binDir, "tendril"), "daemon-binary", "utf8");
+    fs.writeFileSync(path.join(binDir, "opencode"), "agent-binary", "utf8");
+    fs.writeFileSync(path.join(binDir, ".provisioned"), "{}", "utf8");
+    // `bin` is on the PATH handed to coding agents, so anything else in it is the user's.
+    fs.writeFileSync(path.join(binDir, "my-own-tool"), "#!/bin/sh\n", "utf8");
+
+    runUninstaller();
+
+    expect(fs.existsSync(path.join(binDir, "tendril"))).toBe(false);
+    expect(fs.existsSync(path.join(binDir, "opencode"))).toBe(false);
+    expect(fs.existsSync(path.join(binDir, ".provisioned"))).toBe(false);
+    expect(fs.existsSync(path.join(binDir, "my-own-tool"))).toBe(true);
+    expect(fs.existsSync(binDir)).toBe(true);
+  });
+
+  it("removes the bin directory itself once only provisioned files were in it", () => {
+    const binDir = path.join(mockTendrilHome, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(binDir, "tendril"), "daemon-binary", "utf8");
+    // A run interrupted mid-replace leaves staging files behind; they must not keep the dir alive.
+    fs.writeFileSync(path.join(binDir, ".tendril.new"), "partial", "utf8");
+
+    runUninstaller();
+
+    expect(fs.existsSync(binDir)).toBe(false);
+    // Removing the sidecars must not have touched the workspace around them.
+    expect(fs.existsSync(path.join(mockTendrilHome, "tendril.db"))).toBe(true);
   });
 
   it("retains database, configuration, and plan revisions across simulated app upgrades", () => {
