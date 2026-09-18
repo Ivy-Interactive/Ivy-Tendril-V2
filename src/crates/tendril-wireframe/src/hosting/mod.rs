@@ -6,8 +6,10 @@
 
 pub mod index_html;
 pub mod live_reload;
+pub mod server;
 pub mod serving;
 
 pub use index_html::WireframeSite;
 pub use live_reload::{LiveReloadHub, ReloadMessage};
+pub use server::{ServerOptions, WireframeServer};
 pub use serving::{content_type_for, resolve_within, site_base, PAYLOAD_PREFIX};
