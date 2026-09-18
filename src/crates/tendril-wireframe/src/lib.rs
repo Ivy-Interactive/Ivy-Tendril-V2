@@ -14,6 +14,7 @@
 //! leak guard in `tendril-core` enforces.
 
 pub mod assets;
+pub mod browser;
 pub mod build;
 pub mod hosting;
 pub mod manifest;

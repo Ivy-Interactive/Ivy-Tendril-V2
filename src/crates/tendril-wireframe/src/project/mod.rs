@@ -280,7 +280,7 @@ fn local_app_data() -> PathBuf {
 /// Mirrors `tendril_core::config::dirs_home`: `USERPROFILE` first, then `HOME`. Kept local rather
 /// than depending on `tendril-core`, because this crate must stay usable from the standalone
 /// wireframe CLI paths that do not load Tendril's config.
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     for name in ["USERPROFILE", "HOME"] {
         if let Ok(val) = std::env::var(name) {
             let trimmed = val.trim().trim_matches('"');
