@@ -167,12 +167,12 @@ pub fn build_agent_pty_spec(provider: &str, config: &AgentPtyConfig) -> AgentPty
             }
             prompt_flag = Some("-i");
         }
+        // All four are OpenCode: `ivy` and the proxies are the same CLI pointed at a different
+        // base URL, which is why they always shared `build_opencode_spec`. They used to resolve a
+        // separately-shipped `ivy-agent` rebuild of it; Tendril bundles OpenCode itself now, so
+        // there is one binary to find and one to ship.
         "opencode" | "ivy" | "openaiproxy" | "proxy" => {
-            argv.push(if normalized == "opencode" {
-                resolve_opencode_binary()
-            } else {
-                resolve_ivy_agent_binary()
-            });
+            argv.push(resolve_opencode_binary());
             if let Some(model) = model {
                 argv.push("--model".to_string());
                 argv.push(format_opencode_model(Some(model), None));
@@ -772,13 +772,6 @@ fn build_opencode_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         args.push(eff_str.to_string());
     }
 
-    let mut temp_files = Vec::new();
-    if let Some(mcp_file) = write_mcp_config(&config.mcp_servers) {
-        args.push("--mcp-config".to_string());
-        args.push(mcp_file.to_string_lossy().to_string());
-        temp_files.push(mcp_file);
-    }
-
     args.extend(config.extra_arguments.clone());
 
     let stdin_content = if let Some(sys) = &config.system_prompt {
@@ -792,6 +785,13 @@ fn build_opencode_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     };
 
     let mut env = default_environment();
+    // OpenCode has no `--mcp-config` flag - `opencode run --help` takes none, and passing one made
+    // every launch with an MCP server fail on an unknown argument. Servers are declared in its
+    // config, and `OPENCODE_CONFIG_CONTENT` is the way to supply one without writing to the user's
+    // `opencode.json`.
+    if let Some(content) = opencode_mcp_config_content(&config.mcp_servers) {
+        env.insert("OPENCODE_CONFIG_CONTENT".to_string(), content);
+    }
     for (k, v) in &config.environment_variables {
         env.insert(k.clone(), v.clone());
     }
@@ -803,7 +803,7 @@ fn build_opencode_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         working_directory: config.working_directory.clone(),
         stdin_content: Some(stdin_content),
         redirect_stdin: true,
-        temp_files,
+        temp_files: Vec::new(),
     }
 }
 
@@ -907,7 +907,7 @@ fn build_ivy_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     ));
 
     let mut spec = build_opencode_spec(&modified);
-    spec.command = resolve_ivy_agent_binary();
+    spec.command = resolve_opencode_binary();
 
     spec.environment.insert(
         "ANTHROPIC_BASE_URL".to_string(),
@@ -953,7 +953,7 @@ fn build_openai_proxy_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     ));
 
     let mut spec = build_opencode_spec(&modified);
-    spec.command = resolve_ivy_agent_binary();
+    spec.command = resolve_opencode_binary();
 
     if let Some(base) = &base_url {
         let trimmed = base.trim().trim_end_matches('/');
@@ -1039,7 +1039,7 @@ fn agent_path_for(exe: &Path, inherited: Option<&str>) -> Option<String> {
 /// a dev tree's `target/debug` holds `tendril`, `tendril-server` and `tendril-app`; an installed CLI
 /// *is* the daemon, so its own directory holds it by definition; and Tauri copies the
 /// `binaries/tendril` sidecar next to `tendril-app` in the packaged bundle's `Contents/MacOS`. `bin/`
-/// is checked too, mirroring [`resolve_ivy_agent_binary`].
+/// is checked too, mirroring [`resolve_opencode_binary`].
 ///
 /// `None` when no `tendril` is there — a `cargo run -p tendril-server` in a tree where the CLI was
 /// never built, say. Prepending that directory would shadow nothing and hide the real state from
@@ -1289,6 +1289,49 @@ pub fn translate_copilot_tool(canonical: &str) -> String {
     }
 }
 
+/// The MCP servers as an OpenCode config document, for `OPENCODE_CONFIG_CONTENT`.
+///
+/// Not the `mcpServers` map [`write_mcp_config`] writes: OpenCode's key is `mcp`, each server is
+/// tagged `"type": "local"`, and its `command` is one argv array rather than a command plus a
+/// separate `args`. `environment`, not `env`. An entry is `"enabled": true` explicitly, because a
+/// server Tendril was asked to attach should not depend on OpenCode's default.
+///
+/// `None` when there is nothing to declare, so the variable is left unset rather than set to an
+/// empty document - OpenCode treats the variable's presence as "this is your config".
+fn opencode_mcp_config_content(servers: &[McpServerConfig]) -> Option<String> {
+    if servers.is_empty() {
+        return None;
+    }
+
+    let mut map = serde_json::Map::new();
+    for s in servers {
+        if s.command.trim().is_empty() {
+            continue;
+        }
+        let mut command = vec![serde_json::Value::String(s.command.clone())];
+        command.extend(
+            s.arguments
+                .iter()
+                .map(|a| serde_json::Value::String(a.clone())),
+        );
+
+        let mut entry = serde_json::Map::new();
+        entry.insert("type".to_string(), serde_json::Value::String("local".into()));
+        entry.insert("command".to_string(), serde_json::Value::Array(command));
+        entry.insert("enabled".to_string(), serde_json::Value::Bool(true));
+        if !s.environment.is_empty() {
+            entry.insert("environment".to_string(), serde_json::json!(s.environment));
+        }
+        map.insert(s.name.clone(), serde_json::Value::Object(entry));
+    }
+
+    if map.is_empty() {
+        return None;
+    }
+
+    serde_json::to_string(&serde_json::json!({ "mcp": map })).ok()
+}
+
 pub fn write_mcp_config(servers: &[McpServerConfig]) -> Option<PathBuf> {
     if servers.is_empty() {
         return None;
@@ -1370,7 +1413,49 @@ fn resolve_copilot_binary() -> (String, Vec<String>) {
     ("copilot".to_string(), vec![])
 }
 
+/// The `opencode` executable's file name on this platform.
+const OPENCODE_BINARY: &str = if cfg!(windows) {
+    "opencode.exe"
+} else {
+    "opencode"
+};
+
+/// The OpenCode CLI to launch, preferring the one Tendril ships over anything on the developer's
+/// `PATH`.
+///
+/// The bundled copy comes first for the same reason [`own_cli_dir`] exists: Tauri drops the
+/// `binaries/opencode` sidecar next to `tendril-app` in the packaged bundle, so a user who installed
+/// Tendril has a working agent without installing anything, and one who also has their own
+/// `opencode` does not get a version skew between what Tendril tested against and what they happen
+/// to have. `$HOME/.tendril/bin` is the path [`PlatformServiceConfig`] installs to, then `PATH`,
+/// then OpenCode's own installer directory.
+///
+/// Falls back to the bare name so the failure is OpenCode's own "not found" rather than a path that
+/// does not exist.
 fn resolve_opencode_binary() -> String {
+    if let Ok(curr_exe) = std::env::current_exe() {
+        if let Some(parent) = curr_exe.parent() {
+            let direct = parent.join(OPENCODE_BINARY);
+            if direct.is_file() {
+                return direct.to_string_lossy().to_string();
+            }
+            let bin = parent.join("bin").join(OPENCODE_BINARY);
+            if bin.is_file() {
+                return bin.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        let tendril_managed = Path::new(&home)
+            .join(".tendril")
+            .join("bin")
+            .join(OPENCODE_BINARY);
+        if tendril_managed.is_file() {
+            return tendril_managed.to_string_lossy().to_string();
+        }
+    }
+
     if let Some(p) = find_on_path("opencode") {
         return p.to_string_lossy().to_string();
     }
@@ -1388,7 +1473,7 @@ fn resolve_opencode_binary() -> String {
         }
         #[cfg(not(windows))]
         {
-            let candidate = fallback.join("opencode");
+            let candidate = fallback.join(OPENCODE_BINARY);
             if candidate.is_file() {
                 return candidate.to_string_lossy().to_string();
             }
@@ -1396,40 +1481,6 @@ fn resolve_opencode_binary() -> String {
     }
 
     "opencode".to_string()
-}
-
-fn resolve_ivy_agent_binary() -> String {
-    let exe_name = if cfg!(windows) {
-        "ivy-agent.exe"
-    } else {
-        "ivy-agent"
-    };
-
-    if let Ok(curr_exe) = std::env::current_exe() {
-        if let Some(parent) = curr_exe.parent() {
-            let direct = parent.join(exe_name);
-            if direct.is_file() {
-                return direct.to_string_lossy().to_string();
-            }
-            let bin = parent.join("bin").join(exe_name);
-            if bin.is_file() {
-                return bin.to_string_lossy().to_string();
-            }
-        }
-    }
-
-    if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
-        let tendril_managed = Path::new(&home).join(".tendril").join("bin").join(exe_name);
-        if tendril_managed.is_file() {
-            return tendril_managed.to_string_lossy().to_string();
-        }
-    }
-
-    if let Some(p) = find_on_path("ivy-agent") {
-        return p.to_string_lossy().to_string();
-    }
-
-    "ivy-agent".to_string()
 }
 
 /// Tests for the `PATH` an agent is launched with. Inline rather than in `tests/` because the

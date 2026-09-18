@@ -134,9 +134,11 @@ fn test_all_agent_providers_spec_generation() {
         ("gemini", "gemini", true),
         ("opencode", "opencode", true),
         ("copilot", "copilot", true),
-        ("ivy", "ivy-agent", true),
-        ("openaiproxy", "ivy-agent", true),
-        ("proxy", "ivy-agent", true),
+        // The three proxy flavours are the bundled OpenCode with a different base URL, not a
+        // separate `ivy-agent` binary - see `resolve_opencode_binary`.
+        ("ivy", "opencode", true),
+        ("openaiproxy", "opencode", true),
+        ("proxy", "opencode", true),
     ];
 
     for (provider_name, expected_cmd_prefix, expect_stdin) in providers {

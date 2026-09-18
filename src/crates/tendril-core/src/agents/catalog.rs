@@ -324,8 +324,9 @@ struct AgentDef {
 /// choice that could not launch. It was also the one row the Coding Agent pane never listed, which
 /// is how the chat picker came to show an agent the settings screen had no card for. The `ivy` id
 /// is still *accepted* everywhere it was - `agent_environment` still reads credentials from an
-/// `ivy` entry, and `resolve_ivy_agent_binary` still resolves the binary - so an existing
-/// `config.yaml` naming it keeps working; it is only no longer offered.
+/// `ivy` entry, and it now launches the bundled OpenCode pointed at the Ivy proxy rather than a
+/// binary nothing ships - so an existing `config.yaml` naming it keeps working; it is only no
+/// longer offered.
 static AGENTS: &[AgentDef] = &[
     AgentDef {
         id: "antigravity",
