@@ -103,8 +103,8 @@ function FileStats({ additions, deletions }: { additions: number; deletions: num
   if (additions <= 0 && deletions <= 0) return null;
   return (
     <span className="ivy-changes-tree-stats">
-      {additions > 0 && <span className="text-[var(--success)]">+{additions}</span>}
-      {deletions > 0 && <span className="text-[var(--destructive)]">-{deletions}</span>}
+      {additions > 0 && <span className="text-success">+{additions}</span>}
+      {deletions > 0 && <span className="text-destructive">-{deletions}</span>}
     </span>
   );
 }
@@ -245,7 +245,7 @@ export const PlanChangesView: React.FC<PlanChangesViewProps> = ({
 
   if (orderedFiles.length === 0) {
     return (
-      <div ref={containerRef} style={style} className="text-[var(--muted-foreground)] p-4 text-sm">
+      <div ref={containerRef} style={style} className="text-muted-foreground p-4 text-sm">
         No file changes.
       </div>
     );
@@ -271,12 +271,12 @@ export const PlanChangesView: React.FC<PlanChangesViewProps> = ({
       )}
       {isNarrow && (
         <div className="ivy-changes-jump">
-          <span className="text-xs text-[var(--muted-foreground)] shrink-0">
+          <span className="text-xs text-muted-foreground shrink-0">
             {orderedFiles.length} files
           </span>
           <select
             aria-label="Jump to file"
-            className="flex-1 min-w-0 text-xs px-2 py-1 rounded bg-[var(--background)] text-[var(--foreground)] border border-[var(--border)]"
+            className="flex-1 min-w-0 text-xs px-2 py-1 rounded bg-background text-foreground border border-border"
             value={selectedPath ?? ""}
             onChange={(e) => {
               if (e.target.value) selectFile(e.target.value);

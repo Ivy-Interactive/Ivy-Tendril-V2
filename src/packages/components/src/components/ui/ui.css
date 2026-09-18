@@ -8,19 +8,17 @@
 .tui-kbd,
 .tui-badge,
 .tui-dot,
-.tui-status {
-  --tui-fg: var(--foreground, #000000);
-  --tui-muted: color-mix(in srgb, var(--foreground, #000000) 60%, transparent);
-  --tui-border: var(--border, #e0e0e0);
-  --tui-surface: color-mix(in srgb, var(--foreground, #000000) 6%, transparent);
-  --tui-muted-bg: var(--muted, #f0f0f0);
-  --tui-danger: var(--destructive, #ef4444);
-  --tui-success: var(--success, #16a34a);
-  --tui-warning: var(--warning, #f59e0b);
-  --tui-info: var(--info, #2563eb);
+.tui-status,
+.tui-spinner,
+.tui-btn,
+.tui-popover-shell {
+  --tui-fg: var(--foreground);
+  --tui-muted: var(--foreground-muted);
+  --tui-border: var(--border);
+  --tui-surface: color-mix(in srgb, var(--foreground) 6%, transparent);
 
   box-sizing: border-box;
-  font-family: var(--font-sans, "Geist", sans-serif);
+  font-family: var(--font-sans);
 }
 
 /* ---------- Tooltip ---------- */
@@ -46,35 +44,31 @@
 }
 
 .tui-tooltip-content {
-  z-index: 70;
-  border-radius: var(--radius-selectors, 6px);
-  border: 1px solid var(--border, #e0e0e0);
-  background: var(--card, #ffffff);
-  color: var(--card-foreground, #000000);
+  z-index: var(--z-tooltip);
+  border-radius: var(--radius-selectors);
+  border: var(--border-width) solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 16px;
   font-weight: 500;
-  box-shadow:
-    0 4px 6px -1px rgb(0 0 0 / 0.1),
-    0 2px 4px -2px rgb(0 0 0 / 0.1);
+  box-shadow: var(--shadow-popover);
   max-width: 320px;
   pointer-events: none;
-  animation: tui-tooltip-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: tui-tooltip-in var(--duration-base) var(--ease-emphasized);
   transform-origin: var(--radix-tooltip-content-transform-origin);
 }
 
 .dark .tui-tooltip-content {
-  background: var(--card, #0a0a0a);
-  color: var(--card-foreground, #f8f8f8);
-  border-color: var(--border, #27272a);
-  box-shadow:
-    0 4px 6px -1px rgb(0 0 0 / 0.4),
-    0 2px 4px -2px rgb(0 0 0 / 0.4);
+  background: var(--card);
+  color: var(--card-foreground);
+  border-color: var(--border);
+  box-shadow: var(--shadow-popover);
 }
 
 .tui-tooltip-content[data-state="closed"] {
-  animation: tui-tooltip-out 100ms ease-in;
+  animation: tui-tooltip-out var(--duration-instant) ease-in;
 }
 
 .tui-tooltip-inner {
@@ -109,30 +103,70 @@
 /* Bare: the key letters alone, for hints that sit inside a button's own chrome. */
 .tui-kbd--bare {
   gap: 2px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   letter-spacing: -0.24px;
-  opacity: 0.8;
+  opacity: var(--opacity-soft);
 }
 
-/* Boxed: a key cap, for hints that stand on their own (tooltips, toolbars). */
+/* Boxed: a key cap, for hints that stand on their own (tooltips, toolbars). Sized "sm" by default. */
 .tui-kbd--boxed {
   height: 16px;
   min-width: 16px;
   justify-content: center;
   padding: 0 4px;
-  border: 1px solid var(--tui-border);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--tui-muted-bg) 40%, transparent);
-  color: var(--card-foreground, #000000);
-  font-size: 10px;
+  border: var(--border-width) solid var(--tui-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+  color: var(--card-foreground);
+  font-size: var(--text-2xs);
   font-weight: 400;
   line-height: 1;
 }
 
 .dark .tui-kbd--boxed {
-  border-color: var(--border, #27272a);
-  background: color-mix(in srgb, var(--muted, #27272a) 40%, transparent);
-  color: var(--card-foreground, #f8f8f8);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+  color: var(--card-foreground);
+}
+
+/* Outline: transparent fill with a current-color border, for hints on a colored surface
+   (a primary button, a dropdown item) where the cap must ride the parent's own text color. */
+.tui-kbd--outline {
+  height: 16px;
+  min-width: 16px;
+  justify-content: center;
+  padding: 0 4px;
+  border: var(--border-width) solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: currentColor;
+  opacity: var(--opacity-soft);
+  font-size: var(--text-2xs);
+  font-weight: 400;
+  line-height: 0.5;
+  gap: 2px;
+}
+
+/* Size "md": the markdown-content and menu-item key cap (20px). */
+.tui-kbd--boxed.tui-kbd--md,
+.tui-kbd--outline.tui-kbd--md {
+  height: 20px;
+  min-width: 20px;
+  padding: 0 5px;
+  font-size: var(--text-xs);
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* Size "lg": the standalone help-dialog key cap (auto height, monospace). */
+.tui-kbd--boxed.tui-kbd--lg,
+.tui-kbd--outline.tui-kbd--lg {
+  height: auto;
+  min-width: 0;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 /* ---------- Badges, counts and status dots ---------- */
@@ -141,27 +175,15 @@
    bundle. A tint that dark rides on the surface rather than the raw color, which would drown
    text at this size. */
 .tui-badge {
-  --tui-badge-project-bg: color-mix(in srgb, var(--info, #bcd6ff) 18%, var(--card, #ffffff));
-  --tui-badge-project-fg: color-mix(in srgb, var(--info, #183b75) 40%, var(--foreground, #000000));
-  --tui-badge-success-bg: color-mix(in srgb, var(--success, #b7e4b9) 18%, var(--card, #ffffff));
-  --tui-badge-success-fg: color-mix(
-    in srgb,
-    var(--success, #1f4924) 40%,
-    var(--foreground, #000000)
-  );
-  --tui-badge-warning-bg: color-mix(in srgb, var(--warning, #fce4b5) 18%, var(--card, #ffffff));
-  --tui-badge-warning-fg: color-mix(
-    in srgb,
-    var(--warning, #6b4e14) 40%,
-    var(--foreground, #000000)
-  );
-  --tui-badge-danger-bg: color-mix(in srgb, var(--destructive, #f9c0c0) 18%, var(--card, #ffffff));
-  --tui-badge-danger-fg: color-mix(
-    in srgb,
-    var(--destructive, #7f1d1d) 40%,
-    var(--foreground, #000000)
-  );
-  --tui-badge-border: color-mix(in srgb, var(--foreground, #000000) 30%, transparent);
+  --tui-badge-project-bg: color-mix(in srgb, var(--info) 18%, var(--card));
+  --tui-badge-project-fg: color-mix(in srgb, var(--info) 40%, var(--foreground));
+  --tui-badge-success-bg: color-mix(in srgb, var(--success) 18%, var(--card));
+  --tui-badge-success-fg: color-mix(in srgb, var(--success) 40%, var(--foreground));
+  --tui-badge-warning-bg: color-mix(in srgb, var(--warning) 18%, var(--card));
+  --tui-badge-warning-fg: color-mix(in srgb, var(--warning) 40%, var(--foreground));
+  --tui-badge-danger-bg: color-mix(in srgb, var(--destructive) 18%, var(--card));
+  --tui-badge-danger-fg: color-mix(in srgb, var(--destructive) 40%, var(--foreground));
+  --tui-badge-border: color-mix(in srgb, var(--foreground) 30%, transparent);
   /* A badge in a host colour gets the same pale fill the status kinds use. */
   --tui-badge-color-mix-bg: 18%;
   --tui-badge-color-mix-fg: 60%;
@@ -172,37 +194,25 @@
   gap: 4px;
   padding: 2px 5px;
   border: 0.5px solid transparent;
-  border-radius: 4px;
-  background: var(--tui-muted-bg);
+  border-radius: var(--radius-sm);
+  background: var(--muted);
   color: var(--tui-fg);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: 400;
   line-height: 13px;
   white-space: nowrap;
 }
 
 .dark .tui-badge {
-  --tui-badge-project-bg: color-mix(in srgb, var(--info, #1e3a6d) 28%, var(--card, #000000));
-  --tui-badge-project-fg: color-mix(in srgb, var(--info, #bcd6ff) 40%, var(--foreground, #ffffff));
-  --tui-badge-success-bg: color-mix(in srgb, var(--success, #1f4924) 28%, var(--card, #000000));
-  --tui-badge-success-fg: color-mix(
-    in srgb,
-    var(--success, #b7e4b9) 40%,
-    var(--foreground, #ffffff)
-  );
-  --tui-badge-warning-bg: color-mix(in srgb, var(--warning, #6b4e14) 28%, var(--card, #000000));
-  --tui-badge-warning-fg: color-mix(
-    in srgb,
-    var(--warning, #fce4b5) 40%,
-    var(--foreground, #ffffff)
-  );
-  --tui-badge-danger-bg: color-mix(in srgb, var(--destructive, #7f1d1d) 28%, var(--card, #000000));
-  --tui-badge-danger-fg: color-mix(
-    in srgb,
-    var(--destructive, #f9c0c0) 40%,
-    var(--foreground, #ffffff)
-  );
-  --tui-badge-border: color-mix(in srgb, var(--foreground, #ffffff) 25%, transparent);
+  --tui-badge-project-bg: color-mix(in srgb, var(--info) 28%, var(--card));
+  --tui-badge-project-fg: color-mix(in srgb, var(--info) 40%, var(--foreground));
+  --tui-badge-success-bg: color-mix(in srgb, var(--success) 28%, var(--card));
+  --tui-badge-success-fg: color-mix(in srgb, var(--success) 40%, var(--foreground));
+  --tui-badge-warning-bg: color-mix(in srgb, var(--warning) 28%, var(--card));
+  --tui-badge-warning-fg: color-mix(in srgb, var(--warning) 40%, var(--foreground));
+  --tui-badge-danger-bg: color-mix(in srgb, var(--destructive) 28%, var(--card));
+  --tui-badge-danger-fg: color-mix(in srgb, var(--destructive) 40%, var(--foreground));
+  --tui-badge-border: color-mix(in srgb, var(--foreground) 25%, transparent);
   --tui-badge-color-mix-bg: 28%;
   --tui-badge-color-mix-fg: 60%;
 }
@@ -244,16 +254,61 @@
 }
 
 .tui-badge[data-kind="color"] {
-  background: color-mix(
-    in srgb,
-    var(--tui-badge-color) var(--tui-badge-color-mix-bg),
-    var(--card, #ffffff)
-  );
+  background: color-mix(in srgb, var(--tui-badge-color) var(--tui-badge-color-mix-bg), var(--card));
   color: color-mix(
     in srgb,
     var(--tui-badge-color) var(--tui-badge-color-mix-fg),
-    var(--foreground, #000000)
+    var(--foreground)
   );
+}
+
+.tui-badge[data-kind="primary"] {
+  border-color: transparent;
+  background: var(--tui-badge-primary-bg, var(--primary));
+  color: var(--tui-badge-primary-fg, var(--primary-foreground));
+}
+
+.tui-badge[data-size="md"] {
+  padding: 1px 6px;
+  font-size: var(--text-xs);
+  line-height: 16px;
+}
+
+.tui-badge[data-mono="true"] {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.tui-badge[data-caps="true"] {
+  text-transform: uppercase;
+}
+
+.tui-badge[data-shape="pill"] {
+  border-radius: var(--radius-full);
+}
+
+.tui-badge[data-floating="true"] {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  border-width: var(--border-width-thick);
+  pointer-events: none;
+}
+
+.tui-badge-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+
+.tui-badge-remove:hover {
+  color: var(--foreground);
 }
 
 .tui-dot {
@@ -266,19 +321,26 @@
 }
 
 .tui-dot[data-tone="success"] {
-  background: var(--tui-success);
+  background: var(--success);
 }
 
 .tui-dot[data-tone="warning"] {
-  background: var(--tui-warning);
+  background: var(--warning);
 }
 
 .tui-dot[data-tone="danger"] {
-  background: var(--tui-danger);
+  background: var(--destructive);
 }
 
 .tui-dot[data-tone="info"] {
-  background: var(--tui-info);
+  background: var(--info);
+}
+
+.tui-dot[data-floating="true"] {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  box-shadow: 0 0 0 2px var(--tui-dot-ring, var(--background));
 }
 
 @keyframes tui-dot-pulse {
@@ -300,27 +362,40 @@
 /* ---------- Icon button ---------- */
 
 .tui-icon-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   padding: 0;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--tui-fg);
-  opacity: 0.7;
+  opacity: var(--opacity-subtle);
   cursor: pointer;
   transition:
-    background-color 120ms ease,
-    color 120ms ease,
-    opacity 120ms ease;
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
+}
+
+.tui-icon-btn[data-size="2xs"] {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-xs);
+}
+
+.tui-icon-btn[data-size="xs"] {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
 }
 
 .tui-icon-btn[data-size="sm"] {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tui-icon-btn[data-size="md"] {
@@ -333,37 +408,83 @@
   height: 32px;
 }
 
+.tui-icon-btn[data-size="xl"] {
+  width: 40px;
+  height: 40px;
+}
+
+.tui-icon-btn[data-size="2xl"] {
+  width: 48px;
+  height: 48px;
+}
+
+.tui-icon-btn[data-shape="round"] {
+  border-radius: var(--radius-full);
+}
+
+.tui-icon-btn[data-tone="muted"] {
+  color: var(--tui-muted);
+  opacity: 1;
+}
+
+.tui-icon-btn[data-tone="muted"]:hover:not(:disabled),
+.tui-icon-btn[data-tone="muted"][data-active="true"] {
+  color: var(--tui-fg);
+}
+
 .tui-icon-btn:hover:not(:disabled),
 .tui-icon-btn[data-active="true"],
 .tui-icon-btn[aria-expanded="true"] {
-  background: var(--tui-surface);
+  background: var(--tui-icon-btn-hover, var(--tui-surface));
   opacity: 1;
 }
 
 .tui-icon-btn:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--tui-fg) 40%, transparent);
-  outline-offset: 1px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
   opacity: 1;
 }
 
 .tui-icon-btn:disabled {
-  opacity: 0.35;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 
 .tui-icon-btn[data-variant="danger"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--tui-danger) 14%, transparent);
-  color: var(--tui-danger);
+  background: color-mix(in srgb, var(--destructive) 14%, transparent);
+  color: var(--destructive);
 }
 
 .tui-icon-btn[data-variant="solid"] {
-  background: var(--primary, #000000);
-  color: var(--primary-foreground, #ffffff);
+  background: var(--primary);
+  color: var(--primary-foreground);
   opacity: 1;
 }
 
 .tui-icon-btn[data-variant="solid"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary, #000000) 85%, var(--background, #ffffff));
+  background: color-mix(in srgb, var(--primary) 85%, var(--background));
+}
+
+.tui-icon-btn[data-variant="outline"] {
+  border: var(--border-width) solid var(--tui-border);
+  background: var(--tui-icon-btn-outline-bg, var(--muted));
+  opacity: 1;
+}
+
+.tui-icon-btn[data-variant="outline"]:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: var(--accent);
+}
+
+.tui-icon-btn[data-variant="overlay"] {
+  background: color-mix(in srgb, black 50%, transparent);
+  color: white;
+  opacity: 1;
+}
+
+.tui-icon-btn[data-variant="overlay"]:hover:not(:disabled) {
+  background: color-mix(in srgb, black 70%, transparent);
 }
 
 /* ---------- Status line ---------- */
@@ -373,7 +494,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--text-sm-tight);
   color: var(--tui-muted);
 }
 
@@ -382,14 +503,8 @@
   flex-shrink: 0;
 }
 
-@keyframes tui-status-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .tui-status-icon[data-spin="true"] {
-  animation: tui-status-spin 1s linear infinite;
+  animation: tui-spin 1s linear infinite;
 }
 
 .tui-status[data-complete="true"] {
@@ -405,7 +520,7 @@
 }
 
 .tui-status-sep {
-  opacity: 0.55;
+  opacity: var(--opacity-muted);
 }
 
 .tui-status-text {
@@ -442,4 +557,86 @@
     background: none;
     color: var(--tui-muted);
   }
+}
+
+/* ---------- Spinner ---------- */
+
+@keyframes tui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tui-spinner {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--tui-spinner-size, 14px);
+  height: var(--tui-spinner-size, 14px);
+  border-radius: 50%;
+  border: var(--tui-spinner-border-width, 2px) solid var(--tui-spinner-track, var(--tui-border));
+  border-top-color: var(--tui-spinner-color, var(--tui-fg));
+  animation: tui-spin var(--tui-spinner-duration, 0.8s) linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tui-spinner {
+    animation-duration: calc(var(--tui-spinner-duration, 0.8s) * 3);
+  }
+}
+
+/* ---------- Plain button ---------- */
+
+/* The small ghost/primary/danger button shared by WebViewer's comment popover and
+   PlanMarkdown's annotation popover — the same box in both (`.wvr-btn`, `.pmv-popover-btn`). */
+.tui-btn {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.625rem;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.tui-btn--ghost {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.tui-btn--ghost:hover {
+  background: var(--muted);
+}
+
+.tui-btn--primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.tui-btn--primary:hover {
+  opacity: var(--opacity-hover);
+}
+
+.tui-btn--danger {
+  background: transparent;
+  color: var(--destructive);
+}
+
+/* Solid destructive hover (WebViewer's own choice). PlanMarkdown's annotation popover uses a
+   softer tint instead — see .pmv-popover-btn--danger:hover in plan-markdown.css. */
+.tui-btn--danger:hover {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+
+/* ---------- Popover shell ---------- */
+
+/* The card chrome shared by WebViewer's comment popover (.wvr-comment-box) and PlanMarkdown's
+   annotation popover (.pmv-popover) — identical border/background/padding/shadow; each keeps
+   its own width, max-height and positioning. */
+.tui-popover-shell {
+  border-radius: var(--radius-lg);
+  border: var(--border-width) solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  padding: 0.75rem;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
 }

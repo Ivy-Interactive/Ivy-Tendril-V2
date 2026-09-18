@@ -1043,7 +1043,9 @@ describe("InboxView Component & Triage Tests", () => {
       await waitForInboxIdle();
 
       expect(dot("Tendril").className).toContain("size-3");
-      expect(dot("Tendril").className).toContain("rounded-[0.5rem]");
+      // `rounded-box` is `--radius-boxes`, which is the same 0.5rem this asserted as a literal before
+      // the swatch moved onto the shared radius token.
+      expect(dot("Tendril").className).toContain("rounded-box");
       expect(dot("Tendril").className).not.toContain("rounded-full");
     });
 

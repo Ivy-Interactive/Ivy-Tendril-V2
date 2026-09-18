@@ -27,7 +27,7 @@ export const SectionCard: React.FC<{
   action?: React.ReactNode;
   children: React.ReactNode;
 }> = ({ title, hint, testId, action, children }) => (
-  <div className="rounded-xl border border-border bg-card/60 p-6" data-testid={testId}>
+  <div className="rounded-box border border-border bg-card/60 p-6" data-testid={testId}>
     <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
       <div>
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -202,7 +202,7 @@ export const NativeSelectField: React.FC<{
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-fields border border-input bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="h-9 w-full rounded-field border border-input bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-ring"
     >
       {!options.some((option) => option.value === value) && (
         <option value={value}>{value || "Default"}</option>

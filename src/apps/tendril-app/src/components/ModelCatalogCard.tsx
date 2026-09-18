@@ -206,7 +206,7 @@ export const ModelCatalogCard: React.FC = () => {
 
   return (
     <div
-      className="rounded-xl border border-border bg-card/60 p-6"
+      className="rounded-box border border-border bg-card/60 p-6"
       data-testid="model-catalog-card"
     >
       <div className="flex items-start justify-between gap-3 border-b border-border pb-4">

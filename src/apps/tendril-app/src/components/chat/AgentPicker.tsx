@@ -79,7 +79,7 @@ const PanelSelect: React.FC<{
         aria-label={title}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-full cursor-pointer appearance-none truncate whitespace-nowrap rounded-selector border border-border bg-popover pl-2.5 pr-7 text-sm text-popover-foreground outline-none hover:bg-accent focus-visible:border-foreground"
+        className="h-7 w-full cursor-pointer appearance-none truncate whitespace-nowrap rounded-selector border border-border bg-popover pl-2.5 pr-7 text-sm text-popover-foreground outline-none hover:bg-accent focus:border-foreground"
       >
         {/* A value the list does not contain still has to be showable, or the select silently
             snaps to its first option and reports a model the host never chose. */}
@@ -330,7 +330,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
               ref={menuRef}
               role="menu"
               aria-label="Agents"
-              className="flex min-w-41 flex-col gap-0.5 rounded-lg border border-border bg-popover p-1.5 shadow-lg"
+              className="flex min-w-41 flex-col gap-0.5 rounded-box border border-border bg-popover p-1.5 shadow-lg"
             >
               {rows.map((agent) => {
                 const settings = settingsFor(agent);
@@ -348,7 +348,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
                     tabIndex={0}
                     data-selected={agent.id === selectedAgentId}
                     data-options-open={optionsOpen}
-                    className="group flex h-7.5 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md pl-2 pr-1 text-sm text-popover-foreground outline-none data-[selected=true]:bg-muted hover:bg-accent focus-visible:bg-accent data-[options-open=true]:bg-accent"
+                    className="group flex h-7.5 cursor-pointer items-center gap-2 whitespace-nowrap rounded-selector pl-2 pr-1 text-sm text-popover-foreground outline-none data-[selected=true]:bg-muted hover:bg-accent focus-visible:bg-accent data-[options-open=true]:bg-accent"
                     onClick={() => chooseAgent(agent.id)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
@@ -372,7 +372,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
                           type="button"
                           aria-label={`${agent.label} options`}
                           aria-expanded={optionsOpen}
-                          className="inline-flex size-5.5 shrink-0 items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground opacity-0 transition-[opacity,background-color,color] group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground aria-expanded:opacity-100"
+                          className="inline-flex size-5.5 shrink-0 items-center justify-center rounded-selector border-0 bg-transparent text-muted-foreground opacity-0 transition-[opacity,background-color,color] group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground aria-expanded:opacity-100"
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleOptions(agent.id);
@@ -393,7 +393,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
                 role="group"
                 aria-label={`${optionsAgent.label} settings`}
                 style={{ top: panelTop, left: `calc(100% + ${PANEL_GAP}px)` }}
-                className="absolute flex min-w-41 flex-col gap-1.5 rounded-lg border border-border bg-popover p-2 shadow-lg"
+                className="absolute flex min-w-41 flex-col gap-1.5 rounded-box border border-border bg-popover p-2 shadow-lg"
               >
                 <div className="whitespace-nowrap px-0.5 pb-0.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {optionsAgent.label}

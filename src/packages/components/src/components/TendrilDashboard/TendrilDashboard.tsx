@@ -19,6 +19,8 @@ import { TrendChart } from "./TrendChart.tsx";
 import { ActivityGrid } from "./ActivityGrid.tsx";
 import { PillBars } from "./PillBars.tsx";
 import { ChartSkeleton, KpiSkeletonGrid } from "./DashboardSkeleton.tsx";
+import { TuiBadge } from "../ui/TuiBadge";
+import "../ui/ui.css";
 import "./dashboard.css";
 
 interface StatusItemProps {
@@ -338,7 +340,11 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
                     className="tdb-job-spinner"
                     data-spinning={job.status === "running"}
                   />
-                  {job.planId && <span className="tdb-job-tag">{job.planId}</span>}
+                  {job.planId && (
+                    <TuiBadge className="tdb-job-tag" size="md" numeric>
+                      {job.planId}
+                    </TuiBadge>
+                  )}
                   <span className="tdb-job-title">{job.title}</span>
                 </button>
               ))}

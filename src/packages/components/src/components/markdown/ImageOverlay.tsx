@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { validateImageUrl } from "@/lib/url";
+import { IconButton } from "@/components/ui/IconButton";
 
 interface ImageOverlayProps {
   src: string | undefined;
@@ -96,14 +97,18 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
     >
       <div className="relative max-w-[90vw] max-h-[90vh] flex items-center">
         {hasNavigation && (
-          <button
-            className="absolute -left-12 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full size-10 flex items-center justify-center transition-colors z-10"
+          <IconButton
+            className="absolute -left-12 top-1/2 -translate-y-1/2 z-10"
+            label="Previous image"
+            tooltip={false}
+            size="xl"
+            shape="round"
+            variant="overlay"
             onClick={(e) => {
               e.stopPropagation();
               const len = images.length;
               onNavigate((((currentIndex - 1) % len) + len) % len);
             }}
-            aria-label="Previous image"
           >
             <svg
               width="20"
@@ -117,16 +122,21 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
             >
               <polyline points="15 18 9 12 15 6" />
             </svg>
-          </button>
+          </IconButton>
         )}
         <div className="relative">
           <img src={validatedSrc} alt={alt} className="max-w-full max-h-[90vh] object-contain" />
-          <button
-            className="absolute top-4 right-4 bg-black/50 hover:bg-black/70 text-white rounded-full size-8 flex items-center justify-center transition-colors"
+          <IconButton
+            className="absolute top-4 right-4"
+            label="Close"
+            tooltip={false}
+            size="lg"
+            shape="round"
+            variant="overlay"
             onClick={onClose}
           >
             ✕
-          </button>
+          </IconButton>
           {hasNavigation && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-sm px-3 py-1 rounded-full">
               {currentIndex + 1} / {images.length}
@@ -134,13 +144,17 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
           )}
         </div>
         {hasNavigation && (
-          <button
-            className="absolute -right-12 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full size-10 flex items-center justify-center transition-colors z-10"
+          <IconButton
+            className="absolute -right-12 top-1/2 -translate-y-1/2 z-10"
+            label="Next image"
+            tooltip={false}
+            size="xl"
+            shape="round"
+            variant="overlay"
             onClick={(e) => {
               e.stopPropagation();
               onNavigate((currentIndex + 1) % images.length);
             }}
-            aria-label="Next image"
           >
             <svg
               width="20"
@@ -154,7 +168,7 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
             >
               <polyline points="9 18 15 12 9 6" />
             </svg>
-          </button>
+          </IconButton>
         )}
       </div>
     </div>

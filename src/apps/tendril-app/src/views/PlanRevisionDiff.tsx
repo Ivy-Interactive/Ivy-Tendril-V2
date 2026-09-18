@@ -4,6 +4,7 @@ import { PlanDiffView } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
 import { describeBridgeError, type DraftComment } from "../types/api";
+import { ErrorBanner } from "../components/ErrorBanner";
 
 interface PlanRevisionDiffProps {
   planId: string;
@@ -275,14 +276,7 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
         </p>
       )}
 
-      {error && (
-        <div
-          data-testid="diff-error"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner data-testid="diff-error">{error}</ErrorBanner>}
 
       {/*
         The diff is gated on `patch`, not on `error`: a failed revision fetch clears `contents` and

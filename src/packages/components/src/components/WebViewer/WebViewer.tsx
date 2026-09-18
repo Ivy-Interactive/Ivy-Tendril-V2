@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import "../ui/ui.css";
 import "./web-viewer.css";
 import { getHeight, getWidth } from "@/lib/styles";
 import { canonicalPageUrl } from "./pageUrl";
 import { Toolbar, type ToolbarAction } from "./Toolbar";
 import { DEVICE_LABELS, DEVICE_VIEWPORTS, toDeviceKey, type DeviceKey } from "./devices";
+import { TuiBadge } from "../ui/TuiBadge";
 import { useProxyOrigin } from "@/contexts/webviewer-context";
 
 // ---------------------------------------------------------------------------
@@ -777,7 +779,10 @@ export const WebViewer: React.FC<WebViewerProps> = ({
 
       {pending && (
         <div className="wvr-overlay" onMouseDown={cancelComment}>
-          <div className="wvr-comment-box" onMouseDown={(e) => e.stopPropagation()}>
+          <div
+            className="tui-popover-shell wvr-comment-box"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <div className="wvr-comment-title">
               {pending.mode === "edit" && (
                 <span className="wvr-comment-pin">
@@ -785,7 +790,11 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                 </span>
               )}
               Comment on
-              {pending.meta?.tag && <span className="wvr-comment-tag">{pending.meta.tag}</span>}
+              {pending.meta?.tag && (
+                <TuiBadge className="wvr-comment-tag" size="md" mono>
+                  {pending.meta.tag}
+                </TuiBadge>
+              )}
               {pending.meta?.text && (
                 <span className="wvr-comment-snippet">{quote(pending.meta.text)}</span>
               )}
@@ -862,16 +871,16 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                 // Left of the gap, away from Save: this one cannot be undone.
                 <button
                   type="button"
-                  className="wvr-btn wvr-btn--danger wvr-comment-delete"
+                  className="tui-btn tui-btn--danger wvr-comment-delete"
                   onClick={deleteComment}
                 >
                   Delete
                 </button>
               )}
-              <button type="button" className="wvr-btn wvr-btn--ghost" onClick={cancelComment}>
+              <button type="button" className="tui-btn tui-btn--ghost" onClick={cancelComment}>
                 Cancel
               </button>
-              <button type="button" className="wvr-btn wvr-btn--primary" onClick={submitComment}>
+              <button type="button" className="tui-btn tui-btn--primary" onClick={submitComment}>
                 {pending.mode === "edit" ? "Save" : "Add"}
               </button>
             </div>

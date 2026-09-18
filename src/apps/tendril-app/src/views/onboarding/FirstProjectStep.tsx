@@ -154,7 +154,7 @@ export function FirstProjectStep({
             placeholder="Repository URL or Local Path"
             disabled={locked}
             data-testid="onboarding-repo-input"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
               e.preventDefault();
@@ -166,7 +166,7 @@ export function FirstProjectStep({
             onClick={() => void browse()}
             disabled={locked}
             data-testid="onboarding-pick-repos"
-            className="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-2 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+            className="flex shrink-0 items-center gap-1.5 rounded-field border border-border px-2.5 py-2 text-xs text-foreground hover:bg-muted disabled:opacity-50"
           >
             <FolderOpen className="size-3.5" aria-hidden="true" />
             Browse
@@ -174,7 +174,7 @@ export function FirstProjectStep({
         </div>
 
         {repoPaths.length > 0 && (
-          <ul className="divide-y divide-border rounded-lg border border-border">
+          <ul className="divide-y divide-border rounded-box border border-border">
             {repoPaths.map((path) => (
               <li key={path} className="flex items-center justify-between gap-3 p-2">
                 <span className="min-w-0 break-all font-mono text-xs text-primary">{path}</span>
@@ -183,7 +183,7 @@ export function FirstProjectStep({
                   onClick={() => onReposChange(repoPaths.filter((p) => p !== path))}
                   disabled={locked}
                   aria-label={`Remove ${path}`}
-                  className="shrink-0 rounded-md border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  className="shrink-0 rounded-selector border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                 >
                   <X className="size-3" aria-hidden="true" />
                 </button>
@@ -197,7 +197,7 @@ export function FirstProjectStep({
           onClick={() => addRepo(repoInput)}
           disabled={locked || !repoInput.trim()}
           data-testid="onboarding-add-repo"
-          className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-field border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
         >
           <Plus className="size-3.5" aria-hidden="true" />
           Add Repository
@@ -218,7 +218,7 @@ export function FirstProjectStep({
           disabled={locked}
           onChange={(e) => onProjectNameChange(sanitizeProjectName(e.target.value))}
           data-testid="onboarding-project-name"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+          className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
         />
         {nameError && (
           <p className="text-xs text-destructive" data-testid="onboarding-project-name-error">
@@ -231,7 +231,7 @@ export function FirstProjectStep({
           both rather than just refusing. */}
       {nameExists && (
         <div
-          className="space-y-2 rounded-md border border-destructive p-2"
+          className="space-y-2 rounded-box border border-destructive p-2"
           data-testid="onboarding-project-name-exists"
         >
           <p className="text-xs font-bold text-destructive">
@@ -247,7 +247,7 @@ export function FirstProjectStep({
             onClick={onUseExisting}
             disabled={busy}
             data-testid="onboarding-use-existing-project"
-            className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+            className="rounded-field border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
           >
             Use Existing Project Configuration
           </button>
@@ -255,7 +255,7 @@ export function FirstProjectStep({
       )}
 
       {projectRegistered && (
-        <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+        <div className="rounded-box border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
           <p data-testid="onboarding-project-registered">
             Tendril is detecting your tech stack and configuring your agentic harness. This will
             take a few minutes, so treat yourself to a ☕ while you wait. You can watch{" "}
@@ -266,7 +266,7 @@ export function FirstProjectStep({
             onClick={onConfigureVerifications}
             disabled={busy}
             data-testid="onboarding-configure-verifications"
-            className="mt-2 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+            className="mt-2 rounded-field border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
           >
             Configure verifications now
           </button>

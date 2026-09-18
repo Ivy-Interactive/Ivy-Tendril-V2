@@ -15,7 +15,7 @@ export function CompleteStep() {
         Your project is configured. Click Finish to start using Tendril.
       </p>
 
-      <div className="rounded-lg border border-border p-3">
+      <div className="rounded-box border border-border p-3">
         <h3 className="text-sm font-semibold text-foreground">Newsletter</h3>
         <p className="mt-1 text-xs text-muted-foreground">
           Be the first to know when we have a new release!

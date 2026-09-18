@@ -28,7 +28,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({ status, countdown,
       <button
         type="button"
         onClick={onReconnect}
-        className="rounded bg-warning/60 px-3 py-1 text-xs font-medium text-warning transition hover:bg-warning/90 focus:outline-none focus:ring-2 focus:ring-warning"
+        className="rounded bg-warning/60 px-3 py-1 text-xs font-medium text-warning transition hover:bg-warning/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning"
       >
         Reconnect Now
       </button>

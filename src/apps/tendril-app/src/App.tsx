@@ -31,6 +31,7 @@ import { ShellLayout } from "./views/ShellLayout";
 import { OnboardingWizard } from "./views/onboarding/OnboardingWizard";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
+import { ErrorBanner } from "./components/ErrorBanner";
 // Type only, so this does not pull the view (and xterm.js with it) into the entry chunk.
 import type { ReviewActionTarget } from "./views/ReviewActionView";
 
@@ -1067,38 +1068,23 @@ export const App: React.FC = () => {
         {/* V1's `RouteAction.Error` reaches `client.Error(...)`; here it shares the shell's own
             error banner, which is the only place the shell reports its own failures. */}
         {uiState.navError && (
-          <div
-            role="alert"
+          <ErrorBanner
             data-testid="nav-error"
-            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            className="mb-4"
+            onDismiss={() => uiStore.clearNavError()}
+            dismissLabel="Dismiss navigation error"
           >
-            <span>{uiState.navError}</span>
-            <button
-              type="button"
-              onClick={() => uiStore.clearNavError()}
-              aria-label="Dismiss navigation error"
-              className="text-destructive hover:text-destructive/80"
-            >
-              ✕
-            </button>
-          </div>
+            {uiState.navError}
+          </ErrorBanner>
         )}
         {shellError && (
-          <div
-            role="alert"
+          <ErrorBanner
             data-testid="shell-error"
-            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            className="mb-4"
+            onDismiss={() => setShellError(null)}
           >
-            <span>{shellError}</span>
-            <button
-              type="button"
-              onClick={() => setShellError(null)}
-              aria-label="Dismiss error"
-              className="text-destructive hover:text-destructive/80"
-            >
-              ✕
-            </button>
-          </div>
+            {shellError}
+          </ErrorBanner>
         )}
         <React.Suspense
           fallback={

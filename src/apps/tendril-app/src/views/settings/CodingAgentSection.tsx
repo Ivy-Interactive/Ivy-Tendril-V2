@@ -99,7 +99,7 @@ const AgentCard: React.FC<{
     aria-pressed={selected}
     onClick={onClick}
     data-testid={`coding-agent-${id}`}
-    className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
+    className={`flex items-center gap-3 rounded-field border p-3 text-left transition-colors ${
       selected ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-muted/50"
     }`}
   >

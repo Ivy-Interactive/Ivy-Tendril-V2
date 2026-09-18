@@ -26,6 +26,7 @@ import { onPlanEvent } from "../api/events";
 import { sessionBelongsToPlan } from "../state/chatStore";
 import { PlanChatPanel, planFolderName } from "../components/chat/PlanChatPanel";
 import { extractPlanQuestions, patchQuestionsMarkdown } from "../utils/questionMarkdown";
+import { CARD_SURFACE } from "../utils/surfaces";
 import { PlanActionsController } from "../controllers/plan_actions";
 import { PlanPullRequests } from "./PlanPullRequests";
 import { draftActions, type DraftAction } from "../controllers/draft_actions";
@@ -38,6 +39,7 @@ import {
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
 import { formatPlanId, isReviewState, normalizePlanState, planStateBadgeClass } from "./PlansView";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
@@ -127,11 +129,7 @@ const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }> = ({ p
     .pop();
   const reason = lastFailure?.statusMessage?.trim();
   return (
-    <div
-      role="alert"
-      data-testid="plan-failure-callout"
-      className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-    >
+    <ErrorBanner data-testid="plan-failure-callout" className="mb-4">
       <p className="font-semibold">Execution Failed</p>
       {failed.length > 0 ? (
         <ul className="mt-1 space-y-0.5">
@@ -147,7 +145,7 @@ const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }> = ({ p
           {reason || "No details available. Check the job logs."}
         </p>
       )}
-    </div>
+    </ErrorBanner>
   );
 };
 
@@ -239,7 +237,7 @@ const PlanQuestionsPanel: React.FC<{
               {question.optional ? `${label(question)} (Optional)` : label(question)}
             </button>
             {savingIds.has(question.id) && (
-              <span className="text-[10px] text-muted-foreground">saving…</span>
+              <span className="text-2xs text-muted-foreground">saving…</span>
             )}
           </li>
         ))}
@@ -1443,13 +1441,13 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const otherTabsPane = (
     <div key="tab-pane" className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
       {effectiveTab === "diff" && (
-        <div className="rounded-xl border border-border bg-card/40 p-6">
+        <div className={`${CARD_SURFACE} p-6`}>
           <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
         </div>
       )}
 
       {effectiveTab === "recommendations" && (
-        <div className="space-y-4 rounded-xl border border-border bg-card/40 p-6">
+        <div className={`space-y-4 ${CARD_SURFACE} p-6`}>
           <div>
             <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
             <p className="text-xs text-muted-foreground">
@@ -1477,7 +1475,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       )}
 
       {effectiveTab === "git" && (
-        <div className="rounded-xl border border-border bg-card/40 p-6">
+        <div className={`${CARD_SURFACE} p-6`}>
           {gitError ? (
             <p data-testid="git-tab-error" className="text-xs text-destructive">
               {gitError}
@@ -1499,7 +1497,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         <div className="space-y-4">
           {/* `DetailsTabView.Build`'s own field order, and its `RemoveEmpty()`: a row the plan
               has no value for is dropped rather than rendered blank. */}
-          <dl className="rounded-xl border border-border bg-card/40 p-4">
+          <dl className={`${CARD_SURFACE} p-4`}>
             <DetailRow label="Plan ID">
               <button
                 type="button"
@@ -1570,7 +1568,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               because V2's Git tab is the only other place they appear and it is hidden while a
               plan has nothing in git yet. */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-xl border border-border bg-card/40 p-4">
+            <div className={`${CARD_SURFACE} p-4`}>
               <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Repositories
               </h4>
@@ -1583,7 +1581,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               </ul>
             </div>
 
-            <div className="rounded-xl border border-border bg-card/40 p-4">
+            <div className={`${CARD_SURFACE} p-4`}>
               <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Commits
               </h4>
@@ -1688,7 +1686,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                   <span
                     key="in-flight"
                     data-testid="plan-in-flight-notice"
-                    className="rounded-lg border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-medium text-info"
+                    className="rounded-box border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-medium text-info"
                   >
                     A job is running on this plan.
                   </span>,
@@ -1696,14 +1694,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               : []),
             ...(actionError
               ? [
-                  <div
-                    key="error"
-                    role="alert"
-                    data-testid="plan-action-error"
-                    className="flex-1 rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
-                  >
+                  <ErrorBanner key="error" data-testid="plan-action-error" className="flex-1">
                     {actionError}
-                  </div>,
+                  </ErrorBanner>,
                 ]
               : []),
           ],

@@ -2,6 +2,8 @@
 @import "./markdown-spacing.css";
 /* Theme tokens are shared with globals.css — see tokens.css. */
 @import "./tokens.css";
+/* Shared keyframes and utilities are shared with globals.css — see base.css. */
+@import "./base.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -15,80 +17,9 @@
   }
 }
 
-@keyframes accordion-down {
-  from {
-    height: 0;
-    opacity: 0;
-  }
-  to {
-    height: var(--radix-accordion-content-height, var(--radix-collapsible-content-height));
-    opacity: 1;
-  }
-}
-
-@keyframes accordion-up {
-  from {
-    height: var(--radix-accordion-content-height, var(--radix-collapsible-content-height));
-    opacity: 1;
-  }
-  to {
-    height: 0;
-    opacity: 0;
-  }
-}
-
-/* Alert animation */
-@keyframes alertGrowIn {
-  from {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.alert-animate-enter {
-  animation: alertGrowIn 200ms ease-out;
-}
-
-/* Toast animation */
-@keyframes toastSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.toast-animate-enter {
-  animation: toastSlideIn 300ms ease-out;
-}
-
 /* Radix UI toast animations using data attributes */
 [data-radix-toast-root][data-state="open"] {
   animation: toastSlideIn 300ms ease-out;
-}
-
-/* Indeterminate progress bar animation */
-@keyframes indeterminate {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(400%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-indeterminate {
-    animation: none;
-    opacity: 0.7;
-  }
 }
 
 @layer base {
@@ -107,66 +38,6 @@
   body {
     @apply bg-background text-foreground;
   }
-}
-
-/* Semantic border radius utility classes */
-@layer utilities {
-  .rounded-box {
-    border-radius: var(--radius-boxes);
-  }
-
-  .rounded-field {
-    border-radius: var(--radius-fields);
-  }
-
-  .rounded-selector {
-    border-radius: var(--radius-selectors);
-  }
-
-  .rounded-checkbox {
-    border-radius: calc(var(--radius-selectors) / 2);
-  }
-
-  .shadow-box {
-    box-shadow: var(--shadow-boxes);
-  }
-
-  .shadow-field {
-    box-shadow: var(--shadow-fields);
-  }
-
-  .shadow-selector {
-    box-shadow: var(--shadow-selectors);
-  }
-
-  .badge-tinted {
-    background-color: var(--badge-tint-bg-light);
-    color: var(--badge-tint-fg-light);
-  }
-  .dark .badge-tinted {
-    background-color: var(--badge-tint-bg-dark);
-    color: var(--badge-tint-fg-dark);
-  }
-}
-
-/* Slim scrollbar */
-.slim-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-.slim-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.slim-scrollbar::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
-}
-.slim-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: var(--muted-foreground);
-}
-.slim-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
 }
 
 /* Native scrollbar styling */

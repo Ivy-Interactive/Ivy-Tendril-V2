@@ -89,7 +89,7 @@ export const SidebarExpandableRow: React.FC<{
  * The colour box is V1's, literally: `new Box().Background(color).BorderRadius(BorderRadius.Rounded)
  * .Width(Size.Units(3)).Height(Size.Units(3))` — a 0.75rem square with Ivy's `Rounded` radius, which
  * `styles.ts` resolves to 0.5rem, so it reads as a dot without being a circle. `Size.Units(3)` and
- * that radius are why this is `size-3 rounded-[0.5rem]` rather than `size-2 rounded-full`.
+ * that radius are why this is `size-3 rounded-box` rather than `size-2 rounded-full`.
  *
  * `color` is an Ivy `Colors` name, resolved through the package's `ivyColorVar` — the same resolver
  * `Badge` and `TuiBadge` use, so there is exactly one name-to-token mapping in the codebase.
@@ -123,7 +123,7 @@ export const SidebarSubItem: React.FC<{
         aria-hidden
         data-testid={testId ? `${testId}-dot` : undefined}
         data-color={color}
-        className="size-3 shrink-0 rounded-[0.5rem]"
+        className="size-3 shrink-0 rounded-box"
         style={{ backgroundColor: ivyColorVar(color) }}
       />
     ) : (

@@ -1,20 +1,8 @@
 /* ─── Terminal palette (uses framework CSS variables, adapts to light/dark) ─ */
 .aov-shell {
-  --aov-bg: var(--background);
-  --aov-bg-elev: var(--card);
-  --aov-bg-deep: var(--popover);
-  --aov-border: var(--border);
-  --aov-border-strong: var(--input);
-  --aov-fg: var(--foreground);
   --aov-fg-muted: #52525b;
   --aov-fg-faint: #595962;
-  --aov-accent: var(--foreground);
   --aov-accent-soft: color-mix(in srgb, var(--foreground) 6%, transparent);
-  --aov-success: var(--success);
-  --aov-danger: var(--destructive);
-  --aov-warn: var(--warning);
-  --aov-info: var(--info);
-  --aov-running: var(--info);
   --aov-mono: var(
     --font-mono,
     "Geist Mono Variable",
@@ -28,14 +16,13 @@
   );
   --aov-tool-header-h: 26px;
 
-  color: var(--aov-fg);
+  color: var(--foreground);
   font-size: 14px;
   line-height: 1.55;
   position: relative;
 }
 
-:is(.dark, [data-theme="dark"]) .aov-shell,
-.dark .aov-shell {
+:is(.dark, [data-theme="dark"]) .aov-shell {
   --aov-fg-muted: #a1a1aa;
   --aov-fg-faint: #9ca3af;
 }
@@ -69,7 +56,7 @@
 }
 
 .aov-body > * {
-  animation: aov-stream-in 0.25s ease-out both;
+  animation: aov-stream-in var(--duration-moderate) var(--ease-out) both;
   min-width: 0;
   max-width: 100%;
 }
@@ -133,8 +120,8 @@
   background: transparent;
 }
 .aov-body::-webkit-scrollbar-thumb {
-  background: var(--aov-border-strong);
-  border-radius: 4px;
+  background: var(--input);
+  border-radius: var(--radius-sm);
 }
 
 /* ─── Metrics footer (outside the body, so it neither scrolls nor is windowed) ─
@@ -148,8 +135,8 @@
   align-items: center;
   gap: 4px 14px;
   padding: 5px 12px 5px 4px;
-  border-top: 1px solid var(--aov-border);
-  font-size: 12px;
+  border-top: var(--border-width) solid var(--border);
+  font-size: var(--text-xs);
   color: var(--aov-fg-muted);
   min-width: 0;
 }
@@ -165,7 +152,7 @@
 .aov-metric-label {
   color: var(--aov-fg-faint);
   /* Small caps rather than a smaller size: at 12px there is nowhere smaller to go. */
-  font-size: 11px;
+  font-size: var(--text-xs-tight);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -173,7 +160,7 @@
 .aov-metric-value {
   font-family: var(--aov-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--aov-fg);
+  color: var(--foreground);
 }
 
 /* An estimate is drawn as one: dimmer than a figure somebody measured, and carrying the "~" the value
@@ -187,7 +174,7 @@
 .aov-status-row {
   display: flex;
   align-items: center;
-  font-size: 14px;
+  font-size: var(--text-sm);
   min-height: 32px;
 }
 
@@ -209,18 +196,12 @@
 }
 
 .aov-status-icon-spin {
-  animation: aov-spin 1.5s linear infinite;
-}
-
-@keyframes aov-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: tui-spin 1.5s linear infinite;
 }
 
 .aov-status-reveal {
   display: inline-block;
-  animation: aov-reveal 0.3s ease-out forwards;
+  animation: aov-reveal 0.3s var(--ease-out) forwards;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -260,7 +241,7 @@
 
 .aov-status-done-label {
   font-variant-numeric: tabular-nums;
-  color: var(--aov-fg);
+  color: var(--foreground);
 }
 
 /* ─── Assistant text (markdown) ─────────────────────────────────────────── */
@@ -276,7 +257,7 @@
 }
 
 .aov-markdown {
-  color: var(--aov-fg);
+  color: var(--foreground);
   font-size: 14px;
   line-height: 1.6;
   /* `word-break: normal` keeps ordinary prose breaking at word boundaries; `overflow-wrap` is the
@@ -300,9 +281,9 @@
 
 .aov-markdown code {
   font-family: var(--aov-mono);
-  background: var(--aov-bg-elev);
-  border: 1px solid var(--aov-border);
-  border-radius: 4px;
+  background: var(--card);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 1px 5px;
   font-size: 0.9em;
   font-weight: 500;
@@ -313,12 +294,12 @@
    re-wrapping a command changes what it says. */
 .aov-markdown pre {
   margin: 8px 0;
-  background: var(--aov-bg-deep);
-  border: 1px solid var(--aov-border);
-  border-radius: 6px;
+  background: var(--popover);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-md);
   padding: 10px 12px;
   overflow-x: auto;
-  font-size: 14px;
+  font-size: var(--text-sm);
   min-width: 0;
   max-width: 100%;
 }
@@ -351,7 +332,7 @@
 }
 
 .aov-markdown a {
-  color: var(--aov-accent);
+  color: var(--foreground);
   text-decoration: underline;
   overflow-wrap: break-word;
 }
@@ -360,8 +341,8 @@
   font-size: 1.35em;
   font-weight: 700;
   margin: 1rem 0 0.5rem 0;
-  color: var(--aov-fg);
-  border-bottom: 1px solid var(--aov-border);
+  color: var(--foreground);
+  border-bottom: var(--border-width) solid var(--border);
   padding-bottom: 0.25rem;
 }
 
@@ -369,26 +350,26 @@
   font-size: 1.2em;
   font-weight: 600;
   margin: 0.875rem 0 0.375rem 0;
-  color: var(--aov-fg);
+  color: var(--foreground);
 }
 
 .aov-markdown h3 {
   font-size: 1.1em;
   font-weight: 600;
   margin: 0.75rem 0 0.25rem 0;
-  color: var(--aov-fg);
+  color: var(--foreground);
 }
 
 .aov-markdown h4 {
   font-size: 1em;
   font-weight: 600;
   margin: 0.5rem 0 0.25rem 0;
-  color: var(--aov-fg);
+  color: var(--foreground);
 }
 
 .aov-markdown strong {
   font-weight: 600;
-  color: var(--aov-fg);
+  color: var(--foreground);
 }
 
 .aov-markdown em {
@@ -398,23 +379,23 @@
 .aov-markdown blockquote {
   margin: 0.5rem 0;
   padding: 4px 12px;
-  border-left: 3px solid var(--aov-border-strong);
-  color: var(--aov-fg);
+  border-left: 3px solid var(--input);
+  color: var(--foreground);
   background-color: color-mix(in srgb, var(--muted-foreground) 8%, transparent);
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 .aov-markdown table {
   width: 100%;
   border-collapse: collapse;
   margin: 0.75rem 0;
-  font-size: 13px;
+  font-size: var(--text-sm-tight);
 }
 
 .aov-markdown th,
 .aov-markdown td {
   padding: 6px 10px;
-  border: 1px solid var(--aov-border);
+  border: var(--border-width) solid var(--border);
   text-align: left;
   /* A table lays itself out from its cells' content widths, so one unbreakable cell widens the table
      past its own `width: 100%`. */
@@ -422,9 +403,9 @@
 }
 
 .aov-markdown th {
-  background-color: var(--aov-bg-elev);
+  background-color: var(--card);
   font-weight: 600;
-  color: var(--aov-fg);
+  color: var(--foreground);
 }
 
 /* ─── Tool use card (collapsed by default, no outer chrome) ─────────────── */
@@ -432,22 +413,22 @@
   position: relative;
   font-family: var(--aov-mono);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   min-width: 0;
   max-width: 100%;
 }
 
 .aov-tool:hover {
-  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--aov-bg-elev));
+  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--card));
 }
 
 .aov-tool.open {
-  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--aov-bg-elev));
+  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--card));
 }
 
 .aov-tool.open > .aov-tool-header,
 .aov-tool-group.open > .aov-tool-group-header {
-  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--aov-bg-elev));
+  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--card));
 }
 
 .aov-tool-header {
@@ -457,7 +438,7 @@
   padding: 2px 0;
   cursor: pointer;
   user-select: none;
-  font-size: 14px;
+  font-size: var(--text-sm);
   outline: none;
   white-space: nowrap;
   min-width: 0;
@@ -467,9 +448,9 @@
 }
 
 .aov-tool-header:focus-visible {
-  outline: 2px solid var(--ring, var(--primary));
-  outline-offset: 1px;
-  border-radius: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-xs);
 }
 
 .aov-tool-chevron {
@@ -477,7 +458,7 @@
   align-items: center;
   justify-content: center;
   color: var(--aov-fg-faint);
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-base) var(--ease-standard);
 }
 
 .aov-tool-chevron.open {
@@ -492,15 +473,15 @@
 }
 
 .aov-tool-status--success {
-  background: var(--aov-success, var(--success));
+  background: var(--success);
 }
 
 .aov-tool-status--error {
-  background: var(--aov-danger, var(--destructive));
+  background: var(--destructive);
 }
 
 .aov-tool-status--running {
-  background: var(--aov-running, var(--info));
+  background: var(--info);
   animation: aov-pulse 1.5s ease-in-out infinite;
 }
 
@@ -515,7 +496,7 @@
 }
 
 .aov-tool-name {
-  color: var(--aov-accent);
+  color: var(--foreground);
   font-weight: 600;
   white-space: nowrap;
   flex-shrink: 0;
@@ -553,17 +534,17 @@
   position: relative;
   font-family: var(--aov-mono);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   min-width: 0;
   max-width: 100%;
 }
 
 .aov-tool-group:hover {
-  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--aov-bg-elev));
+  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--card));
 }
 
 .aov-tool-group.open {
-  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--aov-bg-elev));
+  background: color-mix(in srgb, var(--muted-foreground) 4%, var(--card));
 }
 
 .aov-tool-group-header {
@@ -583,9 +564,9 @@
 }
 
 .aov-tool-group-header:focus-visible {
-  outline: 2px solid var(--ring, var(--primary));
-  outline-offset: 1px;
-  border-radius: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-xs);
 }
 
 .aov-tool-group-body {
@@ -611,7 +592,7 @@
   flex-shrink: 0;
   width: 36px;
   padding: 8px 0;
-  font-size: 11px;
+  font-size: var(--text-xs-tight);
   font-weight: 600;
   color: var(--aov-fg-muted);
   text-align: left;
@@ -628,13 +609,13 @@
   min-width: 0;
   max-width: 100%;
   margin: 0;
-  background: var(--aov-bg-deep);
-  border-radius: 4px;
+  background: var(--popover);
+  border-radius: var(--radius-sm);
   padding: 8px 10px;
   overflow-x: auto;
   overflow-y: hidden;
-  font-size: 12px;
-  color: var(--aov-fg);
+  font-size: var(--text-xs);
+  color: var(--foreground);
   white-space: pre;
 }
 
@@ -648,9 +629,9 @@
 /* ─── Result summary ────────────────────────────────────────────────────── */
 .aov-result {
   margin-top: 8px;
-  border: 1px solid var(--aov-border);
+  border: var(--border-width) solid var(--border);
   background: var(--aov-accent-soft);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 10px 12px;
   min-width: 0;
   max-width: 100%;
@@ -670,21 +651,16 @@
 
 .aov-result-title {
   font-weight: 600;
-  color: var(--aov-accent);
+  color: var(--foreground);
 }
 
 .aov-result.error .aov-result-title {
-  color: #b91c1c;
-}
-
-:is(.dark, [data-theme="dark"]) .aov-result.error .aov-result-title,
-.dark .aov-result.error .aov-result-title {
-  color: #f87171;
+  color: var(--red);
 }
 
 .aov-result-meta {
   color: var(--aov-fg-muted);
-  font-size: 14px;
+  font-size: var(--text-sm);
 }
 
 /* Always carries `.aov-markdown` too (`result-summary.tsx`), so its wrapping comes from there. */
@@ -701,7 +677,7 @@
 .aov-result-error {
   white-space: pre-wrap;
   font-family: var(--aov-mono);
-  color: var(--aov-danger);
+  color: var(--destructive);
   min-width: 0;
   max-width: 100%;
   overflow-wrap: break-word;
@@ -732,7 +708,7 @@
   color: var(--aov-fg-muted);
   font-style: italic;
   padding-left: 8px;
-  border-left: 2px solid var(--aov-border-strong);
+  border-left: var(--border-width-thick) solid var(--input);
   min-width: 0;
   max-width: 100%;
   overflow-wrap: break-word;
@@ -744,22 +720,14 @@
   align-items: center;
   gap: 8px;
   padding: 4px 10px;
-  border-radius: 6px;
-  background: var(--aov-bg-elev);
-  border: 1px solid var(--aov-border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  border: var(--border-width) solid var(--border);
   font-family: var(--aov-mono);
   font-size: 12px;
   color: var(--aov-fg-muted);
   width: fit-content;
   max-width: 100%;
-}
-
-.aov-status-event-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--aov-info);
-  flex-shrink: 0;
 }
 
 /* One line, ellipsised — which needs `min-width: 0`: without it the flex item's automatic minimum is

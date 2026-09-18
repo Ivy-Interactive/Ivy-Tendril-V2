@@ -870,7 +870,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           {project.repos.map((repo, index) => (
             <div
               key={repo.path}
-              className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 p-2"
+              className="flex flex-wrap items-center gap-2 rounded-selector bg-muted/50 p-2"
             >
               <span className="min-w-0 flex-1 truncate font-mono text-xs text-primary">
                 {repo.path}

@@ -42,7 +42,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
   return (
     <div
       data-testid={`recommendation-card-${recommendation.title}`}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4 sm:flex-row sm:items-start sm:justify-between"
+      className="flex flex-col gap-3 rounded-box border border-border bg-background p-4 sm:flex-row sm:items-start sm:justify-between"
     >
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">

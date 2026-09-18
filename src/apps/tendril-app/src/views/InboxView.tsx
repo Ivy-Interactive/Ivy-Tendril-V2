@@ -34,6 +34,7 @@ import { ivyColorVar } from "@ivy-interactive/components";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 import type { GitHubIssue, InboxProposal, ProjectSummary, SweepReport } from "../types/api";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { AutoAcceptSettingsDialog } from "./dialogs/AutoAcceptSettingsDialog";
 
@@ -271,7 +272,7 @@ const RailExpander: React.FC<{
  * The colour box is V1's, literally: `new Box().Background(color).BorderRadius(BorderRadius.Rounded)
  * .Width(Size.Units(3)).Height(Size.Units(3))` — a 0.75rem square at Ivy's `Rounded` radius, which
  * resolves to 0.5rem, so it reads as a dot without being a circle. That is why this is
- * `size-3 rounded-[0.5rem]` and not `size-2 rounded-full`, and it is the same marker the Settings
+ * `size-3 rounded-box` and not `size-2 rounded-full`, and it is the same marker the Settings
  * sidebar draws (`views/settings/SidebarListRow.tsx`) for the same projects.
  *
  * `color` is an Ivy `Colors` name, resolved through the package's `ivyColorVar` — the one
@@ -300,7 +301,7 @@ const RailSubItem: React.FC<{
       aria-hidden
       data-testid={testId ? `${testId}-dot` : undefined}
       data-color={color}
-      className="size-3 shrink-0 rounded-[0.5rem]"
+      className="size-3 shrink-0 rounded-box"
       style={{ backgroundColor: ivyColorVar(color) }}
     />
   ) : (
@@ -1357,13 +1358,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         )}
 
         {isMyIssues && proposalError && (
-          <div
-            role="alert"
-            data-testid="inbox-proposal-error"
-            className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-          >
-            {proposalError}
-          </div>
+          <ErrorBanner data-testid="inbox-proposal-error">{proposalError}</ErrorBanner>
         )}
 
         {isMyIssues && proposals.length > 0 && (
@@ -1386,7 +1381,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               <div
                 key={proposal.id}
                 data-testid={`proposal-card-${proposal.id}`}
-                className="rounded-lg border border-info/40 bg-info/5 p-3"
+                className="rounded-box border border-info/40 bg-info/5 p-3"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
@@ -1443,11 +1438,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             Loading issues from GitHub...
           </div>
         ) : error ? (
-          <div
-            role="alert"
-            data-testid="inbox-error"
-            className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive"
-          >
+          <ErrorBanner data-testid="inbox-error" className="space-y-2">
             <div className="font-semibold text-destructive">Failed to load GitHub issues</div>
             <p>{error}</p>
             {error.toLowerCase().includes("auth login") && (
@@ -1464,7 +1455,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             >
               Retry
             </Button>
-          </div>
+          </ErrorBanner>
         ) : filteredIssues.length === 0 && issues.length === 0 && page === 1 ? (
           <div data-testid="inbox-empty">
             {/* V1's `NoContentView` strings, per category, and V1 passes neither of them a `cta`:
@@ -1538,7 +1529,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                       setSearchQuery(e.target.value);
                       resetToFirstPage();
                     }}
-                    className="w-72 rounded-field border border-input bg-transparent px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="w-72 rounded-field border border-input bg-transparent px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   />
                   {/* V1 sets `AllowFiltering = true` on the table, which gives the Labels and
                       Assignees columns a filter each; `BadgeSelect` is how `PullRequestsView`

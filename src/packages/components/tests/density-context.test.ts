@@ -164,7 +164,7 @@ describe("Component Density Cascade", () => {
       );
 
       const badge = screen.getByTestId("badge");
-      expect(badge.className).toContain("text-[10px]");
+      expect(badge.className).toContain("text-2xs");
     });
 
     it("explicit density prop overrides context", () => {
@@ -195,7 +195,7 @@ describe("Component Density Cascade", () => {
 
     it("badgeVariant keys off the Densities enum", () => {
       const classes = badgeVariant({ density: Densities.Small });
-      expect(classes).toContain("text-[10px]");
+      expect(classes).toContain("text-2xs");
     });
   });
 

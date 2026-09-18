@@ -7,6 +7,7 @@ import {
   type CrossPlanRecommendation,
   type RecommendationState,
 } from "../types/api";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { REC_IMPACT_CLASS } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
@@ -278,30 +279,10 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   return (
     <div data-testid="recommendations-view" className="space-y-4">
       {actionError && (
-        <div
-          role="alert"
-          className="flex items-center justify-between rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss error"
-            className="ml-2 font-bold"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <ErrorBanner onDismiss={() => setActionError(null)}>{actionError}</ErrorBanner>
       )}
 
-      {error && (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       {!selected ? (
         <NoContentView
@@ -348,7 +329,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                 type="button"
                 disabled={isBusy}
                 onClick={() => setActiveDialog({ rec: selected, action: "Decline" })}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-field border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
               >
                 <X className="h-3.5 w-3.5" />
                 Decline
@@ -358,7 +339,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                 data-testid="recommendation-accept"
                 disabled={isBusy}
                 onClick={() => void handleSetState(selected, "Accepted")}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-field bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90 disabled:opacity-50"
               >
                 <Check className="h-3.5 w-3.5" />
                 {pendingId === recommendationId(selected) ? "Accepting..." : "Accept"}
@@ -373,7 +354,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               type="button"
               disabled={isBusy}
               onClick={() => setActiveDialog({ rec: selected, action: "Accept" })}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-field border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
             >
               <CircleCheck className="h-3.5 w-3.5" />
               Accept with Notes
@@ -381,7 +362,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
             <button
               type="button"
               onClick={() => onSelectPlan(selected.planId)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted"
+              className="inline-flex items-center gap-1.5 rounded-field border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               View Plan
@@ -390,7 +371,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               type="button"
               onClick={() => void load()}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-field border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
               Refresh

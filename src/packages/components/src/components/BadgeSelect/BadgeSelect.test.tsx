@@ -94,3 +94,37 @@ describe("BadgeSelect actions", () => {
     expect(document.querySelectorAll(".bselect-action").length).toBe(0);
   });
 });
+
+describe("BadgeSelect chip overflow", () => {
+  it("keeps every chip that fits in the available width, instead of collapsing to +N", () => {
+    const clientWidthSpy = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(500);
+    const offsetWidthSpy = vi
+      .spyOn(HTMLElement.prototype, "offsetWidth", "get")
+      .mockReturnValue(80);
+
+    try {
+      render(
+        <BadgeSelect
+          id="bs-2"
+          options={[
+            { value: "Tendril-Services", label: "Tendril-Services" },
+            { value: "Urgent Priority", label: "Urgent Priority" },
+          ]}
+          multiple
+          value={["Tendril-Services", "Urgent Priority"]}
+        />,
+      );
+
+      const container = document.querySelector(".bselect-badges") as HTMLElement;
+      const chips = Array.from(container.querySelectorAll(".bselect-badge")) as HTMLElement[];
+      expect(chips).toHaveLength(2);
+      expect(chips.every((chip) => chip.style.display !== "none")).toBe(true);
+      expect(document.querySelector(".bselect-count")).toBeNull();
+    } finally {
+      clientWidthSpy.mockRestore();
+      offsetWidthSpy.mockRestore();
+    }
+  });
+});

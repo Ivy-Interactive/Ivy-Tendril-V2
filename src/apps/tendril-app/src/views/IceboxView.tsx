@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from "react";
 import { Flame, Search, Trash2 } from "lucide-react";
 import { bridge } from "../api/bridge";
-import { describeBridgeError, type PlanSummary, type VerificationStatus } from "../types/api";
+import { describeBridgeError, type PlanSummary } from "../types/api";
+import { VERIFICATION_DOT_CLASS } from "../utils/verificationStatus";
 import { NoContentView } from "../components/NoContentView";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { DeletePlanDialog } from "./dialogs";
 import { formatPlanId, parseProjects, planStateBadgeClass } from "./PlansView";
 
@@ -22,13 +24,6 @@ interface IceboxViewProps {
    */
   onNewPlan?: () => void;
 }
-
-const VERIFICATION_DOT_CLASS: Record<VerificationStatus, string> = {
-  Pass: "bg-success",
-  Fail: "bg-destructive",
-  Pending: "bg-muted-foreground/50",
-  Skipped: "bg-muted-foreground/50",
-};
 
 /**
  * Plans on ice, and the two ways off it.
@@ -144,20 +139,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
       </div>
 
       {actionError && (
-        <div
-          role="alert"
-          className="flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss error"
-            className="font-bold"
-          >
-            ✕
-          </button>
-        </div>
+        <ErrorBanner onDismiss={() => setActionError(null)}>{actionError}</ErrorBanner>
       )}
 
       {/* Filter Bar */}
@@ -169,7 +151,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search icebox plans..."
-            className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+            className="h-9 w-full rounded-field border border-border bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none"
           />
         </div>
 
@@ -178,7 +160,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
             aria-label="Project"
             value={selectedProject}
             onChange={(e) => setSelectedProject(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-xs text-foreground focus:border-ring focus:outline-none"
+            className="h-9 rounded-field border border-border bg-background px-3 text-xs text-foreground focus:border-ring focus:outline-none"
           >
             <option value="all">All Projects</option>
             {projects.map((p) => (
@@ -194,7 +176,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
             aria-label="Level"
             value={selectedLevel}
             onChange={(e) => setSelectedLevel(e.target.value)}
-            className="h-9 rounded-lg border border-border bg-background px-3 text-xs text-foreground focus:border-ring focus:outline-none"
+            className="h-9 rounded-field border border-border bg-background px-3 text-xs text-foreground focus:border-ring focus:outline-none"
           >
             <option value="all">All Levels</option>
             {levels.map((l) => (
@@ -231,7 +213,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
               <div
                 key={plan.id}
                 data-testid={`icebox-plan-card-${plan.id}`}
-                className="group flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-all hover:border-ring hover:shadow-xs"
+                className="group flex flex-col justify-between rounded-box border border-border bg-card p-4 transition-all hover:border-ring hover:shadow-xs"
               >
                 {/* Only the summary opens the plan. The action row below must not: a click on Thaw
                     that also navigated away would hide its own failure banner. */}
@@ -252,7 +234,9 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                       {formatPlanId(plan.id)}
                     </span>
                     {plan.priority !== undefined && (
-                      <span className="text-[11px] text-muted-foreground/80">P{plan.priority}</span>
+                      <span className="text-xs-tight text-muted-foreground/80">
+                        P{plan.priority}
+                      </span>
                     )}
                   </div>
 
@@ -262,7 +246,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
 
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <span
-                      className={`inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-medium ${planStateBadgeClass(
+                      className={`inline-flex items-center rounded border px-2 py-0.5 text-xs-tight font-medium ${planStateBadgeClass(
                         plan.state,
                       )}`}
                     >
@@ -272,7 +256,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                     {projectList.map((proj) => (
                       <span
                         key={proj}
-                        className="inline-flex items-center rounded border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground"
+                        className="inline-flex items-center rounded border border-border bg-muted/40 px-2 py-0.5 text-xs-tight text-muted-foreground"
                       >
                         {proj}
                       </span>
@@ -303,7 +287,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                     disabled={isBusy}
                     aria-label={`Delete plan ${formatPlanId(plan.id)}`}
                     onClick={() => setDeleting(plan)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-field border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete
@@ -313,7 +297,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                     disabled={isBusy}
                     aria-label={`Thaw plan ${formatPlanId(plan.id)}`}
                     onClick={() => void thaw(plan)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-field bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
                   >
                     <Flame className="h-3.5 w-3.5" />
                     {pendingId === plan.id ? "Thawing..." : "Thaw"}

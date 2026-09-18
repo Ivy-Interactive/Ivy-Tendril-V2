@@ -18,11 +18,12 @@ import {
   type RecommendationState,
   type ReviewActionConfig,
   type StartJobResponse,
-  type VerificationStatus,
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
+import { VERIFICATION_BADGE_CLASS } from "../utils/verificationStatus";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
@@ -104,18 +105,6 @@ export const buildReviewSidebarList = (
     return { planId };
   },
 });
-
-/**
- * `Constants.VerificationStatusBadgeVariants` (V1 `src/Ivy.Tendril/Constants.cs`): Pass is Success,
- * Fail is Destructive, Pending and Skipped are Outline. Same mapping as the plan page's
- * verification rows, so one outcome never has two looks.
- */
-const VERIFICATION_BADGE_CLASS: Record<VerificationStatus, string> = {
-  Pass: "border-success/40 bg-success/10 text-success",
-  Fail: "border-destructive/40 bg-destructive/10 text-destructive",
-  Pending: "border-border text-muted-foreground",
-  Skipped: "border-border text-muted-foreground",
-};
 
 /** `ContentView`'s `RecommendationsTab`. */
 const RECOMMENDATIONS_TAB = "recommendations";
@@ -947,14 +936,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 </div>
               ) : null,
               actionError ? (
-                <div
-                  key="action-error"
-                  role="alert"
-                  data-testid="review-action-error"
-                  className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-                >
+                <ErrorBanner key="action-error" data-testid="review-action-error">
                   {actionError}
-                </div>
+                </ErrorBanner>
               ) : null,
             ].filter((node): node is React.ReactElement => node !== null),
             /* `ReviewVerificationsPanelView`, in the tab strip's corner where V1 puts it: the outcome
@@ -1019,13 +1003,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                  the row it was made on gives the operator nothing to check it by. */
               <div key="recommendations" className="space-y-3 p-4">
                 {recsError && (
-                  <div
-                    role="alert"
-                    data-testid="recommendations-error"
-                    className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-                  >
-                    {recsError}
-                  </div>
+                  <ErrorBanner data-testid="recommendations-error">{recsError}</ErrorBanner>
                 )}
 
                 {/* `Text.Muted("Loading...")` while the plan's content query is in flight. */}
@@ -1046,7 +1024,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                       data-testid="implement-recommendations"
                       disabled={pendingAction !== null}
                       onClick={() => void implementSelectedRecommendations()}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-field border border-border px-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {pendingAction === "implementRecs" ? "Starting…" : "Implement"}
                       {selectedRecTitles.size > 0 && (
