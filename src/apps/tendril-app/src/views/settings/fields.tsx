@@ -19,16 +19,24 @@ import {
 /**
  * Section heading and hint, the `Text.Block(...).Bold()` / `Text.Muted(...).Small()` pair V1 opens
  * every setup view with.
+ *
+ * It draws no box, because V1 draws none: every one of its setup views returns a bare
+ * `Layout.Vertical()` whose first two children are that heading pair, and the only `new Card(...)`
+ * anywhere in `Apps/Settings` is the agent tile in `CodingAgentSetupView` - a card because it is a
+ * selectable thing, not because it is a section. This used to render
+ * `rounded-box border border-border bg-card/60 p-6` plus a rule under the header, which boxed every
+ * section inside the pane that already frames them and made the screen read as a stack of widgets
+ * rather than one settings page.
  */
-export const SectionCard: React.FC<{
+export const SettingsSection: React.FC<{
   title: string;
   hint?: string;
   testId?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
 }> = ({ title, hint, testId, action, children }) => (
-  <div className="rounded-box border border-border bg-card/60 p-6" data-testid={testId}>
-    <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
+  <section data-testid={testId}>
+    <div className="flex items-start justify-between gap-3">
       <div>
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
@@ -36,12 +44,13 @@ export const SectionCard: React.FC<{
       {action}
     </div>
     <div className="mt-4">{children}</div>
-  </div>
+  </section>
 );
 
 /**
  * `Text.H4(...).Bold()`, the heading V1's `ProjectDetailView` separates its ten blocks with. Unlike
- * `SectionCard` it draws no box, because inside one project every block is part of the same screen.
+ * {@link SettingsSection} it carries a rule above it, because inside one project the blocks are
+ * parts of a single screen rather than separate settings pages.
  */
 export const SubSection: React.FC<{
   title: string;

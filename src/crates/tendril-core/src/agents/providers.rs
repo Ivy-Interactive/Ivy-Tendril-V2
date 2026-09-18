@@ -1104,7 +1104,7 @@ pub fn format_opencode_model(model: Option<&str>, base_url: Option<&str>) -> Str
                 || b.contains("gemini")
                 || b.contains("google")
             {
-                return "openai/gemini-3.7-flash".to_string();
+                return "openai/gemini-3.8-flash".to_string();
             }
             if b.contains("api.berget.ai") {
                 return "moonshotai/Kimi-K3".to_string();

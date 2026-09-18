@@ -39,7 +39,7 @@ fn test_opencode_model_formatting() {
     );
     assert_eq!(
         format_opencode_model(Some(""), Some("https://generativelanguage.googleapis.com")),
-        "openai/gemini-3.7-flash"
+        "openai/gemini-3.8-flash"
     );
     assert_eq!(
         format_opencode_model(None, Some("https://api.berget.ai/v1")),

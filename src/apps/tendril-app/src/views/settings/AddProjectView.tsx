@@ -2,7 +2,7 @@ import React from "react";
 import { Plus, X } from "lucide-react";
 import { Button, Callout, Input } from "@ivy-interactive/components/ui";
 import { describeBridgeError } from "../../types/api";
-import { SaveError, SectionCard, TextField } from "./fields";
+import { SaveError, SettingsSection, TextField } from "./fields";
 
 /**
  * `Apps/Settings/Blades/AddProjectBladeView.cs` step 0 (`ProjectInputStepView`), which is what the
@@ -79,7 +79,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({ existingNames, o
   };
 
   return (
-    <SectionCard
+    <SettingsSection
       title="Add a Project"
       hint="Name the project and point it at one or more Git repositories."
       testId="add-project-card"
@@ -150,6 +150,6 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({ existingNames, o
           its name and repositories; everything else is configured from its own row.
         </Callout.Info>
       </form>
-    </SectionCard>
+    </SettingsSection>
   );
 };

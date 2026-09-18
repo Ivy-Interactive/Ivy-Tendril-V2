@@ -396,8 +396,8 @@ const tiers = (deep: TierValues, balanced: TierValues, quick: TierValues): Profi
 
 const IVY_TIERS = tiers(
   { model: "claude-opus-5", effort: "max" },
-  { model: "gemini-3.7-flash", effort: "medium" },
-  { model: "gemini-3.7-flash", effort: "low" },
+  { model: "gemini-3.8-flash", effort: "medium" },
+  { model: "gemini-3.8-flash", effort: "low" },
 );
 
 /** `openai_proxy_tiers`: the proxy has no model line of its own, so its defaults follow its URL. */
@@ -417,9 +417,9 @@ export function openAiProxyTiers(baseUrl: string): Profiles {
     base.includes("google")
   ) {
     return tiers(
-      { model: "gemini-3.7-flash", effort: "high" },
-      { model: "gemini-3.7-flash", effort: "medium" },
-      { model: "gemini-3.7-flash", effort: "medium" },
+      { model: "gemini-3.8-flash", effort: "high" },
+      { model: "gemini-3.8-flash", effort: "medium" },
+      { model: "gemini-3.8-flash", effort: "medium" },
     );
   }
   if (base.includes("api.berget.ai")) {
@@ -438,7 +438,8 @@ export function openAiProxyTiers(baseUrl: string): Profiles {
 
 /**
  * `resolution.rs`'s `default_profiles`, so an empty field can show what the tier falls back to rather
- * than looking like "nothing will be passed".
+ * than looking like "nothing will be passed". Mirror of that function, including its one departure
+ * from V1: every Gemini row pins 3.8 Flash, not the 3.7 V1 was written against.
  */
 export function tierDefaults(agent: string, baseUrl = ""): Profiles {
   switch (normalizeAgentName(agent)) {
@@ -450,9 +451,9 @@ export function tierDefaults(agent: string, baseUrl = ""): Profiles {
       );
     case "gemini":
       return tiers(
-        { model: "gemini-3.7-flash", effort: "" },
-        { model: "gemini-3.7-flash", effort: "" },
-        { model: "gemini-3.7-flash", effort: "" },
+        { model: "gemini-3.8-flash", effort: "" },
+        { model: "gemini-3.8-flash", effort: "" },
+        { model: "gemini-3.8-flash", effort: "" },
       );
     case "opencode":
       return tiers(
@@ -469,9 +470,9 @@ export function tierDefaults(agent: string, baseUrl = ""): Profiles {
     case "antigravity":
     case "agy":
       return tiers(
-        { model: "gemini-3.7-flash", effort: "medium" },
-        { model: "gemini-3.7-flash", effort: "medium" },
-        { model: "gemini-3.7-flash", effort: "medium" },
+        { model: "gemini-3.8-flash", effort: "medium" },
+        { model: "gemini-3.8-flash", effort: "medium" },
+        { model: "gemini-3.8-flash", effort: "medium" },
       );
     case "ivy":
       return IVY_TIERS;

@@ -136,10 +136,6 @@ const COPILOT_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
 const ANTIGRAVITY_EFFORTS: &[&str] = &["low", "medium", "high"];
 const GEMINI_EFFORTS: &[&str] = &["low", "medium", "high"];
 const OPENCODE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
-/// V1's `EffortLevels.Ivy` is `EffortLevels.OpenCode`'s list, and `IvyCli` wraps `OpenCodeCli`, so
-/// the two are the same ladder rather than a coincidence.
-const IVY_EFFORTS: &[&str] = OPENCODE_EFFORTS;
-
 // ---------------------------------------------------------------------------
 // The provider catalogues — one per V1 `*ModelCatalog.GetStaticModels()`
 // ---------------------------------------------------------------------------
@@ -170,7 +166,10 @@ const fn model(
 const CLAUDE_DEFAULT: &str = "claude-opus-5";
 const CODEX_DEFAULT: &str = "gpt-5.6-terra";
 const COPILOT_DEFAULT: &str = "gpt-5.4";
-const GEMINI_DEFAULT: &str = "gemini-3.7-flash";
+/// V1 flags `gemini-3.7-flash`, which was the newest Flash when it was written. 3.8 is, and both
+/// catalogues already list it first, so the row V2 pins is 3.8 - the one deliberate departure from
+/// V1's `IsDefault` flags.
+const GEMINI_DEFAULT: &str = "gemini-3.8-flash";
 const OPENCODE_DEFAULT: &str = "moonshotai/Kimi-K3";
 
 /// V1 `ClaudeModelCatalog`. Also the list the proxy serves when pointed at `api.anthropic.com`, and
@@ -319,6 +318,14 @@ struct AgentDef {
 /// Declared in V1's registration order, which is the order the picker lists them.
 /// `openaiproxy` is appended by [`all_agents_for_proxy_base_url`], because what it offers depends on
 /// where it points.
+///
+/// V1's `ivy` row - the rebranded `ivy-agent` CLI - is deliberately absent. V2 bundles OpenCode
+/// instead of shipping a rebranded agent, so nothing installs that binary and the row offered a
+/// choice that could not launch. It was also the one row the Coding Agent pane never listed, which
+/// is how the chat picker came to show an agent the settings screen had no card for. The `ivy` id
+/// is still *accepted* everywhere it was - `agent_environment` still reads credentials from an
+/// `ivy` entry, and `resolve_ivy_agent_binary` still resolves the binary - so an existing
+/// `config.yaml` naming it keeps working; it is only no longer offered.
 static AGENTS: &[AgentDef] = &[
     AgentDef {
         id: "antigravity",
@@ -369,14 +376,6 @@ static AGENTS: &[AgentDef] = &[
         catalogues: &[OPENCODE_MODELS],
         default_model: OPENCODE_DEFAULT,
         efforts: OPENCODE_EFFORTS,
-    },
-    AgentDef {
-        id: "ivy",
-        label: "Ivy Agent",
-        icon: "IvyCorner",
-        catalogues: IVY_CATALOGUES,
-        default_model: CLAUDE_DEFAULT,
-        efforts: IVY_EFFORTS,
     },
 ];
 
@@ -650,6 +649,13 @@ fn find_agent_def(agent_id: &str) -> Option<&'static AgentDef> {
     if id == OPENAI_PROXY_AGENT_ID {
         return Some(openai_proxy_def(None));
     }
+    // `ivy` is no longer *offered* (see `AGENTS`), but a `config.yaml` written before it was dropped
+    // may still name it, and resolving nothing there would leave that install with no models and no
+    // effort ladder. The Ivy proxy def carries the identical catalogues and ladder, differing only
+    // in the label and icon that a configured agent never shows, so it answers for the old id.
+    if id == "ivy" {
+        return Some(&OPENAI_PROXY_IVY);
+    }
     AGENTS.iter().find(|def| def.id == id)
 }
 
@@ -687,6 +693,12 @@ mod tests {
             .into_iter()
             .find(|agent| agent.id == id)
             .unwrap_or_else(|| panic!("{id} should be in the catalog"))
+    }
+
+    /// An agent by id whether or not it is *listed*. `ivy` still resolves - an existing
+    /// `config.yaml` may name it - but it is no longer offered, so `agent()` cannot find it.
+    fn resolved(id: &str) -> AgentOption {
+        build_agent(find_agent_def(id).unwrap_or_else(|| panic!("{id} should still resolve")))
     }
 
     fn model_ids(agent: &AgentOption) -> Vec<String> {
@@ -729,7 +741,6 @@ mod tests {
                 "copilot",
                 "gemini",
                 "opencode",
-                "ivy",
                 "openaiproxy",
             ]
         );
@@ -751,7 +762,6 @@ mod tests {
                 ("copilot".to_string(), "Copilot".to_string()),
                 ("gemini".to_string(), "Gemini".to_string()),
                 ("opencode".to_string(), "OpenCode".to_string()),
-                ("ivy".to_string(), "IvyCorner".to_string()),
                 ("openaiproxy".to_string(), "OpenAI".to_string()),
             ]
         );
@@ -773,7 +783,6 @@ mod tests {
                 ("copilot".to_string(), "Copilot".to_string()),
                 ("gemini".to_string(), "Gemini".to_string()),
                 ("opencode".to_string(), "OpenCode".to_string()),
-                ("ivy".to_string(), "Ivy Agent".to_string()),
                 ("openaiproxy".to_string(), "OpenAI Proxy".to_string()),
             ]
         );
@@ -798,7 +807,6 @@ mod tests {
                 "opencode",
                 &["default", "low", "medium", "high", "xhigh", "max"],
             ),
-            ("ivy", &["default", "low", "medium", "high", "xhigh", "max"]),
             (
                 "openaiproxy",
                 &["default", "low", "medium", "high", "xhigh", "max"],
@@ -928,14 +936,12 @@ mod tests {
     #[test]
     fn every_agents_default_is_one_of_its_own_models_and_comes_first() {
         let expected: &[(&str, &str)] = &[
-            ("antigravity", "gemini-3.7-flash"),
+            ("antigravity", "gemini-3.8-flash"),
             ("claude", "claude-opus-5"),
             ("codex", "gpt-5.6-terra"),
             ("copilot", "gpt-5.4"),
-            ("gemini", "gemini-3.7-flash"),
+            ("gemini", "gemini-3.8-flash"),
             ("opencode", "moonshotai/Kimi-K3"),
-            // V1's `IvyModelCatalog` splices Claude first, so its `IsDefault` row is Claude's.
-            ("ivy", "claude-opus-5"),
             ("openaiproxy", "gpt-5.6-terra"),
         ];
 
@@ -1040,15 +1046,6 @@ mod tests {
                     ProviderGroup::OpenAi,
                 ],
             ),
-            // V1 `IvyModelCatalog` splices all three, so all three are correct here.
-            (
-                "ivy",
-                &[
-                    ProviderGroup::Anthropic,
-                    ProviderGroup::Google,
-                    ProviderGroup::OpenAi,
-                ],
-            ),
             ("openaiproxy", &[ProviderGroup::OpenAi]),
         ];
 
@@ -1087,7 +1084,7 @@ mod tests {
         let copilot = model_ids(&agent("copilot"));
         assert!(copilot.iter().any(|id| id.starts_with("gpt-")));
         assert!(copilot.iter().any(|id| id.starts_with("claude-")));
-        let ivy = model_ids(&agent("ivy"));
+        let ivy = model_ids(&resolved("ivy"));
         assert!(ivy.iter().any(|id| id.starts_with("claude-")));
         assert!(ivy.iter().any(|id| id.starts_with("gemini-")));
         assert!(ivy.iter().any(|id| id.starts_with("gpt-")));
@@ -1138,7 +1135,7 @@ mod tests {
             .any(|id| id.starts_with("gemini-")));
 
         // V1 `IvyModelCatalog` = Claude + Gemini + Codex.
-        let ivy = agent("ivy");
+        let ivy = resolved("ivy");
         let ivy_ids = model_ids(&ivy);
         assert!(has(&ivy_ids, "claude-opus-5"));
         assert!(has(&ivy_ids, "gemini-3.7-flash"));
@@ -1170,7 +1167,6 @@ mod tests {
             "antigravity",
             "opencode",
             "copilot",
-            "ivy",
         ] {
             let offered = model_ids(&agent(agent_id));
             for tier in crate::agents::resolution::default_profiles(agent_id) {
@@ -1233,7 +1229,7 @@ mod tests {
         assert_eq!(ProviderGroup::of(&antigravity[1]), ProviderGroup::Google);
 
         // Ivy leads with Anthropic, which is the catalogue it concatenates first.
-        let ivy = model_ids(&agent("ivy"));
+        let ivy = model_ids(&resolved("ivy"));
         assert_eq!(ProviderGroup::of(&ivy[1]), ProviderGroup::Anthropic);
     }
 
@@ -1266,7 +1262,7 @@ mod tests {
 
         let ivy = proxy(Some("https://llmproxy.ivy.app"));
         assert_eq!(ivy.label, "OpenAI Proxy");
-        assert_eq!(model_ids(&ivy), model_ids(&agent("ivy")));
+        assert_eq!(model_ids(&ivy), model_ids(&resolved("ivy")));
 
         let google = proxy(Some("https://generativelanguage.googleapis.com"));
         assert!(google.models.iter().all(|m| m.id.starts_with("gemini-")));

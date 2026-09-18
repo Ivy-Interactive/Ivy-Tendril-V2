@@ -18,7 +18,7 @@ import {
   LinesField,
   NativeSelectField,
   SaveError,
-  SectionCard,
+  SettingsSection,
   SubSection,
   TextField,
 } from "./fields";
@@ -479,7 +479,7 @@ export const CodingAgentSection: React.FC<{
   };
 
   return (
-    <SectionCard
+    <SettingsSection
       title="Coding Agent"
       hint="Tendril connects to your configured AI coding agent or bundled open source engines like OpenCode."
       testId="coding-agent-card"
@@ -633,7 +633,7 @@ export const CodingAgentSection: React.FC<{
 
           <div className="space-y-3">
             {PROFILE_TIERS.map((tier) => (
-              <div key={tier} className="flex items-end gap-2">
+              <div key={tier} className="flex items-start gap-2">
                 {/* `Width(Size.Fraction(0.65f))` against the effort select's `0.35f`, expressed as
                     grow weights over a zero basis rather than as percentage bases.
                     `basis-[65%] + basis-[35%]` is exactly 100% of the line before the `gap-2`
@@ -641,7 +641,14 @@ export const CodingAgentSection: React.FC<{
                     select dropped to a line of its own at *every* width - which is not the layout
                     V1 draws. Weights divide what is left after the gap, so the ratio holds and the
                     row stays one line; `min-w-0` lets a long model name shrink rather than push its
-                    neighbour out. */}
+                    neighbour out.
+
+                    Aligned at the *start*, not the end: only the model column carries a hint
+                    ("Not set - this is the built-in default for this tier"), so aligning bottoms
+                    pushed the effort control down by the height of a line the column beside it does
+                    not have. Both columns open with the same `text-xs` label above the same `h-9`
+                    control, so aligning tops lines the labels and the selects up and lets the hint
+                    hang below where it belongs. */}
                 <div
                   className={
                     effortEnabled ? "min-w-0 grow-[65] basis-0" : "min-w-0 grow basis-full"
@@ -762,6 +769,6 @@ export const CodingAgentSection: React.FC<{
           </div>
         </Callout.Info>
       </form>
-    </SectionCard>
+    </SettingsSection>
   );
 };

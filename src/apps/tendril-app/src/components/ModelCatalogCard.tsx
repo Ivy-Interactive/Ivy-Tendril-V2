@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Badge, Button, Input, Label, Switch } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { describeBridgeError, type ModelCatalogStatus, type TendrilConfig } from "../types/api";
+import { SettingsSection } from "../views/settings/fields";
 
 /**
  * The cache is called stale once it is older than `modelCacheWarnAgeDays`, which is the same
@@ -205,17 +206,13 @@ export const ModelCatalogCard: React.FC = () => {
   );
 
   return (
-    <div
-      className="rounded-box border border-border bg-card/60 p-6"
-      data-testid="model-catalog-card"
-    >
-      <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Model Catalog</h2>
-          <p className="text-xs text-muted-foreground">
-            Tendril merges the curated model table with a models.dev snapshot cached on disk.
-          </p>
-        </div>
+    // Heading, hint and header action were hand-rolled here in exactly the markup
+    // `SettingsSection` already draws, so this section kept its box when that one lost it.
+    <SettingsSection
+      title="Model Catalog"
+      hint="Tendril merges the curated model table with a models.dev snapshot cached on disk."
+      testId="model-catalog-card"
+      action={
         <Button
           type="button"
           variant="outline"
@@ -225,8 +222,8 @@ export const ModelCatalogCard: React.FC = () => {
         >
           {isRefreshing ? "Refreshing…" : "Refresh Now"}
         </Button>
-      </div>
-
+      }
+    >
       {loadError && (
         <p data-testid="model-catalog-error" className="mt-3 text-xs text-destructive">
           {loadError}
@@ -394,6 +391,6 @@ export const ModelCatalogCard: React.FC = () => {
           {isSaving ? "Saving..." : "Save"}
         </Button>
       </form>
-    </div>
+    </SettingsSection>
   );
 };

@@ -10,7 +10,7 @@ import {
 } from "../../api/tunnelApi";
 import { notificationsStore } from "../../state/notificationsStore";
 import { bridgeErrorCode, describeBridgeError } from "../../types/api";
-import { SectionCard } from "./fields";
+import { SettingsSection } from "./fields";
 
 /**
  * Port of `Apps/Settings/SecuritySetupView.cs` and the `TunnelSetupView` it composes underneath itself
@@ -70,7 +70,7 @@ export interface SecurityTunnelingSectionProps {
 export const SecurityTunnelingSection: React.FC<SecurityTunnelingSectionProps> = ({
   api = tunnelApi,
 }) => (
-  <SectionCard
+  <SettingsSection
     title="Security & Tunneling"
     hint="Require a password to access Tendril, and expose this instance over a public tunnel."
     testId="security-tunneling-card"
@@ -82,7 +82,7 @@ export const SecurityTunnelingSection: React.FC<SecurityTunnelingSectionProps> =
       <Separator />
       <TunnelBlock api={api} kind="share" />
     </div>
-  </SectionCard>
+  </SettingsSection>
 );
 
 /* -------------------------------------------------------------------------------------------------

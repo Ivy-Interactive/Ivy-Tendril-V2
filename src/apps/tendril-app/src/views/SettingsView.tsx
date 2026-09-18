@@ -36,7 +36,7 @@ import {
   LinesField,
   NumberField,
   SaveError,
-  SectionCard,
+  SettingsSection,
   SelectField,
   asOptions,
 } from "./settings/fields";
@@ -244,7 +244,7 @@ const PromptwaresCard: React.FC<{
   };
 
   return (
-    <SectionCard
+    <SettingsSection
       title="Promptware Configuration"
       hint="Configure agent profile and tool permissions for each promptware."
       testId="promptwares-card"
@@ -358,7 +358,7 @@ const PromptwaresCard: React.FC<{
           </Button>
         </div>
       </div>
-    </SectionCard>
+    </SettingsSection>
   );
 };
 
@@ -707,7 +707,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             />
           </div>
         ) : (
-          <div className="min-h-0 flex-1 space-y-6 overflow-auto p-4">
+          <div className="min-h-0 flex-1 space-y-10 overflow-auto p-4">
+            {/* Sections draw no box of their own, as V1's draw none, so the gap between them is the
+                only thing separating one from the next - wider than the `space-y-6` that was only
+                ever spacing between two already-bordered boxes. */}
             {isAddingProject && (
               <AddProjectView existingNames={projectNames} onCreate={createProject} />
             )}
@@ -730,7 +733,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
 
             {on(SettingsTag.Plans) && (
-              <SectionCard
+              <SettingsSection
                 title="Plans"
                 hint="Configure the default plan template used when creating new plans."
                 testId="plans-settings-card"
@@ -764,7 +767,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {savingSection === "planTemplate" ? "Saving..." : "Save"}
                   </Button>
                 </form>
-              </SectionCard>
+              </SettingsSection>
             )}
 
             {on(SettingsTag.Appearance) && (
@@ -773,13 +776,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* `if (isBeta) rows.Add(("Team Vault", ...))`: gated, and labelled as V1 labels it. */}
             {isBeta && on(SettingsTag.Vault) && (
-              <SectionCard
+              <SettingsSection
                 title="Team Vault"
                 hint="Share and synchronize Tendril projects, custom skills, MCP servers, and security rules across your team via a versioned Git repository."
                 testId="vault-card"
               >
                 <VaultSettingsView tendrilHome={serviceInfo?.tendrilHome} />
-              </SectionCard>
+              </SettingsSection>
             )}
 
             {on(SettingsTag.Promptwares) && (
@@ -798,7 +801,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {on(SettingsTag.Levels) && <LevelsSection levels={levels} onSaveRaw={saveRawKey} />}
 
             {on(SettingsTag.Notifications) && (
-              <SectionCard
+              <SettingsSection
                 title="Notifications"
                 hint="Configure how Tendril notifies you about job completions, failures, and other events."
                 testId="notifications-card"
@@ -842,14 +845,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {savingSection === "desktopNotifications" ? "Saving..." : "Save"}
                   </Button>
                 </form>
-              </SectionCard>
+              </SettingsSection>
             )}
 
             {securitySelected && !isAddingProject && <SecurityTunnelingSection />}
 
             {on(SettingsTag.Advanced) && (
               <>
-                <SectionCard
+                <SettingsSection
                   title="Advanced"
                   hint="Configure timeouts and concurrency limits."
                   testId="advanced-settings-card"
@@ -937,12 +940,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       {savingSection === "advanced" ? "Saving..." : "Save"}
                     </Button>
                   </form>
-                </SectionCard>
+                </SettingsSection>
 
                 {/* No V1 counterpart: V2 supervises the daemon itself, so its diagnostics live here rather
           than in the C# app. They are part of Advanced rather than a top-level row, because V1's
           sidebar has no row for them and an extra row is itself a structural divergence. */}
-                <SectionCard
+                <SettingsSection
                   title="Daemon Diagnostics"
                   action={
                     <Button
@@ -1003,20 +1006,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </dd>
                     </div>
                   </dl>
-                </SectionCard>
+                </SettingsSection>
 
                 <ServiceSettingsView serviceInfo={serviceInfo} onRefreshHealth={onRefreshHealth} />
               </>
             )}
 
             {on(SettingsTag.Newsletter) && (
-              <SectionCard
+              <SettingsSection
                 title="Newsletter"
                 hint="Subscribe to the Ivy & Tendril newsletter to receive updates, feature highlights, and release notes."
                 testId="newsletter-card"
               >
                 <NewsletterSignup />
-              </SectionCard>
+              </SettingsSection>
             )}
           </div>
         )}
