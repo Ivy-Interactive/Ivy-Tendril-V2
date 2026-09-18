@@ -86,29 +86,40 @@ let serverProcess: ChildProcess | null = null;
 let appProcess: ChildProcess | null = null;
 let shuttingDown = false;
 
+/**
+ * Terminate a child and everything it started.
+ *
+ * Windows has no process groups to signal, and both children here are the root of a tree: `cargo run`
+ * holds `tendril-server.exe`, and (now that it needs a shell) the `pnpm` command holds the Tauri CLI,
+ * vite and another cargo. Killing only the root leaves the rest running, still holding port 5010 and
+ * the home's `.master` claim, so the next run is refused by name. `taskkill /T` takes the tree.
+ *
+ * It is a forceful kill, which skips the server's graceful shutdown — but so was the `SIGTERM` this
+ * replaces: on Windows Node maps every signal to `TerminateProcess` anyway, and that version also
+ * orphaned the server it was trying to stop.
+ */
+function killTree(proc: ChildProcess) {
+  if (!proc.pid) return;
+  try {
+    if (process.platform === "win32") {
+      execSync(`taskkill /F /T /PID ${proc.pid}`, { stdio: "ignore" });
+    } else {
+      process.kill(-proc.pid, "SIGTERM");
+    }
+  } catch {}
+}
+
 function cleanup() {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log("\n\x1b[33m[dev-desktop] Shutting down...\x1b[0m");
 
-  if (appProcess && appProcess.pid) {
-    try {
-      if (process.platform !== "win32") {
-        process.kill(-appProcess.pid, "SIGTERM");
-      } else {
-        appProcess.kill("SIGTERM");
-      }
-    } catch {}
+  if (appProcess) {
+    killTree(appProcess);
   }
 
-  if (serverProcess && serverProcess.pid) {
-    try {
-      if (process.platform !== "win32") {
-        process.kill(-serverProcess.pid, "SIGTERM");
-      } else {
-        serverProcess.kill("SIGTERM");
-      }
-    } catch {}
+  if (serverProcess) {
+    killTree(serverProcess);
   }
 
   // Also clean up any lingering Vite frontend processes on port 5173
@@ -253,6 +264,12 @@ async function main() {
     {
       stdio: "inherit",
       detached: process.platform !== "win32",
+      // On Windows `pnpm` is a `.cmd` shim, and since the fix for CVE-2024-27980 Node refuses to
+      // spawn one without a shell: bare `pnpm` fails ENOENT and `pnpm.cmd` fails EINVAL. Nothing
+      // listened for the resulting `error` event, so the app never launched and the script fell
+      // straight through to cleanup, printing only "Shutting down..." under a perfectly healthy
+      // daemon. `cargo` above needs no shell: it is a real `.exe`.
+      shell: process.platform === "win32",
       env: {
         ...process.env,
         TENDRIL_HOME: tendrilHome,
@@ -260,6 +277,11 @@ async function main() {
       },
     },
   );
+
+  appProcess.on("error", (err) => {
+    console.error(`\x1b[31m[dev-desktop] Could not launch the desktop app: ${err.message}\x1b[0m`);
+    cleanup();
+  });
 
   appProcess.on("exit", (code) => {
     if (!shuttingDown) {

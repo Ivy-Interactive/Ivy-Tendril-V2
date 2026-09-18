@@ -240,6 +240,12 @@ export type {
 export { WebViewer, Toolbar } from "./components/WebViewer/index.ts";
 export type { WebViewerProps, ToolbarProps, ToolbarAction } from "./components/WebViewer/index.ts";
 
+// Exported beside the viewer because an application needs both: the viewer frames the proxy's
+// origin, and this is how the shell says where that is. Without it a viewer falls back to
+// same-origin, which is right in a browser and wrong under Tauri.
+export { WebViewerProvider, WebViewerContext, useProxyOrigin } from "./contexts/webviewer-context";
+export type { WebViewerProviderProps, WebViewerContextValue } from "./contexts/webviewer-context";
+
 // Terminal Component. Sits next to the WebViewer because they are the two halves of reviewing a
 // running app: the terminal is what the app boots in, the viewer is what it is then previewed in.
 export { Terminal } from "./components/Terminal/index.ts";

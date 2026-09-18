@@ -25,8 +25,8 @@ use crate::jobs::dependents::release_dependents;
 use crate::jobs::failure_analysis::extract_failure_reason;
 use crate::jobs::firmware_values::{
     build_firmware_values, build_job_context, execution_profile_override, find_project,
-    find_repo_ref, repo_name, resolve_project, resolve_project_skills, resolve_working_directory,
-    resolve_writable_directories,
+    find_repo_ref, is_auto_project, repo_name, resolve_project, resolve_project_skills,
+    resolve_working_directory, resolve_writable_directories,
 };
 use crate::jobs::hooks::{run_hooks, shell_hook_executor, HookExecutor, HookPhase, HookRunContext};
 use crate::jobs::logger::{
@@ -502,6 +502,39 @@ impl JobManager {
     /// the job the key already created.
     pub async fn start_job_with(&self, args: JobArgs, opts: StartOptions) -> Result<String> {
         let job_type = args.job_type().to_string();
+        let settings = self.settings.read().await.clone();
+
+        // Canonicalize the plan reference before anything reads it.
+        //
+        // `POST /api/jobs` deserializes raw `JobArgs`, so it is the one front end that can name a plan
+        // by its bare id — which is exactly what the app sends (`folderPath: plan.id`). The CLI and the
+        // MCP dispatcher both resolve a folder first, so nothing else ever saw the difference, and a
+        // great deal downstream reads this string as a path:
+        //
+        // * `resolve_project` reads `plan.yaml` at it, so an unresolved id meant every plan-scoped job
+        //   from the app was recorded as project `Auto` — and with it went the project's skills, its
+        //   job hooks, its terminal allowlist and its `RepoConfigs`.
+        // * `add_plan_scoped_values` bails when it is not a directory, so the firmware header lost its
+        //   whole plan block: no `TendrilPlanFolder`, no `TendrilPlanId`, no `Note` / `UpdateInstructions`
+        //   / `ChangeRequest`. The agent had to work out which plan it was on by searching for it.
+        // * `verify_execute_plan` reads `plan.yaml` at it too, so an execution that succeeded was
+        //   recorded `Failed` — "exited 0 but its plan.yaml could not be read at 00681" — and the plan
+        //   was flipped to `Failed` with it.
+        // * the dedupe and conflict keys compare this string, so `00681` and the absolute path were two
+        //   different keys and the duplicate gate could be walked around by mixing front ends.
+        //
+        // Resolution failure falls back to the raw string rather than becoming an error: a submission
+        // naming a plan that does not exist yet is the caller's problem to report, and the guard below
+        // already rejects the only unrecoverable shape (no reference at all).
+        let mut args = args;
+        if let Some(reference) = args.plan_folder().map(str::to_string) {
+            if !reference.trim().is_empty() {
+                if let Ok(resolved) = resolve_plan_folder(&reference, &self.plans_dir(&settings)) {
+                    args.set_plan_folder(resolved.to_string_lossy().to_string());
+                }
+            }
+        }
+
         let plan_folder_str = args.plan_folder().unwrap_or("").to_string();
         let plan_folder = PathBuf::from(&plan_folder_str);
 
@@ -520,12 +553,9 @@ impl JobManager {
 
         // `CreatePlan` carries a priority of its own, so an explicit override is written back into the
         // stored args rather than only onto the job row.
-        let mut args = args;
         if let (JobArgs::CreatePlan(create), Some(priority)) = (&mut args, opts.priority) {
             create.priority = priority;
         }
-
-        let settings = self.settings.read().await.clone();
 
         // A forced submission is the operator saying "yes, again": it opts out of both duplicate
         // gates, and stores no dedupe key so it cannot block the next submission either.
@@ -825,6 +855,15 @@ impl JobManager {
         job.status_message = Some(message.to_string());
         if let Some(pid) = plan_id {
             job.reported_plan_id = Some(pid.to_string());
+            // The moment a `CreatePlan` says which plan it made is the first moment its project can be
+            // known, and it is also the moment the Jobs list and the chat come to read the row. Waiting
+            // for the job to finish would leave both showing `Auto` for the whole run.
+            if is_auto_project(&job.project) {
+                let settings = self.settings.read().await.clone();
+                if let Some(project) = plan_project(pid, &self.plans_dir(&settings)) {
+                    job.project = project;
+                }
+            }
         }
         if let Some(title) = plan_title {
             job.reported_plan_title = Some(title.to_string());
@@ -1627,6 +1666,16 @@ fn adopt_plan_into_chat_session(plans_dir: &Path, job: &JobItem, chat_session_id
     }
 }
 
+/// The project a plan belongs to, by plan reference — an id, a folder name or a path. `None` when the
+/// plan cannot be read or names no project of its own.
+fn plan_project(plan_reference: &str, plans_dir: &Path) -> Option<String> {
+    let folder = resolve_plan_folder(plan_reference, plans_dir).ok()?;
+    read_plan_yaml(&folder)
+        .ok()
+        .map(|(plan, _)| plan.project)
+        .filter(|project| !is_auto_project(project))
+}
+
 /// The conversation a plan already belongs to, used to link a job that names the plan but was started
 /// without a `--chat-session` of its own. Empty for a job with no plan — a `CreatePlan` has none yet,
 /// which is why [`JobManager::finish_job`] stamps the link the other way round once the plan exists.
@@ -2293,6 +2342,11 @@ fn spawn_runner(
             }
             if current.reported_failure_reason.is_some() {
                 job.reported_failure_reason = current.reported_failure_reason.clone();
+            }
+            // A `CreatePlan` that reported its plan mid-run learned its project then; this copy still
+            // says `Auto`, and the terminal write would put that back.
+            if is_auto_project(&job.project) && !is_auto_project(&current.project) {
+                job.project = current.project.clone();
             }
         }
 
@@ -3417,6 +3471,17 @@ pub async fn finish_job(
     if !denials.is_empty() {
         // Appended to the existing status message so the Jobs UI shows it with no frontend change.
         effective_msg = format!("{} — {}", effective_msg, summarize_denials(&denials));
+    }
+
+    // `verify_deliverable` has just written the plan a `CreatePlan` produced onto `job.plan_file`, so
+    // this is the last moment the project can be learned and the only one that catches a job whose
+    // promptware never reported a plan id. Guarded, so a job that already knows its project keeps it.
+    if is_auto_project(&job.project) && !job.plan_file.trim().is_empty() {
+        if let Ok((plan, _)) = read_plan_yaml(Path::new(&job.plan_file)) {
+            if !is_auto_project(&plan.project) {
+                job.project = plan.project;
+            }
+        }
     }
 
     job.status = effective_status;

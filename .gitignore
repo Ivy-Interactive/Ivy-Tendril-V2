@@ -46,3 +46,6 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Local scratch plans
+.plan/

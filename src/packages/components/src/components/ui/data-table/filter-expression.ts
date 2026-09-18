@@ -53,6 +53,8 @@ export interface FilterExpressionColumn {
   label: string;
   /** What goes on the wire: `column.filter.column ?? column.name`. */
   column: string;
+  /** Further stored columns holding the same fact, matched as an OR beside `column`. */
+  alsoColumns?: readonly string[];
 }
 
 /** The columns an expression may name, in declaration order. */
@@ -65,6 +67,7 @@ export function filterExpressionColumns<TRow>(
       name: column.name,
       label: column.header ?? column.name,
       column: column.filter?.column ?? column.name,
+      alsoColumns: column.filter?.alsoColumns,
     }));
 }
 
@@ -80,6 +83,43 @@ export function filterExpressionPlaceholder<TRow>(
   const first = filterExpressionColumns(columns)[0];
   if (!first) return "No filterable columns";
   return `[${first.label}] contains "…"`;
+}
+
+/**
+ * Worked examples for the help popover, built from the table's **own** filterable columns.
+ *
+ * Not a fixed list. A hardcoded set named the Jobs table's columns, so it was wrong on every other
+ * table — and wrong on Jobs too, since one of its examples used a column that was not filterable and
+ * therefore did not parse. Teaching the syntax with an expression the table rejects is worse than
+ * teaching none.
+ */
+export function filterExpressionExamples<TRow>(
+  columns: readonly DataTableColumn<TRow>[],
+): string[] {
+  const filterable = columns.filter((column) => Boolean(column.filter));
+  if (filterable.length === 0) return [];
+
+  const label = (column: DataTableColumn<TRow>) => `[${column.header ?? column.name}]`;
+  const withOptions = filterable.find((column) => (column.filter?.options ?? []).length > 0);
+  const plain = filterable.find((column) => column !== withOptions) ?? filterable[0];
+  const examples: string[] = [];
+
+  if (withOptions) {
+    const values = (withOptions.filter?.options ?? []).map((option) => option.value);
+    examples.push(`${label(withOptions)} = "${values[0]}"`);
+    if (values.length > 1) {
+      examples.push(`${label(withOptions)} in ("${values[0]}", "${values[1]}")`);
+    }
+  }
+  examples.push(`${label(plain)} contains "…"`);
+  if (withOptions && plain !== withOptions) {
+    examples.push(
+      `${label(plain)} contains "…" AND ${label(withOptions)} != ` +
+        `"${(withOptions.filter?.options ?? [])[0]?.value ?? "…"}"`,
+    );
+  }
+  examples.push(`${label(plain)} is blank`);
+  return examples;
 }
 
 /** A parse either produced a filter or failed with a reason to show the user. */
@@ -277,10 +317,12 @@ class Parser {
     }
     const column = this.resolveColumn(token);
     const { fn, args } = this.parseOperator(token);
-    return whereColumn(column, fn, args);
+    const targets = [column.column, ...(column.alsoColumns ?? [])];
+    // `anyOf` of one is that one, so a column with no `alsoColumns` emits exactly what it always did.
+    return anyOf(...targets.map((target) => whereColumn(target, fn, args))) as RemoteTableFilter;
   }
 
-  private resolveColumn(token: Token): string {
+  private resolveColumn(token: Token): FilterExpressionColumn {
     const wanted = normalize(token.text);
     const match = this.columns.find(
       (column) =>
@@ -288,7 +330,7 @@ class Parser {
         normalize(column.name) === wanted ||
         normalize(column.column) === wanted,
     );
-    if (match) return match.column;
+    if (match) return match;
 
     const names = this.columns.map((column) => `[${column.label}]`).join(", ");
     throw new ParseError(
@@ -336,6 +378,25 @@ class Parser {
         return { fn: "contains", args: [this.parseValue()] };
       case "in":
         return { fn: "inSet", args: this.parseValueList() };
+      // The word forms of the symbol operators. V1's grammar accepts all of these
+      // (`Filters.g4` / `ASTBuilder`), and its editor offered `equals` first for every column it
+      // recognised a type for, so an operator who learned the syntax there types `equals` — which
+      // was a hard parse error here, and one whose message did not even mention the word.
+      case "equals":
+      case "equal":
+        return { fn: "equals", args: [this.parseValue()] };
+      case "greater":
+        this.expectWord("than", "greater");
+        return this.takeWord("or")
+          ? (this.expectWord("equal", "greater than or"),
+            { fn: "greaterThanOrEqual", args: [this.parseValue()] })
+          : { fn: "greaterThan", args: [this.parseValue()] };
+      case "less":
+        this.expectWord("than", "less");
+        return this.takeWord("or")
+          ? (this.expectWord("equal", "less than or"),
+            { fn: "lessThanOrEqual", args: [this.parseValue()] })
+          : { fn: "lessThan", args: [this.parseValue()] };
       case "starts":
         this.expectWord("with", "starts");
         return { fn: "startsWith", args: [this.parseValue()] };
@@ -345,7 +406,10 @@ class Parser {
       case "not": {
         if (this.takeWord("contains")) return { fn: "notContains", args: [this.parseValue()] };
         if (this.takeWord("in")) return { fn: "notInSet", args: this.parseValueList() };
-        throw new ParseError("After 'not' expected 'contains' or 'in'.");
+        if (this.takeWord("equals") || this.takeWord("equal")) {
+          return { fn: "notEquals", args: [this.parseValue()] };
+        }
+        throw new ParseError("After 'not' expected 'contains', 'in' or 'equals'.");
       }
       case "is": {
         const negated = this.takeWord("not");
@@ -360,7 +424,8 @@ class Parser {
       default:
         throw new ParseError(
           `Unknown comparison '${token.text}' at position ${token.at + 1}. Use =, !=, >, <, ` +
-            `contains, starts with, ends with, in (…), is blank or is not blank.`,
+            `equals, not equals, greater than, less than, contains, starts with, ends with, ` +
+            `in (…), is blank or is not blank.`,
         );
     }
   }

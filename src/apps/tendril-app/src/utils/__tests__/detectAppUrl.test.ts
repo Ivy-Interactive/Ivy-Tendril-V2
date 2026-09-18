@@ -19,17 +19,18 @@ describe("detectAppUrl", () => {
     expect(detectAppUrl(transcript)).toBe("http://localhost:5173/");
   });
 
-  it("returns a LAN address with a port when nothing loopback appears", () => {
-    expect(detectAppUrl("  ➜  Network: http://192.168.1.9:5173/")).toBe("http://192.168.1.9:5173/");
+  it("refuses a LAN address, which the proxy would answer with a 403", () => {
+    // V1 took this as a fallback because its proxy would fetch a private address. V2's
+    // `is_target_allowed` is loopback-only, so detecting one buys a framed 403 and a blank
+    // viewer with no explanation - better to keep waiting for the Local: line, which a dev
+    // server prints whenever it prints a Network: one.
+    expect(detectAppUrl("Network: http://192.168.1.9:5173/")).toBeNull();
+    expect(
+      detectAppUrl("Network: http://192.168.1.9:5173/\nAlso: http://10.0.0.4:8080/"),
+    ).toBeNull();
   });
 
-  it("returns the first ported fallback, not the last", () => {
-    const transcript = "Network: http://192.168.1.9:5173/\nAlso: http://10.0.0.4:8080/";
-
-    expect(detectAppUrl(transcript)).toBe("http://192.168.1.9:5173/");
-  });
-
-  it("ignores portless URLs — the documentation-link case", () => {
+  it("ignores public URLs — the documentation-link case", () => {
     expect(detectAppUrl("For more information see https://aka.ms/some-error")).toBeNull();
     expect(detectAppUrl("Restoring from https://api.nuget.org/v3/index.json")).toBeNull();
     expect(detectAppUrl("docs: https://vite.dev/config/, https://react.dev/")).toBeNull();
@@ -47,11 +48,13 @@ describe("detectAppUrl", () => {
     expect(detectAppUrl("bound to http://[::1]:3000/")).toBe("http://[::1]:3000/");
   });
 
-  it("does not treat a .localhost subdomain as loopback", () => {
-    // It has a port, so it is still returned — as the fallback, not outright.
+  it("treats a .localhost subdomain as proxyable, because the server does", () => {
+    // RFC 6761 reserves *.localhost for loopback and `is_target_allowed` honours it. V1 did
+    // not, since .NET's Uri.IsLoopback does not - so this is a deliberate departure from V1,
+    // made to keep the detector and the allow-list from ever disagreeing.
     const transcript = "Proxying http://app.localhost:8080/\nLocal: http://localhost:5173/";
 
-    expect(detectAppUrl(transcript)).toBe("http://localhost:5173/");
+    expect(detectAppUrl(transcript)).toBe("http://app.localhost:8080/");
   });
 
   it("finds a URL wrapped in the colour escapes a dev server banner uses", () => {

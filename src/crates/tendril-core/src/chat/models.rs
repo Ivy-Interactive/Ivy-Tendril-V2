@@ -59,6 +59,25 @@ pub struct ChatMessage {
     pub effort: Option<String>,
 }
 
+/// Whether a recorded spawned-job id could be one. A job id is allocated by the daemon and never
+/// starts with `-`; a command-line flag always does, and that is the only shape the old scrape
+/// produced. Deliberately no stricter than that — ids are `00042` in production but tests and older
+/// data use other spellings, and dropping a real id would lose a job from a conversation's header.
+fn looks_like_job_id(candidate: &str) -> bool {
+    let trimmed = candidate.trim();
+    !trimmed.is_empty() && !trimmed.starts_with('-')
+}
+
+fn deserialize_spawned_job_ids<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Vec::<String>::deserialize(deserializer)?;
+    Ok(raw.into_iter().filter(|id| looks_like_job_id(id)).collect())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatSession {
@@ -76,7 +95,19 @@ pub struct ChatSession {
     pub messages: Vec<ChatMessage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort: Option<String>,
-    #[serde(default, alias = "spawned_job_ids")]
+    /// The jobs this conversation started.
+    ///
+    /// Read through [`deserialize_spawned_job_ids`], which drops what an earlier version of the
+    /// stream-scraping regex wrote here: it matched the job-start *command* as well as its result, so it
+    /// captured the flag that followed the job type — `--chat-session`, `--description` — as an id. Those
+    /// resolve to no job and were already filtered out of the header, but they are still in every session
+    /// file written while that regex was live, and `tendril chat show` printed them. Dropped on read, so
+    /// the next save writes the list back clean.
+    #[serde(
+        default,
+        alias = "spawned_job_ids",
+        deserialize_with = "deserialize_spawned_job_ids"
+    )]
     pub spawned_job_ids: Vec<String>,
     // `rename_all` already produces `planFolderName`; the alias keeps the snake_case form readable.
     #[serde(

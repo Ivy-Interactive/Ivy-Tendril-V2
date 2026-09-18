@@ -126,8 +126,8 @@ export const AnnotationDemo: Story = {
             id="web-viewer-demo"
             url={url}
             device="Desktop"
-            width="100%"
-            height="100%"
+            width="full"
+            height="full"
             commands={commands}
             subscribeToStream={subscribeToStream}
             events={["OnComment"]}
@@ -145,12 +145,16 @@ export const AnnotationDemo: Story = {
   },
 };
 
-export const ProxyRequired: Story = {
+/**
+ * Storybook is served on its own origin, which is not the daemon's, so the proxy paths have to be
+ * named explicitly here. In the app this comes from `WebViewerProvider` and no call site says it.
+ */
+export const ExplicitProxyOrigin: Story = {
   args: {
-    id: "web-viewer-proxy-required",
+    id: "web-viewer-explicit-proxy-origin",
     url: "https://example.com",
     device: "Desktop",
-    proxy: "require",
+    proxyOrigin: "http://127.0.0.1:5010",
     width: "100%",
     height: "800px",
     events: ["OnComment"],

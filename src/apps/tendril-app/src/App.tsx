@@ -71,6 +71,10 @@ const JOB_POLL_INTERVAL_MS = 5000;
 const DashboardView = React.lazy(() =>
   import("./views/DashboardView").then((m) => ({ default: m.DashboardView })),
 );
+// Not from the views: they are `React.lazy`, so importing a helper out of one would pull that whole
+// view and its dialogs into the initial chunk. The nav badges count the queues the pages list.
+import { draftQueueFor, isReviewState, reviewQueueFor } from "./utils/planQueues";
+
 const PlansView = React.lazy(() =>
   import("./views/PlansView").then((m) => ({ default: m.PlansView })),
 );
@@ -513,29 +517,56 @@ export const App: React.FC = () => {
   };
 
   /**
-   * Start a promptware job and open its session tab.
+   * Where to go once an action has taken a plan out of the queue it was sitting in: back to that
+   * queue, which resolves its own next selection — the same thing `onPlanDeleted` does, and V1's
+   * `PlanSelectionHelper.ResolveSelection` keeps the old index rather than jumping to the top, so
+   * working down a queue keeps working down it.
+   *
+   * Deliberately *not* the job's own page. Launching an action used to navigate to `job-<id>`, which
+   * put a log viewer in front of the operator after every Execute and every Create PR — one plan's
+   * output instead of the next plan's decision. Nothing is lost: the job is in the Jobs list, the
+   * plan's own page shows its running job, and the chat announces the outcome.
+   */
+  const returnToQueue = (state: string | undefined) => {
+    uiStore.setActiveNav(isReviewState(state) ? "review" : "plans");
+  };
+
+  /**
+   * Start a promptware job and move on to the next plan in the queue.
    *
    * Rejections deliberately propagate to the calling view, which renders them
    * next to the button the operator pressed. Swallowing them here made a
    * refused Execute/Retry/CreatePR look like a no-op.
    */
-  const startJobAndOpenSession = async (args: Parameters<typeof bridge.startJob>[0]) => {
-    const res = await jobsStore.startJob(args);
+  const startJobAndAdvance = async (
+    args: Parameters<typeof bridge.startJob>[0],
+    fromState?: string,
+  ) => {
+    await jobsStore.startJob(args);
     // `refreshPlans()`, which every one of V1's launchers ends with (`ContentView.LaunchExecute`,
     // `LaunchWithSync`, `SubmitAnnotationsUpdate`). The job the daemon just accepted moves the plan out
     // of Draft, and without re-reading the list the page it was launched from keeps showing it as a
     // draft awaiting execution. `jobsStore.startJob` already re-reads the jobs half.
     plansStore.fetchPlans().catch(() => {});
-    handleSelectJob(res.jobId);
+    returnToQueue(fromState);
   };
 
+  /**
+   * The nav badges count the queue each page actually lists, which means passing the job list too.
+   *
+   * Counting by plan state alone disagreed with the list beside it. A plan whose execution is only
+   * `Queued` or `Blocked` is still recorded `Draft` — the state flips when the job dispatches, not when
+   * it is accepted — so executing two plans left both out of the Plans list and both in its badge,
+   * which then read "2" over an empty queue. `draftQueueFor` and `reviewQueueFor` are the same helpers
+   * `PlansView` and `ReviewView` build their lists from, so the number and the list cannot drift again.
+   */
   const draftCount = useMemo(
-    () => plansState.plans.filter((p) => p.state === "Draft").length,
-    [plansState.plans],
+    () => draftQueueFor(plansState.plans, jobsState.jobs).length,
+    [plansState.plans, jobsState.jobs],
   );
   const reviewCount = useMemo(
-    () => plansState.plans.filter((p) => p.state === "Review" || p.state === "Failed").length,
-    [plansState.plans],
+    () => reviewQueueFor(plansState.plans, jobsState.jobs).length,
+    [plansState.plans, jobsState.jobs],
   );
   const jobCount = useMemo(
     () =>
@@ -717,14 +748,19 @@ export const App: React.FC = () => {
           allPlans={plansState.plans}
           projectRepos={projects.find((p) => p.name === detail.project)?.repos ?? []}
           jobs={jobsState.jobs}
-          onExecute={(id) => startJobAndOpenSession({ type: "ExecutePlan", folderPath: id })}
+          onExecute={(id) =>
+            startJobAndAdvance({ type: "ExecutePlan", folderPath: id }, detail.state)
+          }
           onCreatePlan={(initialDesc) => {
             setNewPlanPrefill({ description: initialDesc });
             setIsNewPlanOpen(true);
           }}
-          // The dialogs dispatch their own jobs, so the shell's part is opening
-          // the session tab for whatever they started.
-          onJobStarted={(res) => handleSelectJob(res.jobId)}
+          // The dialogs dispatch their own jobs — Update, Create PR, Retry — so the shell's part is
+          // moving on from the plan they just acted on, exactly as `onExecute` does.
+          onJobStarted={() => {
+            plansStore.fetchPlans().catch(() => {});
+            returnToQueue(detail.state);
+          }}
           onPlanChanged={(id) => {
             plansStore.fetchPlans().catch(() => {});
             plansStore.fetchPlanDetail(id).catch(() => {});
@@ -846,7 +882,13 @@ export const App: React.FC = () => {
             selectedPlanId={uiState.pageArgs.planId ?? null}
             onSelectPlan={handleSelectPlan}
             onOpenReviewAction={handleOpenReviewAction}
-            onJobStarted={(res) => handleSelectJob(res.jobId)}
+            // Stay on the queue rather than opening the job's log: Create PR and Suggest Changes take
+            // the plan out of Review, so re-reading the plans is all it takes for the page to resolve
+            // the next plan to triage. Navigating to `job-<id>` put a log viewer between the reviewer
+            // and the rest of their queue after every decision.
+            onJobStarted={() => {
+              plansStore.fetchPlans().catch(() => {});
+            }}
             onPlanChanged={() => {
               plansStore.fetchPlans().catch(() => {});
             }}

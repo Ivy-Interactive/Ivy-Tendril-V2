@@ -327,10 +327,9 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
           id="review-action-preview"
           url={appUrl}
           device={device}
-          proxy="auto"
           toolbar
-          width="100%"
-          height="100%"
+          width="full"
+          height="full"
           commands={{ id: VIEWER_COMMAND_STREAM }}
           subscribeToStream={subscribeToStream}
           events={["OnEvent"]}

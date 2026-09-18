@@ -40,6 +40,13 @@ const UPSERT_TAIL: &str = r#"
         -- string is a record that predates the back-fill, and must not erase the folder a later one
         -- found. Without this the plan a `CreatePlan` produced was unreachable from its own job row.
         PlanFile = CASE WHEN excluded.PlanFile != '' THEN excluded.PlanFile ELSE Jobs.PlanFile END,
+        -- Same guard, and `Auto` counts as unset: it is the sentinel for "not known yet", so a write
+        -- carrying it must not undo one that had learned the real project. A `CreatePlan` submitted
+        -- without one starts as `Auto` and learns it from the plan it produces.
+        Project = CASE
+            WHEN excluded.Project != '' AND excluded.Project != 'Auto' THEN excluded.Project
+            ELSE Jobs.Project
+        END,
         Status = excluded.Status,
         CompletedAt = excluded.CompletedAt,
         DurationSeconds = excluded.DurationSeconds,

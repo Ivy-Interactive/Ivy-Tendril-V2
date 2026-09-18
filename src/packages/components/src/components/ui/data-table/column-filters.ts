@@ -72,6 +72,15 @@ export interface DataTableColumnFilter {
    * The daemon resolves camelCase against the live schema, so `planId` reaches `PlanId`.
    */
   column?: string;
+  /**
+   * Further columns that hold the same fact, matched as an OR beside {@link column}.
+   *
+   * For a cell whose value can come from more than one place. The Jobs table's Plan Id is the case it
+   * exists for: what it *shows* is `ReportedPlanId` when the promptware reported one, and the id read
+   * off `PlanFile` otherwise — so filtering either column alone silently misses whichever jobs took
+   * the other route, and `[Plan Id] = "00681"` matched nothing at all against a folder path.
+   */
+  alsoColumns?: readonly string[];
 }
 
 /**

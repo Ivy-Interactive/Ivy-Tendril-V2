@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   filterExpressionColumns,
+  filterExpressionExamples,
   filterExpressionPlaceholder,
   parseFilterExpression,
 } from "./filter-expression";
@@ -263,6 +264,81 @@ describe("parseFilterExpression", () => {
       expect(typeof result.error, text).toBe("string");
       expect(result.error, text).not.toBe("");
     }
+  });
+
+  /**
+   * The word forms of the symbol operators. V1's grammar accepts all of them, and its editor offered
+   * `equals` first for every column it recognised a type for — so an operator who learned the syntax
+   * there types `equals`, which used to be a hard parse error whose message did not even list the word.
+   */
+  it("accepts the operators spelled as words, as V1's grammar does", () => {
+    const cases: [string, string, unknown][] = [
+      ['[Status] equals "Running"', "equals", ["Running"]],
+      ['[Status] equal "Running"', "equals", ["Running"]],
+      ['[Status] not equals "Running"', "notEquals", ["Running"]],
+      ["[Cost] greater than 5", "greaterThan", [5]],
+      ["[Cost] greater than or equal 5", "greaterThanOrEqual", [5]],
+      ["[Cost] less than 5", "lessThan", [5]],
+      ["[Cost] less than or equal 5", "lessThanOrEqual", [5]],
+    ];
+    for (const [text, fn, args] of cases) {
+      expect(parse(text).filter, text).toEqual({
+        condition: { column: text.startsWith("[Cost]") ? "cost" : "status", function: fn, args },
+      });
+    }
+
+    // And the failure message now names them, so the word form is discoverable from the error.
+    expect(parse("[Status] wibbles 3").error).toMatch(/equals/);
+  });
+
+  /**
+   * A column whose value can come from more than one place asks about all of them. Without it, the Jobs
+   * table's Plan Id filtered only `PlanFile` — a folder path — so `[Plan Id] = "00681"` matched nothing.
+   */
+  it("ORs a column across every stored column it declares", () => {
+    const multi: DataTableColumn<Row>[] = [
+      {
+        name: "planId",
+        header: "Plan Id",
+        filter: { kind: "text", column: "reportedPlanId", alsoColumns: ["planFile"] },
+      },
+    ];
+
+    expect(parseFilterExpression(multi, '[Plan Id] = "00681"').filter).toEqual({
+      group: {
+        op: "or",
+        filters: [
+          { condition: { column: "reportedPlanId", function: "equals", args: ["00681"] } },
+          { condition: { column: "planFile", function: "equals", args: ["00681"] } },
+        ],
+      },
+    });
+
+    // One column declares no group, so nothing that worked before gains a wrapper.
+    expect(parse('[Status] = "Running"').filter).toEqual({
+      condition: { column: "status", function: "equals", args: ["Running"] },
+    });
+  });
+
+  /**
+   * The help popover's examples are built from the table's own columns. A hardcoded list named the Jobs
+   * table's, so it was wrong on every other table — and one of its examples used a column that was not
+   * filterable, so the only in-product documentation of the syntax handed the user an expression the
+   * table rejected.
+   */
+  it("offers examples that the table it describes can actually parse", () => {
+    const examples = filterExpressionExamples(columns);
+    expect(examples.length).toBeGreaterThan(0);
+    for (const example of examples) {
+      const result = parse(example.replace(/"…"/g, '"x"'));
+      expect(result.error, example).toBeUndefined();
+    }
+    // Built from this table's columns, not from some other table's.
+    expect(examples.some((e) => e.includes("[Status]"))).toBe(true);
+    expect(examples.every((e) => !e.includes("[Id]"))).toBe(true);
+
+    // A table with nothing filterable advertises nothing rather than a broken example.
+    expect(filterExpressionExamples([{ name: "id", header: "Id" }])).toEqual([]);
   });
 
   it("cannot be used to inject: a column name is only ever one the table declared", () => {

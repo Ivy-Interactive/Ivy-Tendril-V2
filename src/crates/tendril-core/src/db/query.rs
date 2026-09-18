@@ -737,8 +737,15 @@ fn condition_sql(
                 }
             } else {
                 bind(&condition.args[0], params)?;
-                let op = if negated { "<>" } else { "=" };
-                format!("{column} {op} ?{}", params.len())
+                if negated {
+                    // `NULL <> 'x'` is NULL, not true, so a plain `<>` hides every row whose value is
+                    // unset — asking for "status message is not npm" dropped every job that had no
+                    // status message at all. `NotContains` and `NotInSet` below already spell this out;
+                    // this arm was the one that did not, and it is the one most often typed.
+                    format!("({column} IS NULL OR {column} <> ?{})", params.len())
+                } else {
+                    format!("{column} = ?{}", params.len())
+                }
             }
         }
         FilterFunction::GreaterThan
@@ -1439,6 +1446,43 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(names(&page), vec!["beta", "50% off"]);
+    }
+
+    /// The same claim as `not_contains_keeps_null_cells`, for the operator that is typed far more often.
+    ///
+    /// `NULL <> 'x'` is NULL rather than true, so a plain `<>` silently dropped every row whose value
+    /// was unset: asking the Jobs table for "status message is not npm" hid every job that had no
+    /// status message. Its sibling negations already spelled this out; this one did not.
+    #[test]
+    fn not_equals_keeps_null_cells() {
+        // `beta` has no PlanFile at all, so it is not equal to "a/b" and must come back.
+        let page = run(TableQuery {
+            filter: Some(condition("planFile", "notEquals", vec!["a/b".into()])),
+            ..Default::default()
+        });
+        assert!(
+            names(&page).contains(&"beta".to_string()),
+            "a row whose value is unset is not equal to anything, got {:?}",
+            names(&page)
+        );
+
+        // And it still excludes the rows that *do* equal the argument.
+        let all = run(TableQuery::default()).total_rows;
+        let equal = run(TableQuery {
+            filter: Some(condition("status", "equals", vec!["Running".into()])),
+            ..Default::default()
+        })
+        .total_rows;
+        let not_equal = run(TableQuery {
+            filter: Some(condition("status", "notEquals", vec!["Running".into()])),
+            ..Default::default()
+        })
+        .total_rows;
+        assert_eq!(
+            equal + not_equal,
+            all,
+            "every row is either equal or not equal — none may fall between"
+        );
     }
 
     #[test]

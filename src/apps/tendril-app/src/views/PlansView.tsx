@@ -4,6 +4,20 @@ import type { Job, PlanSummary } from "../types/api";
 import { NoContentView } from "../components/NoContentView";
 import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
+import { draftQueueFor, normalizePlanState } from "../utils/planQueues";
+
+/**
+ * Which plans this page lists, and the state-name normalisation every read point needs, both from
+ * `utils/planQueues` — the shell's nav badges count the same queues and cannot import them from a view.
+ * Re-exported because this module was where they lived, and much of the app still imports them here.
+ */
+export {
+  draftQueueFor,
+  isReviewState,
+  normalizePlanState,
+  reviewQueueFor,
+  REVIEW_QUEUE_STATES,
+} from "../utils/planQueues";
 
 /**
  * The New Plan shortcut, bound and labelled as V1 binds and labels it
@@ -37,27 +51,6 @@ interface PlansViewProps {
    */
   onNavigate?: (navId: string) => void;
 }
-
-/**
- * The V1 state names that were renamed, mapped to what they were renamed to.
- *
- * `Building` became `Creating` and `ReadyForReview` became `Review`. A `plan.yaml` written before the
- * rename still carries the old spelling, and nothing rewrites one on read, so every read point has to
- * accept both or a legacy plan arrives as a state this UI knows nothing about: no badge colour, absent
- * from the list it belongs in, and — worse — not `"Review"`, so the Review-only actions never appear
- * on a plan that is sitting in review.
- */
-const LEGACY_LIFECYCLE_STATES: Record<string, string> = {
-  Building: "Creating",
-  ReadyForReview: "Review",
-};
-
-/**
- * A plan's state under its current name. Anything already current, or unrecognised, passes through
- * unchanged so an unknown state still renders as itself rather than disappearing.
- */
-export const normalizePlanState = (state: string | undefined): string =>
-  state ? (LEGACY_LIFECYCLE_STATES[state] ?? state) : "";
 
 /**
  * Plan state to badge classes, mirroring `Constants.PlanStatusBadgeVariants` in V1
@@ -100,69 +93,6 @@ export const parseProjects = (project: string | undefined): string[] =>
     .split(",")
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
-
-/** The plan id as a number, for ordering. Non-numeric ids sort last. */
-const planIdOrder = (id: string): number => {
-  const parsed = Number.parseInt(id, 10);
-  return Number.isNaN(parsed) ? -1 : parsed;
-};
-
-/**
- * The states this page's list holds, from `PlansApp.Build`:
- * `.Where(p => p.Status is PlanStatus.Draft or PlanStatus.Blocked)`. A blocked plan is a draft
- * waiting on a dependency, which is why V1 triages it here and not on the Review page.
- */
-const PLANS_LIST_STATES = ["Draft", "Blocked"];
-
-/**
- * The states V1's **Review** app owns, from `ReviewApp.Build`:
- * `.Where(p => p.Status is PlanStatus.Review or PlanStatus.Failed)`. A failed execution needs the
- * same decision a passing one does, so V1 triages both on that page.
- *
- * `AppShell/Dialogs/PlanSearchDialog.ResolveTarget` states the same partition from the other side,
- * and it is the authority for which surfaces a plan gets:
- *
- * ```csharp
- * PlanStatus.Draft or PlanStatus.Blocked => (typeof(PlansApp),  new PlansAppArgs(plan.FolderName)),
- * PlanStatus.Review or PlanStatus.Failed => (typeof(ReviewApp), new ReviewAppArgs(plan.FolderName)),
- * PlanStatus.Icebox                      => (typeof(IceboxApp), null),
- * _                                      => null
- * ```
- *
- * Lives here rather than in `ReviewView` because the plan page reads it too, and importing it from
- * there would pull that whole view (and its dialogs) into the plan page's chunk.
- */
-export const REVIEW_QUEUE_STATES = ["Review", "Failed"] as const;
-
-/** Whether a plan belongs to V1's Review app, under {@link normalizePlanState}'s current name. */
-export const isReviewState = (state: string | undefined): boolean =>
-  (REVIEW_QUEUE_STATES as readonly string[]).includes(normalizePlanState(state));
-
-/**
- * `PlansApp.Build`'s `activePlanFolders`/`activeCreatePlanIds`: a job in one of these still holds
- * the plan, so V1 drops it from the list rather than offering a second write on top of the agent's.
- */
-const JOB_HOLDS_PLAN: ReadonlyArray<Job["status"]> = ["Running", "Queued", "Pending", "Blocked"];
-
-/**
- * The list this page publishes, exactly as `PlansApp.Build` assembles it: Draft or Blocked, minus
- * the plans a job is still working on, newest first (`.OrderByDescending(p => p.Id)`).
- *
- * `jobs` absent means the caller has no job list to consult, in which case the state filter is all
- * there is - the same tolerance `ReviewView.queueFor` documents.
- */
-export const draftQueueFor = (plans: PlanSummary[], jobs?: Job[]): PlanSummary[] => {
-  const held = new Set(
-    (jobs ?? [])
-      .filter((job) => JOB_HOLDS_PLAN.includes(job.status))
-      .map((job) => job.planId)
-      .filter((id): id is string => !!id),
-  );
-
-  return plans
-    .filter((p) => PLANS_LIST_STATES.includes(normalizePlanState(p.state)) && !held.has(p.id))
-    .sort((a, b) => planIdOrder(b.id) - planIdOrder(a.id));
-};
 
 /**
  * Whether `plan` is the plan `id` names.

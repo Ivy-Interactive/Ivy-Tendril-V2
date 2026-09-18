@@ -30,7 +30,8 @@ import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
-import { formatPlanId, isReviewState, parseProjects, resolvePlanSelection } from "./PlansView";
+import { formatPlanId, parseProjects, resolvePlanSelection } from "./PlansView";
+import { reviewQueueFor } from "../utils/planQueues";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import type { ReviewActionTarget } from "./ReviewActionView";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
@@ -41,46 +42,6 @@ import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
 
 /** The triage dialogs this view owns, at most one open at a time. */
 type TriageDialog = "createPr" | "suggestChanges" | "delete" | "reset" | "partialDelivery";
-
-/**
- * `ReviewApp.Build`'s `activePlanFolders`: a job in one of these still holds the plan's worktree, so
- * every triage decision on that plan is one an agent is about to overwrite. `Blocked` counts - it is a
- * job queued behind another, not a job that finished.
- */
-const JOB_HOLDS_PLAN: ReadonlyArray<Job["status"]> = ["Running", "Queued", "Pending", "Blocked"];
-
-/**
- * The queue, exactly as `ReviewApp.Build` assembles it: Review or Failed, **minus the plans a job is
- * still running on** (`.Where(p => !activePlanFolders.Contains(p.FolderPath))`), newest first.
- *
- * The exclusion is the part that is easy to drop and matters most. A plan under a RetryPlan is in
- * Executing and so filtered by state anyway, but one whose retry is only Queued or Blocked is still
- * sitting in Review, and offering Complete Plan or Create PR on it means approving work that has not
- * been done yet. `jobs` absent means the caller has no job list to consult, in which case the state
- * filter is all there is.
- */
-const queueFor = (plans: PlanSummary[], jobs?: Job[]): PlanSummary[] => {
-  const held = new Set(
-    (jobs ?? [])
-      .filter((job) => JOB_HOLDS_PLAN.includes(job.status))
-      .map((job) => job.planId)
-      .filter((id): id is string => !!id),
-  );
-
-  return (
-    plans
-      // `isReviewState` normalises, so a plan still recorded as `ReadyForReview` is in the queue it
-      // belongs to. Comparing the raw state dropped exactly those plans out of the page that triages
-      // them - the same trap `LEGACY_LIFECYCLE_STATES` documents.
-      .filter((p) => isReviewState(p.state) && !held.has(p.id))
-      .sort((a, b) => {
-        const left = Number.parseInt(a.id, 10);
-        const right = Number.parseInt(b.id, 10);
-        if (Number.isNaN(left) || Number.isNaN(right)) return b.id.localeCompare(a.id);
-        return right - left;
-      })
-  );
-};
 
 /**
  * `ReviewApp.BuildRowBadges`: a plan reads as Verified only once every gate has run and none of
@@ -180,7 +141,7 @@ interface ReviewViewProps {
   plans: PlanSummary[];
   /**
    * The live job list. `ReviewApp.Build` reads it to keep a plan out of the queue while a job still
-   * holds its worktree; see [`queueFor`]. Optional so a caller with no job list still gets the
+   * holds its worktree; see [`reviewQueueFor`]. Optional so a caller with no job list still gets the
    * state-filtered queue rather than an empty page.
    */
   jobs?: Job[];
@@ -229,7 +190,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   onNewPlan,
   onNavigate,
 }) => {
-  const reviewPlans = useMemo(() => queueFor(plans, jobs), [plans, jobs]);
+  const reviewPlans = useMemo(() => reviewQueueFor(plans, jobs), [plans, jobs]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [activeDialog, setActiveDialog] = useState<TriageDialog | null>(null);
 
