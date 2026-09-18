@@ -6,6 +6,7 @@
 //! a project repo or a worktree, and exist only to show the user what will be built and to guide the
 //! agent that builds it. The leak guard is what enforces the "never" -- see [`leak_guard`].
 
+pub mod fence;
 pub mod leak_guard;
 
 use std::path::{Path, PathBuf};
