@@ -27,6 +27,7 @@ pub mod tunnel;
 pub mod vault;
 pub mod version_check;
 pub mod watcher;
+pub mod wireframes;
 
 pub use agents::model_specs;
 pub use agents::truncation;
