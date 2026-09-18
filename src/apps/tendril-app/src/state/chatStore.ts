@@ -1,5 +1,6 @@
 import { agentsApi } from "../api/agentsApi";
 import { chatApi } from "../api/chatApi";
+import { publishChatSessionCount } from "./chatSessionCount";
 import { onChatEvent, type EventUnsubscribe } from "../api/events";
 import { DEFAULT_OPTION_ID, type AgentOption } from "../types/agents";
 import type {
@@ -289,6 +290,11 @@ export class ChatStore {
    * again before a single await has settled.
    */
   private generation = 0;
+  /**
+   * Whether `fetchSessions` has come back, so `state.sessions` is a list rather than a placeholder.
+   * Only the Chat badge reads it, and only to tell "no chats" from "not asked yet".
+   */
+  private sessionsLoaded = false;
   private storageListenerAttached = false;
   private draftOwners: Record<string, string> = loadStoredDraftOwners();
   private pinnedSessions: Record<string, string> = loadStoredPinnedSessions();
@@ -414,6 +420,19 @@ export class ChatStore {
   }
 
   private notify(): void {
+    /* The shell's Chat badge, which V1 recomputes from `chatService.GetSessions().Count` on every
+       `Build()` (`AppShell/TendrilAppShell.cs:1085`). Pushed from here rather than pulled by the
+       shell because `App.tsx` must not import this module - see `chatSessionCount.ts`. Doing it on
+       every notify is the closest thing to V1's every-build: a create, a delete, a prune and a
+       reload all pass through here, and the publish is a no-op when the number has not moved.
+
+       Two stores stay out of it. A plan-scoped one filters the list to a single conversation, so its
+       count is not the number of chats the user has. And an app-wide one that has not loaded yet has
+       an empty `sessions` meaning "not known", not "none" - publishing that would blank a badge the
+       shell's own startup fetch had correctly filled. */
+    if (!this.planScope && this.sessionsLoaded) {
+      publishChatSessionCount(this.state.sessions.length);
+    }
     this.listeners.forEach((l) => l());
   }
 
@@ -742,6 +761,7 @@ export class ChatStore {
     this.agentPreferences = {};
     saveStoredAgentPreferences({});
     saveStoredSelectedAgent(null);
+    this.sessionsLoaded = false;
     this.generatingSessionIds = new Set();
     this.completedSessionIds = new Set();
     this.turnEndWaiters = new Map();
@@ -1130,6 +1150,7 @@ export class ChatStore {
       const enriched = this.enrichSessionsWithPins(scoped);
       const sorted = this.sortSessions(enriched);
       this.state.sessions = sorted;
+      this.sessionsLoaded = true;
       this.state.isLoading = false;
       this.backfillDraftOwners(sorted);
       this.sweepDraftsForMissingSessions(sorted);

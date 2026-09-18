@@ -3,6 +3,7 @@ import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
 import { APPEARANCE_DEFAULTS, initAppearance, type ChatMode } from "./state/appearance";
 import { sidebarListStore, usePublishedSidebarList } from "./state/sidebarListStore";
+import { seedChatSessionCount, useChatSessionCount } from "./state/chatSessionCount";
 import { toAddressArgs } from "./state/navigation";
 import { plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
@@ -203,7 +204,12 @@ export const App: React.FC = () => {
   const [shellError, setShellError] = useState<string | null>(null);
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [recommendationsCount, setRecommendationsCount] = useState<number>(0);
-  const [chatSessionsCount, setChatSessionsCount] = useState<number>(0);
+  /* Live, not a mount-time snapshot: the count used to be `useState` filled by the one
+     `listSessions()` below, so deleting every chat left the badge reading the number the user had
+     when the shell started. V1 recomputes it on every `Build()`
+     (`AppShell/TendrilAppShell.cs:1085`); `chatStore` republishes it on every notify instead, which
+     covers the same creates, deletes, prunes and reloads. */
+  const chatSessionsCount = useChatSessionCount();
   // The list the active sidebar-section app published into the shell (V1's ShellSidebarListSignal).
   const sidebarList = usePublishedSidebarList();
 
@@ -243,9 +249,12 @@ export const App: React.FC = () => {
       .then((recs) => setRecommendationsCount(recs.length))
       .catch(() => {});
 
+    /* Only the startup value: `chatStore` owns the number from its first notify onwards, and
+       `seedChatSessionCount` steps aside for it. Fetched here because a user who never opens Chat
+       never loads that store, and the badge would be missing until they did. */
     chatApi
       .listSessions()
-      .then((sessions) => setChatSessionsCount(sessions.length))
+      .then((sessions) => seedChatSessionCount(sessions.length))
       .catch(() => {});
 
     // The app only ever reads the daemon's cached release-check result, never the release feed
