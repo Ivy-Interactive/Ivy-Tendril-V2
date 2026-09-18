@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { bridge } from "../../api/bridge";
 import { jobsStore } from "../../state/jobsStore";
 import { describeBridgeError, type DoctorCheck, type OnboardingStatus } from "../../types/api";
+import { Progress } from "@ivy-interactive/components/ui";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { DataStorageStep, blockingChecks } from "./PrerequisitesStep";
 import { CodingAgentStep, agentCheck, agentLabel, machinePrerequisites } from "./CodingAgentStep";
@@ -572,15 +573,10 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
         {progress !== null && (
           <div className="space-y-1" data-testid="onboarding-progress">
             {progressMessage && <p className="text-xs text-muted-foreground">{progressMessage}</p>}
-            <div
-              role="progressbar"
-              aria-valuenow={progress}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              className="h-2 w-full overflow-hidden rounded-full bg-primary/10"
-            >
-              <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-            </div>
+            {/* The library component, not a hand-rolled bar: it is the same `h-2 rounded-full` track
+                over a 10%-primary fill, and Radix gives it the progressbar role and aria-value* for
+                free. */}
+            <Progress value={progress} aria-label={progressMessage ?? "Setting up"} />
           </div>
         )}
 

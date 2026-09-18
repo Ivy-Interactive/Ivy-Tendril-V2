@@ -31,7 +31,6 @@ import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
 import { OnboardingWizard } from "./views/onboarding/OnboardingWizard";
 import { NewPlanModal } from "./views/NewPlanModal";
-import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 import { ErrorBanner } from "./components/ErrorBanner";
 // Type only, so this does not pull the view (and xterm.js with it) into the entry chunk.
 import type { ReviewActionTarget } from "./views/ReviewActionView";
@@ -41,6 +40,12 @@ import type { ReviewActionTarget } from "./views/ReviewActionView";
 // dialog family pulls in `@ivy-interactive/components/ui`, a ~190 kB entry point
 // nothing else here needs. Loading it eagerly for a dialog that only appears
 // when no project is configured put the entry chunk over its size budget.
+// Lazy for the same reason as the dialogs below: it is a `DialogShell`, and the shell must not
+// carry the dialog family's `@ivy-interactive/components/ui` weight for a panel that opens on `?`.
+const KeyboardShortcutsHelp = React.lazy(() =>
+  import("./components/KeyboardShortcutsHelp").then((m) => ({ default: m.KeyboardShortcutsHelp })),
+);
+
 const NoProjectsDialog = React.lazy(() =>
   import("./views/dialogs/NoProjectsDialog").then((m) => ({ default: m.NoProjectsDialog })),
 );
@@ -1218,7 +1223,11 @@ export const App: React.FC = () => {
         </React.Suspense>
       )}
 
-      <KeyboardShortcutsHelp isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+      {isShortcutsOpen && (
+        <React.Suspense fallback={null}>
+          <KeyboardShortcutsHelp isOpen onClose={() => setIsShortcutsOpen(false)} />
+        </React.Suspense>
+      )}
 
       <React.Suspense fallback={null}>
         <Toaster />
