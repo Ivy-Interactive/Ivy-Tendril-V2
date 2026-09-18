@@ -15,6 +15,7 @@
 
 pub mod assets;
 pub mod build;
+pub mod hosting;
 pub mod manifest;
 pub mod project;
 
