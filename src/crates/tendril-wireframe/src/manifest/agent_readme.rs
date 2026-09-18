@@ -8,6 +8,12 @@
 //!
 //! The three prose sections are V1's bytes, extracted from that file rather than retyped, and kept
 //! as `templates/readme/*.md` so editing the guidance is editing markdown.
+//!
+//! Verified against V1 by diffing the rendered output, not only by assertion: both the full
+//! reference and a component detail view are byte-identical to what `AgentReadmeRenderer` produces.
+//! The single deviation is newlines. V1 builds these with `AppendLine`, so its output is CRLF on
+//! Windows and LF elsewhere; this always emits LF, which matches V1 on macOS and Linux and makes the
+//! document reproducible on every platform. PARITY.md has the procedure.
 
 use std::fmt::Write as _;
 
