@@ -5,5 +5,9 @@
 //! origin, so a preview works over HTTPS and through a share link.
 
 pub mod index_html;
+pub mod live_reload;
+pub mod serving;
 
 pub use index_html::WireframeSite;
+pub use live_reload::{LiveReloadHub, ReloadMessage};
+pub use serving::{content_type_for, resolve_within, site_base, PAYLOAD_PREFIX};
