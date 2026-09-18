@@ -22,6 +22,7 @@ pub mod tables;
 pub mod tunnel;
 pub mod vault;
 pub mod verifications;
+pub mod wireframes;
 pub mod ws;
 
 use crate::state::AppState;
@@ -204,6 +205,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(tables::table_values_handler),
         )
         .route("/api/changes/events", get(changes::stream_changes))
+        // Plan wireframe previews, on the daemon's own origin so they work over HTTPS and
+        // through a share link. Merged rather than nested: the payload prefix is absolute.
+        .merge(wireframes::routes())
         // Projects & Verifications
         .route(
             "/api/projects",

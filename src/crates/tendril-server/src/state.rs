@@ -283,6 +283,9 @@ pub struct AppState {
     pub plans_dir: PathBuf,
     pub db_path: PathBuf,
     pub job_manager: Arc<JobManager>,
+    /// Serves plan wireframe previews. Holds esbuild watchers for the plan currently being viewed
+    /// and stops them when another plan is opened, so browsing plans does not accumulate builds.
+    pub wireframe_host: Arc<tendril_wireframe::hosting::WireframeHost>,
     pub chat_manager: Arc<ChatExecutionManager>,
     pub ws_tx: broadcast::Sender<String>,
     /// Recent events dispatched over `ws_tx`, kept so a reconnecting client can resume via
@@ -386,6 +389,18 @@ impl AppState {
         // `share` rather than `Arc::new`: a finished job needs a handle back to the manager to start
         // the jobs that were waiting on it.
         let job_manager = JobManager::new(tendril_home.clone(), settings).share();
+
+        // The host resolves a (plan id, wireframe name) pair against the plans directory. A closure
+        // rather than a dependency, because tendril-wireframe has no idea what a plan is.
+        let wireframe_plans_dir = plans_dir.clone();
+        let wireframe_host = Arc::new(
+            tendril_wireframe::hosting::WireframeHost::new(Arc::new(
+                move |scope: &str, name: &str| {
+                    tendril_core::wireframes::resolve_root(Some(&wireframe_plans_dir), scope, name)
+                },
+            ))
+            .expect("the wireframe payload is embedded at build time"),
+        );
         let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
         let ring_buffer = Arc::new(EventRingBuffer::default());
@@ -452,6 +467,7 @@ impl AppState {
             plans_dir,
             db_path,
             job_manager,
+            wireframe_host,
             chat_manager,
             ws_tx,
             ring_buffer,

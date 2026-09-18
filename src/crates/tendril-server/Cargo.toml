@@ -7,6 +7,7 @@ license.workspace = true
 
 [dependencies]
 tendril-core = { path = "../tendril-core" }
+tendril-wireframe = { path = "../tendril-wireframe" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

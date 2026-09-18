@@ -3,6 +3,7 @@ import { extractTextContent } from "@/lib/markdown-utils";
 import { CodeBlock } from "./CodeBlock";
 import { QuestionsCallout } from "./QuestionsCallout";
 import { QuestionsAnswerContext, QuestionsSubmitContext } from "./questionsContext";
+import { WireframeBlock } from "./WireframeBlock";
 
 /** `questions`, or `questions_<n>` once `tagQuestionBlocks` has stamped the block's index on it. */
 const QUESTIONS_LANG = /^questions(?:_(\d+))?$/;
@@ -41,6 +42,13 @@ export const BlockHandler: React.FC<React.HTMLAttributes<HTMLElement>> = ({
           <MermaidRenderer content={content} />
         </Suspense>
       );
+    }
+
+    // A live preview of the plan's wireframe. Never its source and never a screenshot:
+    // screenshots exist for the agent that made it to check its own work, and the reviewer sees
+    // the real thing, hot reloading while the agent edits it.
+    if (lang === "wireframe") {
+      return <WireframeBlock content={content} />;
     }
 
     if (lang === "graphviz" || lang === "dot") {
