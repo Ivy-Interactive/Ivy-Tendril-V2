@@ -85,6 +85,13 @@ const PROMPT_DISPLAY_MAX_LENGTH = 500;
 const JOBS_PAGE_SIZE = 50;
 
 /**
+ * V1's `RefreshCoalescer` window (`JobsApp.Hooks.cs:13`, `JobRefreshWindow =
+ * TimeSpan.FromMilliseconds(400)`): how long a structural change waits for the rest of its burst
+ * before the table refetches.
+ */
+const JOBS_REFRESH_WINDOW_MS = 400;
+
+/**
  * `JobsApp.Data.cs` / `JobCostSheet.cs` use this for "nothing recorded here", and `JobSessionView`
  * already does the same. Keeping the em dash rather than an empty cell is what stops a job that
  * reported no cost from reading as one that cost nothing: `—` and `$0.00` are different claims, and
@@ -655,7 +662,12 @@ export interface JobsViewProps {
   jobs: Job[];
   /** Fetched details, for the `detached` flag the list projection omits. */
   jobDetails?: Record<string, JobDetail>;
-  isLoading?: boolean;
+  /* No `isLoading` here, deliberately. `jobsStore.isLoading` describes `bridge.listJobs`, whose
+     result this view uses only as the live-cell overlay; the *table* is fed by `fetchJobsPage`
+     through `useRemoteDataTable`, which reports its own request. Passing the first as the table's
+     loading state made every 5s poll and every job event swap the empty state for a skeleton and
+     back - the flicker on an empty Jobs table - because a request the table does not render was
+     driving the table's chrome. */
   /** Opens the plan. See the Plan Id column for how V1's three-way routing collapses. */
   onSelectPlan?: (planId: string) => void;
   /** The two bulk sweeps' confirms, which the shell owns because they are shell-level dialogs. */
@@ -666,7 +678,6 @@ export interface JobsViewProps {
 export const JobsView: React.FC<JobsViewProps> = ({
   jobs,
   jobDetails,
-  isLoading = false,
   onSelectPlan,
   onStopAllQueued,
   onStopAll,
@@ -811,7 +822,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
     lastSignature.current = structuralSignature;
     // The first sighting only records a baseline: the table's own first window is already in flight.
     if (previous === null || previous === structuralSignature) return;
-    refreshTable();
+    /* V1's `RefreshCoalescer` (`JobsApp.Hooks.cs:13`, `JobRefreshWindow = 400ms`). A plan starting
+       moves several jobs at once and each transition is its own structural change, so without this
+       one burst costs one refetch per job. Trailing rather than leading: the last signature in the
+       burst is the one worth fetching for. */
+    const timer = setTimeout(refreshTable, JOBS_REFRESH_WINDOW_MS);
+    return () => clearTimeout(timer);
   }, [structuralSignature, refreshTable]);
 
   const rows = useMemo(
@@ -1256,7 +1272,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
            the other windows were chosen by. */
         rows={rows}
         getRowId={(row) => row.id}
-        loading={(isLoading || table.loading) && table.rows.length === 0}
+        /* `table.loading` unqualified: `useRemoteDataTable` already narrows it to "and there are no
+           rows yet" for an infinite table, so repeating that here only hid which flag was at fault. */
+        loading={table.loading}
         /* Infinite scroll, `c.BatchSize = 50`. `paginated={false}` because V1's table has no pager at
            all: scrolling is the pager, and `hasMore` is what says whether there is anything left to
            scroll to. `fillHeight` is `.Height(Size.Full())` — it is also what makes the header sticky

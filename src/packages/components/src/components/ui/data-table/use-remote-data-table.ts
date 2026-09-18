@@ -126,10 +126,22 @@ export interface UseRemoteDataTableResult<TRow> {
   stale: boolean;
   aggregations: RemoteTableAggregationResult[];
   /**
-   * Refetches. In paged mode that is the current page; under `infinite` it is the *first* window, and
-   * the accumulated ones are dropped — the alternative is refetching every window a long scroll has
-   * loaded, which is a burst of requests nobody asked for. A live table should keep itself current by
-   * patching the rows it holds, not by rebuilding the scroll.
+   * Refetches, without moving the reader.
+   *
+   * In paged mode that is the current page. Under `infinite` it is every window scrolled through, as
+   * one request for `page * pageSize` rows from offset 0, and the result replaces `rows` wholesale.
+   *
+   * This used to drop back to the first window, on the reasoning that refetching the whole span is a
+   * burst of requests nobody asked for. It is one request, not a burst — and dropping the windows is
+   * what made a live table blank mid-scroll: the rows collapse from (say) 200 to 50 in the same
+   * commit that leaves `scrollTop` where it was, so the viewport is scrolled past the end of the new
+   * content and paints an empty body until the clamp lands. Re-fetching the held span avoids that by
+   * construction, because the new rows are a superset with the same leading ids: the offset stays
+   * valid, `isRowIdentityAppend` stays true, and the measurement cache survives. It also stops the
+   * infinite-scroll watcher immediately re-requesting the windows the collapse had just discarded.
+   *
+   * The cost is bounded by what the user actually scrolled through, which is the set already held in
+   * memory and in the DOM, so a refresh is the same order of bytes as the table it is refreshing.
    */
   refresh: () => void;
   /** Requests the next window. No-op unless `infinite`, and while one is already in flight. */
@@ -179,6 +191,19 @@ export function useRemoteDataTable<TRow>({
      the table. */
   const requestSeq = React.useRef(0);
 
+  /* Which effect run a `refresh()` is asking to serve, so the fetch below can tell "reload the span
+     the reader has scrolled through" from "advance to the next window" - both leave `page` alone
+     from the effect's point of view, and only the first replaces the rows.
+
+     Keyed on the nonce *and* the page rather than a boolean the effect clears: a flag read-and-
+     cleared inside an effect body is wrong under StrictMode's double invocation, where the second
+     run would see it already spent. Matching on both values is idempotent, and the page half expires
+     the request as soon as a `loadMore` moves on. */
+  const nonceRef = React.useRef(0);
+  const pageRef = React.useRef(page);
+  pageRef.current = page;
+  const spanReload = React.useRef<{ nonce: number; page: number } | null>(null);
+
   /* Serialized, so a caller passing a fresh object literal every render does not refetch forever.
      `filter` in particular is almost always rebuilt inline from facet state. */
   const requestKey = JSON.stringify({
@@ -221,10 +246,14 @@ export function useRemoteDataTable<TRow>({
     const seq = ++requestSeq.current;
     const controller = new AbortController();
     setLoading(true);
-    /* Page 1 is the only window that *replaces* the rows, in either mode. Under `infinite` that makes
-       one rule cover all three ways a table starts over — a new filter, a new sort and `refresh` — and
-       nothing else has to know it happened, because all three reset the page first. */
-    const append = infinite && page > 1;
+    /* A `refresh()` for exactly this state: re-read every window held, as one request from offset 0,
+       and replace the rows with the result. See {@link UseRemoteDataTableResult.refresh}. */
+    const pending = spanReload.current;
+    const reloadSpan = infinite && pending?.nonce === reloadNonce && pending.page === page;
+    /* Page 1 is otherwise the only window that *replaces* the rows, in either mode. Under `infinite`
+       that makes one rule cover the two remaining ways a table starts over — a new filter and a new
+       sort — and nothing else has to know it happened, because both reset the page first. */
+    const append = infinite && page > 1 && !reloadSpan;
 
     const run = async () => {
       const {
@@ -237,8 +266,8 @@ export function useRemoteDataTable<TRow>({
       } = latest.current;
       try {
         const result = await fetcher({
-          offset: (page - 1) * pageSize,
-          limit: pageSize,
+          offset: reloadSpan ? 0 : (page - 1) * pageSize,
+          limit: reloadSpan ? page * pageSize : pageSize,
           sort: sortToRemote(sort),
           filter: activeFilter ?? null,
           selectColumns: columns,
@@ -296,9 +325,17 @@ export function useRemoteDataTable<TRow>({
   }, []);
 
   const refresh = React.useCallback(() => {
-    setPageState(1);
-    setReloadNonce((nonce) => nonce + 1);
-  }, []);
+    const nonce = nonceRef.current + 1;
+    nonceRef.current = nonce;
+    /* Under `infinite` the page is where the reader is, not a window index to reset - the fetch
+       effect reads this and asks for the whole span instead. A paged table has one window either
+       way, so recording the request is harmless there and the branch stays out of the fetch. */
+    spanReload.current = { nonce, page: pageRef.current };
+    if (!infinite) {
+      setPageState(1);
+    }
+    setReloadNonce(nonce);
+  }, [infinite]);
 
   /* `loadMore` fires from a scroll handler, which can run several times between two renders, so its
      guards read a ref rather than the closed-over render values. Two calls in the same frame both

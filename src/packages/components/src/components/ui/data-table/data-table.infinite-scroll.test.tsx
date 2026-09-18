@@ -106,6 +106,9 @@ function Harness({ fetchPage, pageSize = 20, onFilterChange }: HarnessProps) {
       <span data-testid="total">{table.total}</span>
       <span data-testid="loaded">{table.rows.length}</span>
       <span data-testid="has-more">{String(table.hasMore)}</span>
+      <button type="button" onClick={table.refresh}>
+        refresh
+      </button>
       <DataTable<Job>
         {...table.tableProps}
         columns={columns}
@@ -466,6 +469,94 @@ describe("DataTable filter expression", () => {
     await waitFor(() => expect(requests).toHaveLength(3));
     // No constraint, never "matches nothing".
     expect(requests[2].filter).toBeNull();
+  });
+
+  it("re-reads every window it holds on a refresh, in one request, without shrinking", async () => {
+    /* The bug: `refresh()` used to drop to the first window. A live table refreshes itself whenever
+       the rows change structurally, so a reader scrolled to row 180 of 200 had the table collapse to
+       50 rows under them - in the same commit that left `scrollTop` where it was, which points past
+       the end of the new content and paints an empty body until the clamp lands. That is the "it
+       goes empty for a moment and then renders" half of the Jobs flicker. */
+    const { requests, fetchPage } = fakeServer(100);
+    const { container } = render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
+    scrollTo(scrollerFor(container), 400);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("40"));
+    scrollTo(scrollerFor(container), 1200);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("60"));
+    expect(requests).toHaveLength(3);
+
+    await act(async () => {
+      screen.getByText("refresh").click();
+    });
+    await waitFor(() => expect(requests).toHaveLength(4));
+
+    // One request for the whole span, from the top - not three, and not the first window alone.
+    expect(requests[3].offset).toBe(0);
+    expect(requests[3].limit).toBe(60);
+
+    // The row set never shrinks, so the offset the reader is at stays inside the content.
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("60"));
+    expect(dataRows(container)).toHaveLength(60);
+    expect(dataRows(container)[0]).toHaveAttribute("data-row-id", "job-0001");
+
+    // And the next window still follows the span rather than restarting after it.
+    scrollTo(scrollerFor(container), 2000);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("80"));
+    expect(requests[4].offset).toBe(60);
+    expect(requests[4].limit).toBe(20);
+  });
+
+  it("refreshes a single held window as a single window", async () => {
+    // The unscrolled case, which is where a refresh is cheapest and must stay so: no reader has
+    // asked for more than the first window, so re-reading the span is re-reading that window.
+    const { requests, fetchPage } = fakeServer(100);
+    render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
+
+    await act(async () => {
+      screen.getByText("refresh").click();
+    });
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1].offset).toBe(0);
+    expect(requests[1].limit).toBe(20);
+    expect(screen.getByTestId("loaded")).toHaveTextContent("20");
+  });
+
+  it("returns to the top when a refresh finds the rows it held are gone", async () => {
+    /* Rows deleted server-side make the re-read span shorter than what is held, so it is not a
+       superset and `isRowIdentityAppend` correctly says so. The table then resets rather than
+       holding an offset into rows that no longer exist - a visible jump, but the honest one. */
+    let total = 100;
+    const requests: RemoteTableRequest[] = [];
+    const fetchPage: RemoteTableFetcher<Job> = (request) => {
+      requests.push(request);
+      const rows: Job[] = [];
+      for (let i = request.offset; i < Math.min(request.offset + request.limit, total); i++) {
+        rows.push(makeJob(i));
+      }
+      return Promise.resolve({
+        rows,
+        totalRows: total,
+        offset: request.offset,
+        rowCount: rows.length,
+      });
+    };
+
+    const { container } = render(<Harness fetchPage={fetchPage} />);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("20"));
+    scrollTo(scrollerFor(container), 400);
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("40"));
+
+    total = 10;
+    await act(async () => {
+      screen.getByText("refresh").click();
+    });
+    await waitFor(() => expect(screen.getByTestId("loaded")).toHaveTextContent("10"));
+    // The request still asked for the span; the server simply has less to give.
+    expect(requests[2].offset).toBe(0);
+    expect(requests[2].limit).toBe(40);
+    expect(screen.getByTestId("total")).toHaveTextContent("10");
   });
 
   it("drops the rows it holds when a filter narrows the table", async () => {

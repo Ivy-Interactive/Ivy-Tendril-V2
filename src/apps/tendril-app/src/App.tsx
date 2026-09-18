@@ -927,7 +927,6 @@ export const App: React.FC = () => {
             jobs={jobsState.jobs}
             // For the `detached` flag, which only `GET /api/jobs/:id` reports.
             jobDetails={jobsState.jobDetails}
-            isLoading={jobsState.isLoading}
             onSelectPlan={handleSelectPlan}
             // The two sweeps' confirms stay here: they are the only ones the shell itself owns, and
             // both dialogs are already mounted below.
