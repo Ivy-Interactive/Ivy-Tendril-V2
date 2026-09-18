@@ -20,3 +20,8 @@ pipeline/vendor/package-lock.json -text
 # Hide the generated payload from diffs and language statistics, as V1 does.
 artifacts/** linguist-generated=true
 pipeline/vendor/package-lock.json linguist-generated=true
+
+# The scaffold templates are written verbatim into a user's project, and V1 writes them with LF on
+# every platform. Pinning them keeps a scaffolded wireframe identical across operating systems, which
+# matters because the leak guard compares runs of copied lines between a wireframe and a repo.
+templates/** -text
