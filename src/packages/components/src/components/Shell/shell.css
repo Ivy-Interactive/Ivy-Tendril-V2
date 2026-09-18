@@ -358,8 +358,12 @@
 
 /* V2 only: with no logoUrl there is nothing to fade out, so the panel icon would
    stay invisible until hover and the rail would have no visible expand control.
-   V1 always supplies a logo, so it never hits this. */
-.tsh-logo-toggle:not(:has(.tsh-header-logo)) .tsh-logo-toggle-icon {
+   V1 always supplies a logo, so it never hits this. Gated on the rail: expanded,
+   this slot is the brand mark and the close button on the other end owns the
+   toggle, so painting the icon here put a second, dead toggle in the header. */
+.tsh-root[data-collapsed="true"]
+  .tsh-logo-toggle:not(:has(.tsh-header-logo))
+  .tsh-logo-toggle-icon {
   opacity: 1;
 }
 

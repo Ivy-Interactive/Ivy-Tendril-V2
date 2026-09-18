@@ -85,66 +85,132 @@ async function freePortIfOccupied(p: number) {
 let serverProcess: ChildProcess | null = null;
 let appProcess: ChildProcess | null = null;
 let shuttingDown = false;
+/** Readline interfaces over the service's pipes. They hold the event loop open until closed. */
+const lineReaders: readline.Interface[] = [];
+
+/** How long a child tree gets to wind itself down before it is killed outright. */
+const SHUTDOWN_GRACE_MS = 5000;
+
+function hasExited(proc: ChildProcess): boolean {
+  return proc.exitCode !== null || proc.signalCode !== null;
+}
 
 /**
- * Terminate a child and everything it started.
+ * Signal a child and everything it started.
  *
  * Windows has no process groups to signal, and both children here are the root of a tree: `cargo run`
  * holds `tendril-server.exe`, and (now that it needs a shell) the `pnpm` command holds the Tauri CLI,
  * vite and another cargo. Killing only the root leaves the rest running, still holding port 5010 and
- * the home's `.master` claim, so the next run is refused by name. `taskkill /T` takes the tree.
- *
- * It is a forceful kill, which skips the server's graceful shutdown — but so was the `SIGTERM` this
- * replaces: on Windows Node maps every signal to `TerminateProcess` anyway, and that version also
- * orphaned the server it was trying to stop.
+ * the home's `.master` claim, so the next run is refused by name. `taskkill /T` takes the tree, and
+ * `/F` is added only for the forceful pass so the polite one can still be honoured.
  */
-function killTree(proc: ChildProcess) {
-  if (!proc.pid) return;
+function signalTree(proc: ChildProcess, force: boolean) {
+  if (!proc.pid || hasExited(proc)) return;
   try {
     if (process.platform === "win32") {
-      execSync(`taskkill /F /T /PID ${proc.pid}`, { stdio: "ignore" });
+      execSync(`taskkill ${force ? "/F " : ""}/T /PID ${proc.pid}`, { stdio: "ignore" });
     } else {
-      process.kill(-proc.pid, "SIGTERM");
+      // Each child leads its own group (`detached`), so the negated pid reaches every grandchild.
+      process.kill(-proc.pid, force ? "SIGKILL" : "SIGINT");
     }
   } catch {}
 }
 
-function cleanup() {
-  if (shuttingDown) return;
+/** Resolves true once `proc` has exited, or false if `ms` elapses first. */
+function waitForExit(proc: ChildProcess, ms: number): Promise<boolean> {
+  if (hasExited(proc)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      proc.off("exit", onExit);
+      resolve(false);
+    }, ms);
+    proc.once("exit", onExit);
+  });
+}
+
+/** SIGTERMs whatever still holds `p`, for a port our own tree was supposed to have released. */
+async function reapPort(p: number) {
+  if (process.platform === "win32") return;
+  if (await isPortFree(p)) return;
+  try {
+    const pids = execSync(`lsof -ti :${p}`, { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim()
+      .split(/\s+/);
+    for (const pid of pids) {
+      if (!pid) continue;
+      try {
+        process.kill(Number(pid), "SIGTERM");
+      } catch {}
+    }
+  } catch {}
+}
+
+/**
+ * Stop both child trees, wait for them, and only then exit.
+ *
+ * Two things here were wrong before and each produced the same complaint. The interrupt is delivered
+ * as `SIGINT` rather than `SIGTERM`: `pnpm` reports a `SIGTERM`ed script as a *failed* run, so a
+ * clean Ctrl+C ended in `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL` and a nonzero status, while `SIGINT` is
+ * the interrupt every process in the tree already exits quietly on — and it is what
+ * `tendril-server`'s `shutdown_signal` awaits, so the daemon takes its graceful path instead of
+ * being cut down mid-write. And the exit is now *awaited*: the old version signalled and called
+ * `process.exit(0)` on the next line, so whether anything actually died was luck, and a survivor
+ * still holding port 5010 or the home's `.master` claim made the next run fail by name.
+ *
+ * A second Ctrl+C during the grace window skips straight to the forceful pass.
+ */
+async function shutdown(exitCode = 0): Promise<void> {
+  if (shuttingDown) {
+    forceExit(exitCode);
+    return;
+  }
   shuttingDown = true;
   console.log("\n\x1b[33m[dev-desktop] Shutting down...\x1b[0m");
 
-  if (appProcess) {
-    killTree(appProcess);
-  }
+  const children: Array<{ label: string; proc: ChildProcess }> = [];
+  if (appProcess) children.push({ label: "desktop app", proc: appProcess });
+  if (serverProcess) children.push({ label: "service", proc: serverProcess });
 
-  if (serverProcess) {
-    killTree(serverProcess);
-  }
+  for (const { proc } of children) signalTree(proc, false);
 
-  // Also clean up any lingering Vite frontend processes on port 5173
-  try {
-    if (process.platform !== "win32") {
-      const pids = execSync("lsof -ti :5173", { stdio: ["ignore", "pipe", "ignore"] })
-        .toString()
-        .trim()
-        .split(/\s+/);
-      for (const pid of pids) {
-        if (pid) {
-          try {
-            process.kill(Number(pid), "SIGTERM");
-          } catch {}
-        }
-      }
-    }
-  } catch {}
+  const settled = await Promise.all(
+    children.map(({ proc }) => waitForExit(proc, SHUTDOWN_GRACE_MS)),
+  );
+  settled.forEach((exited, i) => {
+    const child = children[i];
+    if (exited || !child) return;
+    console.log(
+      `\x1b[33m[dev-desktop] The ${child.label} did not stop within ${SHUTDOWN_GRACE_MS}ms; killing it.\x1b[0m`,
+    );
+    signalTree(child.proc, true);
+  });
 
-  process.exit(0);
+  // Belt and braces. Vite is started by the Tauri CLI's `beforeDevCommand`, so the tree kill above
+  // should already have taken it; the sweep only runs when something is somehow still on the port,
+  // which keeps an unrelated dev server on 5173 from being killed on the way out.
+  await reapPort(5173);
+
+  for (const reader of lineReaders) reader.close();
+  forceExit(exitCode);
 }
 
-process.on("SIGINT", cleanup);
-process.on("SIGTERM", cleanup);
-process.on("exit", cleanup);
+/**
+ * Leave now. The pipes and timers above can keep the loop alive past the point where there is
+ * anything left to do, and a dev runner that lingers after Ctrl+C reads as a hang.
+ */
+function forceExit(code: number): never {
+  process.exit(code);
+}
+
+process.on("SIGINT", () => void shutdown(0));
+process.on("SIGTERM", () => void shutdown(0));
+// SIGHUP too: closing the terminal used to orphan the whole tree, daemon and all.
+process.on("SIGHUP", () => void shutdown(0));
 
 async function main() {
   console.log(
@@ -196,6 +262,7 @@ async function main() {
 
     if (serverProcess.stdout) {
       const rl = readline.createInterface({ input: serverProcess.stdout });
+      lineReaders.push(rl);
       rl.on("line", (line) => {
         console.log(`\x1b[35m[service]\x1b[0m ${line}`);
       });
@@ -203,6 +270,7 @@ async function main() {
 
     if (serverProcess.stderr) {
       const rl = readline.createInterface({ input: serverProcess.stderr });
+      lineReaders.push(rl);
       rl.on("line", (line) => {
         console.error(`\x1b[35m[service]\x1b[0m ${line}`);
       });
@@ -211,7 +279,7 @@ async function main() {
     serverProcess.on("exit", (code, signal) => {
       if (!shuttingDown) {
         console.error(`\x1b[31m[service] Exited unexpectedly with code ${code} (${signal})\x1b[0m`);
-        cleanup();
+        void shutdown(1);
       }
     });
 
@@ -221,7 +289,7 @@ async function main() {
       console.error(
         `\n\x1b[31m[dev-desktop] Service failed to respond on http://127.0.0.1:${port}/api/health within 60s\x1b[0m`,
       );
-      cleanup();
+      await shutdown(1);
       return;
     }
     console.log(`\n\x1b[32m[dev-desktop] Service is up and listening on port ${port}!\x1b[0m`);
@@ -258,40 +326,64 @@ async function main() {
   }
 
   console.log("\x1b[36m[dev-desktop] Launching desktop app (Tauri dev)...\x1b[0m");
-  appProcess = spawn(
-    "pnpm",
-    ["--filter", "@ivy-interactive/tendril-app", "tauri", "dev", ...tauriArgs],
-    {
+
+  const appDir = path.resolve(__dirname, "..", "apps", "tendril-app");
+  const tauriCli = path.join(appDir, "node_modules", "@tauri-apps", "cli", "tauri.js");
+  const childEnv = {
+    ...process.env,
+    TENDRIL_HOME: tendrilHome,
+    ...(noHmr ? { NO_HMR: "1", VITE_HMR: "false" } : {}),
+  };
+
+  if (fs.existsSync(tauriCli)) {
+    // Run the Tauri CLI's entrypoint on this same Node rather than through
+    // `pnpm --filter ... tauri dev`. Three things fall out of dropping that wrapper:
+    //
+    // - Ctrl+C stops printing `[ELIFECYCLE] Command failed.` / `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL`.
+    //   pnpm treats a signalled script as a failed one and says so, which made a perfectly clean
+    //   shutdown look like a crash.
+    // - No shell is needed on Windows. `pnpm` there is a `.cmd` shim that, since the fix for
+    //   CVE-2024-27980, Node refuses to spawn directly; `process.execPath` is a real executable.
+    // - One less process between us and the Tauri CLI, so the group signal has a shorter tree to
+    //   walk and nothing in the middle can swallow it.
+    appProcess = spawn(process.execPath, [tauriCli, "dev", ...tauriArgs], {
+      cwd: appDir,
       stdio: "inherit",
       detached: process.platform !== "win32",
-      // On Windows `pnpm` is a `.cmd` shim, and since the fix for CVE-2024-27980 Node refuses to
-      // spawn one without a shell: bare `pnpm` fails ENOENT and `pnpm.cmd` fails EINVAL. Nothing
-      // listened for the resulting `error` event, so the app never launched and the script fell
-      // straight through to cleanup, printing only "Shutting down..." under a perfectly healthy
-      // daemon. `cargo` above needs no shell: it is a real `.exe`.
-      shell: process.platform === "win32",
-      env: {
-        ...process.env,
-        TENDRIL_HOME: tendrilHome,
-        ...(noHmr ? { NO_HMR: "1", VITE_HMR: "false" } : {}),
+      env: childEnv,
+    });
+  } else {
+    // A workspace whose dependencies were never installed, or a future layout where the CLI moved.
+    // pnpm can still find it, at the cost of the wrapper noise above.
+    console.log(
+      "\x1b[33m[dev-desktop] @tauri-apps/cli not found locally; falling back to pnpm.\x1b[0m",
+    );
+    appProcess = spawn(
+      "pnpm",
+      ["--filter", "@ivy-interactive/tendril-app", "tauri", "dev", ...tauriArgs],
+      {
+        stdio: "inherit",
+        detached: process.platform !== "win32",
+        shell: process.platform === "win32",
+        env: childEnv,
       },
-    },
-  );
+    );
+  }
 
   appProcess.on("error", (err) => {
     console.error(`\x1b[31m[dev-desktop] Could not launch the desktop app: ${err.message}\x1b[0m`);
-    cleanup();
+    void shutdown(1);
   });
 
   appProcess.on("exit", (code) => {
     if (!shuttingDown) {
       console.log(`\x1b[33m[dev-desktop] Desktop app closed with exit code ${code}\x1b[0m`);
-      cleanup();
+      void shutdown(code ?? 0);
     }
   });
 }
 
 main().catch((err) => {
   console.error(err);
-  cleanup();
+  void shutdown(1);
 });

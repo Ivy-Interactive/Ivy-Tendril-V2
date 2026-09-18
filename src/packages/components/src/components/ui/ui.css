@@ -361,130 +361,139 @@
 
 /* ---------- Icon button ---------- */
 
-.tui-icon-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-lg);
-  background: transparent;
-  color: var(--tui-fg);
-  opacity: var(--opacity-subtle);
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard),
-    opacity var(--duration-fast) var(--ease-standard);
-}
+/* The base sits in `@layer components` so a call site can restyle its own button with a
+   plain single-class rule. Unlayered, the base tied every per-site hook on specificity
+   (0,1,0) and won on source order - `ui.css` is emitted last - which silently reverted
+   twelve of them, including the sidebar row menu's `position: absolute`, the code block's
+   hover-reveal `opacity: 0`, and the `absolute` Tailwind utility on the image overlay. A
+   layered base loses to unlayered rules and to `@layer utilities` no matter the order, so
+   overriding it needs no `!important` and no specificity ladder. */
+@layer components {
+  .tui-icon-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-lg);
+    background: transparent;
+    color: var(--tui-fg);
+    opacity: var(--opacity-subtle);
+    cursor: pointer;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard),
+      opacity var(--duration-fast) var(--ease-standard);
+  }
 
-.tui-icon-btn[data-size="2xs"] {
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-xs);
-}
+  .tui-icon-btn[data-size="2xs"] {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-xs);
+  }
 
-.tui-icon-btn[data-size="xs"] {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-sm);
-}
+  .tui-icon-btn[data-size="xs"] {
+    width: 20px;
+    height: 20px;
+    border-radius: var(--radius-sm);
+  }
 
-.tui-icon-btn[data-size="sm"] {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-md);
-}
+  .tui-icon-btn[data-size="sm"] {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-md);
+  }
 
-.tui-icon-btn[data-size="md"] {
-  width: 28px;
-  height: 28px;
-}
+  .tui-icon-btn[data-size="md"] {
+    width: 28px;
+    height: 28px;
+  }
 
-.tui-icon-btn[data-size="lg"] {
-  width: 32px;
-  height: 32px;
-}
+  .tui-icon-btn[data-size="lg"] {
+    width: 32px;
+    height: 32px;
+  }
 
-.tui-icon-btn[data-size="xl"] {
-  width: 40px;
-  height: 40px;
-}
+  .tui-icon-btn[data-size="xl"] {
+    width: 40px;
+    height: 40px;
+  }
 
-.tui-icon-btn[data-size="2xl"] {
-  width: 48px;
-  height: 48px;
-}
+  .tui-icon-btn[data-size="2xl"] {
+    width: 48px;
+    height: 48px;
+  }
 
-.tui-icon-btn[data-shape="round"] {
-  border-radius: var(--radius-full);
-}
+  .tui-icon-btn[data-shape="round"] {
+    border-radius: var(--radius-full);
+  }
 
-.tui-icon-btn[data-tone="muted"] {
-  color: var(--tui-muted);
-  opacity: 1;
-}
+  .tui-icon-btn[data-tone="muted"] {
+    color: var(--tui-muted);
+    opacity: 1;
+  }
 
-.tui-icon-btn[data-tone="muted"]:hover:not(:disabled),
-.tui-icon-btn[data-tone="muted"][data-active="true"] {
-  color: var(--tui-fg);
-}
+  .tui-icon-btn[data-tone="muted"]:hover:not(:disabled),
+  .tui-icon-btn[data-tone="muted"][data-active="true"] {
+    color: var(--tui-fg);
+  }
 
-.tui-icon-btn:hover:not(:disabled),
-.tui-icon-btn[data-active="true"],
-.tui-icon-btn[aria-expanded="true"] {
-  background: var(--tui-icon-btn-hover, var(--tui-surface));
-  opacity: 1;
-}
+  .tui-icon-btn:hover:not(:disabled),
+  .tui-icon-btn[data-active="true"],
+  .tui-icon-btn[aria-expanded="true"] {
+    background: var(--tui-icon-btn-hover, var(--tui-surface));
+    opacity: 1;
+  }
 
-.tui-icon-btn:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
-  opacity: 1;
-}
+  .tui-icon-btn:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+    opacity: 1;
+  }
 
-.tui-icon-btn:disabled {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-}
+  .tui-icon-btn:disabled {
+    opacity: var(--opacity-disabled);
+    cursor: not-allowed;
+  }
 
-.tui-icon-btn[data-variant="danger"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--destructive) 14%, transparent);
-  color: var(--destructive);
-}
+  .tui-icon-btn[data-variant="danger"]:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--destructive) 14%, transparent);
+    color: var(--destructive);
+  }
 
-.tui-icon-btn[data-variant="solid"] {
-  background: var(--primary);
-  color: var(--primary-foreground);
-  opacity: 1;
-}
+  .tui-icon-btn[data-variant="solid"] {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    opacity: 1;
+  }
 
-.tui-icon-btn[data-variant="solid"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--primary) 85%, var(--background));
-}
+  .tui-icon-btn[data-variant="solid"]:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary) 85%, var(--background));
+  }
 
-.tui-icon-btn[data-variant="outline"] {
-  border: var(--border-width) solid var(--tui-border);
-  background: var(--tui-icon-btn-outline-bg, var(--muted));
-  opacity: 1;
-}
+  .tui-icon-btn[data-variant="outline"] {
+    border: var(--border-width) solid var(--tui-border);
+    background: var(--tui-icon-btn-outline-bg, var(--muted));
+    opacity: 1;
+  }
 
-.tui-icon-btn[data-variant="outline"]:hover:not(:disabled) {
-  background: var(--accent);
-  color: var(--accent-foreground);
-  border-color: var(--accent);
-}
+  .tui-icon-btn[data-variant="outline"]:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--accent-foreground);
+    border-color: var(--accent);
+  }
 
-.tui-icon-btn[data-variant="overlay"] {
-  background: color-mix(in srgb, black 50%, transparent);
-  color: white;
-  opacity: 1;
-}
+  .tui-icon-btn[data-variant="overlay"] {
+    background: color-mix(in srgb, black 50%, transparent);
+    color: white;
+    opacity: 1;
+  }
 
-.tui-icon-btn[data-variant="overlay"]:hover:not(:disabled) {
-  background: color-mix(in srgb, black 70%, transparent);
+  .tui-icon-btn[data-variant="overlay"]:hover:not(:disabled) {
+    background: color-mix(in srgb, black 70%, transparent);
+  }
 }
 
 /* ---------- Status line ---------- */
