@@ -19,5 +19,6 @@ pub mod build;
 pub mod hosting;
 pub mod manifest;
 pub mod project;
+pub mod screenshot;
 
 pub use project::{TailwindMode, WireframeConfig, WireframeProject};
