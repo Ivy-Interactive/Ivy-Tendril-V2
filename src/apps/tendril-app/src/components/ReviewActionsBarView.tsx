@@ -195,7 +195,13 @@ export const ReviewActionsBarView: React.FC<ReviewActionsBarViewProps> = ({
   };
 
   return (
-    <div data-testid="review-actions-bar" className="flex flex-wrap items-center gap-2">
+    /* V1 `ReviewActionsBarView`: `Layout.Horizontal().Gap(2).Padding(3, 2, 1, 0)`, whose
+       argument order is (left, top, right, bottom). The gap was ported and the padding was not,
+       which left the bar flush against the frame's top-left corner. */
+    <div
+      data-testid="review-actions-bar"
+      className="flex flex-wrap items-center gap-2 pt-2 pr-1 pl-3"
+    >
       {actions.map((action) => {
         // A host that evaluated the condition properly (which needs a filesystem, so a host that
         // asked the service) wins outright; otherwise this decides what it can and says so when it
