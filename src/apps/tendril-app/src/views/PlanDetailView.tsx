@@ -1414,6 +1414,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       <PlanMarkdown
         id="plan-markdown"
         content={revisionContent || "# No revision content available"}
+        // Where this plan's wireframes are served. A `wireframe` fence resolves its name against
+        // it; without this the fence renders a placeholder instead of the live preview, which is
+        // the first thing the reviewer is meant to see.
+        wireframeBaseUrl={`/__wireframes/${plan.id}/`}
         article
         dangerouslyAllowLocalFiles
         annotations={annotations}

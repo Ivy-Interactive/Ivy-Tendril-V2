@@ -2839,6 +2839,13 @@ pub fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
         return;
     }
 
+    // Wireframes are plan material only: a plan whose changes still carry wireframe code may not
+    // be marked Completed, however it got here.
+    if let Some(reason) = PlanCompletionGuard::wireframe_refusal(state, plan_folder, None) {
+        tracing::warn!("Not completing plan {}: {}", plan_id, reason);
+        return;
+    }
+
     let from_state = plan.state.clone();
 
     match PlanCompletionGuard::apply_state(&mut plan, state, false, plan_id) {

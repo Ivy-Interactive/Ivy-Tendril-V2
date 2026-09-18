@@ -471,6 +471,13 @@ impl McpDispatcher {
         match field.to_ascii_lowercase().as_str() {
             "state" => {
                 let new_state = requested.expect("state parsed above");
+                // A model may not complete a plan whose changes still carry wireframe code, for the
+                // same reason it may not complete one over a failed verification.
+                if let Some(reason) =
+                    PlanCompletionGuard::wireframe_refusal(new_state, &folder, None)
+                {
+                    return Err(reason);
+                }
                 // allow_failed_verifications is hard-coded false: recording a partial delivery is a
                 // human's call, not a model's.
                 warning = PlanCompletionGuard::apply_state(&mut plan, new_state, false, &plan_id)
