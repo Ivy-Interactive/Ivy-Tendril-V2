@@ -1,0 +1,6 @@
+{
+  // Editor support only -- nothing runs tsc. The real type definitions live in
+  // .wireframe/types/, which `wireframe setup` regenerates; do not edit them.
+  "extends": "./.wireframe/tsconfig.base.json",
+  "include": ["src"]
+}

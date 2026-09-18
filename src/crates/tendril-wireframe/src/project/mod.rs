@@ -1,7 +1,12 @@
 //! The on-disk layout of a wireframe project, and the settings `serve` and `screenshot` must
 //! agree with `setup` about.
 //!
+//! Scaffolding lives in [`scaffolder`]; the files it writes in [`templates`].
+//!
 //! Ported from V1's `Ivy.Tendril.Wireframe/Project/{WireframeProject,WireframeConfig}.cs`.
+
+pub mod scaffolder;
+pub mod templates;
 
 use std::path::{Path, PathBuf};
 
