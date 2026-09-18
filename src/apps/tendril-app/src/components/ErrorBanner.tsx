@@ -1,4 +1,5 @@
 import React from "react";
+import { Callout, Densities } from "@ivy-interactive/components/ui";
 
 interface ErrorBannerProps {
   children: React.ReactNode;
@@ -9,10 +10,15 @@ interface ErrorBannerProps {
 }
 
 /**
- * The app's one error banner: a destructive-tinted box for a backend error reported where the
- * operator pressed the button. Every view hand-rolled the same
- * `border-destructive/40 bg-destructive/10` box before this existed; this is that box, with an
- * optional dismiss control for the views that offer one.
+ * The app's one error banner, over the library's `Callout.Error`.
+ *
+ * V1 spells this `Callout.Error(message)` at every site (`GitTabView.cs:135`,
+ * `TunnelSetupView.cs:52`, `CodingAgentStepView.cs:290`, ...), so the library component *is* the
+ * parity target - this wrapper exists only because two dozen call sites here pass `children` rather
+ * than a message string, and because `Small` density is what a banner inside a panel wants where
+ * `Callout`'s own default is `Medium`.
+ *
+ * Prefer `Callout.Error` directly in new code, as `JobSessionView` does.
  */
 export const ErrorBanner: React.FC<ErrorBannerProps> = ({
   children,
@@ -21,21 +27,17 @@ export const ErrorBanner: React.FC<ErrorBannerProps> = ({
   "data-testid": testId,
   className = "",
 }) => (
-  <div
-    role="alert"
+  <Callout.Error
     data-testid={testId}
-    className={`flex items-start justify-between gap-3 rounded-box border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive ${className}`.trim()}
+    density={Densities.Small}
+    /* No icon: this replaced a hand-rolled box that never had one, and it sits inline in panels and
+       table toolbars where a 20px glyph re-flows the row. `Callout`'s own `role="alert"` and dismiss
+       button carry over. */
+    icon={false}
+    onDismiss={onDismiss}
+    dismissLabel={dismissLabel}
+    className={`text-xs text-destructive [&_p]:text-xs ${className}`.trim()}
   >
-    <div className="min-w-0 flex-1">{children}</div>
-    {onDismiss && (
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label={dismissLabel}
-        className="text-destructive hover:text-destructive/80"
-      >
-        ✕
-      </button>
-    )}
-  </div>
+    {children}
+  </Callout.Error>
 );
