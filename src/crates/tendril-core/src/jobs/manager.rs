@@ -1944,6 +1944,18 @@ async fn drain_queue(ctx: &DispatchContext) {
 }
 
 /// Arms the runner for one job, handing it the slot the dispatcher just took.
+/// Fails a job that a pre-launch check refused, without ever starting its agent.
+///
+/// Writes through the same fields `report_job_failure` sets, so a refused job looks exactly like
+/// one that failed on its own rather than like a job that vanished.
+async fn fail_job_before_launch(ctx: &DispatchContext, job: &JobItem, message: &str) {
+    let mut failed = job.clone();
+    failed.status = JobStatus::Failed;
+    failed.reported_failure_reason = Some(message.to_string());
+    failed.completed_at = Some(Utc::now());
+    persist(&ctx.tendril_home, &ctx.jobs, &failed, Some(&ctx.events)).await;
+}
+
 async fn launch(ctx: DispatchContext, job: JobItem, permit: OwnedSemaphorePermit) {
     ensure_handle(&ctx.handles, &job.id).await;
     let handle_state = {
@@ -1960,6 +1972,24 @@ async fn launch(ctx: DispatchContext, job: JobItem, permit: OwnedSemaphorePermit
         drop(permit);
         return;
     };
+
+    // A CreatePr job for a plan whose changes carry wireframe code never starts. The Review view
+    // checks on click, but a PR can also be started from the CLI, a chat or a retry, and this holds
+    // for all of them.
+    if job.job_type == "CreatePr" && !job.plan_file.is_empty() {
+        let plan_folder = std::path::Path::new(&job.plan_file);
+        let leaks = crate::wireframes::plan_guard::check_and_report(plan_folder, None);
+        if !leaks.is_empty() {
+            tracing::error!(
+                "Job {}: refusing launch, the plan's changes carry wireframe code",
+                job.id
+            );
+            fail_job_before_launch(&ctx, &job, &crate::wireframes::leak_guard::describe(&leaks))
+                .await;
+            drop(permit);
+            return;
+        }
+    }
 
     let settings = ctx.settings.read().await.clone();
     spawn_runner(

@@ -35,6 +35,22 @@ impl PlanCompletionGuard {
         ))
     }
 
+    /// Refuses `Completed` for a plan whose changes still carry wireframe code.
+    ///
+    /// Separate from [`Self::apply_state`] because it needs the plan folder on disk, which that
+    /// function does not take. Callers that have one should run this first; the execution gate and
+    /// the PR launch check cover the other two ways a plan moves on.
+    pub fn wireframe_refusal(
+        new_state: PlanStatus,
+        plan_folder: &std::path::Path,
+        project: Option<&crate::models::project::ProjectConfig>,
+    ) -> Option<String> {
+        if new_state != PlanStatus::Completed {
+            return None;
+        }
+        crate::wireframes::plan_guard::block_reason(plan_folder, project)
+    }
+
     pub fn apply_state(
         plan: &mut PlanYaml,
         new_state: PlanStatus,
