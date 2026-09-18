@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { Flame, Search, Trash2 } from "lucide-react";
+import { Badge } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { describeBridgeError, type PlanSummary } from "../types/api";
 import { VERIFICATION_DOT_CLASS } from "../utils/verificationStatus";
 import { NoContentView } from "../components/NoContentView";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { DeletePlanDialog } from "./dialogs";
-import { formatPlanId, parseProjects, planStateBadgeClass } from "./PlansView";
+import { formatPlanId, parseProjects, planStateBadgeVariant } from "./PlansView";
 
 interface IceboxViewProps {
   plans: PlanSummary[];
@@ -245,21 +246,14 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                   </h3>
 
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span
-                      className={`inline-flex items-center rounded border px-2 py-0.5 text-xs-tight font-medium ${planStateBadgeClass(
-                        plan.state,
-                      )}`}
-                    >
+                    <Badge variant={planStateBadgeVariant(plan.state)} density="Small">
                       {plan.state}
-                    </span>
+                    </Badge>
 
                     {projectList.map((proj) => (
-                      <span
-                        key={proj}
-                        className="inline-flex items-center rounded border border-border bg-muted/40 px-2 py-0.5 text-xs-tight text-muted-foreground"
-                      >
+                      <Badge key={proj} variant="outline" density="Small">
                         {proj}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 </div>

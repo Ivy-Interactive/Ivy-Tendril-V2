@@ -53,30 +53,37 @@ interface PlansViewProps {
 }
 
 /**
- * Plan state to badge classes, mirroring `Constants.PlanStatusBadgeVariants` in V1
- * (`src/Ivy.Tendril/Constants.cs`): the three in-flight states are Info, Review and
- * Completed are Success, Failed is Destructive, Blocked is Warning, and the three
- * resting states (Draft, Skipped, Icebox) are the neutral Outline.
+ * Plan state to the library `Badge` variant, value for value from `Constants.PlanStatusBadgeVariants`
+ * (V1 `src/Ivy.Tendril/Constants.cs:32-44`): the three in-flight states are Info, Review and Completed
+ * are Success, Failed is Destructive, Blocked is Warning, and the three resting states (Draft,
+ * Skipped, Icebox) are the neutral Outline.
  *
- * Semantic tokens only. `--primary` is Ivy green, so a state badge must never reach
- * for it: green here would read as "succeeded" on a plan that has not run.
+ * V1's map is over `BadgeVariant` and so is this: the library `Badge` has the same variants, so the
+ * port is the enum rather than a translation of it into classes. A state outside the map falls to
+ * Outline, which is what V1's `GetValueOrDefault` does.
  */
-export const PLAN_STATE_BADGE_CLASS: Record<string, string> = {
-  Creating: "border-info/40 bg-info/10 text-info",
-  Updating: "border-info/40 bg-info/10 text-info",
-  Executing: "border-info/40 bg-info/10 text-info",
-  Review: "border-success/40 bg-success/10 text-success",
-  Completed: "border-success/40 bg-success/10 text-success",
-  Failed: "border-destructive/40 bg-destructive/10 text-destructive",
-  Blocked: "border-warning/40 bg-warning/10 text-warning",
-  Draft: "border-border bg-transparent text-muted-foreground",
-  Skipped: "border-border bg-transparent text-muted-foreground",
-  Icebox: "border-border bg-transparent text-muted-foreground",
+export const PLAN_STATE_BADGE_VARIANT: Record<string, PlanStateBadgeVariant> = {
+  Creating: "info",
+  Updating: "info",
+  Executing: "info",
+  Review: "success",
+  Completed: "success",
+  Failed: "destructive",
+  Blocked: "warning",
+  Draft: "outline",
+  Skipped: "outline",
+  Icebox: "outline",
 };
 
-export const planStateBadgeClass = (state: string): string =>
-  PLAN_STATE_BADGE_CLASS[normalizePlanState(state)] ??
-  "border-border bg-transparent text-muted-foreground";
+export type PlanStateBadgeVariant =
+  | "info"
+  | "success"
+  | "destructive"
+  | "warning"
+  | "outline";
+
+export const planStateBadgeVariant = (state: string): PlanStateBadgeVariant =>
+  PLAN_STATE_BADGE_VARIANT[normalizePlanState(state)] ?? "outline";
 
 /**
  * `#21`, not `#00021`: V1 tags a row with `$"#{plan.Id}"` (`PlansApp.BuildSidebarList`)

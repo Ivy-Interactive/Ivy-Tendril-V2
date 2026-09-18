@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { Badge } from "@ivy-interactive/components/ui";
 import {
   PlanGitView,
   PlanMarkdown,
@@ -38,7 +39,7 @@ import {
 } from "../controllers/execute_guards";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
-import { formatPlanId, isReviewState, normalizePlanState, planStateBadgeClass } from "./PlansView";
+import { formatPlanId, isReviewState, normalizePlanState, planStateBadgeVariant } from "./PlansView";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { RecommendationCard } from "../components/RecommendationCard";
@@ -1647,24 +1648,19 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
            * is reachable for every plan, so it has to say which one it is looking at.
            */
           ProjectBadges: [
-            <span
+            <Badge
               key="state"
               data-testid="plan-state-badge"
-              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${planStateBadgeClass(
-                effectivePlan.state,
-              )}`}
+              variant={planStateBadgeVariant(effectivePlan.state)}
             >
               {effectivePlan.state}
-            </span>,
+            </Badge>,
             <ProjectBadges key="projects" project={plan.project} />,
             ...(plan.level
               ? [
-                  <span
-                    key="level"
-                    className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-                  >
+                  <Badge key="level" variant="outline">
                     {plan.level}
-                  </span>,
+                  </Badge>,
                 ]
               : []),
           ],

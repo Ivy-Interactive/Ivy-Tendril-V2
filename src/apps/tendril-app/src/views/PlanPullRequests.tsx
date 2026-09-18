@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { Badge } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
 import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
-import { PR_STATE_CLASS } from "../utils/prStatus";
+import { PR_STATE_COLOR } from "../utils/prStatus";
 import { CARD_SURFACE } from "../utils/surfaces";
 
 interface PlanPullRequestsProps {
@@ -151,13 +152,9 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
         {rows.length > 0 ? (
           rows.map(({ url, key, status }) => (
             <li key={key} className="flex flex-wrap items-center gap-2">
-              <span
-                className={`rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide ${
-                  PR_STATE_CLASS[status?.status ?? "Unknown"] ?? PR_STATE_CLASS.Unknown
-                }`}
-              >
+              <Badge color={PR_STATE_COLOR[status?.status ?? "Unknown"]} density="Small">
                 {status?.status ?? "Unknown"}
-              </span>
+              </Badge>
               {/* V1's PR table pairs a Repository column with the PR link; the repo is what
                   tells two PRs of a multi-repo plan apart. */}
               <span className="font-mono text-xs text-muted-foreground">{prRepo(url)}</span>

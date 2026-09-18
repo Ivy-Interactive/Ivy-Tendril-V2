@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, FileText, GitBranch, RefreshCw } from "lucide-react";
 import {
+  Badge,
   DataTable,
   Sheet,
   SheetContent,
@@ -20,7 +21,8 @@ import { onPrStatusEvent } from "../api/events";
 import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
-import { PR_STATE_CLASS } from "../utils/prStatus";
+import { projectColor } from "../utils/jobStatus";
+import { PR_STATE_COLOR } from "../utils/prStatus";
 
 /** The original's `BatchSize` — a cross-plan PR list is long, so the page holds more than the default 10. */
 const DEFAULT_PAGE_SIZE = 50;
@@ -248,10 +250,14 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         // carried no information at all.
         width: "140px",
         accessor: (row) => row.project,
+        // V1 renders this column through the same `LabelsDisplayRenderer`, coloured from
+        // `ProjectHelper.BuildColorMapping(config)` (`PullRequestApp.cs:144-147`). Jobs' Project
+        // column already does this; see {@link projectColor} for why the colour is derived from the
+        // name rather than read from the DTO.
         cell: (_value, row) => (
-          <span className="rounded bg-muted/80 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          <Badge color={projectColor(row.project)} density="Small">
             {row.project}
-          </span>
+          </Badge>
         ),
       },
       {
@@ -260,14 +266,9 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         width: "100px",
         accessor: (row) => row.status,
         cell: (_value, row) => (
-          <span
-            title={statusTooltip(row)}
-            className={`rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide ${
-              PR_STATE_CLASS[row.status] ?? PR_STATE_CLASS.Unknown
-            }`}
-          >
+          <Badge title={statusTooltip(row)} color={PR_STATE_COLOR[row.status]} density="Small">
             {row.status || "Unknown"}
-          </span>
+          </Badge>
         ),
       },
       {

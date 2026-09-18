@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
-import { Callout } from "@ivy-interactive/components/ui";
+import { Badge, Callout } from "@ivy-interactive/components/ui";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
-import { JOB_STATUS_BADGE_CLASS } from "../utils/jobStatus";
+import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStatus";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
@@ -411,33 +411,27 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             <span className="font-mono text-sm font-bold text-muted-foreground">
               {normalizeJobId(currentJob.id)}
             </span>
-            <span
+            {/* Same badge the Jobs table draws, on the same `Constants.JobStatusColors` mapping, so
+                the sheet header and the row behind it read identically. */}
+            <Badge
               data-testid="job-status-badge"
-              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                JOB_STATUS_BADGE_CLASS[currentJob.status] ??
-                "border-border bg-transparent text-muted-foreground"
-              }`}
+              color={JOB_STATUS_COLOR[currentJob.status] ?? UNMAPPED_COLOR}
+              density="Small"
             >
               {currentJob.status}
-            </span>
+            </Badge>
             {/* `ProjectHelper.ParseProjects`: a job's project field can name several. */}
             {parseProjects(currentJob.project).map((project) => (
-              <span
-                key={project}
-                className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-              >
+              <Badge key={project} color={projectColor(project)} density="Small">
                 {project}
-              </span>
+              </Badge>
             ))}
             {/* From 751bed8: a job supervised across a daemon restart, as opposed to one this
                 session started end to end. */}
             {currentJob.detached && (
-              <span
-                data-testid="job-detached-badge"
-                className="rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning"
-              >
+              <Badge data-testid="job-detached-badge" color="Orange" density="Small">
                 Detached (PID {currentJob.processId}) — Monitoring active process
-              </span>
+              </Badge>
             )}
           </div>
           {/* The output sheet's title: `$"{job.Type} {ExtractPlanId(job.PlanFile)}"`. Drawn here

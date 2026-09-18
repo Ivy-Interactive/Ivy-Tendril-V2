@@ -51,28 +51,6 @@ export function resolveJobState(
 }
 
 /**
- * Job status to badge classes, from `Constants.JobStatusColors` (V1 `src/Ivy.Tendril/Constants.cs`):
- * Running is Blue, Completed is Green, Failed and Timeout are Red, Queued and Pending are Amber,
- * Blocked is Orange, Stopped is Gray.
- *
- * Semantic tokens only, which collapses V1's Amber and Orange onto the one `warning` token the design
- * system has. That keeps Blocked reading the same as it does on a plan (`PLAN_STATE_BADGE_CLASS` maps
- * Blocked to warning too) at the cost of the amber/orange distinction, which carried no meaning V1
- * relied on. `--primary` is Ivy green and is never reached for here: a status badge that borrowed it
- * would read as "succeeded" on a job that has not run.
- */
-export const JOB_STATUS_BADGE_CLASS: Record<JobStatus, string> = {
-  Running: "border-info/40 bg-info/10 text-info",
-  Completed: "border-success/40 bg-success/10 text-success",
-  Failed: "border-destructive/40 bg-destructive/10 text-destructive",
-  Timeout: "border-destructive/40 bg-destructive/10 text-destructive",
-  Queued: "border-warning/40 bg-warning/10 text-warning",
-  Pending: "border-warning/40 bg-warning/10 text-warning",
-  Blocked: "border-warning/40 bg-warning/10 text-warning",
-  Stopped: "border-border bg-transparent text-muted-foreground",
-};
-
-/**
  * `Constants.JobStatusColors` (`src/Ivy.Tendril/Constants.cs:54-64`), value for value.
  *
  * V1 renders the Status cell through a `LabelsDisplayRenderer` whose `BadgeColorMapping` is this
