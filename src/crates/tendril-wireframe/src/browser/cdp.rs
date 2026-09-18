@@ -45,7 +45,7 @@ impl CdpConnection {
         tokio::spawn(async move {
             while let Some(text) = outbox.recv().await {
                 if sink
-                    .send(tokio_tungstenite::tungstenite::Message::Text(text.into()))
+                    .send(tokio_tungstenite::tungstenite::Message::Text(text))
                     .await
                     .is_err()
                 {
