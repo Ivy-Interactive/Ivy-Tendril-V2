@@ -26,9 +26,7 @@ function session(id: string): ChatSession {
     updatedAt: "2026-01-01T00:00:00Z",
     // Non-empty: `selectSession` prunes an *empty* previous session before switching, which would
     // drag unrelated API calls into a test that is only about which reply wins.
-    messages: [
-      { id: `${id}-m1`, role: "user", content: "hi", timestamp: "2026-01-01T00:00:00Z" },
-    ],
+    messages: [{ id: `${id}-m1`, role: "user", content: "hi", timestamp: "2026-01-01T00:00:00Z" }],
     spawnedJobIds: [],
   };
 }
