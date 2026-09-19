@@ -1114,11 +1114,13 @@
   color: var(--muted-foreground);
 }
 
-/* Floats over the frame's top-right corner: there is no title bar. */
+/* Floats over the frame's top-right corner: there is no title bar.
+   Inset further than V1's 0.375rem. The frame now carries a border of its own and a tall wireframe
+   shows a scrollbar, and at 6px the button sat on top of both. */
 .pmv-wireframe-actions {
   position: absolute;
-  top: 0.375rem;
-  right: 0.375rem;
+  top: 0.75rem;
+  right: 0.75rem;
   z-index: 1;
   display: flex;
   align-items: center;
