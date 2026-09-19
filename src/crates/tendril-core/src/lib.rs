@@ -3,6 +3,7 @@ pub mod analytics;
 pub mod auth;
 pub mod chat;
 pub mod config;
+pub mod config_text;
 pub mod db;
 pub mod error;
 pub mod fs_lock;

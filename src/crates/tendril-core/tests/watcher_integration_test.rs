@@ -129,9 +129,10 @@ async fn plan_yaml_write_emits_exactly_one_event() {
 
 /// A read of the plans directory must not look like a write to it.
 ///
-/// This is the Linux livelock in miniature. inotify reports `IN_OPEN`/`IN_ACCESS`/`IN_CLOSE` against
-/// the watched directory itself, and the watcher's own `register_paths` reads `Plans/` to enumerate
-/// plan folders - so before the fix a top-level event scheduled a catch-up, the catch-up's
+/// This is the Linux livelock in miniature. notify's inotify backend watches with `IN_OPEN` set, and
+/// inotify reports that against the watched directory itself, while the watcher's own
+/// `register_paths` reads `Plans/` to enumerate plan folders - so before the fix a top-level event
+/// scheduled a catch-up, the catch-up's
 /// `read_dir` produced an `Access(Open)` on `Plans/`, and that event scheduled the next catch-up. It
 /// never terminated: one four-file write produced 6,755 events and 5,871 spurious notifications in
 /// six seconds, so a live daemon spun a core and republished the mirror forever, with `None`

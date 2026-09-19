@@ -315,9 +315,10 @@ impl FsWatcher {
             match res {
                 Ok(event) => {
                     // A read is not a change, and on Linux treating it as one is a livelock rather
-                    // than merely noise. inotify reports `IN_OPEN`/`IN_ACCESS`/`IN_CLOSE` against the
-                    // *watched directory itself*, and `register_paths` reads `Plans/` to enumerate
-                    // plan folders. So: any top-level event schedules a catch-up pass, the catch-up
+                    // than merely noise. notify watches with `IN_OPEN` set, and inotify reports it
+                    // against the *watched directory itself*, while `register_paths` reads `Plans/`
+                    // to enumerate plan folders. So: a top-level event schedules a catch-up,
+                    // the catch-up
                     // calls `register_paths`, its `read_dir` makes inotify emit `Access(Open)` on
                     // `Plans/`, that path classifies as `Plans { folder: None }` and is top-level, so
                     // it schedules another catch-up - which reads the directory again. Measured on

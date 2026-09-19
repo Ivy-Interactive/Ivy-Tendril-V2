@@ -331,6 +331,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
         )
+        // The raw file behind the in-app editor, V2's replacement for V1 shelling out to the OS editor
+        // (`RawConfigEditorView.cs`). Separate from `/api/config` because the structured route round-trips
+        // through `serde` and loses comments, key order and blank lines - preserving those is the entire
+        // point of the editor. Secrets are masked daemon-side on the way out and resolved back on the way
+        // in, and this path is deliberately NOT in the share allowlist (`share::policy`).
+        .route(
+            "/api/config/text",
+            get(config::get_config_text_handler).put(config::put_config_text_handler),
+        )
         // Version check
         .route("/api/version", get(health::get_version_handler))
         .route(
