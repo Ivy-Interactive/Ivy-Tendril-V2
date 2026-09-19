@@ -7,7 +7,7 @@
 
 use reqwest::header::AUTHORIZATION;
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tendril_core::config::{generate_bearer_secret, load_config, MasterGuard};
 use tendril_core::models::{
@@ -655,5 +655,449 @@ async fn sync_route_404s_an_unknown_project_and_reports_an_empty_one() {
     assert_eq!(
         body["message"],
         json!("No matching repositories found to sync.")
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Importing a repository by URL
+//
+// The write endpoints clone a remote and store the clone's path, never the URL — V1's
+// `OnboardingRepoHelper.ResolveReposAsync`. These run against real git over `file://`, because the
+// thing under test is what git does with a destination, and a mock would prove nothing about it.
+// ---------------------------------------------------------------------------
+
+/// A bare repo at `<root>/acme/widgets.git`, so the `<owner>/<repo>` the route derives from the URL
+/// is a name the assertions can state rather than a temp-directory accident.
+struct RemoteRepoFixture {
+    root: PathBuf,
+    origin: PathBuf,
+}
+
+impl Drop for RemoteRepoFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+impl RemoteRepoFixture {
+    fn new(label: &str) -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "tendril-route-remote-{label}-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let origin = root.join("acme").join("widgets.git");
+        let work = root.join("work");
+        std::fs::create_dir_all(&origin).unwrap();
+        std::fs::create_dir_all(&work).unwrap();
+
+        let fixture = Self { root, origin };
+        fixture.git_in(&fixture.origin, &["init", "--bare", "-b", "main"]);
+        fixture.git_in(&work, &["init", "-b", "main"]);
+        fixture.git_in(&work, &["config", "user.email", "fixture@tendril.test"]);
+        fixture.git_in(&work, &["config", "user.name", "Tendril Fixture"]);
+        fixture.git_in(&work, &["config", "commit.gpgsign", "false"]);
+        std::fs::write(work.join("README.md"), "widgets\n").unwrap();
+        fixture.git_in(&work, &["add", "."]);
+        fixture.git_in(&work, &["commit", "-m", "Initial commit"]);
+        let origin_url = fixture.origin.to_string_lossy().to_string();
+        fixture.git_in(&work, &["remote", "add", "origin", &origin_url]);
+        fixture.git_in(&work, &["push", "-u", "origin", "main"]);
+
+        fixture
+    }
+
+    fn git_in(&self, dir: &std::path::Path, args: &[&str]) -> String {
+        let (code, stdout, stderr) =
+            tendril_core::git::service::run_git(args, dir).expect("run git");
+        assert_eq!(code, 0, "git {args:?} failed: {stdout}{stderr}");
+        stdout
+    }
+
+    /// `file://` is a real git transport, and the only one these tests can use offline.
+    fn url(&self) -> String {
+        format!("file://{}", self.origin.to_string_lossy())
+    }
+}
+
+/// A `config.yaml` with no projects, so a create starts from an empty file.
+const EMPTY_PROJECTS_CONFIG: &str = "codingAgent: claude\nprojects: []\nverifications: []\n";
+
+#[tokio::test]
+async fn create_project_clones_a_remote_and_stores_the_clone_path() {
+    let remote = RemoteRepoFixture::new("create");
+    let srv = start_test_server_with_config("create-remote", EMPTY_PROJECTS_CONFIG).await;
+    let url = remote.url();
+
+    let (status, body) = srv
+        .send(
+            reqwest::Method::POST,
+            "",
+            json!({ "name": "RemoteProject", "color": "Blue", "repos": [url] }),
+        )
+        .await;
+    assert_eq!(status, 201, "create failed: {body}");
+
+    let proj = srv.project_from_disk("RemoteProject");
+    assert_eq!(proj.repos.len(), 1, "expected one repo: {:?}", proj.repos);
+    let stored = PathBuf::from(&proj.repos[0].path);
+
+    // The URL must not survive into config.yaml — that is the whole of V1's stage B.
+    assert_ne!(proj.repos[0].path, url, "the URL was stored as the path");
+    assert_eq!(
+        stored,
+        srv.tendril_home
+            .join("Projects")
+            .join("RemoteProject")
+            .join("Repos")
+            .join("acme")
+            .join("widgets"),
+        "the clone did not land in V1's <owner>/<repo> layout"
+    );
+    assert!(
+        stored.join(".git").is_dir(),
+        "nothing was actually cloned into {}",
+        stored.display()
+    );
+
+    // The clone's HEAD supplies the base branch the caller could not know.
+    assert_eq!(
+        proj.repos[0].base_branch.as_deref(),
+        Some("main"),
+        "the default branch was not resolved from the clone"
+    );
+
+    // The response the app renders says the same thing the file does.
+    assert_eq!(body["repos"][0]["path"], json!(stored.to_string_lossy()));
+}
+
+#[tokio::test]
+async fn add_repo_route_clones_a_remote_and_refreshes_on_a_second_add() {
+    let remote = RemoteRepoFixture::new("add");
+    let srv = start_test_server_with_config("add-remote", SAMPLE_PROJECT_EXTRAS_CONFIG).await;
+    let url = remote.url();
+
+    let (status, body) = srv
+        .send(
+            reqwest::Method::POST,
+            "/ivy-framework/repos",
+            json!({ "path": url }),
+        )
+        .await;
+    assert_eq!(status, 201, "add repo failed: {body}");
+
+    let expected = srv
+        .tendril_home
+        .join("Projects")
+        .join("ivy-framework")
+        .join("Repos")
+        .join("acme")
+        .join("widgets");
+    let proj = srv.project_from_disk("ivy-framework");
+    let added = proj
+        .repos
+        .iter()
+        .find(|r| r.path == expected.to_string_lossy())
+        .unwrap_or_else(|| panic!("clone path missing from config.yaml: {:?}", proj.repos));
+    assert_eq!(added.base_branch.as_deref(), Some("main"));
+    assert!(expected.join(".git").is_dir());
+    assert!(
+        !proj.repos.iter().any(|r| r.path == url),
+        "the URL was stored alongside the clone"
+    );
+
+    // Adding the same remote again is a refresh, not a second entry and not a conflict: V1's
+    // pull-instead-of-clone is what makes re-running setup safe.
+    let before = proj.repos.len();
+    let (status, body) = srv
+        .send(
+            reqwest::Method::POST,
+            "/ivy-framework/repos",
+            json!({ "path": url }),
+        )
+        .await;
+    assert_eq!(status, 200, "re-adding the same remote failed: {body}");
+    assert_eq!(
+        srv.project_from_disk("ivy-framework").repos.len(),
+        before,
+        "re-adding the same remote duplicated the repository"
+    );
+
+    // Whatever else the write touched, the unmodeled keys are still there.
+    assert_all_nine_extras(
+        &srv.project_from_disk("ivy-framework"),
+        "after POST /repos with a URL",
+    );
+}
+
+#[tokio::test]
+async fn a_malformed_repo_url_is_refused_before_anything_is_written() {
+    let srv = start_test_server_with_config("bad-url", SAMPLE_PROJECT_EXTRAS_CONFIG).await;
+
+    // A URL-shaped string git has no transport for. Anything that is not URL-shaped at all is a
+    // local path, which these routes still accept as typed.
+    let (status, body) = srv
+        .send(
+            reqwest::Method::POST,
+            "/ivy-framework/repos",
+            json!({ "path": "ssh://" }),
+        )
+        .await;
+    assert_eq!(status, 400, "unexpected body: {body}");
+    let message = body["error"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("not a valid git repository URL"),
+        "unhelpful message: {message}"
+    );
+    assert!(
+        !srv.project_from_disk("ivy-framework")
+            .repos
+            .iter()
+            .any(|r| r.path == "ssh://"),
+        "the malformed URL was written anyway"
+    );
+
+    // An argument git would read as an option, rather than as a remote.
+    let (status, body) = srv
+        .send(
+            reqwest::Method::POST,
+            "",
+            json!({ "name": "Injected", "repos": ["--upload-pack=touch /tmp/pwned"] }),
+        )
+        .await;
+    assert_eq!(status, 400, "unexpected body: {body}");
+    assert!(
+        load_config(&srv.tendril_home.join("config.yaml"))
+            .expect("load config")
+            .projects
+            .iter()
+            .all(|p| p.name != "Injected"),
+        "a project was created for a URL that was never clonable"
+    );
+}
+
+/// The security property, at the HTTP boundary: a remote carrying a token fails like any other
+/// unreachable host, and the token is in neither the response nor anything on disk.
+#[tokio::test]
+async fn a_credential_bearing_url_is_redacted_in_the_response_and_never_persisted() {
+    let srv = start_test_server_with_config("redaction", EMPTY_PROJECTS_CONFIG).await;
+    let token = "ghp_notarealtokenbutlooksliketheshapeofone";
+    let url = format!("https://tendril-user:{token}@tendril-nonexistent.invalid/acme/widgets.git");
+
+    let (status, body) = srv
+        .send(
+            reqwest::Method::POST,
+            "",
+            json!({ "name": "LeakyProject", "color": "Blue", "repos": [url] }),
+        )
+        .await;
+    assert_eq!(status, 502, "unexpected body: {body}");
+
+    let rendered = body.to_string();
+    assert!(
+        !rendered.contains(token),
+        "the token reached the response body: {rendered}"
+    );
+    assert!(
+        !rendered.contains("tendril-user"),
+        "the username reached the response body: {rendered}"
+    );
+    assert!(
+        rendered.contains("***@tendril-nonexistent.invalid"),
+        "the host was redacted away with the credentials, leaving nothing actionable: {rendered}"
+    );
+
+    // Nothing on disk carries it either — not the failed project, and not a stray line of config.
+    let config_text = std::fs::read_to_string(srv.tendril_home.join("config.yaml")).unwrap();
+    assert!(
+        !config_text.contains(token) && !config_text.contains("tendril-user"),
+        "the credential reached config.yaml: {config_text}"
+    );
+    assert!(
+        !config_text.contains("LeakyProject"),
+        "a project was written for a clone that never happened: {config_text}"
+    );
+}
+
+/// Everything the create left on disk under `<TendrilHome>/Projects/<project>/Repos`, so a rollback
+/// can be asserted on the tree rather than on a path the test had to guess.
+fn cloned_repos_on_disk(srv: &TestServer, project: &str) -> Vec<PathBuf> {
+    let repos_dir = srv
+        .tendril_home
+        .join("Projects")
+        .join(project)
+        .join("Repos");
+    let mut found = Vec::new();
+    let mut stack = vec![repos_dir];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.join(".git").exists() {
+                found.push(path);
+            } else {
+                stack.push(path);
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+#[tokio::test]
+async fn a_create_that_fails_after_cloning_leaves_no_orphaned_clone() {
+    // The defect: `create_project` clones before it saves, and every error return past the clone
+    // walked away from whatever was already on disk. The tree at
+    // `Projects/<name>/Repos/<owner>/<repo>` was then referenced by nothing, named in no config, and
+    // cleaned up by nothing — while the operator, told the create failed, pressed Create Project
+    // again and made a second one.
+    //
+    // Two repositories, the second unreachable, is the deterministic shape of it: the first clone
+    // really lands, the request really fails, and the only question is whether the first clone is
+    // still there afterwards.
+    let remote = RemoteRepoFixture::new("rollback-create");
+    let srv = start_test_server_with_config("rollback-create", EMPTY_PROJECTS_CONFIG).await;
+
+    let (status, body) = srv
+        .send(
+            reqwest::Method::POST,
+            "",
+            json!({
+                "name": "HalfCloned",
+                "color": "Blue",
+                "repos": [
+                    remote.url(),
+                    "https://tendril-nonexistent.invalid/acme/gadgets.git",
+                ],
+            }),
+        )
+        .await;
+    assert_eq!(status, 502, "unexpected body: {body}");
+
+    assert!(
+        load_config(&srv.tendril_home.join("config.yaml"))
+            .expect("load config")
+            .projects
+            .iter()
+            .all(|p| p.name != "HalfCloned"),
+        "a project was written for a create that failed"
+    );
+    let left_behind = cloned_repos_on_disk(&srv, "HalfCloned");
+    assert!(
+        left_behind.is_empty(),
+        "the failed create left clones nothing references: {left_behind:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_rollback_keeps_a_clone_it_only_refreshed() {
+    // The other half of the rollback, and the one that makes it dangerous to get wrong: a request
+    // that *refreshed* an existing clone and then failed must leave that clone exactly where it
+    // was. It is the operator's working copy — it may carry branches, stashes and uncommitted work
+    // — and deleting it because a later repository in the same payload was unreachable would be a
+    // far worse failure than the orphan the rollback exists to prevent. Only the clones a request
+    // created are its to remove.
+    let remote = RemoteRepoFixture::new("rollback-refresh");
+    let srv = start_test_server_with_config("rollback-refresh", SAMPLE_PROJECT_EXTRAS_CONFIG).await;
+    let url = remote.url();
+
+    // First, a clone that succeeds, so there is an existing one for the failing request to refresh.
+    let (status, body) = srv
+        .send(
+            reqwest::Method::POST,
+            "/ivy-framework/repos",
+            json!({ "path": url }),
+        )
+        .await;
+    assert_eq!(status, 201, "the setup add failed: {body}");
+    let cloned = PathBuf::from(body["path"].as_str().expect("a path in the response"));
+    assert!(cloned.join(".git").is_dir(), "nothing was cloned");
+    // A file the refresh will not touch and the rollback must not take with it.
+    std::fs::write(cloned.join("uncommitted.txt"), "the operator's work\n").expect("write");
+
+    // Now a PUT naming that same remote plus an unreachable one. The first resolves to the clone
+    // above and is refreshed; the second fails and rolls the request back.
+    let (status, body) = srv
+        .send(
+            reqwest::Method::PUT,
+            "/ivy-framework",
+            json!({ "repos": [url, "https://tendril-nonexistent.invalid/acme/gadgets.git"] }),
+        )
+        .await;
+    assert_eq!(status, 502, "unexpected body: {body}");
+
+    assert!(
+        cloned.join(".git").is_dir(),
+        "the rollback deleted a clone it had only refreshed: {}",
+        cloned.display()
+    );
+    assert!(
+        cloned.join("uncommitted.txt").is_file(),
+        "the rollback destroyed uncommitted work in a pre-existing clone"
+    );
+    // And the failed PUT changed nothing in config.yaml either.
+    let proj = srv.project_from_disk("ivy-framework");
+    assert!(
+        proj.repos.iter().any(|r| Path::new(&r.path) == cloned),
+        "the successful add was rolled back by the failed PUT: {:?}",
+        proj.repos
+    );
+}
+
+#[tokio::test]
+async fn a_put_that_clones_keeps_what_another_writer_added_meanwhile() {
+    // The lost update: the PUT loaded `config.yaml`, mutated the copy, awaited a clone that can run
+    // for minutes, then saved the whole object — so anything written to the file in between was
+    // erased. That window is not hypothetical: the `AddProject` setup agent writes verifications and
+    // review actions through the `tendril` CLI, which writes `config.yaml` directly, and a project
+    // edited in the app while one ran lost every one of them.
+    //
+    // `create_project` and `add_project_repo` re-read after the clone for exactly this reason; this
+    // asserts the PUT now does too, by writing the file behind its back before it saves and then
+    // checking the write survived.
+    let remote = RemoteRepoFixture::new("put-reread");
+    let srv = start_test_server_with_config("put-reread", SAMPLE_PROJECT_EXTRAS_CONFIG).await;
+    let config_path = srv.tendril_home.join("config.yaml");
+
+    // What the concurrent writer puts in the file, on a field this PUT does not name.
+    let mut settings = load_config(&config_path).expect("load config");
+    let idx = settings
+        .projects
+        .iter()
+        .position(|p| p.name == "ivy-framework")
+        .expect("the sample project");
+    settings.projects[idx].context = "written by the setup agent".to_string();
+    tendril_core::config::save_config(&config_path, &settings).expect("save config");
+
+    // A PUT that names only the colour and the repositories. It was loaded before the write above
+    // only in the sense that matters — the handler re-reads before it saves, so the write stands.
+    let (status, body) = srv
+        .send(
+            reqwest::Method::PUT,
+            "/ivy-framework",
+            json!({ "color": "Red", "repos": [remote.url()] }),
+        )
+        .await;
+    assert_eq!(status, 200, "unexpected body: {body}");
+
+    let proj = srv.project_from_disk("ivy-framework");
+    assert_eq!(proj.color, "Red", "the PUT's own field was not applied");
+    assert_eq!(
+        proj.context, "written by the setup agent",
+        "the PUT erased a field it never named"
+    );
+    assert_eq!(proj.repos.len(), 1, "unexpected repos: {:?}", proj.repos);
+    assert_ne!(
+        proj.repos[0].path,
+        remote.url(),
+        "the URL was stored instead of the clone path"
+    );
+    assert!(
+        PathBuf::from(&proj.repos[0].path).join(".git").is_dir(),
+        "the PUT stored a path with no clone at it"
     );
 }

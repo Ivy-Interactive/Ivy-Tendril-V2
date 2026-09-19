@@ -511,7 +511,11 @@ fn is_secret_key(normalized: &str) -> bool {
 /// Text with every recognizable credential shape replaced. Run over the sanitized config, the doctor
 /// report and every job artifact, so a key that no key name gives away is still caught.
 pub(crate) fn redact_secret_shapes(text: &str) -> String {
-    let mut redacted = text.to_string();
+    // The userinfo of a remote URL goes first, and by the same rule the daemon clones under, because
+    // the shapes below only catch a secret they recognize: a git remote written
+    // `https://user:password@host/o/r` carries one that no shape matches, and a job log is full of
+    // remote URLs.
+    let mut redacted = tendril_core::git::redact_credentials(text);
     for shape in secret_shapes() {
         redacted = shape.replace_all(&redacted, REDACTED).into_owned();
     }
@@ -888,6 +892,39 @@ projects:
                 out
             );
         }
+    }
+
+    /// A remote URL carries its credentials in the URL itself, where no token shape has to match for
+    /// them to be a secret: `https://user:hunter2@host/o/r` is a password in a job log.
+    #[test]
+    fn a_credential_bearing_remote_url_is_redacted_wherever_it_appears() {
+        let out = redact_secret_shapes(
+            "Cloning into 'widgets'...\nremote: https://octocat:hunter2@github.com/acme/widgets.git\n",
+        );
+
+        assert!(!out.contains("hunter2"), "the password leaked:\n{}", out);
+        assert!(!out.contains("octocat"), "the username leaked:\n{}", out);
+        assert!(
+            out.contains("https://***@github.com/acme/widgets.git"),
+            "the URL should survive with only its userinfo gone:\n{}",
+            out
+        );
+        assert!(
+            out.contains("Cloning into 'widgets'"),
+            "the surrounding log should survive:\n{}",
+            out
+        );
+    }
+
+    #[test]
+    fn a_credential_bearing_remote_url_does_not_survive_in_the_sanitized_config() {
+        let out = redact_config_yaml(
+            "projects:\n  - name: Acme\n    repos:\n      - path: https://octocat:hunter2@github.com/acme/widgets.git\n",
+        )
+        .expect("the config parses");
+
+        assert!(!out.contains("hunter2"), "the password leaked:\n{}", out);
+        assert!(out.contains("github.com/acme/widgets.git"), "{}", out);
     }
 
     #[test]

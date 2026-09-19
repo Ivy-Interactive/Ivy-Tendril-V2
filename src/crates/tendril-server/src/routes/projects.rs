@@ -13,6 +13,9 @@ use tendril_core::config::{
     VerificationPlacement,
 };
 use tendril_core::db::open_database;
+use tendril_core::git::clone::{
+    import_remote_repo, is_remote_url, redact_credentials, CloneError, CloneFailure,
+};
 use tendril_core::git::sync::{diagnostic_prompt, sync_project, ProjectSyncResult};
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{
@@ -297,6 +300,144 @@ pub async fn get_project_issues_metadata(
             .into_response(),
     }
 }
+/// Turns every remote URL among `repos` into the local clone it now points at, leaving local paths
+/// exactly as written.
+///
+/// This is V1's `OnboardingRepoHelper.ResolveReposAsync`, and the reason it exists is the same: a
+/// URL in `config.yaml` is a project nothing downstream can use, because `resolve_working_directory`
+/// only ever picks a repo path that `is_dir()`. The clone happens before `save_config`, so a
+/// failure leaves no half-written project behind.
+///
+/// `base_branch` is filled in from the clone's own HEAD when the caller did not supply one — the
+/// same fact V1 gets from a pre-clone `ls-remote --symref`, without the extra round trip.
+///
+/// Cloning shells out to `git clone`, which can run for minutes on a large repository, so the whole
+/// pass runs off the async runtime — the precedent [`sync_project_repos`] sets for `git fetch`.
+async fn materialize_repos(
+    tendril_home: PathBuf,
+    project_name: String,
+    repos: Vec<RepoRef>,
+) -> Result<MaterializedRepos, CloneError> {
+    // A path git would read as an option is refused whether or not it looks like a remote: it has
+    // no scheme, so it reaches here as a "local path", and nothing downstream would treat it as one.
+    if let Some(repo) = repos.iter().find(|r| r.path.trim().starts_with('-')) {
+        return Err(CloneError {
+            kind: CloneFailure::InvalidUrl,
+            message: format!(
+                "'{}' is not a valid repository path: it starts with a dash, which git would read as an option.",
+                redact_credentials(repo.path.trim())
+            ),
+        });
+    }
+
+    if !repos.iter().any(|r| is_remote_url(&r.path)) {
+        return Ok(MaterializedRepos {
+            repos,
+            created: Vec::new(),
+        });
+    }
+
+    let joined = tokio::task::spawn_blocking(move || {
+        let mut resolved = Vec::with_capacity(repos.len());
+        let mut created = Vec::new();
+        for repo in repos {
+            if !is_remote_url(&repo.path) {
+                resolved.push(repo);
+                continue;
+            }
+            let cloned = match import_remote_repo(&tendril_home, &project_name, &repo.path) {
+                Ok(cloned) => cloned,
+                // One remote in a list of three failing still leaves the first two on disk with
+                // nothing about to reference them, so the partial pass rolls itself back before it
+                // reports — the same rule the handlers below apply to their own later failures.
+                Err(e) => {
+                    remove_cloned_repos(&created);
+                    return Err(e);
+                }
+            };
+            if !cloned.refreshed {
+                created.push(cloned.path.clone());
+            }
+            resolved.push(RepoRef {
+                path: cloned.path.to_string_lossy().to_string(),
+                base_branch: repo.base_branch.or(cloned.default_branch),
+                extra: repo.extra,
+            });
+        }
+        Ok(MaterializedRepos {
+            repos: resolved,
+            created,
+        })
+    })
+    .await;
+
+    match joined {
+        Ok(result) => result,
+        Err(e) => Err(CloneError {
+            kind: CloneFailure::GitFailed,
+            // The join error carries the panic payload, never a URL, so there is nothing to redact.
+            message: format!("The repository clone task failed: {e}"),
+        }),
+    }
+}
+
+/// What [`materialize_repos`] resolved, and what it had to create on disk to do it.
+///
+/// `created` is the rollback list, and it holds only the clones this pass *made*. A remote that was
+/// already there was refreshed rather than cloned (V1's pull-instead-of-clone), and that directory
+/// belongs to whoever imported it first — deleting it because a later, unrelated step failed would
+/// destroy a repository the operator is using. `ClonedRepo::refreshed` is the only thing that can
+/// tell the two apart, which is why the flag is threaded out to here.
+struct MaterializedRepos {
+    repos: Vec<RepoRef>,
+    /// Clone directories this pass created, in the order it created them.
+    created: Vec<PathBuf>,
+}
+
+/// Deletes the clones a request created, for a request that is about to fail.
+///
+/// The failure paths below all end with a handler returning an error status and writing nothing, so
+/// without this the clone tree stays under `<TendrilHome>/Projects/<name>/Repos/` with nothing in
+/// `config.yaml` naming it: invisible to the app, counted by nothing, and re-cloned on the next
+/// attempt. The sequence that makes it two trees rather than one is the app's own 600s clone
+/// timeout firing on a create the daemon then completes — the wizard reports failure, the operator
+/// presses Create Project again, and the second attempt hits the post-clone duplicate check.
+///
+/// Best-effort by design: a clone that cannot be removed is logged and the original failure is
+/// still what the caller reports, because the operator needs to hear why their request failed, not
+/// why the cleanup after it did.
+fn remove_cloned_repos(created: &[PathBuf]) {
+    for path in created {
+        if let Err(e) = std::fs::remove_dir_all(path) {
+            // `NotFound` is the expected case when a previous cleanup already ran, not a problem.
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::warn!(
+                    "Could not remove the clone at {} after a failed request: {}",
+                    path.display(),
+                    e
+                );
+            }
+        }
+    }
+}
+
+/// The status each failure deserves: the request was wrong (400), the disk is already occupied
+/// (409), the remote took too long (504), or it would not cooperate (502). The message is already
+/// redacted.
+fn clone_error_response(err: CloneError) -> axum::response::Response {
+    let status = match err.kind {
+        CloneFailure::InvalidUrl => StatusCode::BAD_REQUEST,
+        CloneFailure::DestinationConflict => StatusCode::CONFLICT,
+        // 504 rather than 502: the upstream answered, it just never finished. Split out because
+        // "try again" is reasonable advice for this one and is not for a 502.
+        CloneFailure::TimedOut => StatusCode::GATEWAY_TIMEOUT,
+        CloneFailure::Unreachable | CloneFailure::AuthRequired | CloneFailure::GitFailed => {
+            StatusCode::BAD_GATEWAY
+        }
+    };
+    (status, Json(json!({ "error": err.message }))).into_response()
+}
+
 pub async fn create_project(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateProjectRequest>,
@@ -310,7 +451,10 @@ pub async fn create_project(
             .into_response();
     }
 
-    let mut settings = match load_config(&state.config_path) {
+    // The duplicate check runs twice on purpose. Once here, so a clone that can take minutes is
+    // never started for a name that is already taken, and again after it, because the file this
+    // handler is about to rewrite may have moved on while the clone ran.
+    let settings = match load_config(&state.config_path) {
         Ok(s) => s,
         Err(e) => {
             return (
@@ -340,13 +484,51 @@ pub async fn create_project(
     };
 
     let repos: Vec<RepoRef> = req.repos.into_iter().map(Into::into).collect();
+    // Everything past this point can fail with clones already on disk, so every error return below
+    // rolls them back first. Without that, the failure leaves a repository tree under
+    // `Projects/<name>/Repos/` that no `config.yaml` entry names and nothing will ever clean up.
+    let materialized =
+        match materialize_repos(state.tendril_home.clone(), name.clone(), repos).await {
+            Ok(materialized) => materialized,
+            // `materialize_repos` already rolled back whatever it created before it failed.
+            Err(e) => return clone_error_response(e),
+        };
+    let created = materialized.created;
+
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            remove_cloned_repos(&created);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+    if settings
+        .projects
+        .iter()
+        .any(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        // The project appeared while the clone ran — most often this same request retried after the
+        // app's 600s clone timeout fired on a create the daemon went on to finish. The clone this
+        // attempt made is a second copy of a repository the winning attempt already has, so it goes.
+        remove_cloned_repos(&created);
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": format!("Project '{}' already exists", name) })),
+        )
+            .into_response();
+    }
+
     let verifications: Vec<ProjectVerificationRef> =
         req.verifications.into_iter().map(Into::into).collect();
 
     let project = ProjectConfig {
         name,
         color,
-        repos,
+        repos: materialized.repos,
         verifications,
         context: req.context,
         stack_hash: req.stack_hash,
@@ -362,6 +544,7 @@ pub async fn create_project(
 
     settings.projects.push(project.clone());
     if let Err(e) = save_config(&state.config_path, &settings) {
+        remove_cloned_repos(&created);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to save config: {}", e) })),
@@ -377,9 +560,93 @@ pub async fn update_project(
     Path(name): Path<String>,
     Json(req): Json<UpdateProjectRequest>,
 ) -> impl IntoResponse {
+    let settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    if !settings
+        .projects
+        .iter()
+        .any(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Project '{}' not found", name) })),
+        )
+            .into_response();
+    }
+
+    // Validated against the pre-clone snapshot so an empty or already-taken name is refused before
+    // a clone that can take minutes is started, and validated again after it against the file this
+    // handler will actually write.
+    let rename_target = req.new_name.or(req.name);
+    let mut renamed_to: Option<String> = None;
+    if let Some(target) = rename_target.as_deref() {
+        let trimmed = target.trim();
+        if trimmed.is_empty() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Project name cannot be empty" })),
+            )
+                .into_response();
+        }
+        if !trimmed.eq_ignore_ascii_case(&name)
+            && settings
+                .projects
+                .iter()
+                .any(|p| p.name.eq_ignore_ascii_case(trimmed))
+        {
+            return (
+                StatusCode::CONFLICT,
+                Json(json!({ "error": format!("Project '{}' already exists", trimmed) })),
+            )
+                .into_response();
+        }
+        if !trimmed.eq_ignore_ascii_case(&name) {
+            renamed_to = Some(trimmed.to_string());
+        }
+    }
+
+    // A PUT replaces the repository list wholesale, so it is a way into `config.yaml` for a URL
+    // just as much as the create and add-repo routes are. Resolved against the project's *new* name
+    // when this same request renames it, so the clone does not land under a directory that is about
+    // to stop existing. Entries already local short-circuit, which is every PUT after the first.
+    //
+    // It runs here, against nothing but the snapshot above, because the settings this handler saves
+    // have to be read *after* it. The clone can take minutes, `config.yaml` is written by the
+    // `tendril` CLI too — which is how an `AddProject` run records the verifications and review
+    // actions it derives — and a handler that mutated a pre-clone copy and saved it afterwards
+    // erased every one of those writes. [`create_project`] and [`add_project_repo`] re-read for the
+    // same reason; this one is the third.
+    let materialized = match req.repos {
+        Some(repos) => {
+            let repos: Vec<RepoRef> = repos.into_iter().map(Into::into).collect();
+            let project_name = renamed_to.clone().unwrap_or_else(|| name.clone());
+            match materialize_repos(state.tendril_home.clone(), project_name, repos).await {
+                Ok(materialized) => Some(materialized),
+                Err(e) => return clone_error_response(e),
+            }
+        }
+        None => None,
+    };
+    let created: Vec<PathBuf> = materialized
+        .as_ref()
+        .map(|m| m.created.clone())
+        .unwrap_or_default();
+
+    // The re-read. Everything from here down applies this request's fields to what is on disk now,
+    // not to the copy loaded above.
     let mut settings = match load_config(&state.config_path) {
         Ok(s) => s,
         Err(e) => {
+            remove_cloned_repos(&created);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": format!("Failed to load config: {}", e) })),
@@ -395,41 +662,43 @@ pub async fn update_project(
     {
         Some(idx) => idx,
         None => {
+            // 409, not 404: the project was there when the request was accepted and is not now, so
+            // this is a conflict with whatever deleted or renamed it rather than a bad URL. Writing
+            // the project back under its old name would resurrect one the operator just removed.
+            remove_cloned_repos(&created);
             return (
-                StatusCode::NOT_FOUND,
-                Json(json!({ "error": format!("Project '{}' not found", name) })),
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": format!(
+                        "Project '{}' was deleted or renamed while its repositories were being cloned. Nothing was changed.",
+                        name
+                    )
+                })),
             )
                 .into_response();
         }
     };
 
-    let rename_target = req.new_name.or(req.name);
-    let mut renamed_to: Option<String> = None;
-    if let Some(target) = rename_target {
-        let trimmed = target.trim().to_string();
-        if trimmed.is_empty() {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({ "error": "Project name cannot be empty" })),
-            )
-                .into_response();
-        }
-        if !trimmed.eq_ignore_ascii_case(&name)
-            && settings
-                .projects
-                .iter()
-                .any(|p| p.name.eq_ignore_ascii_case(&trimmed))
+    if let Some(new_name) = renamed_to.as_deref() {
+        // Re-checked against the re-read file: the name this request wants may have been taken by
+        // something else while the clone ran.
+        if settings
+            .projects
+            .iter()
+            .enumerate()
+            .any(|(idx, p)| idx != proj_idx && p.name.eq_ignore_ascii_case(new_name))
         {
+            remove_cloned_repos(&created);
             return (
                 StatusCode::CONFLICT,
-                Json(json!({ "error": format!("Project '{}' already exists", trimmed) })),
+                Json(json!({ "error": format!("Project '{}' already exists", new_name) })),
             )
                 .into_response();
         }
-        if !trimmed.eq_ignore_ascii_case(&name) {
-            renamed_to = Some(trimmed.clone());
-        }
-        settings.projects[proj_idx].name = trimmed;
+    }
+
+    if let Some(target) = rename_target {
+        settings.projects[proj_idx].name = target.trim().to_string();
     }
 
     if let Some(color) = req.color {
@@ -439,8 +708,8 @@ pub async fn update_project(
         }
     }
 
-    if let Some(repos) = req.repos {
-        settings.projects[proj_idx].repos = repos.into_iter().map(Into::into).collect();
+    if let Some(materialized) = materialized {
+        settings.projects[proj_idx].repos = materialized.repos;
     }
 
     if let Some(verifications) = req.verifications {
@@ -512,6 +781,8 @@ pub async fn update_project(
 
     let updated_project = settings.projects[proj_idx].clone();
     if let Err(e) = save_config(&state.config_path, &settings) {
+        // Nothing on disk now points at the clone this request made, so it goes with the request.
+        remove_cloned_repos(&created);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to save config: {}", e) })),
@@ -580,12 +851,15 @@ pub struct RemoveRepoParams {
     pub path: Option<String>,
 }
 
+/// `POST /api/projects/:name/repos` — adds one repository, cloning it first when it is a URL.
+///
+/// Same contract as [`create_project`]: what is stored is a path on disk, never a URL.
 pub async fn add_project_repo(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Json(input): Json<RepoInput>,
 ) -> impl IntoResponse {
-    let mut settings = match load_config(&state.config_path) {
+    let settings = match load_config(&state.config_path) {
         Ok(s) => s,
         Err(e) => {
             return (
@@ -596,20 +870,18 @@ pub async fn add_project_repo(
         }
     };
 
-    let proj_idx = match settings
+    let Some(project) = settings
         .projects
         .iter()
-        .position(|p| p.name.eq_ignore_ascii_case(&name))
-    {
-        Some(idx) => idx,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({ "error": format!("Project '{}' not found", name) })),
-            )
-                .into_response();
-        }
+        .find(|p| p.name.eq_ignore_ascii_case(&name))
+    else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Project '{}' not found", name) })),
+        )
+            .into_response();
     };
+    let project_name = project.name.clone();
 
     let repo_ref: RepoRef = input.into();
     if repo_ref.path.trim().is_empty() {
@@ -620,7 +892,9 @@ pub async fn add_project_repo(
             .into_response();
     }
 
-    if let Some(existing) = settings.projects[proj_idx]
+    // The URL is deduped before the clone as well as the path after it, so pasting the same remote
+    // twice answers from config instead of going back to the network.
+    if let Some(existing) = project
         .repos
         .iter()
         .find(|r| r.path.eq_ignore_ascii_case(&repo_ref.path))
@@ -628,8 +902,61 @@ pub async fn add_project_repo(
         return (StatusCode::OK, Json(json!(existing))).into_response();
     }
 
+    let mut materialized = match materialize_repos(
+        state.tendril_home.clone(),
+        project_name.clone(),
+        vec![repo_ref],
+    )
+    .await
+    {
+        Ok(materialized) => materialized,
+        Err(e) => return clone_error_response(e),
+    };
+    let created = std::mem::take(&mut materialized.created);
+    let repo_ref = materialized.repos.remove(0);
+
+    // Re-read: the clone may have run for minutes, and this handler is about to rewrite the file.
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            remove_cloned_repos(&created);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            remove_cloned_repos(&created);
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    if let Some(existing) = settings.projects[proj_idx]
+        .repos
+        .iter()
+        .find(|r| r.path.eq_ignore_ascii_case(&repo_ref.path))
+    {
+        // The same remote was added by something else while this clone ran, and it resolved to the
+        // same directory. The clone is kept: it *is* the repository the config now points at, and
+        // it was a refresh of that directory rather than a second copy.
+        return (StatusCode::OK, Json(json!(existing))).into_response();
+    }
+
     settings.projects[proj_idx].repos.push(repo_ref.clone());
     if let Err(e) = save_config(&state.config_path, &settings) {
+        remove_cloned_repos(&created);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to save config: {}", e) })),
