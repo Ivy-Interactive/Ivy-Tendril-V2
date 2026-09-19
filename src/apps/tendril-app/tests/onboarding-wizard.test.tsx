@@ -4,8 +4,9 @@ import { OnboardingWizard } from "../src/views/onboarding/OnboardingWizard";
 import { App } from "../src/App";
 import { bridge } from "../src/api/bridge";
 import { chatApi } from "../src/api/chatApi";
+import { jobsStore } from "../src/state/jobsStore";
 import { uiStore } from "../src/state/uiStore";
-import type { DoctorCheck, OnboardingStatus } from "../src/types/api";
+import type { DoctorCheck, JobDetail, OnboardingStatus } from "../src/types/api";
 
 const freshInstall: OnboardingStatus = {
   needed: true,
@@ -94,6 +95,23 @@ const HOME_STEP = 1;
 const PROJECT_STEP = 2;
 const COMPLETE_STEP = 3;
 
+/** The `AddProject` run every project walk below starts, matching the `startJob` mock. */
+const SETUP_JOB = "00900";
+
+/**
+ * Fills in sub-step 0 and presses Create Project, landing on the agent sub-step with the viewer
+ * mounted - which is lazy, so the assertion is what waits for its chunk.
+ */
+async function createProjectAndWatch(name = "Ivy-Tendril-V2") {
+  await goToStep(PROJECT_STEP);
+  await addRepo("/repos/tendril");
+  await act(async () => {
+    fireEvent.change(screen.getByTestId("onboarding-project-name"), { target: { value: name } });
+  });
+  await click("onboarding-continue");
+  await screen.findByTestId("add-project-agent-viewer");
+}
+
 describe("OnboardingWizard", () => {
   let runDoctor: ReturnType<typeof vi.spyOn>;
   let dismissOnboarding: ReturnType<typeof vi.spyOn>;
@@ -103,6 +121,14 @@ describe("OnboardingWizard", () => {
   let startJob: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    // The job store is a module singleton, so a run one case left in it would arrive in the next
+    // already terminal - which is exactly the state these cases are trying to distinguish.
+    const jobs = jobsStore.getState();
+    jobs.jobs = [];
+    jobs.jobDetails = {};
+    jobsStore.clearSession(SETUP_JOB);
+    jobsStore.resetExitTracking();
+
     runDoctor = vi.spyOn(bridge, "runDoctor").mockResolvedValue(healthyChecks);
     dismissOnboarding = vi.spyOn(bridge, "dismissOnboarding").mockResolvedValue(undefined);
     completeOnboarding = vi.spyOn(bridge, "completeOnboarding").mockResolvedValue(undefined);
@@ -307,15 +333,313 @@ describe("OnboardingWizard", () => {
       projectName: "Ivy-Tendril-V2",
       repos: [{ path: "/repos/tendril" }],
     });
-    // V1 parity: the project section does not auto-advance. V1 lands on its sub-step 1 with the
-    // hand-off in flight and waits for Next, so the wizard stays here with the panel showing.
-    // The old expectation (straight to the last step) left that panel, and its "Configure
-    // verifications now" button, unreachable.
-    expect(screen.getByTestId("onboarding-step-project")).toBeInTheDocument();
-    expect(screen.getByTestId("onboarding-project-registered")).toBeInTheDocument();
+    // V1 parity: the section does not auto-advance out of itself, it advances *within* itself. V1's
+    // sub-step 1 is the live run, so Create Project lands on the viewer over the job it just started
+    // rather than on a paragraph telling the operator to go and find it under Jobs.
+    expect(screen.getByTestId("onboarding-step-project-agent")).toBeInTheDocument();
+    // The viewer is lazy, so this await is what loads its chunk - the step around it is not.
+    expect(await screen.findByTestId("add-project-agent-viewer")).toBeInTheDocument();
+    expect(screen.queryByTestId("onboarding-step-complete")).not.toBeInTheDocument();
+  });
 
+  it("walks V1's three project sub-steps: input, the run, then the harness", async () => {
+    vi.spyOn(bridge, "getJob").mockResolvedValue({
+      id: SETUP_JOB,
+      type: "AddProject",
+      project: "Ivy-Tendril-V2",
+      status: "Completed",
+    } as JobDetail);
+
+    await renderWizard();
+    await createProjectAndWatch();
+
+    // V1 `.Disabled(running)`: Next opens only once the run reaches a terminal status.
+    expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
+
+    // The harness re-reads config.yaml on the run's completion, as V1's `ReloadSettings()` does.
+    vi.spyOn(bridge, "listProjects").mockResolvedValue([
+      {
+        name: "Ivy-Tendril-V2",
+        repos: ["/repos/tendril"],
+        verifications: ["build"],
+        reviewActions: [{ name: "Run dev", condition: "", command: "pnpm dev" }],
+      },
+    ]);
+    await act(async () => {
+      await jobsStore.fetchJobDetail(SETUP_JOB);
+    });
+
+    expect(screen.getByTestId("onboarding-continue")).not.toBeDisabled();
+    await click("onboarding-continue");
+
+    expect(await screen.findByTestId("onboarding-step-harness")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-harness-verifications")).toHaveTextContent("build");
+    expect(screen.getByTestId("onboarding-harness-review-actions")).toHaveTextContent("pnpm dev");
+
+    // Only the harness's Next leaves the section, which is V1's `stepperIndex.Set(3)`.
     await click("onboarding-continue");
     expect(screen.getByTestId("onboarding-step-complete")).toBeInTheDocument();
+  });
+
+  it("says the harness could not be read rather than that it is empty", async () => {
+    // These two render the same nothing but mean opposite things. "Nothing is configured yet" sends
+    // the operator to reconfigure a harness that may be perfectly fine; what actually happened is
+    // that the read failed. Swallowing the rejection made the first message stand in for the second.
+    vi.spyOn(bridge, "getJob").mockResolvedValue({
+      id: SETUP_JOB,
+      type: "AddProject",
+      project: "Ivy-Tendril-V2",
+      status: "Completed",
+    } as JobDetail);
+
+    await renderWizard();
+    await createProjectAndWatch();
+
+    vi.spyOn(bridge, "listProjects").mockRejectedValue(new Error("daemon is not running"));
+    await act(async () => {
+      await jobsStore.fetchJobDetail(SETUP_JOB);
+    });
+    await click("onboarding-continue");
+
+    const error = await screen.findByTestId("onboarding-harness-error");
+    expect(error).toHaveTextContent("daemon is not running");
+    expect(screen.queryByTestId("onboarding-harness-empty")).not.toBeInTheDocument();
+
+    // And the step is still traversable - a failed read must not trap the wizard on it.
+    await click("onboarding-continue");
+    expect(screen.getByTestId("onboarding-step-complete")).toBeInTheDocument();
+  });
+
+  it("cancels the run and lands on the harness when the agent sub-step is skipped", async () => {
+    // V1's Skip here calls `session.Reset()`, which kills the handle, and goes to sub-step 2 - not
+    // to Complete, which is what the section's own Skip on sub-step 0 does.
+    const cancelJob = vi.spyOn(bridge, "cancelJob").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "listJobs").mockResolvedValue([
+      { id: SETUP_JOB, type: "AddProject", project: "Ivy-Tendril-V2", status: "Running" },
+    ]);
+
+    await renderWizard();
+    await createProjectAndWatch();
+    await act(async () => {
+      await jobsStore.fetchJobs();
+    });
+
+    await click("onboarding-skip");
+
+    expect(cancelJob).toHaveBeenCalledWith(SETUP_JOB, undefined);
+    expect(await screen.findByTestId("onboarding-step-harness")).toBeInTheDocument();
+    expect(screen.queryByTestId("onboarding-step-complete")).not.toBeInTheDocument();
+  });
+
+  it("cancels the run and returns to the input when the agent sub-step goes Back", async () => {
+    const cancelJob = vi.spyOn(bridge, "cancelJob").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "listJobs").mockResolvedValue([
+      { id: SETUP_JOB, type: "AddProject", project: "Ivy-Tendril-V2", status: "Running" },
+    ]);
+
+    await renderWizard();
+    await createProjectAndWatch();
+    await act(async () => {
+      await jobsStore.fetchJobs();
+    });
+
+    await click("onboarding-back");
+
+    expect(cancelJob).toHaveBeenCalledWith(SETUP_JOB, undefined);
+    expect(screen.getByTestId("onboarding-step-project")).toBeInTheDocument();
+  });
+
+  it("shows why a failed run failed instead of ungating Next silently", async () => {
+    // Every terminal status ungates Next, `Failed` included, so without this line a failed setup is
+    // indistinguishable from a successful one - V1 renders `Text.Danger(session.Error)` for it.
+    vi.spyOn(bridge, "getJob").mockResolvedValue({
+      id: SETUP_JOB,
+      type: "AddProject",
+      project: "Ivy-Tendril-V2",
+      status: "Failed",
+      reportedFailureReason: "Agent exited before writing any verifications",
+    } as JobDetail);
+
+    await renderWizard();
+    await createProjectAndWatch();
+    await act(async () => {
+      await jobsStore.fetchJobDetail(SETUP_JOB);
+    });
+
+    expect(screen.getByTestId("add-project-agent-error")).toHaveTextContent(
+      "Agent exited before writing any verifications",
+    );
+    expect(screen.getByTestId("onboarding-continue")).not.toBeDisabled();
+  });
+
+  it("adopts an existing project into the run sub-step with nothing to watch", async () => {
+    // `UseExisting` starts no job, so the sub-step must say so and open Next rather than wait for a
+    // terminal status that is never coming.
+    vi.spyOn(bridge, "listProjects").mockResolvedValue([
+      { name: "Ivy-Tendril-V2", repos: ["/repos/existing"], verifications: [] },
+    ]);
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("onboarding-project-name"), {
+        target: { value: "Ivy-Tendril-V2" },
+      });
+    });
+
+    await click("onboarding-use-existing-project");
+
+    expect(screen.getByTestId("onboarding-step-project-agent")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-agent-no-run")).toBeInTheDocument();
+    expect(screen.queryByTestId("add-project-agent-viewer")).not.toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-continue")).not.toBeDisabled();
+    expect(createProject).not.toHaveBeenCalled();
+  });
+
+  it("keeps a Cancel alive while the create is cloning, and frees the wizard with it", async () => {
+    // The clone runs inside `createProject`, before any job id exists, so `jobsStore.cancelJob` has
+    // nothing to reach - and every control on the step is gated on `busy`. Without this Cancel a
+    // wrong or enormous remote froze Back, Skip and Skip setup alike until the app transport's
+    // ten-minute `CLONE_TIMEOUT` fired. V1 never needed one: its clone runs under the step's own
+    // `CancellationTokenSource`, which Back and Skip cancel.
+    let settle: (value: { name: string; repos: { path: string }[] }) => void = () => {};
+    createProject.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+    await addRepo("https://github.com/acme/widgets.git");
+    await click("onboarding-continue");
+
+    // Still in flight: the wait is named, timed, and abandonable.
+    expect(screen.getByTestId("onboarding-progress")).toHaveTextContent("Cloning repositories...");
+    expect(screen.getByTestId("onboarding-elapsed")).toHaveTextContent("0:00");
+    expect(screen.getByTestId("onboarding-skip-setup")).toBeDisabled();
+
+    await click("onboarding-cancel-create");
+
+    expect(screen.getByTestId("onboarding-error")).toHaveTextContent("Stopped waiting");
+    expect(screen.queryByTestId("onboarding-progress")).not.toBeInTheDocument();
+    // The wizard is usable again, which is the whole point.
+    expect(screen.getByTestId("onboarding-skip-setup")).not.toBeDisabled();
+    expect(screen.getByTestId("onboarding-step-project")).toBeInTheDocument();
+
+    // The daemon went on cloning and answers eventually; the abandoned answer must not drag the
+    // operator onto the run sub-step they walked away from.
+    await act(async () => {
+      settle({ name: "widgets", repos: [{ path: "/clones/widgets" }] });
+    });
+    expect(screen.getByTestId("onboarding-step-project")).toBeInTheDocument();
+    expect(startJob).not.toHaveBeenCalled();
+  });
+
+  it("records the name of an abandoned create so the retry offers the existing project", async () => {
+    // The daemon wrote the project whatever this side did, so a blind retry would earn a bare 409.
+    let settle: (value: { name: string; repos: { path: string }[] }) => void = () => {};
+    createProject.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+    await addRepo("/repos/tendril");
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("onboarding-project-name"), {
+        target: { value: "Ivy-Tendril-V2" },
+      });
+    });
+    await click("onboarding-continue");
+    await click("onboarding-cancel-create");
+
+    await act(async () => {
+      settle({ name: "Ivy-Tendril-V2", repos: [{ path: "/repos/tendril" }] });
+    });
+
+    expect(screen.getByTestId("onboarding-project-name-exists")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-use-existing-project")).toBeInTheDocument();
+  });
+
+  it("opens the run sub-step with no viewer when the hand-off could not start", async () => {
+    startJob.mockRejectedValue(new Error("daemon is down"));
+
+    await renderWizard();
+    await goToStep(PROJECT_STEP);
+    await addRepo("/repos/tendril");
+    await click("onboarding-continue");
+
+    // The project is registered; V1 does not roll one back over a promptware that would not start.
+    expect(createProject).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("onboarding-error")).toHaveTextContent("AddProject could not start");
+    expect(screen.getByTestId("onboarding-step-project-agent")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-continue")).not.toBeDisabled();
+  });
+
+  it("returns to the section's first sub-step through the stepper", async () => {
+    // `OnboardingApp.OnSelect` sets `projectSubStep` to 0 whenever it targets the project section.
+    vi.spyOn(bridge, "getJob").mockResolvedValue({
+      id: SETUP_JOB,
+      type: "AddProject",
+      project: "Ivy-Tendril-V2",
+      status: "Completed",
+    } as JobDetail);
+    await renderWizard();
+    await createProjectAndWatch();
+    // The stepper is locked while the run is live (below), so this walk starts once it has landed.
+    await act(async () => {
+      await jobsStore.fetchJobDetail(SETUP_JOB);
+    });
+
+    await goToStep(HOME_STEP);
+    await goToStep(PROJECT_STEP);
+
+    expect(screen.getByTestId("onboarding-step-project")).toBeInTheDocument();
+  });
+
+  it("locks the stepper while the AddProject run is still going", async () => {
+    // V1 `OnboardingApp.cs:118` builds the stepper `.Disabled(isStepLoading.Value ||
+    // verificationRunning.Value)` and `OnSelect` returns early on the same condition. `busy` alone
+    // does not cover it: it goes false the moment `registerProject` returns, while the run it
+    // started has minutes left - so one stepper click orphaned the run and put Finish, which writes
+    // the onboarding flag, within reach of a project still being configured underneath. Back and
+    // Skip stay open because those cancel the run first.
+    vi.spyOn(bridge, "cancelJob").mockResolvedValue(undefined);
+    await renderWizard();
+    await createProjectAndWatch();
+
+    expect(screen.getByTestId(`onboarding-step-nav-${COMPLETE_STEP}`)).toBeDisabled();
+    await goToStep(COMPLETE_STEP);
+    expect(screen.getByTestId("onboarding-step-project-agent")).toBeInTheDocument();
+    expect(screen.queryByTestId("onboarding-step-complete")).not.toBeInTheDocument();
+
+    // Cancelling through Back releases it, because now there is no run to orphan.
+    await click("onboarding-back");
+    expect(screen.getByTestId(`onboarding-step-nav-${COMPLETE_STEP}`)).not.toBeDisabled();
+  });
+
+  it("forgets the cancelled run rather than re-mounting the viewer over it", async () => {
+    // V1's Back calls `session.Reset()`, which clears Handle, Running, Started, Cancelled and Error
+    // - not just the handle. Cancelling the job while keeping `setupJobId` and `setupFinished` left
+    // the input sub-step's primary reading "Next" over a job the operator had explicitly killed,
+    // with the run sub-step's own Next already open.
+    vi.spyOn(bridge, "cancelJob").mockResolvedValue(undefined);
+    await renderWizard();
+    await createProjectAndWatch();
+
+    await click("onboarding-back");
+    expect(screen.getByTestId("onboarding-step-project")).toBeInTheDocument();
+
+    // Forward again: the project is registered, so the primary is "Next" - but it must land on a
+    // sub-step with nothing to watch rather than on the viewer for the dead job.
+    await click("onboarding-continue");
+    expect(screen.getByTestId("onboarding-agent-no-run")).toBeInTheDocument();
+    expect(screen.queryByTestId("add-project-agent-viewer")).not.toBeInTheDocument();
+    expect(startJob).toHaveBeenCalledTimes(1);
   });
 
   it("persists the agent pick with the project, not only on Finish", async () => {
@@ -332,21 +656,33 @@ describe("OnboardingWizard", () => {
   });
 
   it("does not create the project twice when the operator comes back to the step", async () => {
+    vi.spyOn(bridge, "getJob").mockResolvedValue({
+      id: SETUP_JOB,
+      type: "AddProject",
+      project: "Ivy-Tendril-V2",
+      status: "Completed",
+    } as JobDetail);
     await renderWizard();
-    await goToStep(PROJECT_STEP);
-    await addRepo("/repos/tendril");
-    await click("onboarding-continue");
+    await createProjectAndWatch();
     expect(createProject).toHaveBeenCalledTimes(1);
+    // The run has to land before the stepper unlocks; see the lock case above.
+    await act(async () => {
+      await jobsStore.fetchJobDetail(SETUP_JOB);
+    });
 
-    // Forward to Complete, then back to the project step with the same name still typed.
-    await click("onboarding-continue");
+    // Out of the section and back in, with the same name still typed.
+    await goToStep(COMPLETE_STEP);
     await goToStep(PROJECT_STEP);
 
     // V1 only builds a ProjectConfig when the name is not already in the list, and
     // `CommitPendingProjectAsync` checks again before adding; Create Project is gone here.
+    expect(screen.getByTestId("onboarding-project-registered")).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-continue")).toHaveTextContent("Next");
     await click("onboarding-continue");
+
+    expect(screen.getByTestId("onboarding-step-project-agent")).toBeInTheDocument();
     expect(createProject).toHaveBeenCalledTimes(1);
+    expect(startJob).toHaveBeenCalledTimes(1);
   });
 
   it("offers the existing project instead of creating a duplicate", async () => {
@@ -367,10 +703,12 @@ describe("OnboardingWizard", () => {
     expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
 
     await click("onboarding-use-existing-project");
-
     expect(createProject).not.toHaveBeenCalled();
+
+    // The existing project's repositories are adopted, as `UseExisting` does - visible again once
+    // Back returns to the input, which is the only sub-step that lists them.
+    await click("onboarding-back");
     expect(screen.getByTestId("onboarding-project-registered")).toBeInTheDocument();
-    // The existing project's repositories are adopted, as `UseExisting` does.
     expect(screen.getByText("/repos/existing")).toBeInTheDocument();
   });
 
@@ -425,16 +763,43 @@ describe("OnboardingWizard", () => {
     expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
   });
 
-  it("refuses a remote URL, which V2 has no way to clone during setup", async () => {
-    // V1 clones it into TendrilHome first (`OnboardingRepoHelper.ResolveReposAsync`); with no clone
-    // path in the daemon, accepting it would write a project whose repo path is a URL.
+  it("accepts a remote URL and hands it to the daemon to clone", async () => {
+    // V1 clones it into TendrilHome before the project is written
+    // (`OnboardingRepoHelper.ResolveReposAsync`); V2's `POST /api/projects` does the same, so the
+    // URL goes over the wire and the path that lands in config.yaml is the clone's.
+    const url = "https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git";
     await renderWizard();
     await goToStep(PROJECT_STEP);
 
-    await addRepo("https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git");
+    await addRepo(url);
 
-    expect(screen.getByTestId("onboarding-picker-error")).toHaveTextContent("cannot clone");
-    expect(screen.getByTestId("onboarding-continue")).toBeDisabled();
+    expect(screen.queryByTestId("onboarding-picker-error")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `Remove ${url}` })).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(screen.getByTestId("onboarding-project-name"), {
+        target: { value: "Ivy-Tendril-V2" },
+      });
+    });
+    // The daemon clones it and answers with the path it landed on.
+    const cloned =
+      "/home/user/.tendril/Projects/Ivy-Tendril-V2/Repos/Ivy-Interactive/Ivy-Tendril-V2";
+    createProject.mockResolvedValue({ name: "Ivy-Tendril-V2", repos: [{ path: cloned }] });
+
+    await click("onboarding-continue");
+
+    expect(createProject).toHaveBeenCalledWith({
+      name: "Ivy-Tendril-V2",
+      color: "Green",
+      repos: [url],
+    });
+    // `AddProject` runs `tendril project-analyzer <repo-path>` over these, so it gets the clone,
+    // not the URL it was cloned from.
+    expect(startJob).toHaveBeenCalledWith({
+      type: "AddProject",
+      projectName: "Ivy-Tendril-V2",
+      repos: [{ path: cloned }],
+    });
   });
 
   it("dedupes repositories case-insensitively, as V1 does", async () => {

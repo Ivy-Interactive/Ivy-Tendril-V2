@@ -8,8 +8,10 @@ import { ErrorBanner } from "../../components/ErrorBanner";
 import { DataStorageStep, blockingChecks } from "./PrerequisitesStep";
 import { CodingAgentStep, agentCheck, agentLabel, machinePrerequisites } from "./CodingAgentStep";
 import { FirstProjectStep } from "./FirstProjectStep";
+import { ProjectAgentStep } from "./ProjectAgentStep";
+import { ProjectHarnessStep } from "./ProjectHarnessStep";
 import { CompleteStep } from "./CompleteStep";
-import { isValidProjectName, sanitizeProjectName } from "./validation";
+import { classifyRepoPath, isValidProjectName, sanitizeProjectName } from "./validation";
 
 /** V1 `OnboardingApp.GetSteps`: four steps, in this order, with these labels. */
 const STEP_TITLES = ["Coding Agent", "Data Storage", "Your First Project", "Complete"] as const;
@@ -18,6 +20,14 @@ const AGENT_STEP = 0;
 const HOME_STEP = 1;
 const PROJECT_STEP = 2;
 const COMPLETE_STEP = 3;
+
+/**
+ * V1 `OnboardingApp`'s `projectSubStep`: the whole project section lives inside stepper index 2, and
+ * the stepper itself stays four items. Input, then the agent run, then the harness it produced.
+ */
+const SUB_INPUT = 0;
+const SUB_AGENT = 1;
+const SUB_HARNESS = 2;
 
 /**
  * V1 `UxHelper.AnimateProgressAsync` and its `DualLinearEasing`, ported rather than re-tuned: one
@@ -63,6 +73,16 @@ function missingRequirement(checks: DoctorCheck[], agentId: string): DoctorCheck
   return null;
 }
 
+/**
+ * `m:ss` for the wait the create call owns. A clone of a large remote runs for minutes and the
+ * progress bar tops out at 92% after fifteen seconds, so without a clock on screen the operator has
+ * no way to tell a slow clone from a hung one - which is the whole reason the Cancel next to it
+ * exists.
+ */
+function formatElapsed(seconds: number): string {
+  return `${Math.trunc(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
 /** V1 `InstallMissingDialog`'s body, collapsed to one line: what is missing and what to do. */
 function installMessage(missing: DoctorCheck[]): string {
   return `Tendril needs ${missing.map((check) => check.name).join(", ")} but it isn't installed. Install it, then press Re-check.`;
@@ -81,9 +101,9 @@ function installMessage(missing: DoctorCheck[]): string {
  * Finish writes `codingAgent` (only if picked) and the onboarding flag, and **Skip setup** — V2's own
  * escape hatch, which V1 has no equivalent for — writes the flag alone.
  *
- * The project section does not auto-advance. V1 spends three sub-steps there (input, the agent run,
- * then Review Harness) and only reaches Complete when the operator asks for it, so Create Project
- * leaves you on the step with the hand-off panel visible and Next takes it from there.
+ * The project section does not auto-advance, and it is three sub-steps inside the one stepper item,
+ * as V1's is: input, the live agent run, then Review Harness. Create Project moves to the run and
+ * only the operator's Next reaches Complete.
  */
 export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) {
   const [step, setStep] = React.useState(AGENT_STEP);
@@ -94,6 +114,12 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
   const [projectName, setProjectName] = React.useState("");
   const [repoPaths, setRepoPaths] = React.useState<string[]>([]);
   const [projectRegistered, setProjectRegistered] = React.useState(false);
+  const [projectSubStep, setProjectSubStep] = React.useState(SUB_INPUT);
+  /** The `AddProject` run the agent sub-step watches. Null when nothing was started for it. */
+  const [setupJobId, setSetupJobId] = React.useState<string | null>(null);
+  const [setupFinished, setSetupFinished] = React.useState(false);
+  /** Bumped when the run ends, which is what makes the harness sub-step re-read config.yaml. */
+  const [harnessToken, setHarnessToken] = React.useState(0);
   /**
    * The projects `config.yaml` already has, plus anything this wizard registered. V1 reads
    * `config.Settings.Projects` on every render of its project step to decide whether the typed name
@@ -105,8 +131,22 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
   const [error, setError] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState<number | null>(null);
   const [progressMessage, setProgressMessage] = React.useState<string | null>(null);
+  /**
+   * Seconds the create call has been in flight, or null when none is. Non-null is also what puts
+   * Cancel on screen: the clone happens *inside* `createProject`, before any job id exists, so
+   * `jobsStore.cancelJob` has nothing to cancel and this is the only abort the operator has.
+   */
+  const [registerElapsed, setRegisterElapsed] = React.useState<number | null>(null);
 
   const progressTimer = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const elapsedTimer = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  /**
+   * Bumped every time a create starts *and* every time one is abandoned, so the call that resolves
+   * can tell whether it is still the one the operator is waiting on. There is no `AbortSignal` to
+   * reach for - `bridge.createProject` is a Tauri `invoke`, and the daemon goes on cloning whatever
+   * this side does - so abandoning means ignoring the answer, not stopping the work.
+   */
+  const registerRun = React.useRef(0);
 
   const stopProgressTimer = React.useCallback(() => {
     if (progressTimer.current !== null) {
@@ -136,13 +176,28 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     [stopProgressTimer],
   );
 
+  const stopElapsedTimer = React.useCallback(() => {
+    if (elapsedTimer.current !== null) {
+      clearInterval(elapsedTimer.current);
+      elapsedTimer.current = null;
+    }
+  }, []);
+
   const clearProgress = React.useCallback(() => {
     stopProgressTimer();
+    stopElapsedTimer();
     setProgress(null);
     setProgressMessage(null);
-  }, [stopProgressTimer]);
+    setRegisterElapsed(null);
+  }, [stopProgressTimer, stopElapsedTimer]);
 
-  React.useEffect(() => stopProgressTimer, [stopProgressTimer]);
+  React.useEffect(
+    () => () => {
+      stopProgressTimer();
+      stopElapsedTimer();
+    },
+    [stopProgressTimer, stopElapsedTimer],
+  );
 
   const runChecks = React.useCallback(() => {
     setChecksLoading(true);
@@ -186,20 +241,40 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     knownProjects.some((p) => p.name.toLowerCase() === projectName.trim().toLowerCase());
 
   /**
+   * V1 `OnboardingApp`'s `verificationRunning`: an `AddProject` run that has been started and has not
+   * reached a terminal status. The adopt-an-existing-project and failed-hand-off paths set
+   * `setupFinished` with no job, so both read as not running, which is right - there is nothing to
+   * orphan.
+   */
+  const setupRunning = setupJobId !== null && !setupFinished;
+
+  /**
    * V1 `OnboardingApp.OnSelect`: nothing moves while a step is loading, and from the last step you
    * may only go backwards. Otherwise any step is reachable, which is V1's way past a step rather
    * than a per-step Skip button.
+   *
+   * `verificationRunning` gates it as well as `isStepLoading`, exactly as V1's does. `busy` alone is
+   * not enough: it goes false the moment `registerProject` returns, while the run it started has
+   * minutes left, so a single stepper click orphaned that run and put Finish within reach with the
+   * project still being configured underneath. Back and Skip remain the way out of a live run,
+   * because those cancel it.
    */
   const selectStep = (target: number) => {
-    if (busy) return;
+    if (busy || setupRunning) return;
     if (target < step || step !== COMPLETE_STEP) {
       setError(null);
+      // `OnboardingApp.OnSelect`: arriving at the project section through the stepper always lands
+      // on its first sub-step, whatever it was left on.
+      if (target === PROJECT_STEP) setProjectSubStep(SUB_INPUT);
       setStep(target);
     }
   };
 
   const goTo = (target: number) => {
     setError(null);
+    // `CompleteStepView.OnBack` sets `projectSubStep` to 0 before it sets the stepper, so Back out of
+    // Complete lands on the section's first sub-step rather than on whatever it was left showing.
+    if (target === PROJECT_STEP) setProjectSubStep(SUB_INPUT);
     setStep(target);
   };
 
@@ -291,9 +366,26 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     // V1 `ProjectAgentStepView`: the same name check that gates the button also guards the commit.
     if (!isValidProjectName(name) || repoPaths.length === 0 || nameExists) return;
 
+    const run = registerRun.current + 1;
+    registerRun.current = run;
+    // Still the call the operator is waiting on? Cancel bumps the token, and every state write
+    // below is gated on this. Without it a create abandoned at minute four still lands its
+    // `setProjectSubStep(SUB_AGENT)` on whatever step the operator has since walked to.
+    const stillWaiting = () => registerRun.current === run;
+
     setBusy(true);
     setError(null);
-    startProgress("Setting up your project...");
+    // A remote is cloned by the daemon inside this one call and a large repository takes minutes,
+    // so the busy state has to say what is taking the time rather than look hung.
+    const cloning = repoPaths.some((path) => classifyRepoPath(path) !== "local");
+    startProgress(cloning ? "Cloning repositories..." : "Setting up your project...");
+    // The bar stops moving after fifteen seconds; the clock does not, and it is what the Cancel
+    // beside it is a decision about.
+    setRegisterElapsed(0);
+    stopElapsedTimer();
+    elapsedTimer.current = setInterval(() => {
+      setRegisterElapsed((seconds) => (seconds === null ? null : seconds + 1));
+    }, 1000);
     try {
       // V1's step 0 mutates `config.Settings.CodingAgent` in memory and the project step's
       // `CommitPendingProjectAsync` calls `SaveSettings()`, so V1's config.yaml carries the agent
@@ -302,46 +394,99 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       if (selectedAgent) {
         await bridge.putConfig("codingAgent", selectedAgent);
       }
-      await bridge.createProject({ name, color: FIRST_PROJECT_COLOR, repos: repoPaths });
-      setProjectRegistered(true);
-      // Remembered so a Back-and-forth cannot ask the daemon to create it twice.
-      setKnownProjects((current) =>
-        current.some((p) => p.name.toLowerCase() === name.toLowerCase())
-          ? current
-          : [...current, { name, repos: repoPaths }],
+      const created = await bridge.createProject({
+        name,
+        color: FIRST_PROJECT_COLOR,
+        repos: repoPaths,
+      });
+      // A remote was cloned by the create, and only its response says where to. `AddProject` reads
+      // these paths off disk (`tendril project-analyzer <repo-path>`), so handing it the URL back
+      // would point the run at nothing.
+      const resolvedRepos = created?.repos?.map((repo) => repo.path) ?? repoPaths;
+      // Recorded even for an abandoned call, and *before* the abandonment check: the daemon went on
+      // and wrote the project whatever this side did, so the name is taken now. Leaving it out is
+      // how the operator gets a bare 409 on the retry instead of the "use the existing one" box.
+      setKnownProjects((known) =>
+        known.some((p) => p.name.toLowerCase() === name.toLowerCase())
+          ? known
+          : [...known, { name, repos: resolvedRepos }],
       );
+      if (!stillWaiting()) return;
+      setRepoPaths(resolvedRepos);
+      setProjectRegistered(true);
       try {
-        await jobsStore.startJob({
+        const started = await jobsStore.startJob({
           type: "AddProject",
           projectName: name,
-          repos: repoPaths.map((path) => ({ path })),
+          repos: resolvedRepos.map((path) => ({ path })),
         });
+        if (!stillWaiting()) {
+          // Cancelled during the hand-off. The run is real and unwatched, so it is stopped rather
+          // than left going - the same thing `leaveAgentSubStep` does to a run being walked away
+          // from.
+          jobsStore.cancelJob(started.jobId).catch(() => {});
+          return;
+        }
+        setSetupJobId(started.jobId);
       } catch (err) {
-        // The project itself is registered; a failed hand-off is worth saying, not worth blocking on.
+        // The project itself is registered; a failed hand-off is worth saying, not worth blocking
+        // on. The sub-step still advances, with no run to watch - V1 does not roll a project back
+        // over a promptware that would not start either.
+        if (!stillWaiting()) return;
         setError(`Project created, but AddProject could not start: ${describeBridgeError(err)}`);
+        setSetupFinished(true);
       }
+      if (!stillWaiting()) return;
+      setProjectSubStep(SUB_AGENT);
     } catch (err) {
       // The daemon answers a duplicate name with 409; record it so the conflict box appears rather
       // than only a raw error, which is what V1 shows for the same state.
       const message = describeBridgeError(err);
       if (/already exists/i.test(message)) {
-        setKnownProjects((current) =>
-          current.some((p) => p.name.toLowerCase() === name.toLowerCase())
-            ? current
-            : [...current, { name, repos: [] }],
+        setKnownProjects((known) =>
+          known.some((p) => p.name.toLowerCase() === name.toLowerCase())
+            ? known
+            : [...known, { name, repos: [] }],
         );
       }
+      // An abandoned call's failure is not news: the operator already stopped waiting on it, and
+      // `abandonRegister` has put its own line on screen.
+      if (!stillWaiting()) return;
       setError(`Could not create the project: ${message}`);
     } finally {
-      clearProgress();
-      setBusy(false);
+      // Guarded, or the abandoned call clears the progress and the busy flag of the *next* create.
+      if (stillWaiting()) {
+        clearProgress();
+        setBusy(false);
+      }
     }
   };
 
   /**
-   * V1 `ProjectInputStepView.UseExisting`: adopt the existing project's repositories and carry on
-   * without writing anything. V1 then runs its setup promptware against that project; here the
-   * equivalent is the registered panel's "Configure verifications now", which starts `SetupProject`.
+   * Stops waiting on an in-flight create. There is nothing to abort: `bridge.createProject` is a
+   * Tauri `invoke` over a daemon that goes on cloning regardless, and the app's own transport gives
+   * up on it after ten minutes (`CLONE_TIMEOUT` in `service/client.rs`). What this gives back is the
+   * wizard - every control on the step is gated on `busy`, so without it a wrong or enormous remote
+   * freezes Back, Skip and Skip setup alike until that timeout fires.
+   *
+   * V1 never needed one: its clone runs inside `OnboardingRepoHelper.ResolveReposAsync` under the
+   * step's own `CancellationTokenSource`, which its Back and Skip cancel.
+   */
+  const abandonRegister = () => {
+    if (registerElapsed === null) return;
+    registerRun.current += 1;
+    clearProgress();
+    setBusy(false);
+    setError(
+      "Stopped waiting for the project to be created. The daemon may still be cloning; check your projects before creating it again.",
+    );
+  };
+
+  /**
+   * V1 `ProjectInputStepView.UseExisting`: adopt the existing project's repositories and move to the
+   * next sub-step without writing anything. Nothing is run over it - the project is already
+   * configured, which is the whole reason it was offered - so the agent sub-step has no job to watch
+   * and its Next is open immediately.
    */
   const useExistingProject = () => {
     if (busy) return;
@@ -351,20 +496,27 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     if (!existing) return;
     setRepoPaths(existing.repos);
     setProjectRegistered(true);
+    setSetupFinished(true);
+    setProjectSubStep(SUB_AGENT);
     setError(null);
   };
 
-  const configureVerifications = async () => {
-    if (busy) return;
-    setBusy(true);
+  /**
+   * V1's Back and Skip on the agent sub-step both call `session.Reset()`, which cancels the handle:
+   * leaving the step kills the run rather than leaving it going unwatched. `cancelJob` is a no-op
+   * for a run that already reached a terminal status.
+   *
+   * `Reset()` clears the whole session - Handle, Running, Started, Cancelled and Error - and so does
+   * this. Cancelling the job but keeping `setupJobId` and `setupFinished` left the wizard naming a
+   * run the operator had just killed: the input sub-step's primary read "Next" instead of waiting,
+   * and pressing it re-mounted the viewer over the dead job with the step's own Next already open.
+   */
+  const leaveAgentSubStep = (target: number) => {
+    if (setupJobId) jobsStore.cancelJob(setupJobId).catch(() => {});
+    setSetupJobId(null);
+    setSetupFinished(false);
     setError(null);
-    try {
-      await jobsStore.startJob({ type: "SetupProject", folderPath: projectName.trim() });
-    } catch (err) {
-      setError(`Could not start SetupProject: ${describeBridgeError(err)}`);
-    } finally {
-      setBusy(false);
-    }
+    setProjectSubStep(target);
   };
 
   const canLeaveHomeStep = status.tendrilHome.trim().length > 0;
@@ -415,23 +567,78 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     }
 
     if (step === PROJECT_STEP) {
-      // Once the project exists this is V1's sub-step 1, whose buttons are Back, Skip and Next -
-      // Create Project is gone, because there is nothing left to create.
-      if (projectRegistered) {
+      /**
+       * V1 `OnboardingApp.cs`'s sub-step 1 row: Back and Skip both cancel the run, Back returning to
+       * the input and Skip going *forward* to the harness - not to Complete, which is what the
+       * section's own Skip on sub-step 0 does. Next is disabled while the run is still going.
+       */
+      if (projectSubStep === SUB_AGENT) {
         return (
           <>
-            {backButton}
-            <div className="flex-1" />
-            <button
+            <Button
               type="button"
-              onClick={() => goTo(COMPLETE_STEP)}
+              variant="outline"
+              onClick={() => leaveAgentSubStep(SUB_INPUT)}
               disabled={busy}
+              data-testid="onboarding-back"
+            >
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              Back
+            </Button>
+            <div className="flex-1" />
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => leaveAgentSubStep(SUB_HARNESS)}
+              disabled={busy}
+              data-testid="onboarding-skip"
+              className="text-muted-foreground"
+            >
+              Skip
+            </Button>
+            {/* V1 `ProjectAgentStepView`'s `.Disabled(running)`. Gated on the run, not on
+                `setupFinished` alone: the sub-step is also reached with nothing to watch - an
+                adopted project, a hand-off that would not start, a run Back has just reset - and
+                nothing will ever call `onFinished` for those, so waiting on it is a dead end. */}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setProjectSubStep(SUB_HARNESS)}
+              disabled={busy || setupRunning}
               data-testid="onboarding-continue"
-              className="flex items-center gap-1.5 rounded-field bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
             >
               Next
               <ArrowRight className="size-4" aria-hidden="true" />
-            </button>
+            </Button>
+          </>
+        );
+      }
+
+      // V1's sub-step 2: Back to the input, Next out of the section.
+      if (projectSubStep === SUB_HARNESS) {
+        return (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setProjectSubStep(SUB_INPUT)}
+              disabled={busy}
+              data-testid="onboarding-back"
+            >
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              Back
+            </Button>
+            <div className="flex-1" />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => goTo(COMPLETE_STEP)}
+              disabled={busy}
+              data-testid="onboarding-continue"
+            >
+              Next
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Button>
           </>
         );
       }
@@ -450,15 +657,36 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             Skip
           </Button>
           <div className="flex-1" />
-          {backButton}
+          {/* The one control that stays live while the create is in flight, and the only reason the
+              rest being gated on `busy` is survivable: the clone runs inside that call, so there is
+              no job to stop and no other way off this step until the transport's own ten-minute
+              timeout fires. */}
+          {registerElapsed !== null ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={abandonRegister}
+              data-testid="onboarding-cancel-create"
+            >
+              Cancel
+            </Button>
+          ) : (
+            backButton
+          )}
+          {/* Coming back here with the project already written, there is nothing left to create.
+              V1 disables its Next on the name clash and routes forward through the conflict box's
+              "Use Existing Project Configuration"; with the fields already locked that would be a
+              dead end, so the primary carries on to the run instead. */}
           <Button
             type="button"
             variant="secondary"
-            onClick={() => void registerProject()}
-            disabled={busy || !canCreateProject}
+            onClick={() =>
+              projectRegistered ? setProjectSubStep(SUB_AGENT) : void registerProject()
+            }
+            disabled={busy || (!projectRegistered && !canCreateProject)}
             data-testid="onboarding-continue"
           >
-            Create Project
+            {projectRegistered ? "Next" : "Create Project"}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Button>
         </>
@@ -502,7 +730,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
                   <button
                     type="button"
                     onClick={() => selectStep(index)}
-                    disabled={busy}
+                    disabled={busy || setupRunning}
                     aria-current={active ? "step" : undefined}
                     data-testid={`onboarding-step-nav-${index}`}
                     className="flex items-center gap-2 disabled:pointer-events-none disabled:opacity-50"
@@ -554,24 +782,47 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
           />
         )}
         {step === HOME_STEP && <DataStorageStep tendrilHome={status.tendrilHome} />}
-        {step === PROJECT_STEP && (
+        {step === PROJECT_STEP && projectSubStep === SUB_INPUT && (
           <FirstProjectStep
             projectName={projectName}
             onProjectNameChange={(name) => setProjectName(sanitizeProjectName(name))}
             repoPaths={repoPaths}
             onReposChange={setRepoPaths}
-            onConfigureVerifications={() => void configureVerifications()}
             projectRegistered={projectRegistered}
             nameExists={nameExists && !projectRegistered}
             onUseExisting={useExistingProject}
             busy={busy}
           />
         )}
+        {step === PROJECT_STEP && projectSubStep === SUB_AGENT && (
+          <ProjectAgentStep
+            jobId={setupJobId}
+            onFinished={() => {
+              setSetupFinished(true);
+              // V1's completion handler reloads the settings and bumps the refresh token the harness
+              // sub-step reads through; the agent writes through the `tendril` CLI, so what that step
+              // shows changed under the app.
+              setHarnessToken((token) => token + 1);
+            }}
+          />
+        )}
+        {step === PROJECT_STEP && projectSubStep === SUB_HARNESS && (
+          <ProjectHarnessStep projectName={projectName} refreshToken={harnessToken} />
+        )}
         {step === COMPLETE_STEP && <CompleteStep />}
 
         {progress !== null && (
           <div className="space-y-1" data-testid="onboarding-progress">
-            {progressMessage && <p className="text-xs text-muted-foreground">{progressMessage}</p>}
+            {progressMessage && (
+              <p className="text-xs text-muted-foreground">
+                {progressMessage}
+                {/* The bar stops at 92% after fifteen seconds and a clone runs for minutes, so the
+                    clock is the only thing on screen that keeps moving. */}
+                {registerElapsed !== null && (
+                  <span data-testid="onboarding-elapsed"> {formatElapsed(registerElapsed)}</span>
+                )}
+              </p>
+            )}
             {/* The library component, not a hand-rolled bar: it is the same `h-2 rounded-full` track
                 over a 10%-primary fill, and Radix gives it the progressbar role and aria-value* for
                 free. */}

@@ -17,8 +17,6 @@ export interface FirstProjectStepProps {
   onProjectNameChange: (name: string) => void;
   repoPaths: string[];
   onReposChange: (paths: string[]) => void;
-  /** Starts `SetupProject` for a project that has already been registered. */
-  onConfigureVerifications: () => void;
   /** True once Create Project has registered the project and handed off to `AddProject`. */
   projectRegistered: boolean;
   /**
@@ -47,7 +45,6 @@ export function FirstProjectStep({
   onProjectNameChange,
   repoPaths,
   onReposChange,
-  onConfigureVerifications,
   projectRegistered,
   nameExists,
   onUseExisting,
@@ -71,16 +68,6 @@ export function FirstProjectStep({
       return;
     }
 
-    // V1 clones a remote into `<TendrilHome>/<project>/<owner>/<repo>` before it writes the
-    // project (`OnboardingRepoHelper.ResolveReposAsync`). V2 has no clone path in the daemon, so
-    // storing the URL as a repository path would write a project nothing downstream can use.
-    if (classifyRepoPath(path) !== "local") {
-      setAddError(
-        `Tendril cannot clone ${path} during setup. Clone it yourself, then add the local folder.`,
-      );
-      return;
-    }
-
     if (repoPaths.some((existing) => existing.toLowerCase() === path.toLowerCase())) {
       setRepoInput("");
       return;
@@ -95,8 +82,9 @@ export function FirstProjectStep({
     }
   };
 
-  // V1 replaces this whole step with its sub-step 1 once the project is committed, so nothing here
-  // is editable any more; V2 stays on the step, and disabling says the same thing.
+  // Coming back to this sub-step with the project already written, nothing here can change what is
+  // in config.yaml any more - V1 never shows it in that state at all, because its commit and its
+  // sub-step 1 are the same effect.
   const locked = projectRegistered;
 
   // V1 keeps the sanitized value in the state itself, so what the operator sees is what gets
@@ -180,7 +168,14 @@ export function FirstProjectStep({
           <ul className="divide-y divide-border rounded-box border border-border">
             {repoPaths.map((path) => (
               <li key={path} className="flex items-center justify-between gap-3 p-2">
-                <span className="min-w-0 break-all font-mono text-xs text-primary">{path}</span>
+                <span className="min-w-0 break-all font-mono text-xs text-primary">
+                  {path}
+                  {classifyRepoPath(path) !== "local" && (
+                    <span className="ml-2 font-sans text-muted-foreground">
+                      will be cloned on Create Project
+                    </span>
+                  )}
+                </span>
                 {/* The path, not "Remove repository": a list of them all offering the same name
                     is unusable by voice or by screen reader. */}
                 <IconButton
@@ -265,22 +260,9 @@ export function FirstProjectStep({
       )}
 
       {projectRegistered && (
-        <div className="rounded-box border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-          <p data-testid="onboarding-project-registered">
-            Tendril is detecting your tech stack and configuring your agentic harness. This will
-            take a few minutes, so treat yourself to a ☕ while you wait. You can watch{" "}
-            {projectName} under Jobs.
-          </p>
-          <button
-            type="button"
-            onClick={onConfigureVerifications}
-            disabled={busy}
-            data-testid="onboarding-configure-verifications"
-            className="mt-2 rounded-field border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
-          >
-            Configure verifications now
-          </button>
-        </div>
+        <p className="text-xs text-muted-foreground" data-testid="onboarding-project-registered">
+          {projectName} is registered. Next shows its setup run.
+        </p>
       )}
     </div>
   );
