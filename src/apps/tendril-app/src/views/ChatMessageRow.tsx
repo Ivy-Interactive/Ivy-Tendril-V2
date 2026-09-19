@@ -2,7 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ChatBubble, ChatBubbleMessage } from "@ivy-interactive/components/renderers";
 import { PlanMarkdown } from "@ivy-interactive/components/tendril";
 import { CheckCheck, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
-import { bridge } from "../api/bridge";
+import {
+  isImageAttachment,
+  resetAttachmentPreviewsForTesting,
+  useAttachmentPreview,
+} from "../hooks/useAttachmentPreview";
 import { chatStore } from "../state/chatStore";
 import type { ChatAttachment, ChatMessage, InProgressQuestionAnswers } from "../types/chat";
 import type { Job } from "../types/api";
@@ -28,7 +32,11 @@ export interface ChatMessageRowProps {
   threadMessages?: ChatMessage[];
 }
 
-const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
+/**
+ * Re-exported because the preview machinery moved to `hooks/useAttachmentPreview` when the composer
+ * came to need it too; the thread's own callers still reach it through this module.
+ */
+export { isImageAttachment, resetAttachmentPreviewsForTesting };
 
 const ATTACHED_FILES_HEADING = "[Attached Files]:";
 
@@ -55,71 +63,6 @@ export function parseUserMessageContent(content: string): {
     .filter((path) => path.length > 0)
     .map((path) => ({ name: path.split(/[/\\]/).pop() || path, path }));
   return { prompt, attachments };
-}
-
-/** An attachment worth showing as a thumbnail rather than as a paperclip chip. */
-export const isImageAttachment = (attachment: ChatAttachment): boolean =>
-  attachment.mimeType?.startsWith("image/") === true || IMAGE_EXTENSIONS.test(attachment.path);
-
-/**
- * Previews already resolved, keyed by path, so a thumbnail survives the re-render a streaming turn
- * causes and two rows showing the same file read it once.
- *
- * A rejection is remembered as well: the daemon's answer for a given path — outside the local-file
- * roots, or not an allow-listed image — does not change while the app is running, and retrying it on
- * every re-render would be a request per frame for a file that is never coming.
- */
-const previewCache = new Map<string, Promise<string>>();
-
-const loadPreview = (path: string): Promise<string> => {
-  const cached = previewCache.get(path);
-  if (cached) return cached;
-  const pending = bridge.getLocalFilePreview(path);
-  previewCache.set(path, pending);
-  return pending;
-};
-
-/** Forgets the resolved previews. Tests use it so one case's stub cannot answer the next one's. */
-export function resetAttachmentPreviewsForTesting(): void {
-  previewCache.clear();
-}
-
-/**
- * The `data:` URL for an image attachment, or `failed` when the daemon will not serve it.
- *
- * The webview cannot load a bare filesystem path — `file://` is blocked from the app's own origin — so
- * the bytes come from the daemon's guarded `GET /ivy/local-file`, which is the endpoint V1 points its
- * attachment `<img>` tags at. It is fetched natively rather than linked because that route takes its
- * credential in the query string and the app's only credential is the bearer secret the webview never
- * holds; see `src-tauri/src/commands/local_file.rs`.
- */
-function useAttachmentPreview(
-  path: string,
-  enabled: boolean,
-): { url: string | null; failed: boolean } {
-  const [state, setState] = useState<{ url: string | null; failed: boolean }>({
-    url: null,
-    failed: false,
-  });
-
-  useEffect(() => {
-    if (!enabled) return;
-    let active = true;
-    setState({ url: null, failed: false });
-    loadPreview(path).then(
-      (url) => {
-        if (active) setState({ url, failed: false });
-      },
-      () => {
-        if (active) setState({ url: null, failed: true });
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [path, enabled]);
-
-  return state;
 }
 
 /** The paperclip form: a document, or an image the daemon would not serve. */
@@ -391,9 +334,17 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
             <div>
               {/* What the turn did, ahead of what it said, as `AssistantTurn` orders it. */}
               <TurnActivity rawStream={currentMessage.rawStream} />
+              {/* `flow` drops the plan *page* off the renderer. V1 renders `BlockMarkdown` here
+                  (react-markdown, no shell) inside a plain `.chat-markdown-body`; only V1's plan
+                  tab gets `PlanMarkdown`'s `Cap()`, gutter and own scroll. Sharing one component
+                  between the two surfaces means the thread inherits all three unless it says
+                  otherwise - a 1.5rem inset on every turn, a second width cap inside the column's
+                  own, and a scroller nested in the thread's. A code block is where that reads as
+                  broken, being bordered, full-bleed and the widest thing in a turn. */}
               <PlanMarkdown
                 id={`chat-msg-${message.id}`}
                 content={content}
+                flow
                 events={["OnAnswersChange"]}
                 eventHandler={handleAnswersChange}
               />

@@ -230,7 +230,7 @@ describe("chat message presentation parity", () => {
         expect(items.find((i) => i.id === "a")?.state).toBeUndefined();
       });
       // The composer belongs to the chat on screen, which is not the one working.
-      expect(screen.getByTitle("Send message")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Send message" })).toBeInTheDocument();
     });
 
     it("renders no Chats list of its own: the page is the conversation", async () => {
@@ -268,5 +268,54 @@ describe("chat message presentation parity", () => {
       expect(screen.queryByText("Other chat")).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "New Chat" })).not.toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * A turn renders the markdown body, not the plan page.
+ *
+ * V1 has two renderers and so never has to choose: `ChatWidget`/`AssistantTurn` render
+ * `BlockMarkdown` — react-markdown with `BlockHandler`, no wrapper — inside a plain
+ * `.chat-markdown-body`, while `.pmv-root`'s shell (the `Cap()` stand-in, the 1.5rem gutter, the
+ * widget's own `overflow-y: auto`) belongs to the plan tab. V2 shares one component, so the thread
+ * inherits that page unless the call site opts out, and a code block — bordered, full-bleed, the
+ * widest thing in a turn — is where the inherited gutter shows as a misaligned left edge.
+ *
+ * What the gutter and the cap actually do is layout, which jsdom does not compute; `packages/
+ * components/src/components/PlanMarkdown/plan-markdown.css.test.ts` pins the declarations. What is
+ * observable here is that chat is the surface asking for the variant, which is the half of the fix
+ * a call-site change can regress on its own.
+ */
+describe("a turn's markdown renderer", () => {
+  beforeEach(() => {
+    chatStore.resetForTesting();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders the body without the plan page's chrome around it", () => {
+    const { container } = render(
+      <ChatMessageRow message={message({ content: "Here is a line.\n\n```\nplain\n```" })} />,
+    );
+
+    const root = container.querySelector(".pmv-root");
+    expect(root).not.toBeNull();
+    expect(root?.classList.contains("pmv-root--flow")).toBe(true);
+  });
+
+  it("still renders the code block's own frame, which was never the broken part", () => {
+    // The variant strips the page and nothing else: the block keeps its border, its padding and,
+    // crucially, its own horizontal scroll — the shell must not clip that on its way out.
+    const { container } = render(
+      <ChatMessageRow message={message({ content: "```\na long line of code\n```" })} />,
+    );
+
+    const pre = container.querySelector<HTMLElement>(".pmv-code-block pre");
+    expect(pre).not.toBeNull();
+    expect(pre?.style.overflowX).toBe("auto");
+    expect(pre?.style.maxWidth).toBe("100%");
   });
 });

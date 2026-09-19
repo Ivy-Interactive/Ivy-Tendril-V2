@@ -132,7 +132,7 @@ describe("Chat attachment staging", () => {
     });
     await act(async () => {
       fireEvent.change(textarea, { target: { value: "Look at this" } });
-      fireEvent.click(screen.getByTitle("Send message"));
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     });
 
     // The agent process can only read a path, and this is the path that exists on disk *and* inside a
@@ -156,7 +156,7 @@ describe("Chat attachment staging", () => {
     vi.mocked(open).mockResolvedValue(PICKED as never);
     await renderChatView();
 
-    fireEvent.click(screen.getByTitle("Attach file"));
+    fireEvent.click(screen.getByRole("button", { name: "Attach file" }));
 
     await waitFor(() => expect(upload).toHaveBeenCalledWith(PICKED, "session-staging"));
     await waitFor(() => expect(chip()).toHaveAttribute("title", STAGED));
@@ -173,7 +173,7 @@ describe("Chat attachment staging", () => {
     fireEvent.change(screen.getByPlaceholderText(/Ask Tendril anything/i), {
       target: { value: "Look at this" },
     });
-    fireEvent.click(screen.getByTitle("Send message"));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     // Degraded, not broken: the thumbnail falls back to a chip, which is what a file outside every root
     // rendered as before staging existed at all.

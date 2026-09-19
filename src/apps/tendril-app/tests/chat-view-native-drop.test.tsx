@@ -140,7 +140,7 @@ describe("ChatView native webview drag-drop", () => {
 
     const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
     fireEvent.change(textarea, { target: { value: "Look at this" } });
-    fireEvent.click(screen.getByTitle("Send message"));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     // The absolute path travels on the turn, appended under `[Attached Files]:` as
     // `ChatExecutionService.SendMessageAsync` does, since that is all the agent process can read.
