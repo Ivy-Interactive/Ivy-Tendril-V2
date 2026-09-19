@@ -41,14 +41,28 @@ pub async fn cmd_stop_share_tunnel() -> Result<TunnelSnapshotDto, BridgeError> {
     TunnelClient::from_master()?.stop().await
 }
 
-/// `GET /api/tunnel/share/install`. Port of `CheckInstalledAsync`.
-///
-/// The original pairs this with an "install it for you?" prompt that downloads from GitHub. There is no
-/// command for that here on purpose — see `tendril_core::tunnel::installer` — so the dialog shows the
-/// install instructions instead of offering to fetch a binary.
+/// `GET /api/tunnel/share/install`. Port of `CheckInstalledAsync`, and the progress read for
+/// [`cmd_install_cloudflared`].
 #[tauri::command]
 pub async fn cmd_get_cloudflared_install_state() -> Result<CloudflaredInstallDto, BridgeError> {
     TunnelClient::from_master()?.install_state().await
+}
+
+/// `POST /api/tunnel/share/install`. Port of the original's "install it for you?" prompt.
+///
+/// The download happens in the daemon rather than here, because the daemon is the machine that has to
+/// run `cloudflared` and may not be this one. Reached only when the user presses Install; the app
+/// never calls it on start or in the background. See `tendril_core::tunnel::installer` for what makes
+/// the fetch verifiable.
+#[tauri::command]
+pub async fn cmd_install_cloudflared() -> Result<CloudflaredInstallDto, BridgeError> {
+    TunnelClient::from_master()?.install().await
+}
+
+/// `DELETE /api/tunnel/share/install`. Cancels a running download.
+#[tauri::command]
+pub async fn cmd_cancel_cloudflared_install() -> Result<CloudflaredInstallDto, BridgeError> {
+    TunnelClient::from_master()?.cancel_install().await
 }
 
 /// `GET /api/tunnel/full`. Port of the `Status`/`TunnelUrl`/`ErrorMessage` reads
