@@ -320,3 +320,57 @@ describe("PlanDetailView and PlanVerifications interactive controls", () => {
     expect(screen.getByTestId("git-tab-error")).toHaveTextContent(/daemon is unreachable/);
   });
 });
+
+/**
+ * Audit item B5: six of this view's panes were wrapped in `CARD_SURFACE`, a hand-written
+ * `rounded-box border border-border bg-card/40`.
+ *
+ * None becomes the shared `Card`. The shared `Card` is `rounded-box border bg-card
+ * text-card-foreground shadow` - byte-for-byte the string the Ivy Framework's own `Card` renders,
+ * so V1's `new Card()` *is* V2's `<Card>` and there is no lighter shared variant. It is heavier
+ * than what these panes had, and V1 draws no card at any of the six: `DetailsTabView.cs:68` drops
+ * `ToDetails()` into a bare `Layout.Vertical().Gap(4)`, `ChangesTabView` and `GitTabView` open with
+ * bare vertical layouts, and `RecommendationsTabView.cs:22` is `Layout.Vertical().Padding(2)`.
+ *
+ * So the surface is removed rather than swapped. These pin that, because the change is invisible to
+ * every accessible query and a later refactor could quietly put the box back.
+ */
+describe("PlanDetailView tab panes draw no card", () => {
+  const testPlan = planDetail({ id: "00021", title: "Build Desktop Operator Experience" });
+
+  beforeEach(() => {
+    vi.spyOn(bridge, "getPlanGit").mockResolvedValue(planGit());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const unboxed = (el: Element | null | undefined) => {
+    expect(el).toBeTruthy();
+    expect(el!.className).not.toContain("bg-card");
+    expect(el!.className).not.toContain("rounded-box");
+  };
+
+  it("renders the Details list without a surface, as `DetailsTabView` does", () => {
+    render(<PlanDetailView plan={testPlan} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Details" }));
+
+    unboxed(screen.getByText("Plan ID").closest("dl"));
+  });
+
+  it("renders the Repositories and Commits panels without a surface", () => {
+    render(<PlanDetailView plan={testPlan} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Details" }));
+
+    unboxed(screen.getByText("Repositories").parentElement);
+    unboxed(screen.getByText("Commits").parentElement);
+  });
+
+  it("renders the Recommendations pane without a surface", () => {
+    render(<PlanDetailView plan={testPlan} />);
+    fireEvent.click(screen.getByRole("tab", { name: /Recommendations/ }));
+
+    unboxed(screen.getByText("Plan Recommendations").closest("div")?.parentElement);
+  });
+});

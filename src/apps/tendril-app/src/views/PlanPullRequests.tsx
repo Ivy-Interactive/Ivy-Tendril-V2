@@ -4,7 +4,6 @@ import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
 import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
 import { PR_STATE_COLOR } from "../utils/prStatus";
-import { CARD_SURFACE } from "../utils/surfaces";
 
 interface PlanPullRequestsProps {
   planId: string;
@@ -77,7 +76,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
     void load();
   }, [load]);
 
-  // A completed sync arrives on the plan channel, so the card refreshes without polling.
+  // A completed sync arrives on the plan channel, so the list refreshes without polling.
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     let cancelled = false;
@@ -95,7 +94,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
         else unsubscribe = un;
       })
       .catch(() => {
-        // Without the event stream the card is merely not live; Refresh still works.
+        // Without the event stream the list is merely not live; Refresh still works.
       });
     return () => {
       cancelled = true;
@@ -130,7 +129,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
   });
 
   return (
-    <div className={`${CARD_SURFACE} p-4`}>
+    <div>
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Pull Requests

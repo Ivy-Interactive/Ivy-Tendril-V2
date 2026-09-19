@@ -27,7 +27,6 @@ import { onPlanEvent } from "../api/events";
 import { sessionBelongsToPlan } from "../state/chatStore";
 import { PlanChatPanel, planFolderName } from "../components/chat/PlanChatPanel";
 import { extractPlanQuestions, patchQuestionsMarkdown } from "../utils/questionMarkdown";
-import { CARD_SURFACE } from "../utils/surfaces";
 import { PlanActionsController } from "../controllers/plan_actions";
 import { PlanPullRequests } from "./PlanPullRequests";
 import { draftActions, type DraftAction } from "../controllers/draft_actions";
@@ -1440,13 +1439,11 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const otherTabsPane = (
     <div key="tab-pane" className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
       {effectiveTab === "diff" && (
-        <div className={`${CARD_SURFACE} p-6`}>
-          <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
-        </div>
+        <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
       )}
 
       {effectiveTab === "recommendations" && (
-        <div className={`space-y-4 ${CARD_SURFACE} p-6`}>
+        <div className="space-y-4">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
             <p className="text-xs text-muted-foreground">
@@ -1474,7 +1471,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       )}
 
       {effectiveTab === "git" && (
-        <div className={`${CARD_SURFACE} p-6`}>
+        <>
           {gitError ? (
             <p data-testid="git-tab-error" className="text-xs text-destructive">
               {gitError}
@@ -1489,14 +1486,14 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           ) : (
             <p className="text-sm text-muted-foreground/70">Loading git state…</p>
           )}
-        </div>
+        </>
       )}
 
       {effectiveTab === "details" && (
         <div className="space-y-4">
           {/* `DetailsTabView.Build`'s own field order, and its `RemoveEmpty()`: a row the plan
               has no value for is dropped rather than rendered blank. */}
-          <dl className={`${CARD_SURFACE} p-4`}>
+          <dl>
             <DetailRow label="Plan ID">
               <button
                 type="button"
@@ -1567,7 +1564,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               because V2's Git tab is the only other place they appear and it is hidden while a
               plan has nothing in git yet. */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className={`${CARD_SURFACE} p-4`}>
+            <div>
               <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Repositories
               </h4>
@@ -1580,7 +1577,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               </ul>
             </div>
 
-            <div className={`${CARD_SURFACE} p-4`}>
+            <div>
               <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Commits
               </h4>
