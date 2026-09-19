@@ -5405,7 +5405,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sha2",
  "tendril-core",
  "tokio",
  "tokio-tungstenite 0.24.0",
