@@ -362,26 +362,40 @@
   transition: opacity var(--duration-base) var(--ease-standard);
 }
 
-.tsh-logo-toggle:hover .tsh-header-logo {
+/* Every rule that paints the panel icon in this slot - or fades the brand mark out to make room
+   for it - is gated on the rail, because expanded this slot is the brand mark and the close button
+   on the other end of the row owns the toggle. An ungated one puts a second, dead toggle in the
+   header, which is the bug this gating exists to prevent.
+
+   The hover pair below was previously ungated and stayed invisible only because
+   `.tsh-root:not([data-collapsed="true"]) .tsh-logo-toggle` sets `pointer-events: none`, so the
+   button never matched `:hover` expanded. That is a hit-testing property standing in for a visual
+   rule in a different declaration block: restore pointer events for any reason - a focus ring, a
+   tooltip trigger, a call site that wants the brand clickable - and the second toggle paints again.
+   Forcing `:hover` on the expanded header in Chromium against the shipped stylesheet took the logo
+   to opacity 0 and the panel icon to 1, so the state was reachable, not hypothetical. Stating the
+   invariant in each rule instead makes it hold regardless of hit testing.
+   `sidebar-brand-toggle.css.test.ts` pins it. */
+.tsh-root[data-collapsed="true"] .tsh-logo-toggle:hover .tsh-header-logo {
   opacity: 0;
 }
 
 /* V2 only: with no logoUrl there is nothing to fade out, so the panel icon would
    stay invisible until hover and the rail would have no visible expand control.
-   V1 always supplies a logo, so it never hits this. Gated on the rail: expanded,
-   this slot is the brand mark and the close button on the other end owns the
-   toggle, so painting the icon here put a second, dead toggle in the header. */
+   V1 always supplies a logo, so it never hits this. */
 .tsh-root[data-collapsed="true"]
   .tsh-logo-toggle:not(:has(.tsh-header-logo))
   .tsh-logo-toggle-icon {
   opacity: 1;
 }
 
-.tsh-logo-toggle:hover .tsh-logo-toggle-icon {
+.tsh-root[data-collapsed="true"] .tsh-logo-toggle:hover .tsh-logo-toggle-icon {
   opacity: 1;
 }
 
-.tsh-logo-toggle:hover {
+/* The hover surface goes with them: an expanded brand mark that lights up on hover reads as a
+   control, which is the same wrong affordance one step earlier. */
+.tsh-root[data-collapsed="true"] .tsh-logo-toggle:hover {
   background: var(--tsh-row-active);
   color: var(--foreground);
 }
