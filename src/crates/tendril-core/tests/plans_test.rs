@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tendril_core::db::get_plans_limited;
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
@@ -764,11 +764,111 @@ fn test_rename_project_in_plans() {
     let plan = create_plan(&test_dir, opts).unwrap();
     let plan_folder = Path::new(&plan.folder_path);
 
-    let count = rename_project_in_plans(&test_dir, "OldProject", "NewProject").unwrap();
-    assert_eq!(count, 1);
+    let outcome = rename_project_in_plans(&test_dir, "OldProject", "NewProject").unwrap();
+    assert_eq!(outcome.renamed, 1);
+    assert!(
+        !outcome.is_partial(),
+        "a clean sweep reports no failures, got {:?}",
+        outcome.failed
+    );
 
     let plan_file = read_plan_file(plan_folder).unwrap();
     assert_eq!(plan_file.metadata.project, "NewProject");
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// One unwritable plan must not decide the fate of the others.
+///
+/// The sweep used to `?` on the first failed write, so which plans got renamed depended on
+/// `read_dir` order — and the caller has already saved the rename, so the plans left behind name a
+/// project `config.yaml` no longer has and no retry will ever revisit them.
+///
+/// Unix-only: the failure is injected by making one plan folder read-only, and Windows ignores the
+/// read-only bit for a directory the way this test needs it honoured.
+#[cfg(unix)]
+#[test]
+fn rename_project_in_plans_keeps_going_past_a_plan_it_cannot_write() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-rename-proj-partial-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).unwrap();
+
+    let make_plan = |title: &str| {
+        create_plan(
+            &test_dir,
+            CreatePlanOptions {
+                title: title.to_string(),
+                project: "OldProject".to_string(),
+                level: None,
+                initial_prompt: None,
+                source_url: None,
+                execution_profile: None,
+                priority: None,
+                repos: vec![],
+                verifications: vec![],
+                depends_on: vec![],
+                related_plans: vec![],
+                chat_session_id: None,
+            },
+        )
+        .unwrap()
+    };
+
+    // Three plans, so whichever one is blocked there is at least one after it in directory order.
+    let first = make_plan("Alpha Plan");
+    let blocked = make_plan("Beta Plan");
+    let last = make_plan("Gamma Plan");
+
+    let blocked_folder = PathBuf::from(&blocked.folder_path);
+    let original_mode = std::fs::metadata(&blocked_folder)
+        .unwrap()
+        .permissions()
+        .mode();
+    // r-x: the plan.yaml inside still reads, so the sweep identifies the plan and then cannot
+    // replace it — write_atomic's temp file cannot be created in a directory it may not write.
+    std::fs::set_permissions(&blocked_folder, std::fs::Permissions::from_mode(0o500)).unwrap();
+
+    // Unwrapped only after the permissions are put back, so a regression that returns `Err` here
+    // does not leave an unwritable directory behind in the temp dir.
+    let result = rename_project_in_plans(&test_dir, "OldProject", "NewProject");
+    std::fs::set_permissions(
+        &blocked_folder,
+        std::fs::Permissions::from_mode(original_mode),
+    )
+    .unwrap();
+    let outcome = result.unwrap();
+
+    assert_eq!(
+        outcome.renamed, 2,
+        "both writable plans should be renamed, got {:?}",
+        outcome
+    );
+    assert!(outcome.is_partial(), "the blocked plan should be reported");
+    assert_eq!(outcome.failed.len(), 1);
+
+    let blocked_name = blocked_folder.file_name().unwrap().to_string_lossy();
+    assert_eq!(outcome.failed[0].0, blocked_name);
+    assert!(
+        outcome.failure_summary().contains(blocked_name.as_ref()),
+        "the summary should name the folder, got {:?}",
+        outcome.failure_summary()
+    );
+
+    // The two writable plans really were rewritten on disk — this is what the old `?` gave up.
+    for plan in [&first, &last] {
+        let file = read_plan_file(Path::new(&plan.folder_path)).unwrap();
+        assert_eq!(
+            file.metadata.project, "NewProject",
+            "plan {} should have been renamed despite the blocked one",
+            plan.folder_path
+        );
+    }
+    let still_old = read_plan_file(&blocked_folder).unwrap();
+    assert_eq!(still_old.metadata.project, "OldProject");
 
     let _ = std::fs::remove_dir_all(test_dir);
 }

@@ -790,10 +790,63 @@ pub async fn update_project(
             .into_response();
     }
 
+    // The rename is already committed to `config.yaml` at this point, so both cascades are
+    // best-effort in the same sense as `remove_cloned_repos`: the operator's request succeeded and
+    // a 200 is the honest status. What they are *not* is silent. Every failure here leaves plans,
+    // jobs or recommendations naming a project `config.yaml` no longer has, and a retry cannot
+    // repair it — the second rename finds the old name gone, computes `renamed_to = None`, and
+    // skips this block entirely. A log line is the only record that the orphan exists.
+    //
+    // It has to be a log line rather than a field on the response: `UpdateProjectRequest` flattens
+    // unrecognised keys into `extra`, so a `warning` key handed to a client that PUTs the project
+    // back would be written into `config.yaml` as a project setting.
     if let Some(new_name) = renamed_to {
-        let _ = tendril_core::plans::rename_project_in_plans(&state.plans_dir, &name, &new_name);
-        if let Ok(conn) = open_database(&state.db_path) {
-            let _ = tendril_core::db::rename_project(&conn, &name, &new_name);
+        match tendril_core::plans::rename_project_in_plans(&state.plans_dir, &name, &new_name) {
+            Ok(outcome) if outcome.is_partial() => {
+                tracing::warn!(
+                    "Renamed project '{}' to '{}' but {}: {}",
+                    name,
+                    new_name,
+                    outcome.failure_summary(),
+                    outcome
+                        .failed
+                        .iter()
+                        .map(|(folder, why)| format!("{folder}: {why}"))
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(
+                    "Renamed project '{}' to '{}' but could not sweep the plans directory {}: {}. Plans still name the old project.",
+                    name,
+                    new_name,
+                    state.plans_dir.display(),
+                    e
+                );
+            }
+        }
+
+        match open_database(&state.db_path) {
+            Ok(conn) => {
+                if let Err(e) = tendril_core::db::rename_project(&conn, &name, &new_name) {
+                    tracing::warn!(
+                        "Renamed project '{}' to '{}' but could not update the database: {}. Plans, jobs and recommendations still name the old project.",
+                        name,
+                        new_name,
+                        e
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Renamed project '{}' to '{}' but could not open the database: {}. Plans, jobs and recommendations still name the old project.",
+                    name,
+                    new_name,
+                    e
+                );
+            }
         }
     }
 

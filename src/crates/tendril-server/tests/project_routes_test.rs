@@ -1048,6 +1048,93 @@ async fn the_rollback_keeps_a_clone_it_only_refreshed() {
     );
 }
 
+/// A rename still answers 200 when a plan cannot be rewritten, and renames the ones it can.
+///
+/// The cascade runs after `save_config`, so the rename itself has already happened and 200 is the
+/// honest status — but the plans left behind are unrecoverable by retry (a second rename finds the
+/// old name gone and sweeps nothing). What this pins is that one blocked plan no longer costs the
+/// others their rename, and that the route reports success rather than a 500 for work that did
+/// land.
+///
+/// Unix-only for the same reason as the `tendril-core` sweep test: the failure is injected with a
+/// read-only directory.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_rename_renames_every_plan_it_can_even_when_one_is_unwritable() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let srv = start_test_server("rename-partial").await;
+    let plans_dir = srv.tendril_home.join("Plans");
+
+    // Two plans on the project being renamed. Written directly rather than through the plan API so
+    // this test depends on nothing but the rename cascade.
+    let write_plan = |folder: &str, id: &str| {
+        let dir = plans_dir.join(folder);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("plan.yaml"),
+            format!(
+                "id: '{id}'\ntitle: {folder}\nproject: ivy-framework\nstatus: Draft\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-01T00:00:00Z\n"
+            ),
+        )
+        .unwrap();
+        dir
+    };
+    write_plan("00001-Alpha", "00001");
+    write_plan("00002-Beta", "00002");
+    write_plan("00003-Gamma", "00003");
+
+    // Whichever plan the sweep reaches *first* is the one made unwritable, so the fail-fast
+    // version this guards against aborts before it can rename any of the others. Picked from a
+    // real `read_dir` rather than by name, because directory order is a hash order on both APFS
+    // and ext4 and is not the lexical order the folder names suggest.
+    let order: Vec<PathBuf> = std::fs::read_dir(&plans_dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    let (blocked, rest) = order.split_first().unwrap();
+    let blocked = blocked.clone();
+    let rest: Vec<PathBuf> = rest.to_vec();
+
+    let original_mode = std::fs::metadata(&blocked).unwrap().permissions().mode();
+    std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(0o500)).unwrap();
+
+    let (status, _body) = srv
+        .send(
+            reqwest::Method::PUT,
+            "/ivy-framework",
+            json!({ "newName": "ivy-renamed" }),
+        )
+        .await;
+
+    std::fs::set_permissions(&blocked, std::fs::Permissions::from_mode(original_mode)).unwrap();
+
+    assert_eq!(
+        status, 200,
+        "the rename itself succeeded, so a blocked plan must not turn it into an error"
+    );
+
+    // config.yaml carries the new name...
+    let settings = load_config(&srv.tendril_home.join("config.yaml")).unwrap();
+    assert!(settings.projects.iter().any(|p| p.name == "ivy-renamed"));
+
+    // ...and so does every plan after the blocked one, which is what the fail-fast sweep lost.
+    for folder in &rest {
+        let renamed = std::fs::read_to_string(folder.join("plan.yaml")).unwrap();
+        assert!(
+            renamed.contains("ivy-renamed"),
+            "plan {} should have been renamed despite the blocked one, got: {renamed}",
+            folder.display()
+        );
+    }
+
+    let untouched = std::fs::read_to_string(blocked.join("plan.yaml")).unwrap();
+    assert!(
+        untouched.contains("ivy-framework"),
+        "the blocked plan is expected to still name the old project"
+    );
+}
+
 #[tokio::test]
 async fn a_put_that_clones_keeps_what_another_writer_added_meanwhile() {
     // The lost update: the PUT loaded `config.yaml`, mutated the copy, awaited a clone that can run

@@ -1527,13 +1527,46 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             settings.projects[proj_idx].name = trimmed.clone();
             save_config(&cfg_path, &settings)?;
 
+            // `config.yaml` is already saved, so neither cascade can fail the command — bailing
+            // here would report failure for a rename that happened. They are reported instead,
+            // because a plan or a row still naming the old project is not something a second
+            // `rename` can fix: it would find the old name gone and do nothing.
             let plans_dir =
                 tendril_core::config::get_plans_dir_with_settings(tendril_home, Some(&settings));
-            tendril_core::plans::rename_project_in_plans(&plans_dir, &name, &trimmed)?;
+            match tendril_core::plans::rename_project_in_plans(&plans_dir, &name, &trimmed) {
+                Ok(outcome) if outcome.is_partial() => {
+                    eprintln!(
+                        "Warning: renamed the project but {}. Edit each plan.yaml by hand to finish the rename.",
+                        outcome.failure_summary()
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!(
+                        "Warning: renamed the project but could not sweep {}: {}. Plans still name '{}'.",
+                        plans_dir.display(),
+                        e,
+                        name
+                    );
+                }
+            }
 
             let db_path = tendril_core::config::get_database_path(tendril_home);
-            if let Ok(conn) = tendril_core::db::open_database(&db_path) {
-                let _ = tendril_core::db::rename_project(&conn, &name, &trimmed);
+            match tendril_core::db::open_database(&db_path) {
+                Ok(conn) => {
+                    if let Err(e) = tendril_core::db::rename_project(&conn, &name, &trimmed) {
+                        eprintln!(
+                            "Warning: renamed the project but could not update the database: {}. Plans, jobs and recommendations still name '{}'.",
+                            e, name
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: renamed the project but could not open the database: {}. Plans, jobs and recommendations still name '{}'.",
+                        e, name
+                    );
+                }
             }
 
             println!("Project '{}' renamed to '{}'.", name, trimmed);

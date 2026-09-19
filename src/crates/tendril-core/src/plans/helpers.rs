@@ -94,12 +94,63 @@ pub fn resolve_plan_folder_name(plan_ref: &str, plans_dir: &Path) -> Result<Stri
         })
 }
 
-pub fn rename_project_in_plans(plans_dir: &Path, old_name: &str, new_name: &str) -> Result<usize> {
-    if !plans_dir.exists() {
-        return Ok(0);
+/// How a project rename landed across the plans on disk.
+///
+/// Two numbers rather than one because the sweep does not stop at the first plan it cannot write,
+/// and a caller that only saw `renamed` would read a partial sweep as a complete one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectRenameOutcome {
+    /// Plans rewritten to carry `new_name`.
+    pub renamed: usize,
+    /// One entry per plan that still names the old project, as `(folder name, why)`.
+    pub failed: Vec<(String, String)>,
+}
+
+impl ProjectRenameOutcome {
+    /// True when at least one plan still names the project the rename was supposed to retire.
+    pub fn is_partial(&self) -> bool {
+        !self.failed.is_empty()
     }
 
-    let mut count = 0;
+    /// One line naming the count and the folders, for a log or a CLI warning.
+    ///
+    /// Folder names only — a plan folder name is derived from its title, never from a path the
+    /// operator supplied, so this cannot carry a credential the way a repo path can.
+    pub fn failure_summary(&self) -> String {
+        let folders: Vec<&str> = self.failed.iter().map(|(f, _)| f.as_str()).collect();
+        format!(
+            "{} plan(s) still name the old project ({})",
+            self.failed.len(),
+            folders.join(", ")
+        )
+    }
+}
+
+/// Rewrites every plan naming `old_name` to name `new_name` instead.
+///
+/// The sweep is **exhaustive, not fail-fast**: one plan that cannot be written does not abort the
+/// rest. The previous `?` on the write meant a single locked or read-only `plan.yaml` left every
+/// plan after it in `read_dir` order still naming a project that no longer exists in `config.yaml`
+/// — and unrecoverably so, because the caller has already saved the rename, so a retry finds the
+/// old name gone, computes no rename at all, and never sweeps again. Which plans survived was
+/// decided by directory order, which is not a contract anyone can rely on.
+///
+/// A folder that cannot be *read* is skipped without being counted as a failure, matching the
+/// previous behaviour: it is not a plan this function can identify as belonging to the project.
+/// Only a plan that was identified and then could not be rewritten is a failure.
+///
+/// Returns [`ProjectRenameOutcome`] rather than `usize` so a partial sweep is something the caller
+/// can see and report. `Err` is now reserved for not being able to enumerate `plans_dir` at all.
+pub fn rename_project_in_plans(
+    plans_dir: &Path,
+    old_name: &str,
+    new_name: &str,
+) -> Result<ProjectRenameOutcome> {
+    let mut outcome = ProjectRenameOutcome::default();
+    if !plans_dir.exists() {
+        return Ok(outcome);
+    }
+
     for entry in std::fs::read_dir(plans_dir)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
@@ -108,12 +159,20 @@ pub fn rename_project_in_plans(plans_dir: &Path, old_name: &str, new_name: &str)
                 if plan.project.eq_ignore_ascii_case(old_name) {
                     plan.project = new_name.to_string();
                     plan.updated = chrono::Utc::now();
-                    crate::plans::writer::write_plan_yaml(&plan_folder, &plan)?;
-                    count += 1;
+                    match crate::plans::writer::write_plan_yaml(&plan_folder, &plan) {
+                        Ok(()) => outcome.renamed += 1,
+                        Err(e) => outcome.failed.push((
+                            plan_folder
+                                .file_name()
+                                .map(|n| n.to_string_lossy().into_owned())
+                                .unwrap_or_else(|| plan_folder.display().to_string()),
+                            e.to_string(),
+                        )),
+                    }
                 }
             }
         }
     }
 
-    Ok(count)
+    Ok(outcome)
 }
