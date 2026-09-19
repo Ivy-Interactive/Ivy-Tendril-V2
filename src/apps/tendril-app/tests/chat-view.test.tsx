@@ -108,11 +108,17 @@ questions:
     });
   });
 
-  it("submits question answers when interacting with QuestionsCallout", async () => {
+  /**
+   * The chat block drafts locally and reports once, on Submit - V1's `OnAnswerQuestion`. Asserting
+   * the selection alone reached nothing would pass against the live per-keystroke path this
+   * replaced, so both halves are checked: silent while drafting, one call carrying the whole block
+   * plus its summary afterwards.
+   */
+  it("drafts question answers locally and submits the block in one call", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-    const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
+    const submitSpy = vi.spyOn(chatStore, "submitAnswers").mockResolvedValue();
 
     render(<ChatView />);
 
@@ -120,18 +126,27 @@ questions:
       expect(screen.getByText("Which database should we use?")).toBeInTheDocument();
     });
 
-    const sqliteOption = screen.getByText("SQLite");
-    expect(sqliteOption).toBeInTheDocument();
-    fireEvent.click(sqliteOption);
+    // The card, not the title: the title sits inside the option's `<label>`, and a click there is
+    // handed to the radio rather than to the card's own handler.
+    const sqliteCard = screen.getByText("SQLite").closest(".tq-option");
+    expect(sqliteCard).not.toBeNull();
+    fireEvent.click(sqliteCard!);
 
-    const submitBtn = screen.queryByRole("button", { name: /Submit Response/i });
-    if (submitBtn) {
-      fireEvent.click(submitBtn);
-    }
+    // Drafting is local - nothing has been reported yet.
+    expect(submitSpy).not.toHaveBeenCalled();
+
+    const submitBtn = screen.getByRole("button", { name: /Submit response/i });
+    expect(submitBtn).not.toBeDisabled();
+    fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(submitSpy).toHaveBeenCalledWith("msg-asst-1", "db-flavor", expect.anything());
+      expect(submitSpy).toHaveBeenCalledWith(
+        "msg-asst-1",
+        { "db-flavor": ["sqlite"] },
+        "Answers:\n- **Which database should we use?**: SQLite",
+      );
     });
+    expect(submitSpy).toHaveBeenCalledTimes(1);
   });
 
   /**

@@ -20,6 +20,7 @@ import {
   type AgentPreference,
   type AgentPreferences,
 } from "./agentPreferences";
+import type { QuestionsDraftState, QuestionsDraftStore } from "@ivy-interactive/components/tendril";
 import {
   extractPlanQuestions,
   mergeConfirmedQuestionsBlock,
@@ -367,6 +368,24 @@ export class ChatStore {
    * kept out here rather than in the composer's own `useState`.
    */
   private composerDrafts: Record<string, string> = loadStoredComposerDrafts();
+  /**
+   * Every message's in-progress question-block drafts, keyed `${messageId}::${blockKey}`, exactly
+   * as V1's `questionDraftsRef` in `ChatWidget.tsx` keys its own: "a drafted but unsubmitted
+   * answer survives session switches for as long as the widget stays mounted".
+   *
+   * Here rather than in a `useRef` for the same reason {@link COMPOSER_DRAFTS_STORAGE_KEY} is here:
+   * V1's chat widget stays mounted while you move around the Ivy shell, V2's Chat page is a lazy
+   * route that unmounts, and `ChatMessageRow` is additionally remounted by virtualization every
+   * time its row scrolls out of the window. A draft held anywhere in the tree would not survive
+   * either. Not persisted: it is unsubmitted UI state, and V1 does not persist it either - what
+   * has to outlive a reload is a *submitted* answer, which is {@link inProgressAnswers}.
+   */
+  private questionDrafts: Map<string, QuestionsDraftState> = new Map();
+  /**
+   * One `QuestionsDraftStore` per message, cached so the context value keeps its identity across
+   * renders and remounts - V1 caches `draftStoreFor` in a `Map` for exactly that reason.
+   */
+  private questionDraftStores: Map<string, QuestionsDraftStore> = new Map();
   private pinnedSessions: Record<string, string> = loadStoredPinnedSessions();
   private agentPreferences: AgentPreferences = loadStoredAgentPreferences();
   /**
@@ -918,6 +937,8 @@ export class ChatStore {
     saveStoredDraftOwners({});
     this.composerDrafts = {};
     saveStoredComposerDrafts({});
+    this.questionDrafts = new Map();
+    this.questionDraftStores = new Map();
     this.pinnedSessions = {};
     saveStoredPinnedSessions({});
     this.agentPreferences = {};
@@ -1390,7 +1411,7 @@ export class ChatStore {
       // The user can switch chats while this fetch is in flight. Landing a stale session here would
       // leave `activeSession.id` disagreeing with `activeSessionId`, and every guard in
       // `handleChatEvent` compares against `activeSession.id` - so the losing session's stream would
-      // then be appended to the pane showing the winning one. Same check as `submitAnswer`.
+      // then be appended to the pane showing the winning one. Same check as `submitAnswers`.
       if (this.state.activeSessionId !== id) return;
 
       const isPinned = Boolean(this.pinnedSessions[id]);
@@ -1888,29 +1909,55 @@ export class ChatStore {
     this.state.submittingAnswers = nextSubmitting;
   }
 
-  public async submitAnswer(
+  /**
+   * The draft store for one message's question blocks, for a `QuestionsDraftContext.Provider`.
+   * Stable per message id, so the provider's value does not change identity on every render.
+   */
+  public questionDraftStore(messageId: string): QuestionsDraftStore {
+    let store = this.questionDraftStores.get(messageId);
+    if (!store) {
+      store = {
+        read: (blockKey) => this.questionDrafts.get(`${messageId}::${blockKey}`),
+        write: (blockKey, state) => {
+          this.questionDrafts.set(`${messageId}::${blockKey}`, state);
+        },
+        clear: (blockKey) => {
+          this.questionDrafts.delete(`${messageId}::${blockKey}`);
+        },
+      };
+      this.questionDraftStores.set(messageId, store);
+    }
+    return store;
+  }
+
+  /**
+   * Applies a whole question block's answers in one call and then sends the summary as the next
+   * user turn, which is what `ContentView`'s `OnAnswerQuestion` does:
+   *
+   * ```csharp
+   * chatService.ApplyQuestionAnswers(e.Value.SessionId, e.Value.MessageId, e.Value.Answers);
+   * ...
+   * if (!string.IsNullOrWhiteSpace(e.Value.ResponseText))
+   *     sendMessage(new ChatSendMessageDto(e.Value.ResponseText, SessionId: e.Value.SessionId));
+   * ```
+   *
+   * One round trip for the block, not one per answered question: the answers were drafted locally
+   * and Submit is what commits them. The summary is sent after the block is stored so the turn the
+   * agent reads and the document it reads it from agree, and it goes through {@link sendMessage},
+   * which parks it in the queue when a turn is already running.
+   */
+  public async submitAnswers(
     messageId: string,
-    questionId: string,
-    answer: string | string[] | undefined | null,
+    answers: Record<string, string[]>,
+    responseText?: string,
   ): Promise<void> {
     if (!this.state.activeSessionId) return;
 
-    // Immediately record into inProgressAnswers and track submitting state
-    this.setInProgressAnswer(messageId, questionId, answer);
-    this.setSubmitting(messageId, questionId, true);
-
-    const values =
-      answer === undefined || answer === null
-        ? []
-        : Array.isArray(answer)
-          ? answer.map(String)
-          : answer === ""
-            ? []
-            : [String(answer)];
-
-    const answersPayload: Record<string, string[]> = {
-      [questionId]: values,
-    };
+    const questionIds = Object.keys(answers);
+    for (const questionId of questionIds) {
+      this.setInProgressAnswer(messageId, questionId, answers[questionId]);
+      this.setSubmitting(messageId, questionId, true);
+    }
 
     // Optimistically patch in-memory message content
     if (this.state.activeSession) {
@@ -1918,7 +1965,7 @@ export class ChatStore {
       const targetIndex = messages.findIndex((m) => m.id === messageId);
       if (targetIndex >= 0) {
         const targetMsg = messages[targetIndex];
-        const pendingForMsg = this.getInProgressAnswers(messageId) || { [questionId]: values };
+        const pendingForMsg = this.getInProgressAnswers(messageId) ?? answers;
         messages[targetIndex] = {
           ...targetMsg,
           content: patchQuestionsMarkdown(targetMsg.content, pendingForMsg),
@@ -1927,12 +1974,9 @@ export class ChatStore {
     }
     this.notify();
 
+    const sessionId = this.state.activeSessionId;
     try {
-      const updatedSession = await chatApi.answerQuestions(
-        this.state.activeSessionId,
-        messageId,
-        answersPayload,
-      );
+      const updatedSession = await chatApi.answerQuestions(sessionId, messageId, answers);
 
       if (this.state.activeSessionId === updatedSession.id) {
         if (this.state.isGenerating && this.state.activeSession) {
@@ -1968,21 +2012,31 @@ export class ChatStore {
             : updatedSession;
       }
 
-      // Only clear inProgressAnswers once confirmed message content in activeSession actually contains the parsed answer
+      // Only drop a draft once the confirmed message content actually carries that answer.
       const targetMsg = this.state.activeSession?.messages.find((m) => m.id === messageId);
       if (targetMsg) {
         const questions = extractPlanQuestions(targetMsg.content);
-        const q = questions.find((item) => item.id === questionId);
-        if (q && q.answerPresent) {
-          this.clearInProgressAnswers(messageId, questionId);
+        for (const questionId of questionIds) {
+          const q = questions.find((item) => item.id === questionId);
+          if (q && q.answerPresent) {
+            this.clearInProgressAnswers(messageId, questionId);
+          }
         }
       }
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);
       throw err;
     } finally {
-      this.setSubmitting(messageId, questionId, false);
+      for (const questionId of questionIds) {
+        this.setSubmitting(messageId, questionId, false);
+      }
       this.notify();
+    }
+
+    // After the block is stored, never before: the follow-up turn is the agent being told what was
+    // decided, and it must not read a document that has not caught up yet.
+    if (responseText && responseText.trim()) {
+      await this.sendMessage(responseText);
     }
   }
 

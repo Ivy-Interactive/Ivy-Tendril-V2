@@ -136,52 +136,6 @@ export function extractPlanQuestions(markdown: string): PlanQuestion[] {
 }
 
 /**
- * Determines whether a question answer interaction is a write-in text response (such as typing in "Other"
- * or free-text) vs a discrete option selection (such as radio or checkbox click).
- *
- * Rules:
- * - If the question has predefined options and every non-empty value in answer matches an existing option value,
- *   the interaction is a discrete option selection (false).
- * - If the question has no options (pure free-text) or the answer contains a value not in the question's predefined
- *   options, the interaction is a write-in text response (true).
- * - If the answer is empty or null (clearing an answer), treat it as immediate (false) unless a debounced write-in
- *   was pending (hasPendingDebounce = true).
- */
-export function isWriteInAnswer(
-  content: string,
-  questionId: string,
-  answer: string | string[] | null | undefined,
-  hasPendingDebounce?: boolean,
-): boolean {
-  const values: string[] =
-    answer === undefined || answer === null
-      ? []
-      : Array.isArray(answer)
-        ? answer.map(String).filter((v) => v.length > 0)
-        : String(answer).length > 0
-          ? [String(answer)]
-          : [];
-
-  if (values.length === 0) {
-    return Boolean(hasPendingDebounce);
-  }
-
-  const questions = extractPlanQuestions(content);
-  const question = questions.find((q) => q.id === questionId);
-  if (question) {
-    const options = question.options || [];
-    if (options.length > 0) {
-      const optionValues = new Set(options.map((o) => o.value));
-      const allMatchOptions = values.every((v) => optionValues.has(v));
-      return !allMatchOptions;
-    }
-    return true;
-  }
-
-  return true;
-}
-
-/**
  * Format answer values for YAML insertion.
  * Single answer -> JSON string scalar e.g. "sqlite"
  * Multiple answers -> JSON array string e.g. ["auth", "logging"]

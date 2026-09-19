@@ -368,9 +368,9 @@ questions:
     };
     vi.spyOn(chatApi, "answerQuestions").mockResolvedValue(answeredSession);
 
-    // Answer the question via chatStore.submitAnswer
+    // Answer the question via chatStore.submitAnswers
     await act(async () => {
-      await chatStore.submitAnswer("msg-10", "choice-arch", ["a"]);
+      await chatStore.submitAnswers("msg-10", { "choice-arch": ["a"] });
     });
 
     // Jump button is dismissed

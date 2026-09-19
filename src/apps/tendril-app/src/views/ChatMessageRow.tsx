@@ -1,6 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChatBubble, ChatBubbleMessage } from "@ivy-interactive/components/renderers";
-import { PlanMarkdown } from "@ivy-interactive/components/tendril";
+import {
+  PlanMarkdown,
+  QuestionsDraftContext,
+  QuestionsSubmitContext,
+} from "@ivy-interactive/components/tendril";
 import { CheckCheck, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
 import {
   isImageAttachment,
@@ -10,7 +14,7 @@ import {
 import { chatStore } from "../state/chatStore";
 import type { ChatAttachment, ChatMessage, InProgressQuestionAnswers } from "../types/chat";
 import type { Job } from "../types/api";
-import { isWriteInAnswer, patchQuestionsMarkdown } from "../utils/questionMarkdown";
+import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
 import { formatSystemEvent } from "../utils/systemEvents";
 import { resolveJobState, type JobDisplayState } from "../utils/jobStatus";
 import type { LightboxImage } from "../components/chat/ImageLightbox";
@@ -162,59 +166,18 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     }
   }, [propInProgressAnswers, propIsSubmittingAnswer, message.id]);
 
-  const pendingDebounceTimersRef = useRef<
-    Map<string, { timer: ReturnType<typeof setTimeout>; commit: () => void }>
-  >(new Map());
-
-  // Flush all pending debounced commits immediately before unmounting so typed text is never lost
-  useEffect(() => {
-    return () => {
-      const pending = Array.from(pendingDebounceTimersRef.current.values());
-      pendingDebounceTimersRef.current.clear();
-      for (const { timer, commit } of pending) {
-        clearTimeout(timer);
-        commit();
-      }
-    };
-  }, []);
-
-  const handleAnswersChange = useCallback(
-    (eventName: string, _widgetId: string, args: unknown[]) => {
-      if (eventName !== "OnAnswersChange") return;
-      const payload = args[0] as
-        | Array<{ questionId: string; answer: string[] | null }>
-        | { questionId: string; answer: string[] | null };
-      const items = Array.isArray(payload) ? payload : [payload];
-      for (const item of items) {
-        const hasPending = pendingDebounceTimersRef.current.has(item.questionId);
-        const writeIn = isWriteInAnswer(message.content, item.questionId, item.answer, hasPending);
-
-        if (writeIn) {
-          const existing = pendingDebounceTimersRef.current.get(item.questionId);
-          if (existing) {
-            clearTimeout(existing.timer);
-          }
-
-          const commit = () => {
-            pendingDebounceTimersRef.current.delete(item.questionId);
-            chatStore.setInProgressAnswer(message.id, item.questionId, item.answer);
-            void chatStore.submitAnswer(message.id, item.questionId, item.answer);
-          };
-
-          const timer = setTimeout(commit, 300);
-          pendingDebounceTimersRef.current.set(item.questionId, { timer, commit });
-        } else {
-          const existing = pendingDebounceTimersRef.current.get(item.questionId);
-          if (existing) {
-            clearTimeout(existing.timer);
-            pendingDebounceTimersRef.current.delete(item.questionId);
-          }
-          chatStore.setInProgressAnswer(message.id, item.questionId, item.answer);
-          void chatStore.submitAnswer(message.id, item.questionId, item.answer);
-        }
-      }
+  /**
+   * A block's answers, applied in one go and followed by the summary as the next user turn. This
+   * is V1's `OnAnswerQuestion`, and the reason chat has no live answer callback: `ChatWidget`
+   * supplies only `QuestionsSubmitContext`, so `QuestionsCallout` takes its `!onAnswer && onSubmit`
+   * branch and drafts locally until Submit. Reporting every keystroke instead means a round trip
+   * per character, which is what the debounce this replaced existed to paper over.
+   */
+  const handleQuestionSubmit = useCallback(
+    (answers: Record<string, string[]>, summaryText: string) => {
+      void chatStore.submitAnswers(message.id, answers, summaryText);
     },
-    [message.id, message.content],
+    [message.id],
   );
 
   const currentMessage =
@@ -341,13 +304,16 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                   otherwise - a 1.5rem inset on every turn, a second width cap inside the column's
                   own, and a scroller nested in the thread's. A code block is where that reads as
                   broken, being bordered, full-bleed and the widest thing in a turn. */}
-              <PlanMarkdown
-                id={`chat-msg-${message.id}`}
-                content={content}
-                flow
-                events={["OnAnswersChange"]}
-                eventHandler={handleAnswersChange}
-              />
+              {/* Draft outside, submit inside, as `ChatWidget` nests them. No `events` and no
+                  `eventHandler`: `PlanMarkdown` passes `undefined` as its answer callback unless
+                  it sees `OnAnswersChange`, and that `undefined` alongside a submit callback is
+                  exactly what selects the batched chat block. The plan surface keeps the live
+                  path — see `PlanDetailView`. */}
+              <QuestionsDraftContext.Provider value={chatStore.questionDraftStore(message.id)}>
+                <QuestionsSubmitContext.Provider value={handleQuestionSubmit}>
+                  <PlanMarkdown id={`chat-msg-${message.id}`} content={content} flow />
+                </QuestionsSubmitContext.Provider>
+              </QuestionsDraftContext.Provider>
               {isSubmitting && (
                 <div
                   data-testid="submitting-answer-indicator"

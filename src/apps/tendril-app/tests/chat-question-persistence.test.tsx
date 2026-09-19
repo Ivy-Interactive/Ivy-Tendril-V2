@@ -5,7 +5,6 @@ import { ChatView } from "../src/views/ChatView";
 import { ChatMessageRow } from "../src/views/ChatMessageRow";
 import { chatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
-import { isWriteInAnswer } from "../src/utils/questionMarkdown";
 import type { ChatSession, ChatMessage } from "../src/types/chat";
 import { QuestionsCallout } from "@ivy-interactive/components/tendril";
 
@@ -21,58 +20,61 @@ const { planMarkdownMountCounts } = vi.hoisted(() => ({
 
 vi.mock("@ivy-interactive/components/tendril", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
+  const { BlockHandler } = actual as {
+    BlockHandler: React.FC<React.HTMLAttributes<HTMLElement>>;
+  };
   return {
     ...actual,
-    PlanMarkdown: ({
-      id,
-      content,
-      eventHandler,
-    }: {
-      id: string;
-      content: string;
-      events?: string[];
-      eventHandler?: (eventName: string, widgetId: string, args: unknown[]) => void;
-    }) => {
+    /**
+     * Stands in for the renderer, not for the questions block. react-markdown and the math plugins
+     * are slow and irrelevant here, but `BlockHandler` is what reads `QuestionsSubmitContext` and
+     * picks the chat branch of `QuestionsCallout`, so the real one is mounted against the fence
+     * this content carries. A stub that fabricated its own buttons would assert the mock's wiring
+     * rather than the row's.
+     */
+    PlanMarkdown: ({ id, content }: { id: string; content: string }) => {
       useEffect(() => {
         planMarkdownMountCounts.set(id, (planMarkdownMountCounts.get(id) ?? 0) + 1);
       }, [id]);
 
+      const fence = /```questions\n([\s\S]*?)```/.exec(content);
+
       return (
         <div data-testid={`plan-markdown-${id}`}>
           <pre data-testid={`plan-markdown-content-${id}`}>{content}</pre>
-          <button
-            data-testid={`select-answer-${id}`}
-            onClick={() => {
-              eventHandler?.("OnAnswersChange", id, [
-                { questionId: "db-flavor", answer: ["sqlite"] },
-              ]);
-            }}
-          >
-            Select SQLite
-          </button>
-          <button
-            data-testid={`select-postgres-${id}`}
-            onClick={() => {
-              eventHandler?.("OnAnswersChange", id, [
-                { questionId: "db-flavor", answer: ["postgres"] },
-              ]);
-            }}
-          >
-            Select Postgres
-          </button>
-          <input
-            data-testid={`input-other-${id}`}
-            onChange={(e) => {
-              eventHandler?.("OnAnswersChange", id, [
-                { questionId: "db-flavor", answer: [e.target.value] },
-              ]);
-            }}
-          />
+          {fence && (
+            <BlockHandler className="language-questions">{`${fence[1]}\n`}</BlockHandler>
+          )}
         </div>
       );
     },
   };
 });
+
+/** Clicks the option card carrying this title inside the given message's rendered block. */
+function selectOption(messageId: string, title: string): void {
+  const block = screen.getByTestId(`plan-markdown-chat-msg-${messageId}`);
+  const option = Array.from(block.querySelectorAll(".tq-option-title")).find((el) =>
+    el.textContent?.startsWith(title),
+  );
+  if (!option) throw new Error(`No option titled "${title}" in message ${messageId}`);
+  fireEvent.click(option.closest(".tq-option") as HTMLElement);
+}
+
+/** The block's Submit button, which is disabled until something is answered. */
+function submitButton(messageId: string): HTMLButtonElement {
+  const block = screen.getByTestId(`plan-markdown-chat-msg-${messageId}`);
+  return block.querySelector("button.tq-submit") as HTMLButtonElement;
+}
+
+/** Types into the block's Other field, opening it first. */
+function writeOther(messageId: string, text: string): void {
+  const block = screen.getByTestId(`plan-markdown-chat-msg-${messageId}`);
+  const other = block.querySelector(".tq-option--other .tq-option-input") as HTMLInputElement;
+  fireEvent.click(other);
+  const input = block.querySelector("input.tq-text-input") as HTMLInputElement;
+  fireEvent.change(input, { target: { value: text } });
+}
 
 function buildSessionWithQuestion(count: number, questionIndex: number): ChatSession {
   const messages: ChatMessage[] = [];
@@ -142,17 +144,12 @@ describe("Preserve Unsubmitted Question Selections Across Chat Virtualization", 
     delete HTMLElement.prototype.scrollHeight;
   });
 
-  it("preserves unsubmitted question selection when row unmounts and remounts across scroll", async () => {
+  it("preserves an unsubmitted question selection when the row unmounts and remounts across scroll", async () => {
     const session = buildSessionWithQuestion(200, 3);
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([session]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(session);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-
-    let resolveAnswerApi!: (val: ChatSession) => void;
-    const answerPromise = new Promise<ChatSession>((resolve) => {
-      resolveAnswerApi = resolve;
-    });
-    vi.spyOn(chatApi, "answerQuestions").mockReturnValue(answerPromise);
+    const answerSpy = vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
 
     const { container } = render(<ChatView />);
 
@@ -170,86 +167,53 @@ describe("Preserve Unsubmitted Question Selections Across Chat Virtualization", 
     expect(screen.getByTestId(`plan-markdown-${targetMarkdownKey}`)).toBeInTheDocument();
     expect(planMarkdownMountCounts.get(targetMarkdownKey)).toBe(1);
 
-    // Initial content has no answer
-    const initialContentEl = screen.getByTestId(`plan-markdown-content-${targetMarkdownKey}`);
-    expect(initialContentEl.textContent).not.toContain("answer:");
+    // User selects SQLite but does not submit
+    selectOption(targetMsgId, "SQLite");
+    expect(answerSpy).not.toHaveBeenCalled();
 
-    // User selects SQLite on the question callout
-    const selectBtn = screen.getByTestId(`select-answer-${targetMarkdownKey}`);
-    act(() => {
-      selectBtn.click();
-    });
-
-    // 1. Verify inProgressAnswers contains the selected answer
-    expect(chatStore.getInProgressAnswers(targetMsgId)).toEqual({
-      "db-flavor": ["sqlite"],
-    });
-
-    // 2. Verify content immediately reflects the selection while in flight
-    expect(screen.getByTestId(`plan-markdown-content-${targetMarkdownKey}`).textContent).toContain(
-      'answer: "sqlite"',
-    );
-
-    // 3. Simulate scrolling far down to tail so row 3 unmounts
+    // 1. Scroll far down to the tail so row 3 unmounts
     act(() => {
       Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 25000 });
       fireEvent.scroll(scroller);
     });
 
-    // Verify row 3 is unmounted from the DOM
     await waitFor(() => {
       expect(screen.queryByTestId(`plan-markdown-${targetMarkdownKey}`)).not.toBeInTheDocument();
     });
 
-    // In-progress answer is still preserved in store and session storage
-    expect(chatStore.getInProgressAnswers(targetMsgId)).toEqual({
-      "db-flavor": ["sqlite"],
-    });
-
-    // 4. Simulate scrolling back up to top (scrollTop = 0) so row 3 remounts
+    // 2. Scroll back to the top so row 3 remounts
     act(() => {
       Object.defineProperty(scroller, "scrollTop", { configurable: true, value: 0 });
       fireEvent.scroll(scroller);
     });
 
-    // Verify row 3 remounts into the DOM (mount count incremented to 2)
     await waitFor(() => {
       expect(screen.getByTestId(`plan-markdown-${targetMarkdownKey}`)).toBeInTheDocument();
     });
     expect(planMarkdownMountCounts.get(targetMarkdownKey)).toBe(2);
 
-    // 5. Verify the question callout displays the selected answer rather than reverting to blank/unanswered
-    const remountedContentEl = screen.getByTestId(`plan-markdown-content-${targetMarkdownKey}`);
-    expect(remountedContentEl.textContent).toContain('answer: "sqlite"');
-
-    // Clean up
-    resolveAnswerApi({
-      ...session,
-      messages: [
-        ...session.messages.slice(0, 3),
-        {
-          ...session.messages[3],
-          content: session.messages[3].content.replace(
-            "Which database should we use?",
-            "Which database should we use?\n    answer: sqlite",
-          ),
-        },
-        ...session.messages.slice(4),
-      ],
-    });
+    // 3. The remounted block still carries the selection rather than reverting to unanswered.
+    const block = screen.getByTestId(`plan-markdown-${targetMarkdownKey}`);
+    const selected = Array.from(block.querySelectorAll(".tq-option[data-selected='true']"));
+    expect(selected).toHaveLength(1);
+    expect(selected[0].textContent).toContain("SQLite");
+    expect(submitButton(targetMsgId).disabled).toBe(false);
   });
 });
 
-describe("Debounce Write-In Other Text Persistence", () => {
+/**
+ * V1 batches a chat question block: `ChatQuestionsBlock` drafts answers locally and Submit fires
+ * `OnAnswerQuestion` once, which applies the whole map and then sends the summary as the next user
+ * turn (`ContentView.cs:264-279`). The live `OnAnswersChange` path V2 had instead meant one round
+ * trip per keystroke, which is why it carried a 300ms debounce; these cover the batched contract
+ * that replaced it.
+ */
+describe("Batched Chat Question Submission", () => {
   beforeEach(() => {
     chatStore.resetForTesting();
     localStorage.clear();
     sessionStorage.clear();
     vi.restoreAllMocks();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   const testMessage: ChatMessage = {
@@ -269,163 +233,207 @@ questions:
     timestamp: "2026-09-07T12:00:00Z",
   };
 
-  it("debounces rapid write-in keystrokes and executes once after 300ms", () => {
-    vi.useFakeTimers();
-    const setInProgressSpy = vi.spyOn(chatStore, "setInProgressAnswer");
-    const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
-
-    render(<ChatMessageRow message={testMessage} />);
-
-    const input = screen.getByTestId("input-other-chat-msg-msg-test-1");
-
-    // Rapid keystrokes ("c", "cu", "cust", "custom")
-    fireEvent.change(input, { target: { value: "c" } });
-    fireEvent.change(input, { target: { value: "cu" } });
-    fireEvent.change(input, { target: { value: "cust" } });
-    fireEvent.change(input, { target: { value: "custom" } });
-
-    // Verify intermediate keystrokes did not trigger store or submit
-    expect(setInProgressSpy).not.toHaveBeenCalled();
-    expect(submitSpy).not.toHaveBeenCalled();
-
-    // Advance 200ms (still within 300ms debounce window)
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    expect(setInProgressSpy).not.toHaveBeenCalled();
-    expect(submitSpy).not.toHaveBeenCalled();
-
-    // Advance past 300ms threshold (additional 150ms => total 350ms)
-    act(() => {
-      vi.advanceTimersByTime(150);
-    });
-
-    // Verify executed once with final value "custom"
-    expect(setInProgressSpy).toHaveBeenCalledTimes(1);
-    expect(setInProgressSpy).toHaveBeenCalledWith("msg-test-1", "db-flavor", ["custom"]);
-    expect(submitSpy).toHaveBeenCalledTimes(1);
-    expect(submitSpy).toHaveBeenCalledWith("msg-test-1", "db-flavor", ["custom"]);
-  });
-
-  it("bypasses debounce and updates store immediately on discrete option click", () => {
-    vi.useFakeTimers();
-    const setInProgressSpy = vi.spyOn(chatStore, "setInProgressAnswer");
-    const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
-
-    render(<ChatMessageRow message={testMessage} />);
-
-    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-test-1");
-    fireEvent.click(selectBtn);
-
-    // Verify immediate execution without advancing timers
-    expect(setInProgressSpy).toHaveBeenCalledTimes(1);
-    expect(setInProgressSpy).toHaveBeenCalledWith("msg-test-1", "db-flavor", ["sqlite"]);
-    expect(submitSpy).toHaveBeenCalledTimes(1);
-    expect(submitSpy).toHaveBeenCalledWith("msg-test-1", "db-flavor", ["sqlite"]);
-  });
-
-  it("flushes pending write-in commits to store and storage upon row unmount", () => {
-    vi.useFakeTimers();
-    const setInProgressSpy = vi.spyOn(chatStore, "setInProgressAnswer");
-    const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
-
-    const { unmount } = render(<ChatMessageRow message={testMessage} />);
-
-    const input = screen.getByTestId("input-other-chat-msg-msg-test-1");
-    fireEvent.change(input, { target: { value: "custom-db" } });
-
-    // Not triggered before unmount
-    expect(setInProgressSpy).not.toHaveBeenCalled();
-    expect(submitSpy).not.toHaveBeenCalled();
-
-    // Simulate immediate unmount (e.g. scrolling out of view in virtualization)
-    unmount();
-
-    // Verify pending commit was flushed immediately upon unmount
-    expect(setInProgressSpy).toHaveBeenCalledTimes(1);
-    expect(setInProgressSpy).toHaveBeenCalledWith("msg-test-1", "db-flavor", ["custom-db"]);
-    expect(submitSpy).toHaveBeenCalledTimes(1);
-    expect(submitSpy).toHaveBeenCalledWith("msg-test-1", "db-flavor", ["custom-db"]);
-    expect(localStorage.getItem("tendril:chat:in_progress_answers")).toContain("custom-db");
-  });
-
-  it("cancels pending write-in timer when an option is clicked before debounce expires", () => {
-    vi.useFakeTimers();
-    const setInProgressSpy = vi.spyOn(chatStore, "setInProgressAnswer");
-    const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
-
-    render(<ChatMessageRow message={testMessage} />);
-
-    const input = screen.getByTestId("input-other-chat-msg-msg-test-1");
-    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-test-1");
-
-    // Type in Other
-    fireEvent.change(input, { target: { value: "cust" } });
-    expect(setInProgressSpy).not.toHaveBeenCalled();
-
-    // Before timer fires (e.g. 100ms), user clicks SQLite option
-    act(() => {
-      vi.advanceTimersByTime(100);
-    });
-    fireEvent.click(selectBtn);
-
-    // Option selection executes immediately
-    expect(setInProgressSpy).toHaveBeenCalledTimes(1);
-    expect(setInProgressSpy).toHaveBeenCalledWith("msg-test-1", "db-flavor", ["sqlite"]);
-
-    // Advance past the original debounce threshold
-    act(() => {
-      vi.advanceTimersByTime(500);
-    });
-
-    // Verify the write-in was cancelled and was never committed
-    expect(setInProgressSpy).toHaveBeenCalledTimes(1);
-    expect(submitSpy).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("isWriteInAnswer helper", () => {
-  const contentWithOptions = `\`\`\`questions
+  const twoQuestionMessage: ChatMessage = {
+    id: "msg-test-2",
+    role: "assistant",
+    content: `\`\`\`questions
 questions:
-  - id: q-db
-    title: Database?
+  - id: db-flavor
+    title: Which database should we use?
     options:
       - title: SQLite
         value: sqlite
       - title: Postgres
         value: postgres
-\`\`\``;
+  - id: deploy-target
+    title: Where should it run?
+    options:
+      - title: Docker
+        value: docker
+      - title: Bare metal
+        value: metal
+\`\`\``,
+    timestamp: "2026-09-07T12:00:00Z",
+  };
 
-  const contentFreeText = `\`\`\`questions
-questions:
-  - id: q-freetext
-    title: Any feedback?
-\`\`\``;
+  /** Opens a session holding `message` and returns once the store has it selected. */
+  async function openSessionWith(message: ChatMessage): Promise<ChatSession> {
+    const session: ChatSession = {
+      id: "session-batched",
+      title: "Batched Session",
+      createdAt: "2026-09-07T12:00:00Z",
+      updatedAt: "2026-09-07T12:00:00Z",
+      spawnedJobIds: [],
+      messages: [message],
+    };
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([session]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(session);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    await chatStore.fetchSessions();
+    return session;
+  }
 
-  it("returns false for predefined option clicks", () => {
-    expect(isWriteInAnswer(contentWithOptions, "q-db", "sqlite")).toBe(false);
-    expect(isWriteInAnswer(contentWithOptions, "q-db", ["postgres"])).toBe(false);
-    expect(isWriteInAnswer(contentWithOptions, "q-db", ["sqlite", "postgres"])).toBe(false);
+  it("drafts locally and reaches the daemon only once Submit is pressed", async () => {
+    await openSessionWith(testMessage);
+    const answerSpy = vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
+
+    render(<ChatMessageRow message={testMessage} />);
+
+    selectOption("msg-test-1", "SQLite");
+    // Selecting reworks the draft, not the conversation: V1's chat block reports nothing until
+    // Submit, which is the whole difference from the plan surface's live answers.
+    expect(answerSpy).not.toHaveBeenCalled();
+
+    // Changing your mind before submitting also costs nothing.
+    selectOption("msg-test-1", "Postgres");
+    expect(answerSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(submitButton("msg-test-1"));
+    });
+
+    expect(answerSpy).toHaveBeenCalledTimes(1);
+    expect(answerSpy).toHaveBeenCalledWith("session-batched", "msg-test-1", {
+      "db-flavor": ["postgres"],
+    });
   });
 
-  it("returns true for write-in values not in options", () => {
-    expect(isWriteInAnswer(contentWithOptions, "q-db", "mariadb")).toBe(true);
-    expect(isWriteInAnswer(contentWithOptions, "q-db", ["sqlite", "mariadb"])).toBe(true);
+  it("sends every question of the block in one call", async () => {
+    await openSessionWith(twoQuestionMessage);
+    const answerSpy = vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
+
+    render(<ChatMessageRow message={twoQuestionMessage} />);
+
+    selectOption("msg-test-2", "SQLite");
+    selectOption("msg-test-2", "Docker");
+
+    await act(async () => {
+      fireEvent.click(submitButton("msg-test-2"));
+    });
+
+    expect(answerSpy).toHaveBeenCalledTimes(1);
+    expect(answerSpy).toHaveBeenCalledWith("session-batched", "msg-test-2", {
+      "db-flavor": ["sqlite"],
+      "deploy-target": ["docker"],
+    });
   });
 
-  it("returns true for free-text questions with text", () => {
-    expect(isWriteInAnswer(contentFreeText, "q-freetext", "looks good")).toBe(true);
-    expect(isWriteInAnswer(contentFreeText, "q-freetext", ["some notes"])).toBe(true);
+  it("carries typed Other text through without a debounce", async () => {
+    await openSessionWith(testMessage);
+    const answerSpy = vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
+
+    render(<ChatMessageRow message={testMessage} />);
+
+    writeOther("msg-test-1", "MariaDB");
+    // No timer to wait out: typing only touches the local draft.
+    expect(answerSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(submitButton("msg-test-1"));
+    });
+
+    expect(answerSpy).toHaveBeenCalledWith("session-batched", "msg-test-1", {
+      "db-flavor": ["MariaDB"],
+    });
   });
 
-  it("treats empty answers as immediate unless a debounced write-in was pending", () => {
-    expect(isWriteInAnswer(contentWithOptions, "q-db", "")).toBe(false);
-    expect(isWriteInAnswer(contentWithOptions, "q-db", null)).toBe(false);
-    expect(isWriteInAnswer(contentWithOptions, "q-db", [])).toBe(false);
+  it("sends the answers summary as the next user turn, after the block is stored", async () => {
+    const session = await openSessionWith(testMessage);
 
-    // When pending debounce was active, backspacing to empty is debounced
-    expect(isWriteInAnswer(contentWithOptions, "q-db", "", true)).toBe(true);
-    expect(isWriteInAnswer(contentWithOptions, "q-db", [], true)).toBe(true);
+    const order: string[] = [];
+    const answeredSession: ChatSession = {
+      ...session,
+      messages: [
+        {
+          ...testMessage,
+          content: testMessage.content.replace(
+            "title: Which database should we use?",
+            'title: Which database should we use?\n    answer: "sqlite"',
+          ),
+        },
+      ],
+    };
+    vi.spyOn(chatApi, "answerQuestions").mockImplementation(async () => {
+      order.push("answerQuestions");
+      return answeredSession;
+    });
+    const executeSpy = vi.spyOn(chatApi, "executeTurn").mockImplementation(async () => {
+      order.push("executeTurn");
+    });
+
+    render(<ChatMessageRow message={testMessage} />);
+
+    selectOption("msg-test-1", "SQLite");
+    await act(async () => {
+      fireEvent.click(submitButton("msg-test-1"));
+    });
+
+    await waitFor(() => {
+      expect(executeSpy).toHaveBeenCalled();
+    });
+
+    // The document is written before the agent is told about it, as `OnAnswerQuestion` orders it.
+    expect(order).toEqual(["answerQuestions", "executeTurn"]);
+    expect(executeSpy.mock.calls[0][1]).toMatchObject({
+      prompt: "Answers:\n- **Which database should we use?**: SQLite",
+    });
+  });
+
+  it("holds the drafted answers on screen while the round trip is in flight", async () => {
+    await openSessionWith(testMessage);
+    vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
+
+    render(<ChatMessageRow message={testMessage} />);
+
+    selectOption("msg-test-1", "SQLite");
+    await act(async () => {
+      fireEvent.click(submitButton("msg-test-1"));
+    });
+
+    // Submit does not visibly reset the form: the submitted answers are presented until the
+    // document catches up, and the store carries them in the meantime.
+    expect(chatStore.getInProgressAnswers("msg-test-1")).toEqual({ "db-flavor": ["sqlite"] });
+    expect(
+      screen.getByTestId("plan-markdown-chat-msg-msg-test-1").querySelector(".tq-answer-value")
+        ?.textContent,
+    ).toBe("SQLite");
+  });
+
+  it("keeps an unsubmitted draft across a remount of the row", async () => {
+    await openSessionWith(testMessage);
+    vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
+
+    const { unmount } = render(<ChatMessageRow message={testMessage} />);
+    selectOption("msg-test-1", "Postgres");
+    unmount();
+
+    // Virtualization remounts a row every time it scrolls back into the window, and nothing has
+    // been submitted yet, so the draft has to live above the row - `chatStore.questionDraftStore`,
+    // which is V1's `questionDraftsRef`.
+    render(<ChatMessageRow message={testMessage} />);
+    const block = screen.getByTestId("plan-markdown-chat-msg-msg-test-1");
+    const selected = Array.from(block.querySelectorAll(".tq-option[data-selected='true']"));
+    expect(selected).toHaveLength(1);
+    expect(selected[0].textContent).toContain("Postgres");
+  });
+
+  it("gates Submit on the block carrying an answer", async () => {
+    await openSessionWith(testMessage);
+    vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
+
+    render(<ChatMessageRow message={testMessage} />);
+
+    // A disabled button's click is a no-op whatever the handler does, so this asserts the gate
+    // itself: closed with nothing answered, open once something is.
+    expect(submitButton("msg-test-1").disabled).toBe(true);
+    expect(submitButton("msg-test-1").title).toBe("Answer a question to submit.");
+
+    selectOption("msg-test-1", "SQLite");
+    expect(submitButton("msg-test-1").disabled).toBe(false);
   });
 });
 
@@ -435,6 +443,10 @@ describe("Optimistic Question Answer State and Streaming Block Interactivity", (
     localStorage.clear();
     sessionStorage.clear();
     vi.restoreAllMocks();
+    // Submitting a block now posts the summary as the next user turn, so every test here reaches
+    // `executeTurn` once its `answerQuestions` settles. Left unstubbed it hits the real Tauri
+    // `invoke` and rejects after the test has finished, which surfaces as an unhandled rejection.
+    vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
   });
 
   const questionMessage: ChatMessage = {
@@ -479,11 +491,9 @@ questions:
 
     render(<ChatMessageRow message={questionMessage} />);
 
-    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
-
-    // Click option
-    act(() => {
-      fireEvent.click(selectBtn);
+    selectOption("msg-opt-1", "SQLite");
+    await act(async () => {
+      fireEvent.click(submitButton("msg-opt-1"));
     });
 
     // Content immediately reflects answer while answerQuestions is in flight
@@ -505,7 +515,7 @@ questions:
     });
   });
 
-  it("submitting indicator is active while submitAnswer is in flight and clears once confirmed", async () => {
+  it("submitting indicator is active while the submission is in flight and clears once confirmed", async () => {
     let resolveApi!: (val: ChatSession) => void;
     const pendingPromise = new Promise<ChatSession>((resolve) => {
       resolveApi = resolve;
@@ -530,9 +540,9 @@ questions:
 
     expect(screen.queryByTestId("submitting-answer-indicator")).not.toBeInTheDocument();
 
-    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
-    act(() => {
-      fireEvent.click(selectBtn);
+    selectOption("msg-opt-1", "SQLite");
+    await act(async () => {
+      fireEvent.click(submitButton("msg-opt-1"));
     });
 
     // Indicator is active while in flight
@@ -588,9 +598,9 @@ questions:
 
     render(<ChatMessageRow message={questionMessage} />);
 
-    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
-    act(() => {
-      fireEvent.click(selectBtn);
+    selectOption("msg-opt-1", "SQLite");
+    await act(async () => {
+      fireEvent.click(submitButton("msg-opt-1"));
     });
 
     const contentEl = screen.getByTestId("plan-markdown-content-chat-msg-msg-opt-1");
@@ -681,7 +691,7 @@ questions:
     });
 
     // Start submission of question answer while streaming is active
-    const submitPromise = chatStore.submitAnswer("msg-stream-1", "db-flavor", ["sqlite"]);
+    const submitPromise = chatStore.submitAnswers("msg-stream-1", { "db-flavor": ["sqlite"] });
 
     // Stream deltas arrive while answer is in flight
     act(() => {
@@ -771,14 +781,29 @@ questions:
     expect(input.value).toBe("My custom write-in draft");
   });
 
-  it("answer selections and in-progress drafts persist across window resize events and component unmount/remount", () => {
+  it("answer selections and in-progress drafts persist across window resize events and component unmount/remount", async () => {
     vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
+
+    // A submission is scoped to the active session - `submitAnswers` returns early without one, so
+    // the store has to be opened on the session holding this message before Submit is pressed.
+    const session: ChatSession = {
+      id: "session-opt-resize",
+      title: "Resize Session",
+      createdAt: "2026-09-14T10:00:00Z",
+      updatedAt: "2026-09-14T10:00:00Z",
+      spawnedJobIds: [],
+      messages: [questionMessage],
+    };
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([session]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(session);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    await chatStore.init();
 
     const { unmount } = render(<ChatMessageRow message={questionMessage} />);
 
-    const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
-    act(() => {
-      fireEvent.click(selectBtn);
+    selectOption("msg-opt-1", "SQLite");
+    await act(async () => {
+      fireEvent.click(submitButton("msg-opt-1"));
     });
 
     // Selection recorded in store
