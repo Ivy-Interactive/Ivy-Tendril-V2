@@ -1,7 +1,7 @@
 import * as React from "react";
-import { Button } from "@ivy-interactive/components/ui";
+import { Button, Callout } from "@ivy-interactive/components/ui";
 import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS, type DialogWidth } from "./fieldStyles";
+import { type DialogWidth } from "./fieldStyles";
 
 export type ConfirmVariant = "destructive" | "warning" | "primary";
 
@@ -123,11 +123,7 @@ export function ConfirmDialog({
         {body}
       </div>
       {children}
-      {error && (
-        <div role="alert" className={ALERT_CLASS}>
-          {error}
-        </div>
-      )}
+      {error && <Callout.Error className="mt-4">{error}</Callout.Error>}
     </DialogShell>
   );
 }
