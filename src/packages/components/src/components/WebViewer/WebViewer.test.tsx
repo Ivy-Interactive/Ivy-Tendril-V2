@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vite-plus/test";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import { WebViewer } from "./WebViewer.tsx";
+import { WebViewerProvider } from "@/contexts/webviewer-context";
 
 describe("WebViewer", () => {
   const mockRegistration = {
@@ -168,53 +169,42 @@ describe("WebViewer", () => {
     });
   });
 
-  it("frames directly when the worker cannot register", async () => {
-    vi.resetModules();
-    const { WebViewer: FreshWebViewer } = await import("./WebViewer.tsx");
+  // The component no longer registers a service worker: the proxied document does it, from the
+  // origin that serves it. What is worth pinning down here is that the frame always goes to
+  // view-space, and on whichever origin was configured — that single decision is what makes the
+  // feature behave identically under Tauri and in a browser.
 
-    Object.defineProperty(navigator, "serviceWorker", {
-      writable: true,
-      configurable: true,
-      value: {
-        getRegistrations: vi.fn().mockResolvedValue([]),
-        register: vi.fn().mockRejectedValue(new Error("Registration failed")),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      },
-    });
-
-    render(<FreshWebViewer id="test-viewer" url="https://example.com" />);
-    const iframe = await screen.findByTitle("Web content");
-    expect(iframe).not.toBeNull();
-    expect((iframe as HTMLIFrameElement).src).toBe("https://example.com/");
-    expect((iframe as HTMLIFrameElement).src).not.toContain("/__view/");
-    expect(screen.getByText(/Proxy unavailable/)).toBeDefined();
-    expect(screen.queryByText("Starting proxy…")).toBeNull();
+  it("frames view-space on the page's own origin by default", async () => {
+    render(<WebViewer id="test-viewer" url="https://example.com" />);
+    const iframe = (await screen.findByTitle("Web content")) as HTMLIFrameElement;
+    expect(iframe.src).toContain("/__view/@");
+    expect(iframe.src).toContain("https://example.com");
+    expect(iframe.src.startsWith(window.location.origin)).toBe(true);
   });
 
-  it("frames directly when the browser has no service worker", async () => {
-    vi.resetModules();
-    const { WebViewer: FreshWebViewer } = await import("./WebViewer.tsx");
-
-    Object.defineProperty(navigator, "serviceWorker", {
-      writable: true,
-      configurable: true,
-      value: undefined,
-    });
-
-    render(<FreshWebViewer id="test-viewer" url="https://example.com" />);
-    const iframe = await screen.findByTitle("Web content");
-    expect(iframe).not.toBeNull();
-    expect((iframe as HTMLIFrameElement).src).toBe("https://example.com/");
-    expect((iframe as HTMLIFrameElement).src).not.toContain("/__view/");
-    expect(screen.getByText(/Proxy unavailable/)).toBeDefined();
-    expect(screen.queryByText("Starting proxy…")).toBeNull();
+  it("frames view-space on the configured proxy origin", async () => {
+    // The Tauri case: the shell is on tauri://localhost and serves none of these paths, so the
+    // daemon's own origin has to carry them or the page loads without the agent in it.
+    render(
+      <WebViewer id="test-viewer" url="https://example.com" proxyOrigin="http://127.0.0.1:5010" />,
+    );
+    const iframe = (await screen.findByTitle("Web content")) as HTMLIFrameElement;
+    expect(iframe.src.startsWith("http://127.0.0.1:5010/__view/@")).toBe(true);
+    expect(iframe.src).toContain("https://example.com");
   });
 
-  it('never registers when proxy="off"', async () => {
-    vi.resetModules();
-    const { WebViewer: FreshWebViewer } = await import("./WebViewer.tsx");
+  it("takes the proxy origin from the provider, so callers need not pass it", async () => {
+    render(
+      <WebViewerProvider proxyOrigin="http://127.0.0.1:5010/">
+        <WebViewer id="test-viewer" url="https://example.com" />
+      </WebViewerProvider>,
+    );
+    const iframe = (await screen.findByTitle("Web content")) as HTMLIFrameElement;
+    // The trailing slash the provider was given must not survive into the path.
+    expect(iframe.src.startsWith("http://127.0.0.1:5010/__view/@")).toBe(true);
+  });
 
+  it("never registers a service worker from the host page", async () => {
     const register = vi.fn();
     Object.defineProperty(navigator, "serviceWorker", {
       writable: true,
@@ -227,84 +217,28 @@ describe("WebViewer", () => {
       },
     });
 
-    render(<FreshWebViewer id="test-viewer" url="https://example.com" proxy="off" />);
-    const iframe = await screen.findByTitle("Web content");
-    expect(iframe).not.toBeNull();
-    expect((iframe as HTMLIFrameElement).src).toBe("https://example.com/");
+    render(<WebViewer id="test-viewer" url="https://example.com" />);
+    await screen.findByTitle("Web content");
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    // Registering here is what failed under Tauri: the shell's origin serves no /sw.js.
     expect(register).not.toHaveBeenCalled();
   });
 
-  it('keeps waiting when proxy="require"', async () => {
-    vi.resetModules();
-    const { WebViewer: FreshWebViewer } = await import("./WebViewer.tsx");
-
+  it("frames without waiting when the browser has no service worker at all", async () => {
     Object.defineProperty(navigator, "serviceWorker", {
       writable: true,
       configurable: true,
-      value: {
-        getRegistrations: vi.fn().mockResolvedValue([]),
-        register: vi.fn().mockRejectedValue(new Error("Registration failed")),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      },
+      value: undefined,
     });
 
-    render(<FreshWebViewer id="test-viewer" url="https://example.com" proxy="require" />);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 100));
-    });
-    expect(screen.getByText("Starting proxy…")).toBeDefined();
-    expect(screen.queryByTitle("Web content")).toBeNull();
-  });
-
-  it("uses view-space when the proxy registers", async () => {
     render(<WebViewer id="test-viewer" url="https://example.com" />);
-    const iframe = await screen.findByTitle("Web content");
-    expect(iframe).not.toBeNull();
-    expect((iframe as HTMLIFrameElement).src).toContain("/__view/@");
-    expect((iframe as HTMLIFrameElement).src).toContain("https://example.com");
-    expect(screen.queryByText(/Proxy unavailable/)).toBeNull();
-  });
-
-  it("retries after a failed registration", async () => {
-    // First mount with rejecting register
-    vi.resetModules();
-    let FreshWebViewer = (await import("./WebViewer.tsx")).WebViewer;
-
-    Object.defineProperty(navigator, "serviceWorker", {
-      writable: true,
-      configurable: true,
-      value: {
-        getRegistrations: vi.fn().mockResolvedValue([]),
-        register: vi.fn().mockRejectedValue(new Error("First attempt failed")),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      },
-    });
-
-    const { unmount } = render(<FreshWebViewer id="test-viewer-1" url="https://example.com" />);
-    await screen.findByTitle("Web content");
-    unmount();
-    cleanup();
-
-    // Second mount with resolving register - reset modules again to clear the failed cache
-    vi.resetModules();
-    FreshWebViewer = (await import("./WebViewer.tsx")).WebViewer;
-
-    Object.defineProperty(navigator, "serviceWorker", {
-      writable: true,
-      configurable: true,
-      value: {
-        getRegistrations: vi.fn().mockResolvedValue([]),
-        register: vi.fn().mockResolvedValue(mockRegistration),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      },
-    });
-
-    render(<FreshWebViewer id="test-viewer-2" url="https://example.com" />);
-    const iframe = await screen.findByTitle("Web content");
-    expect((iframe as HTMLIFrameElement).src).toContain("/__view/@");
+    const iframe = (await screen.findByTitle("Web content")) as HTMLIFrameElement;
+    // Still view-space: the document is served rewritten with the agent inside it either way, and
+    // the worker only ever improved requests the rewriter could not reach.
+    expect(iframe.src).toContain("/__view/@");
+    expect(screen.queryByText("Starting proxy…")).toBeNull();
   });
 
   it("renders Toolbar when toolbar prop is true", async () => {
@@ -452,13 +386,18 @@ describe("WebViewer", () => {
 
     postMessageSpy.mockClear();
 
-    // Now simulate navigation to page-b reported by agent
+    // Now simulate navigation to page-b reported by the agent.
+    //
+    // `location` is the name `agent.js` actually sends, and the reason this assertion is worth
+    // making at all: the component used to listen for "navigated" — its own *outbound* event name —
+    // so every real page change was dropped, and this test passed anyway by sending the name the
+    // component was listening for rather than the one the agent emits.
     act(() => {
       window.dispatchEvent(
         new MessageEvent("message", {
           data: {
             __proxy: true,
-            type: "navigated",
+            type: "location",
             url: "https://example.com/page-b",
           },
           source: iframe.contentWindow,

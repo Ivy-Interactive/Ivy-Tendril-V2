@@ -1,86 +1,84 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
-import { Plus, SearchX } from "lucide-react";
-import {
-  BadgeSelect,
-  getPlatformShortcut,
-  useFocusManagement,
-  useFocusable,
-  useShortcut,
-  type BadgeSelectOption,
-} from "@ivy-interactive/components/tendril";
-import type { PlanSummary, PlanVerification, VerificationStatus } from "../types/api";
-import { EmptyState } from "../components/EmptyState";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useShortcut, type ShellBadgeDto } from "@ivy-interactive/components/tendril";
+import type { Job, PlanSummary } from "../types/api";
+import { NoContentView } from "../components/NoContentView";
+import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
+import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
+import { draftQueueFor, normalizePlanState } from "../utils/planQueues";
 
-const PLANS_FOCUS_GROUP = "plans-list";
+/**
+ * Which plans this page lists, and the state-name normalisation every read point needs, both from
+ * `utils/planQueues` — the shell's nav badges count the same queues and cannot import them from a view.
+ * Re-exported because this module was where they lived, and much of the app still imports them here.
+ */
+export {
+  draftQueueFor,
+  isReviewState,
+  normalizePlanState,
+  reviewQueueFor,
+  REVIEW_QUEUE_STATES,
+} from "../utils/planQueues";
 
 /**
  * The New Plan shortcut, bound and labelled as V1 binds and labels it
  * (`NewPlanButton.ShortcutKey("CTRL+ALT+N")` / `NewPlanButton.GetTooltip`). `Ctrl` maps to
  * Command on macOS in both frameworks, so the one string covers both platforms.
+ *
+ * The button itself belongs to the shell (`ShellNewPlanButton`, above the nav, as in V1's
+ * `sidebarBody`), so this page binds the key without drawing a second button for it.
  */
 const NEW_PLAN_SHORTCUT = "Ctrl+Alt+N";
 
 interface PlansViewProps {
   plans: PlanSummary[];
+  /**
+   * The live job list. `PlansApp.Build` reads it to keep a plan out of the list while a job still
+   * holds its worktree; see [`draftQueueFor`]. Optional so a caller with no job list still gets the
+   * state-filtered list rather than an empty sidebar.
+   */
+  jobs?: Job[];
+  /**
+   * The plan the shell's sidebar row should read as selected. Absent means "whatever this page last
+   * opened", which is how the highlight survives until the host threads its own selection through.
+   */
+  selectedPlanId?: string | null;
   onSelectPlan: (planId: string) => void;
   onNewPlan?: () => void;
+  /**
+   * Where the empty page's process wallpaper navigates: V1's `UseTendrilProcess` wires its boxes to
+   * `Navigate<PlansApp>()`, `Navigate<ReviewApp>()` and `Navigate<JobsApp>()`, so without this the
+   * wallpaper's arrows are drawn and do nothing.
+   */
+  onNavigate?: (navId: string) => void;
 }
 
 /**
- * The lifecycle states, in `PlanStatus` declaration order (V1
- * `src/Ivy.Tendril/Models/PlanModels.cs`). The filter reads as the lifecycle it
- * describes rather than as an arbitrary list.
- */
-const LIFECYCLE_OPTIONS: BadgeSelectOption[] = [
-  { value: "Draft", label: "Draft" },
-  { value: "Creating", label: "Creating" },
-  { value: "Updating", label: "Updating" },
-  { value: "Executing", label: "Executing" },
-  { value: "Completed", label: "Completed" },
-  { value: "Failed", label: "Failed" },
-  { value: "Review", label: "Review" },
-  { value: "Skipped", label: "Skipped" },
-  { value: "Icebox", label: "Icebox" },
-  { value: "Blocked", label: "Blocked" },
-];
-
-/**
- * Plan state to badge classes, mirroring `Constants.PlanStatusBadgeVariants` in V1
- * (`src/Ivy.Tendril/Constants.cs`): the three in-flight states are Info, Review and
- * Completed are Success, Failed is Destructive, Blocked is Warning, and the three
- * resting states (Draft, Skipped, Icebox) are the neutral Outline.
+ * Plan state to the library `Badge` variant, value for value from `Constants.PlanStatusBadgeVariants`
+ * (V1 `src/Ivy.Tendril/Constants.cs:32-44`): the three in-flight states are Info, Review and Completed
+ * are Success, Failed is Destructive, Blocked is Warning, and the three resting states (Draft,
+ * Skipped, Icebox) are the neutral Outline.
  *
- * Semantic tokens only. `--primary` is Ivy green, so a state badge must never reach
- * for it: green here would read as "succeeded" on a plan that has not run.
+ * V1's map is over `BadgeVariant` and so is this: the library `Badge` has the same variants, so the
+ * port is the enum rather than a translation of it into classes. A state outside the map falls to
+ * Outline, which is what V1's `GetValueOrDefault` does.
  */
-export const PLAN_STATE_BADGE_CLASS: Record<string, string> = {
-  Creating: "border-info/40 bg-info/10 text-info",
-  Updating: "border-info/40 bg-info/10 text-info",
-  Executing: "border-info/40 bg-info/10 text-info",
-  Review: "border-success/40 bg-success/10 text-success",
-  Completed: "border-success/40 bg-success/10 text-success",
-  Failed: "border-destructive/40 bg-destructive/10 text-destructive",
-  Blocked: "border-warning/40 bg-warning/10 text-warning",
-  Draft: "border-border bg-transparent text-muted-foreground",
-  Skipped: "border-border bg-transparent text-muted-foreground",
-  Icebox: "border-border bg-transparent text-muted-foreground",
+export const PLAN_STATE_BADGE_VARIANT: Record<string, PlanStateBadgeVariant> = {
+  Creating: "info",
+  Updating: "info",
+  Executing: "info",
+  Review: "success",
+  Completed: "success",
+  Failed: "destructive",
+  Blocked: "warning",
+  Draft: "outline",
+  Skipped: "outline",
+  Icebox: "outline",
 };
 
-export const planStateBadgeClass = (state: string): string =>
-  PLAN_STATE_BADGE_CLASS[state] ?? "border-border bg-transparent text-muted-foreground";
+export type PlanStateBadgeVariant = "info" | "success" | "destructive" | "warning" | "outline";
 
-/**
- * Verification status to dot colour, from `Constants.VerificationStatusBadgeVariants`
- * (V1 `src/Ivy.Tendril/Constants.cs`): Pass is Success, Fail is Destructive, and both
- * Pending and Skipped are Outline. Pending is not a warning - a verification that has
- * not run yet is news about nothing.
- */
-const VERIFICATION_DOT_CLASS: Record<VerificationStatus, string> = {
-  Pass: "bg-success",
-  Fail: "bg-destructive",
-  Pending: "bg-muted-foreground/50",
-  Skipped: "bg-muted-foreground/50",
-};
+export const planStateBadgeVariant = (state: string): PlanStateBadgeVariant =>
+  PLAN_STATE_BADGE_VARIANT[normalizePlanState(state)] ?? "outline";
 
 /**
  * `#21`, not `#00021`: V1 tags a row with `$"#{plan.Id}"` (`PlansApp.BuildSidebarList`)
@@ -98,264 +96,211 @@ export const parseProjects = (project: string | undefined): string[] =>
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
 
-/** The plan id as a number, for ordering. Non-numeric ids sort last. */
-const planIdOrder = (id: string): number => {
-  const parsed = Number.parseInt(id, 10);
-  return Number.isNaN(parsed) ? -1 : parsed;
+/**
+ * Whether `plan` is the plan `id` names.
+ *
+ * `PlanSelectionHelper.ResolveSelection` accepts three spellings of the same plan, because the id
+ * reaches it from three places: `p.FolderName.Equals(saved)`, `p.Id.ToString() == saved` and
+ * `p.FolderName.StartsWith(saved + "-")` — an app's args carry `00021-SomePlan`, a row carries the
+ * folder and a link carries the bare number. The numeric comparison here covers all three, since
+ * `parseInt` reads the leading id off a folder name.
+ */
+const isPlanId = (plan: PlanSummary, id: string): boolean => {
+  if (plan.id.toLowerCase() === id.toLowerCase()) return true;
+  const left = Number.parseInt(plan.id, 10);
+  const right = Number.parseInt(id, 10);
+  return !Number.isNaN(left) && !Number.isNaN(right) && left === right;
 };
 
 /**
- * One plan row. Registering with the focus group by index is what lets the arrow keys move real DOM
- * focus rather than only the highlight — the row is already `tabIndex={0}` with focus-visible styling.
+ * Which plan an app opens on, ported from V1's `Helpers/PlanSelectionHelper.cs`.
+ *
+ * V1 calls this on **every** `Build()` of both `PlansApp` and `ReviewApp` — it is not a mount-time
+ * seed — and its three branches are, in order:
+ *
+ * 1. the saved plan, if it is still in the list
+ *    (`currentPlans.FirstOrDefault(p => p.FolderName.Equals(selected.FolderName) || p.Id == selected.Id)`);
+ * 2. failing that, whatever now sits at the **same index** it used to
+ *    (`var newIndex = oldIndex >= 0 ? Math.Min(oldIndex, currentPlans.Count - 1) : 0`), so clearing a
+ *    queue works down it instead of bouncing back to the top after every decision;
+ * 3. and with nothing saved at all, the first plan:
+ *    `if (currentSelected == null && currentPlans.Count > 0 && ...) return (currentPlans[0], ...)`.
+ *
+ * Both callers order the list `.OrderByDescending(p => p.Id)`, so "the first plan" is the **highest
+ * id**: the latest plan, not the most recently touched one. An empty list selects nothing, which is
+ * what puts V1 on its `NoContentView`.
+ *
+ * @param plans the app's own filtered, newest-first list.
+ * @param savedId the plan the app already had selected, or the one its args named.
+ * @param previousPlans the list as it was on the previous build, for branch 2.
  */
-const PlanRow: React.FC<{
-  index: number;
-  highlighted: boolean;
-  onSelect: () => void;
-  children: React.ReactNode;
-}> = ({ index, highlighted, onSelect, children }) => {
-  const { ref } = useFocusable(PLANS_FOCUS_GROUP, index);
-  return (
-    <div
-      ref={ref}
-      role="listitem"
-      tabIndex={0}
-      onClick={onSelect}
-      className={`cursor-pointer rounded-xl border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-        highlighted
-          ? "border-primary bg-card shadow-md ring-1 ring-primary"
-          : "border-border bg-card/60 hover:border-primary hover:bg-card"
-      }`}
-    >
-      {children}
-    </div>
-  );
+export const resolvePlanSelection = (
+  plans: PlanSummary[],
+  savedId: string | null | undefined,
+  previousPlans: readonly PlanSummary[] = [],
+): PlanSummary | null => {
+  if (plans.length === 0) return null;
+  if (!savedId) return plans[0];
+
+  const match = plans.find((plan) => isPlanId(plan, savedId));
+  if (match) return match;
+
+  const oldIndex = previousPlans.findIndex((plan) => isPlanId(plan, savedId));
+  return plans[oldIndex >= 0 ? Math.min(oldIndex, plans.length - 1) : 0];
 };
 
-/** The badges a row carries, in `PlansApp.BuildRowBadges` order. */
-const PlanRowBadges: React.FC<{ plan: PlanSummary }> = ({ plan }) => (
-  <>
-    {/* Draft carries no state badge: it is where every plan starts, so saying so is not news. */}
-    {plan.state !== "Draft" && (
-      <span
-        className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${planStateBadgeClass(
-          plan.state,
-        )}`}
-      >
-        {plan.state}
-      </span>
-    )}
-    {parseProjects(plan.project).map((project) => (
-      <span
-        key={project}
-        className="rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground"
-      >
-        {project}
-      </span>
-    ))}
-    {plan.level && (
-      <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-        {plan.level}
-      </span>
-    )}
-  </>
-);
+/**
+ * The badges a row carries, in `PlansApp.BuildRowBadges` order: the state unless it is Draft (where
+ * every plan starts, so saying so is not news), then one badge per project, then the level.
+ */
+export const planRowBadges = (plan: PlanSummary): ShellBadgeDto[] => {
+  const badges: ShellBadgeDto[] = [];
+  const state = normalizePlanState(plan.state);
+  if (state !== "Draft") badges.push({ label: state, kind: "warning" });
+  for (const project of parseProjects(plan.project)) {
+    badges.push({ label: project, kind: "project" });
+  }
+  if (plan.level) badges.push({ label: plan.level, kind: "neutral" });
+  return badges;
+};
 
-const VerificationDots: React.FC<{ verifications: PlanVerification[] }> = ({ verifications }) => (
-  <div className="flex shrink-0 space-x-1">
-    {verifications.map((v) => (
-      <span
-        key={v.name}
-        title={`${v.name}: ${v.status}`}
-        className={`h-2 w-2 rounded-full ${
-          VERIFICATION_DOT_CLASS[v.status] ?? VERIFICATION_DOT_CLASS.Pending
-        }`}
-      />
-    ))}
-  </div>
-);
+/**
+ * `PlansApp.BuildSidebarList`, field for field: `new ShellSidebarListState("plans", "Plans", items,
+ * selected?.FolderName, planId => new PlansAppArgs(planId))`.
+ *
+ * Nothing else is set, which is a decision rather than an omission: the list keeps the default
+ * `Searchable` with no `OnSearch` (so the shell's search icon opens the plan search dialog) and no
+ * `OnNew` (New Plan is the shell's own button, above the nav).
+ */
+export const buildPlansSidebarList = (
+  plans: PlanSummary[],
+  selectedId: string | null,
+  select: (planId: string) => void,
+): ShellSidebarList => ({
+  appId: "plans",
+  title: "Plans",
+  items: plans.map((plan) => ({
+    id: plan.id,
+    title: plan.title,
+    tag: formatPlanId(plan.id),
+    badges: planRowBadges(plan),
+  })),
+  selectedId,
+  buildSelectArgs: (planId) => {
+    /* V1's shell turns a row click into `OpenApp(new NavigateArgs("plans", BuildSelectArgs(id)))`
+       and the plans app reads `PlansAppArgs.PlanId` back out of its args. V2 has no arg-carrying
+       navigation yet, so the selection is applied here as well; the returned object is still V1's
+       `PlansAppArgs(planId)` so this drops out once the shell can hand args to a view. */
+    select(planId);
+    return { planId };
+  },
+});
 
-export const PlansView: React.FC<PlansViewProps> = ({ plans, onSelectPlan, onNewPlan }) => {
-  const [search, setSearch] = useState("");
-  const [selectedStates, setSelectedStates] = useState<string[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const rowFocus = useFocusManagement(PLANS_FOCUS_GROUP);
-
-  // `skipInInputs` subsumes the activeElement guard this used to need: a "/" typed into the search
-  // box is a slash, not a shortcut.
-  useShortcut("plans:focus-search", "/", () => searchInputRef.current?.focus(), {
-    description: "Focus search bar in plans explorer",
-  });
+/**
+ * The Plans page.
+ *
+ * `PlansApp.Build` renders **no list of its own**: it publishes one into the shell sidebar on every
+ * build (`sidebarListSignal.Send(BuildSidebarList(plans, selected))`) and returns a `ContentView`
+ * that shows the selected plan. So does this: the content area is the selection, and the list the
+ * page used to draw as a card grid now lives where V1 puts it.
+ *
+ * Selecting a row opens the plan, which in V2 is the host's `plan-<id>` page (`PlanDetailView`) -
+ * V1's `PlansAppArgs(planId)` reaching `ContentView` by another route.
+ */
+export const PlansView: React.FC<PlansViewProps> = ({
+  plans,
+  jobs,
+  selectedPlanId = null,
+  onSelectPlan,
+  onNewPlan,
+  onNavigate,
+}) => {
+  /**
+   * The row the sidebar reads as selected. Seeded from the host and then whatever this page last
+   * opened, because `selectedId` drives both the highlighted row and the page tab's title
+   * (`TendrilAppShell.PageTabTitle`).
+   */
+  const [openedPlanId, setOpenedPlanId] = useState<string | null>(selectedPlanId);
+  const selectedId = selectedPlanId ?? openedPlanId;
 
   useShortcut("plans:new-plan", NEW_PLAN_SHORTCUT, () => onNewPlan?.(), {
     description: "New Plan",
     disabled: !onNewPlan,
   });
 
-  const filteredPlans = useMemo(() => {
-    const matching = plans.filter((p) => {
-      if (selectedStates.length > 0 && !selectedStates.includes(p.state)) {
-        return false;
-      }
-      if (search) {
-        const q = search.toLowerCase();
-        return (
-          p.id.toLowerCase().includes(q) ||
-          p.title.toLowerCase().includes(q) ||
-          p.project.toLowerCase().includes(q)
-        );
-      }
-      return true;
-    });
-    // `PlansApp.Build`: `.OrderByDescending(p => p.Id)`. Newest plan first, and stable
-    // regardless of the order the service happened to hand them over in.
-    return matching.sort((a, b) => planIdOrder(b.id) - planIdOrder(a.id));
-  }, [plans, selectedStates, search]);
+  const listPlans = useMemo(() => draftQueueFor(plans, jobs), [plans, jobs]);
 
-  // Arrow key navigation. This stays on its own listener — it drives a selection index, not a single
-  // discoverable action — but the arrows now move DOM focus alongside the highlight, so a screen
-  // reader and the focus ring follow the selection instead of staying on whatever was last clicked.
+  /**
+   * The plan this page opens on, which V1 opens **without being asked**: `PlansApp.Build` runs
+   * `PlanSelectionHelper.ResolveSelection` on every build and hands the result to its `ContentView`,
+   * so arriving on the page with nothing saved lands on `plans[0]` — the newest Draft/Blocked plan —
+   * rather than on an empty pane.
+   *
+   * V2 renders the plan under its own `plan-<id>` page instead of inside this one, so "select it" is
+   * the same navigation a sidebar row performs. The ref keeps that to once per resolved plan:
+   * `onSelectPlan` is a fresh closure on every host render, and re-running it would push a duplicate
+   * history entry each time.
+   */
+  const defaultSelection = resolvePlanSelection(listPlans, selectedId);
+  const autoOpenedId = useRef<string | null>(null);
+
   useEffect(() => {
-    const handleNavigation = (e: KeyboardEvent) => {
-      if (filteredPlans.length === 0) return;
+    const target = defaultSelection?.id;
+    if (!target || autoOpenedId.current === target) return;
+    autoOpenedId.current = target;
+    setOpenedPlanId(target);
+    onSelectPlan(target);
+  }, [defaultSelection?.id, onSelectPlan]);
 
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        // focusIndex, not focusNext: the highlight is the source of truth here, and stepping the
-        // focus walk independently drifts a row behind it on the first press.
-        const next = (selectedIndex + 1) % filteredPlans.length;
-        setSelectedIndex(next);
-        rowFocus.focusIndex(next);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        const previous = selectedIndex <= 0 ? filteredPlans.length - 1 : selectedIndex - 1;
-        setSelectedIndex(previous);
-        rowFocus.focusIndex(previous);
-      } else if (e.key === "Enter" && document.activeElement !== searchInputRef.current) {
-        e.preventDefault();
-        const selected = filteredPlans[selectedIndex];
-        if (selected) {
-          onSelectPlan(selected.id);
-        }
-      }
-    };
-    window.addEventListener("keydown", handleNavigation);
-    return () => window.removeEventListener("keydown", handleNavigation);
-  }, [filteredPlans, selectedIndex, onSelectPlan, rowFocus]);
+  const sidebarList = useMemo(
+    () =>
+      buildPlansSidebarList(listPlans, selectedId, (planId) => {
+        setOpenedPlanId(planId);
+        onSelectPlan(planId);
+      }),
+    [listPlans, selectedId, onSelectPlan],
+  );
 
-  const isFiltered = search.length > 0 || selectedStates.length > 0;
+  /* Published on every render, which `ShellSidebarListSignal`'s own doc comment says the shell
+     tolerates by design ("The active app publishes this on every build"). */
+  usePublishSidebarList(sidebarList);
 
   return (
-    <div className="space-y-6" data-testid="plans-view">
-      {/* Search and Filters bar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 max-w-md">
-          <input
-            ref={searchInputRef}
-            type="text"
-            role="searchbox"
-            aria-label="Search plans"
-            placeholder="Search plans by title, ID, or project... (Press / to focus)"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+    <div className="h-full" data-testid="plans-view">
+      {/* `ContentView.BuildNoSelectionView`, which V1 keeps as two separate cases: an empty list is
+          `NoContentView("No plans", "Plans you create will appear here")`, and a list with nothing
+          selected is the one muted line pointing at the sidebar. The second is unreachable in a
+          running app now that a non-empty list always resolves a selection — it is unreachable in V1
+          for the same reason, and kept here for the same reason: it is what a list with a selection
+          the host has not applied yet shows. */}
+      {listPlans.length === 0 ? (
+        /* Plans is a full-bleed app (V1's `.RemoveParentPadding()` on the workspace), so the shell
+           gives this page no padding and the empty state has to inset itself. V1 reaches
+           `NoContentView` *before* the workspace branch, so the empty case keeps the host's 16px and
+           `Height(Size.Full())` centres it. */
+        <div className="flex h-full min-h-0 items-center justify-center p-4">
+          {/* The `cta` is V1's `processView`, i.e. `Context.UseTendrilProcess()`: the pipeline
+              wallpaper, with New Plan opening the Create Plan dialog straight from it. */}
+          <NoContentView
+            data-testid="plans-empty"
+            title="No plans"
+            description="Plans you create will appear here"
+            cta={
+              <TendrilProcessWallpaper
+                plans={plans}
+                jobs={jobs}
+                onNewPlan={onNewPlan}
+                onNavigate={onNavigate}
+              />
+            }
           />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-2.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              Clear
-            </button>
-          )}
         </div>
-
-        <div className="flex items-center space-x-3">
-          <div className="min-w-[180px]">
-            <BadgeSelect
-              id="state-filter"
-              options={LIFECYCLE_OPTIONS}
-              value={selectedStates}
-              placeholder="Filter by state..."
-              multiple={true}
-              // BadgeSelect only emits an event it was told to emit; without this the
-              // filter is decorative.
-              events={["OnChange"]}
-              eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
-                if (args && Array.isArray(args[0])) {
-                  setSelectedStates(args[0] as string[]);
-                }
-              }}
-            />
-          </div>
-          {onNewPlan && (
-            <button
-              type="button"
-              onClick={onNewPlan}
-              aria-label="New Plan"
-              title={`New Plan (${getPlatformShortcut(NEW_PLAN_SHORTCUT)})`}
-              className="flex items-center space-x-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/90"
-            >
-              <Plus size={16} aria-hidden="true" />
-              <span>New Plan</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Plans List or Empty State.
-          V1 keeps these two cases apart: nothing to show at all is `NoContentView`
-          ("No plans" / "Plans you create will appear here", `ContentView.BuildNoSelectionView`),
-          while a filter that excludes everything is the much smaller inline `NoResultsView`. */}
-      {filteredPlans.length === 0 ? (
-        isFiltered ? (
-          <div
-            role="region"
-            aria-label="No results"
-            className="flex items-start gap-2 p-4 text-sm text-muted-foreground"
-          >
-            <SearchX size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
-            <span>No results. Try adjusting your filters.</span>
-          </div>
-        ) : (
-          <EmptyState title="No plans" description="Plans you create will appear here" />
-        )
       ) : (
         <div
-          role="list"
-          aria-label="Plans list"
-          className="grid gap-3 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+          data-testid="plans-no-selection"
+          className="flex h-full items-center justify-center text-sm text-muted-foreground"
         >
-          {filteredPlans.map((p, idx) => {
-            const isHighlighted = idx === selectedIndex;
-            return (
-              <PlanRow
-                key={p.id}
-                index={idx}
-                highlighted={isHighlighted}
-                onSelect={() => onSelectPlan(p.id)}
-              >
-                <span className="font-mono text-xs font-semibold text-muted-foreground">
-                  {formatPlanId(p.id)}
-                </span>
-
-                <h3 className="mt-2 text-sm font-semibold text-foreground line-clamp-2">
-                  {p.title}
-                </h3>
-
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <PlanRowBadges plan={p} />
-                  </div>
-                  {p.verifications && p.verifications.length > 0 && (
-                    <VerificationDots verifications={p.verifications} />
-                  )}
-                </div>
-              </PlanRow>
-            );
-          })}
+          Select a plan from the sidebar
         </div>
       )}
     </div>

@@ -77,6 +77,11 @@ fn test_corrupted_or_truncated_binary_detection() {
         let mut perms = script.metadata().expect("meta").permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(&script_path, perms).expect("chmod");
+        // Closed before the exec below, not left to the end of the block: Linux refuses to execute a
+        // file any process still holds open for writing (`ETXTBSY`), so on CI the spawn failed and
+        // `check_binary_health` reported the mock as unhealthy. macOS has no such rule, which is why
+        // this only ever failed once the Rust steps started running on the Linux runner.
+        drop(script);
 
         let res_valid = mgr.check_binary_health(&script_path);
         assert!(res_valid.is_compatible);

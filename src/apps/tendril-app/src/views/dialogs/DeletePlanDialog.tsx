@@ -17,14 +17,18 @@ export interface DeletePlanDialogProps {
 }
 
 /**
- * V1's `Apps/Plans/Dialogs/DeletePlanDialog`: not a yes/no but a "what would you like to do with
- * this plan", offering the two states that keep the folder — Skipped and Icebox — beside the delete
- * that does not. Both alternatives are outline, delete is destructive, and they sit in that order
- * between Cancel and it, so the reversible answers are read first.
+ * V1's `Apps/Plans/Dialogs/DeletePlanDialog`, in Framework's confirmation shape (see
+ * `ConfirmDialog`): Cancel outline first, the destructive Delete last, nothing to type.
  *
- * The typed-id gate is V2's, and stays: V1 pairs its one-click delete with `.ShortcutKey("Enter")
- * .AutoFocus()`, which is the combination this family declines (see `ConfirmDialog`). Typing the id
- * is the strongest signal of intent available for the one action with no recovery path.
+ * The two alternatives between them — Skipped and Icebox — are V1's, and are the reversible answers
+ * to the same question, so they are read before the one with no recovery path. They are also the
+ * app's only writes of those two states, so they carry information the two-button form would lose:
+ * `IceboxView`'s Thaw is the way *out* of Icebox and this is the way in.
+ *
+ * There is deliberately no typed-id gate. Framework's confirm is armed as soon as it opens —
+ * `WithConfirm` has no such affordance at all — and a second, stricter ritual for one delete while
+ * every other delete in the app is a single click is the inconsistency the contract exists to
+ * remove. The recoverability argument is answered instead by keeping focus on Cancel.
  *
  * Calls `bridge.deletePlan` directly and awaits it. On rejection the dialog stays
  * open with the backend's message — a plan that vanished from the list and then
@@ -38,13 +42,11 @@ export function DeletePlanDialog({
   onArchived,
   onSkipped,
 }: DeletePlanDialogProps) {
-  const [typedId, setTypedId] = React.useState("");
   const [isBusy, setIsBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (isOpen) {
-      setTypedId("");
       setError(null);
       setIsBusy(false);
     }
@@ -89,14 +91,18 @@ export function DeletePlanDialog({
       width="rem40"
       confirmLabel="Delete"
       confirmVariant="destructive"
-      confirmDisabled={typedId.trim() !== plan.id}
       onConfirm={handleDelete}
       isBusy={isBusy}
       error={error}
+      // Framework's body is the question plus its consequence; V1's `Icebox/Dialogs/DeletePlanDialog`
+      // words the same question as "Are you sure you want to permanently delete plan #{id}?". The
+      // second sentence is what V1's bare copy leaves the operator to guess, and the third names the
+      // reversible answers so the footer's four buttons are not a surprise.
       body={
         <p>
-          What would you like to do with plan #{plan.id}? Deleting removes the plan folder, all
-          revisions and all verification reports permanently. This cannot be undone.
+          Are you sure you want to permanently delete plan #{plan.id}? This removes the plan folder,
+          all revisions and all verification reports, and cannot be undone. To keep the folder, move
+          the plan to Skipped or Icebox instead.
         </p>
       }
       secondaryAction={
@@ -119,19 +125,6 @@ export function DeletePlanDialog({
           </Button>
         </>
       }
-    >
-      <div className="mt-4">
-        <label htmlFor="delete-plan-confirm" className="mb-1 block text-xs text-muted-foreground">
-          Type <span className="font-mono text-foreground">{plan.id}</span> to confirm
-        </label>
-        <input
-          id="delete-plan-confirm"
-          aria-label="Confirm plan id"
-          value={typedId}
-          onChange={(event) => setTypedId(event.target.value)}
-          className="w-full rounded-field border border-border bg-background px-3 py-2 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-        />
-      </div>
-    </ConfirmDialog>
+    />
   );
 }

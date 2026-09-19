@@ -11,17 +11,17 @@ afterEach(() => {
 });
 
 describe("DeletePlanDialog", () => {
-  it("keeps the destructive confirm disabled until the plan id is typed", () => {
+  /**
+   * Framework's `WithConfirm` arms its confirm the moment the dialog opens and has no typed-name
+   * affordance at all. V2 used to gate this one delete behind typing the plan id, which made it the
+   * only delete in the app with a second ritual.
+   */
+  it("asks for nothing to be typed, and the confirm is live on open", () => {
     render(<DeletePlanDialog isOpen onClose={vi.fn()} plan={plan} />);
 
-    const confirm = screen.getByTestId("dialog-confirm");
-    expect(confirm).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText("Confirm plan id"), { target: { value: "0002" } });
-    expect(confirm).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText("Confirm plan id"), { target: { value: "00021" } });
-    expect(confirm).toBeEnabled();
+    expect(screen.getByTestId("dialog-confirm")).toBeEnabled();
+    expect(screen.queryByLabelText("Confirm plan id")).not.toBeInTheDocument();
+    expect(screen.getByTestId("delete-plan-dialog").querySelector("input")).toBeNull();
   });
 
   it("deletes once, and only once, when confirmed", async () => {
@@ -31,7 +31,6 @@ describe("DeletePlanDialog", () => {
 
     render(<DeletePlanDialog isOpen onClose={onClose} plan={plan} onDeleted={onDeleted} />);
 
-    fireEvent.change(screen.getByLabelText("Confirm plan id"), { target: { value: "00021" } });
     fireEvent.click(screen.getByTestId("dialog-confirm"));
 
     await waitFor(() => expect(deletePlan).toHaveBeenCalledTimes(1));
@@ -46,7 +45,6 @@ describe("DeletePlanDialog", () => {
 
     render(<DeletePlanDialog isOpen onClose={onClose} plan={plan} />);
 
-    fireEvent.change(screen.getByLabelText("Confirm plan id"), { target: { value: "00021" } });
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
@@ -54,10 +52,10 @@ describe("DeletePlanDialog", () => {
   });
 
   /**
-   * V1 asks "what would you like to do with this plan" and offers both states that keep the folder,
-   * in this order, before the delete that does not.
+   * V1 offers both states that keep the folder, in this order, before the delete that does not, and
+   * Framework's contract puts the decline first and the destructive answer last.
    */
-  it("offers Skipped and Icebox before the delete, and delete is the only destructive one", () => {
+  it("offers Skipped and Icebox between Cancel and the delete", () => {
     render(<DeletePlanDialog isOpen onClose={vi.fn()} plan={plan} />);
 
     const footer = screen.getByTestId("dialog-cancel").parentElement as HTMLElement;
@@ -103,7 +101,6 @@ describe("DeletePlanDialog", () => {
 
     render(<DeletePlanDialog isOpen onClose={onClose} plan={plan} onDeleted={onDeleted} />);
 
-    fireEvent.change(screen.getByLabelText("Confirm plan id"), { target: { value: "00021" } });
     fireEvent.click(screen.getByTestId("dialog-confirm"));
 
     await waitFor(() =>

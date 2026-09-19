@@ -1,15 +1,236 @@
-//! Moves uploaded files out of their session temp directory and into the plan they belong to.
+//! `<TendrilHome>/Attachments/` — where a file the user attached lives, and what becomes of it.
 //!
-//! A user attaches a screenshot when they ask for a plan; the upload lands in
-//! `<TendrilHome>/Attachments/<uploadSessionId>/` and the prompt references it from there. Once the
-//! plan folder exists, that path is temporary storage referenced by a permanent document — so the
-//! files move into the plan and every reference to the old path is rewritten.
+//! One directory, keyed by a session id, with two halves:
 //!
-//! Every failure here is logged and swallowed. A plan that was created successfully must not be
-//! failed because a file could not be moved.
+//! * **Staging** ([`store_attachment`]). A file the user picks in the composer or drops on the window
+//!   is *copied here*, and it is the copy the message references. That is not a convenience: only
+//!   [`crate::security::local_file_roots`] paths can be previewed at all, and a screenshot on the
+//!   user's Desktop is outside every root, so a message that kept the original path could never show
+//!   a thumbnail. V1 has the same shape for the same reason — its `UseUpload` handler writes the
+//!   uploaded stream into `Attachments/<sessionId>/` (`Apps/Chat/ContentView.cs`) or
+//!   `Attachments/<uploadSessionId>/` (`CreatePlanDialog`) before anything references it.
+//! * **Promotion** ([`move_attachments_to_plan_folder`]). A staged file belonging to a plan job is
+//!   temporary storage referenced by a permanent document, so once the plan folder exists the files
+//!   move into it and every reference to the old path is rewritten.
+//!
+//! **Lifetime.** A staged file is not owned by anything that would delete it: a chat session may never
+//! be sent, a plan may never be created, and V1 deletes neither on those paths. What V1 does instead
+//! is sweep on startup — `ConfigService.CleanStaleAttachmentsDirectory` removes every subdirectory of
+//! `Attachments` older than 24 hours — and [`clean_stale_attachment_sessions`] is that sweep. So the
+//! directory is bounded, and a staged file is guaranteed for a day rather than forever. (One
+//! consequence, inherited from V1 rather than chosen here: a thumbnail in a chat older than a day
+//! stops resolving after the next daemon restart and falls back to a paperclip chip.)
+//!
+//! Every failure in the promotion half is logged and swallowed. A plan that was created successfully
+//! must not be failed because a file could not be moved. Staging, by contrast, reports its failures:
+//! its caller has a user waiting to be told the file was not attached.
 
 use crate::models::{JobArgs, JobItem};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
+
+/// The largest file that may be staged, matching the cap on the preview that reads it back
+/// (`TendrilClient::get_local_file_data_url`). Staging something the previewer would refuse to render
+/// buys nothing, and the bytes arrive over an HTTP request that has to be bounded somewhere.
+pub const MAX_ATTACHMENT_BYTES: usize = 16 * 1024 * 1024;
+
+/// How long a staged attachment survives with nothing owning it — V1's 24 hours.
+pub const STALE_ATTACHMENT_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// The session id used when a file is attached before any chat session exists, as V1's
+/// `ContentView` does (`activeSessionId.Value ?? "temp"`).
+pub const UNASSIGNED_SESSION: &str = "temp";
+
+/// Why a file could not be staged. Separate variants because the caller has to answer differently:
+/// a bad name or an oversized body is the request's fault, an I/O failure is the daemon's.
+#[derive(Debug)]
+pub enum AttachmentError {
+    /// The file name could escape the session directory, or is not a usable file name at all.
+    InvalidName,
+    /// The session id is not a single, safe directory segment.
+    InvalidSession,
+    /// Larger than [`MAX_ATTACHMENT_BYTES`].
+    TooLarge,
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for AttachmentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidName => write!(f, "The attachment's file name is not allowed"),
+            Self::InvalidSession => write!(f, "The attachment's session id is not allowed"),
+            Self::TooLarge => write!(
+                f,
+                "The attachment is larger than {} MiB",
+                MAX_ATTACHMENT_BYTES / (1024 * 1024)
+            ),
+            Self::Io(err) => write!(f, "The attachment could not be written: {err}"),
+        }
+    }
+}
+
+impl std::error::Error for AttachmentError {}
+
+impl From<std::io::Error> for AttachmentError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+/// `<TendrilHome>/Attachments`.
+pub fn attachments_dir(tendril_home: &Path) -> PathBuf {
+    tendril_home.join("Attachments")
+}
+
+/// `<TendrilHome>/Attachments/<session_id>`, or `None` when the id is not one safe path segment.
+///
+/// The id reaches this from an HTTP request, so it is checked exactly as a file name is: a `..` or a
+/// separator here would place the "session directory" anywhere on the disk, and every containment
+/// guarantee below is stated relative to this directory.
+pub fn attachment_session_dir(tendril_home: &Path, session_id: &str) -> Option<PathBuf> {
+    let segment = safe_attachment_name(session_id)?;
+    Some(attachments_dir(tendril_home).join(segment))
+}
+
+/// A caller-supplied name, accepted only if it is already a plain file name — refused otherwise.
+///
+/// Refusing rather than sanitising is deliberate. Stripping the offending characters out of
+/// `../../.ssh/authorized_keys` leaves a name that writes *somewhere*, and "somewhere" is then a
+/// property of the stripping rules; refusing leaves nothing to reason about. V1 sanitises (it strips
+/// `Path.GetInvalidFileNameChars` after a `Path.GetFileName`), which is safe there and is not a
+/// contract worth reproducing on this side.
+///
+/// Rejected: empty or whitespace, longer than 200 bytes, any `/`, `\`, NUL or `:` (a Windows drive
+/// letter or NTFS alternate data stream), `.` and `..`, and anything that is not identical to its own
+/// final path component — the catch-all for a shape a platform parses differently than this list
+/// anticipates.
+pub fn safe_attachment_name(raw: &str) -> Option<String> {
+    let name = raw.trim();
+    if name.is_empty() || name.len() > 200 {
+        return None;
+    }
+    if name.contains(['/', '\\', '\0', ':']) {
+        return None;
+    }
+    if name == "." || name == ".." {
+        return None;
+    }
+    if Path::new(name).file_name().and_then(|n| n.to_str()) != Some(name) {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// Writes `bytes` into `<TendrilHome>/Attachments/<session_id>/` under `file_name`, and answers with
+/// the absolute path it landed at.
+///
+/// The path returned is inside that directory or the call failed: the name is validated, and the
+/// composed path is then checked to have the session directory as its immediate parent, so nothing
+/// about how a platform interprets the name can move the write elsewhere.
+///
+/// An existing file of the same name is never overwritten — a second `screenshot.png` from a
+/// different folder would otherwise silently replace the first, leaving two chips pointing at one
+/// file. It gets a short suffix instead, as V1's `CreatePlanDialog` upload handler does.
+pub fn store_attachment(
+    tendril_home: &Path,
+    session_id: &str,
+    file_name: &str,
+    bytes: &[u8],
+) -> Result<PathBuf, AttachmentError> {
+    if bytes.len() > MAX_ATTACHMENT_BYTES {
+        return Err(AttachmentError::TooLarge);
+    }
+
+    let dir =
+        attachment_session_dir(tendril_home, session_id).ok_or(AttachmentError::InvalidSession)?;
+    let name = safe_attachment_name(file_name).ok_or(AttachmentError::InvalidName)?;
+
+    // Belt and braces over `safe_attachment_name`: whatever the name turned out to mean on this
+    // platform, the file is written as a direct child of the session directory or not at all. Checked
+    // before anything is created, so a refused name leaves no directory behind either.
+    let target = free_target(&dir, &name);
+    if target.parent() != Some(dir.as_path()) {
+        return Err(AttachmentError::InvalidName);
+    }
+
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(&target, bytes)?;
+    Ok(target)
+}
+
+/// `dir/name`, or `dir/<stem>_<n><ext>` for the first `n` that is not taken.
+fn free_target(dir: &Path, name: &str) -> PathBuf {
+    let first = dir.join(name);
+    if !first.exists() {
+        return first;
+    }
+
+    let as_path = Path::new(name);
+    let stem = as_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| name.to_string());
+    let extension = as_path
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+
+    for n in 1..1000 {
+        let candidate = dir.join(format!("{stem}_{n}{extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    // A thousand collisions on one name in one session is not a case worth a distinct answer; the
+    // write overwrites the last candidate rather than failing the attachment.
+    dir.join(format!("{stem}_999{extension}"))
+}
+
+/// Deletes every session directory under `Attachments` older than `max_age`, and answers with how
+/// many went. A port of V1's `ConfigService.CleanStaleAttachmentsDirectory`, called on daemon start.
+///
+/// Age is taken from the directory's creation time where the platform reports one and its
+/// modification time otherwise, so a directory whose age cannot be established is left alone rather
+/// than deleted. Only directories are considered: `Attachments` itself is never removed.
+pub fn clean_stale_attachment_sessions(tendril_home: &Path, max_age: Duration) -> usize {
+    let root = attachments_dir(tendril_home);
+    let Ok(entries) = std::fs::read_dir(&root) else {
+        return 0;
+    };
+
+    let now = SystemTime::now();
+    let mut removed = 0usize;
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(age) = directory_age(&path, now) else {
+            continue;
+        };
+        if age <= max_age {
+            continue;
+        }
+        match std::fs::remove_dir_all(&path) {
+            Ok(()) => {
+                removed += 1;
+                tracing::info!("Removed stale attachment directory {}", path.display());
+            }
+            Err(e) => tracing::warn!(
+                "Failed to remove stale attachment directory {}: {}",
+                path.display(),
+                e
+            ),
+        }
+    }
+    removed
+}
+
+fn directory_age(path: &Path, now: SystemTime) -> Option<Duration> {
+    let metadata = std::fs::metadata(path).ok()?;
+    let stamp = metadata.created().or_else(|_| metadata.modified()).ok()?;
+    now.duration_since(stamp).ok()
+}
 
 /// Moves a job's uploaded attachments into its plan folder and rewrites the references to them.
 ///
@@ -18,7 +239,10 @@ pub fn move_attachments_to_plan_folder(tendril_home: &Path, plans_dir: &Path, jo
     let Some(session_id) = upload_session_id(job) else {
         return;
     };
-    let session_dir = tendril_home.join("Attachments").join(&session_id);
+    // Through the same helper the staging half writes with, so one function owns the layout.
+    let Some(session_dir) = attachment_session_dir(tendril_home, &session_id) else {
+        return;
+    };
     if !session_dir.is_dir() {
         return;
     }

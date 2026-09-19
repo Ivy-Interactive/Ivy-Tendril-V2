@@ -5,6 +5,7 @@ import type { Range, VirtualItem } from "@tanstack/react-virtual";
 import { Densities } from "@/types/density";
 
 import type { DataTableVirtualized } from "./types";
+import { isRowIdentityAppend, rowIdentity } from "./utils";
 
 /** Row count above which `virtualized="auto"` starts windowing. */
 export const DATA_TABLE_VIRTUALIZATION_THRESHOLD = 50;
@@ -16,14 +17,35 @@ export const DATA_TABLE_MAX_BODY_HEIGHT = 480;
 export const DATA_TABLE_OVERSCAN = 8;
 
 /**
- * First-paint row-height estimates per density. Real heights come from `measureElement`, so these
- * only decide how honest the scrollbar is before a row has been measured. Tighter than the list
- * primitive's map because table rows have no vertical gap.
+ * First-paint row-height estimates per density — the height a `<tr>` of this table *actually* renders
+ * at, which is `2 × cell padding + line-height + 1px border`:
+ *
+ * | Density | padding (`tableCellSizeVariant`) | line-height (`densityText`) | border | total |
+ * |---|---|---|---|---|
+ * | Small  | `p-1` → 4px  | `text-xs` → 16px  | 1 | 25 |
+ * | Medium | `p-2` → 8px  | `text-sm` → 20px  | 1 | 37 |
+ * | Large  | `p-3` → 12px | `text-base` → 24px | 1 | 49 |
+ *
+ * They were 36/44/52, which is 11/7/3px more than anything the table can render. That is not cosmetic:
+ * the estimate is what the scrollbar and `thresholdRows × rowHeight` are computed from before a row has
+ * been measured, so an overshoot makes a fresh table's scroll height a lie and its load-more threshold
+ * fire early. `measureElement` corrects each row as it mounts, which is why the drift was survivable and
+ * invisible.
+ *
+ * For reference, the framework's canvas grid draws to `DENSITY_CONFIG.rowHeight`
+ * (`widgets/dataTables/dataTableEditor/constants.ts`) of **30 / 38 / 48** at the same
+ * `cellVerticalPadding` of 4 / 8 / 12 — so V2's real rows are already the framework's height at Medium
+ * and Large, and tighter at Small. The vertical space this table used to waste was chrome, not rows: a
+ * second `<thead>` row of per-column filter controls (now one toolbar expression) and a header cell a
+ * density step taller than its own rows (see `data-table.css`).
+ *
+ * `data-table.virtualization.test.tsx` ties these numbers to the padding they are derived from, because
+ * an estimate that silently stops matching what renders is exactly the kind of thing that rots.
  */
 export const DATA_TABLE_ROW_HEIGHT_ESTIMATES: Record<Densities, number> = {
-  [Densities.Small]: 36,
-  [Densities.Medium]: 44,
-  [Densities.Large]: 52,
+  [Densities.Small]: 17,
+  [Densities.Medium]: 25,
+  [Densities.Large]: 33,
 };
 
 export interface UseDataTableVirtualizationOptions {
@@ -78,9 +100,10 @@ export interface UseDataTableVirtualizationResult {
  * Row windowing for `DataTable`, kept out of the component the same way sorting, pagination and
  * column visibility are.
  *
- * Runs *after* sort and pagination: sort → page → window. A change to the page's row identities
+ * Runs *after* sort and pagination: sort → page → window. A *replacement* of the page's row identities
  * (a re-sort, a filter, a page change) drops the measurement cache and returns the viewport to the
- * top, so a re-sort never leaves you mid-list at a stale offset.
+ * top, so a re-sort never leaves you mid-list at a stale offset. An *append* — infinite scroll's next
+ * window — does neither, because the rows on screen have not moved.
  */
 export function useDataTableVirtualization({
   containerRef,
@@ -122,7 +145,16 @@ export function useDataTableVirtualization({
 
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLTableRowElement>({
     count,
-    getScrollElement: () => (active ? containerRef.current : null),
+    /* The container whether or not windowing is on. Returning null while inactive looks harmless -
+       nothing reads `virtualItems` then - but virtual-core compares this against the element it
+       holds on every render and calls `cleanup()` when it differs, dropping the scroll element, the
+       measured rect and the listeners. The next render that flips `active` back on therefore
+       attaches to an unmeasured container, `outerSize` is 0, `calculateRange` returns null, and the
+       commit renders an empty `<tbody>` for one frame: the table blanking mid-scroll the instant the
+       row count crosses the threshold, and again on every loading toggle. Staying attached costs a
+       resize listener on a container that is mounted anyway; `active` still governs whether the
+       window is consumed, below. */
+    getScrollElement: () => containerRef.current,
     estimateSize,
     overscan,
     getItemKey,
@@ -132,12 +164,17 @@ export function useDataTableVirtualization({
   // Row identity, not array identity: a call site passing an inline `getRowId` produces a fresh
   // `rowIds` array on every render, and resetting the viewport on each of those would make the
   // table unscrollable.
-  const identity = React.useMemo(() => rowIds.join("\u0000"), [rowIds]);
+  const identity = React.useMemo(() => rowIdentity(rowIds), [rowIds]);
   const lastIdentity = React.useRef(identity);
   React.useEffect(() => {
     if (lastIdentity.current === identity) return;
+    /* An *appended* window is not a new row set. The rows already scrolled through are still there,
+       in the same order, with the same measured heights, so neither dropping the measurement cache nor
+       returning to the top is right — and the latter would undo the very scroll that asked for the
+       window. Telling the two apart is what makes infinite scroll usable. */
+    const appended = isRowIdentityAppend(lastIdentity.current, identity);
     lastIdentity.current = identity;
-    if (!active) return;
+    if (!active || appended) return;
     virtualizer.measure();
     // `scrollToOffset`, not `element.scrollTop = 0`: assigning scrollTop leaves the virtualizer's
     // own offset stale until a scroll event happens to arrive, so the window would keep rendering

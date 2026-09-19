@@ -10,6 +10,7 @@ import {
 } from "./types.ts";
 import { ShellSectionItems, sectionItemIcons } from "./ShellSectionItems.tsx";
 import { ShellTooltip } from "./ShellTooltip.tsx";
+import { IconButton } from "../ui/IconButton";
 import { TuiBadge as Badge } from "../ui/TuiBadge";
 import { TuiKbd as Kbd } from "../ui/TuiKbd";
 import "./shell.css";
@@ -186,22 +187,27 @@ export const ShellSidebarSection: React.FC<ShellSidebarSectionProps> = ({
           <span className="tsh-section-title">{title}</span>
           <span className="tsh-section-header-actions">
             {newLabel && (
-              <ShellTooltip content={newLabel} side="right">
-                <button className="tsh-section-new" onClick={createNew} aria-label={newLabel}>
-                  <Plus size={16} />
-                </button>
-              </ShellTooltip>
+              <IconButton
+                className="tsh-section-new"
+                label={newLabel}
+                tooltipSide="right"
+                size="xs"
+                onClick={createNew}
+              >
+                <Plus size={16} />
+              </IconButton>
             )}
             {searchable && (
-              <ShellTooltip content={searchLabel} shortcut={shortcutHint} side="right">
-                <button
-                  className="tsh-section-search"
-                  onClick={openSearch}
-                  aria-label={searchLabel}
-                >
-                  <Search size={16} />
-                </button>
-              </ShellTooltip>
+              <IconButton
+                className="tsh-section-search"
+                label={searchLabel}
+                shortcut={shortcutHint}
+                tooltipSide="right"
+                size="xs"
+                onClick={openSearch}
+              >
+                <Search size={16} />
+              </IconButton>
             )}
           </span>
         </div>

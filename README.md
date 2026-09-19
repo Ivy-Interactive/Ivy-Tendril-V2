@@ -1,5 +1,5 @@
 <p align="right">
-  <strong>English</strong> | <a href="docs/translations/README.zh-CN.md">简体中文</a> | <a href="docs/translations/README.ja.md">日本語</a> | <a href="docs/translations/README.es.md">Español</a> | <a href="docs/translations/README.de.md">Deutsch</a> | <a href="docs/translations/README.fr.md">Français</a>
+  <strong>English</strong> | <a href="docs/translations/README.zh-CN.md">简体中文</a> | <a href="docs/translations/README.ja.md">日本語</a> | <a href="docs/translations/README.es.md">Español</a> | <a href="docs/translations/README.de.md">Deutsch</a> | <a href="docs/translations/README.fr.md">Français</a> | <a href="docs/translations/README.ru.md">Русский</a> | <a href="docs/translations/README.hi.md">हिन्दी</a>
 </p>
 
 <h1>
@@ -271,17 +271,23 @@ irm https://cdn.ivy.app/install-tendril.ps1 | iex
 
 ### Run
 
-Tendril is a desktop application, but can also be launched and controlled via the CLI:
+Tendril is a desktop application, but the same installation is also a CLI. The two are separate
+binaries: `tendril-app` is the desktop app, and `tendril` is the CLI and the server.
 
-Start the desktop application:
+Start the desktop application by launching **Tendril** from your applications menu (or run the
+`tendril-app` binary directly).
+
+Start the daemon headlessly — the HTTP & WebSocket API, no desktop UI:
 ```bash
-tendril
+tendril run
 ```
 
-Start in headless mode (web server without desktop UI):
-```bash
-tendril --web
-```
+`tendril run` checks the port and migrates the database first, then serves on `127.0.0.1:5010`. Use
+`--port` / `--host` to change that, and `tendril serve` if you want the bare listener with no
+pre-flight checks (it is also the command that takes `--tls-cert` / `--tls-key`).
+
+Everything else is a subcommand — `tendril --help` lists them all, and `tendril doctor` reports on
+the installation (exit code 0 when nothing is `[FAIL]`, 1 otherwise, so it can gate a script).
 
 ---
 
@@ -364,117 +370,6 @@ To run screenshot verifications and Storybook visual tests locally:
 pnpm install
 pnpm run install:playwright:deps
 ```
-
----
-
-## 🤖 Agent Skills
-
-Extend your favorite AI coding agents with official Tendril engineering and debugging skills.
-
-### Quick Start
-
-Install Tendril skills for any supported agent using the universal skills installer:
-
-```bash
-npx skills add ivy-interactive/ivy-tendril-v2
-```
-
-Or install a specific skill:
-
-```bash
-npx skills add ivy-interactive/ivy-tendril-v2 --skill tendril-debug-plan
-```
-
-### Supported Tools & Environments
-
-<details>
-<summary><strong>Visual Studio Code (GitHub Copilot & Extensions)</strong></summary>
-
-Install skills for GitHub Copilot in VS Code:
-
-```bash
-npx skills add ivy-interactive/ivy-tendril-v2 --agent github-copilot
-```
-
-Global install (across all workspaces):
-
-```bash
-npx skills add ivy-interactive/ivy-tendril-v2 --agent github-copilot -g
-```
-
-Or copy skills directly to `.agents/skills/` or `.github/skills/` (project-level) or `~/.copilot/skills/` (global).
-
-Once installed, skills appear in GitHub Copilot Chat under the `/skills` menu and can be invoked directly as slash commands (e.g. `/tendril-debug-plan`, `/tendril-debug-job`, `/tendril-review`, `/tendrillable`).
-
-Third-party VS Code agent extensions:
-- Cline: `npx skills add ivy-interactive/ivy-tendril-v2 --agent cline`
-- Continue: `npx skills add ivy-interactive/ivy-tendril-v2 --agent continue`
-- Roo Code: `npx skills add ivy-interactive/ivy-tendril-v2 --agent roo`
-
-See the [VS Code Setup Guide](docs/vscode-setup.md) for detailed configuration options.
-</details>
-
-<details>
-<summary><strong>Claude Code</strong></summary>
-
-Install from the Claude Code marketplace:
-
-```
-/plugin marketplace add ivy-interactive/ivy-tendril-v2
-/plugin install tendril-skills@ivy-tendril-v2
-```
-
-Local development:
-
-```bash
-claude --plugin-dir /path/to/ivy-tendril-v2
-```
-
-See the [Claude Code Setup Guide](docs/claude-setup.md) for detailed configuration options.
-</details>
-
-<details>
-<summary><strong>Antigravity CLI (agy)</strong></summary>
-
-Install plugin via Git URL:
-
-```bash
-agy plugin install https://github.com/ivy-interactive/ivy-tendril-v2.git
-```
-
-Local installation:
-
-```bash
-agy plugin install ./
-```
-
-See the [Antigravity Setup Guide](docs/antigravity-setup.md) for detailed configuration options.
-</details>
-
-<details>
-<summary><strong>Cursor</strong></summary>
-
-Install targeting Cursor:
-
-```bash
-npx skills add ivy-interactive/ivy-tendril-v2 --agent cursor
-```
-
-Or copy skills to `.cursor/skills/` (project-level) or `~/.cursor/skills/` (global).
-
-See the [Cursor Setup Guide](docs/cursor-setup.md) for detailed configuration options.
-</details>
-
-<details>
-<summary><strong>OpenAI Codex</strong></summary>
-
-Install from the Codex plugin marketplace:
-
-```bash
-codex plugin marketplace add ivy-interactive/ivy-tendril-v2
-codex plugin add tendril-skills@tendril-skills
-```
-</details>
 
 ---
 

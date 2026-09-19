@@ -6,7 +6,10 @@ use tendril_core::chat::execution::{ChatEvent, ChatExecutionManager, ChatTurnOpt
 use tendril_core::chat::models::ChatSession;
 use tendril_core::chat::storage;
 use tendril_core::config::{get_config_path, load_config, read_master, MasterInfo};
-use tendril_core::http::daemon_client;
+use tendril_core::http::{
+    classify_transport_error, daemon_client, daemon_request_timeout_for, describe_transport_error,
+    DaemonTransportFailure,
+};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::header::AUTHORIZATION;
@@ -102,18 +105,7 @@ pub async fn handle_chat_command(cmd: ChatCommands, tendril_home: &Path) -> anyh
 }
 
 async fn handle_chat_list(args: ChatListArgs, tendril_home: &Path) -> anyhow::Result<()> {
-    let sessions = if let Some(master) = read_master(tendril_home) {
-        let client = daemon_client(tendril_home);
-        let url = format!("{}/api/chat/sessions", master.base_url());
-        let resp = client.get(&url).bearer_auth(&master.secret).send().await?;
-        if resp.status().is_success() {
-            resp.json::<Vec<ChatSession>>().await?
-        } else {
-            storage::load_all_sessions(tendril_home)?
-        }
-    } else {
-        storage::load_all_sessions(tendril_home)?
-    };
+    let sessions = list_sessions(tendril_home).await?;
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&sessions)?);
@@ -146,6 +138,28 @@ async fn handle_chat_list(args: ChatListArgs, tendril_home: &Path) -> anyhow::Re
     }
 
     Ok(())
+}
+
+/// Every session the daemon knows about, or the ones on disk when it cannot say.
+///
+/// The daemon is asked first because it holds sessions that are mid-turn and not yet persisted. When
+/// it cannot answer — refused, wedged, erroring, or replying with something that will not decode —
+/// `Chats/*.json` is the answer rather than an error: it is the same store the daemon itself persists
+/// to, so a read has nothing to gain from failing. Only the mutating paths have to care *why* the
+/// call failed.
+async fn list_sessions(tendril_home: &Path) -> anyhow::Result<Vec<ChatSession>> {
+    if let Some(master) = read_master(tendril_home) {
+        let client = daemon_client(tendril_home);
+        let url = format!("{}/api/chat/sessions", master.base_url());
+        if let Ok(resp) = client.get(&url).bearer_auth(&master.secret).send().await {
+            if resp.status().is_success() {
+                if let Ok(sessions) = resp.json::<Vec<ChatSession>>().await {
+                    return Ok(sessions);
+                }
+            }
+        }
+    }
+    Ok(storage::load_all_sessions(tendril_home)?)
 }
 
 async fn handle_chat_get(args: ChatGetArgs, tendril_home: &Path) -> anyhow::Result<()> {
@@ -190,29 +204,9 @@ async fn handle_chat_get(args: ChatGetArgs, tendril_home: &Path) -> anyhow::Resu
 }
 
 async fn handle_chat_create(args: ChatCreateArgs, tendril_home: &Path) -> anyhow::Result<()> {
-    let session = if let Some(master) = read_master(tendril_home) {
-        let client = daemon_client(tendril_home);
-        let url = format!("{}/api/chat/sessions", master.base_url());
-        let resp = client
-            .post(&url)
-            .bearer_auth(&master.secret)
-            .json(&serde_json::json!({
-                "title": args.title,
-                "agent_id": args.agent,
-                "model_id": args.model,
-                "effort": args.effort,
-                "planFolderName": args.plan,
-            }))
-            .send()
-            .await?;
-
-        if resp.status().is_success() {
-            resp.json::<ChatSession>().await?
-        } else {
-            create_session_local(&args, tendril_home)?
-        }
-    } else {
-        create_session_local(&args, tendril_home)?
+    let session = match read_master(tendril_home) {
+        Some(master) => create_session_via_daemon(&args, tendril_home, &master).await?,
+        None => create_session_local(&args, tendril_home)?,
     };
 
     if args.json {
@@ -224,6 +218,50 @@ async fn handle_chat_create(args: ChatCreateArgs, tendril_home: &Path) -> anyhow
     }
 
     Ok(())
+}
+
+/// Asks the daemon to create the session, falling back to the local store only when it is safe to.
+///
+/// A refused connection proves the daemon never saw the request, so writing the session locally
+/// cannot duplicate one it already made — that is the stale-`.master` case, and it has to keep
+/// working. A timeout or a mid-read failure is ambiguous: the daemon may well have created the
+/// session, and a second one is worse than an error, so those are reported.
+async fn create_session_via_daemon(
+    args: &ChatCreateArgs,
+    tendril_home: &Path,
+    master: &MasterInfo,
+) -> anyhow::Result<ChatSession> {
+    let client = daemon_client(tendril_home);
+    let url = format!("{}/api/chat/sessions", master.base_url());
+    let resp = match client
+        .post(&url)
+        .bearer_auth(&master.secret)
+        .json(&serde_json::json!({
+            "title": args.title,
+            "agent_id": args.agent,
+            "model_id": args.model,
+            "effort": args.effort,
+            "planFolderName": args.plan,
+        }))
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) if classify_transport_error(&e) == DaemonTransportFailure::Unreachable => {
+            return create_session_local(args, tendril_home);
+        }
+        Err(e) => anyhow::bail!(describe_transport_error(
+            &e,
+            master,
+            daemon_request_timeout_for(tendril_home)
+        )),
+    };
+
+    if resp.status().is_success() {
+        Ok(resp.json::<ChatSession>().await?)
+    } else {
+        create_session_local(args, tendril_home)
+    }
 }
 
 fn create_session_local(args: &ChatCreateArgs, tendril_home: &Path) -> anyhow::Result<ChatSession> {
@@ -247,11 +285,22 @@ fn create_session_local(args: &ChatCreateArgs, tendril_home: &Path) -> anyhow::R
 async fn handle_chat_delete(args: ChatDeleteArgs, tendril_home: &Path) -> anyhow::Result<()> {
     let session = resolve_session(tendril_home, &args.id).await?;
 
-    if let Some(master) = read_master(tendril_home) {
-        let client = daemon_client(tendril_home);
-        let url = format!("{}/api/chat/sessions/{}", master.base_url(), session.id);
-        let _ = client.delete(&url).bearer_auth(&master.secret).send().await;
-    } else {
+    // A daemon that did not answer has deleted nothing, and printing "Deleted" while the session is
+    // still sitting in `Chats/` — where `chat list` will keep showing it — is a lie. Deleting is
+    // idempotent, so falling back is safe even if the daemon did get there first and only lost its
+    // reply.
+    let deleted_by_daemon = match read_master(tendril_home) {
+        Some(master) => {
+            let client = daemon_client(tendril_home);
+            let url = format!("{}/api/chat/sessions/{}", master.base_url(), session.id);
+            matches!(
+                client.delete(&url).bearer_auth(&master.secret).send().await,
+                Ok(resp) if resp.status().is_success()
+            )
+        }
+        None => false,
+    };
+    if !deleted_by_daemon {
         storage::delete_session(tendril_home, &session.id)?;
     }
 
@@ -323,6 +372,7 @@ async fn stream_via_server(
         anyhow::bail!("Failed to start chat turn on server: {}", err_text);
     }
 
+    let mut printer = TurnPrinter::new();
     while let Some(msg_res) = read.next().await {
         match msg_res {
             Ok(WsMessage::Text(txt)) => {
@@ -333,8 +383,20 @@ async fn stream_via_server(
                             delta,
                             ..
                         } if sid == session_id => {
-                            print!("{}", delta);
-                            std::io::stdout().flush().ok();
+                            printer.write_prose(&delta);
+                        }
+                        ChatEvent::StreamEvent {
+                            session_id: sid,
+                            line,
+                            ..
+                        } if sid == session_id => {
+                            printer.write_tool_activity(&line);
+                        }
+                        ChatEvent::MessageAdded {
+                            session_id: sid,
+                            message,
+                        } if sid == session_id && message.role == "assistant" => {
+                            printer.finish(&message.content);
                         }
                         ChatEvent::GeneratingState {
                             session_id: sid,
@@ -370,6 +432,8 @@ async fn stream_via_local(
         model_id: args.model.clone(),
         effort: args.effort.clone(),
         working_directory: None,
+        // `tendril chat send` is always the user talking; events are injected by the daemon.
+        role: None,
     };
 
     let target_session_id = session_id.to_string();
@@ -379,6 +443,7 @@ async fn stream_via_local(
             .await
     });
 
+    let mut printer = TurnPrinter::new();
     while let Ok(event) = rx.recv().await {
         match event {
             ChatEvent::StreamDelta {
@@ -386,8 +451,20 @@ async fn stream_via_local(
                 delta,
                 ..
             } if sid == target_session_id => {
-                print!("{}", delta);
-                std::io::stdout().flush().ok();
+                printer.write_prose(&delta);
+            }
+            ChatEvent::StreamEvent {
+                session_id: sid,
+                line,
+                ..
+            } if sid == target_session_id => {
+                printer.write_tool_activity(&line);
+            }
+            ChatEvent::MessageAdded {
+                session_id: sid,
+                message,
+            } if sid == target_session_id && message.role == "assistant" => {
+                printer.finish(&message.content);
             }
             ChatEvent::GeneratingState {
                 session_id: sid,
@@ -403,6 +480,167 @@ async fn stream_via_local(
     let res = turn_handle.await?;
     res?;
     Ok(())
+}
+
+/// The one-line rendering of an eventwire tool event, or `None` for every event that is not one.
+pub(crate) fn tool_activity_line(wire_line: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(wire_line.trim()).ok()?;
+    match value.get("kind").and_then(|k| k.as_str())? {
+        "tool_call" => {
+            let name = value
+                .get("tool_name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("tool");
+            Some(match summarize_tool_input(value.get("input")) {
+                Some(input) => format!("· {} ({})", name, input),
+                None => format!("· {}", name),
+            })
+        }
+        // Only a failure: a result that worked adds nothing the call line did not already say.
+        "tool_result" => {
+            if !value
+                .get("is_error")
+                .and_then(|e| e.as_bool())
+                .unwrap_or(false)
+            {
+                return None;
+            }
+            let name = value
+                .get("tool_name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("tool");
+            let output = value
+                .get("output")
+                .and_then(|o| o.as_str())
+                .unwrap_or("")
+                .trim();
+            Some(if output.is_empty() {
+                format!("  ! {} failed", name)
+            } else {
+                format!("  ! {} failed: {}", name, first_line_capped(output, 160))
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The first argument or two of a tool call, short enough to sit on one line.
+fn summarize_tool_input(input: Option<&serde_json::Value>) -> Option<String> {
+    let map = input?.as_object()?;
+    if map.is_empty() {
+        return None;
+    }
+    let mut parts: Vec<String> = map
+        .iter()
+        .take(2)
+        .map(|(key, value)| match value {
+            serde_json::Value::String(text) => format!("{}: {}", key, first_line_capped(text, 60)),
+            other => format!("{}: {}", key, first_line_capped(&other.to_string(), 60)),
+        })
+        .collect();
+    parts.sort();
+    Some(parts.join(", "))
+}
+
+/// The first non-empty line of `text`, truncated on a character boundary.
+fn first_line_capped(text: &str, max: usize) -> String {
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    if line.chars().count() <= max {
+        return line.to_string();
+    }
+    format!("{}…", line.chars().take(max).collect::<String>())
+}
+
+/// What a finished turn's content still owes the terminal, given everything the deltas already
+/// printed. `None` when there is nothing new to show.
+///
+/// A turn's final content is not always the concatenation of its deltas: a turn that produced no
+/// prose is finalized with a synthesized report, and a failed turn has its reason appended. The
+/// daemon publishes that final copy as a `chat.message_added` upsert rather than as another delta —
+/// a delta is only correct when applied exactly once — so a streaming client renders the difference.
+pub(crate) fn finalized_tail(streamed: &str, content: &str) -> Option<String> {
+    // An empty assistant stub is published at the top of the turn too; nothing to print for it.
+    if content.is_empty() || content == streamed {
+        return None;
+    }
+    Some(match content.strip_prefix(streamed) {
+        Some(tail) => tail.to_string(),
+        // The final copy is not an extension of what was streamed (prose replaced by a report, say),
+        // so it is shown in full on its own line.
+        None => format!("\n{}", content),
+    })
+}
+
+/// Writes one turn to the terminal, keeping the agent's prose apart from everything else printed
+/// around it.
+///
+/// The distinction is load-bearing. [`finalized_tail`] works out what the finished message still owes
+/// the terminal by comparing it against the prose already printed, so the tool lines — which are not
+/// part of the message at all — must not be counted in it. Mixing them made every turn print its
+/// answer a second time, because the transcript no longer prefixed the content.
+#[derive(Default)]
+pub(crate) struct TurnPrinter {
+    /// The agent's prose, and nothing else.
+    prose: String,
+    /// Whether the cursor is at the start of a line, so a tool line can claim one of its own without
+    /// leaving a blank one behind.
+    at_line_start: bool,
+}
+
+impl TurnPrinter {
+    pub(crate) fn new() -> Self {
+        Self {
+            prose: String::new(),
+            at_line_start: true,
+        }
+    }
+
+    /// One streamed chunk of the agent's answer.
+    pub(crate) fn write_prose(&mut self, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        self.prose.push_str(delta);
+        self.at_line_start = delta.ends_with('\n');
+        print!("{}", delta);
+        std::io::stdout().flush().ok();
+    }
+
+    /// One eventwire line's worth of tool activity, if it carries any.
+    pub(crate) fn write_tool_activity(&mut self, wire_line: &str) {
+        let Some(line) = tool_activity_line(wire_line) else {
+            return;
+        };
+        if self.at_line_start {
+            println!("{}", line);
+        } else {
+            // Prose is streamed without a trailing newline, so the line breaks out of it first.
+            println!("\n{}", line);
+        }
+        self.at_line_start = true;
+        std::io::stdout().flush().ok();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn prose_for_test(&self) -> &str {
+        &self.prose
+    }
+
+    /// Whatever the finished message still owes the terminal.
+    pub(crate) fn finish(&mut self, content: &str) {
+        if let Some(tail) = finalized_tail(&self.prose, content) {
+            if !self.at_line_start && !tail.starts_with('\n') {
+                println!();
+            }
+            print!("{}", tail);
+            self.at_line_start = tail.ends_with('\n');
+            std::io::stdout().flush().ok();
+        }
+    }
 }
 
 async fn resolve_session(tendril_home: &Path, id_or_prefix: &str) -> anyhow::Result<ChatSession> {
@@ -428,4 +666,129 @@ async fn resolve_session(tendril_home: &Path, id_or_prefix: &str) -> anyhow::Res
     }
 
     Ok(matching.into_iter().next().unwrap())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{finalized_tail, tool_activity_line, TurnPrinter};
+
+    /// The regression this pins: tool lines are printed *around* the prose, not counted as part of it.
+    /// Counting them made `finalized_tail` stop recognising the prose as a prefix of the finished
+    /// message, so every turn printed its answer a second time underneath.
+    #[test]
+    fn test_tool_activity_does_not_count_as_prose() {
+        let mut printer = TurnPrinter::new();
+        printer.write_prose("The command printed:\n");
+        printer.write_tool_activity(
+            r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"run_command","input":{"CommandLine":"echo hello"}}"#,
+        );
+        printer.write_prose("hello");
+        // The finished message is exactly the prose, so there is nothing left to print.
+        assert_eq!(
+            finalized_tail(printer.prose_for_test(), "The command printed:\nhello"),
+            None
+        );
+        // And a message that *did* grow still owes only the growth.
+        assert_eq!(
+            finalized_tail(
+                printer.prose_for_test(),
+                "The command printed:\nhello\n\nDone."
+            )
+            .as_deref(),
+            Some("\n\nDone.")
+        );
+    }
+
+    /// A streaming client has no tool cards, so it gets the live equivalent: the call as it starts and
+    /// its error if it reported one. This is what replaced the prose summary the message used to carry.
+    #[test]
+    fn test_tool_activity_lines() {
+        assert_eq!(
+            tool_activity_line(
+                r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"run_command","input":{"CommandLine":"tendril doctor"}}"#
+            )
+            .as_deref(),
+            Some("· run_command (CommandLine: tendril doctor)")
+        );
+        // No arguments worth showing, and a non-object input, both still name the tool.
+        assert_eq!(
+            tool_activity_line(r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"finish"}"#)
+                .as_deref(),
+            Some("· finish")
+        );
+        assert_eq!(
+            tool_activity_line(
+                r#"{"kind":"tool_call","tool_use_id":"t1","tool_name":"view_file","input":{}}"#
+            )
+            .as_deref(),
+            Some("· view_file")
+        );
+
+        // A result that worked adds nothing the call line did not already say.
+        assert_eq!(
+            tool_activity_line(
+                r#"{"kind":"tool_result","tool_use_id":"t1","tool_name":"run_command","output":"ok","is_error":false}"#
+            ),
+            None
+        );
+        assert_eq!(
+            tool_activity_line(
+                r#"{"kind":"tool_result","tool_use_id":"t1","tool_name":"run_command","output":"command not found","is_error":true}"#
+            )
+            .as_deref(),
+            Some("  ! run_command failed: command not found")
+        );
+
+        // Long and multi-line values are capped to one readable line.
+        let long = tool_activity_line(&format!(
+            r#"{{"kind":"tool_result","tool_use_id":"t1","tool_name":"x","output":"{}","is_error":true}}"#,
+            "e".repeat(400)
+        ))
+        .expect("a failure line");
+        assert!(
+            long.chars().count() < 200,
+            "got {} chars",
+            long.chars().count()
+        );
+        assert!(long.ends_with('…'));
+
+        // Everything that is not a tool event is silent: prose is streamed separately, and metadata is
+        // not something a terminal reader asked for.
+        for line in [
+            r#"{"kind":"text","text":"hello","delta":true}"#,
+            r#"{"kind":"session_init","session_id":"s"}"#,
+            r#"{"kind":"result","is_success":true}"#,
+            r#"{"kind":"thinking","content":"hmm"}"#,
+            "not json",
+            "{}",
+        ] {
+            assert_eq!(tool_activity_line(line), None, "line: {}", line);
+        }
+    }
+
+    #[test]
+    fn test_finalized_tail_only_reports_what_is_new() {
+        // Nothing streamed: the whole report is new.
+        assert_eq!(
+            finalized_tail("", "Agent execution completed with status code 1: it broke").as_deref(),
+            Some("Agent execution completed with status code 1: it broke")
+        );
+        // The failure reason was appended to prose that already streamed.
+        assert_eq!(
+            finalized_tail(
+                "partial answer",
+                "partial answer\n\nExecution was cancelled."
+            )
+            .as_deref(),
+            Some("\n\nExecution was cancelled.")
+        );
+        // Already fully printed, and the empty stub.
+        assert_eq!(finalized_tail("all of it", "all of it"), None);
+        assert_eq!(finalized_tail("", ""), None);
+        // A final copy that is not an extension of the stream is shown on its own line.
+        assert_eq!(
+            finalized_tail("streamed", "something else").as_deref(),
+            Some("\nsomething else")
+        );
+    }
 }

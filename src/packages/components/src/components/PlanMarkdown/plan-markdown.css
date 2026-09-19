@@ -39,7 +39,18 @@
   min-width: 0;
   width: 100%;
   max-width: 50rem; /* 200 units * 0.25rem */
-  padding: 0 0 1rem 1.5rem; /* left 1.5rem matches Details' Padding(6,…) */
+  /* Top matches left. A deliberate divergence from V1, which has `padding: 0 0 1rem 1.5rem` here
+     and leaves the first heading's own `margin-top: 2rem` to stand in for a top inset - so V1's
+     content sits 32px from the top against 24px from the left, and the corner reads lopsided.
+     Padding the top instead, and zeroing the first child's margin below, makes both 1.5rem. */
+  padding: 1.5rem 0 1rem 1.5rem; /* left 1.5rem matches Details' Padding(6,…) */
+}
+
+/* The other half of that fix: the first block's own top margin would otherwise stack on the padding
+   and put the gap back. Only the *first* child is reset - every later heading keeps its 2rem, which
+   is the vertical rhythm that separates sections inside the document. */
+.pmv-markdown > :first-child {
+  margin-top: 0;
 }
 
 /* Fixed slot: sticky top-right, stays pinned while the shell scrolls.
@@ -49,7 +60,7 @@
   flex: 0 0 auto;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--z-sticky);
   padding: 0 1.5rem;
 }
 
@@ -82,7 +93,7 @@
   min-width: 0;
   width: 100%;
   color: var(--foreground);
-  font-size: 1rem;
+  font-size: var(--text-base);
   line-height: 1.5;
   word-break: normal;
   overflow-wrap: break-word;
@@ -121,7 +132,7 @@
   margin: 0;
 }
 .pmv-markdown h6 {
-  font-size: 1rem;
+  font-size: var(--text-base);
   line-height: 1.5rem;
   font-weight: 500;
   margin: 0;
@@ -167,7 +178,7 @@
 
 /* Body */
 .pmv-markdown p {
-  font-size: 1rem;
+  font-size: var(--text-base);
 }
 .pmv-markdown strong {
   font-weight: 600;
@@ -242,7 +253,7 @@
 .pmv-markdown code {
   position: relative;
   display: inline;
-  border-radius: 0.25rem;
+  border-radius: var(--radius-sm);
   background: var(--muted);
   padding: 0.05rem 0.25rem;
   font-family:
@@ -263,12 +274,12 @@
   height: 20px;
   min-width: 20px;
   padding: 0 5px;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 400;
   font-family: inherit;
   line-height: 1;
-  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  border-radius: 0.25rem;
+  border: var(--border-width) solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: var(--radius-sm);
   background: var(--muted);
   color: var(--foreground);
   vertical-align: baseline;
@@ -282,8 +293,8 @@
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
-  border-radius: 0.375rem;
-  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  border: var(--border-width) solid var(--border);
   background: var(--muted);
 }
 /* Code blocks (and diagrams) nested inside list items are not direct children
@@ -302,7 +313,7 @@
   padding: 1rem;
   padding-right: 3rem;
   overflow-x: auto;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 .pmv-markdown pre {
@@ -325,35 +336,15 @@
   top: 0.5rem;
   right: 0.5rem;
   z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.5rem;
-  border-radius: 0.25rem;
-  border: none;
-  background: transparent;
-  color: var(--muted-foreground);
-  cursor: pointer;
   opacity: 0;
-  transition: opacity 0.2s ease-in-out;
 }
 .pmv-code-block:hover .pmv-code-copy,
 .pmv-code-copy:focus-visible,
 .pmv-code-copy:focus-within {
   opacity: 1;
 }
-.pmv-code-copy:hover {
-  background: var(--accent);
-  color: var(--foreground);
-}
 .pmv-code-copy--copied {
-  background: var(--primary);
-  color: var(--primary-foreground);
   opacity: 1;
-}
-.pmv-code-copy--copied:hover {
-  background: var(--primary);
-  color: var(--primary-foreground);
 }
 .pmv-code-copy svg {
   width: 1rem;
@@ -362,7 +353,7 @@
 
 /* Blockquote */
 .pmv-markdown blockquote {
-  border-left: 2px solid var(--border);
+  border-left: var(--border-width-thick) solid var(--border);
   padding-left: 1.5rem;
   font-style: italic;
 }
@@ -371,23 +362,23 @@
 .pmv-markdown table {
   width: 100%;
   border-collapse: collapse;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
 }
 .pmv-markdown thead {
   background: var(--muted);
 }
 .pmv-markdown tr {
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
 }
 .pmv-markdown th {
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   padding: 0.5rem 1rem;
   text-align: left;
   font-weight: 700;
   font-size: 0.875em;
 }
 .pmv-markdown td {
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   padding: 0.5rem 1rem;
   font-size: 0.875em;
 }
@@ -397,8 +388,8 @@
   display: block;
   max-width: 100%;
   height: auto;
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-md);
   margin: 1rem auto;
 }
 /* A paragraph that only wraps an image shouldn't add its own spacing on top
@@ -408,7 +399,7 @@
 }
 .pmv-markdown hr {
   border: 0;
-  border-top: 1px solid var(--border);
+  border-top: var(--border-width) solid var(--border);
   margin: 1rem 0;
 }
 
@@ -418,8 +409,8 @@
    frontend/src/rawHtml.ts. Mirrors the Ivy framework's `typography.details`
    and `typography.summary`. */
 .pmv-markdown details {
-  border-radius: 0.5rem;
-  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  border: var(--border-width) solid var(--border);
   background: var(--card);
   overflow: hidden;
 }
@@ -433,7 +424,7 @@
   cursor: pointer;
   user-select: none;
   list-style: none;
-  transition: background 0.15s ease;
+  transition: background var(--duration-base) var(--ease-standard);
 }
 /* Suppress the native disclosure marker in favour of the chevron below. */
 .pmv-markdown summary::-webkit-details-marker {
@@ -459,7 +450,7 @@
   background-color: currentColor;
   -webkit-mask: var(--pmv-chevron) center / contain no-repeat;
   mask: var(--pmv-chevron) center / contain no-repeat;
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-base) var(--ease-standard);
 }
 .pmv-markdown details[open] > summary::before {
   transform: rotate(90deg);
@@ -486,7 +477,7 @@
 .pmv-article h2 {
   margin-top: 1.75rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--border-width) solid var(--border);
 }
 .pmv-article h3 {
   margin-top: 1.5rem;
@@ -504,46 +495,27 @@
 
 /* ─── Annotation highlights ────────────────────────────────────────────── */
 .pmv-annotation-highlight {
-  background: hsl(48 96% 76% / 0.7);
+  background: var(--highlight);
   color: var(--foreground);
-  border-radius: 0.125rem;
+  border-radius: var(--radius-xs);
   cursor: pointer;
   padding: 0 0 0.125rem;
   display: inline;
 }
 
-:root.dark .pmv-annotation-highlight {
-  background: hsl(48 80% 20% / 0.5);
-}
-
 .pmv-annotation-initials-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   margin-left: 0.25rem;
-  padding: 0.05rem 0.3rem;
-  font-size: 0.65rem;
-  font-weight: 700;
-  line-height: 1.1;
-  border-radius: 0.25rem;
-  background: var(--primary);
-  color: var(--primary-foreground);
   vertical-align: middle;
   user-select: none;
   cursor: pointer;
 }
 
 /* ─── Annotation popovers ─────────────────────────────────────────────── */
+/* Shared chrome (ui.css .tui-popover-shell) plus this popover's own sizing and positioning. */
 .pmv-popover {
   position: fixed;
   z-index: 9999;
   width: 18rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border);
-  background: var(--popover);
-  color: var(--popover-foreground);
-  padding: 0.75rem;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
 }
 
 .pmv-popover-author {
@@ -559,16 +531,16 @@
   justify-content: center;
   width: 1.25rem;
   height: 1.25rem;
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
   background: var(--primary);
   color: var(--primary-foreground);
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   flex-shrink: 0;
 }
 
 .pmv-popover-author-name {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--foreground);
   overflow: hidden;
@@ -578,7 +550,7 @@
 
 .pmv-popover-quote {
   margin-bottom: 0.5rem;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--muted-foreground);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -587,11 +559,11 @@
 
 .pmv-popover-textarea {
   width: 100%;
-  border-radius: 0.25rem;
-  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  border: var(--border-width) solid var(--input);
   background: var(--background);
   padding: 0.375rem 0.5rem;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   resize: none;
   outline: none;
   font-family: inherit;
@@ -621,54 +593,22 @@
   justify-content: space-between;
 }
 
-.pmv-popover-btn {
-  border-radius: 0.25rem;
-  padding: 0.25rem 0.625rem;
-  font-size: 0.75rem;
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-}
-
-.pmv-popover-btn--ghost {
-  background: transparent;
-  color: var(--muted-foreground);
-}
-
-.pmv-popover-btn--ghost:hover {
-  background: var(--muted);
-}
-
-.pmv-popover-btn--primary {
-  background: var(--primary);
-  color: var(--primary-foreground);
-}
-
-.pmv-popover-btn--primary:hover {
-  opacity: 0.9;
-}
-
-.pmv-popover-btn--danger {
-  background: transparent;
+/* Base box, ghost and primary are the shared .tui-btn (ui.css). Danger keeps its own softer
+   hover tint here instead of .tui-btn--danger's solid one — the compound selector outranks
+   .tui-btn--danger:hover regardless of the two files' load order. */
+.tui-btn.pmv-popover-btn--danger:hover {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
   color: var(--destructive);
 }
 
-.pmv-popover-btn--danger:hover {
-  background: hsl(0 84% 60% / 0.1);
+.tui-btn.pmv-popover-btn--success {
+  background: color-mix(in srgb, var(--success) 15%, transparent);
+  color: var(--green);
+  border: var(--border-width) solid color-mix(in srgb, var(--success) 30%, transparent);
 }
 
-.pmv-popover-btn--success {
-  background: hsl(142 71% 45% / 0.15);
-  color: hsl(142 76% 36%);
-  border: 1px solid hsl(142 71% 45% / 0.3);
-}
-
-:root.dark .pmv-popover-btn--success {
-  color: hsl(142 76% 56%);
-}
-
-.pmv-popover-btn--success:hover {
-  background: hsl(142 71% 45% / 0.25);
+.tui-btn.pmv-popover-btn--success:hover {
+  background: color-mix(in srgb, var(--success) 25%, transparent);
 }
 
 .pmv-popover-header {
@@ -684,24 +624,21 @@
 }
 
 .pmv-annotation-highlight.pmv-annotation-resolved {
-  background: hsl(142 60% 70% / 0.35);
-  opacity: 0.7;
-}
-
-:root.dark .pmv-annotation-highlight.pmv-annotation-resolved {
-  background: hsl(142 60% 25% / 0.35);
+  background: color-mix(in srgb, var(--success) 35%, transparent);
+  opacity: var(--opacity-subtle);
 }
 
 .pmv-annotation-initials-badge.pmv-badge-resolved {
-  background: hsl(142 70% 45%);
+  --tui-badge-primary-bg: var(--success);
+  --tui-badge-primary-fg: var(--primary-foreground);
 }
 
 /* ─── Selection toolbar ───────────────────────────────────────────────── */
 .pmv-selection-toolbar {
   position: fixed;
   z-index: 9999;
-  border-radius: 0.375rem;
-  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  border: var(--border-width) solid var(--border);
   background: var(--popover);
   color: var(--popover-foreground);
   padding: 0.25rem 0.5rem;
@@ -712,9 +649,9 @@
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  border-radius: 0.25rem;
+  border-radius: var(--radius-sm);
   padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   border: none;
   background: transparent;
@@ -732,8 +669,8 @@
 
 /* ─── Diagram renderers (Mermaid + Graphviz) ─────────────────────────── */
 .pmv-diagram-container {
-  border-radius: 0.375rem;
-  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  border: var(--border-width) solid var(--border);
   background: var(--background);
   padding: 1rem;
   overflow-x: auto;
@@ -750,25 +687,25 @@
   justify-content: center;
   padding: 2rem;
   color: var(--muted-foreground);
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
 .pmv-diagram-error {
-  border-radius: 0.375rem;
-  border: 1px solid var(--destructive);
-  background: hsl(0 84% 60% / 0.1);
+  border-radius: var(--radius-md);
+  border: var(--border-width) solid var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
   padding: 0.75rem;
   color: var(--destructive);
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 
 /* ─── GitHub-style alerts/callouts ────────────────────────────────────── */
 .pmv-alert {
-  border-radius: 0.375rem;
-  border: 1px solid;
+  border-radius: var(--radius-md);
+  border: var(--border-width) solid;
   padding: 0.75rem 1rem;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--foreground);
 }
 
@@ -785,7 +722,7 @@
 }
 
 .pmv-alert-title {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
 .pmv-alert-content {
@@ -810,35 +747,35 @@
 }
 
 .pmv-alert--tip {
-  border-color: color-mix(in srgb, var(--green, #22c55e) 30%, var(--border));
-  background: color-mix(in srgb, var(--green, #22c55e) 8%, transparent);
+  border-color: color-mix(in srgb, var(--green) 30%, var(--border));
+  background: color-mix(in srgb, var(--green) 8%, transparent);
 }
 .pmv-alert--tip .pmv-alert-header {
-  color: var(--green, #22c55e);
+  color: var(--green);
 }
 
 .pmv-alert--important {
-  border-color: color-mix(in srgb, var(--amber, #f59e0b) 30%, var(--border));
-  background: color-mix(in srgb, var(--amber, #f59e0b) 8%, transparent);
+  border-color: color-mix(in srgb, var(--amber) 30%, var(--border));
+  background: color-mix(in srgb, var(--amber) 8%, transparent);
 }
 .pmv-alert--important .pmv-alert-header {
-  color: var(--amber, #f59e0b);
+  color: var(--amber);
 }
 
 .pmv-alert--warning {
-  border-color: color-mix(in srgb, var(--warning, #f59e0b) 30%, var(--border));
-  background: color-mix(in srgb, var(--warning, #f59e0b) 8%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 30%, var(--border));
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
 }
 .pmv-alert--warning .pmv-alert-header {
-  color: var(--warning, #f59e0b);
+  color: var(--warning);
 }
 
 .pmv-alert--caution {
-  border-color: color-mix(in srgb, var(--destructive, #ef4444) 30%, var(--border));
-  background: color-mix(in srgb, var(--destructive, #ef4444) 8%, transparent);
+  border-color: color-mix(in srgb, var(--destructive) 30%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 8%, transparent);
 }
 .pmv-alert--caution .pmv-alert-header {
-  color: var(--destructive, #ef4444);
+  color: var(--destructive);
 }
 
 /* ─── Questions callout ─────────────────────────────────────────────────
@@ -847,10 +784,10 @@
    question form is flow content and must not sit inside a `pre` at all. */
 .pmv-questions {
   position: relative;
-  border-radius: 0.375rem;
-  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  border: var(--border-width) solid var(--border);
   padding: 0.75rem 1rem;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
 .pmv-questions-content {
@@ -868,26 +805,26 @@
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: hsl(0 0% 96%);
-  border: 1px dashed var(--border);
-  border-radius: 0.375rem;
+  background: var(--muted);
+  border: var(--border-width) dashed var(--border);
+  border-radius: var(--radius-md);
   margin: 1rem auto;
-  color: var(--text-secondary);
+  color: var(--muted-foreground);
   max-width: 100%;
 }
 .pmv-img-error svg {
-  color: hsl(0 0% 60%);
+  color: var(--muted-foreground);
   margin-bottom: 0.75rem;
 }
 .pmv-img-error-text {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   text-align: center;
   word-break: break-word;
 }
 .pmv-img-error-title {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   margin-top: 0.5rem;
-  color: var(--text-tertiary);
+  color: var(--muted-foreground);
   text-align: center;
 }
 
@@ -917,22 +854,8 @@
   position: absolute;
   top: 1rem;
   right: 1rem;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
   font-size: 2rem;
   line-height: 1;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s ease;
-}
-.pmv-img-overlay-close:hover {
-  background: rgba(255, 255, 255, 0.2);
 }
 
 /* ─── In-page Search Overlay ────────────────────────────────────────── */
@@ -945,16 +868,16 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.375rem 0.625rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border);
-  background: var(--popover, var(--card));
-  color: var(--popover-foreground, var(--foreground));
+  border-radius: var(--radius-lg);
+  border: var(--border-width) solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.18),
     0 2px 6px rgba(0, 0, 0, 0.08);
   font-family: inherit;
   backdrop-filter: blur(8px);
-  animation: pmv-search-fade-in 0.12s ease-out;
+  animation: pmv-search-fade-in var(--duration-fast) var(--ease-out);
   box-sizing: border-box;
 }
 
@@ -988,15 +911,15 @@
   width: 13rem;
   height: 1.875rem;
   padding: 0.25rem 0.5rem 0.25rem 1.75rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--input, var(--border));
+  border-radius: var(--radius-md);
+  border: var(--border-width) solid var(--input);
   background: var(--background);
   color: var(--foreground);
-  font-size: 0.8125rem;
+  font-size: var(--text-sm-tight);
   outline: none;
   transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    border-color var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-standard);
 }
 
 .pmv-search-input:focus {
@@ -1005,8 +928,8 @@
 }
 
 .pmv-search-count {
-  font-size: 0.75rem;
-  color: var(--muted-foreground, var(--text-secondary));
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
   white-space: nowrap;
   min-width: 3.5rem;
   text-align: center;
@@ -1050,25 +973,15 @@
 }
 
 .pmv-search-highlight {
-  background: hsl(48 96% 76% / 0.85);
+  background: var(--highlight-strong);
   color: inherit;
-  border-radius: 0.125rem;
+  border-radius: var(--radius-xs);
   padding: 0 0.1rem;
-}
-
-:root.dark .pmv-search-highlight {
-  background: hsl(48 80% 30% / 0.85);
-  color: inherit;
 }
 
 .pmv-search-highlight--active {
-  background: hsl(25 95% 53% / 0.95);
+  background: var(--highlight-active);
   color: white;
-  border-radius: 0.125rem;
+  border-radius: var(--radius-xs);
   padding: 0 0.1rem;
-}
-
-:root.dark .pmv-search-highlight--active {
-  background: hsl(25 95% 53% / 0.95);
-  color: white;
 }

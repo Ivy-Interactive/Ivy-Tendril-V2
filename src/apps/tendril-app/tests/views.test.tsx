@@ -239,7 +239,11 @@ describe("Operator Views Component & Accessibility Tests", () => {
       expect(screen.queryByText(/^PR \d+$/)).toBeNull();
     });
 
-    it("counts two RetryPlan jobs on the same plan once", () => {
+    // Changed from "counts two RetryPlan jobs on the same plan once". V1's counter is
+    // `activeJobs.Count(j => j.Type == Constants.JobTypes.RetryPlan)`
+    // (`TendrilProcessStatusService.Compute`) — jobs, not distinct plans. Two retries queued against
+    // one plan are two runs to wait for, and reporting 1 understates the queue.
+    it("counts every active RetryPlan job, including two on the same plan", () => {
       const jobs: Job[] = [
         ...mockJobs,
         {
@@ -261,7 +265,7 @@ describe("Operator Views Component & Accessibility Tests", () => {
 
       const loopArrow = container.querySelector(".tpv-loop-arrow");
       expect(loopArrow).not.toBeNull();
-      expect(loopArrow!.querySelector(".tpv-arrow-count")?.textContent).toBe("1");
+      expect(loopArrow!.querySelector(".tpv-arrow-count")?.textContent).toBe("2");
     });
 
     it("clicking the retry loop arrow and the PR label calls onNavigate('jobs')", () => {
@@ -300,39 +304,29 @@ describe("Operator Views Component & Accessibility Tests", () => {
   });
 
   describe("PlansView", () => {
-    it("renders searchable plan list and provides accessible search input", () => {
-      const handleSelect = vi.fn();
-      render(<PlansView plans={mockPlans} onSelectPlan={handleSelect} onNewPlan={() => {}} />);
+    /*
+     * The page draws no list and no search of its own: `PlansApp.Build` publishes its list into the
+     * shell sidebar (`BuildSidebarList`) and returns a content view that is the selected plan. The
+     * list's own assertions live in `plans-view-behaviour.test.tsx`, against what it publishes.
+     */
+    it("renders the selection, not a list", () => {
+      render(<PlansView plans={mockPlans} onSelectPlan={vi.fn()} onNewPlan={() => {}} />);
 
       expect(screen.getByTestId("plans-view")).toBeInTheDocument();
-      const searchBox = screen.getByRole("searchbox", { name: /search plans/i });
-      expect(searchBox).toBeInTheDocument();
-
-      // Search filter interaction
-      fireEvent.change(searchBox, { target: { value: "Reviewable" } });
-      expect(screen.getByText("Reviewable Bug Fix")).toBeInTheDocument();
-      expect(screen.queryByText("First Accessible Plan")).not.toBeInTheDocument();
+      expect(screen.queryByRole("searchbox", { name: /search plans/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("list")).not.toBeInTheDocument();
+      expect(screen.getByTestId("plans-no-selection")).toHaveTextContent(
+        "Select a plan from the sidebar",
+      );
     });
 
-    // V1 keeps two empty states apart: `NoContentView("No plans", "Plans you create will appear
-    // here")` for a workspace with none, and the inline `NoResultsView` for a filter that
-    // excludes everything.
+    // `ContentView.BuildNoSelectionView`: `NoContentView("No plans", "Plans you create will appear
+    // here")` when there is nothing to list at all.
     it("renders the no-plans empty state for a workspace with no plans", () => {
       render(<PlansView plans={[]} onSelectPlan={() => {}} onNewPlan={() => {}} />);
 
       expect(screen.getByText("No plans")).toBeInTheDocument();
       expect(screen.getByText("Plans you create will appear here")).toBeInTheDocument();
-    });
-
-    it("renders the no-results state when a search excludes every plan", () => {
-      render(<PlansView plans={mockPlans} onSelectPlan={() => {}} onNewPlan={() => {}} />);
-
-      fireEvent.change(screen.getByRole("searchbox", { name: /search plans/i }), {
-        target: { value: "nothing matches this" },
-      });
-
-      expect(screen.getByText("No results. Try adjusting your filters.")).toBeInTheDocument();
-      expect(screen.queryByText("No plans")).not.toBeInTheDocument();
     });
   });
 
@@ -342,21 +336,28 @@ describe("Operator Views Component & Accessibility Tests", () => {
 
       expect(screen.getByTestId("plan-detail-view")).toBeInTheDocument();
       expect(screen.getByText("First Accessible Plan")).toBeInTheDocument();
-      // V1's tab labels and order (`ContentView.Build`): Plan first, Details second.
-      expect(screen.getByRole("button", { name: "Plan" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Details" })).toBeInTheDocument();
-      expect(screen.getByText("Diff View")).toBeInTheDocument();
-      expect(screen.getByText(/Verifications/)).toBeInTheDocument();
+      // The workspace's own tab strip is a `role="tablist"` of `role="tab"` buttons
+      // (`PlanWorkspace.tsx`), which is what V1 renders and what these were asserting as plain
+      // buttons before the page adopted the widget. Order is `ContentView.Build`'s: Plan, Details.
+      expect(screen.getByRole("tab", { name: "Plan" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Details" })).toBeInTheDocument();
+      // ...and nothing else on a Draft plan: `Apps/Plans/ContentView.Build` builds exactly
+      // `{ new(PlanTab, "Plan"), new(DetailsTab, "Details") }`, and the diff and recommendations only
+      // exist on the Review page. See `plan-review-surfaces.test.tsx`.
+      expect(screen.queryByRole("tab", { name: "Diff View" })).not.toBeInTheDocument();
+      // Verifications is no longer a tab: V1 puts it in the tab strip's corner dropdown
+      // (`VerificationsPanelView` in the workspace's `Verifications` slot).
+      expect(screen.queryByRole("tab", { name: /Verifications/ })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Verifications" })).toBeInTheDocument();
     });
 
-    it("switches to Verifications and Details tabs on click", () => {
+    it("opens the Verifications dropdown, and switches to the Details tab on click", () => {
       render(<PlanDetailView plan={mockPlanDetail} allPlans={mockPlans} />);
 
-      const verificationsTab = screen.getByText(/Verifications/);
-      fireEvent.click(verificationsTab);
-      expect(screen.getByText("Plan Verifications")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Verifications" }));
+      expect(screen.getByRole("group", { name: "Verifications" })).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("button", { name: "Details" }));
+      fireEvent.click(screen.getByRole("tab", { name: "Details" }));
       expect(screen.getByText("Repositories")).toBeInTheDocument();
       expect(screen.getByText("/Users/rorychatt/repos/test")).toBeInTheDocument();
     });
@@ -425,7 +426,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={() => {}}
           onCloseTab={() => {}}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
         >
           <div>Inbox View Content</div>
@@ -449,7 +449,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={() => {}}
           onCloseTab={() => {}}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
         >
           <div>Dashboard View Content</div>
@@ -473,7 +472,6 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={() => {}}
           onCloseTab={() => {}}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
         >
           <div>Pull Requests View Content</div>
@@ -490,13 +488,107 @@ describe("Operator Views Component & Accessibility Tests", () => {
       expect(handleSelectNav).toHaveBeenCalledWith("pull-requests");
     });
 
+    it("renders Recommendations in sidebar nav and calls onSelectNav with 'recommendations'", () => {
+      const handleSelectNav = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={handleSelectNav}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onReconnect={() => {}}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      const recNavItem = screen.getByLabelText("Recommendations");
+      expect(recNavItem).toBeInTheDocument();
+      fireEvent.click(recNavItem);
+      expect(handleSelectNav).toHaveBeenCalledWith("recommendations");
+    });
+
+    it("exposes Icebox and Check for Updates via the settings menu", () => {
+      const handleSelectNav = vi.fn();
+      const handleCheckForUpdates = vi.fn();
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={handleSelectNav}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onReconnect={() => {}}
+          onCheckForUpdates={handleCheckForUpdates}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      fireEvent.keyDown(screen.getByLabelText("Settings"), { key: "Enter" });
+      expect(screen.getByText("Icebox")).toBeInTheDocument();
+      expect(screen.getByText("Check for Updates")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("Icebox"));
+      expect(handleSelectNav).toHaveBeenCalledWith("icebox");
+    });
+
+    it("renders badge counts for plans, review, recommendations, jobs, and chat", () => {
+      render(
+        <ShellLayout
+          activeNav="dashboard"
+          activeTabs={["dashboard"]}
+          serviceInfo={null}
+          connectionStatus="online"
+          reconnectCountdown={0}
+          onSelectNav={() => {}}
+          onSelectTab={() => {}}
+          onCloseTab={() => {}}
+          onNewPlan={() => {}}
+          onReconnect={() => {}}
+          draftCount={3}
+          reviewCount={5}
+          recommendationsCount={2}
+          jobCount={4}
+          chatCount={7}
+        >
+          <div>Dashboard View Content</div>
+        </ShellLayout>,
+      );
+
+      expect(screen.getByText("3")).toBeInTheDocument();
+      expect(screen.getByText("5")).toBeInTheDocument();
+      expect(screen.getByText("2")).toBeInTheDocument();
+      expect(screen.getByText("4")).toBeInTheDocument();
+    });
+
+    /* Updated for V1's strip (`TendrilAppShell.BuildStripTabs`): the strip is the non-closable
+       `$page` tab plus the session panes, and a page - a plan included - is never a tab, so there is
+       no "Close Plan 00010" control to click any more. The assertion this test exists for is
+       unchanged: a session tab's X routes to `onCloseTab` and not to `onSelectTab`. */
     it("calls onCloseTab (not onSelectTab) with the tab id when a tab's close control is clicked", () => {
       const handleSelectTab = vi.fn();
       const handleCloseTab = vi.fn();
       render(
         <ShellLayout
           activeNav="plans"
-          activeTabs={["dashboard", "plan-00010"]}
+          sessionTabs={[
+            {
+              id: "review-action:Tendril:00010:Run Tests",
+              appId: "review-action",
+              title: "#10 Run Tests",
+              args: {},
+            },
+          ]}
           serviceInfo={null}
           connectionStatus="online"
           reconnectCountdown={0}
@@ -504,15 +596,14 @@ describe("Operator Views Component & Accessibility Tests", () => {
           onSelectTab={handleSelectTab}
           onCloseTab={handleCloseTab}
           onNewPlan={() => {}}
-          onOpenShortcuts={() => {}}
           onReconnect={() => {}}
         >
           <div>Plans View Content</div>
         </ShellLayout>,
       );
 
-      fireEvent.click(screen.getByLabelText("Close Plan 00010"));
-      expect(handleCloseTab).toHaveBeenCalledWith("plan-00010");
+      fireEvent.click(screen.getByLabelText("Close #10 Run Tests"));
+      expect(handleCloseTab).toHaveBeenCalledWith("review-action:Tendril:00010:Run Tests");
       expect(handleSelectTab).not.toHaveBeenCalled();
     });
   });

@@ -1,5 +1,6 @@
 import { memo } from "react";
 import CopyToClipboardButton from "./CopyToClipboardButton";
+import { Spinner } from "./ui/spinner";
 import { renderGraphviz } from "@/lib/diagram";
 import { useDiagramRender } from "@/hooks/use-diagram-render";
 
@@ -41,7 +42,7 @@ const GraphvizRenderer = memo(({ content }: GraphvizRendererProps) => {
       <div className="graphviz-container rounded-md border bg-background p-4 overflow-x-auto slim-scrollbar">
         {isLoading && (
           <div className="flex items-center justify-center p-8 text-muted-foreground">
-            <div className="animate-spin rounded-full size-6 border-b-2 border-primary"></div>
+            <Spinner size="xl" color="var(--primary)" />
             <span className="ml-2 text-sm">Loading diagram...</span>
           </div>
         )}

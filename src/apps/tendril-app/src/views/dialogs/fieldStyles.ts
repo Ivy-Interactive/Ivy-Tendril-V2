@@ -6,7 +6,9 @@
  * written, and have since been converted to the same tokens.
  */
 export const FIELD_CLASS =
-  "w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring";
+  "w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+
+export const SELECT_FIELD_CLASS = `${FIELD_CLASS} focus:outline-none focus:ring-1 focus:ring-ring`;
 
 /** An error the backend reported, rendered where the operator pressed the button. */
 export const ALERT_CLASS =
@@ -34,6 +36,8 @@ export const DIALOG_WIDTH = {
   rem32: "sm:!max-w-[32rem]",
   /** `Size.Rem(40)`: Delete Plan, and the SyncRepo policy dialog. */
   rem40: "sm:!max-w-[40rem]",
+  /** `Size.Px(560)`: the shell's plan search dialog, the one call site given in px rather than rem. */
+  px560: "sm:!max-w-[560px]",
 } as const;
 
 export type DialogWidth = keyof typeof DIALOG_WIDTH;

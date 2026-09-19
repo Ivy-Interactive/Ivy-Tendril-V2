@@ -3,10 +3,13 @@ import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { bridge } from "../../api/bridge";
 import { jobsStore } from "../../state/jobsStore";
 import { describeBridgeError, type DoctorCheck, type OnboardingStatus } from "../../types/api";
+import { Progress } from "@ivy-interactive/components/ui";
+import { ErrorBanner } from "../../components/ErrorBanner";
 import { DataStorageStep, blockingChecks } from "./PrerequisitesStep";
-import { CodingAgentStep, machinePrerequisites } from "./CodingAgentStep";
+import { CodingAgentStep, agentCheck, agentLabel, machinePrerequisites } from "./CodingAgentStep";
 import { FirstProjectStep } from "./FirstProjectStep";
 import { CompleteStep } from "./CompleteStep";
+import { isValidProjectName, sanitizeProjectName } from "./validation";
 
 /** V1 `OnboardingApp.GetSteps`: four steps, in this order, with these labels. */
 const STEP_TITLES = ["Coding Agent", "Data Storage", "Your First Project", "Complete"] as const;
@@ -41,16 +44,46 @@ const INDICATOR_BASE =
   "relative flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium";
 
 /**
+ * V1's onboarding writes `Color = "Green"` on the project it creates
+ * (`ProjectAgentStepView.Build`); the daemon's own default is `Blue`, so the wizard has to say so.
+ */
+const FIRST_PROJECT_COLOR = "Green";
+
+/**
+ * The first thing V1 refuses to move past, in `CodingAgentStepView.BuildChecks`'s order: the
+ * machine's required tools, then the selected agent's own CLI. The agent row is required here even
+ * though the registry marks every agent optional - `BuildAgentCheck` passes `required: true`,
+ * because only the agent being picked matters and that one has to be installed.
+ */
+function missingRequirement(checks: DoctorCheck[], agentId: string): DoctorCheck | null {
+  const machine = blockingChecks(machinePrerequisites(checks));
+  if (machine.length > 0) return machine[0];
+  const agent = agentCheck(checks, agentId);
+  if (agent && agent.status !== "Ok") return agent;
+  return null;
+}
+
+/** V1 `InstallMissingDialog`'s body, collapsed to one line: what is missing and what to do. */
+function installMessage(missing: DoctorCheck[]): string {
+  return `Tendril needs ${missing.map((check) => check.name).join(", ")} but it isn't installed. Install it, then press Re-check.`;
+}
+
+/**
  * The first-run wizard, mirroring V1's `OnboardingApp`: a welcome heading, a four-item stepper, and
  * the step's own view underneath, each step building its own button row.
  *
  * Two V1 decisions shape the flow. Advancing is gated where V1 gates it — a required prerequisite
- * that fails keeps you on the Coding Agent step (V1 reopens `InstallMissingDialog` instead of
- * moving on), the Data Storage step needs a path, and Your First Project needs a name and at least
- * one repository — and the stepper itself is the way past a step you do not want to fill in, since
- * V1 offers Skip only on the project step. Nothing is written to `config.yaml` before the operator
- * acts: Finish writes `codingAgent` (only if picked) and the onboarding flag, and **Skip setup** —
- * V2's own escape hatch, which V1 has no equivalent for — writes the flag alone.
+ * that fails, *or the picked agent's own CLI being absent*, keeps you on the Coding Agent step (V1
+ * reopens `InstallMissingDialog` instead of moving on), the Data Storage step needs a path, and Your
+ * First Project needs a valid, unused name and at least one repository — and the stepper itself is
+ * the way past a step you do not want to fill in, since V1 offers Skip only on the project step.
+ * Nothing is written to `config.yaml` before the operator acts: Create Project writes the project,
+ * Finish writes `codingAgent` (only if picked) and the onboarding flag, and **Skip setup** — V2's own
+ * escape hatch, which V1 has no equivalent for — writes the flag alone.
+ *
+ * The project section does not auto-advance. V1 spends three sub-steps there (input, the agent run,
+ * then Review Harness) and only reaches Complete when the operator asks for it, so Create Project
+ * leaves you on the step with the hand-off panel visible and Next takes it from there.
  */
 export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) {
   const [step, setStep] = React.useState(AGENT_STEP);
@@ -61,6 +94,13 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
   const [projectName, setProjectName] = React.useState("");
   const [repoPaths, setRepoPaths] = React.useState<string[]>([]);
   const [projectRegistered, setProjectRegistered] = React.useState(false);
+  /**
+   * The projects `config.yaml` already has, plus anything this wizard registered. V1 reads
+   * `config.Settings.Projects` on every render of its project step to decide whether the typed name
+   * is a conflict; the daemon's own create refuses a duplicate with a 409, so this is the same
+   * answer, one round trip earlier.
+   */
+  const [knownProjects, setKnownProjects] = React.useState<{ name: string; repos: string[] }[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState<number | null>(null);
@@ -126,8 +166,24 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     runChecks();
   }, [runChecks]);
 
-  /** The required probes V1 will not let you leave the Coding Agent step with. */
-  const blocking = blockingChecks(machinePrerequisites(checks));
+  /**
+   * Re-entry: a wizard reopened after an interrupted run can already have a project in
+   * `config.yaml` (`createProject` is the only thing this wizard writes before Finish). The list is
+   * what makes the name conflict visible instead of failing on the create call.
+   */
+  React.useEffect(() => {
+    bridge
+      .listProjects()
+      .then((list) => setKnownProjects(list.map(({ name, repos }) => ({ name, repos }))))
+      .catch(() => {
+        // A wizard that cannot list projects still has to run; the daemon's 409 is the backstop.
+      });
+  }, []);
+
+  /** V1 `ProjectInputStepView.nameExists`: the comparison is case-insensitive, as the daemon's is. */
+  const nameExists =
+    projectName.trim().length > 0 &&
+    knownProjects.some((p) => p.name.toLowerCase() === projectName.trim().toLowerCase());
 
   /**
    * V1 `OnboardingApp.OnSelect`: nothing moves while a step is loading, and from the last step you
@@ -151,16 +207,36 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
    * V1's `BuildPicker` has no Next button: the click on a card *is* the advance, and it only lands
    * on the next step once that agent's checks pass. The pick is recorded either way, so coming back
    * to the step shows what was chosen.
+   *
+   * The checks are re-run here rather than read from state, because `RunFlowAsync` re-probes on
+   * every pick: an operator who installs the CLI in another window and clicks the card again must
+   * get through without pressing Re-check first. A probe that cannot reach the daemon fails closed,
+   * exactly as V1's `catch` does - the stepper is still the way out.
    */
-  const pickAgent = (agentId: string) => {
+  const pickAgent = async (agentId: string) => {
+    if (busy) return;
     setSelectedAgent(agentId);
-    if (blocking.length > 0) {
+    setBusy(true);
+    setError(null);
+    startProgress(`Checking ${agentLabel(agentId)}...`);
+    try {
+      const fresh = await bridge.runDoctor();
+      setChecks(fresh);
+      setChecksError(null);
+      const missing = missingRequirement(fresh, agentId);
+      if (missing) {
+        setError(installMessage([missing]));
+        return;
+      }
+      goTo(HOME_STEP);
+    } catch (err) {
       setError(
-        `Tendril needs ${blocking.map((check) => check.name).join(", ")} but it isn't installed. Install it, then press Re-check.`,
+        `Please make sure your agent is present and you are authorized. (${describeBridgeError(err)})`,
       );
-      return;
+    } finally {
+      clearProgress();
+      setBusy(false);
     }
-    goTo(HOME_STEP);
   };
 
   const finish = async (writeAgent: boolean) => {
@@ -200,20 +276,40 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
   /**
    * Registers the project, then hands the derivation work to `AddProject`. The order matters: that
    * promptware's first step confirms the project exists, so the config row has to be written first.
-   * Neither the job nor its result is awaited — the wizard moves on, as V1's project step does once
+   * The job is started but its result is not awaited, as V1's project step does once
    * `CommitPendingProjectAsync` returns.
+   *
+   * V1 will not create a second project of the same name - `ProjectAgentStepView` only builds a
+   * `ProjectConfig` when `existingProject == null`, and `CommitPendingProjectAsync` checks the list
+   * again before adding - so a name already in `config.yaml` never reaches the create call here
+   * either. The step does *not* advance on success: V1 stays inside the project section (its
+   * sub-step 1) with the run in flight and waits for Next.
    */
   const registerProject = async () => {
     if (busy) return;
     const name = projectName.trim();
-    if (!name || repoPaths.length === 0) return;
+    // V1 `ProjectAgentStepView`: the same name check that gates the button also guards the commit.
+    if (!isValidProjectName(name) || repoPaths.length === 0 || nameExists) return;
 
     setBusy(true);
     setError(null);
     startProgress("Setting up your project...");
     try {
-      await bridge.createProject({ name, repos: repoPaths });
+      // V1's step 0 mutates `config.Settings.CodingAgent` in memory and the project step's
+      // `CommitPendingProjectAsync` calls `SaveSettings()`, so V1's config.yaml carries the agent
+      // pick from the moment the project is written - not only from Finish. That matters because an
+      // abandoned wizard with a project in it never returns, and the pick would be lost.
+      if (selectedAgent) {
+        await bridge.putConfig("codingAgent", selectedAgent);
+      }
+      await bridge.createProject({ name, color: FIRST_PROJECT_COLOR, repos: repoPaths });
       setProjectRegistered(true);
+      // Remembered so a Back-and-forth cannot ask the daemon to create it twice.
+      setKnownProjects((current) =>
+        current.some((p) => p.name.toLowerCase() === name.toLowerCase())
+          ? current
+          : [...current, { name, repos: repoPaths }],
+      );
       try {
         await jobsStore.startJob({
           type: "AddProject",
@@ -224,17 +320,38 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
         // The project itself is registered; a failed hand-off is worth saying, not worth blocking on.
         setError(`Project created, but AddProject could not start: ${describeBridgeError(err)}`);
       }
-      // V1 ends its progress at 100 with "Done" before moving the stepper on.
-      stopProgressTimer();
-      setProgress(100);
-      setProgressMessage("Done");
-      goTo(COMPLETE_STEP);
     } catch (err) {
-      setError(`Could not create the project: ${describeBridgeError(err)}`);
+      // The daemon answers a duplicate name with 409; record it so the conflict box appears rather
+      // than only a raw error, which is what V1 shows for the same state.
+      const message = describeBridgeError(err);
+      if (/already exists/i.test(message)) {
+        setKnownProjects((current) =>
+          current.some((p) => p.name.toLowerCase() === name.toLowerCase())
+            ? current
+            : [...current, { name, repos: [] }],
+        );
+      }
+      setError(`Could not create the project: ${message}`);
     } finally {
       clearProgress();
       setBusy(false);
     }
+  };
+
+  /**
+   * V1 `ProjectInputStepView.UseExisting`: adopt the existing project's repositories and carry on
+   * without writing anything. V1 then runs its setup promptware against that project; here the
+   * equivalent is the registered panel's "Configure verifications now", which starts `SetupProject`.
+   */
+  const useExistingProject = () => {
+    if (busy) return;
+    const existing = knownProjects.find(
+      (p) => p.name.toLowerCase() === projectName.trim().toLowerCase(),
+    );
+    if (!existing) return;
+    setRepoPaths(existing.repos);
+    setProjectRegistered(true);
+    setError(null);
   };
 
   const configureVerifications = async () => {
@@ -251,7 +368,13 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
   };
 
   const canLeaveHomeStep = status.tendrilHome.trim().length > 0;
-  const canCreateProject = repoPaths.length > 0 && projectName.trim().length > 0;
+  /**
+   * V1 `ProjectInputStepView.canContinue`: at least one repository, a name, and no name clash. The
+   * name has already been sanitized on the way in, so `isValidProjectName` only rejects the two
+   * cases sanitizing cannot fix - empty, and a bare `.`/`..`.
+   */
+  const canCreateProject =
+    repoPaths.length > 0 && isValidProjectName(projectName) && !nameExists && !projectRegistered;
 
   const backButton = (
     <button
@@ -259,7 +382,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       onClick={() => goTo(Math.max(AGENT_STEP, step - 1))}
       disabled={busy}
       data-testid="onboarding-back"
-      className="flex items-center gap-1.5 rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
+      className="flex items-center gap-1.5 rounded-field border border-border px-4 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
     >
       <ArrowLeft className="size-4" aria-hidden="true" />
       Back
@@ -283,7 +406,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             onClick={() => goTo(PROJECT_STEP)}
             disabled={busy || !canLeaveHomeStep}
             data-testid="onboarding-continue"
-            className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-field bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             Next
             <ArrowRight className="size-4" aria-hidden="true" />
@@ -293,6 +416,27 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     }
 
     if (step === PROJECT_STEP) {
+      // Once the project exists this is V1's sub-step 1, whose buttons are Back, Skip and Next -
+      // Create Project is gone, because there is nothing left to create.
+      if (projectRegistered) {
+        return (
+          <>
+            {backButton}
+            <div className="flex-1" />
+            <button
+              type="button"
+              onClick={() => goTo(COMPLETE_STEP)}
+              disabled={busy}
+              data-testid="onboarding-continue"
+              className="flex items-center gap-1.5 rounded-field bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
+            >
+              Next
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </button>
+          </>
+        );
+      }
+
       return (
         <>
           {/* V1's Skip on this step jumps the whole project section, straight to Complete. */}
@@ -301,7 +445,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             onClick={() => goTo(COMPLETE_STEP)}
             disabled={busy}
             data-testid="onboarding-skip"
-            className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            className="rounded-field px-4 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
             Skip
           </button>
@@ -312,7 +456,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             onClick={() => void registerProject()}
             disabled={busy || !canCreateProject}
             data-testid="onboarding-continue"
-            className="flex items-center gap-1.5 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-field bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
           >
             Create Project
             <ArrowRight className="size-4" aria-hidden="true" />
@@ -330,7 +474,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
           onClick={() => void finish(true)}
           disabled={busy}
           data-testid="onboarding-continue"
-          className="flex items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-field bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           Finish
           <Check className="size-4" aria-hidden="true" />
@@ -397,15 +541,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
           </ol>
         </nav>
 
-        {error && (
-          <div
-            role="alert"
-            data-testid="onboarding-error"
-            className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-          >
-            {error}
-          </div>
-        )}
+        {error && <ErrorBanner data-testid="onboarding-error">{error}</ErrorBanner>}
 
         {step === AGENT_STEP && (
           <CodingAgentStep
@@ -414,18 +550,21 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             checksError={checksError}
             onRecheck={runChecks}
             selectedAgent={selectedAgent}
-            onSelectAgent={pickAgent}
+            onSelectAgent={(agent) => void pickAgent(agent)}
+            busy={busy}
           />
         )}
         {step === HOME_STEP && <DataStorageStep tendrilHome={status.tendrilHome} />}
         {step === PROJECT_STEP && (
           <FirstProjectStep
             projectName={projectName}
-            onProjectNameChange={setProjectName}
+            onProjectNameChange={(name) => setProjectName(sanitizeProjectName(name))}
             repoPaths={repoPaths}
             onReposChange={setRepoPaths}
             onConfigureVerifications={() => void configureVerifications()}
             projectRegistered={projectRegistered}
+            nameExists={nameExists && !projectRegistered}
+            onUseExisting={useExistingProject}
             busy={busy}
           />
         )}
@@ -434,15 +573,10 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
         {progress !== null && (
           <div className="space-y-1" data-testid="onboarding-progress">
             {progressMessage && <p className="text-xs text-muted-foreground">{progressMessage}</p>}
-            <div
-              role="progressbar"
-              aria-valuenow={progress}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              className="h-2 w-full overflow-hidden rounded-full bg-primary/10"
-            >
-              <div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-            </div>
+            {/* The library component, not a hand-rolled bar: it is the same `h-2 rounded-full` track
+                over a 10%-primary fill, and Radix gives it the progressbar role and aria-value* for
+                free. */}
+            <Progress value={progress} aria-label={progressMessage ?? "Setting up"} />
           </div>
         )}
 

@@ -74,3 +74,162 @@ made centrally per area.
 
 Match surrounding code style. Note that V1's `AGENTS.md` bans em dashes; that is a V1 rule and does not
 apply here, so do not reformat V2 prose to follow it.
+
+## Behavioural parity (second pass)
+
+The first pass aligned *composition and appearance*: which widgets, in what order, with what labels.
+This pass is about *behaviour*, which is where the real divergence turned out to live. For your area,
+the V1 C# is the authority on all of it:
+
+- **State machines.** Every state a view can be in, what moves it between them, and what is disabled,
+  hidden or read-only in each. V1's `ViewBase.Build()` plus its `UseState`/`UseEffect` calls are the
+  spec.
+- **Actions and their guards.** What each button actually does, what it refuses to do and why, what it
+  does optimistically versus after the service confirms, and what it does on failure.
+- **Data flow.** What is fetched, when, how often, what invalidates it, and what is re-read rather than
+  assumed. A V1 view that re-reads from the service on click and not just on render is making a
+  deliberate choice — copy it.
+- **Edge cases.** Empty, single-item, very large, offline, mid-flight, terminal-state and
+  permission-denied. These are where a port silently does nothing instead of the right thing.
+- **Wiring that exists but is unreachable.** A prop nobody passes, a callback nobody supplies and a
+  handler nobody calls are all equivalent to the feature being absent. Check that each behaviour you
+  port is actually reachable from the running app, and say so.
+
+Report behavioural divergence even where you cannot fix it in files you own — that is the most valuable
+thing you can produce.
+
+## Structural parity (third pass): the shell owns the lists
+
+The first pass matched composition inside a view; the second matched behaviour. Both missed the level
+above: **V1's information architecture**. V2 currently renders, in the content area, lists that V1 puts
+in the shell sidebar — which makes the app read as a set of standalone pages rather than one shell with
+a contextual sidebar.
+
+### The sidebar contextual list
+
+In V1, five apps do **not** render their own list. They publish one into the shell sidebar and the
+shell renders it, routing a click back as a normal navigation:
+
+- `AppShell/ShellSidebarListSignal.cs` — the contract. The active app publishes `ShellSidebarListState`
+  **on every build**; the shell renders it and routes item clicks through `BuildSelectArgs`.
+- `AppShell/TendrilAppShell.cs`'s `SidebarSectionAppIds` names them: **`review`, `plans`, `drafts`,
+  `recommendations`, `chat`**.
+- `PageTabTitle` makes the page tab's title the *selected sidebar row*, not the app name.
+- `UsesSidebarList` keeps a published list visible while the user is on any sidebar-section app, so
+  moving between them does not blank the sidebar.
+
+V2 already has the whole widget family forked and **unused**:
+`packages/components/src/components/Shell/` — `ShellSidebarSection`, `ShellSectionItems`,
+`ShellRailFlyout`, `ShellSidebarHeader`. `ShellSectionItemDto` in `Shell/types.ts` is already
+field-for-field identical to V1's `ShellDtos.cs`. Nothing in `apps/tendril-app/src` renders any of it.
+
+**The contract to implement, mirroring `ShellSidebarListState` exactly.** One owner implements the
+shell side; the five apps publish against this and nothing else:
+
+```ts
+export interface ShellSidebarList {
+  appId: string;                 // "review" | "plans" | "drafts" | "recommendations" | "chat"
+  title: string;
+  items: ShellSectionItemDto[];  // already exists in Shell/types.ts — do not redefine it
+  selectedId: string | null;
+  /** A click becomes a navigation to `appId` with these args. */
+  buildSelectArgs: (id: string) => unknown;
+  searchable?: boolean;          // default true
+  onSearch?: () => void;         // null/absent means the plan search dialog
+  searchLabel?: string;          // absent reads "Search plans"
+  onNew?: () => void;
+  newLabel?: string;
+  /** Folds the collapsed rail's list into one flyout button instead of narrow id chips. */
+  collapsedMenu?: boolean;
+  onRename?: (id: string, title: string) => void;
+  onDelete?: (id: string) => void;
+  onTogglePin?: (id: string) => void;
+}
+```
+
+Two rules follow from V1 and are easy to get wrong: a published list must survive navigation between
+sidebar-section apps, and the page tab title follows the selected row.
+
+### Tables are tables
+
+V1 renders collections with `ToDataTable`. V2 has a full `DataTable` under
+`packages/components/src/components/ui/data-table/` — row actions, inline cell edit, column visibility
+— and `InboxView` already uses it. Anything V1 renders as a table must use it rather than a
+hand-rolled card grid. `Apps/Jobs/JobsApp.DataTable.cs` is the reference for columns, ordering, row
+menu and its live per-cell update stream.
+
+### Nested navigation
+
+`Apps/Settings/SettingsApp.cs` is a **nested sidebar** of `SidebarListRow` rows, one of which
+(`Projects`) is expandable with a sub-item per project plus "Add Project", and it opens editors as
+**blades** (`Apps/Settings/Blades/`). It is not a flat stack of cards. Note `SidebarListRow.Build` /
+`BuildExpandable` / `BuildSubItem` currently has no shared V2 component — `InboxView` reimplemented all
+three locally, so extracting them is a prerequisite rather than a nicety.
+
+### Rule for this pass
+
+If V1 put something in the shell, put it in the shell. A view that renders its own list, its own
+nav, or its own table where V1 published to the shell or used a `DataTable` is a structural
+divergence even when every label and behaviour inside it is right.
+
+### Routing: a hybrid shell, not a tab bar
+
+`AppShell/AppShellRouter.cs` (127 lines) states the architecture in its own doc comment:
+
+> Routing for the hybrid shell: regular apps render as the single page inside the content frame,
+> while session apps (AllowDuplicateTabs — agent terminals and review actions) open as tabs in the
+> bottom session strip.
+
+So there are two destinations, and which one a navigation reaches is a *routing decision*, not a
+caller's choice. `Route(navigateArgs, navigationMode, defaultAppId, sessionTabs, appDescriptor)`
+returns one of five actions — `OpenPage`, `SwitchToExistingTab`, `CreateNewTab`, `Error`, `Noop` —
+by these rules, in order:
+
+1. **A `TabId` means restoring an existing session tab**, e.g. from browser history. Found → switch to
+   it. Not found *and* the navigation is a history `Pop` → `Error("Tab no longer exists.")`, because
+   silently opening something else would rewrite the user's history under them.
+2. **No `AppId` → `Noop`.**
+3. **`AllowDuplicateTabs` app → a session tab.** But first: a terminal session's pane is keyed by its
+   session id, so reopening the same session **reveals the existing pane rather than spawning a second
+   agent**. Only then `CreateNewTab`.
+4. **Everything else → `OpenPage`.** One page in the content frame. A page is never a tab.
+
+What this requires of navigation, and what V2 does not have:
+
+- **`NavigateArgs` carries `{ appId, appArgs, tabId?, historyOp? }`.** V2's navigation is a bare
+  string (`uiStore.setActiveNav(nav)`), which is why the sidebar contract's `buildSelectArgs` has
+  nowhere to deliver its args and every publisher has to apply the selection itself as a side effect.
+  That is a workaround for a missing router, not a design.
+- **History**, including `replaceHistory` and the `HistoryOp.Pop` distinction above.
+- **A `defaultAppId`**, used when a navigation names no app.
+
+V2 additionally does the opposite of rule 4: `uiStore.setActiveNav` pushes every nav into
+`activeTabIds`, and `setSelectedPlanId` pushes a `plan-<id>` tab, so ordinary pages accumulate in the
+session strip. `Apps/Jobs/Sheets/OutputSheet.cs` is the reminder that not everything even wants a
+page: job output is a **sheet** over the jobs table in V1, and V2 made it a tab.
+
+#### Adapt the mechanism, match the behaviour
+
+The rules above are the **behaviour** to match, not a shape to copy. V1's router is a C# `Route()`
+returning an action enum because that is what its shell needed; V2 should express the same decisions
+the way its own stack expects. The intended stack is TanStack Router and Query, so:
+
+- **Navigation state belongs in the URL.** TanStack Router is URL-first, so `NavigateArgs`'
+  `{ appId, appArgs }` becomes a route plus its params and search, and the router's job becomes route
+  matching rather than a hand-written switch. This is the single decision everything else follows from
+  — it is also what makes `historyOp`/`Pop` fall out for free instead of being modelled by hand.
+- **A session tab is addressable.** Rule 1 exists because V1 restores a session pane from browser
+  history by its `TabId`, which means the open session is part of the address, not hidden store state.
+- **Server state belongs in Query, not in stores.** The hand-rolled fetch-and-store wiring is
+  [#153](https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues/153), and it is the same theme: the
+  five routing actions and the stores' manual invalidation are both restating things the libraries do.
+
+**Neither library is installed, and the registry is unreachable from the dev sandbox**
+(`UNABLE_TO_GET_ISSUER_CERT_LOCALLY`); only `@tanstack/react-virtual` is present, for the DataTable.
+So until someone with network runs the install, implement the behaviour behind a **thin navigation
+seam** — one `navigate({ appId, args, tabId })` plus a read of the current address — expressed as URL
+state rather than ad-hoc store fields. That keeps the behaviour testable now and makes adopting the
+router a change of implementation behind the seam rather than a rewrite of every caller.
+
+Do **not** hand-roll a general-purpose router. Match the four rules, keep the seam small, and leave
+the rest to the library.

@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import "../ui/ui.css";
 import "./web-viewer.css";
 import { getHeight, getWidth } from "@/lib/styles";
 import { canonicalPageUrl } from "./pageUrl";
 import { Toolbar, type ToolbarAction } from "./Toolbar";
 import { DEVICE_LABELS, DEVICE_VIEWPORTS, toDeviceKey, type DeviceKey } from "./devices";
+import { TuiBadge } from "../ui/TuiBadge";
+import { useProxyOrigin } from "@/contexts/webviewer-context";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,10 +20,14 @@ export interface WebViewerProps {
   height?: string;
   url?: string;
   device?: string; // "Desktop" | "Mobile" | "Tablet" (omitted when Desktop)
-  /** How the page is framed. "auto" (default) registers the proxy worker and falls back to framing
-   *  the URL directly when it cannot be registered. "require" never frames unproxied (today's
-   *  behaviour). "off" skips registration entirely and always frames directly. */
-  proxy?: "auto" | "require" | "off";
+  /**
+   * Origin serving the proxy routes, overriding {@link WebViewerProvider}. `""` is same-origin.
+   *
+   * An escape hatch for stories and tests; an application should mount the provider once in its
+   * shell rather than answer this at every call site, since a caller that omits it gets a viewer
+   * that works in the browser build and quietly fails under Tauri.
+   */
+  proxyOrigin?: string;
   toolbar?: boolean;
   actions?: ToolbarAction[];
   commands?: { id: string };
@@ -129,92 +136,48 @@ function sameUrl(a: string | null, b: string | null): boolean {
 
 const VIEW_PREFIX = "/__view/";
 
-function toViewUrl(rawUrl: string, viewerId: string, device?: string): string {
+/**
+ * How long after a load the agent has to report before the frame is judged to have escaped the
+ * proxy. The agent reports synchronously as the document parses, so this only has to cover the trip
+ * back across the frame boundary; long enough not to misfire on a slow machine, short enough that a
+ * real escape is corrected before the reviewer has read the page they landed on.
+ */
+const ESCAPE_GRACE_MS = 750;
+
+/**
+ * `proxyOrigin` is prefixed so the frame loads from whichever origin serves the proxy, which is not
+ * necessarily the one this component is rendered on. Empty means same-origin, which is the browser
+ * build, where the app is served by the daemon itself.
+ */
+function toViewUrl(
+  rawUrl: string,
+  viewerId: string,
+  device: string | undefined,
+  proxyOrigin: string,
+): string {
   if (!rawUrl) return "";
   const dev = device ? "/" + encodeURIComponent(device) : "";
-  return `${VIEW_PREFIX}@${encodeURIComponent(viewerId)}${dev}/${rawUrl}`;
+  return `${proxyOrigin}${VIEW_PREFIX}@${encodeURIComponent(viewerId)}${dev}/${rawUrl}`;
 }
 
 // ---------------------------------------------------------------------------
-// Service Worker registration with ref-counting
+// The service worker is NOT registered here.
 //
-// The SW is installed once and uninstalled when the last viewer unmounts.
-// A 5-second release timer prevents thrashing when navigating between views.
-
-const SW_URL = "/sw.js";
-const SW_SCOPE = VIEW_PREFIX;
-
-let proxyWorker: Promise<ServiceWorkerRegistration> | null = null;
-let releaseTimer: ReturnType<typeof setTimeout> | null = null;
-
-async function removeRootScopedWorker(): Promise<void> {
-  if (!("serviceWorker" in navigator)) return;
-  try {
-    const regs = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(
-      regs
-        .filter((r) => {
-          const script = r.active?.scriptURL ?? r.waiting?.scriptURL ?? r.installing?.scriptURL;
-          return (
-            new URL(r.scope).pathname === "/" && !!script && new URL(script).pathname === SW_URL
-          );
-        })
-        .map((r) => r.unregister()),
-    );
-  } catch {
-    // Ignore cleanup failures
-  }
-}
-
-function acquireProxyWorker(): Promise<ServiceWorkerRegistration> {
-  if (releaseTimer !== null) {
-    clearTimeout(releaseTimer);
-    releaseTimer = null;
-  }
-  if (proxyWorker === null) {
-    const attempt = removeRootScopedWorker()
-      .then(() => navigator.serviceWorker.register(SW_URL, { scope: SW_SCOPE }))
-      .then(async (registration) => {
-        await workerActivated(registration);
-        return registration;
-      });
-    attempt.catch(() => {
-      if (proxyWorker === attempt) proxyWorker = null;
-    });
-    proxyWorker = attempt;
-  }
-  return proxyWorker;
-}
-
-function releaseProxyWorker(): void {
-  if (releaseTimer !== null) return;
-  releaseTimer = setTimeout(() => {
-    releaseTimer = null;
-    if (proxyWorker !== null) {
-      proxyWorker
-        .then((reg) => reg.unregister())
-        .catch(() => {})
-        .finally(() => {
-          proxyWorker = null;
-        });
-    }
-  }, 5000);
-}
-
-function workerActivated(reg: ServiceWorkerRegistration): Promise<void> {
-  if (reg.active && reg.active.state === "activated") return Promise.resolve();
-  const worker = reg.active || reg.waiting || reg.installing;
-  if (!worker) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    const onState = () => {
-      if (worker.state === "activated") {
-        worker.removeEventListener("statechange", onState);
-        resolve();
-      }
-    };
-    worker.addEventListener("statechange", onState);
-  });
-}
+// It used to be, from this page, back when the app and the proxy shared an origin. They no longer
+// do: under Tauri the shell is on `tauri://localhost`, which serves no `/sw.js`, and a page cannot
+// register a worker for an origin that is not its own. Registering from here therefore failed in the
+// packaged app, took the 8-second timeout, and dropped the viewer into an unproxied iframe with no
+// element picker — the whole point of the feature, gone, with a banner in place of an explanation.
+//
+// So the proxied document registers it instead. That document IS same-origin with the proxy however
+// this shell is served, so the registration works identically in Tauri, in a browser and in
+// Storybook. See `agent.js`, which does it before it hides `navigator.serviceWorker` from the page.
+//
+// Nothing is lost by the move. The bootstrap load never had a controller anyway — `/__view/<abs>`
+// carries its target in the path precisely so the first document needs no worker — and the rewriter
+// resolves every static subresource into view-space, so the first paint is correct either way. The
+// ref-counting that used to live here existed only to share one registration between viewers; a
+// worker owned by each proxied document has nothing to share and nothing to tear down.
 
 // ---------------------------------------------------------------------------
 // Component
@@ -225,7 +188,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   height,
   url,
   device,
-  proxy = "auto",
+  proxyOrigin,
   toolbar = false,
   actions = [],
   commands,
@@ -248,9 +211,8 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   // address bar and history without re-pointing the iframe: re-pointing would remount it
   // and reload the whole document, throwing away the very navigation being reported.
   const [frameSrc, setFrameSrc] = useState<string | null>(initialUrl);
-  const [proxyState, setProxyState] = useState<"pending" | "ready" | "unavailable">(
-    proxy === "off" ? "unavailable" : "pending",
-  );
+  const contextOrigin = useProxyOrigin();
+  const origin = (proxyOrigin ?? contextOrigin).replace(/\/+$/, "");
   const [pending, setPending] = useState<PendingComment | null>(null);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState<CommentMarker[]>([]);
@@ -403,40 +365,28 @@ export const WebViewer: React.FC<WebViewerProps> = ({
     pushMarkers();
   }, [comments, currentPage, pushMarkers]);
 
-  // A hydrated page can navigate itself with script: a nav button calling location.assign,
-  // a router falling back to a hard navigation, to a path outside view-space. The worker is
-  // registered on /__view/ so any request outside that scope goes straight to the origin
-  // of the site. View-space is same-origin, so we can see where the frame ended up and put it
-  // back. Costs one extra load on the rare escape, and self-heals whatever caused it.
+  // A hydrated page can navigate itself with script: a nav button calling location.assign, a router
+  // falling back to a hard navigation, to a path outside view-space. The worker is registered on
+  // /__view/, so any request outside that scope goes straight to the origin of the site and the
+  // frame leaves the proxy behind.
+  //
+  // This used to be answered by reading `contentWindow.location`. The frame is no longer same-origin
+  // with this page, so that read throws before it can say anything, and the whole check collapses
+  // into its own catch branch. The agent answers it instead, by its silence: it is injected into
+  // every proxied document and reports its location on first paint, so a load that produces no such
+  // message within a beat is a document the proxy never served. That is the escape, and there is no
+  // second case to distinguish — a page that rewrote its own address to look un-proxied still has
+  // the agent, and still reports.
+  const agentReportsRef = useRef(0);
   const healEscapedFrame = useCallback(() => {
-    if (proxyState !== "ready") return;
-    try {
-      const frameWindow = frameRef.current?.contentWindow;
-      const location = frameWindow?.location;
-      if (!location) return;
-      if (location.protocol === "about:") return; // the blank frame before the first load
-      if (location.pathname.startsWith(VIEW_PREFIX)) return;
-      // Out of view-space, but ours: the agent rewrites the address to the path the app
-      // thinks it is serving, so a client-side router can match its own routes. Its presence
-      // is what separates that from a page that really did navigate away: the path alone no
-      // longer can, and healing this one would bounce the app back and forth forever.
-      if ((frameWindow as unknown as { __PROXY_TARGET__?: string }).__PROXY_TARGET__) return;
-
-      const { history: h, index: i } = navRef.current;
-      const current = i >= 0 ? h[i] : null;
-      if (!current) return;
-      const target = new URL(current);
-      const recovered = target.origin + location.pathname + location.search + location.hash;
-      const newHistory = h.slice(0, i + 1).concat(recovered);
-      applyNav(newHistory, newHistory.length - 1, true);
-    } catch {
-      // Cross-origin access failure: the frame actually escaped to another origin.
-      // Re-assert the last URL we knew about.
+    const seenBefore = agentReportsRef.current;
+    window.setTimeout(() => {
+      if (agentReportsRef.current !== seenBefore) return; // the agent spoke: this is ours
       const { history: h, index: i } = navRef.current;
       const current = i >= 0 ? h[i] : null;
       if (current) navigate(current);
-    }
-  }, [proxyState, applyNav, navigate]);
+    }, ESCAPE_GRACE_MS);
+  }, [navigate]);
 
   // Sync external url prop changes into history when it changes from the outside.
   useEffect(() => {
@@ -459,60 +409,6 @@ export const WebViewer: React.FC<WebViewerProps> = ({
       });
     }
   }, [currentUrl, canGoBack, canGoForward, emit]);
-
-  // ---- service worker -----------------------------------------------------
-  useEffect(() => {
-    if (proxy === "off") {
-      return;
-    }
-    if (!("serviceWorker" in navigator)) {
-      emit("console", {
-        level: "error",
-        text: "Service Worker not supported: the proxy cannot run.",
-        stack: null,
-      });
-      if (proxy !== "require") {
-        setProxyState("unavailable");
-      }
-      return;
-    }
-    let cancelled = false;
-    let settleTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    acquireProxyWorker()
-      .then(() => {
-        if (cancelled) return;
-        if (settleTimeout !== null) clearTimeout(settleTimeout);
-        setProxyState("ready");
-      })
-      .catch((err) => {
-        emit("console", {
-          level: "error",
-          text: "SW registration failed: " + (err?.message || String(err)),
-          stack: null,
-        });
-        if (cancelled) return;
-        if (settleTimeout !== null) clearTimeout(settleTimeout);
-        if (proxy !== "require") {
-          setProxyState("unavailable");
-        }
-      });
-
-    if (proxy === "auto") {
-      settleTimeout = setTimeout(() => {
-        if (!cancelled) {
-          setProxyState("unavailable");
-        }
-      }, 8000);
-    }
-
-    return () => {
-      cancelled = true;
-      if (settleTimeout !== null) clearTimeout(settleTimeout);
-      releaseProxyWorker();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Autofocus the comment textarea whenever the dialog opens.
   useEffect(() => {
@@ -634,7 +530,13 @@ export const WebViewer: React.FC<WebViewerProps> = ({
             stack: null,
           });
           return;
-        case "navigated": {
+        // The agent's own name for this, and the one it has always sent (`send({ type:
+        // 'location' })` on first paint, on DOMContentLoaded and on every pushState /
+        // replaceState). Not to be confused with the *outbound* "navigated" event this
+        // component emits to its host: naming this arm after that one is what silently dropped
+        // every page change, leaving the address bar stale and the pins scoped to the page the
+        // reviewer had already left.
+        case "location": {
           const reported = data.url;
           if (typeof reported !== "string" || !reported) return;
           const { history: h, index: i } = navRef.current;
@@ -824,13 +726,12 @@ export const WebViewer: React.FC<WebViewerProps> = ({
     dev.w && dev.h ? { width: dev.w, height: dev.h } : { width: "100%", height: "100%" };
 
   const frameKey = `${frameSrc}#${devKey}#${reloadKey}`;
-  const isFramingReady = proxyState === "ready" || proxyState === "unavailable";
-  const loading = !!frameSrc && isFramingReady && loadedKey !== frameKey;
+  // Nothing to wait for any more: the frame is mounted as soon as there is a URL, because the
+  // registration it used to wait on now happens inside the document it is about to load.
+  const loading = !!frameSrc && loadedKey !== frameKey;
 
   return (
-    // remove-parent-padding is Ivy's opt-out for full-bleed widgets: the host layout zeroes
-    // its own padding when a child carries it, so the viewport reaches the container edges.
-    <div className="wvr-shell remove-parent-padding" style={shellStyle}>
+    <div className="wvr-shell" style={shellStyle}>
       {toolbar && (
         <Toolbar
           url={currentUrl}
@@ -849,12 +750,6 @@ export const WebViewer: React.FC<WebViewerProps> = ({
           onAction={(actionId) => emit("action", { id: actionId })}
         />
       )}
-      {proxyState === "unavailable" && (
-        <div className="wvr-notice" role="status">
-          Proxy unavailable -- framing this page directly. Element picking, screenshots and network
-          events need the Tendril proxy.
-        </div>
-      )}
       <div className={"wvr-stage" + (dev.w ? " wvr-device" : "")}>
         {!currentUrl ? (
           <div className="wvr-empty">
@@ -862,20 +757,12 @@ export const WebViewer: React.FC<WebViewerProps> = ({
               ? "Enter a URL in the address bar to load a page."
               : "No URL -- set the Url prop to load a page."}
           </div>
-        ) : proxyState === "unavailable" ? (
-          <iframe
-            ref={frameRef}
-            className="wvr-frame"
-            src={currentUrl}
-            title="Web content"
-            style={iframeStyle}
-          />
-        ) : proxyState === "ready" && frameSrc ? (
+        ) : frameSrc ? (
           <iframe
             ref={frameRef}
             key={frameKey}
             className="wvr-frame"
-            src={toViewUrl(frameSrc, viewerId, devKey)}
+            src={toViewUrl(frameSrc, viewerId, devKey, origin)}
             title="Web content"
             style={iframeStyle}
             onLoad={() => {
@@ -887,14 +774,15 @@ export const WebViewer: React.FC<WebViewerProps> = ({
               if (selectingRef.current) postToFrame({ __proxyCmd: "select-start" });
             }}
           />
-        ) : (
-          <div className="wvr-empty">Starting proxy…</div>
-        )}
+        ) : null}
       </div>
 
       {pending && (
         <div className="wvr-overlay" onMouseDown={cancelComment}>
-          <div className="wvr-comment-box" onMouseDown={(e) => e.stopPropagation()}>
+          <div
+            className="tui-popover-shell wvr-comment-box"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <div className="wvr-comment-title">
               {pending.mode === "edit" && (
                 <span className="wvr-comment-pin">
@@ -902,7 +790,11 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                 </span>
               )}
               Comment on
-              {pending.meta?.tag && <span className="wvr-comment-tag">{pending.meta.tag}</span>}
+              {pending.meta?.tag && (
+                <TuiBadge className="wvr-comment-tag" size="md" mono>
+                  {pending.meta.tag}
+                </TuiBadge>
+              )}
               {pending.meta?.text && (
                 <span className="wvr-comment-snippet">{quote(pending.meta.text)}</span>
               )}
@@ -979,16 +871,16 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                 // Left of the gap, away from Save: this one cannot be undone.
                 <button
                   type="button"
-                  className="wvr-btn wvr-btn--danger wvr-comment-delete"
+                  className="tui-btn tui-btn--danger wvr-comment-delete"
                   onClick={deleteComment}
                 >
                   Delete
                 </button>
               )}
-              <button type="button" className="wvr-btn wvr-btn--ghost" onClick={cancelComment}>
+              <button type="button" className="tui-btn tui-btn--ghost" onClick={cancelComment}>
                 Cancel
               </button>
-              <button type="button" className="wvr-btn wvr-btn--primary" onClick={submitComment}>
+              <button type="button" className="tui-btn tui-btn--primary" onClick={submitComment}>
                 {pending.mode === "edit" ? "Save" : "Add"}
               </button>
             </div>

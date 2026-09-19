@@ -9,7 +9,9 @@
 //!   one notification, and a burst naming two folders escalates to a single full rescan.
 //! - [`ignore`] — `Worktrees/` must never be watched. Upstream's watcher buffer overflowed and
 //!   destabilised the machine when worktree churn reached it.
-//! - [`self_writes`] — a write by this process must not loop back into a reload by this process.
+//! - [`self_writes`] — a write by this process must not loop back into a reload by this process. The
+//!   other half of that rule lives in [`announce_self_write`]: suppressing the echo without
+//!   re-announcing the write would leave a daemon-side write announced to nobody.
 //! - [`watch_paths`] — an explicit set of **non-recursive** registrations. There is no code path in
 //!   this module that passes [`RecursiveMode::Recursive`], and `watch_paths_never_include_worktrees`
 //!   is the regression test that keeps it that way.
@@ -236,16 +238,62 @@ enum WatchMsg {
     Raw(PathBuf),
     /// An in-process notification from [`FsWatcher::notify_changed`].
     Direct(ChangeTarget),
+    /// A path this process just wrote, from [`announce_self_write`]. Classified like a raw event but
+    /// exempt from the self-write check, that check being the very reason it has to be replayed.
+    SelfWrite(PathBuf),
+}
+
+/// Live watchers in this process, so the write path can announce a write without a handle.
+///
+/// [`self_writes`] suppresses the watcher echo of our own writes, and the compensating notification
+/// has to come from the write path itself. Threading an `FsWatcher` to every writer would mean an
+/// `AppState` field, a plumbing change in each of the plan, config and inbox write paths, and a
+/// silent no-op wherever one was forgotten — which is the state this replaced. A registry keyed off
+/// the one function every self-write already calls cannot be forgotten.
+///
+/// A `Vec` rather than an `Option`: tests run several watchers in one process, and a stale entry
+/// would send a live watcher's events into a dead one's channel.
+type Notifiers = std::sync::Mutex<Vec<(u64, mpsc::UnboundedSender<WatchMsg>)>>;
+
+fn notifiers() -> &'static Notifiers {
+    static NOTIFIERS: std::sync::OnceLock<Notifiers> = std::sync::OnceLock::new();
+    NOTIFIERS.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+/// Re-announces a path this process just wrote to every live watcher.
+///
+/// Called from [`self_writes::note_self_write`], which `write_atomic` already calls on every daemon
+/// write — so this is the port of V1's `IPlanWatcherService.NotifyChanged` call from the write paths,
+/// made once, in the one place that cannot be bypassed. The suppressed echo is replayed as a
+/// [`WatchMsg::SelfWrite`], is classified and coalesced exactly like a foreign event, and so costs
+/// one notification per burst however many files the write touched.
+///
+/// A no-op in a process with no watcher — every CLI invocation, and any daemon that lost the master
+/// race — which is why it takes no handle and returns nothing.
+pub(crate) fn announce_self_write(path: &Path) {
+    let mut guard = match notifiers().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    // A closed channel means that watcher's task is gone; drop it rather than keep retrying.
+    guard.retain(|(_, tx)| tx.send(WatchMsg::SelfWrite(path.to_path_buf())).is_ok());
 }
 
 /// A live filesystem watcher. Stops watching when dropped.
 pub struct FsWatcher {
     msg_tx: mpsc::UnboundedSender<WatchMsg>,
     task: tokio::task::JoinHandle<()>,
+    /// This watcher's entry in [`notifiers`], removed on drop.
+    notifier_id: u64,
 }
 
 impl Drop for FsWatcher {
     fn drop(&mut self) {
+        // Deregistered before the abort: `task.abort()` is not synchronous, so leaving the entry in
+        // place would keep handing writes to a task that will never read them again.
+        if let Ok(mut guard) = notifiers().lock() {
+            guard.retain(|(id, _)| *id != self.notifier_id);
+        }
         // Aborting drops the task's future, which drops the notify watcher it owns and so
         // deregisters every path.
         self.task.abort();
@@ -333,6 +381,32 @@ impl FsWatcher {
                             Some(WatchMsg::Direct(target)) => {
                                 coalescer.push(target, Instant::now());
                             }
+                            Some(WatchMsg::SelfWrite(path)) => {
+                                let now = Instant::now();
+                                if should_ignore(&path) {
+                                    continue;
+                                }
+                                // The write path passes the path it was handed, which on macOS is
+                                // typically the `/var/folders` alias of a `/private/var/folders`
+                                // config root. Classification is a prefix comparison against
+                                // canonicalised roots, so without this every self-write of a temp
+                                // home classifies as `None` and is silently dropped.
+                                let path = resolve_for_classification(&path);
+                                let Some(target) = classify_path(&cfg, &path) else {
+                                    continue;
+                                };
+                                coalescer.push(target, now);
+                                // The write may have created the folder it landed in, which nothing
+                                // is watching yet. Registering here is enough on its own — unlike the
+                                // raw path, this write has already been announced, so there is
+                                // nothing for a catch-up pass to recover.
+                                if path.parent() == Some(cfg.plans_dir.as_path())
+                                    || path.parent().and_then(|p| p.parent())
+                                        == Some(cfg.plans_dir.as_path())
+                                {
+                                    register_paths(&mut watcher, &cfg, &mut watched);
+                                }
+                            }
                         }
                     }
                     _ = tokio::time::sleep_until(deadline.into()) => {}
@@ -375,7 +449,21 @@ impl FsWatcher {
             }
         });
 
-        Ok(FsWatcher { msg_tx, task })
+        // Registered only once the task exists, so an announcement can never reach a channel with
+        // nothing reading it.
+        static NEXT_NOTIFIER_ID: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(1);
+        let notifier_id = NEXT_NOTIFIER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        match notifiers().lock() {
+            Ok(mut guard) => guard.push((notifier_id, msg_tx.clone())),
+            Err(poisoned) => poisoned.into_inner().push((notifier_id, msg_tx.clone())),
+        }
+
+        Ok(FsWatcher {
+            msg_tx,
+            task,
+            notifier_id,
+        })
     }
 
     /// In-process notification: the port of `IPlanWatcherService.NotifyChanged`.
@@ -384,6 +472,23 @@ impl FsWatcher {
     /// provokes cost one notification between them rather than two.
     pub fn notify_changed(&self, target: ChangeTarget) {
         let _ = self.msg_tx.send(WatchMsg::Direct(target));
+    }
+}
+
+/// Resolves symlinks in a path's parent so it can be compared against a canonicalised root.
+///
+/// The file itself is deliberately not canonicalised: `note_self_write` runs *before*
+/// `write_atomic`'s rename, so for a brand-new file there is nothing to resolve yet, and
+/// `canonicalize` would fail on exactly the case that matters most.
+fn resolve_for_classification(path: &Path) -> PathBuf {
+    match (path.parent(), path.file_name()) {
+        (Some(parent), Some(name)) if !parent.as_os_str().is_empty() => {
+            match std::fs::canonicalize(parent) {
+                Ok(resolved) => resolved.join(name),
+                Err(_) => path.to_path_buf(),
+            }
+        }
+        _ => path.to_path_buf(),
     }
 }
 

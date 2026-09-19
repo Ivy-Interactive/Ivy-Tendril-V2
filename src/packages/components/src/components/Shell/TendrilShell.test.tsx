@@ -12,6 +12,11 @@ import { ShellNewPlanButton } from "./ShellNewPlanButton.tsx";
 import { ShellSettingsButton } from "./ShellSettingsButton.tsx";
 import { ShellSidebarHeader } from "./ShellSidebarHeader.tsx";
 import { ShellSidebarSection } from "./ShellSidebarSection.tsx";
+import {
+  SidebarListRow,
+  SidebarListRowExpandable,
+  SidebarListRowSubItem,
+} from "./SidebarListRow.tsx";
 import { ShellTabs } from "./ShellTabs.tsx";
 import { TendrilShell } from "./TendrilShell.tsx";
 import type { ShellNavItemDto, ShellSectionItemDto, ShellTabDto } from "./types.ts";
@@ -57,6 +62,43 @@ describe("TendrilShell", () => {
     expect(container.querySelector('[data-testid="sidebar-footer"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="main-content"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="tab-strip"]')).not.toBeNull();
+  });
+
+  it("renders a logo node in the header brand row, and nothing when given neither", () => {
+    const handler = vi.fn();
+    const renderHeader = (props: Partial<Parameters<typeof ShellSidebarHeader>[0]>) =>
+      act(() => {
+        root.render(
+          <TendrilShell
+            id="test-shell"
+            eventHandler={handler}
+            slots={{
+              SidebarHeader: (
+                <ShellSidebarHeader id="header" title="Tendril" eventHandler={handler} {...props} />
+              ),
+              Content: <div>Content</div>,
+            }}
+          />,
+        );
+      });
+
+    // A node has to land on `.tsh-header-logo` like the <img> branch does: that class is what the
+    // rail's hover-to-expand rule fades out to reveal the panel icon, so a mark outside it would
+    // sit on top of the icon in the collapsed rail.
+    renderHeader({ logo: <svg data-testid="brand-mark" /> });
+    const logoEl = container.querySelector(".tsh-header-logo");
+    expect(logoEl).not.toBeNull();
+    expect(logoEl?.querySelector('[data-testid="brand-mark"]')).not.toBeNull();
+
+    // The node wins over a URL rather than stacking two marks in the same slot.
+    renderHeader({ logo: <svg data-testid="brand-mark" />, logoUrl: "/tendril.svg" });
+    expect(container.querySelectorAll(".tsh-header-logo").length).toBe(1);
+    expect(container.querySelector("img.tsh-header-logo")).toBeNull();
+
+    // With neither, the toggle is just the panel icon - no empty wrapper to size against.
+    renderHeader({});
+    expect(container.querySelector(".tsh-header-logo")).toBeNull();
+    expect(container.querySelector(".tsh-logo-toggle-icon")).not.toBeNull();
   });
 
   it("verifies collapse toggle state changes when toggle button is clicked or Cmd/Ctrl+B is pressed", () => {
@@ -547,5 +589,75 @@ describe("useShell", () => {
       root.render(<Consumer />);
     });
     expect(ctxValue).toEqual({ collapsed: false, toggle: expect.any(Function) });
+  });
+});
+
+describe("SidebarListRow", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  const Icon: React.FC<{ className?: string }> = ({ className }) => (
+    <span className={className} data-testid="row-icon" />
+  );
+
+  it("renders V1's three forms, and suppresses a zero count as `Build` does", () => {
+    const onClick = vi.fn();
+    act(() => {
+      root.render(
+        <div>
+          <SidebarListRow label="Assigned" icon={Icon} count={3} selected onClick={onClick} />
+          <SidebarListRow label="Empty" icon={Icon} count={0} onClick={vi.fn()} />
+          <SidebarListRowExpandable label="Projects" icon={Icon} expanded onClick={vi.fn()} />
+          <SidebarListRowSubItem label="Tendril" onClick={vi.fn()} />
+          <SidebarListRowSubItem label="Static" />
+        </div>,
+      );
+    });
+
+    expect(container.textContent).toContain("Assigned");
+    expect(container.textContent).toContain("3");
+    // V1 adds the badge only for `count is > 0`.
+    expect(container.textContent).not.toContain("0");
+
+    const rows = container.querySelectorAll<HTMLButtonElement>("button");
+    // Selected rows are V1's `Secondary`, the rest its `Ghost`.
+    expect(rows[0].dataset.selected).toBe("true");
+    expect(rows[1].dataset.selected).toBe("false");
+    // BuildExpandable reports its open state, which is what swaps the chevron.
+    expect(container.querySelector("[aria-expanded=true]")).not.toBeNull();
+    // A sub-item with no handler is static text, not a button.
+    expect(rows).toHaveLength(4);
+
+    act(() => {
+      rows[0].click();
+    });
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("only claims a tab role when the list is a tab set", () => {
+    act(() => {
+      root.render(
+        <div>
+          <SidebarListRow label="Tabbed" icon={Icon} role="tab" selected onClick={vi.fn()} />
+          <SidebarListRow label="Plain" icon={Icon} onClick={vi.fn()} />
+        </div>,
+      );
+    });
+
+    expect(container.querySelectorAll("[role=tab]")).toHaveLength(1);
+    expect(container.querySelector("[role=tab]")?.getAttribute("aria-selected")).toBe("true");
   });
 });

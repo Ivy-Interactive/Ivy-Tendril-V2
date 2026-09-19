@@ -82,6 +82,21 @@ export interface Job {
   statusMessage?: string;
   startedAt?: string;
   completedAt?: string;
+  /**
+   * When the agent last wrote a line, RFC 3339. The Jobs table's Agent Output column is the time
+   * since this rather than a status line (`JobsApp.Helpers.cs` `FormatAgentOutput`), and absent means
+   * a job that has not said anything yet — which is what V1 renders as "Starting...".
+   *
+   * The daemon stamps it at most once every five seconds however loud the agent is, so it lags real
+   * output by up to that much. Invisible in a cell whose smallest unit is a second.
+   */
+  lastOutputAt?: string;
+  /**
+   * The chat conversation this job was started from, when one was. The chat header lists a
+   * conversation's jobs by this, so the header is correct on a reload and after a missed
+   * `chat.job_spawned` — the session's own `spawnedJobIds` is a cache over the same fact.
+   */
+  chatSessionId?: string;
   cost?: number;
   tokens?: number;
   processId?: number;
@@ -91,12 +106,42 @@ export interface Job {
    * Absent (rather than `false`) for every job that never went through recovery.
    */
   detached?: boolean;
+  /**
+   * The agent's own figure when it reported one (`"agent"`), otherwise ours (`"estimated"`).
+   * Absent means neither, which is not the same as a cost of zero: a run on a subscription plan
+   * reports tokens and no charge.
+   */
+  costSource?: string;
+  durationSeconds?: number;
+  /**
+   * The usage breakdown. `cacheReadTokens` dominates the bill on any long run, so a UI that shows
+   * only `tokens` understates it by an order of magnitude.
+   */
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  reasoningTokens?: number;
+  model?: string;
 }
 
 export interface JobDetail extends Job {
+  /** What the agent asked to do and was refused. Detail only. */
+  permissionDenials?: string[];
   args?: string;
   workingDirectory?: string;
   reportedFailureReason?: string;
+  /** Which agent ran it (`claude`, `codex`, …). V1's `Provider`. */
+  provider?: string;
+  /** The command line the agent was launched with. V1's `CliCommand`, labelled `Arguments` there. */
+  cliCommand?: string;
+  /** The plan folder the job ran against. V1's `PlanFolder`. */
+  planFolder?: string;
+  /** The artifacts the run left on this machine, each present only when the file exists. */
+  jobLogPath?: string;
+  jobPromptPath?: string;
+  jobRawLogPath?: string;
+  jobEventwirePath?: string;
 }
 
 export interface ServiceHealth {
@@ -123,6 +168,32 @@ export interface ServiceInfo {
   crashCount?: number;
 }
 
+/**
+ * What the app's autostart registration did. Mirrors the Rust `AutostartOutcome`, which is tagged:
+ * `kind` names the case and `detail` carries the unit path or the reason.
+ */
+export interface AutostartOutcome {
+  kind: "registered" | "alreadyRegistered" | "skipped" | "failed";
+  detail: string;
+}
+
+/**
+ * The result of installing the bundled daemon into `<tendril home>/bin` and registering it to start
+ * with the session. The app does this on first run; the Service pane can retry it.
+ */
+export interface ProvisionReport {
+  /** Sidecars copied this run. */
+  installed: string[];
+  /** Sidecars that were already current. */
+  upToDate: string[];
+  /** Sidecars this build does not carry - ordinary in a dev build, a packaging bug in a bundle. */
+  missing: string[];
+  binDir: string;
+  autostart: AutostartOutcome;
+  /** Non-fatal failures: a run can install one binary, fail the other and still register autostart. */
+  errors: string[];
+}
+
 export interface ReviewActionConfig {
   name: string;
   condition: string;
@@ -132,6 +203,12 @@ export interface ReviewActionConfig {
 
 export interface ProjectSummary {
   name: string;
+  /**
+   * The project's configured colour as an Ivy `Colors` name (`Blue`, `Amber`, ...), resolved to a CSS
+   * variable with `ivyColorVar`. Absent when `config.yaml` leaves it blank — the bridge drops the
+   * empty string — which is what a sidebar marker reads as "fall back to the neutral colour".
+   */
+  color?: string;
   repos: string[];
   verifications: string[];
   reviewActions?: ReviewActionConfig[];
@@ -390,6 +467,15 @@ export interface RecommendationItem {
   declineReason?: string;
   /** Why the recommendation was accepted. Only set for `AcceptedWithNotes`. */
   notes?: string;
+}
+
+export interface CrossPlanRecommendation extends RecommendationItem {
+  planId: string;
+  planTitle?: string;
+  planFolderName?: string;
+  project: string;
+  sourcePlanStatus?: string;
+  date?: string;
 }
 
 export interface VerificationReport {

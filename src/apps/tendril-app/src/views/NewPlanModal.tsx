@@ -3,6 +3,7 @@ import { ContentInput } from "@ivy-interactive/components/tendril";
 import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
 import { firstStringArg, submitValueArg } from "../utils/eventArgs";
+import { ErrorBanner } from "../components/ErrorBanner";
 
 interface NewPlanModalProps {
   isOpen: boolean;
@@ -167,12 +168,19 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
       aria-modal="true"
       aria-labelledby="new-plan-title"
       data-testid="new-plan-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+      /* Bottom-anchored below `sm`, centred above it: V1 swaps the whole surface at
+         `Breakpoint.Mobile` for `new Sheet(...).Side(SheetSide.Bottom).Height(Size.Fit())` and keeps
+         the `Dialog` elsewhere (`CreatePlanDialog.Build`). Both surfaces dismiss the same three ways
+         and carry the same title, so the swap is a placement change and is expressed as one here
+         rather than as a second component. */
+      className="fixed inset-0 z-50 flex items-end justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={onClose}
     >
-      {/* `.Width(Size.Rem(30))` on V1's dialog. */}
+      {/* `.Width(Size.Rem(30))` on V1's dialog; `Size.Fit()` height on the mobile sheet, which is
+          what `h-auto` with a capped max height amounts to. */}
       <div
-        className="w-full max-w-[30rem] rounded-2xl border border-border bg-card p-6 shadow-2xl"
+        data-testid="new-plan-surface"
+        className="max-h-[90vh] w-full overflow-y-auto rounded-t-box border border-border bg-card p-6 shadow-2xl sm:max-h-none sm:max-w-[30rem] sm:rounded-box"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border pb-4">
@@ -189,11 +197,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           </button>
         </div>
 
-        {error && (
-          <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
-            {error}
-          </div>
-        )}
+        {error && <ErrorBanner className="mt-4">{error}</ErrorBanner>}
 
         {/* `Layout.Vertical().Gap(2) | projectPickerWidget | contentInputWidget` */}
         <div className="mt-4 space-y-2">
@@ -201,7 +205,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
             <div
               role="radiogroup"
               aria-label="Target Project"
-              className="flex flex-wrap gap-1 rounded-lg border border-border p-1"
+              className="flex flex-wrap gap-1 rounded-field border border-border p-1"
             >
               {options.map((o) => (
                 <button
@@ -210,7 +214,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
                   role="radio"
                   aria-checked={selectedProject === o.value}
                   onClick={() => handleProjectChange(o.value)}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                  className={`rounded-selector px-3 py-1.5 text-sm font-medium transition ${
                     selectedProject === o.value
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -226,7 +230,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
               aria-label="Target Project"
               value={selectedProject}
               onChange={(e) => handleProjectChange(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
+              className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
             >
               {options.map((o) => (
                 <option key={o.value} value={o.value}>

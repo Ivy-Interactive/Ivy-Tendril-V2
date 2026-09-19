@@ -4,17 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:app": "pnpm --filter @ivy-interactive/tendril-app dev",
-    "dev:tauri": "pnpm --filter @ivy-interactive/tendril-app tauri dev",
-    "dev:docs": "pnpm --filter @ivy-interactive/tendril-docs dev",
+    "dev:app": "node src/scripts/ensure-components.mjs && pnpm --filter @ivy-interactive/tendril-app dev",
+    "dev:tauri": "node src/scripts/ensure-components.mjs && pnpm --filter @ivy-interactive/tendril-app tauri dev",
+    "dev:desktop": "tsx src/scripts/dev-desktop.ts",
+    "dev:docs": "node src/scripts/ensure-components.mjs && pnpm --filter @ivy-interactive/tendril-docs dev",
+    "dev:components": "pnpm --filter @ivy-interactive/components dev",
     "dev:storybook": "pnpm --filter @ivy-interactive/components storybook",
     "build": "pnpm --filter @ivy-interactive/components build && pnpm --filter @ivy-interactive/tendril-app build && pnpm --filter @ivy-interactive/tendril-docs build",
     "build:extension": "pnpm --filter ivy-tendril build",
     "package:extension": "pnpm --filter ivy-tendril package",
     "test:extension": "pnpm --filter ivy-tendril test",
-    "typecheck:app": "pnpm --filter @ivy-interactive/tendril-app typecheck",
+    "typecheck:app": "node src/scripts/ensure-components.mjs && pnpm --filter @ivy-interactive/tendril-app typecheck",
     "typecheck:extension": "pnpm --filter ivy-tendril typecheck",
-    "typecheck": "pnpm -r --if-present run typecheck",
+    "typecheck": "node src/scripts/ensure-components.mjs && pnpm -r --if-present run typecheck",
     "test": "pnpm -r test",
     "test-skills-manifests": "bash src/scripts/test-skills-manifests.sh",
     "check": "pnpm -r check",
@@ -23,11 +25,14 @@
     "format": "pnpm -r format",
     "install:playwright": "playwright install chromium",
     "install:playwright:deps": "playwright install --with-deps chromium",
-    "screenshot": "playwright screenshot"
+    "screenshot": "playwright screenshot",
+    "prepare": "node src/scripts/ensure-components.mjs"
   },
   "devDependencies": {
     "playwright": "1.63.0",
-    "tsx": "^4.23.13"
+    "tsx": "^4.23.13",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   },
   "packageManager": "pnpm@11.25.0"
 }

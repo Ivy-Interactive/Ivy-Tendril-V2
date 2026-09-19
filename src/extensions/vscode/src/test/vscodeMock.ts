@@ -1,4 +1,4 @@
-import * as path from 'path';
+import * as path from "path";
 
 export class MockUri {
   public readonly scheme: string;
@@ -6,7 +6,7 @@ export class MockUri {
   public readonly path: string;
 
   constructor(fsPath: string) {
-    this.scheme = 'file';
+    this.scheme = "file";
     this.fsPath = fsPath;
     this.path = fsPath;
   }
@@ -29,7 +29,10 @@ export class MockUri {
 }
 
 export class MockPosition {
-  constructor(public readonly line: number, public readonly character: number) {}
+  constructor(
+    public readonly line: number,
+    public readonly character: number,
+  ) {}
 }
 
 export class MockRange {
@@ -46,22 +49,25 @@ export enum ColorThemeKind {
   Light = 1,
   Dark = 2,
   HighContrast = 3,
-  HighContrastLight = 4
+  HighContrastLight = 4,
 }
 
 export enum TreeItemCollapsibleState {
   None = 0,
   Collapsed = 1,
-  Expanded = 2
+  Expanded = 2,
 }
 
 export enum StatusBarAlignment {
   Left = 1,
-  Right = 2
+  Right = 2,
 }
 
 export class MockThemeIcon {
-  constructor(public readonly id: string, public readonly color?: unknown) {}
+  constructor(
+    public readonly id: string,
+    public readonly color?: unknown,
+  ) {}
 }
 
 export class MockThemeColor {
@@ -76,7 +82,7 @@ export class MockTreeItem {
 
   constructor(
     public label: string,
-    public collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None
+    public collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None,
   ) {}
 }
 
@@ -91,7 +97,7 @@ export class MockEventEmitter<T = unknown> {
         if (idx >= 0) {
           this.listeners.splice(idx, 1);
         }
-      }
+      },
     };
   };
 
@@ -118,7 +124,7 @@ export class MockCancellationToken {
         if (idx >= 0) {
           this.listeners.splice(idx, 1);
         }
-      }
+      },
     };
   };
 
@@ -162,7 +168,7 @@ export const vscodeMock = {
       vscodeMock.env.lastOpenedUri = uri;
       return true;
     },
-    asExternalUri: async (uri: unknown) => uri
+    asExternalUri: async (uri: unknown) => uri,
   },
   window: {
     lastErrorMessage: undefined as string | undefined,
@@ -171,14 +177,14 @@ export const vscodeMock = {
       append: () => {},
       appendLine: () => {},
       show: () => {},
-      dispose: () => {}
+      dispose: () => {},
     }),
     createStatusBarItem: () => ({
-      text: '',
-      tooltip: '',
-      command: '',
+      text: "",
+      tooltip: "",
+      command: "",
       show: () => {},
-      dispose: () => {}
+      dispose: () => {},
     }),
     showInformationMessage: async () => undefined,
     showWarningMessage: async () => undefined,
@@ -191,12 +197,12 @@ export const vscodeMock = {
     showQuickPick: async () => undefined,
     activeColorTheme: { kind: ColorThemeKind.Dark },
     onDidChangeActiveColorTheme: () => ({ dispose: () => {} }),
-    registerTreeDataProvider: () => ({ dispose: () => {} })
+    registerTreeDataProvider: () => ({ dispose: () => {} }),
   },
   workspace: {
     getConfiguration: () => ({
       get: (key: string, defaultVal: unknown) =>
-        Object.prototype.hasOwnProperty.call(configStore, key) ? configStore[key] : defaultVal
+        Object.prototype.hasOwnProperty.call(configStore, key) ? configStore[key] : defaultVal,
     }),
     /** Test-only: seed or override configuration values the extension reads. */
     __setConfig: (values: Record<string, unknown>) => {
@@ -210,7 +216,7 @@ export const vscodeMock = {
     openTextDocument: async (filePath: string) => ({ uri: MockUri.file(filePath) }),
     workspaceFolders: [],
     updateWorkspaceFolders: () => true,
-    onDidChangeWorkspaceFolders: () => ({ dispose: () => {} })
+    onDidChangeWorkspaceFolders: () => ({ dispose: () => {} }),
   },
   commands: {
     registerCommand: (command: string, callback: (...args: unknown[]) => unknown) => {
@@ -218,7 +224,7 @@ export const vscodeMock = {
       return {
         dispose: () => {
           registeredCommands.delete(command);
-        }
+        },
       };
     },
     executeCommand: async (command: string, ...args: unknown[]) => {
@@ -227,14 +233,14 @@ export const vscodeMock = {
         return await handler(...args);
       }
       return undefined;
-    }
+    },
   },
   chat: {
     createChatParticipant: (id: string, handler: unknown) => ({
       id,
       requestHandler: handler,
       iconPath: undefined,
-      dispose: () => {}
-    })
-  }
+      dispose: () => {},
+    }),
+  },
 };

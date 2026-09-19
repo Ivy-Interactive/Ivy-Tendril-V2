@@ -118,6 +118,7 @@
   --radius-boxes: 0.5rem;
   --radius-fields: 0.375rem;
   --radius-selectors: 0.25rem;
+  --radius-bubble: 1rem;
   --shadow-boxes: 0 1px 3px 0 rgb(0 0 0 / 0.1);
   --shadow-fields: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-selectors: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -133,6 +134,92 @@
   --sidebar-accent-foreground: #18181b;
   --sidebar-border: #e4e4e7;
   --sidebar-ring: #18181b;
+
+  /* Radius scale */
+  --radius-xs: 0.125rem; /* 2px */
+  --radius-sm: 0.25rem; /* 4px */
+  --radius-md: 0.375rem; /* 6px */
+  --radius-lg: 0.5rem; /* 8px */
+  --radius-menu: 0.625rem; /* 10px */
+  --radius-xl: 0.75rem; /* 12px */
+  --radius-2xl: 1rem; /* 16px */
+  --radius-full: 9999px;
+
+  /* Border */
+  --border-width: 1px;
+  --border-width-thick: 2px;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 1px;
+  --focus-ring-color: var(--ring);
+
+  /* Opacity */
+  --opacity-disabled: 0.5;
+  --opacity-dim: 0.5;
+  --opacity-muted: 0.6;
+  --opacity-subtle: 0.7;
+  --opacity-soft: 0.8;
+  --opacity-hover: 0.9;
+
+  /* Type scale */
+  --text-3xs: 0.5625rem;
+  --text-2xs: 0.625rem;
+  --text-xs-tight: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm-tight: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+
+  /* Motion */
+  --duration-instant: 100ms;
+  --duration-fast: 120ms;
+  --duration-base: 150ms;
+  --duration-moderate: 200ms;
+  --duration-slow: 300ms;
+  --ease-standard: ease;
+  --ease-out: ease-out;
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Z-index */
+  --z-base: 1;
+  --z-raised: 2;
+  --z-sticky: 10;
+  --z-rail: 20;
+  --z-dropdown: 40;
+  --z-overlay: 50;
+  --z-menu: 60;
+  --z-tooltip: 70;
+  --z-modal: 100;
+  --z-lightbox: 10000;
+  --z-devtools: 100001;
+
+  /* Derived colors */
+  --foreground-muted: color-mix(in srgb, var(--foreground) 60%, transparent);
+  --surface-chrome: color-mix(in srgb, var(--foreground) 3%, var(--background));
+  --surface-tint: color-mix(in srgb, var(--foreground) 6%, transparent);
+
+  /* Elevation */
+  --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-menu: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Annotation / search-hit highlight */
+  --highlight: hsl(48 96% 76% / 0.7);
+  --highlight-strong: hsl(48 96% 76% / 0.85);
+  --highlight-active: hsl(25 95% 53% / 0.95);
+
+  /* Badge solid-tint steps: a light fill + dark text in light mode, a dark fill + light text in
+     dark mode, for each status tone `Badge`'s solid variants use. */
+  --ivy-green-tint-bg: color-mix(in srgb, var(--ivy-green) 20%, var(--background));
+  --ivy-green-tint-fg: color-mix(in srgb, var(--ivy-green) 60%, var(--foreground));
+  --destructive-tint-bg: color-mix(in srgb, var(--destructive) 20%, var(--background));
+  --destructive-tint-fg: color-mix(in srgb, var(--destructive) 60%, var(--foreground));
+  --success-tint-bg: color-mix(in srgb, var(--success) 20%, var(--background));
+  --success-tint-fg: color-mix(in srgb, var(--success) 60%, var(--foreground));
+  --warning-tint-bg: color-mix(in srgb, var(--warning) 20%, var(--background));
+  --warning-tint-fg: color-mix(in srgb, var(--warning) 60%, var(--foreground));
+  --info-tint-bg: color-mix(in srgb, var(--info) 20%, var(--background));
+  --info-tint-fg: color-mix(in srgb, var(--info) 60%, var(--foreground));
 }
 
 .dark {
@@ -236,6 +323,39 @@
   --sidebar-accent-foreground: #f4f4f5;
   --sidebar-border: #27272a;
   --sidebar-ring: #d4d4d8;
+
+  /* Derived colors */
+  --foreground-muted: color-mix(in srgb, var(--foreground) 60%, transparent);
+  --surface-chrome: var(--card);
+  --surface-tint: color-mix(in srgb, var(--foreground) 6%, transparent);
+
+  /* Badge tint defaults and focus ring */
+  --badge-tint-bg-light: var(--muted);
+  --badge-tint-fg-light: var(--foreground);
+  --badge-tint-bg-dark: var(--muted);
+  --badge-tint-fg-dark: var(--foreground);
+  --focus-ring-color: var(--ring);
+
+  /* Badge solid-tint steps */
+  --ivy-green-tint-bg: color-mix(in srgb, var(--ivy-green) 20%, var(--background));
+  --ivy-green-tint-fg: color-mix(in srgb, var(--ivy-green) 60%, var(--foreground));
+  --destructive-tint-bg: color-mix(in srgb, var(--destructive) 20%, var(--background));
+  --destructive-tint-fg: color-mix(in srgb, var(--destructive) 60%, var(--foreground));
+  --success-tint-bg: color-mix(in srgb, var(--success) 20%, var(--background));
+  --success-tint-fg: color-mix(in srgb, var(--success) 60%, var(--foreground));
+  --warning-tint-bg: color-mix(in srgb, var(--warning) 20%, var(--background));
+  --warning-tint-fg: color-mix(in srgb, var(--warning) 60%, var(--foreground));
+  --info-tint-bg: color-mix(in srgb, var(--info) 20%, var(--background));
+  --info-tint-fg: color-mix(in srgb, var(--info) 60%, var(--foreground));
+
+  /* Elevation */
+  --shadow-popover: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  --shadow-menu: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+
+  /* Annotation / search-hit highlight */
+  --highlight: hsl(48 80% 20% / 0.5);
+  --highlight-strong: hsl(48 80% 30% / 0.85);
+  --highlight-active: hsl(25 95% 53% / 0.95);
 }
 
 @theme inline {
@@ -264,6 +384,7 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-surface-tint: var(--surface-tint);
 
   --color-sidebar: var(--sidebar-background);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -277,6 +398,9 @@
   --radius-boxes: var(--radius-boxes);
   --radius-fields: var(--radius-fields);
   --radius-selectors: var(--radius-selectors);
+  --text-3xs: var(--text-3xs);
+  --text-2xs: var(--text-2xs);
+  --text-xs-tight: var(--text-xs-tight);
   --font-family-sans: var(--font-sans);
   --font-family-mono: var(--font-mono);
   --font-family-serif: var(--font-serif);
@@ -285,6 +409,18 @@
   --animate-accordion-down: accordion-down 0.1s ease-out;
   --animate-accordion-up: accordion-up 0.1s ease-out;
   --animate-indeterminate: indeterminate 1.5s ease-in-out infinite;
+
+  /* Badge solid-tint steps */
+  --color-ivy-green-tint-bg: var(--ivy-green-tint-bg);
+  --color-ivy-green-tint-fg: var(--ivy-green-tint-fg);
+  --color-destructive-tint-bg: var(--destructive-tint-bg);
+  --color-destructive-tint-fg: var(--destructive-tint-fg);
+  --color-success-tint-bg: var(--success-tint-bg);
+  --color-success-tint-fg: var(--success-tint-fg);
+  --color-warning-tint-bg: var(--warning-tint-bg);
+  --color-warning-tint-fg: var(--warning-tint-fg);
+  --color-info-tint-bg: var(--info-tint-bg);
+  --color-info-tint-fg: var(--info-tint-fg);
 
   /* Neutral colors */
   --color-ivy-green: var(--ivy-green);

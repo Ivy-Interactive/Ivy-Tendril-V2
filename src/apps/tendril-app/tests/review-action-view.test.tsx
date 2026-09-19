@@ -19,13 +19,20 @@ function stubRun() {
     close,
   };
   let onChunk: ((bytes: Uint8Array) => void) | undefined;
+  let onEnd: ((message: string) => void) | undefined;
   const spy = vi.spyOn(bridge, "startReviewAction").mockImplementation((_p, _a, options) => {
     onChunk = options?.onChunk;
+    onEnd = options?.onEnd;
     return Promise.resolve(run);
   });
   return {
     close,
     spy,
+    end: async (message: string) => {
+      await act(async () => {
+        onEnd?.(message);
+      });
+    },
     feed: async (text: string) => {
       await act(async () => {
         onChunk?.(new TextEncoder().encode(text));
@@ -141,5 +148,73 @@ describe("ReviewActionView", () => {
 
     // `close` detaches the reader. Nothing here kills the pty: the app under review has to stay up.
     await waitFor(() => expect(close).toHaveBeenCalled());
+  });
+
+  /**
+   * `ReviewActionApp` samples the transcript on a 500ms interval rather than searching it per chunk,
+   * and this is the case that depends on it: `detectAppUrl` prefers a loopback host over a LAN one
+   * *wherever either appears*, which only means anything once both lines are in the transcript. A
+   * per-chunk search would pin the viewer to the LAN address printed first, which is the wrong one.
+   */
+  it("prefers the local URL over a LAN address printed before it", async () => {
+    const { feed } = stubRun();
+
+    render(
+      <ReviewActionView
+        target={{ project: "Ivy-Tendril-V2", actionName: "Dev Server", planId: "00509" }}
+        plan={plan}
+        onClose={() => {}}
+      />,
+    );
+    await screen.findByTestId("terminal");
+
+    await feed("  Network: http://192.168.1.9:5173/\r\n");
+    await feed("  Local:   http://localhost:5173/\r\n");
+
+    await screen.findByTitle("Web content");
+    expect(screen.getByLabelText("Address")).toHaveAttribute("title", "http://localhost:5173/");
+  });
+
+  /**
+   * `Terminal.Closed(ptyHandle.Closed)`. A command that exited before printing is not still starting,
+   * so the indicator goes rather than spinning over a dead pty for the rest of the session.
+   */
+  it("takes the starting indicator down when the process exits without printing", async () => {
+    const { end } = stubRun();
+
+    render(
+      <ReviewActionView
+        target={{ project: "Ivy-Tendril-V2", actionName: "Dev Server" }}
+        onClose={() => {}}
+      />,
+    );
+    expect(await screen.findByText("Starting Dev Server\u2026")).toBeInTheDocument();
+
+    await end("pwsh exited with code 127");
+
+    await waitFor(() =>
+      expect(screen.queryByText("Starting Dev Server\u2026")).not.toBeInTheDocument(),
+    );
+  });
+
+  /** The command never prints a URL, so the terminal is all there is - and it stays. */
+  it("keeps the terminal for a command that never announces a URL", async () => {
+    const { feed } = stubRun();
+
+    render(
+      <ReviewActionView
+        target={{ project: "Ivy-Tendril-V2", actionName: "Dev Server", planId: "00509" }}
+        plan={plan}
+        onClose={() => {}}
+      />,
+    );
+    await screen.findByTestId("terminal");
+
+    // A docs link and a portless help URL: neither is a dev server announcing itself.
+    await feed("see https://aka.ms/some-error and https://vitejs.dev/guide/\r\n");
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    expect(screen.getByTestId("terminal")).toBeInTheDocument();
+    expect(screen.queryByTitle("Web content")).not.toBeInTheDocument();
   });
 });

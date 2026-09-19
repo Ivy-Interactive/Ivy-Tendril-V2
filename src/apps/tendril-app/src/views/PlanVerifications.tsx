@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { bridge } from "../api/bridge";
+import { plansStore } from "../state/plansStore";
 import {
   describeBridgeError,
   type PlanLifecycleState,
@@ -7,24 +8,51 @@ import {
   type VerificationReport,
   type VerificationStatus,
 } from "../types/api";
+import { TERMINAL_VERIFICATION_CLASS } from "../utils/verificationStatus";
+import { ErrorBanner } from "../components/ErrorBanner";
 
 interface PlanVerificationsProps {
   planId: string;
   verifications: PlanVerification[];
+  /**
+   * The plan's `project` field, used to order the list the way the project runs them. Omitted, the
+   * list keeps `plan.yaml` order.
+   */
+  project?: string;
   /** The plan's lifecycle state. Only a Draft's verifications are editable. */
   planState?: PlanLifecycleState;
   onVerificationChange?: (name: string, status: VerificationStatus) => void;
 }
 
 /**
- * Badge classes for the two terminal outcomes, from `Constants.VerificationStatusBadgeVariants`
- * (V1 `src/Ivy.Tendril/Constants.cs`): Pass is Success and Fail is Destructive. Pending and
- * Skipped are Outline there and carry no badge here at all - see below.
+ * Verifications in the order the project runs them, a port of
+ * `PlanCommandHelpers.OrderByProjectConfig`.
+ *
+ * V1's comment on it: "Orders verifications by their position in the project config (the
+ * authoritative run order), regardless of how they happen to be stored in plan.yaml. Verifications
+ * not present in the project config (custom, or since-removed) sort to the end, keeping their
+ * relative order." A plan is seeded in project order, so this only bites once the project's list has
+ * been reordered afterwards — at which point the plan shows one order and the run uses another.
+ *
+ * The sort is stable, so unknown names (all `Number.MAX_SAFE_INTEGER`) keep the order they came in.
+ * Names are matched case-insensitively, as V1's `StringComparer.OrdinalIgnoreCase` map does.
  */
-const TERMINAL_STATUS_CLASS: Record<"Pass" | "Fail", string> = {
-  Pass: "border-success/40 bg-success/10 text-success",
-  Fail: "border-destructive/40 bg-destructive/10 text-destructive",
-};
+export function orderByProjectConfig(
+  verifications: PlanVerification[],
+  projectVerifications: string[] | undefined,
+): PlanVerification[] {
+  if (!projectVerifications || projectVerifications.length === 0) return verifications;
+  const order = new Map<string, number>();
+  projectVerifications.forEach((name, index) => {
+    const key = name.toLowerCase();
+    if (!order.has(key)) order.set(key, index);
+  });
+  const rank = (v: PlanVerification) => order.get(v.name.toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+  return verifications
+    .map((v, index) => ({ v, index }))
+    .sort((a, b) => rank(a.v) - rank(b.v) || a.index - b.index)
+    .map((entry) => entry.v);
+}
 
 /**
  * Verifications, as V1's `VerificationsPanelView` presents them: one checkbox per
@@ -41,6 +69,7 @@ const TERMINAL_STATUS_CLASS: Record<"Pass" | "Fail", string> = {
 export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
   planId,
   verifications,
+  project,
   planState,
   onVerificationChange,
 }) => {
@@ -48,6 +77,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
   const [reports, setReports] = useState<Record<string, VerificationReport>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [projectVerifications, setProjectVerifications] = useState<string[] | undefined>(undefined);
 
   // `var editable = selectedPlan.Status == PlanStatus.Draft;` — with no state given, treat the
   // plan as not editable rather than inventing permission the caller never granted.
@@ -58,6 +88,57 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
   }, [verifications]);
 
   const verificationCount = localVerifications.length;
+
+  /**
+   * The project's own verification list, which is the run order.
+   *
+   * V1 reads it straight off the config service — `config.GetProject(selectedPlan.Project)?
+   * .Verifications ?? new List<ProjectVerificationRef>()` — and its comment on the resulting order is
+   * "Always present in project-config order, regardless of plan.yaml storage order." The service here
+   * returns `plan.yaml` order from every HTTP read point, so the ordering has to happen client side.
+   *
+   * Fetched only when there is something to order, and a failure leaves it undefined, which means
+   * `plan.yaml` order — the same thing V1 falls back to when the project cannot be resolved.
+   */
+  useEffect(() => {
+    if (!project || verificationCount === 0) {
+      setProjectVerifications(undefined);
+      return;
+    }
+    let cancelled = false;
+    bridge
+      .listProjects()
+      .then((projects) => {
+        if (cancelled) return;
+        // V1 looks the project up by the plan's whole `project` string, so a plan naming several
+        // comma-separated projects resolves to nothing and keeps plan.yaml order. Matched
+        // case-insensitively, as the daemon matches it.
+        const wanted = project.trim().toLowerCase();
+        const match = projects.find((p) => p.name.trim().toLowerCase() === wanted);
+        setProjectVerifications(match?.verifications);
+      })
+      .catch(() => {
+        if (!cancelled) setProjectVerifications(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [project, verificationCount]);
+
+  const orderedVerifications = useMemo(
+    () => orderByProjectConfig(localVerifications, projectVerifications),
+    [localVerifications, projectVerifications],
+  );
+
+  /**
+   * What the report read is keyed on.
+   *
+   * The count alone froze the reports for the life of the tab: a verification run writes its report
+   * without changing how many there are, so "No report yet" stayed on a row whose report had just
+   * landed. The statuses move whenever a run finishes, which is exactly when a report appears, and
+   * they are what V1's `LoadPlanContent` recomputes the report map from on every revalidation.
+   */
+  const reportsKey = localVerifications.map((v) => `${v.name}:${v.status}`).join(",");
 
   useEffect(() => {
     // Nothing to fetch reports for, and asking would mean a pointless round
@@ -82,7 +163,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [planId, verificationCount]);
+  }, [planId, verificationCount, reportsKey]);
 
   const handleStatusChange = async (name: string, newStatus: VerificationStatus) => {
     const previous = localVerifications;
@@ -92,7 +173,12 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
     setError(null);
 
     try {
-      await bridge.setVerificationStatus(planId, name, newStatus);
+      // Written through the store rather than straight to the bridge, so the plan the rest of the app
+      // is rendering carries the new status too. V1 gets this for free: its panel writes through
+      // `planService` and the whole view rebuilds off the refreshed `PlanFile`, which is what keeps
+      // the Review page's Complete gate honest. The store also holds the rollback for its own copy;
+      // the local rollback below is for this list's.
+      await plansStore.updateVerificationOptimistic(planId, name, newStatus);
       onVerificationChange?.(name, newStatus);
     } catch (err) {
       setLocalVerifications(previous);
@@ -110,17 +196,9 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
 
   return (
     <div className="space-y-3" data-testid="plan-verifications">
-      {error && (
-        <div
-          role="alert"
-          data-testid="verification-reports-error"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner data-testid="verification-reports-error">{error}</ErrorBanner>}
 
-      {localVerifications.map((v) => {
+      {orderedVerifications.map((v) => {
         const report = reports[v.name];
         const isOpen = expanded === v.name;
         // A checked box means Pending while the plan is a draft; once it has run the row
@@ -129,7 +207,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
         const terminal = v.status === "Pass" || v.status === "Fail" ? v.status : null;
 
         return (
-          <div key={v.name} className="rounded-lg border border-border bg-background">
+          <div key={v.name} className="rounded-box border border-border bg-background">
             <div className="flex items-center justify-between gap-3 p-3">
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -149,7 +227,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                 {terminal && (
                   <span
                     data-testid={`verification-status-${v.name}`}
-                    className={`rounded border px-2 py-0.5 text-xs font-medium ${TERMINAL_STATUS_CLASS[terminal]}`}
+                    className={`rounded border px-2 py-0.5 text-xs font-medium ${TERMINAL_VERIFICATION_CLASS[terminal]}`}
                   >
                     {terminal}
                   </span>

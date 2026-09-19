@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
+# Compatibility shim: uninstall from Antigravity IDE specifically.
+#
+# The real script is uninstall-extension.sh, which handles the whole VS Code
+# family. This entry point is kept because src/scripts/test-skills-manifests.sh
+# and older docs reference it by name.
 set -euo pipefail
-
-ANTIGRAVITY_EXT_DIR="$HOME/.antigravity-ide/extensions"
-SYMLINK_NAME="ivy-interactive.ivy-tendril-0.1.0"
-TARGET_LINK="$ANTIGRAVITY_EXT_DIR/$SYMLINK_NAME"
-
-if [ -L "$TARGET_LINK" ] || [ -d "$TARGET_LINK" ]; then
-    echo "==> Removing Ivy Tendril extension from Antigravity IDE ($TARGET_LINK)..."
-    rm -rf "$TARGET_LINK"
-    echo "==> Successfully removed."
-else
-    echo "==> Extension is not currently linked in $ANTIGRAVITY_EXT_DIR."
-fi
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/uninstall-extension.sh" \
+  --ide antigravity-ide,antigravity "$@"

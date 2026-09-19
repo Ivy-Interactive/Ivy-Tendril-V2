@@ -18,6 +18,9 @@ import {
 import { TrendChart } from "./TrendChart.tsx";
 import { ActivityGrid } from "./ActivityGrid.tsx";
 import { PillBars } from "./PillBars.tsx";
+import { ChartSkeleton, KpiSkeletonGrid } from "./DashboardSkeleton.tsx";
+import { TuiBadge } from "../ui/TuiBadge";
+import "../ui/ui.css";
 import "./dashboard.css";
 
 interface StatusItemProps {
@@ -63,10 +66,19 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
   pullRequestsWeekly = [],
   activity = [],
   jobs = [],
+  loading = false,
   slots,
 }) => {
   const [tab, setTab] = useState<"cost" | "plans">("cost");
-  const [prPeriod, setPrPeriod] = useState<"week" | "month">("month");
+  /**
+   * Weeks, not months.
+   *
+   * Six Monday-to-Sunday weeks is the resolution the card can act on: a plan takes minutes and the
+   * question the operator has in front of a Pull Requests card is "are we shipping this week", which a
+   * bar covering the whole of last month cannot answer. It is also the range the card has room for —
+   * a month bar carries a wider label than a week bar in the same 280px side column.
+   */
+  const [prPeriod, setPrPeriod] = useState<"week" | "month">("week");
   const activePrs = prPeriod === "week" ? (pullRequestsWeekly ?? []) : (pullRequests ?? []);
 
   const fireEvent = (eventName: string) => {
@@ -120,7 +132,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
           };
 
   return (
-    <div className="tdb-root remove-parent-padding">
+    <div className="tdb-root">
       <div className="tdb-inner">
         <div className="tdb-grid">
           <div className="tdb-col">
@@ -144,7 +156,11 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
               ))}
             </div>
 
-            {kpis.length > 0 && (
+            {/* Placeholders while no figures exist yet, so the row is never four dashes. Once they
+                have arrived a refresh keeps rendering them: `loading` goes false and stays false. */}
+            {loading && <KpiSkeletonGrid />}
+
+            {!loading && kpis.length > 0 && (
               <div className="tdb-kpis">
                 {kpis.map((kpi, index) => {
                   const body = (
@@ -189,7 +205,19 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
               </div>
             )}
 
-            {trendData && (
+            {/* The card itself, not just its chart: the trend block is skipped entirely when there is
+                no series, so drawing the frame here is what stops the whole left column reflowing
+                when one arrives. The tabs and legend stay out until they have a series to switch
+                between — a control that does nothing is worse than one that is not there yet. */}
+            {loading && (
+              <div className="tdb-block tdb-trend">
+                <div className="tdb-trend-chart">
+                  <ChartSkeleton label="Loading cost and plan trend" />
+                </div>
+              </div>
+            )}
+
+            {!loading && trendData && (
               <div className="tdb-block tdb-trend">
                 <div className="tdb-trend-header">
                   <div className="tdb-tabs">
@@ -241,7 +269,11 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
             <div className="tdb-block tdb-side-block">
               <div className="tdb-block-title">Git Activity</div>
               <div className="tdb-side-body">
-                <ActivityGrid months={activity} />
+                {loading ? (
+                  <ChartSkeleton label="Loading Git activity" />
+                ) : (
+                  <ActivityGrid months={activity} />
+                )}
               </div>
             </div>
             <div className="tdb-block tdb-side-block">
@@ -267,7 +299,11 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
                 </div>
               </div>
               <div className="tdb-side-body">
-                <PillBars items={activePrs} />
+                {loading ? (
+                  <ChartSkeleton label="Loading merged pull requests" />
+                ) : (
+                  <PillBars items={activePrs} />
+                )}
               </div>
             </div>
             {hasSlotContent(slots?.TunnelQr) && (
@@ -304,7 +340,11 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
                     className="tdb-job-spinner"
                     data-spinning={job.status === "running"}
                   />
-                  {job.planId && <span className="tdb-job-tag">{job.planId}</span>}
+                  {job.planId && (
+                    <TuiBadge className="tdb-job-tag" size="md" numeric>
+                      {job.planId}
+                    </TuiBadge>
+                  )}
                   <span className="tdb-job-title">{job.title}</span>
                 </button>
               ))}

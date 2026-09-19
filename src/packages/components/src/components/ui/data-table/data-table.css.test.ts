@@ -25,15 +25,70 @@ describe("data-table.css", () => {
     expect(block).toMatch(/background:\s*var\(--background\)/);
   });
 
+  it("pins the whole header section as one block", () => {
+    // The section rather than its cells, so the labels cannot be pinned over by anything else the
+    // header grows, and no per-density offset has to be written down here.
+    const block = ruleBody(".ivy-data-table thead {");
+    expect(block).toMatch(/position:\s*sticky/);
+    expect(block).toMatch(/top:\s*0/);
+    expect(block).toMatch(/background:\s*var\(--background\)/);
+  });
+
   it("pins column widths while windowed, so scrolling does not resize columns", () => {
     const block = ruleBody(".ivy-data-table.ivy-data-table-virtualized");
     expect(block).toMatch(/table-layout:\s*fixed/);
   });
 
-  it("gives the zero-width selection and action columns real widths under fixed layout", () => {
+  it("gives the selection and action columns real widths whether or not windowing is active", () => {
+    // Unconditional: `table-layout: fixed` takes a `width: 0` literally, and a call site can set fixed
+    // layout without windowing being active (V1's Jobs table does, so its declared widths bind). A
+    // collapsed action cell lays its buttons out over the previous cell, which is the "row actions
+    // render under the row" bug.
+    expect(css).not.toMatch(/ivy-data-table-virtualized th\.ivy-data-table-fit/);
     expect(ruleBody("th.ivy-data-table-fit-select")).toMatch(/width:/);
     expect(ruleBody("th.ivy-data-table-fit-actions")).toMatch(
       /width:\s*var\(--ivy-data-table-actions-width/,
+    );
+  });
+
+  /**
+   * The actions column is pinned to the right edge of the *scroll viewport*.
+   *
+   * A real width alone is not enough: once a call site's declared widths exceed the container — V1's
+   * Jobs table declares 1130px, so any window under ~1450px — the table overflows its `overflow-auto`
+   * wrapper and the last column lands past the right edge, unreachable without scrolling sideways.
+   * Measured in Chromium at a 1440px window before this rule: a 1234px table in a 1148px viewport with
+   * the actions cell at x = 1131…1211. This is the DOM stand-in for the framework grid's overlay, which
+   * competes for no column width because it is drawn on canvas.
+   */
+  it("pins the actions column to the viewport's right edge, not the table's", () => {
+    const block = ruleBody("th.ivy-data-table-fit-actions,");
+    expect(block).toMatch(/position:\s*sticky/);
+    expect(block).toMatch(/right:\s*0/);
+    // Opaque, or the cells scrolling underneath read through the buttons. A `<tr>` has no background of
+    // its own, so `inherit` would be transparent.
+    expect(block).toMatch(/background:\s*var\(--background\)/);
+    // The width rides in the same rule, so a future edit cannot pin the column without reserving its
+    // width or reserve the width without pinning it — either alone is a bug that has already happened.
+    expect(block).toMatch(/width:\s*var\(--ivy-data-table-actions-width/);
+  });
+
+  it("stacks the row actions above the row, but below the pinned header", () => {
+    expect(css).toMatch(/\.ivy-data-table td\.ivy-data-table-fit-actions \{\s*z-index:\s*1;\s*\}/);
+    // The header has to stay on top of a row scrolling under it, so its level is higher.
+    expect(ruleBody(".ivy-data-table thead {")).toMatch(/z-index:\s*2/);
+    // And the header's own actions cell, pinned in both axes, tops `<thead>`'s stacking context.
+    expect(ruleBody("thead th.ivy-data-table-fit-actions")).toMatch(/z-index:\s*2/);
+  });
+
+  it("re-applies the row's hover and selected tints over the opaque sticky cell", () => {
+    // `TableRow` paints them on the `<tr>`, behind every cell, so an opaque sticky cell would stay
+    // background-coloured while the rest of its row lit up — a hole in the row.
+    expect(css).toMatch(
+      /tr:hover > td\.ivy-data-table-fit-actions \{\s*background:\s*color-mix\([^)]*var\(--muted\) 50%/,
+    );
+    expect(css).toMatch(
+      /tr\[data-state="selected"\] > td\.ivy-data-table-fit-actions \{\s*background:\s*var\(--muted\)/,
     );
   });
 

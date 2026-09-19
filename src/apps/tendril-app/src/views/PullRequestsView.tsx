@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, FileText, GitBranch, RefreshCw } from "lucide-react";
 import {
+  Badge,
   DataTable,
   Sheet,
   SheetContent,
@@ -17,8 +18,11 @@ import {
 } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
 import { onPrStatusEvent } from "../api/events";
-import { bridgeErrorCode, describeBridgeError, type PrState, type PrStatus } from "../types/api";
-import { EmptyState } from "../components/EmptyState";
+import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
+import { ErrorBanner } from "../components/ErrorBanner";
+import { NoContentView } from "../components/NoContentView";
+import { projectColor } from "../utils/jobStatus";
+import { PR_STATE_COLOR } from "../utils/prStatus";
 
 /** The original's `BatchSize` — a cross-plan PR list is long, so the page holds more than the default 10. */
 const DEFAULT_PAGE_SIZE = 50;
@@ -30,14 +34,6 @@ const STATUS_OPTIONS: BadgeSelectOption[] = [
   { value: "Unknown", label: "Unknown" },
 ];
 
-/** Shared with the per-plan card in `PlanPullRequests`, so the table and the card agree on colour. */
-const STATE_CLASS: Record<PrState, string> = {
-  Open: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-  Merged: "bg-violet-500/10 text-violet-300 border-violet-500/30",
-  Closed: "bg-rose-500/10 text-rose-300 border-rose-500/30",
-  Unknown: "bg-slate-700/40 text-slate-400 border-slate-600/40",
-};
-
 /** The Dashboard's format, so the app has one token format rather than two. */
 function formatTokens(tokens: number): string {
   if (tokens <= 0) return "";
@@ -47,6 +43,26 @@ function formatTokens(tokens: number): string {
 /** Blank rather than `$0.00` for a plan with no priceable cost — the original's `costValue > 0` guard. */
 function formatCost(cost: number): string {
   return cost > 0 ? `$${cost.toFixed(2)}` : "";
+}
+
+/**
+ * What a status cell means, and how old it is.
+ *
+ * `Unknown` is not "open": `pr_sync` records it when a tracked URL is absent from its repository's
+ * `gh pr list --limit 100` window, or when the `gh` call failed outright. The badge alone reads as a
+ * fourth PR state, so the cell says which of those it is and when the daemon last looked. Nothing in
+ * the table said this before, and a grey chip is exactly what an operator skims past.
+ */
+function statusTooltip(row: PrStatus): string {
+  const checked = row.lastChecked ? `last checked ${row.lastChecked}` : "never checked";
+  if (row.status === "Unknown") {
+    return `Unknown: the daemon could not resolve this pull request (${checked}). Resync to try again.`;
+  }
+  if (row.status === "Merged") {
+    // The first of pr_sync's three guards: a merge is terminal on GitHub's side.
+    return `Merged (${checked}). Merged pull requests are never re-checked.`;
+  }
+  return `${row.status} as of ${checked}.`;
 }
 
 export interface PullRequestsViewProps {
@@ -138,20 +154,42 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
     setNotice(null);
     try {
       const report = await bridge.syncPullRequests();
+      // A sync pass is the longest call this page makes — one `gh` invocation per repository — so the
+      // same unmount guard `load` uses applies here, or navigating away mid-pass writes to a view
+      // that is gone.
+      if (cancelledRef.current) return;
+      // `pr_sync` never fails a pass over one unreachable repository — a `gh` that is missing,
+      // unauthenticated or rate-limited lands in `report.errors`, one entry per `owner/repo`, and the
+      // pass returns success. So the operator's Resync can appear to have worked while every status
+      // on screen is untouched. `checked === 0` with errors is exactly that case, and it is worth
+      // saying plainly rather than leaving them to read a list of repository names.
       if (report.errors.length > 0) {
-        setNotice(`GitHub could not be reached for: ${report.errors.join("; ")}`);
+        const scope =
+          report.checked === 0 ? "No status could be refreshed" : "Some statuses are unchanged";
+        setNotice(
+          `${scope}: GitHub could not be reached for ${report.errors.join("; ")}. ` +
+            `Check that the \`gh\` CLI is installed and authenticated (\`gh auth status\`).`,
+        );
+      } else if (report.checked === 0 && report.tracked > 0) {
+        // The freshness and terminal-merge guards, said out loud: a pass that skipped everything is
+        // not a failure, but a silent no-op invites a second click that will also do nothing.
+        setNotice(
+          `Nothing to refresh: ${report.skippedFresh} recently checked, ` +
+            `${report.skippedMerged} already merged.`,
+        );
       }
       await load();
     } catch (err) {
       // A collision with the periodic pass is not something the operator did wrong, and the running
       // pass broadcasts its result anyway — so it is a notice, not an error banner.
+      if (cancelledRef.current) return;
       if (bridgeErrorCode(err) === "PR_SYNC_IN_PROGRESS") {
         setNotice("A sync pass is already running.");
       } else {
         setSyncError(describeBridgeError(err));
       }
     } finally {
-      setIsSyncing(false);
+      if (!cancelledRef.current) setIsSyncing(false);
     }
   }, [load]);
 
@@ -212,10 +250,14 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         // carried no information at all.
         width: "140px",
         accessor: (row) => row.project,
+        // V1 renders this column through the same `LabelsDisplayRenderer`, coloured from
+        // `ProjectHelper.BuildColorMapping(config)` (`PullRequestApp.cs:144-147`). Jobs' Project
+        // column already does this; see {@link projectColor} for why the colour is derived from the
+        // name rather than read from the DTO.
         cell: (_value, row) => (
-          <span className="rounded bg-muted/80 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          <Badge color={projectColor(row.project)} density="Small">
             {row.project}
-          </span>
+          </Badge>
         ),
       },
       {
@@ -224,13 +266,9 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         width: "100px",
         accessor: (row) => row.status,
         cell: (_value, row) => (
-          <span
-            className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-              STATE_CLASS[row.status] ?? STATE_CLASS.Unknown
-            }`}
-          >
+          <Badge title={statusTooltip(row)} color={PR_STATE_COLOR[row.status]} density="Small">
             {row.status || "Unknown"}
-          </span>
+          </Badge>
         ),
       },
       {
@@ -315,26 +353,12 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         <h1 className="text-2xl font-bold text-foreground">Pull Requests</h1>
       </div>
 
-      {error && (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
-      {syncError && (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          {syncError}
-        </div>
-      )}
-      {notice && <p className="text-xs text-amber-300">{notice}</p>}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+      {syncError && <ErrorBanner>{syncError}</ErrorBanner>}
+      {notice && <p className="text-xs text-warning">{notice}</p>}
 
       {!isLoading && rows.length === 0 && !error ? (
-        <EmptyState
+        <NoContentView
           title="No pull requests"
           description="No plan has a pull request recorded yet. Create one from the Review tab and it will appear here."
         />
@@ -376,9 +400,14 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
               });
             }
           }}
+          // A failed list is not an empty one. Without this the table said the operator's search
+          // matched nothing while the banner above it said the daemon was unreachable, and the two
+          // read as unrelated.
           emptyState={
             <span className="text-muted-foreground">
-              No pull requests match your current search query or filter criteria.
+              {error
+                ? "The pull request list could not be loaded, so nothing can be shown."
+                : "No pull requests match your current search query or filter criteria."}
             </span>
           }
           toolbar={{
@@ -391,7 +420,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
                   placeholder="Search by plan, project, repository, or branch..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-72 rounded-xl border border-border bg-card px-4 py-2 text-sm text-foreground placeholder-muted-foreground/70 focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                  className="w-72 rounded-field border border-border bg-card px-4 py-2 text-sm text-foreground placeholder-muted-foreground/70 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
                 <div className="min-w-[180px]">
                   <BadgeSelect
@@ -417,7 +446,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
                 type="button"
                 onClick={() => void handleSync()}
                 disabled={isSyncing}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                className="rounded-field border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted disabled:opacity-50"
               >
                 {/* "All" rather than "Resync": the row action carries that label, and one pass
                     covers every PR, so the toolbar control says which scope it has. */}

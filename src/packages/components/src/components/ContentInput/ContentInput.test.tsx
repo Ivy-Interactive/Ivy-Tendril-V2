@@ -111,7 +111,7 @@ describe("ContentInput", () => {
       <ContentInput id="civ-1" value="" onIvyEvent={onIvyEvent} transcriptionUrl="ws://test" />,
     );
 
-    const micButton = screen.getByTitle("Voice input transcription");
+    const micButton = screen.getByRole("button", { name: "Voice input transcription" });
     await act(async () => {
       fireEvent.click(micButton);
     });
@@ -148,7 +148,7 @@ describe("ContentInput", () => {
 
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
-    const micButton = screen.getByTitle("Voice input transcription");
+    const micButton = screen.getByRole("button", { name: "Voice input transcription" });
     await act(async () => {
       fireEvent.click(micButton);
     });
@@ -180,7 +180,7 @@ describe("ContentInput", () => {
 
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
-    const micButton = screen.getByTitle("Voice input transcription");
+    const micButton = screen.getByRole("button", { name: "Voice input transcription" });
     await act(async () => {
       fireEvent.click(micButton);
     });
@@ -219,7 +219,7 @@ describe("ContentInput", () => {
 
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
-    const micButton = screen.getByTitle("Voice input transcription");
+    const micButton = screen.getByRole("button", { name: "Voice input transcription" });
     await act(async () => {
       fireEvent.click(micButton);
     });

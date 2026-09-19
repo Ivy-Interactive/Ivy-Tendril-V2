@@ -1,5 +1,5 @@
 <p align="right">
-  <a href="../../README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <strong>Français</strong>
+  <a href="../../README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.es.md">Español</a> | <a href="README.de.md">Deutsch</a> | <strong>Français</strong> | <a href="README.ru.md">Русский</a> | <a href="README.hi.md">हिन्दी</a>
 </p>
 
 <h1>
@@ -271,17 +271,24 @@ irm https://cdn.ivy.app/install-tendril.ps1 | iex
 
 ### Exécution
 
-Tendril est une application de bureau, mais elle peut également être lancée et contrôlée via l'interface CLI :
+Tendril est une application de bureau, mais la même installation fournit aussi une CLI. Ce sont deux
+binaires distincts : `tendril-app` est l'application de bureau et `tendril` est la CLI et le serveur.
 
-Lancer l'application de bureau :
+L'application de bureau se lance en ouvrant **Tendril** depuis le menu des applications (ou en
+exécutant directement le binaire `tendril-app`).
+
+Lancer le démon sans interface graphique — l'API HTTP et WebSocket, sans interface de bureau :
 ```bash
-tendril
+tendril run
 ```
 
-Lancer en mode sans interface graphique (serveur web sans interface de bureau) :
-```bash
-tendril --web
-```
+`tendril run` vérifie d'abord le port et migre la base de données, puis écoute sur `127.0.0.1:5010`.
+Les options `--port` / `--host` permettent de changer cela, et `tendril serve` fournit l'écouteur brut
+sans vérifications préalables (c'est aussi la commande qui accepte `--tls-cert` / `--tls-key`).
+
+Tout le reste est une sous-commande — `tendril --help` les liste toutes, et `tendril doctor` rend
+compte de l'installation (code de sortie 0 lorsque rien n'est `[FAIL]`, 1 sinon, ce qui permet de
+s'en servir comme garde-fou dans un script).
 
 ---
 
@@ -291,14 +298,20 @@ tendril --web
 Ivy-Tendril-V2/
 ├── src/
 │   ├── apps/
-│   │   └── tendril-app/            # Application de bureau Tauri + frontend React
+│   │   ├── tendril-app/            # Application de bureau Tauri + frontend React
+│   │   └── tendril-docs/           # Site de documentation
 │   ├── packages/
 │   │   └── components/             # @ivy-interactive/components + Storybook
 │   ├── crates/
 │   │   ├── tendril-core/           # Modèles de domaine principaux, base de données SQLite, moteur de worktrees
 │   │   ├── tendril-server/         # Démon serveur HTTP Axum REST & WebSocket
 │   │   └── tendril-cli/            # Interface en ligne de commande ("tendril")
-│   └── promptwares/                # Définitions d'agents Promptware et firmware
+│   ├── extensions/
+│   │   └── vscode/                 # Extension VS Code / Antigravity IDE
+│   ├── promptwares/                # Définitions d'agents Promptware et firmware
+│   ├── skills/                     # Compétences de workflow d'agent
+│   └── scripts/                    # Scripts de configuration du dépôt et de validation des tests
+├── docs/                           # Contenu de la documentation
 ├── Cargo.toml                      # Espace de travail Cargo unifié
 ├── pnpm-workspace.yaml             # Espace de travail pnpm unifié
 └── package.json                    # Scripts racine de l'espace de travail
@@ -349,6 +362,15 @@ Ivy-Tendril-V2/
    # Tests Rust
    cargo test --workspace
    ```
+
+### Tests visuels et de captures d'écran
+
+Pour exécuter les vérifications de captures d'écran et les tests visuels Storybook en local :
+
+```bash
+pnpm install
+pnpm run install:playwright:deps
+```
 
 ---
 

@@ -13,9 +13,11 @@ use tendril_core::db::{
 };
 use tendril_core::error::TendrilError;
 use tendril_core::git::{build_plan_git_data, cleanup_worktrees, run_git};
+use tendril_core::jobs::firmware_values::find_project;
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
 };
+use tendril_core::plans::seed_plan_from_project;
 use tendril_core::plans::{
     accept_recommendation, add_plan_verification, add_recommendation, check_plan_health,
     clear_annotations, clear_diff_comments, create_plan, decline_recommendation, get_plan_field,
@@ -23,9 +25,9 @@ use tendril_core::plans::{
     read_diff_comments, read_plan_file, read_plan_yaml, remove_annotation, remove_diff_comment,
     remove_plan_verification, remove_recommendation, resolve_plan_folder, resolve_plan_folder_name,
     set_plan_verification_status, set_recommendation_field, set_recommendation_state,
-    upsert_annotation, upsert_diff_comment, write_annotations, write_diff_comments,
-    write_plan_yaml, write_revision, Annotation, CreatePlanOptions, DraftComment,
-    PlanCompletionGuard, SUPPORTED_PLAN_FIELDS,
+    update_latest_revision, upsert_annotation, upsert_diff_comment, write_annotations,
+    write_diff_comments, write_plan_yaml, write_revision, Annotation, CreatePlanOptions,
+    DraftComment, PlanCompletionGuard, SUPPORTED_PLAN_FIELDS,
 };
 
 #[derive(Debug, Deserialize)]
@@ -184,6 +186,30 @@ pub async fn create_plan_handler(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreatePlanBody>,
 ) -> impl IntoResponse {
+    // The plan inherits its project's repos and verification set, as V1's `PlanController` does.
+    // This is the path the desktop app creates plans through, so without it every plan made from the
+    // UI reached `ExecutePlan` with no repo to build a worktree from and no gate to run.
+    //
+    // An explicit `repos` in the body wins — a caller that named them meant them. `verifications`
+    // are treated as overrides on top of the project set rather than replacing it, which is how the
+    // CLI's `--verification` behaves.
+    let settings = load_config(&state.config_path).unwrap_or_default();
+    let (repos, verifications) = match find_project(&settings, &body.project) {
+        Some(project) => {
+            let (project_repos, seeded) = seed_plan_from_project(project, body.verifications);
+            let repos = if body.repos.is_empty() {
+                project_repos
+            } else {
+                body.repos
+            };
+            (repos, seeded)
+        }
+        // An unknown project is not rejected here: `create_plan` is the only writer and the CLI
+        // already refuses it, while the app can legitimately create a plan for a project whose
+        // config has not been reloaded yet.
+        None => (body.repos, body.verifications),
+    };
+
     let opts = CreatePlanOptions {
         title: body.title,
         project: body.project,
@@ -192,8 +218,8 @@ pub async fn create_plan_handler(
         source_url: body.source_url,
         execution_profile: body.execution_profile,
         priority: body.priority,
-        repos: body.repos,
-        verifications: body.verifications,
+        repos,
+        verifications,
         depends_on: body.depends_on,
         related_plans: body.related_plans,
         chat_session_id: body.chat_session_id,
@@ -247,10 +273,15 @@ pub async fn update_plan_field(
         }
     };
 
+    // Set when this request moves the plan *into* `Skipped`, so the worktree reclaim below can be
+    // spawned only after `plan.yaml` has actually been written.
+    let mut reclaim_worktrees = false;
+
     if body.field.eq_ignore_ascii_case("state") {
         if let Some(new_state) = PlanStatus::from_str_loose(&body.value) {
             let was_completed = plan.state.eq_ignore_ascii_case("completed");
             let will_be_completed = new_state == PlanStatus::Completed;
+            let was_skipped = plan.state.eq_ignore_ascii_case("skipped");
             match PlanCompletionGuard::apply_state(
                 &mut plan,
                 new_state,
@@ -258,6 +289,19 @@ pub async fn update_plan_field(
                 &plan_id,
             ) {
                 Ok(_) => {
+                    // V1's `DiscardPlanDialog` paired its `Skipped` transition with
+                    // `WorktreeCleanupService.RemoveWorktreesInBackground`, with the reason: "Discard
+                    // is an explicit 'I don't want this' — reclaim the worktree promptly instead of
+                    // waiting for the background reaper." Discard is gone from the UI, but the
+                    // behaviour belongs to the *transition*, not to the button that used to make it,
+                    // so it lives here now and covers every route to `Skipped` — the delete dialog's
+                    // "Move to Skipped", the CLI, and anything else that writes the field.
+                    //
+                    // `spawn_worktree_reaper` would get there eventually, but only after
+                    // `worktreeReaperGrace`; a plan the operator has explicitly given up on should
+                    // not hold a checkout for that long.
+                    reclaim_worktrees = !was_skipped && new_state == PlanStatus::Skipped;
+
                     if !was_completed && will_be_completed {
                         let folder_name = folder
                             .file_name()
@@ -353,6 +397,27 @@ pub async fn update_plan_field(
         if let Ok(conn) = open_database(&state.db_path) {
             let _ = sync_plan(&conn, &pf);
         }
+    }
+
+    // Fire-and-forget, as V1's `Task.Run(() => RemoveWorktrees(...))` is: the caller gets its 200 for
+    // a state change that has already been persisted, and does not wait on `git worktree remove` plus
+    // a recursive delete. Ordered after the write on purpose — reclaiming for a transition that then
+    // failed to persist would destroy a checkout the plan still believes it has.
+    //
+    // `cleanup_worktrees` is best-effort per directory and leaves branches alone, which is the same
+    // call `reset_plan_handler` makes: the branch is often the only ref holding what execution
+    // produced, and the reaper's configured `worktreeBranchDeleteMode` is what decides its fate.
+    if reclaim_worktrees {
+        let plan_folder = folder.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = cleanup_worktrees(&plan_folder) {
+                tracing::warn!(
+                    "Background worktree cleanup failed for {}: {}",
+                    plan_folder.display(),
+                    e
+                );
+            }
+        });
     }
 
     (
@@ -1011,6 +1076,74 @@ pub async fn write_revision_handler(
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": format!("Failed to write revision: {}", e) })),
+        ),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateLatestRevisionBody {
+    pub content: String,
+}
+
+/// Overwrites the newest revision in place, keeping its number.
+///
+/// This is the route answering a question needs, and it is deliberately not the `POST` above.
+/// Answering a question is not a new revision of the plan, it is filling in a blank the plan left —
+/// V1 says so and routes answers through `UpdateLatestRevision` for that reason. Appending would
+/// claim the agent produced a new plan, and would inflate `revisionCount`, which the client's
+/// unfolded-answer guard reads as `revisionCount === 1`; one answer would switch that guard off.
+///
+/// `revision` comes back unchanged so a caller can assert nothing moved.
+pub async fn update_latest_revision_handler(
+    State(state): State<Arc<AppState>>,
+    Path(plan_id): Path<String>,
+    Json(body): Json<UpdateLatestRevisionBody>,
+) -> impl IntoResponse {
+    let folder = match resolve_plan_folder(&plan_id, &state.plans_dir) {
+        Ok(f) => f,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+            )
+        }
+    };
+
+    match update_latest_revision(&folder, &body.content) {
+        Ok(rev_num) => {
+            // `updated` moves because the plan's content changed, but the revision count does not —
+            // which is the whole point of this route, so `sync_plan` must run to refresh the row
+            // without it appearing to gain a revision.
+            if let Ok((mut plan, _)) = read_plan_yaml(&folder) {
+                plan.updated = Utc::now();
+                let _ = write_plan_yaml(&folder, &plan);
+            }
+            if let Ok(pf) = read_plan_file(&folder) {
+                if let Ok(conn) = open_database(&state.db_path) {
+                    let _ = sync_plan(&conn, &pf);
+                }
+            }
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "revision": rev_num,
+                    "message": format!("Revision {:03} updated", rev_num)
+                })),
+            )
+        }
+        Err(TendrilError::Validation(e)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("Validation failed: {}", e) })),
+        ),
+        // "no revision to update" is the caller asking to fill a blank in a plan that has no body
+        // yet. That is a bad request, not a server fault.
+        Err(TendrilError::Plan(e)) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": e.to_string() })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to update revision: {}", e) })),
         ),
     }
 }

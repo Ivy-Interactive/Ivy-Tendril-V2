@@ -117,7 +117,38 @@ describe("pre-execution guard chain", () => {
     await clickExecute();
 
     const dialog = await screen.findByTestId("pending-annotations-dialog");
-    expect(within(dialog).getByText(/1 item that no UpdatePlan run/)).toBeInTheDocument();
+    // V1's `Message(1, 0)`, and its header for an annotations-only count.
+    expect(
+      within(dialog).getByText(/1 annotation that haven't been incorporated/),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("Unincorporated Annotations")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("guard-proceed")).toHaveTextContent(
+      "Discard Annotations & Execute",
+    );
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The two counts are not discarded alike, which is why V1 hands the dialog both rather than their
+   * sum: annotations live only in the UI, so declining throws them away, while answers are already in
+   * the revision file and the agent honours them as written.
+   */
+  it("names an unfolded answer as an answer, and offers to execute without updating", async () => {
+    const onExecute = renderView(
+      draftPlan({ revisionCount: 1, latestRevisionContent: ANSWERED_FENCE }),
+    );
+
+    await clickExecute();
+
+    const dialog = await screen.findByTestId("pending-annotations-dialog");
+    expect(within(dialog).getByText("Unincorporated Answers")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/1 answered question that haven't been incorporated/),
+    ).toBeInTheDocument();
+    // Nothing to discard, so the decline button does not offer to.
+    expect(within(dialog).getByTestId("guard-proceed")).toHaveTextContent(
+      "Execute Without Updating",
+    );
     expect(onExecute).not.toHaveBeenCalled();
   });
 
@@ -131,7 +162,7 @@ describe("pre-execution guard chain", () => {
     expect(screen.queryByTestId("pending-annotations-dialog")).not.toBeInTheDocument();
   });
 
-  it("sums store annotations and unfolded answers into one count", async () => {
+  it("counts store annotations and unfolded answers together, naming each", async () => {
     vi.spyOn(bridge, "listAnnotations").mockResolvedValue([
       annotation(),
       annotation({ id: "ann-2" }),
@@ -142,8 +173,15 @@ describe("pre-execution guard chain", () => {
 
     await clickExecute();
 
+    // V1's `Message(2, 1)`. The badge on the Update Plan button is their sum, but the warning has to
+    // say which is which, because executing without updating discards one and honours the other.
     const dialog = await screen.findByTestId("pending-annotations-dialog");
-    expect(within(dialog).getByText(/3 items that no UpdatePlan run/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Unincorporated Changes")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /2 annotations and 1 answered question that haven't been incorporated/,
+      ),
+    ).toBeInTheDocument();
     expect(onExecute).not.toHaveBeenCalled();
   });
 
@@ -235,7 +273,13 @@ describe("pre-execution guard chain", () => {
     expect(onExecute).not.toHaveBeenCalled();
   });
 
-  it("hands the guard off to Update Plan instead of dispatching", async () => {
+  /**
+   * The questions guard's middle button is V2's own: V1 offers *Answer Questions*, which navigated to a
+   * questions view V2 does not have, so this opens the free-text update dialog instead. Unlike the
+   * pending-work guard's *Update Plan*, there is no prompt to generate here — nothing has been decided
+   * yet — so it asks rather than submitting.
+   */
+  it("hands the questions guard off to the free-text Update Plan dialog", async () => {
     const onExecute = renderView(draftPlan({ latestRevisionContent: UNANSWERED_FENCE }));
 
     await clickExecute();
@@ -256,5 +300,147 @@ describe("pre-execution guard chain", () => {
 
     await waitFor(() => expect(onExecute).toHaveBeenCalledWith("00021"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * `PendingAnnotationsDialog`'s four-way footer.
+ *
+ * The dialog exists because "execute anyway" is a real but *inferior* choice: the answers are on disk
+ * and the agent will honour them as written, it just will not have folded them into the plan first. So
+ * the four buttons are four different decisions rather than a warning with an OK, and the one that
+ * resolves the warning is the only filled button.
+ */
+describe("the pending-work guard's four actions", () => {
+  const answeredDraft = () =>
+    draftPlan({ revisionCount: 1, latestRevisionContent: ANSWERED_FENCE });
+
+  beforeEach(() => {
+    vi.spyOn(bridge, "startJob").mockResolvedValue({ jobId: "00400", status: "Started" });
+    vi.spyOn(bridge, "deleteAnnotation").mockResolvedValue([]);
+  });
+
+  it("offers Cancel, Update Plan, the decline and Update Plan & Execute as the primary", async () => {
+    renderView(answeredDraft());
+    await clickExecute();
+
+    const dialog = await screen.findByTestId("pending-annotations-dialog");
+    expect(within(dialog).getByTestId("dialog-cancel")).toHaveTextContent("Cancel");
+    expect(within(dialog).getByTestId("guard-update-plan")).toHaveTextContent("Update Plan");
+    expect(within(dialog).getByTestId("guard-proceed")).toHaveTextContent(
+      "Execute Without Updating",
+    );
+    // V1's label, not a shorthand, and the only button that is not `.Outline()`.
+    const primary = within(dialog).getByTestId("guard-update-and-execute");
+    expect(primary).toHaveTextContent("Update Plan & Execute");
+    for (const outline of ["dialog-cancel", "guard-update-plan", "guard-proceed"]) {
+      expect(within(dialog).getByTestId(outline).className).toContain("border-input");
+    }
+    expect(primary.className).not.toContain("border-input");
+  });
+
+  /** `onUpdate()` stops after the update: V1 calls `SubmitAnnotationsUpdate` and nothing else. */
+  it("Update Plan folds the answer in and does not execute", async () => {
+    const onExecute = renderView(answeredDraft());
+    await clickExecute();
+    await screen.findByTestId("pending-annotations-dialog");
+
+    fireEvent.click(screen.getByTestId("guard-update-plan"));
+
+    await waitFor(() => expect(bridge.startJob).toHaveBeenCalledTimes(1));
+    const args = vi.mocked(bridge.startJob).mock.calls[0][0];
+    expect(args.type).toBe("UpdatePlan");
+    expect(args.folderPath).toBe("00021");
+    // `BuildUpdatePrompt`'s answers half, which is the whole instruction the job needs.
+    expect(args.instructions).toContain("I answered 1 question in this plan's `questions` blocks.");
+    expect(args.instructions).toContain("delete that");
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `onUpdateAndExecute` is a compound: `ContinueExecute([SubmitAnnotationsUpdate(...)], ...)`. The
+   * ExecutePlan is parked behind the UpdatePlan with `WaitForJobs`, which is why it cannot go through
+   * `onExecute` — that callback carries only a plan id.
+   */
+  it("Update Plan & Execute parks the execute behind the update", async () => {
+    const onExecute = renderView(answeredDraft());
+    await clickExecute();
+    await screen.findByTestId("pending-annotations-dialog");
+
+    fireEvent.click(screen.getByTestId("guard-update-and-execute"));
+
+    await waitFor(() => expect(bridge.startJob).toHaveBeenCalledTimes(2));
+    const [update, execute] = vi.mocked(bridge.startJob).mock.calls.map((call) => call[0]);
+    expect(update.type).toBe("UpdatePlan");
+    expect(execute.type).toBe("ExecutePlan");
+    expect(execute.waitForJobs).toEqual(["00400"]);
+    // Not the ungated dispatch: that one would run immediately, beside the update rather than after it.
+    expect(onExecute).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("pending-annotations-dialog")).not.toBeInTheDocument();
+  });
+
+  /**
+   * "Updating retires the questions it folds in, so there is nothing left to warn about on this path —
+   * the warning would be about a state the job is on its way to fixing."
+   */
+  it("skips the unanswered-questions guard on the update-and-execute path", async () => {
+    renderView(
+      draftPlan({
+        revisionCount: 1,
+        latestRevisionContent: `${ANSWERED_FENCE}\n\n${UNANSWERED_FENCE}`,
+      }),
+    );
+    await clickExecute();
+    await screen.findByTestId("pending-annotations-dialog");
+
+    fireEvent.click(screen.getByTestId("guard-update-and-execute"));
+
+    await waitFor(() => expect(bridge.startJob).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId("unanswered-questions-dialog")).not.toBeInTheDocument();
+  });
+
+  /** A dirty repo is still asked about: the update does nothing about uncommitted changes. */
+  it("still asks about a dirty repo, and carries the update's job id past it", async () => {
+    vi.spyOn(bridge, "getRepoStatus").mockResolvedValue(DIRTY);
+    renderView(
+      draftPlan({
+        revisionCount: 1,
+        latestRevisionContent: `${ANSWERED_FENCE}\n\n${UNANSWERED_FENCE}`,
+      }),
+    );
+    await clickExecute();
+    await screen.findByTestId("pending-annotations-dialog");
+
+    fireEvent.click(screen.getByTestId("guard-update-and-execute"));
+
+    // The update went, and the execute is waiting on the repo question rather than on nothing.
+    await waitFor(() => expect(bridge.startJob).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId("dirty-repo-dialog")).toBeInTheDocument();
+    expect(screen.queryByTestId("unanswered-questions-dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("guard-proceed"));
+
+    await waitFor(() => expect(bridge.startJob).toHaveBeenCalledTimes(2));
+    const execute = vi.mocked(bridge.startJob).mock.calls[1][0];
+    expect(execute.type).toBe("ExecutePlan");
+    expect(execute.waitForJobs).toEqual(["00400"]);
+  });
+
+  /** A refused update must not be followed by an execute, and must not throw the annotations away. */
+  it("does not execute when the update is refused", async () => {
+    vi.spyOn(bridge, "listAnnotations").mockResolvedValue([annotation()]);
+    vi.spyOn(bridge, "startJob").mockRejectedValue(new Error("daemon unreachable"));
+    const onExecute = renderView(draftPlan());
+    await clickExecute();
+    await screen.findByTestId("pending-annotations-dialog");
+
+    fireEvent.click(screen.getByTestId("guard-update-and-execute"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("plan-action-error")).toHaveTextContent(/Update Plan failed/),
+    );
+    expect(bridge.startJob).toHaveBeenCalledTimes(1);
+    expect(onExecute).not.toHaveBeenCalled();
+    expect(bridge.deleteAnnotation).not.toHaveBeenCalled();
   });
 });

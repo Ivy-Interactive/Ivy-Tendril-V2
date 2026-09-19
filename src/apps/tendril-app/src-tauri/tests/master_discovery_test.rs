@@ -107,3 +107,36 @@ async fn test_master_discovery_foreign_ivy_shape() {
     assert!(!health.is_healthy);
     assert!(health.status.contains("ForeignMaster"));
 }
+
+/// A V2 daemon's own claim carries a `heartbeat` field — deliberately, because that is the name V1's
+/// reaper ages a claim by, and a claim without it was deleted by any V1 CLI on the machine. That made
+/// the field useless as a "this is V1" marker, and while it was still treated as one the app refused
+/// every daemon it had itself just launched. `schemaVersion` is the discriminator: V1 wrote none.
+#[tokio::test]
+async fn a_v2_claim_with_a_heartbeat_is_not_foreign() {
+    let temp_dir = tempfile::tempdir().expect("tempdir creation");
+    let discovery = MasterDiscovery::with_home(temp_dir.path());
+
+    // The shape `tendril run` writes today (`MasterClaim::for_this_process`).
+    let claim = serde_json::json!({
+        "port": 5123,
+        "pid": std::process::id(),
+        "secret": "v2-secret",
+        "startedAt": "2026-09-16T16:08:56.771157+00:00",
+        "host": "127.0.0.1",
+        "version": "0.1.0",
+        "apiVersion": 1,
+        "capabilities": ["jobs", "plans"],
+        "scheme": "http",
+        "heartbeat": "2026-09-16T16:09:56.777Z",
+        "schemaVersion": 2,
+        "pidStartedAt": "Wed Sep 16 18:08:56 2026"
+    });
+    std::fs::write(discovery.master_path(), claim.to_string()).unwrap();
+
+    let master = discovery
+        .read_master()
+        .expect("a V2 claim must not read as a foreign daemon");
+    assert_eq!(master.port, 5123);
+    assert_eq!(master.secret, "v2-secret");
+}

@@ -21,12 +21,132 @@ const COSTS_INDEXES: &str = r#"
 "#;
 
 pub fn apply_migrations(conn: &Connection) -> Result<()> {
+    // Pragmas first, and outside the upgrade below: `journal_mode = WAL` takes a database lock and
+    // cannot run inside a transaction. `busy_timeout` is set before the WAL switch deliberately —
+    // the switch itself can contend with another writer, and with a zero timeout that is an
+    // immediate SQLITE_BUSY rather than a short wait.
     conn.execute_batch(
         r#"
-        PRAGMA journal_mode = WAL;
         PRAGMA busy_timeout = 5000;
+        PRAGMA journal_mode = WAL;
         PRAGMA foreign_keys = ON;
+        "#,
+    )?;
 
+    // The ALTER pass runs BEFORE the schema batch. `CREATE TABLE IF NOT EXISTS` is a no-op on a
+    // table that already exists, so on a database created by an older version the batch leaves its
+    // column set alone — and then trips over its own `CREATE INDEX` on a column that was never
+    // added. Adding the columns first is what makes an upgrade possible; on a fresh database every
+    // call here is a no-op and the batch creates the tables complete.
+    //
+    // `Jobs` lists every column the schema declares, not only the ones V2 introduced. With just V2's
+    // own additions here, opening a database whose `Jobs` predated them died on the batch's very
+    // next statement — `CREATE INDEX … ON Jobs(CompletedAt)`, "no such column: CompletedAt" —
+    // halfway through, leaving a partly-created schema behind.
+    ensure_columns(
+        conn,
+        "Jobs",
+        &[
+            ("Provider", "TEXT NOT NULL DEFAULT 'claude'"),
+            ("SessionId", "TEXT"),
+            ("StartedAt", "TEXT"),
+            ("CompletedAt", "TEXT"),
+            ("DurationSeconds", "INTEGER"),
+            ("Cost", "REAL"),
+            ("Tokens", "INTEGER"),
+            ("StatusMessage", "TEXT"),
+            ("Args", "TEXT"),
+            ("TypedArgs", "TEXT"),
+            ("WorkingDirectory", "TEXT"),
+            ("CliCommand", "TEXT"),
+            ("Cleared", "INTEGER NOT NULL DEFAULT 0"),
+            ("ProcessId", "INTEGER"),
+            ("ReportedPlanId", "TEXT"),
+            ("ReportedPlanTitle", "TEXT"),
+            ("ReportedFailureReason", "TEXT"),
+            ("Model", "TEXT"),
+            ("InputTokens", "INTEGER"),
+            ("OutputTokens", "INTEGER"),
+            ("CacheReadTokens", "INTEGER"),
+            ("CacheWriteTokens", "INTEGER"),
+            ("ReasoningTokens", "INTEGER"),
+            ("CostSource", "TEXT"),
+            ("ExecutionProfile", "TEXT"),
+            ("Effort", "TEXT"),
+            ("PreviousPlanState", "TEXT"),
+            ("Priority", "INTEGER NOT NULL DEFAULT 0"),
+            ("LastOutputAt", "TEXT"),
+            ("WaitForJobIds", "TEXT"),
+            ("PermissionDenials", "TEXT"),
+            ("DedupeKey", "TEXT"),
+            ("IdempotencyKey", "TEXT"),
+            // The conversation a job was started from. Spelled exactly as the original app's
+            // `Migration_026_JobsInboxFileAndChatSessionId` spells it, so a database shared with V1
+            // has one column rather than two.
+            ("ChatSessionId", "TEXT"),
+        ],
+    )?;
+    ensure_columns(
+        conn,
+        "Plans",
+        &[
+            ("FolderName", "TEXT NOT NULL DEFAULT ''"),
+            ("YamlRaw", "TEXT NOT NULL DEFAULT ''"),
+            ("RevisionCount", "INTEGER NOT NULL DEFAULT 1"),
+            ("LatestRevisionContent", "TEXT NOT NULL DEFAULT ''"),
+            ("InitialPrompt", "TEXT"),
+            ("SourceUrl", "TEXT"),
+            ("ChatSessionId", "TEXT"),
+        ],
+    )?;
+    // A database carried over from V1 has PrStatuses without Branch.
+    ensure_columns(
+        conn,
+        "PrStatuses",
+        &[
+            ("Owner", "TEXT NOT NULL DEFAULT ''"),
+            ("Repo", "TEXT NOT NULL DEFAULT ''"),
+            ("Status", "TEXT NOT NULL DEFAULT ''"),
+            ("LastChecked", "TEXT NOT NULL DEFAULT ''"),
+            ("Branch", "TEXT"),
+        ],
+    )?;
+    // NOT NULL columns need a DEFAULT to be added by ALTER at all, so each one carries the same
+    // default the fresh schema would have given an inserted row.
+    ensure_columns(
+        conn,
+        "Costs",
+        &[
+            ("Promptware", "TEXT NOT NULL DEFAULT ''"),
+            ("Tokens", "INTEGER NOT NULL DEFAULT 0"),
+            ("Model", "TEXT"),
+            ("LogTimestamp", "TEXT"),
+            ("CostSource", "TEXT"),
+            ("Agent", "TEXT"),
+        ],
+    )?;
+    // `Notes` carries why a recommendation was accepted, which used to be smuggled through
+    // `DeclineReason`. It is nullable and additive, so it needs no `user_version` bump: bumping past
+    // 25 would make the original app refuse to open the shared database (see `SCHEMA_VERSION`).
+    ensure_columns(
+        conn,
+        "Recommendations",
+        &[
+            ("Description", "TEXT NOT NULL DEFAULT ''"),
+            ("State", "TEXT NOT NULL DEFAULT 'Pending'"),
+            ("DeclineReason", "TEXT"),
+            ("PlanTitle", "TEXT NOT NULL DEFAULT ''"),
+            ("PlanFolderName", "TEXT NOT NULL DEFAULT ''"),
+            ("Project", "TEXT NOT NULL DEFAULT ''"),
+            ("Notes", "TEXT"),
+            ("Date", "TEXT NOT NULL DEFAULT ''"),
+            ("SourcePlanStatus", "TEXT NOT NULL DEFAULT 'Draft'"),
+            ("Impact", "TEXT"),
+        ],
+    )?;
+
+    conn.execute_batch(
+        r#"
         CREATE TABLE IF NOT EXISTS Plans (
             Id INTEGER PRIMARY KEY,
             Title TEXT NOT NULL,
@@ -178,9 +298,14 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
             WaitForJobIds TEXT,
             PermissionDenials TEXT,
             DedupeKey TEXT,
-            IdempotencyKey TEXT
+            IdempotencyKey TEXT,
+            ChatSessionId TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_jobs_status ON Jobs(Status);
+        -- The chat header asks "which jobs belong to this conversation" on every job event, so the
+        -- lookup is indexed. Partial, because only a job started from a chat carries one.
+        CREATE INDEX IF NOT EXISTS idx_jobs_chatsession ON Jobs(ChatSessionId)
+            WHERE ChatSessionId IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_jobs_completed ON Jobs(CompletedAt DESC);
         CREATE INDEX IF NOT EXISTS idx_jobs_planfile ON Jobs(PlanFile);
         -- `idx_jobs_planfile` above is declared without a collation, so it cannot serve the
@@ -230,31 +355,6 @@ pub fn apply_migrations(conn: &Connection) -> Result<()> {
     // The schema above is declarative `CREATE TABLE IF NOT EXISTS`, so a database created by an
     // earlier version keeps its original column set. Columns added after the fact need an
     // idempotent ALTER pass.
-    ensure_columns(
-        conn,
-        "Jobs",
-        &[
-            ("PreviousPlanState", "TEXT"),
-            ("Priority", "INTEGER NOT NULL DEFAULT 0"),
-            ("LastOutputAt", "TEXT"),
-            ("WaitForJobIds", "TEXT"),
-            ("PermissionDenials", "TEXT"),
-            ("DedupeKey", "TEXT"),
-            ("IdempotencyKey", "TEXT"),
-        ],
-    )?;
-    ensure_columns(conn, "Plans", &[("ChatSessionId", "TEXT")])?;
-    // A database carried over from V1 has PrStatuses without Branch.
-    ensure_columns(conn, "PrStatuses", &[("Branch", "TEXT")])?;
-    ensure_columns(
-        conn,
-        "Costs",
-        &[("Model", "TEXT"), ("CostSource", "TEXT"), ("Agent", "TEXT")],
-    )?;
-    // `Notes` carries why a recommendation was accepted, which used to be smuggled through
-    // `DeclineReason`. It is nullable and additive, so it needs no `user_version` bump: bumping past
-    // 25 would make the original app refuse to open the shared database (see `SCHEMA_VERSION`).
-    ensure_columns(conn, "Recommendations", &[("Notes", "TEXT")])?;
     ensure_costs_cost_nullable(conn)?;
     ensure_plan_search(conn)?;
 
@@ -433,6 +533,15 @@ pub fn ensure_columns(conn: &Connection, table: &str, columns: &[(&str, &str)]) 
         }
     }
 
+    // No such table: nothing to alter. This is the fresh-database case, where the `CREATE TABLE`
+    // that follows declares every column anyway — and it is what lets this pass run *before* the
+    // schema batch, which is the only order in which an older database can be upgraded at all.
+    // `PRAGMA table_info` on a missing table returns no rows rather than failing, so without this
+    // the loop below would try to ALTER a table that does not exist.
+    if existing.is_empty() {
+        return Ok(());
+    }
+
     for (name, sql_type) in columns {
         if !existing.contains(*name) {
             conn.execute(
@@ -456,6 +565,83 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         dir.join("tendril.db")
+    }
+
+    /// A database from an early version of the original app: the tables exist, but with the column
+    /// sets they had before migrations 004-025 added the rest. `CREATE TABLE IF NOT EXISTS` is a
+    /// no-op on all of them, so the ALTER pass is the only thing that can bring them forward — and it
+    /// has to run before the schema batch's indexes, which reference columns like `Jobs.CompletedAt`
+    /// and `Costs.Promptware`. This used to die partway with "no such column", leaving the schema
+    /// half-created and the database unopenable by either app.
+    #[test]
+    fn a_legacy_database_upgrades_without_losing_its_rows() {
+        let path = scratch_db();
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                r#"
+                PRAGMA user_version = 3;
+                CREATE TABLE Plans (Id INTEGER PRIMARY KEY, Title TEXT, State TEXT, Project TEXT,
+                                    Level TEXT, FolderPath TEXT, Created TEXT, Updated TEXT);
+                CREATE TABLE Jobs (Id TEXT PRIMARY KEY, Type TEXT, PlanFile TEXT, Project TEXT,
+                                   Status TEXT);
+                CREATE TABLE Costs (Id INTEGER PRIMARY KEY, PlanId INTEGER, Cost REAL);
+                CREATE TABLE Recommendations (Id INTEGER PRIMARY KEY, PlanId INTEGER, Title TEXT);
+                CREATE TABLE PrStatuses (PrUrl TEXT PRIMARY KEY);
+                INSERT INTO Plans VALUES (1,'Legacy plan','Draft','P','Feature','/tmp/x','t','t');
+                INSERT INTO Jobs VALUES ('00001','ExecutePlan','/tmp/x','P','Completed');
+                INSERT INTO Costs VALUES (1,1,0.5);
+                "#,
+            )
+            .unwrap();
+        }
+
+        let conn = crate::db::open_database(&path).expect("a legacy database must still open");
+        assert_eq!(get_schema_version(&conn).unwrap(), SCHEMA_VERSION);
+
+        // The columns the indexes need, which are also the ones the readers select.
+        for (table, column) in [
+            ("Jobs", "CompletedAt"),
+            ("Jobs", "DedupeKey"),
+            ("Costs", "Promptware"),
+            ("Plans", "SourceUrl"),
+            ("Recommendations", "Impact"),
+            ("PrStatuses", "Branch"),
+        ] {
+            conn.query_row(&format!("SELECT {column} FROM {table} LIMIT 1"), [], |_| {
+                Ok(())
+            })
+            .or_else(|e| match e {
+                // An empty table is fine; a missing column is not.
+                rusqlite::Error::QueryReturnedNoRows => Ok(()),
+                other => Err(other),
+            })
+            .unwrap_or_else(|e| panic!("{table}.{column} should exist after upgrade: {e}"));
+        }
+
+        // Nothing was dropped or rewritten on the way through.
+        let title: String = conn
+            .query_row("SELECT Title FROM Plans WHERE Id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(title, "Legacy plan");
+        let status: String = conn
+            .query_row("SELECT Status FROM Jobs WHERE Id = '00001'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(status, "Completed");
+        let cost: f64 = conn
+            .query_row("SELECT Cost FROM Costs WHERE Id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(cost, 0.5);
+
+        let integrity: String = conn
+            .query_row("PRAGMA integrity_check", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(integrity, "ok");
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]

@@ -228,10 +228,10 @@ export function textInputFieldShellClasses(options: {
   ghost?: boolean;
 }): string {
   return cn(
-    "relative flex w-full min-w-0 items-stretch overflow-hidden rounded-field border bg-transparent shadow-sm transition-colors dark:bg-white/5",
+    "relative flex w-full min-w-0 items-stretch overflow-hidden rounded-field border bg-transparent shadow-sm transition-colors dark:bg-surface-tint",
     options.focused
       ? "border-ring outline-none dark:border-ring"
-      : "border-input dark:border-white/10",
+      : "border-input dark:border-input",
     options.invalid && "border-destructive",
     options.disabled && "cursor-not-allowed opacity-50",
     options.ghost &&

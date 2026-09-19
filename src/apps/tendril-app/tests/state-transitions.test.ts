@@ -137,16 +137,29 @@ describe("Plan State Transitions & Action Gating Rules", () => {
   });
 
   describe("Inbox Navigation & Tab Lifecycle", () => {
-    it("activates inbox and maintains tab lifecycle in uiStore", () => {
+    /* Updated for V1's strip (`TendrilAppShell.BuildStripTabs` / `AppShellRouter` rule 4): navigating
+       a page creates no tab, and a plan is a page. This test previously asserted the opposite - that
+       `setActiveNav` accumulates a tab per nav, and that a plan opens one - which is exactly what made
+       every screen pile up in the session strip. The lifecycle it checks is now the real one: a
+       session pane is the only thing that becomes a tab, and closing the last one reveals the page. */
+    it("navigates the inbox without creating a tab, and keeps the session tab lifecycle", () => {
       uiStore.setActiveNav("inbox");
       expect(uiStore.getState().activeNav).toBe("inbox");
-      expect(uiStore.getState().activeTabIds).toContain("inbox");
+      expect(uiStore.getState().sessionTabs).toEqual([]);
 
-      uiStore.openTab("plan-00042");
-      expect(uiStore.getState().activeTabIds).toContain("plan-00042");
+      // A plan is a page too, so it does not open a tab either.
+      uiStore.navigate({ appId: "plan-00042", args: { planId: "00042" } });
+      expect(uiStore.getState().sessionTabs).toEqual([]);
+      expect(uiStore.getState().pageArgs).toEqual({ planId: "00042" });
 
-      uiStore.closeTab("plan-00042");
-      expect(uiStore.getState().activeTabIds).not.toContain("plan-00042");
+      // A review action is an `allowDuplicateTabs` app, so it is a session pane.
+      uiStore.setActiveNav("inbox");
+      uiStore.navigate({ appId: "review-action", args: { sessionId: "ra:00042" } });
+      expect(uiStore.getState().sessionTabs.map((tab) => tab.id)).toEqual(["ra:00042"]);
+      expect(uiStore.getState().activeNav).toBe("ra:00042");
+
+      uiStore.closeTab("ra:00042");
+      expect(uiStore.getState().sessionTabs).toEqual([]);
       expect(uiStore.getState().activeNav).toBe("inbox");
     });
   });

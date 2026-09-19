@@ -105,6 +105,10 @@ describe("Package Exports", () => {
       expect(ui.TuiBadge).toBeDefined();
       expect(ui.CountBadge).toBeDefined();
       expect(ui.StatusDot).toBeDefined();
+      expect(ui.TuiKbd).toBeDefined();
+      expect(ui.TuiTooltip).toBeDefined();
+      expect(ui.TooltipScope).toBeDefined();
+      expect(ui.Spinner).toBeDefined();
     });
   });
 

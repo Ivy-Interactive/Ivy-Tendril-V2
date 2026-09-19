@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
-import { Callout } from "@ivy-interactive/components/ui";
-import { describeBridgeError, type Job, type JobDetail, type JobStatus } from "../types/api";
-import { jobsStore, type StreamEventItem } from "../state/jobsStore";
+import { Badge, Callout } from "@ivy-interactive/components/ui";
+import { describeBridgeError, type Job, type JobDetail } from "../types/api";
+import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
+import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStatus";
+import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
 interface JobSessionViewProps {
@@ -10,29 +12,17 @@ interface JobSessionViewProps {
   events?: StreamEventItem[];
   onCancel?: (jobId: string) => void | Promise<void>;
   onCloseTab?: () => void;
+  /**
+   * How this is framed. V1's job output is a **sheet over the Jobs table**
+   * (`Apps/Jobs/Sheets/OutputSheet.cs`, opened from the table's Agent Output cell), so `"sheet"` is
+   * what `JobsView` renders: the sheet's own header carries V1's title
+   * (`$"{job.Type} {ExtractPlanId(job.PlanFile)}"`) and its own close control, so neither is drawn
+   * again here, and the body scrolls with the sheet rather than filling a page.
+   *
+   * `"page"` is the older full-view framing, kept for any caller that still mounts this as a view.
+   */
+  layout?: "page" | "sheet";
 }
-
-/**
- * Job status to badge classes, from `Constants.JobStatusColors` (V1 `src/Ivy.Tendril/Constants.cs`):
- * Running is Blue, Completed is Green, Failed and Timeout are Red, Queued and Pending are Amber,
- * Blocked is Orange, Stopped is Gray.
- *
- * Semantic tokens only, which collapses V1's Amber and Orange onto the one `warning` token the design
- * system has. That keeps Blocked reading the same as it does on a plan (`PLAN_STATE_BADGE_CLASS` maps
- * Blocked to warning too) at the cost of the amber/orange distinction, which carried no meaning V1
- * relied on. `--primary` is Ivy green and is never reached for here: a status badge that borrowed it
- * would read as "succeeded" on a job that has not run.
- */
-const JOB_STATUS_BADGE_CLASS: Record<JobStatus, string> = {
-  Running: "border-info/40 bg-info/10 text-info",
-  Completed: "border-success/40 bg-success/10 text-success",
-  Failed: "border-destructive/40 bg-destructive/10 text-destructive",
-  Timeout: "border-destructive/40 bg-destructive/10 text-destructive",
-  Queued: "border-warning/40 bg-warning/10 text-warning",
-  Pending: "border-warning/40 bg-warning/10 text-warning",
-  Blocked: "border-warning/40 bg-warning/10 text-warning",
-  Stopped: "border-border bg-transparent text-muted-foreground",
-};
 
 /** `JobsApp.Helpers.cs` `FormatTimeSpan`: hours drop the seconds, a sub-minute span is seconds only. */
 function formatTimeSpan(totalSeconds: number): string {
@@ -81,16 +71,77 @@ function formatTimestamp(job: Job): string {
   )}:${pad(completed.getMinutes())}`;
 }
 
-/** `FormatHelper.FormatTokens`: millions to one decimal, thousands to none. */
+/**
+ * `JobsApp.Data.cs` and `JobCostSheet.cs` both use this for "nothing recorded here". Keeping V1's
+ * em-dash rather than an empty string is what stops a job that reported no cost from reading as one
+ * that cost nothing: `Cost —` and `Cost $0.00` are different claims.
+ */
+const NO_VALUE = "—";
+
+/**
+ * How tall the output may get inside the sheet before it scrolls itself.
+ *
+ * The sheet's `HeaderLayout` scrolls its content, so without a ceiling the viewer grows to the height
+ * of the whole log and its windowing goes inert: the virtualizer renders what fits in its scroll
+ * element, and an unbounded element "fits" 100k lines. A page framing needs none of this — it hands
+ * the viewer a definite height already — which is why this is only passed for the sheet.
+ *
+ * A viewport fraction rather than a pixel count so it fills a tall window, and paired with the `min-h`
+ * floor below so an empty log still shows the viewer rather than collapsing to nothing.
+ */
+const SHEET_OUTPUT_MAX_HEIGHT = "70vh";
+
+/**
+ * The default for `events`, hoisted so it is the *same* empty array on every render.
+ *
+ * `events = []` in the signature mints a new one each time, which the line cache below would read as
+ * "different session" and rebuild against on every render.
+ */
+const NO_EVENTS: StreamEventItem[] = [];
+
+/**
+ * `FormatHelper.FormatTokens`: millions to one decimal, thousands to none.
+ *
+ * A million-plus count keeps scaling rather than saturating, so a 1.4-billion-token run reads
+ * "1400.0M" exactly as V1's `(tokens / 1_000_000.0).ToString("F1")` does. A non-finite or negative
+ * count is not a token count at all and is reported as absent rather than as "NaN".
+ */
 function formatTokens(tokens: number): string {
+  if (!Number.isFinite(tokens) || tokens < 0) return NO_VALUE;
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
   return String(tokens);
 }
 
+/** `FormatHelper.FormatCount`: the exact figure, grouped, for the tooltip behind the short form. */
+function formatTokenCount(tokens: number): string {
+  return tokens.toLocaleString("en-US");
+}
+
 /** `JobsApp.Data.cs` `FormatJobCost` via `FormatHelper.FormatCost`: two decimals, dollars. */
 function formatCost(cost: number): string {
   return `$${cost.toFixed(2)}`;
+}
+
+/**
+ * The Cost cell, `JobsApp.Data.cs` `FormatJobCost`.
+ *
+ * Returns `null` where V1 returns `""` - the job has no cost figure at all, which is the normal
+ * state of a subscription-plan run: the agent reports tokens and no charge. The caller renders
+ * {@link NO_VALUE} for that, so it cannot be mistaken for a charge of zero.
+ *
+ * An estimate derived from tokens times the price list carries V1's `"~"` prefix
+ * (`JobCostSources.Estimated`), so a figure nobody was actually billed never presents itself as one.
+ *
+ * The comparison is case-insensitive because the value on the wire is lower case: V1 writes
+ * `"estimated"` (`Services/Jobs/JobUsageSnapshot.cs:22`) and so does the daemon
+ * (`jobs/manager.rs:2909`). This matched `"Estimated"` exactly, dating from when `costSource` was not
+ * on the DTO at all and its casing was a guess, so the tilde never actually appeared on an estimate.
+ */
+function formatJobCost(job: Job): string | null {
+  if (job.cost === undefined || job.cost === null || !Number.isFinite(job.cost)) return null;
+  const formatted = formatCost(job.cost);
+  return job.costSource?.toLowerCase() === "estimated" ? `~${formatted}` : formatted;
 }
 
 /**
@@ -110,28 +161,54 @@ function statusMessage(job: Job): string {
       return "Waiting for a job slot to become available";
     case "Stopped":
       return "Job was manually stopped";
+    // `GetStatusMessage` has no Pending default because V1's Pending rows are transient in the
+    // table, but `OutputSheet.cs:42-47` - the sheet this view replaces - does:
+    // `Callout.Info("Job is queued and waiting to start.", "Job Pending")`. Without it a Pending
+    // job showed a warning badge and nothing else.
+    case "Pending":
+      return "Job is queued and waiting to start.";
     default:
       return "";
   }
 }
 
 /**
- * V1's job output sheet, as a tab.
+ * `Helpers/JobId.cs` `Normalize`: ids are allocated as zero-padded five-digit numbers
+ * (`JobIdAllocator`), and every V1 surface that receives one pads it, because a bare `458` and
+ * `00458` are the same job. V2 reaches this view with whatever the caller had - `activeNav` strips a
+ * `job-` prefix off a nav id, and `acceptInboxProposal` returns a raw `jobId` - so the display is
+ * normalised here rather than trusting it.
+ */
+export function normalizeJobId(id: string): string {
+  const trimmed = id.trim();
+  return /^\d+$/.test(trimmed) ? trimmed.padStart(5, "0") : trimmed;
+}
+
+/**
+ * V1's job output sheet.
  *
  * The layout mirrors `JobsApp.cs`'s output sheet: its title is `$"{job.Type} {ExtractPlanId(...)}"`,
  * and its body is `Sheets/OutputSheet.cs` - an `AgentViewer` for a job with output, and a callout
  * explaining itself for one without. Everything V1 puts in the Jobs table's cells for the same job
- * (status, timer, timestamp, cost, tokens, project) sits in the header, because a tab has no row
- * above it to carry them.
+ * (status, timer, timestamp, cost, tokens, project) sits in the header, so a reader who opened the
+ * sheet from the table does not have to close it again to see them.
+ *
+ * See {@link JobSessionViewProps.layout}: this was a full page tab, which was a structural
+ * divergence - V1 opens it over the table and the operator keeps their place in the list.
  */
 export const JobSessionView: React.FC<JobSessionViewProps> = ({
   job,
-  events = [],
+  events = NO_EVENTS,
   onCancel,
   onCloseTab,
+  layout = "page",
 }) => {
   const [isStopping, setIsStopping] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
+  const [isForceStarting, setIsForceStarting] = useState(false);
+  const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [storeState, setStoreState] = useState(() => ({
     job:
@@ -162,6 +239,10 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
       });
     });
 
+    // No base URL and no token on purpose: the store picks the transport that can authenticate. Under
+    // Tauri that is the native bridge, because `/api/jobs/:id/events` is bearer-authenticated and the
+    // webview never sees the secret - handing this call an origin would put it back on the
+    // unauthenticated `fetch` that made every job subscription a 401 and left this view with no output.
     const unsubscribe = jobsStore.subscribeToJob(job.id);
 
     return () => {
@@ -180,17 +261,57 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
 
   const currentEvents = storeState.events.length > 0 ? storeState.events : events;
 
-  // Convert event items into jsonStream lines
-  const jsonStream = currentEvents.map((e) => JSON.stringify(e.payload)).join("\n");
+  // The eventwire lines the viewer folds, grown in step with the session rather than rebuilt from it.
+  //
+  // This used to be `currentEvents.map((e) => JSON.stringify(e.payload)).join("\n")`, evaluated on
+  // every store notification — and the store notifies once per streamed frame. So frame *n* re-encoded
+  // and re-joined all *n* lines the session held, and the viewer then re-parsed the result: quadratic
+  // in the length of the run, in a component that renders while a job is producing output. At 3k frames
+  // that measured 1.4 seconds of pure JS; at 100k it does not finish.
+  //
+  // `rawText` is what the store already recorded for the frame (`JSON.stringify(payload)` for the
+  // objects `parseJobFrame` produces, and the line itself for one that was not JSON), so the encode
+  // is not repeated either. The generation counter goes on the viewer's `id`: `AgentViewer` reads this
+  // array by length and would not otherwise notice a session that was cleared and refilled to the same
+  // length.
+  const lineCache = useRef<{
+    source: StreamEventItem[] | null;
+    lines: string[];
+    generation: number;
+  }>({ source: null, lines: [], generation: 0 });
+  if (lineCache.current.source !== currentEvents) {
+    lineCache.current = {
+      source: currentEvents,
+      lines: [],
+      generation: lineCache.current.generation + 1,
+    };
+  }
+  const eventLines = lineCache.current.lines;
+  for (let i = eventLines.length; i < currentEvents.length; i++) {
+    const item = currentEvents[i];
+    // `rawText` is optional on the type, and a caller passing `events` in by hand may omit it, so the
+    // encode this used to do for every frame is still the fallback for a frame that has no text.
+    eventLines.push(item.rawText ?? JSON.stringify(item.payload));
+  }
+  const viewerId = `agent-viewer-${currentJob.id}#${lineCache.current.generation}`;
 
-  const isRunning = currentJob.status === "Running" || currentJob.status === "Queued";
+  // `OutputSheet.cs:52` keys the live viewer on `Status == Running` and nothing else. Queued was
+  // included here, which meant a job still waiting for a slot got an animated "Working..." label and
+  // an autoscrolling viewer over an empty log - the sheet says the opposite about a job that has not
+  // started.
+  const isRunning = currentJob.status === "Running";
+
   // V1's Stop row action covers every state a job can still be taken out of, not just the two that
-  // are already moving: `JobsApp.DataTable.cs` gates it on Running/Queued/Pending/Blocked.
-  const canStop =
-    currentJob.status === "Running" ||
-    currentJob.status === "Queued" ||
-    currentJob.status === "Pending" ||
-    currentJob.status === "Blocked";
+  // are already moving: `JobsApp.DataTable.cs:183` gates it on Running/Queued/Pending/Blocked.
+  const canStop = isActiveStatus(currentJob.status);
+
+  // `Force Start` (`JobsApp.DataTable.cs:195`) is Blocked-only: the point of it is to skip the
+  // dependency gate that is holding the job, and there is no gate to skip in any other state.
+  const canForceStart = currentJob.status === "Blocked" && jobsStore.canForceStartJob();
+
+  // `Delete` (`JobsApp.DataTable.cs:207`) is offered in every state, terminal ones included: V1 adds
+  // it unconditionally, and the confirm's handler stops a live job first.
+  const canDelete = jobsStore.canDeleteJob();
 
   // A running job's timer counts up. V1 gets this from the Jobs table's one-second cell update
   // stream (`BuildDataTableUpdates`); here it is a tick on the same interval, and only while running.
@@ -219,6 +340,37 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
     }
   };
 
+  const handleForceStart = async () => {
+    setIsForceStarting(true);
+    setStopError(null);
+    try {
+      await jobsStore.forceStartJob(currentJob.id);
+    } catch (err) {
+      setStopError(`Force start failed: ${describeBridgeError(err)}`);
+    } finally {
+      setIsForceStarting(false);
+    }
+  };
+
+  // `JobsApp.DataTable.cs:302-315`: the confirm's own handler stops a live job and then deletes,
+  // and only then closes. A rejection keeps the dialog open with the reason on it rather than
+  // dismissing as though it had worked.
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await jobsStore.deleteJob(currentJob.id);
+      setIsConfirmDeleteOpen(false);
+      // `jobsStore.deleteJob` already re-reads the list, so the host needs nothing but the close:
+      // the tab is pointing at a job that no longer exists.
+      onCloseTab?.();
+    } catch (err) {
+      setDeleteError(`Delete failed: ${describeBridgeError(err)}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const failureReason = (currentJob as JobDetail).reportedFailureReason;
   const message = failureReason || statusMessage(currentJob);
   // Failed and Timeout are V1's two red statuses; Blocked, Queued, Pending and Stopped explain
@@ -236,59 +388,86 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   const planId = currentJob.planId;
   const noop = () => {};
 
+  // The Cost and Tokens cells. V1 has two labelled columns, so an empty Cost beside a populated
+  // Tokens is already legible; a tab has no column headers, so the labels come inline. Both are
+  // rendered together whenever either has a figure: a subscription-plan run - tokens spent, nothing
+  // billed - then reads "Tokens 450,000 · Cost —" rather than dropping the cost silently and looking
+  // like a run whose cost simply has not landed yet.
+  const cost = formatJobCost(currentJob);
+  const tokens = currentJob.tokens;
+  const hasUsage = cost !== null || tokens !== undefined;
+
+  const isSheet = layout === "sheet";
+
   return (
-    <div className="flex h-full flex-col space-y-4" data-testid="job-session-view">
-      {/* Header: the output sheet's title, plus the row the tab replaced. */}
+    <div
+      className={`flex flex-col space-y-4 ${isSheet ? "" : "h-full"}`}
+      data-testid="job-session-view"
+    >
+      {/* Header: the output sheet's title, plus the row the table showed. */}
       <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm font-bold text-muted-foreground">
-              {currentJob.id}
+              {normalizeJobId(currentJob.id)}
             </span>
-            <span
+            {/* Same badge the Jobs table draws, on the same `Constants.JobStatusColors` mapping, so
+                the sheet header and the row behind it read identically. */}
+            <Badge
               data-testid="job-status-badge"
-              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                JOB_STATUS_BADGE_CLASS[currentJob.status] ??
-                "border-border bg-transparent text-muted-foreground"
-              }`}
+              color={JOB_STATUS_COLOR[currentJob.status] ?? UNMAPPED_COLOR}
+              density="Small"
             >
               {currentJob.status}
-            </span>
+            </Badge>
             {/* `ProjectHelper.ParseProjects`: a job's project field can name several. */}
             {parseProjects(currentJob.project).map((project) => (
-              <span
-                key={project}
-                className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-              >
+              <Badge key={project} color={projectColor(project)} density="Small">
                 {project}
-              </span>
+              </Badge>
             ))}
             {/* From 751bed8: a job supervised across a daemon restart, as opposed to one this
                 session started end to end. */}
             {currentJob.detached && (
-              <span
-                data-testid="job-detached-badge"
-                className="rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning"
-              >
+              <Badge data-testid="job-detached-badge" color="Orange" density="Small">
                 Detached (PID {currentJob.processId}) — Monitoring active process
-              </span>
+              </Badge>
             )}
           </div>
-          {/* The output sheet's title: `$"{job.Type} {ExtractPlanId(job.PlanFile)}"`. */}
-          <h1 className="mt-2 truncate text-2xl font-bold text-foreground">
-            {planId ? `${currentJob.type} ${planId}` : currentJob.type}
-          </h1>
+          {/* The output sheet's title: `$"{job.Type} {ExtractPlanId(job.PlanFile)}"`. Drawn here
+              only for the page framing - in a sheet it is the `SheetTitle`, as it is in V1. */}
+          {!isSheet && (
+            <h1 className="mt-2 truncate text-2xl font-bold text-foreground">
+              {planId ? `${currentJob.type} ${planId}` : currentJob.type}
+            </h1>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             {currentJob.planTitle && <span className="truncate">{currentJob.planTitle}</span>}
             {timer !== "-" && <span data-testid="job-timer">{timer}</span>}
             {timestamp !== "-" && <span>{timestamp}</span>}
-            {currentJob.cost !== undefined && <span>{formatCost(currentJob.cost)}</span>}
-            {currentJob.tokens !== undefined && <span>{formatTokens(currentJob.tokens)}</span>}
+            {hasUsage && (
+              <span
+                data-testid="job-tokens"
+                title={tokens !== undefined ? formatTokenCount(tokens) : undefined}
+              >
+                Tokens {tokens !== undefined ? formatTokens(tokens) : NO_VALUE}
+              </span>
+            )}
+            {hasUsage && (
+              <span
+                data-testid="job-cost"
+                title={cost === null ? "No cost was reported for this job" : undefined}
+              >
+                Cost {cost ?? NO_VALUE}
+              </span>
+            )}
           </div>
         </div>
 
-        {/* V1's row actions, in their order (`JobsApp.DataTable.cs` `RowActions`): Stop first.
-            Rerun, Force Start, Debug and Delete have no bridge call to reach yet. */}
+        {/* V1's row actions, in their order (`JobsApp.DataTable.cs` `RowActions`): Stop, Rerun,
+            Force Start, Debug, Delete. Rerun and Debug are still absent - Rerun needs V1's
+            `RerunJobDialog` and the job's original `TypedArgs`, which the DTO layer does not carry,
+            and Debug needs `JobDebugSheet`. Both are reported rather than stubbed. */}
         <div className="flex flex-wrap items-center gap-2">
           {canStop && (
             <button
@@ -302,7 +481,36 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             </button>
           )}
 
-          {onCloseTab && (
+          {canForceStart && (
+            <button
+              type="button"
+              data-testid="job-force-start"
+              disabled={isForceStarting}
+              onClick={handleForceStart}
+              title="Force start this blocked job"
+              className="rounded-selector border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              {isForceStarting ? "Starting..." : "Force Start"}
+            </button>
+          )}
+
+          {canDelete && (
+            <button
+              type="button"
+              data-testid="job-delete"
+              onClick={() => {
+                setDeleteError(null);
+                setIsConfirmDeleteOpen(true);
+              }}
+              title="Delete this job"
+              className="rounded-selector border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10"
+            >
+              Delete
+            </button>
+          )}
+
+          {/* A sheet has its own close control; a second one beside Delete is noise. */}
+          {onCloseTab && !isSheet && (
             <button
               type="button"
               onClick={onCloseTab}
@@ -332,17 +540,27 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
 
       {/* Output. `OutputSheet.cs` decides between three things: a viewer following a live stream, a
           viewer showing a finished one, and a job that produced nothing at all. */}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {jsonStream ? (
+      {/* A sheet scrolls, so the viewer gets a floor rather than the remaining height of a page:
+          `flex-1` inside a scrolling container resolves to the content's own height, which for an
+          empty log is zero and hides the viewer entirely. */}
+      <div className={isSheet ? "min-h-96" : "min-h-0 flex-1 overflow-hidden"}>
+        {eventLines.length > 0 ? (
           <AgentViewer
-            id={`agent-viewer-${currentJob.id}`}
-            jsonStream={jsonStream}
+            id={viewerId}
+            jsonLines={eventLines}
             height="full"
+            // Only while the sheet framing leaves the viewer to size itself; see
+            // {@link SHEET_OUTPUT_MAX_HEIGHT}.
+            maxBodyHeight={isSheet ? SHEET_OUTPUT_MAX_HEIGHT : undefined}
             // `.AutoScroll(false).ShowStatusLabel(false)` once the job is no longer running: nothing
             // more is coming, so following the bottom would only fight the reader, and an animated
             // "Working..." under a finished log is a lie.
             autoScroll={isRunning}
             showStatusLabel={isRunning}
+            // Stops the metrics footer's elapsed timer for a job that stopped without saying so. A
+            // killed or timed-out run reports no terminal result, so the stream alone cannot tell that
+            // it is over, and the timer would tick on against a start that may be days old.
+            live={isRunning}
             eventHandler={noop}
           />
         ) : isRunning ? (
@@ -350,18 +568,38 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           // "Starting..." (`ProjectAgentStepView.cs` makes the same choice, and says why - a separate
           // loading indicator only shifts the layout when the first line arrives).
           <AgentViewer
-            id={`agent-viewer-${currentJob.id}`}
+            id={viewerId}
             height="full"
+            maxBodyHeight={isSheet ? SHEET_OUTPUT_MAX_HEIGHT : undefined}
             autoScroll
             showStatusLabel
             eventHandler={noop}
           />
-        ) : (
+        ) : explainsItself && message ? null : ( // a contradiction. // available." directly under "Waiting for a job slot to become available", which reads as // text is only reached when there is nothing to say. Rendering both put "No output // `OutputSheet.cs:26-49` **returns** its callout for a job with no output; the fallback
           <p className="text-sm text-muted-foreground" data-testid="job-no-output">
             No output available.
           </p>
         )}
       </div>
+
+      {/* `JobsApp.DataTable.cs:296-317`, copy included: header "Delete Job", body "Are you sure you
+          want to delete this job? This cannot be undone.", a destructive "Delete". `ConfirmDialog`
+          deliberately focuses Cancel rather than V1's `.AutoFocus()` on the confirm; that departure
+          is documented there. */}
+      {canDelete && (
+        <ConfirmDialog
+          isOpen={isConfirmDeleteOpen}
+          onClose={() => setIsConfirmDeleteOpen(false)}
+          title="Delete Job"
+          body={<p>Are you sure you want to delete this job? This cannot be undone.</p>}
+          confirmLabel="Delete"
+          confirmVariant="destructive"
+          onConfirm={handleDelete}
+          isBusy={isDeleting}
+          error={deleteError}
+          testId="job-delete-dialog"
+        />
+      )}
     </div>
   );
 };

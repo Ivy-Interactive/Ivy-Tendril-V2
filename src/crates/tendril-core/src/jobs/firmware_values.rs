@@ -209,25 +209,47 @@ fn add_plan_scoped_values(
     }
 }
 
+/// The name that means "not known yet", not a project. `find_project` never matches it and
+/// `resolve_working_directory` tests for it by name; `CreatePlan`'s promptware is told to infer the
+/// project when it sees it. So it must never win over a project that *is* known.
+pub const AUTO_PROJECT: &str = "Auto";
+
+/// Whether a project name carries no information — absent, blank, or the `Auto` sentinel.
+pub fn is_auto_project(project: &str) -> bool {
+    project.trim().is_empty() || project.trim().eq_ignore_ascii_case(AUTO_PROJECT)
+}
+
 /// The project a job belongs to. Plan-scoped jobs take it from `plan.yaml`; `CreatePlan` from its
 /// args; the project-setup jobs from the project name they were given. Everything else is `Auto`.
+///
+/// A `CreatePlan` submitted without a project carries the `Auto` sentinel in its args rather than an
+/// empty string — the app sends it that way whenever the operator does not pick one — so the args arm
+/// has to reject it as well, or a job whose plan is already known keeps reporting `Auto` forever. Once
+/// rejected it falls through to the plan, which for a `CreatePlan` is on the job rather than in the
+/// args: `verify_create_plan` writes the folder it produced onto `job.plan_file`.
 pub fn resolve_project(job: &JobItem, _settings: &TendrilSettings) -> String {
     let Some(args) = job_args(job) else {
-        return "Auto".to_string();
+        return AUTO_PROJECT.to_string();
+    };
+
+    let from_plan = || {
+        args.plan_folder()
+            .map(str::to_string)
+            .into_iter()
+            .chain(std::iter::once(job.plan_file.clone()))
+            .find(|p| !p.trim().is_empty())
+            .and_then(|p| read_plan_yaml(Path::new(&p)).ok())
+            .map(|(plan, _)| plan.project)
+            .filter(|p| !is_auto_project(p))
     };
 
     match &args {
-        JobArgs::CreatePlan(a) if !a.project.is_empty() => a.project.clone(),
+        JobArgs::CreatePlan(a) if !is_auto_project(&a.project) => a.project.clone(),
+        JobArgs::CreatePlan(_) => from_plan().unwrap_or_else(|| AUTO_PROJECT.to_string()),
         JobArgs::SetupProject(a) if !a.folder_path.is_empty() => a.folder_path.clone(),
         JobArgs::AddProject(a) if !a.project_name.is_empty() => a.project_name.clone(),
-        JobArgs::SyncRepo(_) => "Auto".to_string(),
-        _ => args
-            .plan_folder()
-            .filter(|p| !p.is_empty())
-            .and_then(|p| read_plan_yaml(Path::new(p)).ok())
-            .map(|(plan, _)| plan.project)
-            .filter(|p| !p.is_empty())
-            .unwrap_or_else(|| "Auto".to_string()),
+        JobArgs::SyncRepo(_) => AUTO_PROJECT.to_string(),
+        _ => from_plan().unwrap_or_else(|| AUTO_PROJECT.to_string()),
     }
 }
 

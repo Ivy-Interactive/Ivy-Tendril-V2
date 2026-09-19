@@ -68,7 +68,7 @@ jobs:
           echo "Resolved version: $VERSION"
           if [ -n "${{ inputs.version }}" ]; then
             cd src/packages/components
-            npm version --no-git-tag-version "$VERSION"
+            npm version --no-git-tag-version --allow-same-version "$VERSION"
           fi
 
       - name: Build components package
@@ -76,8 +76,12 @@ jobs:
 
       - name: Pack tarball
         run: |
+          # An absolute destination, because `pnpm --filter` runs `pack` with the *package* as its
+          # cwd: a relative `dist-pack` put the tarball in src/packages/components/dist-pack while
+          # the upload below looked for it at the repo root, and found nothing.
           mkdir -p dist-pack
-          pnpm --filter @ivy-interactive/components pack --pack-destination dist-pack
+          pnpm --filter @ivy-interactive/components pack --pack-destination "$GITHUB_WORKSPACE/dist-pack"
+          ls -la dist-pack
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4

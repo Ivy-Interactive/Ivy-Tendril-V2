@@ -8,9 +8,10 @@ use serde_json::json;
 use std::sync::Arc;
 use tendril_core::error::TendrilError;
 use tendril_core::jobs::{
-    find_log_file, read_eventwire_log, read_job_log, read_raw_log, StartOptions,
+    find_log_file, read_eventwire_log, read_job_log, read_lines_from, read_raw_log, StartOptions,
+    CLEARABLE_STATUSES,
 };
-use tendril_core::models::{JobArgs, JobStatus};
+use tendril_core::models::{JobArgs, JobItem, JobStatus};
 
 #[derive(Debug, Deserialize)]
 pub struct JobListQuery {
@@ -35,6 +36,200 @@ pub async fn list_jobs(
     }
 }
 
+/// `POST /api/jobs/query` — one window of the Jobs table under a caller's sort, filter and offset.
+///
+/// The body is `TableQuery` (`sort`, a recursive `filter`, `offset`, `limit`, `selectColumns`,
+/// `aggregations`, `versionToken`) and `{}` means "the first page in the server's order", which is the
+/// order `GET /api/jobs` lists in.
+///
+/// Why it exists next to `GET /api/jobs`: that route can only answer "the newest N", so a table built
+/// on it has to hold every row it might display and do its own sorting and paging — which stops
+/// working somewhere in the tens of thousands of jobs and gets slower every day the daemon runs. Here
+/// SQLite does the sort, the filter and the window, and the response carries `totalRows`, so the
+/// client holds one page and the footer still knows the true count.
+///
+/// The rows are the **client-facing job shape** — see [`job_row`] — rather than a raw `JobItem`,
+/// because this route exists for one caller: a table widget that has to display a window and nothing
+/// else. `GET /api/jobs` and `GET /api/jobs/:id` still serve `JobItem`, and
+/// `POST /api/tables/jobs/query` serves the raw columns, so nothing that wants the whole record lost a
+/// way to ask for it.
+///
+/// See `routes::tables` for the generic form of this API, the `Accept`-based encoding negotiation and
+/// the Arrow story.
+pub async fn query_jobs_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(query): Json<tendril_core::db::query::TableQuery>,
+) -> impl IntoResponse {
+    use crate::routes::tables::{
+        arrow_not_available_response, negotiate_encoding, ResponseEncoding,
+    };
+
+    if negotiate_encoding(&headers) == ResponseEncoding::ArrowIpc {
+        return arrow_not_available_response();
+    }
+
+    let db_path = state.db_path.clone();
+    let select_columns = query.select_columns.clone();
+
+    // `spawn_blocking`: a filtered `COUNT(*)` over a long job history is the one read here whose cost
+    // grows with the table, and it must not sit on an async worker thread.
+    let result = tokio::task::spawn_blocking(move || {
+        let conn = tendril_core::db::open_database(&db_path)?;
+        tendril_core::db::jobs::query_jobs(&conn, &query)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(page)) => {
+            // `selectColumns` is applied to the serialized rows rather than to the `SELECT`, because
+            // the rows are job DTOs whose fields are not one-to-one with columns (`planId` comes from
+            // `ReportedPlanId`, and `detached` has no column at all). It is still a real saving on the
+            // wire — a jobs table showing six columns need not carry twenty-one — and the names were
+            // already validated against the schema, so a typo was a 400.
+            let rows: Vec<serde_json::Value> = page
+                .rows
+                .iter()
+                .map(|job| job_row(job, &select_columns))
+                .collect();
+            Json(json!({
+                "encoding": "application/json",
+                "rows": rows,
+                "offset": page.offset,
+                "rowCount": page.row_count,
+                "totalRows": page.total_rows,
+                "limit": page.limit,
+                "versionToken": page.version_token,
+                "stale": page.stale,
+                "aggregations": page.aggregations,
+            }))
+            .into_response()
+        }
+        Ok(Err(TendrilError::Validation(message))) => {
+            (StatusCode::BAD_REQUEST, Json(json!({ "error": message }))).into_response()
+        }
+        Ok(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to query jobs: {e}") })),
+        )
+            .into_response(),
+        Err(join) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to query jobs: {join}") })),
+        )
+            .into_response(),
+    }
+}
+
+/// The client-facing job shape: one response field per row, the `JobItem` field it is read from, and
+/// the `Jobs` column behind it.
+///
+/// This is the app's `Job` (`apps/tendril-app/src/types/api.ts`), which is `JobDto`
+/// (`src-tauri/src/models.rs`) — the shape every job that reaches a view already has, because the
+/// desktop bridge maps `GET /api/jobs` into it on the way through. A table paging this route has to
+/// receive rows in *that* shape or its columns come back empty, and the only two fields where the two
+/// disagree are the ones a Jobs table leans on hardest: `planId` and `planTitle`, which a `JobItem`
+/// calls `reportedPlanId` and `reportedPlanTitle`.
+///
+/// Doing the mapping here rather than in the caller is what keeps the transport a pass-through: the
+/// desktop shell reaches this route through one generic `cmd_query_table(path, body)` command that
+/// hands the reply back untouched, so it stays reusable for `/api/tables/{table}/query` and stays the
+/// single place an Arrow encoding would land. A per-route row mapper wedged into that command would
+/// undo both.
+///
+/// `JobItem` fields with no counterpart in `Job` — `planFile`, `args`, `typedArgs`, `provider`,
+/// `effort`, `priority`, `waitForJobIds`, `permissionDenials`, `cliCommand` and the rest — are not on
+/// these rows. `POST /api/tables/jobs/query` returns every column raw, and `GET /api/jobs/:id` returns
+/// the whole `JobItem`, so neither is unreachable; they are simply not what a list window is for.
+const JOB_ROW_FIELDS: &[(&str, &str, &str)] = &[
+    ("id", "id", "Id"),
+    ("type", "type", "Type"),
+    // The two renames. V1's Plan Id cell and its Prompt cell are the whole reason this route is worth
+    // paging: leaving them under the daemon's names is how a moved table renders two blank columns.
+    ("planId", "reportedPlanId", "ReportedPlanId"),
+    ("planTitle", "reportedPlanTitle", "ReportedPlanTitle"),
+    ("project", "project", "Project"),
+    ("status", "status", "Status"),
+    ("statusMessage", "statusMessage", "StatusMessage"),
+    ("startedAt", "startedAt", "StartedAt"),
+    // The Agent Output cell is a staleness gauge, not a status line: V1's `FormatAgentOutput`
+    // (`JobsApp.Helpers.cs:63`) renders the time since the agent last wrote a line, and falls back to
+    // "Starting…" only while there is no such time. Absent from this projection, every running row took
+    // that fallback forever. Written by `note_agent_output` at most once per five seconds, so it is a
+    // cheap column to carry and a stale one by at most that much.
+    ("lastOutputAt", "lastOutputAt", "LastOutputAt"),
+    ("completedAt", "completedAt", "CompletedAt"),
+    ("durationSeconds", "durationSeconds", "DurationSeconds"),
+    ("cost", "cost", "Cost"),
+    ("costSource", "costSource", "CostSource"),
+    ("tokens", "tokens", "Tokens"),
+    ("inputTokens", "inputTokens", "InputTokens"),
+    ("outputTokens", "outputTokens", "OutputTokens"),
+    ("cacheReadTokens", "cacheReadTokens", "CacheReadTokens"),
+    ("cacheWriteTokens", "cacheWriteTokens", "CacheWriteTokens"),
+    ("reasoningTokens", "reasoningTokens", "ReasoningTokens"),
+    ("model", "model", "Model"),
+    ("processId", "processId", "ProcessId"),
+    // The conversation that started the job, so the chat header can list a job it started without
+    // depending on having caught the `chat.job_spawned` event that announced it.
+    ("chatSessionId", "chatSessionId", "ChatSessionId"),
+    // Runtime state with no column: `JobManager::supervise_detached` rehydrates it in memory, so a row
+    // read from SQLite cannot know. Sent only when true, never as `false` — the app reads
+    // `job.detached ?? details[id]?.detached`, so a `false` from here would suppress the one source
+    // that does know.
+    ("detached", "detached", ""),
+];
+
+/// A job as a row of [`JOB_ROW_FIELDS`], keeping only the requested fields. An empty request keeps all
+/// of them.
+///
+/// Matching is loose: `completedAt`, `CompletedAt` and `completed_at` all name the same field, and both
+/// the response field name and the column behind it are accepted, so a caller can send what it read
+/// from `GET /api/tables/jobs/schema` or what it sees in a row. `id` is always kept — it is the row
+/// identity every table needs, and a projection that dropped it would produce rows a client cannot key.
+///
+/// The names to send are *column* names, because that is what the query processor validates against, so
+/// a typo is a 400 rather than a silently missing field. `planId` and `planTitle` are the two names
+/// that are not columns: ask for `reportedPlanId` and `reportedPlanTitle`, which is what a schema
+/// reader would send anyway. `detached` has no column either, and no way to be selected — omit
+/// `selectColumns` to get it.
+fn job_row(job: &JobItem, select: &[String]) -> serde_json::Value {
+    let serialized = json!(job);
+    let source = serialized.as_object();
+    let wanted: Vec<String> = select.iter().map(|name| normalize_field(name)).collect();
+
+    let mut row = serde_json::Map::with_capacity(JOB_ROW_FIELDS.len());
+    for (field, item_field, column) in JOB_ROW_FIELDS {
+        let keep = wanted.is_empty()
+            || *field == "id"
+            || wanted.contains(&normalize_field(field))
+            || (!column.is_empty() && wanted.contains(&normalize_field(column)));
+        if !keep {
+            continue;
+        }
+
+        // An absent or null source field stays absent, matching `JobDto`'s own
+        // `skip_serializing_if = "Option::is_none"`: a job that reported no cost must not present
+        // itself as one that cost nothing.
+        let Some(value) = source.and_then(|object| object.get(*item_field)) else {
+            continue;
+        };
+        if value.is_null() || (*field == "detached" && value == &serde_json::Value::Bool(false)) {
+            continue;
+        }
+        row.insert((*field).to_string(), value.clone());
+    }
+    serde_json::Value::Object(row)
+}
+
+/// Case-, underscore- and dash-insensitive form of a field or column name.
+fn normalize_field(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
 /// A job start. The args are flattened, so the current bare-`JobArgs` body keeps working and the new
 /// options ride alongside it.
 #[derive(Debug, Deserialize)]
@@ -50,6 +245,11 @@ pub struct StartJobRequest {
     /// timed-out response safe. `#[serde(default)]` keeps every existing body valid.
     #[serde(rename = "idempotencyKey", default)]
     pub idempotency_key: Option<String>,
+    /// The conversation this job was started from, so the chat can list it and be notified when it
+    /// finishes. Optional: a job started from a terminal has none, and one that names a plan can still
+    /// inherit the plan's own chat session.
+    #[serde(rename = "chatSessionId", default)]
+    pub chat_session_id: Option<String>,
 }
 
 /// `?force=true` is the operator's override of the duplicate gates, for the job types that carry no
@@ -99,6 +299,10 @@ pub async fn start_job(
         priority: req.priority,
         force: query.force || req.args.force_flag(),
         idempotency_key,
+        chat_session_id: req
+            .chat_session_id
+            .map(|id| id.trim().to_string())
+            .filter(|id| !id.is_empty()),
     };
 
     match state.job_manager.start_job_with(req.args, opts).await {
@@ -292,11 +496,37 @@ pub async fn stop_all_jobs(State(state): State<Arc<AppState>>) -> impl IntoRespo
 
 #[derive(Debug, Deserialize)]
 pub struct ClearJobsRequest {
-    /// `completed` (the default), `failed` or `all`.
+    /// `all`, or the name of one terminal status. Absent means `completed`.
     pub status: Option<String>,
 }
 
-/// Bulk-deletes jobs by status.
+/// The statuses `status` may name, as [`CLEARABLE_STATUSES`] spells them, for an error message that
+/// tells the caller what to send instead of making them guess.
+fn clearable_scope_list() -> String {
+    let mut names: Vec<&str> = vec!["all"];
+    names.extend(CLEARABLE_STATUSES.iter().map(JobStatus::as_str));
+    names.join(", ")
+}
+
+/// Resolves a clear scope to the statuses it removes, or `None` for one this route will not perform.
+///
+/// Every terminal status is nameable, not just the two V1's menu happened to expose: V1's service is
+/// already a generic predicate clear (`ClearJobsByStatus`) and only wires up two of its uses, so a
+/// per-status scope is an extension of its own primitive rather than a new mechanism.
+///
+/// `Running`, `Queued`, `Pending` and `Blocked` are matched by [`JobStatus::from_str_loose`] and then
+/// refused here, so asking to clear them is a 400 that says why rather than a silent no-op. The
+/// manager filters them again — see [`CLEARABLE_STATUSES`] — because that guarantee belongs to the
+/// primitive, not to this route.
+fn resolve_clear_scope(scope: &str) -> Option<Vec<JobStatus>> {
+    if scope.eq_ignore_ascii_case("all") {
+        return Some(CLEARABLE_STATUSES.to_vec());
+    }
+    let status = JobStatus::from_str_loose(scope)?;
+    CLEARABLE_STATUSES.contains(&status).then(|| vec![status])
+}
+
+/// Bulk-deletes jobs by status. Only ever finished ones; see [`resolve_clear_scope`].
 pub async fn clear_jobs(
     State(state): State<Arc<AppState>>,
     Json(req): Json<Option<ClearJobsRequest>>,
@@ -305,21 +535,20 @@ pub async fn clear_jobs(
         .and_then(|r| r.status)
         .unwrap_or_else(|| "completed".to_string());
 
-    let result = match scope.to_ascii_lowercase().as_str() {
-        "completed" => state.job_manager.clear_completed_jobs().await,
-        "failed" => state.job_manager.clear_failed_jobs().await,
-        "all" => state.job_manager.clear_all_jobs().await,
-        other => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": format!("Unknown clear scope '{}'; expected completed, failed or all", other)
-                })),
-            );
-        }
+    let Some(statuses) = resolve_clear_scope(&scope) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!(
+                    "Cannot clear '{}'; a clear only removes finished jobs. Expected one of: {}",
+                    scope,
+                    clearable_scope_list()
+                )
+            })),
+        );
     };
 
-    match result {
+    match state.job_manager.clear_jobs(&statuses).await {
         Ok(cleared) => (StatusCode::OK, Json(json!({ "cleared": cleared }))),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -461,6 +690,213 @@ pub async fn get_job_logs(
     }
 }
 
+/// How often a follower looks for newly appended lines.
+const LOG_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Follows one of a job's log files, reading only what has been appended since the last call.
+///
+/// The point of this type is that a tick costs the appended bytes and nothing else. The streams used
+/// to call `read_raw_log`/`read_eventwire_log` on every tick, each of which returns the *whole* file:
+/// four full reads a second, per viewer, for as long as the job ran, which on a large log is
+/// sustained multi-MB/s of disk I/O for output nobody is waiting for.
+///
+/// The source file is resolved once and then kept. The old code re-picked it every tick, preferring
+/// the eventwire log whenever it existed, while carrying a single line counter across both — so an
+/// eventwire log that appeared after the raw one had started streaming silently reinterpreted that
+/// counter against a different file. `JobManager` writes the same line to both in one callback, so
+/// there is nothing to gain from switching and a mangled stream to lose.
+struct LogFollower {
+    tendril_home: std::path::PathBuf,
+    job_id: String,
+    /// Candidate suffixes in preference order; the first that exists wins.
+    suffixes: &'static [&'static str],
+    path: Option<std::path::PathBuf>,
+    offset: u64,
+}
+
+impl LogFollower {
+    fn new(
+        tendril_home: std::path::PathBuf,
+        job_id: String,
+        suffixes: &'static [&'static str],
+    ) -> Self {
+        Self {
+            tendril_home,
+            job_id,
+            suffixes,
+            path: None,
+            offset: 0,
+        }
+    }
+
+    /// The log file, resolved on first sight. A job can be accepted before its agent has written
+    /// anything, so "not there yet" is normal and simply means the next tick tries again.
+    fn resolve(&mut self) -> Option<std::path::PathBuf> {
+        if self.path.is_none() {
+            self.path = self
+                .suffixes
+                .iter()
+                .find_map(|suffix| find_log_file(&self.tendril_home, &self.job_id, suffix));
+        }
+        self.path.clone()
+    }
+
+    /// Lines appended since the last call. A half-written trailing line is held back until it has its
+    /// newline, so a consumer is never handed a truncated JSON event.
+    fn next_lines(&mut self) -> Vec<String> {
+        let Some(path) = self.resolve() else {
+            return Vec::new();
+        };
+        match read_lines_from(&path, self.offset) {
+            Ok(chunk) => {
+                self.offset = chunk.next_offset;
+                chunk.lines
+            }
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// The final read of a job that is over: everything left, including a trailing line that never
+    /// received its newline because the process died mid-write.
+    fn drain(&mut self) -> Vec<String> {
+        let Some(path) = self.resolve() else {
+            return Vec::new();
+        };
+        match read_lines_from(&path, self.offset) {
+            Ok(chunk) => {
+                self.offset = chunk.next_offset;
+                let mut lines = chunk.lines;
+                if let Some(partial) = chunk.partial {
+                    lines.push(partial);
+                }
+                lines
+            }
+            Err(_) => Vec::new(),
+        }
+    }
+}
+
+type SseSender =
+    tokio::sync::mpsc::Sender<Result<axum::response::sse::Event, std::convert::Infallible>>;
+
+/// What distinguishes one job stream from another: the frame name, what to skip, what to filter, and
+/// what the `end` frame carries.
+struct StreamShape {
+    /// SSE `event:` name for a payload frame.
+    event_name: &'static str,
+    /// Lines before this index are the ones the client says it already has. Frames carry their line
+    /// index as the SSE `id:`, so a reconnecting client can name where to resume and stop re-ingesting
+    /// the prefix it already rendered.
+    since_line: usize,
+    /// Empty means "everything".
+    allowed_kinds: std::collections::HashSet<String>,
+    /// The `end` frame's payload, given the terminal status.
+    end_data: fn(&str) -> String,
+}
+
+/// Streams a job's log until the job finishes or the client goes away.
+///
+/// Two things the previous inline version got wrong are load-bearing here. The hang-up check only ran
+/// *inside* the "there is a line to send" loop, so a quiet long-running job never freed the task: an
+/// abandoned stream kept polling until the job ended, however long that took. And the sleep was
+/// unconditional, so even once the client was gone the task waited out its full tick. Both are fixed
+/// by checking `tx` before doing any work and by racing the sleep against the channel closing.
+async fn pump_log_stream<P, F>(
+    tx: SseSender,
+    mut follower: LogFollower,
+    shape: StreamShape,
+    mut terminal_status: P,
+    poll: std::time::Duration,
+) where
+    P: FnMut() -> F,
+    F: std::future::Future<Output = Option<String>>,
+{
+    let mut emitted_lines = 0usize;
+
+    loop {
+        // Before any disk I/O: a reader dropped between ticks must cost one comparison, not a read.
+        if tx.is_closed() {
+            return;
+        }
+
+        if !send_lines(&tx, follower.next_lines(), &mut emitted_lines, &shape).await {
+            return;
+        }
+
+        if let Some(status) = terminal_status().await {
+            if !send_lines(&tx, follower.drain(), &mut emitted_lines, &shape).await {
+                return;
+            }
+            let end_event = axum::response::sse::Event::default()
+                .event("end")
+                .data((shape.end_data)(&status));
+            let _ = tx.send(Ok(end_event)).await;
+            return;
+        }
+
+        tokio::select! {
+            // Noticed the moment it happens rather than up to a tick later.
+            _ = tx.closed() => return,
+            _ = tokio::time::sleep(poll) => {}
+        }
+    }
+}
+
+/// Sends `lines` as frames, advancing the line counter for every line whether or not it was sent.
+/// Returns `false` once the receiver is gone.
+async fn send_lines(
+    tx: &SseSender,
+    lines: Vec<String>,
+    emitted_lines: &mut usize,
+    shape: &StreamShape,
+) -> bool {
+    for line in lines {
+        let index = *emitted_lines;
+        *emitted_lines += 1;
+
+        if index < shape.since_line || !matches_kinds(&line, &shape.allowed_kinds) {
+            continue;
+        }
+
+        let event = axum::response::sse::Event::default()
+            .id(index.to_string())
+            .event(shape.event_name)
+            .data(line);
+        if tx.send(Ok(event)).await.is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+/// A probe that reports the job's terminal status, or `None` while it is still going.
+///
+/// A job the manager cannot find at all counts as finished: it was deleted, or the stream was opened
+/// against nothing but log files left behind by an older run, and in neither case is anything more
+/// coming.
+fn terminal_status_probe(
+    job_manager: std::sync::Arc<tendril_core::jobs::JobManager>,
+    job_id: String,
+) -> impl FnMut() -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<String>> + Send>> {
+    move || {
+        let job_manager = job_manager.clone();
+        let job_id = job_id.clone();
+        Box::pin(async move {
+            match job_manager.get_job(&job_id).await {
+                Ok(Some(j)) => matches!(
+                    j.status,
+                    JobStatus::Completed
+                        | JobStatus::Failed
+                        | JobStatus::Stopped
+                        | JobStatus::Timeout
+                )
+                .then(|| j.status.to_string()),
+                _ => Some("Completed".to_string()),
+            }
+        })
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StreamLogsQuery {
     pub format: Option<String>,
@@ -491,99 +927,32 @@ pub async fn stream_job_logs(
     }
 
     let format_str = query.format.unwrap_or_else(|| "raw".to_string());
-    let suffix = match format_str.to_ascii_lowercase().as_str() {
-        "markdown" => ".md",
-        "eventwire" => ".eventwire.jsonl",
-        _ => ".raw.jsonl",
+    let suffixes: &'static [&'static str] = match format_str.to_ascii_lowercase().as_str() {
+        "markdown" => &[".md"],
+        "eventwire" => &[".eventwire.jsonl"],
+        _ => &[".raw.jsonl"],
     };
 
-    let tendril_home = state.tendril_home.clone();
-    let job_manager = state.job_manager.clone();
-    let since_line = query.since_line.unwrap_or(0);
+    let follower = LogFollower::new(state.tendril_home.clone(), job_id.clone(), suffixes);
+    let probe = terminal_status_probe(state.job_manager.clone(), job_id);
+    let shape = StreamShape {
+        event_name: "log",
+        since_line: query.since_line.unwrap_or(0),
+        allowed_kinds: std::collections::HashSet::new(),
+        end_data: |_status| "Job finished".to_string(),
+    };
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<
         Result<axum::response::sse::Event, std::convert::Infallible>,
     >(64);
 
-    tokio::spawn(async move {
-        let mut emitted_lines = 0usize;
-
-        loop {
-            let lines = match suffix {
-                ".raw.jsonl" => read_raw_log(&tendril_home, &job_id, None)
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default(),
-                ".eventwire.jsonl" => read_eventwire_log(&tendril_home, &job_id, None)
-                    .ok()
-                    .flatten()
-                    .unwrap_or_default(),
-                _ => match read_job_log(&tendril_home, &job_id) {
-                    Ok(Some(c)) => c.lines().map(|s| s.to_string()).collect(),
-                    _ => Vec::new(),
-                },
-            };
-
-            while emitted_lines < lines.len() {
-                if emitted_lines >= since_line {
-                    let event = axum::response::sse::Event::default()
-                        .event("log")
-                        .data(&lines[emitted_lines]);
-                    if tx.send(Ok(event)).await.is_err() {
-                        return;
-                    }
-                }
-                emitted_lines += 1;
-            }
-
-            let is_terminal = match job_manager.get_job(&job_id).await {
-                Ok(Some(j)) => matches!(
-                    j.status,
-                    JobStatus::Completed
-                        | JobStatus::Failed
-                        | JobStatus::Stopped
-                        | JobStatus::Timeout
-                ),
-                _ => true,
-            };
-
-            if is_terminal {
-                let final_lines = match suffix {
-                    ".raw.jsonl" => read_raw_log(&tendril_home, &job_id, None)
-                        .ok()
-                        .flatten()
-                        .unwrap_or_default(),
-                    ".eventwire.jsonl" => read_eventwire_log(&tendril_home, &job_id, None)
-                        .ok()
-                        .flatten()
-                        .unwrap_or_default(),
-                    _ => match read_job_log(&tendril_home, &job_id) {
-                        Ok(Some(c)) => c.lines().map(|s| s.to_string()).collect(),
-                        _ => Vec::new(),
-                    },
-                };
-                while emitted_lines < final_lines.len() {
-                    if emitted_lines >= since_line {
-                        let event = axum::response::sse::Event::default()
-                            .event("log")
-                            .data(&final_lines[emitted_lines]);
-                        if tx.send(Ok(event)).await.is_err() {
-                            return;
-                        }
-                    }
-                    emitted_lines += 1;
-                }
-
-                let end_event = axum::response::sse::Event::default()
-                    .event("end")
-                    .data("Job finished");
-                let _ = tx.send(Ok(end_event)).await;
-                break;
-            }
-
-            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-        }
-    });
+    tokio::spawn(pump_log_stream(
+        tx,
+        follower,
+        shape,
+        probe,
+        LOG_POLL_INTERVAL,
+    ));
 
     let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
     axum::response::sse::Sse::new(stream).into_response()
@@ -666,86 +1035,33 @@ pub async fn stream_job_events(
             .map(|(_, v)| v.as_str()),
     );
     let allowed_kinds = parse_allowed_kinds(kind_values);
-    let tendril_home = state.tendril_home.clone();
-    let job_manager = state.job_manager.clone();
-    let since_line = query.since_line.unwrap_or(0);
+
+    // Eventwire first, raw as the fallback for a job whose agent produced no structured events. Both
+    // carry the same lines, so the choice is made once and kept; see [`LogFollower`].
+    let follower = LogFollower::new(
+        state.tendril_home.clone(),
+        job_id.clone(),
+        &[".eventwire.jsonl", ".raw.jsonl"],
+    );
+    let probe = terminal_status_probe(state.job_manager.clone(), job_id);
+    let shape = StreamShape {
+        event_name: "event",
+        since_line: query.since_line.unwrap_or(0),
+        allowed_kinds,
+        end_data: |status| serde_json::json!({ "status": status }).to_string(),
+    };
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<
         Result<axum::response::sse::Event, std::convert::Infallible>,
     >(64);
 
-    tokio::spawn(async move {
-        let mut emitted_lines = 0usize;
-
-        loop {
-            let lines = read_eventwire_log(&tendril_home, &job_id, None)
-                .ok()
-                .flatten()
-                .or_else(|| read_raw_log(&tendril_home, &job_id, None).ok().flatten())
-                .unwrap_or_default();
-
-            while emitted_lines < lines.len() {
-                if emitted_lines >= since_line
-                    && matches_kinds(&lines[emitted_lines], &allowed_kinds)
-                {
-                    let event = axum::response::sse::Event::default()
-                        .event("event")
-                        .data(&lines[emitted_lines]);
-                    if tx.send(Ok(event)).await.is_err() {
-                        return;
-                    }
-                }
-                emitted_lines += 1;
-            }
-
-            let terminal_status = match job_manager.get_job(&job_id).await {
-                Ok(Some(j)) => {
-                    if matches!(
-                        j.status,
-                        JobStatus::Completed
-                            | JobStatus::Failed
-                            | JobStatus::Stopped
-                            | JobStatus::Timeout
-                    ) {
-                        Some(j.status.to_string())
-                    } else {
-                        None
-                    }
-                }
-                _ => Some("Completed".to_string()),
-            };
-
-            if let Some(status_str) = terminal_status {
-                let final_lines = read_eventwire_log(&tendril_home, &job_id, None)
-                    .ok()
-                    .flatten()
-                    .or_else(|| read_raw_log(&tendril_home, &job_id, None).ok().flatten())
-                    .unwrap_or_default();
-                while emitted_lines < final_lines.len() {
-                    if emitted_lines >= since_line
-                        && matches_kinds(&final_lines[emitted_lines], &allowed_kinds)
-                    {
-                        let event = axum::response::sse::Event::default()
-                            .event("event")
-                            .data(&final_lines[emitted_lines]);
-                        if tx.send(Ok(event)).await.is_err() {
-                            return;
-                        }
-                    }
-                    emitted_lines += 1;
-                }
-
-                let end_data = serde_json::json!({ "status": status_str }).to_string();
-                let end_event = axum::response::sse::Event::default()
-                    .event("end")
-                    .data(end_data);
-                let _ = tx.send(Ok(end_event)).await;
-                break;
-            }
-
-            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-        }
-    });
+    tokio::spawn(pump_log_stream(
+        tx,
+        follower,
+        shape,
+        probe,
+        LOG_POLL_INTERVAL,
+    ));
 
     let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
     axum::response::sse::Sse::new(stream)
@@ -753,4 +1069,313 @@ pub async fn stream_job_events(
             axum::response::sse::KeepAlive::new().interval(std::time::Duration::from_secs(15)),
         )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    /// The clear scopes `POST /api/jobs/clear` accepts, and the ones it will not.
+    ///
+    /// V1's menu exposes two of its service's generic predicate clear; the user wants one per status,
+    /// so every terminal status is nameable here. What must never be nameable is work in flight.
+    #[test]
+    fn a_clear_scope_names_a_terminal_status_or_all_and_nothing_else() {
+        // Every terminal status on its own, under V2's own name for it — which is the name the Status
+        // column shows, so the menu label and the wire value agree.
+        for status in CLEARABLE_STATUSES {
+            assert_eq!(
+                resolve_clear_scope(status.as_str()),
+                Some(vec![*status]),
+                "{status} must be clearable by name"
+            );
+        }
+        // Case-insensitively, because the CLI sends lower case and the app sends the status name.
+        assert_eq!(
+            resolve_clear_scope("completed"),
+            Some(vec![JobStatus::Completed])
+        );
+        assert_eq!(
+            resolve_clear_scope("TIMEOUT"),
+            Some(vec![JobStatus::Timeout])
+        );
+
+        // `all` is the whole clearable set, and `ALL` too.
+        assert_eq!(
+            resolve_clear_scope("all"),
+            Some(CLEARABLE_STATUSES.to_vec())
+        );
+        assert_eq!(
+            resolve_clear_scope("ALL"),
+            Some(CLEARABLE_STATUSES.to_vec())
+        );
+
+        // Work in flight is a 400, not a silent no-op: a caller asking for it has misunderstood, and
+        // the reply should say so. `Pending` and `Blocked` are here for the reason `CLEARABLE_STATUSES`
+        // gives — a blocked job is waiting on a dependency, not history.
+        for refused in ["running", "queued", "pending", "blocked", "", "everything"] {
+            assert_eq!(
+                resolve_clear_scope(refused),
+                None,
+                "{refused:?} must not be clearable"
+            );
+        }
+
+        // And the error names what to send instead.
+        let listed = clearable_scope_list();
+        assert!(listed.starts_with("all, "), "{listed}");
+        for status in CLEARABLE_STATUSES {
+            assert!(listed.contains(status.as_str()), "{listed}");
+        }
+        assert!(!listed.contains("Running"), "{listed}");
+        assert!(!listed.contains("Queued"), "{listed}");
+    }
+
+    fn temp_home(label: &str) -> std::path::PathBuf {
+        let home = std::env::temp_dir().join(format!(
+            "tendril-job-stream-{}-{}",
+            label,
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(home.join("Logs").join("Jobs")).expect("create log dir");
+        home
+    }
+
+    fn append_eventwire(home: &std::path::Path, job_id: &str, line: &str) {
+        let path = home
+            .join("Logs")
+            .join("Jobs")
+            .join(format!("{job_id}.eventwire.jsonl"));
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .expect("open eventwire log");
+        writeln!(f, "{line}").expect("append eventwire line");
+    }
+
+    /// The frames a pump produced, as readable text.
+    ///
+    /// `Event` exposes no accessor for its buffer, so its `Debug` is the only way in; the escaping it
+    /// applies is undone here so an assertion can be written in terms of the wire bytes.
+    fn frame_text(event: &axum::response::sse::Event) -> String {
+        format!("{event:?}")
+            .replace("\\\"", "\"")
+            .replace("\\n", "\n")
+    }
+
+    fn drain(
+        rx: &mut tokio::sync::mpsc::Receiver<
+            Result<axum::response::sse::Event, std::convert::Infallible>,
+        >,
+    ) -> Vec<String> {
+        let mut frames = Vec::new();
+        while let Ok(Ok(event)) = rx.try_recv() {
+            frames.push(frame_text(&event));
+        }
+        frames
+    }
+
+    fn shape() -> StreamShape {
+        StreamShape {
+            event_name: "event",
+            since_line: 0,
+            allowed_kinds: std::collections::HashSet::new(),
+            end_data: |status| serde_json::json!({ "status": status }).to_string(),
+        }
+    }
+
+    fn follower(home: &std::path::Path, job_id: &str) -> LogFollower {
+        LogFollower::new(
+            home.to_path_buf(),
+            job_id.to_string(),
+            &[".eventwire.jsonl", ".raw.jsonl"],
+        )
+    }
+
+    /// The #132 regression. The hang-up check used to sit *inside* the "there is a line to send" loop,
+    /// so a quiet long-running job never freed the task: an abandoned stream kept re-reading the whole
+    /// log four times a second until the job ended, however long that took.
+    ///
+    /// The job here never becomes terminal, so a task that only notices a dropped client when it has
+    /// something to send never returns and this test times out.
+    #[tokio::test]
+    async fn an_abandoned_stream_stops_as_soon_as_the_client_hangs_up() {
+        let home = temp_home("abandoned");
+        append_eventwire(&home, "00001", r#"{"kind":"text","text":"hello"}"#);
+
+        let (tx, rx) = tokio::sync::mpsc::channel(64);
+        let reads = Arc::new(AtomicUsize::new(0));
+        let counted = reads.clone();
+
+        let pump = tokio::spawn(pump_log_stream(
+            tx,
+            follower(&home, "00001"),
+            shape(),
+            move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+                // Still running, forever.
+                async { None }
+            },
+            Duration::from_millis(20),
+        ));
+
+        // Let it deliver the backlog and settle into polling, then walk away.
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        drop(rx);
+
+        tokio::time::timeout(Duration::from_secs(2), pump)
+            .await
+            .expect("the pump must end when the receiver is dropped")
+            .expect("the pump must not panic");
+
+        let settled = reads.load(Ordering::SeqCst);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(
+            reads.load(Ordering::SeqCst),
+            settled,
+            "no further polling after the client went away"
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// Every payload frame carries its log line index as the SSE `id:`. That is what makes a resume
+    /// point expressible at all: without it a client has no way to name where it got to, and
+    /// `since_line` — which the route has always accepted — could never be used.
+    #[tokio::test]
+    async fn frames_are_numbered_and_since_line_skips_the_prefix() {
+        let home = temp_home("since-line");
+        for i in 0..4 {
+            append_eventwire(
+                &home,
+                "00002",
+                &format!(r#"{{"kind":"text","text":"{i}"}}"#),
+            );
+        }
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        let mut shape = shape();
+        shape.since_line = 2;
+
+        pump_log_stream(
+            tx,
+            follower(&home, "00002"),
+            shape,
+            || async { Some("Completed".to_string()) },
+            Duration::from_millis(10),
+        )
+        .await;
+
+        let frames = drain(&mut rx);
+
+        // Two payload frames plus the `end` frame: the first two lines were read but not sent.
+        assert_eq!(frames.len(), 3, "unexpected frames: {frames:?}");
+        assert!(
+            frames[0].contains("id: 2"),
+            "unexpected frame: {}",
+            frames[0]
+        );
+        assert!(
+            frames[0].contains(r#""text":"2""#),
+            "unexpected frame: {}",
+            frames[0]
+        );
+        assert!(
+            frames[1].contains("id: 3"),
+            "unexpected frame: {}",
+            frames[1]
+        );
+        assert!(
+            frames[2].contains("event: end"),
+            "unexpected frame: {}",
+            frames[2]
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A line index counts *log lines*, not delivered frames, so a filtered stream's resume point
+    /// still lines up with the log. Numbering the frames instead would make `since_line` skip the
+    /// wrong lines the moment `kinds` was used.
+    #[tokio::test]
+    async fn line_ids_count_log_lines_not_delivered_frames() {
+        let home = temp_home("filtered-ids");
+        append_eventwire(&home, "00003", r#"{"kind":"text","text":"a"}"#);
+        append_eventwire(&home, "00003", r#"{"kind":"tool_call","tool_name":"git"}"#);
+        append_eventwire(&home, "00003", r#"{"kind":"text","text":"b"}"#);
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        let mut shape = shape();
+        shape.allowed_kinds = parse_allowed_kinds(["text"]);
+
+        pump_log_stream(
+            tx,
+            follower(&home, "00003"),
+            shape,
+            || async { Some("Failed".to_string()) },
+            Duration::from_millis(10),
+        )
+        .await;
+
+        let frames = drain(&mut rx);
+
+        assert_eq!(frames.len(), 3, "unexpected frames: {frames:?}");
+        assert!(
+            frames[0].contains("id: 0"),
+            "unexpected frame: {}",
+            frames[0]
+        );
+        assert!(
+            frames[1].contains("id: 2"),
+            "the tool_call line was filtered out but still consumed line 1: {}",
+            frames[1]
+        );
+        assert!(frames[2].contains(r#""status":"Failed""#));
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A job that died mid-write still has its last line delivered: the terminal read takes the
+    /// unterminated tail too, because nothing is going to finish it.
+    #[tokio::test]
+    async fn the_final_read_delivers_a_line_that_never_got_its_newline() {
+        let home = temp_home("partial-tail");
+        let path = home.join("Logs").join("Jobs").join("00004.eventwire.jsonl");
+        std::fs::write(
+            &path,
+            "{\"kind\":\"text\",\"text\":\"whole\"}\n{\"kind\":\"tex",
+        )
+        .expect("write log");
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+        pump_log_stream(
+            tx,
+            follower(&home, "00004"),
+            shape(),
+            || async { Some("Stopped".to_string()) },
+            Duration::from_millis(10),
+        )
+        .await;
+
+        let frames = drain(&mut rx);
+        assert_eq!(frames.len(), 3, "unexpected frames: {frames:?}");
+        assert!(
+            frames[0].contains(r#""text":"whole""#),
+            "unexpected frame: {}",
+            frames[0]
+        );
+        assert!(
+            frames[1].contains(r#"data: {"kind":"tex"#),
+            "the unterminated tail must still be delivered: {}",
+            frames[1]
+        );
+        assert!(frames[2].contains("event: end"));
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }

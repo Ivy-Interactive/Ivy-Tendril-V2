@@ -193,12 +193,27 @@ describe("Toolbar tools and actions", () => {
     expect(props.onAction).toHaveBeenCalledWith("update");
   });
 
-  it("does not open a tooltip for focus that came from a click", () => {
+  it("opens a tooltip for a focused button", () => {
     vi.useFakeTimers();
     try {
       renderToolbar();
       const reload = screen.getByRole("button", { name: "Reload" });
-      fireEvent.mouseDown(reload);
+      fireEvent.focus(reload);
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(screen.getByRole("tooltip").textContent).toBe("Reload");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not open a tooltip for focus that came from a pointer press", () => {
+    vi.useFakeTimers();
+    try {
+      renderToolbar();
+      const reload = screen.getByRole("button", { name: "Reload" });
+      fireEvent.pointerDown(reload);
       fireEvent.focus(reload);
       act(() => {
         vi.advanceTimersByTime(500);
@@ -231,14 +246,13 @@ describe("Toolbar tools and actions", () => {
     try {
       renderToolbar();
       const reload = screen.getByRole("button", { name: "Reload" });
-      fireEvent.mouseEnter(reload.parentElement!);
+      fireEvent.pointerEnter(reload, { pointerType: "mouse" });
+      fireEvent.pointerMove(reload, { pointerType: "mouse" });
       expect(screen.queryByRole("tooltip")).toBeNull();
       act(() => {
         vi.advanceTimersByTime(500);
       });
       expect(screen.getByRole("tooltip").textContent).toBe("Reload");
-      fireEvent.mouseLeave(reload.parentElement!);
-      expect(screen.queryByRole("tooltip")).toBeNull();
     } finally {
       vi.useRealTimers();
     }

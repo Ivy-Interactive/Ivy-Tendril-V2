@@ -11,6 +11,11 @@ export * from "./lib/logger";
 export { getMarkdownPlugins, hasMath } from "./lib/math";
 export { rawHtmlSchema, hasRawHtml } from "./lib/rawHtml";
 export { getWidth, getHeight } from "./lib/styles";
+/**
+ * Already used inside the package by `Badge` and `TuiBadge`; exported because hosts carry Ivy `Colors`
+ * names of their own (a project's configured colour) and must resolve them the same single way.
+ */
+export { ivyColorVar } from "./lib/ivy-color";
 export { prismTheme } from "./lib/prismTheme";
 export { copyToClipboard } from "./lib/clipboard";
 export { getPlatformShortcut, formatShortcut } from "./lib/shortcut";

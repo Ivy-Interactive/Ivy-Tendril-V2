@@ -23,6 +23,12 @@ export interface ChatQueuedItem {
   prompt: string;
   attachments?: ChatAttachment[];
   createdAt: string;
+  /**
+   * `system` for an event the daemon queued behind a turn that was already running — a job finishing
+   * while the user was still talking. Absent for everything the composer enqueues, which is the
+   * user's own prompts.
+   */
+  role?: string;
 }
 
 export interface ChatSession {
@@ -53,6 +59,20 @@ export interface ChatStreamDeltaEvent {
   delta: string;
 }
 
+/**
+ * One eventwire line of a turn in flight, so its tool calls render while they happen.
+ *
+ * `line` is a single `{"kind":…}` JSON event — the shape `parseEventWireStream` reads — and is
+ * appended to the named message's `rawStream`. V1's equivalent is `ChatExecutionService`'s
+ * `StreamLineEmitted`.
+ */
+export interface ChatStreamEventEvent {
+  type: "chat.stream_event";
+  sessionId: string;
+  messageId: string;
+  line: string;
+}
+
 export interface ChatGeneratingStateEvent {
   type: "chat.generating_state";
   sessionId: string;
@@ -81,6 +101,7 @@ export interface ChatSessionRenamedEvent {
 export type ChatEvent =
   | ChatMessageAddedEvent
   | ChatStreamDeltaEvent
+  | ChatStreamEventEvent
   | ChatGeneratingStateEvent
   | ChatQuestionAnsweredEvent
   | ChatJobSpawnedEvent

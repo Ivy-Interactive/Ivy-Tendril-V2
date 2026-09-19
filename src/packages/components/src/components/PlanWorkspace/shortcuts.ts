@@ -1,8 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { RefObject } from "react";
 import { isMac } from "../Shell/types";
 import { parseShortcut } from "../../lib/shortcut";
-import { registerShortcut, unregisterShortcut } from "../../lib/shortcutRegistry";
+import {
+  registerShortcut,
+  serializeShortcut,
+  unregisterShortcut,
+} from "../../lib/shortcutRegistry";
 
 const NAMED_KEYS: Record<string, string> = {
   backspace: "⌫",
@@ -106,6 +110,18 @@ const isVisible = (element: Element): boolean => {
  * the pane is `visibility: hidden` — becomes each registration's `isActive()`. The rest (`e.repeat`,
  * `e.defaultPrevented`, editable targets, the arrow-key escape for composite widgets) is the
  * registry's own, applied to every consumer.
+ *
+ * Two things the registry does not do for us, both of which V1's own `keydown` handler did:
+ *
+ * - **The id has to name the instance, not just the tag.** The registry is a module-level `Map`, so
+ *   two mounted workspaces registering `planWorkspace:Execute` are one entry: the second overwrites
+ *   the first, and the first's cleanup then unregisters the second's. `useId` scopes the id to this
+ *   hook instance so both survive and both fire, which is what two mounted `document` listeners did
+ *   in V1.
+ * - **One key fires one action.** The registry runs *every* matching registration; V1 used
+ *   `bindings.find(...)`, so the first binding carrying a key was the only one that answered it. A
+ *   later binding repeating a key is therefore dropped here rather than registered, which also keeps
+ *   the dev-mode conflict warning for genuine cross-widget clashes meaningful.
  */
 export const useActionShortcuts = (
   bindings: ShortcutBinding[],
@@ -115,6 +131,7 @@ export const useActionShortcuts = (
 ) => {
   const fireRef = useRef(fire);
   fireRef.current = fire;
+  const instance = useId();
 
   useEffect(() => {
     if (!enabled) return;
@@ -126,11 +143,15 @@ export const useActionShortcuts = (
     };
 
     const ids: string[] = [];
+    const claimed = new Set<string>();
     for (const binding of bindings) {
       if (!binding.shortcut || binding.disabled) continue;
       const shortcut = parseShortcut(binding.shortcut);
       if (!shortcut) continue;
-      const id = `planWorkspace:${binding.tag}`;
+      const key = serializeShortcut(shortcut);
+      if (claimed.has(key)) continue;
+      claimed.add(key);
+      const id = `planWorkspace${instance}:${binding.tag}`;
       const tag = binding.tag;
       registerShortcut({
         id,
@@ -145,5 +166,5 @@ export const useActionShortcuts = (
     }
 
     return () => ids.forEach(unregisterShortcut);
-  }, [bindings, enabled, rootRef]);
+  }, [bindings, enabled, rootRef, instance]);
 };

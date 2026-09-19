@@ -1,14 +1,14 @@
-import * as os from 'os';
-import * as path from 'path';
+import * as os from "os";
+import * as path from "path";
 
-export const TEST_ISOLATION_ENV = 'TENDRIL_TEST_ISOLATION';
+export const TEST_ISOLATION_ENV = "TENDRIL_TEST_ISOLATION";
 
 export function defaultTendrilHome(): string {
-  return path.join(os.homedir(), '.tendril');
+  return path.join(os.homedir(), ".tendril");
 }
 
 export function isTestIsolationEnabled(): boolean {
-  return process.env[TEST_ISOLATION_ENV] === '1';
+  return process.env[TEST_ISOLATION_ENV] === "1";
 }
 
 export function isRealTendrilHome(home: string): boolean {
@@ -17,8 +17,8 @@ export function isRealTendrilHome(home: string): boolean {
   }
 
   const normalize = (p: string): string => {
-    const resolved = path.resolve(p).replace(/[\\/]+$/, '');
-    return process.platform === 'win32' || process.platform === 'darwin'
+    const resolved = path.resolve(p).replace(/[\\/]+$/, "");
+    return process.platform === "win32" || process.platform === "darwin"
       ? resolved.toLowerCase()
       : resolved;
   };
@@ -39,20 +39,20 @@ export function assertIsolatedTendrilHome(home: string, action: string): void {
   }
 
   const envHome = process.env.TENDRIL_HOME;
-  const envHomeIsSet = typeof envHome === 'string' && envHome.trim().length > 0;
+  const envHomeIsSet = typeof envHome === "string" && envHome.trim().length > 0;
 
   if (!envHomeIsSet) {
     throw new Error(
       `TENDRIL_HOME is not set, so the Tendril home defaulted to ${defaultTendrilHome()}. ` +
         `Test suites must set TENDRIL_HOME to a temp directory (see src/test/testHome.ts). ` +
-        `Refusing to ${action} against the real Tendril home ${defaultTendrilHome()}.`
+        `Refusing to ${action} against the real Tendril home ${defaultTendrilHome()}.`,
     );
   }
 
   if (isRealTendrilHome(home)) {
     throw new Error(
       `Test suites must set TENDRIL_HOME to a temp directory (see src/test/testHome.ts). ` +
-        `Refusing to ${action} against the real Tendril home ${path.resolve(home)}.`
+        `Refusing to ${action} against the real Tendril home ${path.resolve(home)}.`,
     );
   }
 }

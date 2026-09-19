@@ -124,11 +124,11 @@ fn tier_defaults_apply_with_no_coding_agents_configured() {
         (
             "antigravity",
             "quick",
-            Some("gemini-3.7-flash"),
+            Some("gemini-3.8-flash"),
             Some("medium"),
         ),
         ("ivy", "deep", Some("claude-opus-5"), Some("max")),
-        ("ivy", "quick", Some("gemini-3.7-flash"), Some("low")),
+        ("ivy", "quick", Some("gemini-3.8-flash"), Some("low")),
     ] {
         let r = resolve(&s, agent, "ExecutePlan", Some(tier));
         assert_eq!(r.model.as_deref(), model, "{agent}/{tier} model");
@@ -150,7 +150,7 @@ fn gemini_gets_a_model_but_never_an_effort() {
     let s = TendrilSettings::default();
     for tier in ["deep", "balanced", "quick"] {
         let r = resolve(&s, "gemini", "ExecutePlan", Some(tier));
-        assert_eq!(r.model.as_deref(), Some("gemini-3.7-flash"), "{tier} model");
+        assert_eq!(r.model.as_deref(), Some("gemini-3.8-flash"), "{tier} model");
         assert_eq!(r.effort, None, "{tier} must have no effort");
     }
 }

@@ -61,6 +61,15 @@ export interface UsageWire {
   cache_write_tokens: number;
   reasoning_tokens: number;
   cost_usd?: number;
+  /**
+   * Where {@link cost_usd} came from, set by `EventWireNormalizer`.
+   *
+   * `"agent"` is the provider's own charge — Claude Code's `total_cost_usd`. `"estimated"` is
+   * Tendril's: the token counts multiplied by `model_specs`' list price for the model, which cannot
+   * know the caller's plan or tier. Everything that renders a cost has to say which it is holding,
+   * because a figure nobody was billed must not present itself as one that they were.
+   */
+  cost_source?: "agent" | "estimated";
   premium_requests?: number;
   model?: string;
   model_breakdown?: UsageWire[];

@@ -1,7 +1,12 @@
 import * as React from "react";
 import { Terminal, WebViewer, type TerminalHandle } from "@ivy-interactive/components/tendril";
 import { bridge, type ReviewActionRun } from "../api/bridge";
-import { applyCommentEvent, formatChangeRequest, type AppComment } from "../utils/appComments";
+import {
+  applyCommentEvent,
+  formatChangeRequest,
+  type AppComment,
+  type ViewerEvent,
+} from "../utils/appComments";
 import { detectAppUrl } from "../utils/detectAppUrl";
 import {
   describeBridgeError,
@@ -53,25 +58,17 @@ const VIEWER_COMMAND_STREAM = "review-action-viewer";
 const MAX_TRANSCRIPT = 1_000_000;
 
 /**
- * Whether a chunk put anything on the screen, as V1's terminal widget decides it: OSC strings, CSI
- * sequences, any other escape and the C0 controls are all stripped before asking. This is what
- * dismisses the starting indicator, so a command whose first write is a cursor-hide or a title
- * sequence must not count as having started printing.
+ * `ReviewActionApp`'s `Context.UseInterval(..., TimeSpan.FromMilliseconds(500))`, which is how often
+ * V1 asks the captured transcript whether the app has announced itself yet.
+ *
+ * A sample rather than a search per chunk, for both of V1's reasons. A build prints thousands of
+ * chunks and the transcript runs to `MAX_TRANSCRIPT`, so re-scanning all of it on each one is
+ * quadratic in the length of the boot log. And `detectAppUrl` prefers a loopback host over a LAN one
+ * *wherever either appears*, which only means anything once both lines have had a chance to arrive: a
+ * server that prints `Network:` before `Local:` would otherwise be pinned to its LAN address by the
+ * scan that saw only the first line.
  */
-function hasVisibleText(text: string): boolean {
-  return (
-    text
-      // eslint-disable-next-line no-control-regex
-      .replace(/\x1b\][\s\S]*?(\x07|\x1b\\|$)/g, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/\x1b[\s\S]/g, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/[\x00-\x1f\x7f]/g, "")
-      .trim().length > 0
-  );
-}
+const URL_DETECT_INTERVAL_MS = 500;
 
 /**
  * The review-action run loop: the command's terminal, then the app it started, then the reviewer's
@@ -93,8 +90,6 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
   const [appUrl, setAppUrl] = React.useState<string | null>(null);
   const [device, setDevice] = React.useState("Desktop");
   const [comments, setComments] = React.useState<AppComment[]>([]);
-  /** Whether the command has printed anything yet; dismisses the starting indicator. */
-  const [hasOutput, setHasOutput] = React.useState(false);
   /** `PtyHandle.Closed`: the process is gone, so the terminal stops taking keystrokes. */
   const [closed, setClosed] = React.useState(false);
   /** Only set when the action never started, which is the case V1 answers with muted text. */
@@ -105,7 +100,6 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
   const runRef = React.useRef<ReviewActionRun | null>(null);
   const transcriptRef = React.useRef("");
   const decoderRef = React.useRef(new TextDecoder("utf-8"));
-  const visibleRef = React.useRef(false);
   /**
    * Output that arrived before the emulator was on screen, and after it left it. The first is a fast
    * command that printed its whole banner before the ref was attached; the second is dropped,
@@ -148,9 +142,6 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
     }
     for (const chunk of pendingRef.current) handle.write(chunk);
     pendingRef.current = [];
-    // `Terminal.AutoFocus`, which V1 leaves at its default: a review action's command is
-    // interactive, and one that has to be clicked before it can be typed into is a stuck one.
-    handle.focus();
   }, []);
 
   /** Only the plan-scoped case previews the app; see [`ReviewActionTarget.planId`]. */
@@ -159,25 +150,17 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
   React.useEffect(() => {
     let cancelled = false;
 
+    // Accumulate only; the transcript is *searched* on the interval below, as V1 does. Once the URL
+    // is found the transcript stops growing: nothing reads it again, and a command that keeps
+    // printing for the length of the review would otherwise keep a megabyte of it alive.
     const onChunk = (bytes: Uint8Array) => {
       write(bytes);
-      if (visibleRef.current && urlSetRef.current) return;
+      if (urlSetRef.current) return;
       // `stream: true` so a multi-byte character split across two chunks is not mangled, and so a
       // URL split across them is still one string by the time it is searched for.
-      const text = decoderRef.current.decode(bytes, { stream: true });
-
-      if (!visibleRef.current && hasVisibleText(text)) {
-        visibleRef.current = true;
-        setHasOutput(true);
-      }
-
-      if (urlSetRef.current) return;
-      transcriptRef.current = (transcriptRef.current + text).slice(-MAX_TRANSCRIPT);
-      const found = detectAppUrl(transcriptRef.current);
-      if (found) {
-        urlSetRef.current = true;
-        setAppUrl(found);
-      }
+      transcriptRef.current = (
+        transcriptRef.current + decoderRef.current.decode(bytes, { stream: true })
+      ).slice(-MAX_TRANSCRIPT);
     };
 
     void (async () => {
@@ -210,6 +193,26 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
     };
   }, [target.project, target.actionName, target.planId, target.worktree, write, notice]);
 
+  /**
+   * `ReviewActionApp`'s URL poll, kept running until it finds one and then stopped.
+   *
+   * Unconditional, exactly as V1 leaves it: it runs for a project-scoped action too, where nothing
+   * reads the result, because making the hook conditional on which kind of action this is costs more
+   * than the sample does. The interval reads the ref rather than state so it never needs to be
+   * re-created as the transcript grows.
+   */
+  React.useEffect(() => {
+    if (appUrl !== null) return;
+    const timer = window.setInterval(() => {
+      if (urlSetRef.current) return;
+      const found = detectAppUrl(transcriptRef.current);
+      if (found === null) return;
+      urlSetRef.current = true;
+      setAppUrl(found);
+    }, URL_DETECT_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [appUrl]);
+
   // ---- viewer command channel ----------------------------------------------
   // The viewer takes commands off a stream rather than through a prop, so clearing its pins is a
   // write into that channel. Kept in a ref: re-creating the subscriber would re-register the
@@ -225,24 +228,63 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
     [],
   );
 
+  /**
+   * `AppPreviewView`'s `WithOnEvent` switch, case for case.
+   *
+   * A switch and not a fall-through, because the cases V1 has no arm for are the loud ones: the
+   * viewer reports every console line, network entry and capture the app produces on this same
+   * channel, and "what the widget reports beyond comments, navigation and its own toolbar is dropped
+   * on the floor". Handing those to the comment reducer instead re-rendered this view once per line
+   * the app under review happened to log.
+   *
+   * `navigated` is V1's `NavigateEvent`, and is deliberately dropped rather than ported: V1 wrote it
+   * back into the state feeding `.Url()`, whereas this viewer owns its own history and address bar,
+   * so there is nothing here to write it into. The change request still quotes `appUrl` — the URL the
+   * command announced — which is what V1's `UpdateFromCommentsDialog` was handed too, so a comment
+   * left on a page the reviewer navigated to carries that page in its own `url` field.
+   */
   const handleViewerEvent = React.useCallback(
     (_eventName: string, _id: string, args: unknown[]) => {
       const event = args[0];
       if (typeof event !== "object" || event === null) return;
-      const payload = event as { kind?: string; id?: unknown; device?: unknown };
+      const payload = event as ViewerEvent & { id?: unknown; device?: unknown };
 
-      if (payload.kind === "device" && typeof payload.device === "string") {
-        setDevice(payload.device);
-        return;
+      switch (payload.kind) {
+        case "device":
+          // `DeviceChangedEvent`: the viewport menu is the viewer's, so the label it reports is
+          // written back to stay the one it is told to render at.
+          if (typeof payload.device === "string") setDevice(payload.device);
+          return;
+
+        case "action":
+          if (payload.id === UPDATE_ACTION_ID) setIsDialogOpen(true);
+          return;
+
+        // `CommentEvent`, `CommentUpdatedEvent`, `CommentDeletedEvent`. The reducer owns the
+        // renumbering a delete forces, which mirrors what the pins in the page do.
+        case "comment":
+        case "comment-edit":
+        case "comment-delete":
+          setComments((prev) => applyCommentEvent(prev, payload));
+          return;
+
+        default:
+          return;
       }
-      if (payload.kind === "action") {
-        if (payload.id === UPDATE_ACTION_ID) setIsDialogOpen(true);
-        return;
-      }
-      setComments((prev) => applyCommentEvent(prev, payload));
     },
     [],
   );
+
+  /**
+   * `UpdateFromCommentsDialog.Build`'s `if (pending.IsEmpty) { dialogOpen.Set(false); return null; }`.
+   *
+   * A confirmation of nothing is not worth showing, and here it would be worse than empty: the shared
+   * dialog reads an empty `appComments` as "not the app-preview dialog" and falls back to the
+   * diff-side Request Changes, which is a different dialog with a free-text field.
+   */
+  React.useEffect(() => {
+    if (isDialogOpen && comments.length === 0) setIsDialogOpen(false);
+  }, [isDialogOpen, comments.length]);
 
   const changeRequest = React.useMemo(
     () => (appUrl && comments.length > 0 ? formatChangeRequest(appUrl, comments) : ""),
@@ -285,10 +327,9 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
           id="review-action-preview"
           url={appUrl}
           device={device}
-          proxy="auto"
           toolbar
-          width="100%"
-          height="100%"
+          width="full"
+          height="full"
           commands={{ id: VIEWER_COMMAND_STREAM }}
           subscribeToStream={subscribeToStream}
           events={["OnEvent"]}
@@ -310,27 +351,26 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
           }
         />
       ) : (
-        <>
-          <Terminal
-            ref={attachTerminal}
-            className="h-full"
-            readOnly={closed}
-            onInput={(data) => void runRef.current?.sendInput(data)}
-            onResize={(rows, cols) => void runRef.current?.resize(rows, cols)}
-          />
-          {/* `Terminal.Loading("Starting <action>...")`: the emulator is mounted from the first
-              render and this sits over it until the command prints, so nothing is lost waiting for
-              it. White on the terminal's own dark ground, which it keeps in either app theme. */}
-          {!hasOutput && !closed && (
-            <div
-              role="status"
-              className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3"
-            >
-              <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              <span className="font-mono text-xs text-white">Starting {target.actionName}…</span>
-            </div>
-          )}
-        </>
+        /*
+         * `.Closed(ptyHandle.Closed).AllowClipboard().Loading($"Starting {action.Name}...")`, which is
+         * the whole of what `ReviewActionApp` configures on the terminal besides its three streams.
+         *
+         * `closed` rather than `readOnly`: both refuse keystrokes and hide the cursor, but only
+         * `closed` also takes the starting indicator down, which is the honest answer for a command
+         * that exited before printing anything. `allowClipboard` and `autoFocus` are the component's
+         * defaults, so V1's `.AllowClipboard()` and the emulator taking focus on mount need no props.
+         * The overlay is the component's own, which waits for *visible* output: a command whose first
+         * write is a cursor-hide or a title sequence has not started printing yet.
+         */
+        <Terminal
+          ref={attachTerminal}
+          className="h-full"
+          closed={closed}
+          loading
+          loadingText={`Starting ${target.actionName}…`}
+          onInput={(data) => void runRef.current?.sendInput(data)}
+          onResize={(rows, cols) => void runRef.current?.resize(rows, cols)}
+        />
       )}
 
       {plan && (

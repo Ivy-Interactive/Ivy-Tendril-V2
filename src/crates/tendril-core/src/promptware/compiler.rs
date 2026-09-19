@@ -56,8 +56,38 @@ tendril promptware delete-memory {PROMPTWARE_NAME} <filename>.md
 
 ## Program
 
-{PROGRAM}{PROJECT_SKILLS}
+{PROGRAM}{PROJECT_SKILLS}{REFERENCE_DOCUMENTS}
 "#;
+
+/// The plan-and-CLI reference appended as the firmware's `## Reference Documents` section.
+///
+/// Seven of the shipped promptwares point the agent at this section by name — "the plan structure
+/// and CLI commands are in the **Reference Documents** section of your firmware", "the schema,
+/// answer semantics and lint rules are in the **Question Blocks** section of **Reference
+/// Documents**" — and for a while no such section was emitted at all. An agent following those
+/// instructions went looking for guidance it had never been given, with no way to tell whether the
+/// section was missing or it had misread its own prompt.
+///
+/// It is deliberately *not* a copy of the original Tendril's `Prompts/Plans.md`. The CLI has
+/// diverged (no `.counter`, `plan create` takes `<TITLE> <PROJECT>` and inherits the project's
+/// repos and verifications, an unknown `plan get` field is an error, unknown `plan.yaml` fields are
+/// preserved rather than stripped, `write-revision` polishes links), and shipping stale commands to
+/// an agent is the failure this section exists to fix.
+pub const PLAN_REFERENCE: &str = include_str!("plan_reference.md");
+
+/// Whether a `Program.md` sends the agent to the `## Reference Documents` section.
+///
+/// The section is appended **only** to promptwares that cite it, rather than to every promptware as
+/// the original Tendril did. Citation is the scope, not an allowlist: a Program that starts citing
+/// the section gets it on the next compile with no code change, and one that never mentions it never
+/// pays for it. Four of the twelve shipped promptwares (AddProject, CreateIssue, SetupProject,
+/// SyncRepo) do not author plan content and would otherwise carry the whole appendix on every run.
+///
+/// Matched case-insensitively on the bare phrase, because the citations are not uniformly bold —
+/// ExecutePlan writes "see the plan link rules in the Reference Documents" with no emphasis.
+pub fn cites_reference_documents(program: &str) -> bool {
+    program.to_ascii_lowercase().contains("reference documents")
+}
 
 pub fn compile_firmware(program_folder: &Path, values: &HashMap<String, String>) -> Result<String> {
     compile_firmware_with_skills(program_folder, values, &[])
@@ -107,9 +137,25 @@ pub fn compile_firmware_with_skills(
         .replace("{MEMORY}", &memory_listing)
         .replace("{PROMPTWARE_NAME}", promptware_name)
         .replace("{PROGRAM}", &program_content)
-        .replace("{PROJECT_SKILLS}", &project_skills);
+        .replace("{PROJECT_SKILLS}", &project_skills)
+        .replace(
+            "{REFERENCE_DOCUMENTS}",
+            &render_reference_documents(&program_content),
+        );
 
     Ok(prompt)
+}
+
+/// Renders the `## Reference Documents` firmware section, or nothing when the Program does not cite
+/// it. Appended after `## Project Skills` so the promptware's own instructions — and any
+/// project-specific override in a skill — are read before the general reference, and so a firmware
+/// for a non-citing promptware is byte-for-byte what it was before this section existed.
+fn render_reference_documents(program_content: &str) -> String {
+    if !cites_reference_documents(program_content) {
+        return String::new();
+    }
+
+    format!("\n{}", PLAN_REFERENCE.trim_end())
 }
 
 /// Renders the `## Project Skills` firmware section. Empty when there are no skills, so the

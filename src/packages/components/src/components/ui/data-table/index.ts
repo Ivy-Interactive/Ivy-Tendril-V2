@@ -1,5 +1,28 @@
 export { DataTable, type DataTableComponent, type DataTableProps } from "./data-table";
+export {
+  clearColumnFilter,
+  columnFiltersToRemoteFilter,
+  hasActiveColumnFilters,
+  matchesColumnFilters,
+  setColumnFilter,
+  type DataTableColumnFilter,
+  type DataTableColumnFilters,
+  type DataTableFilterKind,
+  type DataTableFilterOption,
+} from "./column-filters";
 export { DataTableCellEditor, type DataTableCellEditorProps } from "./data-table-cell-editor";
+export {
+  DataTableFilterExpression,
+  type DataTableFilterExpressionComponent,
+  type DataTableFilterExpressionProps,
+} from "./data-table-filter-expression";
+export {
+  filterExpressionColumns,
+  filterExpressionPlaceholder,
+  parseFilterExpression,
+  type FilterExpressionColumn,
+  type FilterExpressionResult,
+} from "./filter-expression";
 export {
   DataTableColumnHeader,
   type DataTableColumnHeaderComponent,
@@ -21,6 +44,33 @@ export {
 } from "./data-table-row-actions";
 export { DataTableToolbar, type DataTableToolbarProps } from "./data-table-toolbar";
 
+export {
+  allOf,
+  anyOf,
+  not,
+  resolveRemoteSort,
+  sortToRemote,
+  whereColumn,
+  type RemoteTableAggregation,
+  type RemoteTableAggregationResult,
+  type RemoteTableCondition,
+  type RemoteTableFetcher,
+  type RemoteTableFilter,
+  type RemoteTableFilterArg,
+  type RemoteTableFilterFunction,
+  type RemoteTableFilterGroup,
+  type RemoteSortColumn,
+  type RemoteTablePage,
+  type RemoteTableRequest,
+  type RemoteTableSort,
+} from "./remote-query";
+export {
+  DEFAULT_REMOTE_PAGE_SIZE,
+  useRemoteDataTable,
+  type UseRemoteDataTableOptions,
+  type UseRemoteDataTableResult,
+} from "./use-remote-data-table";
+
 export type {
   DataTableAlign,
   DataTableCellCommitEvent,
@@ -39,6 +89,12 @@ export {
   type UseColumnVisibilityOptions,
   type UseColumnVisibilityResult,
 } from "./use-column-visibility";
+export {
+  DATA_TABLE_LOAD_MORE_THRESHOLD_ROWS,
+  useDataTableInfiniteScroll,
+  type UseDataTableInfiniteScrollOptions,
+  type UseDataTableInfiniteScrollResult,
+} from "./use-data-table-infinite-scroll";
 export {
   useDataTablePagination,
   type UseDataTablePaginationOptions,
@@ -80,9 +136,16 @@ export {
   getRenderableActions,
   getVisibleColumns,
   isColumnVisible,
+  isRowIdentityAppend,
   nextSortDirection,
+  rowIdentity,
   sortRows,
   toDisplayString,
 } from "./utils";
 
-export { dataTableCellAlignVariant, dataTableRowVariant, dataTableToolbarVariant } from "./variant";
+export {
+  dataTableCellAlignVariant,
+  dataTableLinkClass,
+  dataTableRowVariant,
+  dataTableToolbarVariant,
+} from "./variant";

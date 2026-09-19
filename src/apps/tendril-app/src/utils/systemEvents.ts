@@ -33,7 +33,10 @@ const planRef = (info: string): SystemEventPlanRef | undefined => {
 
 const jobNoun = (type: string): string => {
   const lower = type.toLowerCase();
-  if (lower.includes("pr") || lower.includes("pullrequest")) return "pull request";
+  // `CreatePr` exactly, not "contains pr": `AddProject` and `SetupProject` both contain that substring,
+  // and announced themselves as pull requests. Those two only ever reached here once a job with no plan
+  // could be reported to a chat at all, which is why the loose match went unnoticed.
+  if (lower === "createpr" || lower.includes("pullrequest")) return "pull request";
   if (lower.includes("plan")) return "plan";
   return type;
 };

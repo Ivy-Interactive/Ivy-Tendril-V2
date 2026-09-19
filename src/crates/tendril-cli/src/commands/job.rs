@@ -52,6 +52,20 @@ pub enum JobCommands {
     Maintenance,
 }
 
+/// The statuses `job list --status` accepts. Kept in step with `JobStatus::from_str_loose` by
+/// `every_supported_job_status_parses` below, and worded like the plan-state list `plan list` and
+/// `GET /api/plans` report.
+pub const SUPPORTED_JOB_STATUSES: &[&str] = &[
+    "Pending",
+    "Queued",
+    "Running",
+    "Completed",
+    "Failed",
+    "Timeout",
+    "Stopped",
+    "Blocked",
+];
+
 #[derive(Args)]
 pub struct JobListArgs {
     #[arg(short, long)]
@@ -83,6 +97,16 @@ pub struct JobStartArgs {
         help = "Priority (higher runs first) — applies to every job type"
     )]
     pub priority: Option<i32>,
+
+    /// The conversation this job belongs to, so the chat that started it can list it in its header
+    /// and be told when it finishes. Every chat turn's prompt asks the agent for this flag by name
+    /// (`build_chat_agent_prompt`), and `TENDRIL_CHAT_SESSION_ID` is exported into the agent's
+    /// environment, so an agent that omits it is still linked — the same rule `tendril plan` uses.
+    #[arg(
+        long,
+        help = "Chat session ID if spawned from chat (defaults to $TENDRIL_CHAT_SESSION_ID)"
+    )]
+    pub chat_session: Option<String>,
 
     #[arg(
         long = "wait-for",
@@ -226,16 +250,27 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
 
     match cmd {
         JobCommands::AddLog(args) => {
-            let log_path = append_agent_log(
-                tendril_home,
-                &args.job_id,
-                &args.action,
-                args.summary.as_deref(),
-            )?;
+            // Filesystem-only: this is the one job subcommand that works with no daemon, because an
+            // agent's narrative log must survive a daemon that went away mid-run.
+            let job_id = normalize_job_id(&args.job_id)?;
+            let log_path =
+                append_agent_log(tendril_home, &job_id, &args.action, args.summary.as_deref())?;
             println!("Log written: {}", log_path.display());
             return Ok(());
         }
         JobCommands::List(args) => {
+            // Validated here rather than left to the server: `GET /api/jobs` parses `?status=` with
+            // `and_then`, so an unparseable value there becomes *no filter* and `job list --status
+            // Runing` answers with every job and exit 0.
+            if let Some(st) = args.status.as_deref() {
+                if JobStatus::from_str_loose(st).is_none() {
+                    anyhow::bail!(
+                        "Unknown job status '{}'. Supported statuses: {}",
+                        st,
+                        SUPPORTED_JOB_STATUSES.join(", ")
+                    );
+                }
+            }
             let master = get_master_or_err(tendril_home)?;
             let mut url = format!("{}/api/jobs?limit={}", master.base_url(), args.limit);
             if let Some(st) = args.status {
@@ -288,47 +323,46 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
                 StartOutcome::Unconfirmed(_) => anyhow::bail!("{}", outcome.render()),
             }
         }
+        // `status` and `fail` are progress telemetry, and telemetry must never fail an agent run —
+        // V1 warns on stderr and exits 0 for both. These are the two most-invoked commands in the
+        // promptware corpus, usually inside an `&&` chain, so a daemon blip exiting non-zero aborts
+        // the agent's step. `fail` is the worse of the two: it runs on the failure path, so a job
+        // that cannot reach the daemon would die mid-report instead of finishing its report.
         JobCommands::Status(args) => {
-            let master = get_master_or_err(tendril_home)?;
-            let url = format!("{}/api/jobs/{}/status", master.base_url(), args.job_id);
-            let body = serde_json::json!({
-                "message": args.message,
-                "planId": args.plan_id,
-                "planTitle": args.plan_title,
-            });
-            let resp = client
-                .put(&url)
-                .bearer_auth(&master.secret)
-                .json(&body)
-                .send()
-                .await?;
-            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-                anyhow::bail!(
-                    "Authentication failed: unauthorized request to Tendril daemon at {}",
-                    master.base_url()
-                );
+            let report = async {
+                let master = get_master_or_err(tendril_home)?;
+                let url = format!("{}/api/jobs/{}/status", master.base_url(), args.job_id);
+                let body = serde_json::json!({
+                    "message": args.message,
+                    "planId": args.plan_id,
+                    "planTitle": args.plan_title,
+                });
+                put_job_report(&client, &url, &master, body).await
             }
-            resp.error_for_status()?;
-            println!("Status updated for job {}", args.job_id);
+            .await;
+            match report {
+                Ok(()) => println!("Status updated for job {}", args.job_id),
+                Err(e) => eprintln!(
+                    "Warning: could not report status for job {}: {}",
+                    args.job_id, e
+                ),
+            }
         }
         JobCommands::Fail(args) => {
-            let master = get_master_or_err(tendril_home)?;
-            let url = format!("{}/api/jobs/{}/fail", master.base_url(), args.job_id);
-            let body = serde_json::json!({ "message": args.message });
-            let resp = client
-                .put(&url)
-                .bearer_auth(&master.secret)
-                .json(&body)
-                .send()
-                .await?;
-            if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-                anyhow::bail!(
-                    "Authentication failed: unauthorized request to Tendril daemon at {}",
-                    master.base_url()
-                );
+            let report = async {
+                let master = get_master_or_err(tendril_home)?;
+                let url = format!("{}/api/jobs/{}/fail", master.base_url(), args.job_id);
+                let body = serde_json::json!({ "message": args.message });
+                put_job_report(&client, &url, &master, body).await
             }
-            resp.error_for_status()?;
-            println!("Failure reported for job {}", args.job_id);
+            .await;
+            match report {
+                Ok(()) => println!("Failure reported for job {}", args.job_id),
+                Err(e) => eprintln!(
+                    "Warning: could not report failure for job {}: {}",
+                    args.job_id, e
+                ),
+            }
         }
         JobCommands::Cancel(args) => {
             let master = get_master_or_err(tendril_home)?;
@@ -548,6 +582,9 @@ pub async fn start_job_via_daemon(
         no_artifacts: args.no_artifacts,
         draft: args.draft,
         idempotency_key: args.idempotency_key.clone(),
+        chat_session_id: crate::commands::plan::resolve_source_chat_session(
+            args.chat_session.as_deref(),
+        ),
     };
     let job_args = build_job_args(&request, &plans_dir).map_err(anyhow::Error::msg)?;
 
@@ -578,6 +615,15 @@ pub async fn start_job_via_daemon(
             .clone()
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())),
     );
+    // Absent for a job started from a terminal, which is the case the server's plan-inheritance
+    // fallback covers; present whenever a chat's agent started it, whether it passed the flag or only
+    // inherited the environment variable.
+    if let Some(chat_session_id) = request.chat_session_id.as_deref() {
+        map.insert(
+            "chatSessionId".to_string(),
+            serde_json::json!(chat_session_id),
+        );
+    }
 
     let mut url = format!("{}/api/jobs", master.base_url());
     // `CreatePlanArgs` carries `force` in the body; every other job type needs the query
@@ -770,8 +816,95 @@ fn confirm(prompt: &str) -> anyhow::Result<bool> {
     ))
 }
 
+/// The job id in the form the daemon named the job's artifacts, or an error when it cannot be one.
+///
+/// `add-log` builds `Logs/Jobs/<id>.md` out of this string, so an id that is not a plain job id has
+/// to be refused rather than turned into a filename. The two cases seen in practice are an
+/// unsubstituted `{{TendrilJobId}}` firmware placeholder, which litters the log directory with junk
+/// nobody ever reads, and a `../` segment, which escapes the log directory altogether. V1 rejected
+/// both on every surface that accepted a job id, and was right to.
+///
+/// Ids are allocated as zero-padded five-digit numbers, but agents and operators routinely type the
+/// unpadded form, so a numeric id is padded back to the allocated spelling — otherwise `add-log 123`
+/// silently starts an orphan `123.md` beside the real `00123.md`.
+fn normalize_job_id(job_id: &str) -> anyhow::Result<String> {
+    let trimmed = job_id.trim();
+    if trimmed.is_empty()
+        || trimmed.len() > 32
+        || !trimmed.chars().all(|c| c.is_ascii_alphanumeric())
+    {
+        anyhow::bail!(
+            "Invalid job id '{}'. Expected an alphanumeric job id such as 00458.",
+            job_id
+        );
+    }
+    Ok(match trimmed.parse::<u64>() {
+        Ok(number) => format!("{:05}", number),
+        Err(_) => trimmed.to_string(),
+    })
+}
+
 fn get_master_or_err(tendril_home: &Path) -> anyhow::Result<MasterInfo> {
     read_master(tendril_home).ok_or_else(|| {
-        anyhow::anyhow!("Tendril server is not running. Start it with 'tendril serve' first.")
+        // `run` is the documented daemon starter — it migrates the database and checks the port
+        // first, which bare `serve` does not.
+        anyhow::anyhow!(
+            "No Tendril server is running (no .master file found). Start it with 'tendril run'."
+        )
     })
+}
+
+/// One PUT of a job report, with the unauthorized case named rather than left as a bare 401.
+async fn put_job_report(
+    client: &reqwest::Client,
+    url: &str,
+    master: &MasterInfo,
+    body: serde_json::Value,
+) -> anyhow::Result<()> {
+    let resp = client
+        .put(url)
+        .bearer_auth(&master.secret)
+        .json(&body)
+        .send()
+        .await?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        anyhow::bail!(
+            "authentication failed: unauthorized request to Tendril daemon at {}",
+            master.base_url()
+        );
+    }
+    resp.error_for_status()?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The list `job list --status` advertises has to be the list the parser accepts, spelled the way
+    /// `JobStatus` spells it — otherwise the error message tells a caller a working status is invalid.
+    #[test]
+    fn every_supported_job_status_parses_and_round_trips() {
+        for name in SUPPORTED_JOB_STATUSES {
+            let parsed = JobStatus::from_str_loose(name)
+                .unwrap_or_else(|| panic!("advertised status '{}' does not parse", name));
+            assert_eq!(
+                parsed.as_str(),
+                *name,
+                "advertised status '{}' is not the canonical spelling",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn a_mistyped_job_status_does_not_parse() {
+        for typo in ["Runing", "run", "complete", ""] {
+            assert!(
+                JobStatus::from_str_loose(typo).is_none(),
+                "{:?} must not parse, or the --status guard is meaningless",
+                typo
+            );
+        }
+    }
 }

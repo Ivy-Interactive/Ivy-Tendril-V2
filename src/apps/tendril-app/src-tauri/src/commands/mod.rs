@@ -1,13 +1,17 @@
 pub mod agents;
+pub mod attachments;
 pub mod chat;
 pub mod config;
 pub mod dashboard;
 pub mod github;
 pub mod inbox;
 pub mod jobs;
+pub mod local_file;
 pub mod plans;
 pub mod pull_requests;
 pub mod state;
+pub mod tables;
+pub mod tunnel;
 pub mod vault;
 
 use crate::daemon::{discover_daemon_status, resolve_tendril_home, DaemonStatusResponse};
@@ -75,18 +79,89 @@ pub async fn cmd_restart_service() -> Result<ServiceInfoDto, BridgeError> {
     Ok(discovery.get_service_info().await)
 }
 
+/// Clears the leftovers that can stop the app reaching a daemon: a stale `.master`, an orphaned
+/// managed-service lock, and a tripped circuit breaker.
+///
+/// It does **not** unregister a daemon that is alive and answering. Deleting a live daemon's `.master`
+/// is what broke every client in the 2026-09-14 incident: the daemon keeps running but reads
+/// `is_master()` as false forever, so its master-only sweeps stop, every client reports "not running",
+/// and a second daemon can claim the same home. Repair is for wreckage, not for running processes.
 #[tauri::command]
 pub async fn cmd_repair_service() -> Result<String, BridgeError> {
+    use crate::service::supervisor::MasterReclaim;
+
     let home = resolve_tendril_home();
     let mut supervisor = crate::service::ServiceSupervisor::new(home.clone(), None);
-    let cleaned = supervisor.atomic_remove_stale_master().unwrap_or(false);
-    supervisor.remove_lock_file();
+    let reclaim = supervisor
+        .repair_master()
+        .await
+        .map_err(BridgeError::internal)?;
+
+    // The lock file and the breaker are the app's own state, so they are always safe to reset — but
+    // not while the daemon they describe may still be the one running.
+    if !reclaim.refused() {
+        supervisor.remove_lock_file();
+    }
     supervisor.circuit_breaker.reset();
 
-    Ok(format!(
-        "Service repair completed successfully. (Cleaned stale master: {})",
-        cleaned
-    ))
+    Ok(match reclaim {
+        MasterReclaim::NoClaim => {
+            "Service repair completed. (No daemon registration to clean up.)".to_string()
+        }
+        MasterReclaim::Removed { pid: Some(pid) } => {
+            format!("Service repair completed. (Cleaned a stale registration left by PID {pid}.)")
+        }
+        MasterReclaim::Removed { pid: None } => {
+            "Service repair completed. (Cleaned a truncated daemon registration.)".to_string()
+        }
+        MasterReclaim::RefusedLive { pid, port } => format!(
+            "Nothing to repair: the daemon on port {port} (PID {pid}) is running and answering, so \
+             its registration was left intact. Stop it if you want it replaced."
+        ),
+        // Deliberately the one thing Repair will not do. An unreadable registration cannot be shown to
+        // be wreckage — there is nobody to ask whether it is answering — and deleting one that turned
+        // out to be live is the incident this guard exists to prevent.
+        MasterReclaim::RefusedUnreadable { schema_version } => format!(
+            "Nothing was repaired: {} is not a daemon registration this version of Tendril can \
+             read{}. It may belong to a daemon that is still running, so it was left intact. Stop \
+             that daemon, update Tendril, or move the file aside once you are sure nothing is using \
+             it.",
+            home.join(".master").display(),
+            schema_version
+                .map(|v| format!(" (it declares schemaVersion {v})"))
+                .unwrap_or_default()
+        ),
+    })
+}
+
+/// Installs the bundled daemon and its autostart unit on demand.
+///
+/// The same work startup does on its own, exposed so the Service settings pane can retry it: the
+/// startup run is best-effort and silent, and a machine that refused it the first time (a locked
+/// executable, a LaunchAgents directory that was not writable yet) has no other way back.
+#[tauri::command]
+pub async fn cmd_install_service() -> Result<crate::service::ProvisionReport, BridgeError> {
+    let home = resolve_tendril_home();
+    // Blocking file IO, up to ~250 MB of it, so it does not belong on the async runtime's thread.
+    tokio::task::spawn_blocking(move || crate::service::provision(&home))
+        .await
+        .map_err(|e| BridgeError::internal(format!("service install task failed: {e}")))
+}
+
+/// Removes the autostart registration, leaving `<home>/bin` and every byte of user data in place.
+///
+/// Deliberately asymmetric with install: the binaries stay. They are what an already-running daemon
+/// is executing and what `agent_path` puts on a coding agent's `PATH`, so deleting them from under a
+/// live process to satisfy a settings toggle is not something this should do. "Do not start at
+/// login" is the whole intent.
+#[tauri::command]
+pub async fn cmd_uninstall_service_autostart() -> Result<String, BridgeError> {
+    tokio::task::spawn_blocking(|| {
+        crate::service::provision::unregister_autostart("com.spacecorps.tendril.service")
+    })
+    .await
+    .map_err(|e| BridgeError::internal(format!("service uninstall task failed: {e}")))?
+    .map_err(BridgeError::internal)
 }
 
 #[tauri::command]

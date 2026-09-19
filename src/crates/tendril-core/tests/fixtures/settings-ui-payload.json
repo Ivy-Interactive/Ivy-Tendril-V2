@@ -1,0 +1,21 @@
+{
+  "codingAgent": "openaiproxy",
+  "codingAgents": [
+    {
+      "name": "openaiproxy",
+      "arguments": "--verbose --no-color",
+      "environmentVariables": {
+        "ANTHROPIC_API_KEY": "sk-fixture",
+        "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+        "OPENAI_API_KEY": "sk-fixture",
+        "OPENAI_BASE_URL": "https://api.anthropic.com/v1",
+        "TENDRIL_TEST": "1"
+      },
+      "profiles": [
+        { "name": "deep", "model": "claude-opus-5", "effort": "max" },
+        { "name": "balanced", "model": "", "effort": "" },
+        { "name": "quick", "model": "", "effort": "" }
+      ]
+    }
+  ]
+}

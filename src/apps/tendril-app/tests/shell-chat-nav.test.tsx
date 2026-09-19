@@ -33,7 +33,6 @@ describe("ShellLayout & App Chat Navigation Integration", () => {
         onSelectTab={() => {}}
         onCloseTab={() => {}}
         onNewPlan={() => {}}
-        onOpenShortcuts={() => {}}
         onReconnect={() => {}}
       >
         <div>Content</div>

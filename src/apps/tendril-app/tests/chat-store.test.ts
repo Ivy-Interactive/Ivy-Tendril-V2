@@ -100,6 +100,75 @@ describe("ChatStore State Management & Event Handling", () => {
     expect(chatStore.getState().isGenerating).toBe(false);
   });
 
+  /**
+   * A turn keeps running after the user navigates away, so the `chat.job_spawned` announcing a job can
+   * arrive while a different conversation is active. Recording it only on the active session dropped it,
+   * and switching back showed a chat whose header knew about none of its jobs.
+   */
+  describe("chat.job_spawned", () => {
+    // Built per test rather than shared: the store records an id by pushing onto the session object it
+    // was given, so a fixture reused across tests carries the previous test's job into the next one.
+    const sessionFixture = (id: string, title: string): ChatSession => ({
+      id,
+      title,
+      createdAt: "2026-09-07T12:00:00Z",
+      updatedAt: "2026-09-07T12:00:00Z",
+      messages: [],
+      spawnedJobIds: [],
+    });
+
+    const load = async () => {
+      const active = sessionFixture("session-1", "Initial Session");
+      const other = sessionFixture("session-2", "Another Session");
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([active, other]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(active);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      await chatStore.fetchSessions();
+    };
+
+    it("records a job on the active session", async () => {
+      await load();
+
+      chatStore.handleChatEvent({
+        type: "chat.job_spawned",
+        sessionId: "session-1",
+        jobId: "03589",
+      });
+
+      expect(chatStore.getState().activeSession!.spawnedJobIds).toEqual(["03589"]);
+    });
+
+    it("records a job on a session that is not the active one", async () => {
+      await load();
+      expect(chatStore.getState().activeSessionId).toBe("session-1");
+
+      chatStore.handleChatEvent({
+        type: "chat.job_spawned",
+        sessionId: "session-2",
+        jobId: "03590",
+      });
+
+      const listed = chatStore.getState().sessions.find((s) => s.id === "session-2");
+      expect(listed!.spawnedJobIds).toEqual(["03590"]);
+      // And it does not leak into the conversation the user is looking at.
+      expect(chatStore.getState().activeSession!.spawnedJobIds).toEqual([]);
+    });
+
+    it("does not record the same job twice", async () => {
+      await load();
+
+      for (let i = 0; i < 3; i++) {
+        chatStore.handleChatEvent({
+          type: "chat.job_spawned",
+          sessionId: "session-1",
+          jobId: "03589",
+        });
+      }
+
+      expect(chatStore.getState().activeSession!.spawnedJobIds).toEqual(["03589"]);
+    });
+  });
+
   it("dispatches expected payload to chatApi.answerQuestions on submitAnswer", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSession]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSession);
@@ -181,8 +250,10 @@ describe("ChatStore State Management & Event Handling", () => {
     expect(lastMsg?.content).toBe("Take a look at this");
     expect(lastMsg?.attachments).toEqual(attachments);
 
+    // The prompt that reaches the agent carries the paths, because the execute route has nowhere
+    // else to put them: `ChatExecutionService.SendMessageAsync` appends the same block.
     expect(executeSpy).toHaveBeenCalledWith("session-1", {
-      prompt: "Take a look at this",
+      prompt: "Take a look at this\n\n[Attached Files]:\n- /tmp/screenshot.png",
       agentId: "claude",
       modelId: undefined,
       effort: undefined,

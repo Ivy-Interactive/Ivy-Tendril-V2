@@ -51,6 +51,25 @@ const PLAN_WINDOW_DAYS = 7;
 const cost = (value: number | null | undefined): string =>
   value == null ? NO_VALUE : formatCurrency(value);
 
+/** Below this a difference is float noise, not a missing attribution. */
+const CENT = 0.005;
+
+/**
+ * Spend a day's row records but attributes to neither the API nor the subscription.
+ *
+ * `get_activity_stats` splits spend on `CostSource`, treating only `'agent'`/`'computed'` as direct
+ * API charges and `'estimated'` as subsidised, with a `Cost > 0` heuristic for rows where the column
+ * is `NULL`. A row whose `CostSource` is the *empty string* — which is what every row written before
+ * the column was captured holds, because V2 never ported V1's backfill — satisfies none of those
+ * branches, so it lands in the total and in neither half.
+ *
+ * Reporting the two halves without this difference makes the split look complete when it is not, and
+ * for a database of mostly historical rows the "API spend" it shows is near zero. So the panels state
+ * the remainder as its own figure instead.
+ */
+const unclassifiedCost = (row: DashboardDailyCost): number =>
+  Math.max(0, row.cost - row.apiCost - row.subsidizedCost);
+
 /**
  * `KpiBreakdownSheet.FormatCost`: whole dollars once a figure passes $100, because the cents on a
  * projection are noise next to its error bars.
@@ -174,6 +193,7 @@ const AgentBreakdown: React.FC<{ agentCosts: readonly AgentCostBreakdown[] }> = 
 
   const totalCost = agentCosts.reduce((acc, a) => acc + a.cost, 0);
   const totalTokens = agentCosts.reduce((acc, a) => acc + a.tokens, 0);
+  const unknownCost = agentCosts.find((a) => a.agent === "Unknown")?.cost ?? null;
 
   return (
     <Section title="Spend by Coding Agent">
@@ -183,10 +203,13 @@ const AgentBreakdown: React.FC<{ agentCosts: readonly AgentCostBreakdown[] }> = 
         getRowId={(row) => row.agent}
         paginated={false}
       />
-      {agentCosts.some((a) => a.agent === "Unknown") && (
+      {unknownCost != null && (
         <Callout.Info title="Partial Attribution" className="m-4">
           Rows predating agent capture appear as Unknown and cannot be attributed to a specific
           agent.
+          {totalCost > 0 &&
+            ` That is ${percent((unknownCost / totalCost) * 100)} of the spend in this window` +
+              `${unknownCost >= totalCost - CENT ? ", so the split below it carries no information" : ""}.`}
         </Callout.Info>
       )}
     </Section>
@@ -458,6 +481,7 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
       const mtdTotal = monthToDate.reduce((acc, d) => acc + d.cost, 0);
       const mtdApi = monthToDate.reduce((acc, d) => acc + d.apiCost, 0);
       const mtdSubsidized = monthToDate.reduce((acc, d) => acc + d.subsidizedCost, 0);
+      const mtdUnclassified = monthToDate.reduce((acc, d) => acc + unclassifiedCost(d), 0);
       const daysRemaining = Math.max(0, forecast.daysInMonth - dayOfMonth);
       const inWindow = activity.dailyCosts
         .filter((d) => {
@@ -465,6 +489,7 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
           return day != null && day >= windowStart && day <= today;
         })
         .sort((a, b) => b.date.localeCompare(a.date));
+      const windowUnclassified = inWindow.reduce((acc, d) => acc + unclassifiedCost(d), 0);
 
       return blade("Both projection bases, and the days behind them", [
         <Callout.Info key="note" title="Usage & Subsidized Analysis" className="m-4">
@@ -499,6 +524,11 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
           <DetailItem label="Month-to-Date Subsidized Value">
             {roundedCost(mtdSubsidized)}
           </DetailItem>
+          {mtdUnclassified > CENT && (
+            <DetailItem label="Month-to-Date Unattributed Spend">
+              {roundedCost(mtdUnclassified)}
+            </DetailItem>
+          )}
           <DetailItem label="Month-to-Date Total Market Value">{roundedCost(mtdTotal)}</DetailItem>
           <DetailItem label="Calendar Days in Window">{forecast.calendarDays} day(s)</DetailItem>
           <DetailItem label="Active Days with Spend">{forecast.activityDays} day(s)</DetailItem>
@@ -509,12 +539,21 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
           {inWindow.length === 0 ? (
             <EmptyNote>No daily spend records found in the {WINDOW_DAYS}-day window.</EmptyNote>
           ) : (
-            <DataTable
-              columns={dailyCostColumns}
-              rows={inWindow}
-              getRowId={(row) => row.date}
-              defaultPageSize={25}
-            />
+            <>
+              <DataTable
+                columns={dailyCostColumns}
+                rows={inWindow}
+                getRowId={(row) => row.date}
+                defaultPageSize={25}
+              />
+              {windowUnclassified > CENT && (
+                <Callout.Info title="Incomplete Split" className="m-4">
+                  {roundedCost(windowUnclassified)} of the spend in this window carries no cost
+                  source, so it is in Total Spend but in neither the API nor the Subsidized column.
+                  The two columns therefore under-report and must not be read as a complete split.
+                </Callout.Info>
+              )}
+            </>
           )}
         </Section>,
         <AgentBreakdown key="agents" agentCosts={agentCosts} />,

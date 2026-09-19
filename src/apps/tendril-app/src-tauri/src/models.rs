@@ -303,10 +303,43 @@ pub struct JobDto {
     pub started_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<String>,
+    /// When the agent last wrote a line, RFC 3339. The Jobs table's Agent Output column counts up
+    /// from this; absent means a job that has not spoken yet, which renders as "Starting...".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_output_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tokens: Option<i64>,
+    // The usage breakdown and the provenance of `cost`. All optional: a run on a subscription plan
+    // reports tokens and no charge, and a genuinely absent cost has to stay distinguishable from
+    // zero. Dropping these was why the daemon's cost figures could not reach the UI at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<i64>,
+    /// The conversation that started this job, when one did. What the chat header lists its jobs by, so
+    /// a header survives a reload and a missed `chat.job_spawned`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_session_id: Option<String>,
+    /// Set only for a job whose process survived a daemon restart. Absent rather than `false`
+    /// otherwise, matching the daemon.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detached: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -337,6 +370,63 @@ pub struct JobDetailDto {
     pub tokens: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reported_failure_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_read_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detached: Option<bool>,
+    /// What the agent asked to do and was refused. Present on the detail only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub permission_denials: Vec<String>,
+
+    // The rest are what the Job Debug sheet needs and what this projection used to drop. Every one is
+    // optional and omitted when absent, so a daemon that does not send it renders nothing rather than
+    // an empty row — and an older daemon keeps working unchanged.
+    /// Which agent ran it (`claude`, `codex`, …) — V1's `Provider`. Empty on the wire when unset, which
+    /// arrives here as `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// The command line the agent was actually launched with: V1's `CliCommand`, which its debug sheet
+    /// labels `Arguments`. Distinct from `args`, the submitted `JobArgs` JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cli_command: Option<String>,
+    /// The plan folder the job ran against — V1's `PlanFolder`. `planFile` on the wire, which is a
+    /// folder path despite the name (`jobs::deliverable` reads it as one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_folder: Option<String>,
+    /// When the agent last wrote anything. The staleness anchor for a job that looks stuck; V1 keeps it
+    /// in memory only and cannot show it at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_output_at: Option<String>,
+    /// The artifacts the run left on this machine, each present only when the file exists: the job log,
+    /// the compiled prompt, the raw agent stream and the event wire.
+    ///
+    /// Not from the daemon — it does not publish them — but from `tendril_core::jobs::logger`, the code
+    /// that writes them, so the paths cannot drift from the layout. V1's sheet computes them in-process
+    /// for the same reason (`JobItem.LogFilePath` is a derived property, not a serialized field).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_log_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_prompt_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_raw_log_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_eventwire_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -360,6 +450,14 @@ pub struct ReviewActionDto {
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummaryDto {
     pub name: String,
+    /// The project's configured colour as an Ivy `Colors` name (`Blue`, `Amber`, ...), which is what
+    /// `ProjectConfig.color` stores and what the sidebars paint their per-project marker with.
+    ///
+    /// `None` rather than `Some("")` when `config.yaml` leaves it blank: the field is a `String` with
+    /// `#[serde(default)]` on the daemon side, so "unset" arrives as an empty string, and a UI
+    /// deciding whether to fall back to a neutral marker should not have to know that.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
     #[serde(default)]
     pub repos: Vec<String>,
     #[serde(default)]
@@ -575,6 +673,18 @@ pub struct ChatSessionDto {
     pub effort: Option<String>,
     #[serde(default, alias = "SpawnedJobIds")]
     pub spawned_job_ids: Vec<String>,
+    /// The plan this session belongs to, as its folder name — `00021-BuildDesktopOperator`.
+    ///
+    /// `PlanChatSessions.BelongsTo`: "A session belongs to exactly one plan, recorded on the session
+    /// itself." It is how the plan page finds its own conversation again, and the daemon has always sent
+    /// it. Dropping it here meant `findPlanChatSession` could never match, so the plan's chat looked
+    /// empty on every visit and a first message would attach a *second* session to the same plan.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "PlanFolderName"
+    )]
+    pub plan_folder_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -588,6 +698,19 @@ pub struct CreateSessionDto {
     pub model_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", alias = "Effort")]
     pub effort: Option<String>,
+    /// The plan folder this session belongs to — `00021-BuildDesktopOperator`.
+    ///
+    /// V1's `PlanChatSessions.CreateForPlan` records it, and `BelongsTo` is defined on it: "A session
+    /// belongs to exactly one plan, recorded on the session itself." The daemon's
+    /// `POST /api/chat/sessions` has accepted `planFolderName` all along; leaving it off this DTO was
+    /// what made the plan's chat unable to start its own session, so the panel had a composer that
+    /// could not send a first message.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "PlanFolderName"
+    )]
+    pub plan_folder_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -711,6 +834,11 @@ pub struct ModelOptionDto {
     pub id: String,
     #[serde(alias = "DisplayName")]
     pub display_name: String,
+    /// The effort ladder this model offers under its agent, which is not always the agent's own:
+    /// V1 declares `SupportedEfforts` per model row, so Copilot on `claude-opus-5` offers Claude's
+    /// levels and on `gpt-5.4` its own. Absent when the agent takes no effort argument at all.
+    #[serde(default, alias = "Efforts", skip_serializing_if = "Vec::is_empty")]
+    pub efforts: Vec<EffortOptionDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -729,6 +857,10 @@ pub struct AgentOptionDto {
     pub id: String,
     #[serde(alias = "Label")]
     pub label: String,
+    /// The `Icons` enum name the webview's `BrandIcon` resolves, from V1's `AgentBranding.IconFor`.
+    /// Empty from a daemon old enough not to send one.
+    #[serde(default, alias = "Icon")]
+    pub icon: String,
     #[serde(default, alias = "Models")]
     pub models: Vec<ModelOptionDto>,
     #[serde(default, alias = "SupportsEffort")]

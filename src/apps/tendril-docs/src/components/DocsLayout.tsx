@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Menu, Search, X } from "lucide-react";
+import { TuiKbd } from "@ivy-interactive/components/ui";
 import { cn } from "../lib/cn";
 import {
   homeRoute as defaultHomeRoute,
@@ -178,9 +179,9 @@ export function DocsLayout({
           >
             <Search className="size-4" aria-hidden="true" />
             <span className="hidden sm:inline">Search</span>
-            <kbd className="hidden rounded border border-border px-1 font-mono text-xs sm:inline">
-              ⌘K
-            </kbd>
+            <span className="hidden sm:inline">
+              <TuiKbd keys="⌘K" variant="outline" />
+            </span>
           </button>
 
           <ThemeToggle />

@@ -5,13 +5,47 @@
 //! a checked-out feature branch, a detached HEAD, diverged history. Those failures are flagged
 //! [`ProjectSyncResult::can_fix_with_agent`] so the caller can point a human or an agent at them.
 //!
+//! **The only two git commands here that are not read-only are `fetch --prune` and
+//! `merge --ff-only`.** Neither can rewrite history or destroy work: a fetch writes remote-tracking
+//! refs only, and a fast-forward-only merge that cannot fast-forward aborts having moved nothing.
+//! There is deliberately no `reset`, no `rebase`, no `push`, no `stash`, no `clean` and no branch
+//! deletion in this module — on a divergence the answer is to escalate, never to choose. See
+//! [`diagnostic_prompt`].
+//!
 //! The [`crate::jobs`] `SyncRepo` job type is the agent-driven counterpart; this module never
 //! spawns anything.
+//!
+//! Worktrees do not interact with any of this. Tendril's per-plan worktrees are checked out on
+//! `tendril/<plan>` branches, and the reclaim path
+//! ([`crate::git::worktree::remove_worktree`], [`crate::git::worktree_reaper`]) only ever removes
+//! those. A project repo's base branch is never a reclaim target, and sync never touches a plan
+//! branch — so a divergence on `main` and a worktree reclaim cannot fight over the same ref.
 
 use crate::config::expand_variables;
 use crate::git::service::run_git;
 use crate::models::{ProjectConfig, RepoRef};
 use std::path::Path;
+
+/// How far a local branch and its remote-tracking branch have drifted apart, in commits.
+///
+/// Both counts positive is *the* divergence case: each side holds commits the other does not, so no
+/// fast-forward exists in either direction and every resolution (merge, rebase, or reset) is a
+/// judgement about whose work moves. [`sync_repository`] reports the shape and stops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BranchDivergence {
+    /// Commits on the local branch that the remote-tracking branch does not have.
+    pub ahead: u32,
+    /// Commits on the remote-tracking branch that the local branch does not have.
+    pub behind: u32,
+}
+
+impl BranchDivergence {
+    /// True only when both sides have moved. A branch that is purely behind is fast-forwardable and
+    /// a branch that is purely ahead is a push away — neither needs a human.
+    pub fn is_diverged(&self) -> bool {
+        self.ahead > 0 && self.behind > 0
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ProjectSyncResult {
@@ -23,6 +57,9 @@ pub struct ProjectSyncResult {
     /// The failure is one an agent could reconcile (dirty tree, divergence, wrong branch),
     /// as opposed to a missing directory.
     pub can_fix_with_agent: bool,
+    /// Set only when the fast-forward was refused *because* the branches diverged, so a caller can
+    /// tell that case apart from the other reasons a merge can fail without parsing git's stderr.
+    pub divergence: Option<BranchDivergence>,
 }
 
 /// A git invocation that cannot fail the caller: a spawn error becomes exit `-1` with the error as
@@ -51,6 +88,25 @@ fn resolve_default_branch(repo: &Path, remote: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Counts the commits each side of `HEAD...<remote_ref>` holds alone.
+///
+/// `git rev-list --left-right --count` prints `<ahead>\t<behind>` and is purely a ref walk — it
+/// reads history and writes nothing, which is why it is safe to run on a repo whose state has
+/// already been judged unfit to merge. Returns `None` when git cannot resolve the range (a missing
+/// ref, an unborn branch) rather than guessing at a shape.
+fn count_divergence(repo: &Path, remote_ref: &str) -> Option<BranchDivergence> {
+    let range = format!("HEAD...{}", remote_ref);
+    let (code, stdout, _) = git(&["rev-list", "--left-right", "--count", &range], repo);
+    if code != 0 {
+        return None;
+    }
+
+    let mut counts = stdout.split_whitespace();
+    let ahead = counts.next()?.parse().ok()?;
+    let behind = counts.next()?.parse().ok()?;
+    Some(BranchDivergence { ahead, behind })
+}
+
 /// Fast-forwards one repo's base branch onto its remote tracking branch.
 ///
 /// The checks run in the original's order and return on the first failure, because each one is
@@ -69,6 +125,7 @@ pub fn sync_repository(
             base_branch: None,
             git_error_details: None,
             can_fix_with_agent: false,
+            divergence: None,
         };
     }
 
@@ -84,6 +141,7 @@ pub fn sync_repository(
             base_branch: requested_branch,
             git_error_details: None,
             can_fix_with_agent: false,
+            divergence: None,
         };
     }
 
@@ -97,6 +155,7 @@ pub fn sync_repository(
             base_branch: requested_branch,
             git_error_details: None,
             can_fix_with_agent: false,
+            divergence: None,
         };
     }
 
@@ -114,6 +173,7 @@ pub fn sync_repository(
             base_branch: requested_branch,
             git_error_details: Some(details),
             can_fix_with_agent: true,
+            divergence: None,
         };
     }
 
@@ -142,6 +202,7 @@ pub fn sync_repository(
             base_branch: requested_branch,
             git_error_details: Some(details),
             can_fix_with_agent: true,
+            divergence: None,
         };
     }
 
@@ -170,6 +231,7 @@ pub fn sync_repository(
             base_branch: Some(target_branch),
             git_error_details: Some(format!("HEAD is detached at {}", sha)),
             can_fix_with_agent: true,
+            divergence: None,
         };
     }
 
@@ -188,6 +250,7 @@ pub fn sync_repository(
                 current_branch, target_branch
             )),
             can_fix_with_agent: true,
+            divergence: None,
         };
     }
 
@@ -200,6 +263,7 @@ pub fn sync_repository(
             base_branch: Some(target_branch),
             git_error_details: Some(status_err.trim().to_string()),
             can_fix_with_agent: true,
+            divergence: None,
         };
     }
     if !status_out.trim().is_empty() {
@@ -210,6 +274,7 @@ pub fn sync_repository(
             base_branch: Some(target_branch),
             git_error_details: Some(status_out.trim().to_string()),
             can_fix_with_agent: true,
+            divergence: None,
         };
     }
 
@@ -232,24 +297,46 @@ pub fn sync_repository(
                 remote_ref, remote
             )),
             can_fix_with_agent: true,
+            divergence: None,
         };
     }
 
     let (head_before_code, head_before, _) = git(&["rev-parse", "HEAD"], repo);
+    // `--ff-only` is what makes this the last step rather than a dangerous one: when the histories
+    // have diverged git aborts before touching anything — HEAD, the index, the reflog and the
+    // working tree are all exactly as they were, and no MERGE_HEAD is left behind to clean up.
     let (merge_code, merge_out, merge_err) = git(&["merge", "--ff-only", &remote_ref], repo);
     if merge_code != 0 {
-        let details = if merge_err.trim().is_empty() {
+        let git_output = if merge_err.trim().is_empty() {
             merge_out.trim().to_string()
         } else {
             merge_err.trim().to_string()
         };
+
+        // Divergence is the interesting sub-case, and git's stderr only hints at it. Naming it, with
+        // the commit counts on each side, is the difference between an agent that knows work exists
+        // on both sides and one that has to go and find out.
+        let divergence = count_divergence(repo, &remote_ref).filter(BranchDivergence::is_diverged);
+        let details = match divergence {
+            Some(d) => format!(
+                "Local '{}' and '{}' have diverged: {} local commit(s) are not on the remote, and \
+                 {} remote commit(s) are not local. No fast-forward exists in either direction. \
+                 git reported: {}",
+                target_branch, remote_ref, d.ahead, d.behind, git_output
+            ),
+            None => git_output,
+        };
+
         return ProjectSyncResult {
             success: false,
+            // Kept verbatim from the original helper: the divergence detail goes in
+            // `git_error_details`, which is what the CLI prints next and what the prompt carries.
             message: format!("Fast-forward merge failed for {}", remote_ref),
             repo_path: expanded,
             base_branch: Some(target_branch),
             git_error_details: Some(details),
             can_fix_with_agent: true,
+            divergence,
         };
     }
 
@@ -270,6 +357,7 @@ pub fn sync_repository(
         base_branch: Some(target_branch),
         git_error_details: None,
         can_fix_with_agent: false,
+        divergence: None,
     }
 }
 
@@ -325,6 +413,11 @@ pub fn sync_project(
 }
 
 /// The prompt to hand an agent for a failure flagged [`ProjectSyncResult::can_fix_with_agent`].
+///
+/// This *is* Tendril's answer to a divergence: describe the state, hand it to an agent or a human,
+/// and let them decide. The body below is the original helper's wording, unchanged. A divergence
+/// adds a second paragraph spelling out the constraint the first only implies, because "without
+/// losing any work" is exactly the instruction a hurried agent satisfies with a `reset --hard`.
 pub fn diagnostic_prompt(result: &ProjectSyncResult) -> String {
     let branch = result
         .base_branch
@@ -339,7 +432,7 @@ pub fn diagnostic_prompt(result: &ProjectSyncResult) -> String {
         .filter(|d| !d.is_empty())
         .unwrap_or("Unknown error");
 
-    format!(
+    let base = format!(
         "The repository at '{}' could not be safely synchronized with remote branch '{}'.\n\
          Issue details:\n\
          {}\n\
@@ -347,5 +440,20 @@ pub fn diagnostic_prompt(result: &ProjectSyncResult) -> String {
          Please inspect the repository status, check for uncommitted changes or branch divergence, \
          and help reconcile or update the branch safely without losing any work.",
         result.repo_path, branch, details
-    )
+    );
+
+    match result.divergence {
+        Some(d) => format!(
+            "{}\n\
+             \n\
+             The branches have genuinely diverged: {} local commit(s) and {} remote commit(s) exist \
+             only on their own side, so there is no fast-forward and no single correct answer. \
+             Do NOT force-push, do NOT `reset --hard`, do NOT delete a branch, and do NOT discard \
+             or overwrite uncommitted changes. Every commit on both sides must survive. Propose a \
+             merge or a rebase and explain the consequence, or stop and report what you found — \
+             leaving the repository as it is now is an acceptable outcome.",
+            base, d.ahead, d.behind
+        ),
+        None => base,
+    }
 }

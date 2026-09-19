@@ -20,14 +20,11 @@ export interface UnansweredQuestionsDialogProps {
  * `ShortcutKey("Ctrl+Enter")`: an unanswered question means "you decide", and ExecutePlan resolves
  * one itself by taking the `recommended` option. This is the confirmation that you meant to let it.
  *
- * This is the first place the app surfaces unanswered plan questions at all.
- * Legacy's third button was *Answer Questions*, which navigated to a questions
- * view; V2 has neither that view nor an answer-a-plan-question endpoint, so the
- * port offers *Update Plan…* instead of a button that would go nowhere.
- *
- * TODO: when a plan-question answer path exists (a `PUT` alongside the chat
- * answering flow in `hooks/usePendingChatQuestions.ts`), add *Answer Questions*
- * here and let the operator answer in place.
+ * The middle button is *Update Plan…*, not V1's own *Answer Questions*, and that is not a gap being
+ * papered over: answering happens in the plan document itself. Every question listed here is rendered
+ * as a picker in the revision behind this dialog, and picking an option writes straight back into the
+ * same revision (`PlanDetailView.applyAnswer` → `bridge.updateLatestRevision`). So cancelling *is*
+ * "answer questions"; what *Update Plan…* adds is the job that folds the answers into the plan's prose.
  */
 export function UnansweredQuestionsDialog({
   isOpen,

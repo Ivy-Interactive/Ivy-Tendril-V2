@@ -24,6 +24,19 @@ class PlansStore {
 
   private listeners: Set<() => void> = new Set();
 
+  /**
+   * Sequence numbers for the two fetches, so a slow answer cannot overwrite a newer one.
+   *
+   * V1 does not need these: `ContentView` reads plan content through `UseQuery` keyed on the plan's
+   * folder path (`ContentView.cs`, `options: QueryScope.View`), and a query discards the result of a
+   * key it is no longer on. Plain promises have no such key, so clicking plan A then plan B while A
+   * is still in flight used to leave A's detail on screen under B's id.
+   */
+  private plansRequestSeq = 0;
+  private detailRequestSeq = 0;
+  /** The id `fetchPlanDetail` was last asked for. A reply for anything else is stale. */
+  private detailRequestId: string | null = null;
+
   public getState(): PlansState {
     return this.state;
   }
@@ -48,17 +61,22 @@ class PlansStore {
   }
 
   public async fetchPlans(query?: PlanQuery): Promise<PlanSummary[]> {
+    const seq = ++this.plansRequestSeq;
     this.state.isLoading = true;
     this.state.error = null;
     this.notify();
 
     try {
       const plans = await bridge.listPlans(query);
+      // A newer list is already the truth. The caller still gets what it asked for; the store does
+      // not go backwards.
+      if (seq !== this.plansRequestSeq) return plans;
       this.state.plans = plans;
       this.state.isLoading = false;
       this.notify();
       return plans;
     } catch (err) {
+      if (seq !== this.plansRequestSeq) throw err;
       this.state.isLoading = false;
       this.state.error = err instanceof Error ? err.message : String(err);
       this.notify();
@@ -66,23 +84,40 @@ class PlansStore {
     }
   }
 
+  /**
+   * The plan the detail view renders.
+   *
+   * A reply is applied only while it is still the plan that was last asked for. Every plan event
+   * refreshes the selection (`App.tsx`), so a plan opened during another plan's in-flight fetch would
+   * otherwise be replaced by the older answer arriving second and the header would name one plan
+   * while the body showed another.
+   */
   public async fetchPlanDetail(id: string): Promise<PlanDetail> {
+    const seq = ++this.detailRequestSeq;
+    this.detailRequestId = id;
     this.state.isLoading = true;
     this.state.error = null;
     this.notify();
 
     try {
       const detail = await bridge.getPlan(id);
+      if (seq !== this.detailRequestSeq) return detail;
       this.state.selectedPlan = detail;
       this.state.isLoading = false;
       this.notify();
       return detail;
     } catch (err) {
+      if (seq !== this.detailRequestSeq) throw err;
       this.state.isLoading = false;
       this.state.error = err instanceof Error ? err.message : String(err);
       this.notify();
       throw err;
     }
+  }
+
+  /** The plan `fetchPlanDetail` is currently on, for callers that need to know a reply is theirs. */
+  public get pendingDetailId(): string | null {
+    return this.detailRequestId;
   }
 
   public async updateFieldOptimistic(

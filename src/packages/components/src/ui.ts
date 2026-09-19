@@ -40,6 +40,7 @@ export * from "./components/ui/menubar";
 export * from "./components/ui/multiselect";
 export * from "./components/ui/pagination";
 export * from "./components/ui/pagination-variant";
+export * from "./components/ui/panel-layout";
 export * from "./components/ui/popover";
 export * from "./components/ui/progress";
 export * from "./components/ui/radio-group";
@@ -71,3 +72,12 @@ export * from "./components/ui/IconButton";
 export * from "./components/ui/StatusLine";
 export * from "./components/ui/withTooltipScope";
 export * from "./components/ui/TuiBadge";
+export * from "./components/ui/TuiKbd";
+export * from "./components/ui/spinner";
+export {
+  Tooltip as TuiTooltip,
+  TooltipScope,
+  type TooltipScopeProps,
+  type TooltipSide as TuiTooltipSide,
+  type TooltipProps as TuiTooltipProps,
+} from "./components/ui/TuiTooltip";

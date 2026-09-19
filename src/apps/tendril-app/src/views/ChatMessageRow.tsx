@@ -1,13 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ChatBubble,
-  ChatBubbleMessage,
-  ChatBubbleAction,
-  ChatBubbleActionWrapper,
-} from "@ivy-interactive/components/renderers";
+import { ChatBubble, ChatBubbleMessage } from "@ivy-interactive/components/renderers";
 import { PlanMarkdown } from "@ivy-interactive/components/tendril";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { CheckCheck, Copy, FilePlus, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
+import { CheckCheck, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
+import { bridge } from "../api/bridge";
 import { chatStore } from "../state/chatStore";
 import type { ChatAttachment, ChatMessage, InProgressQuestionAnswers } from "../types/chat";
 import type { Job } from "../types/api";
@@ -15,12 +10,10 @@ import { isWriteInAnswer, patchQuestionsMarkdown } from "../utils/questionMarkdo
 import { formatSystemEvent } from "../utils/systemEvents";
 import { resolveJobState, type JobDisplayState } from "../utils/jobStatus";
 import type { LightboxImage } from "../components/chat/ImageLightbox";
+import { TurnActivity } from "../components/chat/TurnActivity";
 
 export interface ChatMessageRowProps {
   message: ChatMessage;
-  isCopied: boolean;
-  onCopy: (message: ChatMessage) => void;
-  onCreatePlan: (content: string) => void;
   inProgressAnswers?: InProgressQuestionAnswers;
   isSubmittingAnswer?: boolean;
   /** Opens the plan a system event refers to. */
@@ -37,17 +30,158 @@ export interface ChatMessageRowProps {
 
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
 
+const ATTACHED_FILES_HEADING = "[Attached Files]:";
+
+/**
+ * Splits the `[Attached Files]:` block back out of a user message. The prompt that reaches the
+ * agent carries the attachment paths appended under that heading (`ChatExecutionService`'s
+ * `promptWithAttachments`), and the daemon does not persist attachments as structured data, so a
+ * prompt re-read from disk would otherwise show its paths as prose. V1's `parseUserMessageContent`
+ * does the same split for the same reason.
+ */
+export function parseUserMessageContent(content: string): {
+  prompt: string;
+  attachments: ChatAttachment[];
+} {
+  const index = content.indexOf(ATTACHED_FILES_HEADING);
+  if (index < 0) return { prompt: content, attachments: [] };
+  const prompt = content.slice(0, index).trimEnd();
+  const attachments = content
+    .slice(index + ATTACHED_FILES_HEADING.length)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("- "))
+    .map((line) => line.slice(2).trim())
+    .filter((path) => path.length > 0)
+    .map((path) => ({ name: path.split(/[/\\]/).pop() || path, path }));
+  return { prompt, attachments };
+}
+
 /** An attachment worth showing as a thumbnail rather than as a paperclip chip. */
 export const isImageAttachment = (attachment: ChatAttachment): boolean =>
   attachment.mimeType?.startsWith("image/") === true || IMAGE_EXTENSIONS.test(attachment.path);
 
-/** The webview cannot load a bare filesystem path; Tauri's asset protocol can. */
-const imageSrc = (path: string): string => {
-  try {
-    return convertFileSrc(path);
-  } catch {
-    return path;
+/**
+ * Previews already resolved, keyed by path, so a thumbnail survives the re-render a streaming turn
+ * causes and two rows showing the same file read it once.
+ *
+ * A rejection is remembered as well: the daemon's answer for a given path — outside the local-file
+ * roots, or not an allow-listed image — does not change while the app is running, and retrying it on
+ * every re-render would be a request per frame for a file that is never coming.
+ */
+const previewCache = new Map<string, Promise<string>>();
+
+const loadPreview = (path: string): Promise<string> => {
+  const cached = previewCache.get(path);
+  if (cached) return cached;
+  const pending = bridge.getLocalFilePreview(path);
+  previewCache.set(path, pending);
+  return pending;
+};
+
+/** Forgets the resolved previews. Tests use it so one case's stub cannot answer the next one's. */
+export function resetAttachmentPreviewsForTesting(): void {
+  previewCache.clear();
+}
+
+/**
+ * The `data:` URL for an image attachment, or `failed` when the daemon will not serve it.
+ *
+ * The webview cannot load a bare filesystem path — `file://` is blocked from the app's own origin — so
+ * the bytes come from the daemon's guarded `GET /ivy/local-file`, which is the endpoint V1 points its
+ * attachment `<img>` tags at. It is fetched natively rather than linked because that route takes its
+ * credential in the query string and the app's only credential is the bearer secret the webview never
+ * holds; see `src-tauri/src/commands/local_file.rs`.
+ */
+function useAttachmentPreview(
+  path: string,
+  enabled: boolean,
+): { url: string | null; failed: boolean } {
+  const [state, setState] = useState<{ url: string | null; failed: boolean }>({
+    url: null,
+    failed: false,
+  });
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    setState({ url: null, failed: false });
+    loadPreview(path).then(
+      (url) => {
+        if (active) setState({ url, failed: false });
+      },
+      () => {
+        if (active) setState({ url: null, failed: true });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [path, enabled]);
+
+  return state;
+}
+
+/** The paperclip form: a document, or an image the daemon would not serve. */
+const AttachmentChip: React.FC<{ attachment: ChatAttachment; isUser: boolean }> = ({
+  attachment,
+  isUser,
+}) => (
+  <div
+    className={`flex max-w-full items-center gap-1.5 rounded-selector px-1.5 py-1 ${
+      isUser ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+    }`}
+    title={attachment.path}
+  >
+    <Paperclip className="size-4 shrink-0 opacity-85" />
+    <span className="max-w-[220px] truncate">{attachment.name}</span>
+  </div>
+);
+
+/**
+ * One attachment inside a bubble: a thumbnail that opens the lightbox for an image the daemon serves,
+ * a chip for everything else.
+ *
+ * A refused image falls back to the chip rather than to a broken-image icon — the file is still part of
+ * the message, and the daemon deliberately does not say whether it was outside the allowed roots or
+ * simply gone, so there is nothing more honest to show.
+ */
+const MessageAttachment: React.FC<{
+  attachment: ChatAttachment;
+  isUser: boolean;
+  onOpenImage?: (image: LightboxImage) => void;
+}> = ({ attachment, isUser, onOpenImage }) => {
+  const isImage = Boolean(onOpenImage) && isImageAttachment(attachment);
+  const { url, failed } = useAttachmentPreview(attachment.path, isImage);
+
+  if (!isImage || failed) {
+    return <AttachmentChip attachment={attachment} isUser={isUser} />;
   }
+
+  if (!url) {
+    return (
+      <div
+        data-testid="attachment-thumbnail-pending"
+        className="size-16 animate-pulse rounded-selector bg-muted"
+        title={attachment.name}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      data-testid="attachment-thumbnail"
+      onClick={() => onOpenImage?.({ url, title: attachment.name })}
+      title={`Open ${attachment.name}`}
+      aria-label={`Open ${attachment.name}`}
+      className={`overflow-hidden rounded-selector transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 ${
+        isUser ? "focus-visible:ring-primary-foreground" : "focus-visible:ring-ring"
+      }`}
+    >
+      <img src={url} alt={attachment.name} className="size-16 object-cover" loading="lazy" />
+    </button>
+  );
 };
 
 /**
@@ -65,9 +199,6 @@ const systemEventIconTone = (kind: string, jobState: JobDisplayState): string =>
 
 export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function ChatMessageRow({
   message,
-  isCopied,
-  onCopy,
-  onCreatePlan,
   inProgressAnswers: propInProgressAnswers,
   isSubmittingAnswer: propIsSubmittingAnswer,
   onOpenPlan,
@@ -151,10 +282,19 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   const isSubmitting = isUser
     ? false
     : (propIsSubmittingAnswer ?? chatStore.isSubmittingAnswer(message.id));
+  const userContent = useMemo(
+    () => (isUser ? parseUserMessageContent(currentMessage.content) : null),
+    [isUser, currentMessage.content],
+  );
   const content = useMemo(() => {
-    if (isUser || !inProgressAnswers) return currentMessage.content;
+    if (isUser) return userContent?.prompt ?? currentMessage.content;
+    if (!inProgressAnswers) return currentMessage.content;
     return patchQuestionsMarkdown(currentMessage.content, inProgressAnswers);
-  }, [isUser, currentMessage.content, inProgressAnswers]);
+  }, [isUser, userContent, currentMessage.content, inProgressAnswers]);
+  const attachments =
+    message.attachments && message.attachments.length > 0
+      ? message.attachments
+      : (userContent?.attachments ?? []);
 
   const systemEvent = useMemo(
     () => (isSystem ? formatSystemEvent(currentMessage.content) : null),
@@ -246,9 +386,11 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
           title={isUser ? message.timestamp : undefined}
         >
           {isUser ? (
-            <div className="self-stretch whitespace-pre-wrap">{message.content}</div>
+            <div className="self-stretch whitespace-pre-wrap">{content}</div>
           ) : (
             <div>
+              {/* What the turn did, ahead of what it said, as `AssistantTurn` orders it. */}
+              <TurnActivity rawStream={currentMessage.rawStream} />
               <PlanMarkdown
                 id={`chat-msg-${message.id}`}
                 content={content}
@@ -267,71 +409,24 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
             </div>
           )}
 
-          {message.attachments && message.attachments.length > 0 && (
+          {attachments.length > 0 && (
             <div
               data-testid="message-attachments"
               className={`flex max-w-full flex-wrap gap-1.5 ${
                 isUser ? "justify-end" : "mt-2 justify-start"
               }`}
             >
-              {message.attachments.map((att, idx) =>
-                onOpenImage && isImageAttachment(att) ? (
-                  <button
-                    key={`${att.path}-${idx}`}
-                    type="button"
-                    data-testid="attachment-thumbnail"
-                    onClick={() => onOpenImage({ url: imageSrc(att.path), title: att.name })}
-                    title={`Open ${att.name}`}
-                    aria-label={`Open ${att.name}`}
-                    className={`overflow-hidden rounded-md transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 ${
-                      isUser ? "focus-visible:ring-primary-foreground" : "focus-visible:ring-ring"
-                    }`}
-                  >
-                    <img
-                      src={imageSrc(att.path)}
-                      alt={att.name}
-                      className="size-16 object-cover"
-                      loading="lazy"
-                    />
-                  </button>
-                ) : (
-                  <div
-                    key={`${att.path}-${idx}`}
-                    className={`flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 ${
-                      isUser
-                        ? "bg-primary-foreground/20 text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                    title={att.path}
-                  >
-                    <Paperclip className="size-4 shrink-0 opacity-85" />
-                    <span className="max-w-[220px] truncate">{att.name}</span>
-                  </div>
-                ),
-              )}
+              {attachments.map((att, idx) => (
+                <MessageAttachment
+                  key={`${att.path}-${idx}`}
+                  attachment={att}
+                  isUser={isUser}
+                  onOpenImage={onOpenImage}
+                />
+              ))}
             </div>
           )}
         </ChatBubbleMessage>
-
-        {/* The row's meta line. V1 shows the finished turn's metrics here; V2 has no per-turn
-            metrics yet, so the slot carries the two actions the desktop app adds. */}
-        <ChatBubbleActionWrapper className={isUser ? "justify-end" : "justify-start"}>
-          <ChatBubbleAction
-            icon={<Copy className="size-3.5" />}
-            title="Copy message"
-            onClick={() => onCopy(message)}
-            className={isCopied ? "text-foreground" : "text-muted-foreground"}
-          />
-          <button
-            type="button"
-            onClick={() => onCreatePlan(message.content)}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded px-1 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
-            title="Create Plan from message"
-          >
-            <FilePlus className="size-3.5" />
-            <span>Create Plan</span>
-          </button>
-        </ChatBubbleActionWrapper>
       </div>
     </ChatBubble>
   );

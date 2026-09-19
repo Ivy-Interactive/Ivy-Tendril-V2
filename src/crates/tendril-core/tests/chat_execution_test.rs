@@ -8,6 +8,15 @@ use tendril_core::chat::execution::{
 use tendril_core::chat::models::ChatQueuedItem;
 use tendril_core::chat::storage::load_session;
 
+/// Whether a launch is the background title-naming run rather than the turn itself. Naming is the
+/// only chat launch that asks for `Plan` mode, so a mock spec builder can branch on it and keep the
+/// two runs' output apart. (It used to branch on `session_id`, which no chat launch sets any more:
+/// Claude Code refuses a `--session-id` it has already opened, so a chat turn cannot reuse the chat
+/// session's id.)
+fn is_naming_call(config: &AgentLaunchConfig) -> bool {
+    config.permission_mode.as_deref() == Some("Plan")
+}
+
 #[tokio::test]
 async fn test_chat_queue_management() {
     let test_dir = std::env::temp_dir().join(format!(
@@ -24,12 +33,14 @@ async fn test_chat_queue_management() {
         prompt: "First prompt".to_string(),
         attachments: None,
         created_at: chrono::Utc::now(),
+        role: None,
     };
     let item2 = ChatQueuedItem {
         id: "q-2".to_string(),
         prompt: "Second prompt".to_string(),
         attachments: None,
         created_at: chrono::Utc::now(),
+        role: None,
     };
 
     mgr.enqueue_message(session_id, item1.clone()).await;
@@ -69,13 +80,13 @@ async fn test_chat_execution_turn_and_job_tracking() {
     ));
     std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
 
-    // The naming task reuses this same spec builder but always passes `session_id: None`, so
-    // branch on that to keep it deterministic and out of this test's assertions rather than
-    // racing the turn's own session rename against a second background rename.
+    // The naming task reuses this same spec builder but always asks for `Plan` mode, so branch on
+    // that to keep it deterministic and out of this test's assertions rather than racing the turn's
+    // own session rename against a second background rename.
     let mgr = Arc::new(
         ChatExecutionManager::new(test_dir.clone())
             .with_spec_builder(Arc::new(|_agent, config| {
-                if config.session_id.is_none() {
+                if is_naming_call(config) {
                     return AgentProcessSpec {
                         command: "sh".to_string(),
                         args: vec!["-c".to_string(), "exit 1".to_string()],
@@ -474,9 +485,13 @@ async fn test_chat_turn_empty_text_with_tool_error_generates_report() {
     .expect("Failed to start session turn");
 
     let mut deltas = Vec::new();
+    let mut finalized_contents = Vec::new();
     while let Ok(evt) = rx.recv().await {
         match evt {
             ChatEvent::StreamDelta { delta, .. } => deltas.push(delta),
+            ChatEvent::MessageAdded { message, .. } if message.role == "assistant" => {
+                finalized_contents.push(message.content);
+            }
             ChatEvent::GeneratingState {
                 is_generating: false,
                 ..
@@ -496,31 +511,56 @@ async fn test_chat_turn_empty_text_with_tool_error_generates_report() {
         !assistant_msg.content.trim().is_empty(),
         "a tool error with no text deltas must not leave an empty turn"
     );
+    // The message no longer inventories the calls. It used to, because nothing else surfaced them;
+    // now the stream carries a renderable pair per tool and restating them in prose was a second,
+    // longer copy of what the cards already show — which is what buried the reason that mattered.
     assert!(
-        assistant_msg.content.contains("Bash"),
-        "report must name the tool that was called, got: {}",
+        !assistant_msg.content.contains("Bash")
+            && !assistant_msg.content.contains("Summary of Actions"),
+        "the turn must not restate its tool calls, got: {}",
         assistant_msg.content
     );
+    // The agent reported no failure of its own and exited zero, so this is V1's wording for a run
+    // that succeeded without saying anything. What it *did*, including the tool that errored, is on
+    // the stream below.
+    assert_eq!(assistant_msg.content, "Task completed successfully.");
+
+    // The tool's failure is not lost — it is on the stream, as the event a card renders red.
+    let raw_stream = assistant_msg
+        .raw_stream
+        .as_deref()
+        .expect("Assistant message must carry a raw stream");
+    let errored = raw_stream
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find(|v| v.get("kind").and_then(|k| k.as_str()) == Some("tool_result"))
+        .expect("the tool result must be on the stream");
+    assert_eq!(
+        errored.get("is_error").and_then(|e| e.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        errored.get("output").and_then(|o| o.as_str()),
+        Some("command not found")
+    );
+    // The finished turn is republished as an upsert of the whole message, not as a delta appended to
+    // whatever the client had: a delta is only correct if it is applied exactly once, and applying
+    // the report twice is what showed the same sentence twice in the UI.
     assert!(
-        assistant_msg.content.contains("failed") || assistant_msg.content.contains("Failures"),
-        "report must call out the failure, got: {}",
-        assistant_msg.content
+        finalized_contents.contains(&assistant_msg.content),
+        "the finished turn must be republished as a MessageAdded carrying its final content, got: {:?}",
+        finalized_contents
     );
     assert!(
-        assistant_msg.content.contains("command not found"),
-        "report must surface the tool's error output, got: {}",
-        assistant_msg.content
-    );
-    assert!(
-        deltas.iter().any(|d| d == &assistant_msg.content),
-        "the generated report must also be emitted as a StreamDelta so the frontend renders it"
+        !deltas.iter().any(|d| d == &assistant_msg.content),
+        "the synthesized report must not also arrive as an appendable StreamDelta"
     );
 
     let _ = std::fs::remove_dir_all(&test_dir);
 }
 
 #[tokio::test]
-async fn test_chat_turn_empty_exit_generates_fallback_report() {
+async fn test_chat_turn_succeeds_silently_reports_completion() {
     let test_dir = std::env::temp_dir().join(format!(
         "tendril-chat-empty-exit-test-{}",
         uuid::Uuid::new_v4().simple()
@@ -583,10 +623,498 @@ async fn test_chat_turn_empty_exit_generates_fallback_report() {
         !assistant_msg.content.trim().is_empty(),
         "an agent that exits with no output must still leave a non-empty report"
     );
+    // `ChatExecutionService`'s wording for a run that succeeded without saying anything.
+    assert_eq!(assistant_msg.content, "Task completed successfully.");
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// The bug this covers: the report for a failed turn used to read "The agent exited without producing
+/// a response, and no failure reason was found in its output" even when the process had written the
+/// reason to stderr and exited non-zero. The reason is now the whole of the message, not a detail
+/// introduced by an exit code that may well be zero.
+#[tokio::test]
+async fn test_chat_turn_failure_reports_the_reason_it_was_given() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-failure-reason-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| AgentProcessSpec {
+                command: "sh".to_string(),
+                args: vec![
+                    "-c".to_string(),
+                    "echo 'Error: Session ID abc is already in use.' 1>&2; exit 1".to_string(),
+                ],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Failure Reason Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(&session.id, "do the thing", ChatTurnOptions::default())
+        .await
+        .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    let assistant_msg = loaded
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .expect("Must have an assistant message");
+
     assert!(
-        assistant_msg.content.contains("without producing"),
-        "report must explain that the agent produced nothing, got: {}",
+        assistant_msg
+            .content
+            .contains("Session ID abc is already in use"),
+        "the failure must carry the agent's own stderr, got: {}",
         assistant_msg.content
+    );
+    assert!(
+        !assistant_msg.content.contains("no failure reason"),
+        "a turn with a knowable reason must never claim none was found, got: {}",
+        assistant_msg.content
+    );
+    // The reason is the explanation, so it leads. A turn whose provider answered 503 on a process
+    // that exited 0 read "completed with status code 0: API error …", as though the clean exit were
+    // the reason for a turn that plainly failed.
+    assert!(
+        !assistant_msg
+            .content
+            .starts_with("Agent execution completed"),
+        "the reason must lead rather than be introduced by an exit code, got: {}",
+        assistant_msg.content
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// A missing agent binary produces no output stream at all, so the spawn error is the only thing that
+/// can explain the turn.
+#[tokio::test]
+async fn test_chat_turn_missing_agent_binary_is_reported() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-missing-binary-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| AgentProcessSpec {
+                command: "tendril-no-such-agent-binary".to_string(),
+                args: vec![],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Missing Binary Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(&session.id, "do the thing", ChatTurnOptions::default())
+        .await
+        .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    let assistant_msg = loaded
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .expect("Must have an assistant message");
+
+    assert!(
+        assistant_msg
+            .content
+            .contains("tendril-no-such-agent-binary"),
+        "the failure must name the binary that could not be launched, got: {}",
+        assistant_msg.content
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// Claude Code's `stream-json` shape, end to end: the assistant text has to reach the message, and
+/// the terminal `result` line (which repeats it) must not be appended a second time.
+#[tokio::test]
+async fn test_chat_turn_reads_claude_stream_json() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-claude-stream-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| AgentProcessSpec {
+                command: "sh".to_string(),
+                args: vec![
+                    "-c".to_string(),
+                    concat!(
+                        r#"echo '{"type":"system","subtype":"init","session_id":"s","tools":["Bash"]}'; "#,
+                        r#"echo '{"type":"assistant","message":{"content":[{"type":"text","text":"All good."}]},"session_id":"s"}'; "#,
+                        r#"echo '{"type":"result","subtype":"success","is_error":false,"result":"All good.","num_turns":1}'"#
+                    )
+                    .to_string(),
+                ],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Claude Stream Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(&session.id, "say something", ChatTurnOptions::default())
+        .await
+        .expect("Failed to start session turn");
+
+    let mut deltas = Vec::new();
+    while let Ok(evt) = rx.recv().await {
+        match evt {
+            ChatEvent::StreamDelta { delta, .. } => deltas.push(delta),
+            ChatEvent::GeneratingState {
+                is_generating: false,
+                ..
+            } => break,
+            _ => {}
+        }
+    }
+
+    assert_eq!(
+        deltas,
+        vec!["All good.".to_string()],
+        "the assistant text block must stream exactly once"
+    );
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    let assistant_msg = loaded
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .expect("Must have an assistant message");
+    assert_eq!(assistant_msg.content, "All good.");
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// Antigravity's real wire format, end to end. Captured from `agy 1.2.4` answering "bro are you
+/// alive?": it is `{"event":…}`, not `{"type":…}`, so nothing recognised its prose (the turn read
+/// "Task completed successfully.") and nothing recognised its tool steps (the thread showed no
+/// activity at all). The turn must now carry the answer *and* leave renderable tool events on the
+/// stream, published live rather than only discoverable after the turn ended.
+#[tokio::test]
+async fn test_chat_turn_reads_antigravity_stream() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-agy-stream-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            |_agent, config| AgentProcessSpec {
+                command: "sh".to_string(),
+                args: vec![
+                    "-c".to_string(),
+                    concat!(
+                        r#"echo '{"event":"init","conversation_id":"c1","init":{"cwd":"/tmp","tools":["view_file"]}}'; "#,
+                        r#"echo '{"event":"step_update","step_update":{"step_index":0,"state":"DONE","step_type":"user_input"}}'; "#,
+                        r#"echo '{"event":"step_update","step_update":{"step_index":2,"state":"ACTIVE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","parameters":{"AbsolutePath":"/tmp/p.md"}}}}'; "#,
+                        r#"echo '{"event":"step_update","step_update":{"step_index":2,"state":"DONE","step_type":"tool","tool_name":"view_file","tool_info":{"name":"view_file","output":"1 lines, 18 bytes"}}}'; "#,
+                        r#"echo '{"event":"step_update","step_update":{"step_index":3,"state":"DONE","step_type":"agent_response","text_delta":"Yes, I am alive."}}'; "#,
+                        r#"echo '{"event":"result","result":{"status":"SUCCESS","response":"Yes, I am alive.","duration_seconds":3.88,"num_turns":1}}'"#
+                    )
+                    .to_string(),
+                ],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Antigravity Stream Test".to_string()),
+            Some("antigravity".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(
+        &session.id,
+        "bro are you alive?",
+        ChatTurnOptions::default(),
+    )
+    .await
+    .expect("Failed to start session turn");
+
+    let mut deltas = Vec::new();
+    let mut streamed_kinds = Vec::new();
+    while let Ok(evt) = rx.recv().await {
+        match evt {
+            ChatEvent::StreamDelta { delta, .. } => deltas.push(delta),
+            ChatEvent::StreamEvent { line, .. } => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                    if let Some(kind) = v.get("kind").and_then(|k| k.as_str()) {
+                        streamed_kinds.push(kind.to_string());
+                    }
+                }
+            }
+            ChatEvent::GeneratingState {
+                is_generating: false,
+                ..
+            } => break,
+            _ => {}
+        }
+    }
+
+    // The answer, exactly once — the terminal result repeats it and must not be appended again.
+    assert_eq!(deltas, vec!["Yes, I am alive.".to_string()]);
+
+    // Tool calls reach the client *during* the turn, which is what makes the activity live.
+    assert_eq!(
+        streamed_kinds,
+        vec![
+            "session_init".to_string(),
+            "tool_call".to_string(),
+            "tool_result".to_string(),
+            "text".to_string(),
+            "result".to_string(),
+        ]
+    );
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    let assistant_msg = loaded
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .expect("Must have an assistant message");
+    assert_eq!(assistant_msg.content, "Yes, I am alive.");
+
+    // The persisted stream is eventwire, which is the only shape `parseEventWireStream` renders, and
+    // the tool call is closed so its card is not left spinning.
+    let raw_stream = assistant_msg
+        .raw_stream
+        .as_deref()
+        .expect("Assistant message must carry a raw stream");
+    let mut call_id = None;
+    let mut closed_id = None;
+    for line in raw_stream.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            panic!("every persisted line must be JSON, got: {}", line);
+        };
+        match v.get("kind").and_then(|k| k.as_str()) {
+            Some("tool_call") => {
+                call_id = v
+                    .get("tool_use_id")
+                    .and_then(|i| i.as_str())
+                    .map(str::to_string);
+                assert_eq!(
+                    v.get("tool_name").and_then(|n| n.as_str()),
+                    Some("view_file")
+                );
+            }
+            Some("tool_result") => {
+                closed_id = v
+                    .get("tool_use_id")
+                    .and_then(|i| i.as_str())
+                    .map(str::to_string);
+            }
+            Some(_) => {}
+            None => panic!("every persisted line must be eventwire, got: {}", line),
+        }
+    }
+    assert!(
+        call_id.is_some(),
+        "the turn's tool call must be on the stream"
+    );
+    assert_eq!(
+        closed_id, call_id,
+        "the tool call must be closed by a result with the same id"
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// A chat turn must not hand the agent a session id: Claude Code refuses one it has already opened,
+/// which killed every turn after the first. The conversation is carried in the prompt instead.
+#[tokio::test]
+async fn test_chat_turn_replays_history_and_sets_no_session_id() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-history-prompt-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let captured: Arc<Mutex<Vec<AgentLaunchConfig>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = captured.clone();
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            move |_agent, config| {
+                if !is_naming_call(config) {
+                    captured_clone.lock().unwrap().push(config.clone());
+                }
+                AgentProcessSpec {
+                    command: "sh".to_string(),
+                    args: vec![
+                        "-c".to_string(),
+                        r#"echo '{"kind":"text","text":"answered"}'"#.to_string(),
+                    ],
+                    environment: HashMap::new(),
+                    working_directory: config.working_directory.clone(),
+                    stdin_content: None,
+                    redirect_stdin: false,
+                    temp_files: vec![],
+                }
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("History Prompt Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    for prompt in ["first question", "second question"] {
+        mgr.start_session_turn(&session.id, prompt, ChatTurnOptions::default())
+            .await
+            .expect("Failed to start session turn");
+        while let Ok(evt) = rx.recv().await {
+            if let ChatEvent::GeneratingState {
+                is_generating: false,
+                ..
+            } = evt
+            {
+                break;
+            }
+        }
+    }
+
+    let calls = captured.lock().unwrap();
+    assert_eq!(calls.len(), 2, "two turns should mean two agent launches");
+
+    for call in calls.iter() {
+        assert!(
+            call.session_id.is_none(),
+            "no chat turn may reuse an agent session id"
+        );
+        assert_eq!(
+            call.environment_variables
+                .get("TENDRIL_CHAT_SESSION_ID")
+                .map(String::as_str),
+            Some(session.id.as_str()),
+            "the chat session id reaches the agent as an environment variable"
+        );
+        assert!(
+            call.prompt.contains(&session.id),
+            "the prompt must name the chat session so `tendril job start --chat-session` works"
+        );
+    }
+
+    assert!(
+        !calls[0].prompt.contains("Previous Conversation"),
+        "the first turn has no history to replay, got: {}",
+        calls[0].prompt
+    );
+    assert!(
+        calls[1].prompt.contains("first question"),
+        "the second turn must replay the first question, got: {}",
+        calls[1].prompt
+    );
+    assert!(
+        calls[1].prompt.contains("answered"),
+        "the second turn must replay the first answer, got: {}",
+        calls[1].prompt
+    );
+    assert!(
+        calls[1].prompt.contains("second question"),
+        "the second turn must carry the current request, got: {}",
+        calls[1].prompt
     );
 
     let _ = std::fs::remove_dir_all(&test_dir);
@@ -720,7 +1248,7 @@ async fn test_generated_title_replaces_snippet() {
     let mgr = Arc::new(
         ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
             |_agent, config| {
-                if config.session_id.is_none() {
+                if is_naming_call(config) {
                     AgentProcessSpec {
                         command: "sh".to_string(),
                         args: vec![
@@ -802,7 +1330,7 @@ async fn test_user_rename_during_generation_wins() {
     let mgr = Arc::new(
         ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
             |_agent, config| {
-                if config.session_id.is_none() {
+                if is_naming_call(config) {
                     AgentProcessSpec {
                         command: "sh".to_string(),
                         args: vec![
@@ -870,7 +1398,7 @@ async fn test_naming_failure_keeps_snippet() {
     let mgr = Arc::new(
         ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
             |_agent, config| {
-                if config.session_id.is_none() {
+                if is_naming_call(config) {
                     AgentProcessSpec {
                         command: "sh".to_string(),
                         args: vec!["-c".to_string(), "exit 1".to_string()],
@@ -945,7 +1473,7 @@ async fn test_naming_spec_uses_plan_mode_and_no_session_id() {
     let mgr = Arc::new(
         ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
             move |_agent, config| {
-                if config.session_id.is_none() {
+                if is_naming_call(config) {
                     captured_clone.lock().unwrap().push(config.clone());
                     AgentProcessSpec {
                         command: "sh".to_string(),
@@ -1021,7 +1549,7 @@ async fn test_second_turn_does_not_regenerate_title() {
     let mgr = Arc::new(
         ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
             move |_agent, config| {
-                if config.session_id.is_none() {
+                if is_naming_call(config) {
                     *naming_calls_clone.lock().unwrap() += 1;
                 }
                 AgentProcessSpec {
@@ -1078,6 +1606,222 @@ async fn test_second_turn_does_not_regenerate_title() {
 
     let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
     assert_eq!(loaded.title, "Already Named Session");
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// An event Tendril injects is not a user turn. V1's `SendMessageAsync(..., role: "system")` decides
+/// three things at once, and all three are checked here: the role it is stored under, the prompt
+/// section the agent is given, and whether the session may be named from it.
+#[tokio::test]
+async fn test_injected_event_is_framed_as_an_event_and_never_names_the_session() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-event-inject-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let captured: Arc<Mutex<Vec<AgentLaunchConfig>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = captured.clone();
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            move |_agent, config| {
+                if !is_naming_call(config) {
+                    captured_clone.lock().unwrap().push(config.clone());
+                }
+                AgentProcessSpec {
+                    command: "sh".to_string(),
+                    args: vec![
+                        "-c".to_string(),
+                        r#"echo '{"kind":"text","text":"The plan is ready to review."}'"#
+                            .to_string(),
+                    ],
+                    environment: HashMap::new(),
+                    working_directory: config.working_directory.clone(),
+                    stdin_content: None,
+                    redirect_stdin: false,
+                    temp_files: vec![],
+                }
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    // A session still on its placeholder title, so the naming guard is actually under test.
+    let session = mgr
+        .create_session(
+            Some("New Chat".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    let event =
+        "[System Event] Job 00042 (ExecutePlan) completed for plan 'Port the chat' (#00007).";
+    let ran = mgr
+        .notify_event(&session.id, event)
+        .await
+        .expect("Failed to inject the event");
+    assert!(ran, "an idle session runs a turn for the event");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+    // Past the naming task's window, so a rename would have landed if one were going to.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+
+    // Stored as `system`, so the thread renders it as a timeline note rather than as a user bubble.
+    assert_eq!(loaded.messages[0].role, "system");
+    assert_eq!(loaded.messages[0].content, event);
+    assert_eq!(loaded.messages[1].role, "assistant");
+    assert_eq!(loaded.messages[1].content, "The plan is ready to review.");
+
+    // An injected event must never become the session's name — V1 names a session from its first
+    // *user* message only, and a chat called "[System Event] Job 00042 …" is the failure mode.
+    assert_eq!(loaded.title, "New Chat");
+
+    // And the agent was told it was reacting to an event, not answering a request.
+    let calls = captured.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert!(
+        calls[0].prompt.contains("# Current Event Notification"),
+        "got: {}",
+        calls[0].prompt
+    );
+    assert!(!calls[0].prompt.contains("# Current User Request"));
+    assert!(calls[0]
+        .prompt
+        .contains("Evaluate this completed job event."));
+    assert!(calls[0].prompt.contains(event));
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// An event arriving while a turn is running does not interrupt it — the running turn's answer is what
+/// the user is waiting for — but it is still *reacted to*, on the next turn, as an event.
+///
+/// It queues rather than merely being written into the transcript. Storing it and stopping there left
+/// the agent no reason to run again, so a job that finished while the user was still typing got a line
+/// in the thread and no reaction to it until the user happened to say something else. V1 runs a turn.
+#[tokio::test]
+async fn test_injected_event_during_a_turn_is_answered_after_it_rather_than_interrupting_it() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-event-busy-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let captured: Arc<Mutex<Vec<AgentLaunchConfig>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured_clone = captured.clone();
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+            move |_agent, config| {
+                if !is_naming_call(config) {
+                    captured_clone.lock().unwrap().push(config.clone());
+                }
+                AgentProcessSpec {
+                    command: "sh".to_string(),
+                    args: vec![
+                        "-c".to_string(),
+                        r#"sleep 0.4; echo '{"kind":"text","text":"done"}'"#.to_string(),
+                    ],
+                    environment: HashMap::new(),
+                    working_directory: config.working_directory.clone(),
+                    stdin_content: None,
+                    redirect_stdin: false,
+                    temp_files: vec![],
+                }
+            },
+        )),
+    );
+
+    let mut rx = mgr.subscribe_events();
+    let session = mgr
+        .create_session(
+            Some("Busy".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(&session.id, "do the thing", ChatTurnOptions::default())
+        .await
+        .expect("Failed to start session turn");
+
+    let event = "[System Event] Job 1 completed.";
+    let ran = mgr
+        .notify_event(&session.id, event)
+        .await
+        .expect("Failed to inject the event");
+    assert!(
+        !ran,
+        "a busy session must not have a second turn started under it"
+    );
+
+    // One settle, not two: the turn loop dequeues inside itself and reports `is_generating: false` once
+    // the queue is empty, so this single wait already covers the user's turn *and* the event's.
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let loaded = load_session(&test_dir, &session.id).expect("Failed to load session from disk");
+    let roles: Vec<&str> = loaded.messages.iter().map(|m| m.role.as_str()).collect();
+    assert!(
+        roles.contains(&"system"),
+        "the event must still be recorded, got roles: {:?}",
+        roles
+    );
+    // The user's turn answered, then the event's — and the event is stored as `system`, so it renders
+    // as a timeline note rather than as something the user said.
+    assert_eq!(
+        roles.iter().filter(|r| **r == "assistant").count(),
+        2,
+        "got roles: {:?}",
+        roles
+    );
+    assert_eq!(
+        loaded
+            .messages
+            .iter()
+            .find(|m| m.role == "system")
+            .map(|m| m.content.as_str()),
+        Some(event)
+    );
+
+    // And the second turn was framed as an event, not as a request the user made.
+    let calls = captured.lock().unwrap();
+    assert_eq!(calls.len(), 2, "expected the user's turn and the event's");
+    assert!(
+        calls[1].prompt.contains("# Current Event Notification"),
+        "got: {}",
+        calls[1].prompt
+    );
+    assert!(!calls[1].prompt.contains("# Current User Request"));
+    assert!(calls[1].prompt.contains(event));
 
     let _ = std::fs::remove_dir_all(&test_dir);
 }

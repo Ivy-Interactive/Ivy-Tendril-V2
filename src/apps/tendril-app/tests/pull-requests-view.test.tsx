@@ -319,6 +319,59 @@ describe("PullRequestsView", () => {
     expect(listPullRequests).toHaveBeenCalledTimes(3);
   });
 
+  it("says what an Unknown status means and when it was last checked", async () => {
+    vi.spyOn(bridge, "listPullRequests").mockResolvedValue([
+      prStatus({ planId: "00800", status: "Unknown", lastChecked: null }),
+    ]);
+
+    renderView();
+
+    // `pr_sync` records Unknown when a tracked URL is absent from its repository's `--limit 100`
+    // window or when the `gh` call failed. A bare grey chip reads as a fourth PR state, which is
+    // exactly what an operator skims past.
+    const badge = await screen.findByText("Unknown");
+    expect(badge).toHaveAttribute("title", expect.stringContaining("could not resolve"));
+    expect(badge).toHaveAttribute("title", expect.stringContaining("never checked"));
+  });
+
+  it("says a sync refreshed nothing when every repository errored", async () => {
+    vi.spyOn(bridge, "listPullRequests").mockResolvedValue([rows[0]]);
+    vi.spyOn(bridge, "syncPullRequests").mockResolvedValue(
+      prSyncReport({
+        tracked: 1,
+        checked: 0,
+        errors: ["SpaceCorps/Tendril-App: gh: command not found"],
+      }),
+    );
+
+    renderView();
+    await waitFor(() => expect(bodyRowText()).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Resync All" }));
+
+    // The pass returns success with a per-repository error list, so without this the operator sees a
+    // Resync that appeared to work while nothing on screen moved.
+    await waitFor(() =>
+      expect(screen.getByText(/No status could be refreshed/)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/gh auth status/)).toBeInTheDocument();
+  });
+
+  it("says a sync had nothing to do when every PR was skipped by a guard", async () => {
+    vi.spyOn(bridge, "listPullRequests").mockResolvedValue([rows[1]]);
+    vi.spyOn(bridge, "syncPullRequests").mockResolvedValue(
+      prSyncReport({ tracked: 3, checked: 0, skippedMerged: 2, skippedFresh: 1 }),
+    );
+
+    renderView();
+    await waitFor(() => expect(bodyRowText()).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Resync All" }));
+
+    await waitFor(() => expect(screen.getByText(/Nothing to refresh/)).toBeInTheDocument());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("renders the empty state when no plan has a pull request", async () => {
     vi.spyOn(bridge, "listPullRequests").mockResolvedValue([]);
 

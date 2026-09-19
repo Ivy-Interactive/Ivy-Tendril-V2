@@ -6,6 +6,7 @@ import {
   readStoredWidth as readStoredWidthHelper,
   writeStoredWidth as writeStoredWidthHelper,
 } from "../../hooks/use-resizable-sidebar";
+import { TooltipScope } from "../ui/TuiTooltip";
 import "./shell.css";
 
 interface TendrilShellProps extends ShellWidgetProps {
@@ -125,55 +126,62 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
     activeSessionIndex < sessionPanes.length;
 
   return (
-    <div
-      className="tsh-root remove-parent-padding"
-      data-collapsed={collapsed}
-      data-resizing={isDragging}
-      style={
-        {
-          "--tsh-sidebar-width": `${sidebarWidth}px`,
-        } as React.CSSProperties
-      }
-    >
-      <ShellContext.Provider value={{ collapsed, toggle }}>
-        <div className="tsh-sidebar">
-          <div className="tsh-sidebar-header">{slots?.SidebarHeader}</div>
-          <div className="tsh-sidebar-body">{slots?.SidebarBody}</div>
-          <div className="tsh-sidebar-footer">{slots?.SidebarFooter}</div>
-          {!collapsed && (
-            <div
-              className="tsh-sidebar-resizer"
-              {...separatorProps}
-              aria-label="Resize sidebar"
-              title="Drag to resize sidebar, double-click to reset"
-            />
-          )}
-        </div>
-      </ShellContext.Provider>
-      {/* The rail is a property of the sidebar, not of the app inside the frame: content
-          widgets that read `useShell()` must never render their own collapsed variant. */}
-      <ShellContext.Provider value={{ collapsed: false, toggle }}>
-        <div className="tsh-main">
-          <div className="tsh-container">
-            <div className="tsh-frame" data-has-tabs={hasTabs}>
-              <div className="tsh-frame-pane" data-active={!hasActiveSession}>
-                {slots?.Content}
-              </div>
-              {sessionPanes.map((pane, index) => (
-                <div
-                  className="tsh-frame-pane"
-                  data-active={hasActiveSession && index === activeSessionIndex}
-                  key={(React.isValidElement(pane) && pane.key) || index}
-                >
-                  {pane}
-                </div>
-              ))}
-            </div>
-            {hasTabs && slots?.Tabs && <div className="tsh-tabs-row">{slots.Tabs}</div>}
+    <TooltipScope>
+      <div
+        /* No `remove-parent-padding` class here. It is Ivy's opt-out for full-bleed widgets, but it only
+         works through the `:has(> .remove-parent-padding)` rules in the framework's `index.css`, and V2
+         ships no stylesheet implementing them — so carrying it made these components *look* as though
+         they handled their own inset while the shell went on padding them anyway. V2 decides full-bleed
+         in one place instead: `AppDescriptor.fullBleed` in the app registry, read by `ShellLayout`. */
+        className="tsh-root"
+        data-collapsed={collapsed}
+        data-resizing={isDragging}
+        style={
+          {
+            "--tsh-sidebar-width": `${sidebarWidth}px`,
+          } as React.CSSProperties
+        }
+      >
+        <ShellContext.Provider value={{ collapsed, toggle }}>
+          <div className="tsh-sidebar">
+            <div className="tsh-sidebar-header">{slots?.SidebarHeader}</div>
+            <div className="tsh-sidebar-body">{slots?.SidebarBody}</div>
+            <div className="tsh-sidebar-footer">{slots?.SidebarFooter}</div>
+            {!collapsed && (
+              <div
+                className="tsh-sidebar-resizer"
+                {...separatorProps}
+                aria-label="Resize sidebar"
+                title="Drag to resize sidebar, double-click to reset"
+              />
+            )}
           </div>
-        </div>
-      </ShellContext.Provider>
-      {slots?.Hidden && <div style={{ display: "none" }}>{slots.Hidden}</div>}
-    </div>
+        </ShellContext.Provider>
+        {/* The rail is a property of the sidebar, not of the app inside the frame: content
+          widgets that read `useShell()` must never render their own collapsed variant. */}
+        <ShellContext.Provider value={{ collapsed: false, toggle }}>
+          <div className="tsh-main">
+            <div className="tsh-container">
+              <div className="tsh-frame" data-has-tabs={hasTabs}>
+                <div className="tsh-frame-pane" data-active={!hasActiveSession}>
+                  {slots?.Content}
+                </div>
+                {sessionPanes.map((pane, index) => (
+                  <div
+                    className="tsh-frame-pane"
+                    data-active={hasActiveSession && index === activeSessionIndex}
+                    key={(React.isValidElement(pane) && pane.key) || index}
+                  >
+                    {pane}
+                  </div>
+                ))}
+              </div>
+              {hasTabs && slots?.Tabs && <div className="tsh-tabs-row">{slots.Tabs}</div>}
+            </div>
+          </div>
+        </ShellContext.Provider>
+        {slots?.Hidden && <div style={{ display: "none" }}>{slots.Hidden}</div>}
+      </div>
+    </TooltipScope>
   );
 };

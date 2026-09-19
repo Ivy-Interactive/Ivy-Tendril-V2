@@ -36,7 +36,7 @@ tendril project-analyzer <repo-path>   # prints a trimmed YAML stack report (sup
 tendril verification list
 tendril verification add <name> --prompt="<prompt>"
 tendril verification remove <name>
-tendril verification set <name> <field> <value>
+tendril verification set <name> [--new-name=<new-name>] [--prompt="<prompt>"]
 ```
 
 ### Project verifications (references)

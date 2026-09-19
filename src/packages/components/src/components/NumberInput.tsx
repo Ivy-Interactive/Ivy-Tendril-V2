@@ -242,7 +242,7 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
           disabled={disabled}
           placeholder={placeholder}
           density={effectiveDensity}
-          className={`${className} ${!isValid ? "border-[var(--color-destructive)]" : ""}`}
+          className={`${className} ${!isValid ? "border-destructive" : ""}`}
           data-testid={dataTestId}
           {...props}
         />

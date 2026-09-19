@@ -71,6 +71,11 @@ pub fn agent_capabilities(agent: &str) -> AgentCapabilities {
 }
 
 /// The built-in `deep` / `balanced` / `quick` defaults for an agent, in that order.
+///
+/// Every Gemini row here reads 3.8 Flash where V1 reads 3.7: V1 was written when 3.7 was the newest
+/// Flash, and pinning the newest is the intent the literal encodes. See `GEMINI_DEFAULT` in
+/// [`crate::agents::catalog`], which this must agree with - the picker pins the catalogue default,
+/// these fill an unset profile, and a user who never touches either should get the same model twice.
 pub fn default_profiles(agent: &str) -> [TierDefault; 3] {
     match normalize_agent_name(agent).as_str() {
         "codex" => tiers(
@@ -79,9 +84,9 @@ pub fn default_profiles(agent: &str) -> [TierDefault; 3] {
             (Some("gpt-5.6-luna"), Some("low")),
         ),
         "gemini" => tiers(
-            (Some("gemini-3.7-flash"), None),
-            (Some("gemini-3.7-flash"), None),
-            (Some("gemini-3.7-flash"), None),
+            (Some("gemini-3.8-flash"), None),
+            (Some("gemini-3.8-flash"), None),
+            (Some("gemini-3.8-flash"), None),
         ),
         "opencode" => tiers(
             (Some("default"), Some("high")),
@@ -94,9 +99,9 @@ pub fn default_profiles(agent: &str) -> [TierDefault; 3] {
             (None, Some("low")),
         ),
         "antigravity" | "agy" => tiers(
-            (Some("gemini-3.7-flash"), Some("medium")),
-            (Some("gemini-3.7-flash"), Some("medium")),
-            (Some("gemini-3.7-flash"), Some("medium")),
+            (Some("gemini-3.8-flash"), Some("medium")),
+            (Some("gemini-3.8-flash"), Some("medium")),
+            (Some("gemini-3.8-flash"), Some("medium")),
         ),
         "ivy" => ivy_tiers(),
         "openaiproxy" | "proxy" => openai_proxy_tiers(proxy_base_url().as_deref()),
@@ -136,8 +141,8 @@ fn tiers(
 fn ivy_tiers() -> [TierDefault; 3] {
     tiers(
         (Some("claude-opus-5"), Some("max")),
-        (Some("gemini-3.7-flash"), Some("medium")),
-        (Some("gemini-3.7-flash"), Some("low")),
+        (Some("gemini-3.8-flash"), Some("medium")),
+        (Some("gemini-3.8-flash"), Some("low")),
     )
 }
 
@@ -167,9 +172,9 @@ pub fn openai_proxy_tiers(base_url: Option<&str>) -> [TierDefault; 3] {
         || base.contains("google")
     {
         return tiers(
-            (Some("gemini-3.7-flash"), Some("high")),
-            (Some("gemini-3.7-flash"), Some("medium")),
-            (Some("gemini-3.7-flash"), Some("medium")),
+            (Some("gemini-3.8-flash"), Some("high")),
+            (Some("gemini-3.8-flash"), Some("medium")),
+            (Some("gemini-3.8-flash"), Some("medium")),
         );
     }
     if base.contains("api.berget.ai") {
@@ -572,7 +577,10 @@ fn map_profile_tier(profile_name: &str) -> Option<&'static str> {
 }
 
 /// `default` is how the config spells "leave it to the CLI", so it counts as unset everywhere.
-fn is_set(value: &str) -> bool {
+///
+/// `pub(crate)` rather than private only so `catalog.rs` can assert it: the picker no longer offers
+/// `default` as a model, and this is what keeps a config that still holds one launchable.
+pub(crate) fn is_set(value: &str) -> bool {
     !value.is_empty() && !value.eq_ignore_ascii_case("default")
 }
 

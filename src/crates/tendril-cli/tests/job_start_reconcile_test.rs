@@ -84,6 +84,8 @@ fn job_start_args(job_type: &str, plan_id: &str) -> JobStartArgs {
         // helper still mints one per submission, so the POST it makes is safe to replay, but the
         // caller has no key to retry with — hence the job-list scan.
         idempotency_key: None,
+        // Not started from a chat, so there is no conversation to track it against.
+        chat_session: None,
     }
 }
 

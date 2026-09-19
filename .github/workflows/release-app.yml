@@ -30,8 +30,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-latest is Apple Silicon, so an arm64-only matrix shipped no installer at all for
+          # an Intel Mac. macos-13 is the x86_64 runner; the two produce distinct `platform` names
+          # so their artifacts do not collide on upload.
           - os: macos-latest
-            platform: macos
+            platform: macos-arm64
+          - os: macos-13
+            platform: macos-x64
           - os: windows-latest
             platform: windows
           - os: ubuntu-latest
@@ -84,6 +89,11 @@ jobs:
           echo "Resolved version: $VERSION"
           if [ -n "${{ inputs.version }}" ] || [[ "${{ github.ref }}" == refs/tags/app-v* ]]; then
             jq --arg v "$VERSION" '.version = $v' src/apps/tendril-app/src-tauri/tauri.conf.json > src/apps/tendril-app/src-tauri/tauri.conf.json.tmp && mv src/apps/tendril-app/src-tauri/tauri.conf.json.tmp src/apps/tendril-app/src-tauri/tauri.conf.json
+          # The Cargo side too. Every crate inherits `[workspace.package].version`, and the app
+          # crate compiles that in as its own - so bumping only tauri.conf.json shipped an installer
+          # labelled $VERSION around a `tendril --version` that still said 0.1.0.
+          perl -0pi -e 's/^(\[workspace\.package\]\nversion = )"[^"]*"/${1}"'"$VERSION"'"/m' Cargo.toml
+          grep -A 1 '^\[workspace.package\]' Cargo.toml
           fi
 
       - name: Build components and frontend
@@ -103,13 +113,35 @@ jobs:
             chmod +x "src/apps/tendril-app/src-tauri/binaries/tendril-${TARGET}"
           fi
 
+      # OpenCode is the agent behind the `opencode`, `ivy`, `openaiproxy` and `proxy` providers.
+      # Bundling it as a second sidecar is what makes those work on a machine that has installed
+      # nothing but Tendril - see `resolve_opencode_binary`, which looks next to the app executable
+      # first. The script pins the upstream version; bump it there, not here.
+      - name: Fetch bundled OpenCode sidecar
+        run: ./src/apps/tendril-app/scripts/release/fetch-opencode-sidecar.sh
+
       - name: Build Tauri desktop app
         run: pnpm --filter @ivy-interactive/tendril-app exec tauri build
 
       - name: Collect bundle installers
         run: |
           mkdir -p dist-bundles
-          find target/release/bundle src/apps/tendril-app/src-tauri/target/release/bundle -type f \( -name "*.dmg" -o -name "*.app" -o -name "*.msi" -o -name "*.exe" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} dist-bundles/ \; 2>/dev/null || true
+          # Only the bundle roots that exist. The old form passed both to one `find` and swallowed
+          # the "No such file or directory" with `2>/dev/null || true` - which also swallowed a
+          # build that produced no bundle at all, and published an empty release.
+          BUNDLE_DIRS=()
+          for d in target/release/bundle src/apps/tendril-app/src-tauri/target/release/bundle; do
+            [ -d "$d" ] && BUNDLE_DIRS+=("$d")
+          done
+          if [ ${#BUNDLE_DIRS[@]} -eq 0 ]; then
+            echo "::error::Tauri produced no bundle directory - nothing to release." >&2
+            exit 1
+          fi
+          find "${BUNDLE_DIRS[@]}" -type f \( -name "*.dmg" -o -name "*.app" -o -name "*.msi" -o -name "*.exe" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} dist-bundles/ \;
+          if [ -z "$(ls -A dist-bundles)" ]; then
+            echo "::error::No installers matched under ${BUNDLE_DIRS[*]}." >&2
+            exit 1
+          fi
           cd dist-bundles
           for f in *; do
             [ -f "$f" ] || continue
@@ -119,6 +151,8 @@ jobs:
               shasum -a 256 "$f" > "$f.sha256"
             fi
           done
+          echo "Collected:"
+          ls -la
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
@@ -131,4 +165,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: app-v${{ env.VERSION }}
+          # Tag the exact commit this run built, not the default branch head.
+          target_commitish: ${{ github.sha }}
           files: dist-bundles/*

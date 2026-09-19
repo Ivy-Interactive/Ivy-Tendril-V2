@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod attachments;
 pub mod auth;
 pub mod changes;
 pub mod chat;
@@ -17,6 +18,8 @@ pub mod plans;
 pub mod projects;
 pub mod pull_requests;
 pub mod recommendations;
+pub mod tables;
+pub mod tunnel;
 pub mod vault;
 pub mod verifications;
 pub mod ws;
@@ -76,6 +79,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/plans/:id/revisions",
             get(plans::get_revision_handler).post(plans::write_revision_handler),
+        )
+        // In place, keeping the revision number — what answering a question needs. See the handler.
+        .route(
+            "/api/plans/:id/revisions/latest",
+            put(plans::update_latest_revision_handler),
         )
         .route(
             "/api/plans/:id/diff-comments",
@@ -165,6 +173,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Static segments before `:id`, so a literal path can never be read as a job id. Axum
         // matches static segments first; keeping them adjacent makes the intent obvious.
         .route("/api/jobs/queue", get(jobs::job_queue))
+        // The server-side query API over the Jobs table: sort, filter, window and total count are
+        // SQLite's, so a jobs table costs one page per view however long the history is.
+        .route("/api/jobs/query", post(jobs::query_jobs_handler))
         .route("/api/jobs/stop-all", post(jobs::stop_all_jobs))
         .route("/api/jobs/clear", post(jobs::clear_jobs))
         .route("/api/jobs/maintenance", post(jobs::run_maintenance))
@@ -180,6 +191,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/jobs/:id/logs/stream", get(jobs::stream_job_logs))
         .route("/api/jobs/:id/events", get(jobs::stream_job_events))
         // Filesystem changes
+        // Tables — the generic form of the query API above. A table listed in
+        // `tables::queryable_tables` is server-paged, sortable and filterable with no DTO of its own.
+        .route("/api/tables", get(tables::list_tables))
+        .route("/api/tables/:table/schema", get(tables::table_schema))
+        .route(
+            "/api/tables/:table/query",
+            post(tables::query_table_handler),
+        )
+        .route(
+            "/api/tables/:table/values",
+            post(tables::table_values_handler),
+        )
         .route("/api/changes/events", get(changes::stream_changes))
         // Projects & Verifications
         .route(
@@ -203,6 +226,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/projects/:name/repos",
             post(projects::add_project_repo).delete(projects::remove_project_repo),
+        )
+        // Fast-forwards the project's repos and returns a per-repo escalation for the refusals; see
+        // `projects::sync_project_repos` for why a diverged repo is reported rather than reconciled.
+        .route(
+            "/api/projects/:name/sync",
+            post(projects::sync_project_repos),
         )
         .route(
             "/api/projects/:name/verifications",
@@ -281,6 +310,22 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Agents
         .route("/api/agents", get(agents::get_agents_handler))
+        // Live model discovery for a bring-your-own-LLM endpoint. A POST because it takes a body and
+        // reaches a third party; the key it uses is read from config here rather than sent by the
+        // webview whenever the operator has already saved one.
+        .route(
+            "/api/agents/models",
+            post(agents::fetch_provider_models_handler),
+        )
+        // V1's Test Agent dialog: install, then auth, then one validation per model. A POST because
+        // it launches real processes and spends real provider quota - this is not a safe GET.
+        .route("/api/agents/:agent/test", post(agents::test_agent_handler))
+        // The rate-limit windows behind the settings pane's usage strip. Cached for a minute in
+        // core, so the pane's own poll does not become the thing that rate-limits the account.
+        .route(
+            "/api/agents/:agent/usage",
+            get(agents::get_agent_usage_handler),
+        )
         // Config
         .route(
             "/api/config",
@@ -325,6 +370,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/dashboard/agent-costs",
             get(dashboard::get_agent_costs),
         )
+        // Share tunnel. Owner-only: starting, stopping and reading a share are bearer-credentialled
+        // operations, and the GET returns the visitor's capability token. The static `install` segment
+        // is declared alongside so it can never be read as anything else.
+        .route(
+            "/api/tunnel/share",
+            get(tunnel::get_share_tunnel)
+                .post(tunnel::start_share_tunnel)
+                .delete(tunnel::stop_share_tunnel),
+        )
+        .route(
+            "/api/tunnel/share/install",
+            get(tunnel::get_cloudflared_install_state),
+        )
         // Models
         .route("/api/models", get(models::list_models))
         .route("/api/models/status", get(models::models_status))
@@ -351,6 +409,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/chat/sessions/:id/cancel",
             post(chat::cancel_turn_handler),
+        )
+        // The terminal half of V1's chat modes: the session's agent, interactive, under a pty. The
+        // session id is what authorises the spawn, so these sit under the session rather than in a
+        // namespace of their own.
+        .route(
+            "/api/chat/sessions/:id/terminal",
+            post(chat::start_terminal_handler).delete(chat::terminal_close_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/terminal/input",
+            post(chat::terminal_input_handler),
+        )
+        .route(
+            "/api/chat/sessions/:id/terminal/resize",
+            post(chat::terminal_resize_handler),
         )
         .route(
             "/api/chat/sessions/:id/messages/:msg_id/answers",
@@ -394,6 +467,52 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             crate::auth::api_key_middleware,
         ));
 
+    // Owner-only *and* local-only: the full-access tunnel's switch, the password that gates it, and
+    // attachment staging.
+    //
+    // Bearer-credentialled like the share routes, plus refused when the request arrived over either
+    // tunnel. `/api/tunnel/full` publishes the whole daemon and `/api/auth/password` is the credential
+    // that makes doing so defensible; neither is something to be able to reach from the internet the
+    // tunnel exposes. A session token from `/api/auth/login` satisfies `auth_middleware`, so without the
+    // host fence a remote caller holding the password could rotate it. See `crate::share_exposure`.
+    //
+    // Its own router rather than three more routes on `protected`, because `protected` must *not* gain
+    // this fence: a share visitor's capability token is checked inside `auth_middleware` and reaches its
+    // allow-listed reads over exactly the host this refuses.
+    let owner_local = Router::new()
+        .route(
+            "/api/auth/password",
+            put(auth::set_password_handler).delete(auth::clear_password_handler),
+        )
+        .route(
+            "/api/tunnel/full",
+            get(tunnel::get_full_tunnel)
+                .post(tunnel::start_full_tunnel)
+                .delete(tunnel::stop_full_tunnel),
+        )
+        // Writes a file the user attached into `<TendrilHome>/Attachments/<session>/`, which is what
+        // makes it previewable at all. Here rather than on `protected` because it writes to the
+        // daemon's home: see `attachments`. The body limit is the route's own, since the default 2 MB
+        // would refuse most screenshots before the handler's 16 MiB cap could answer for them.
+        .route(
+            "/api/attachments/:session_id",
+            post(attachments::upload_attachment).layer(axum::extract::DefaultBodyLimit::max(
+                tendril_core::jobs::attachments::MAX_ATTACHMENT_BYTES + 1024,
+            )),
+        )
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::share_exposure::refuse_on_any_tunnel_host,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::auth_middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::api_key_middleware,
+        ));
+
     // `GET /ivy/local-file`, outside the bearer layer because an `<img src>` navigation carries no
     // `Authorization` header. Its own guard supplies the credential check (`?token=`) plus host,
     // origin, extension and root-confinement enforcement — see crate::local_file_guard.
@@ -408,7 +527,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Diagnostics (unauthenticated readiness probe and ping)
         .route("/api/ping", get(ping::ping_handler))
         .route("/api/health", get(health::health_handler))
-        .merge(password_auth)
+        // Refused over a share: a visitor has no business logging in, and exposing a credential
+        // check to the internet buys the operator nothing. See `crate::share_exposure`.
+        .merge(password_auth.layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::share_exposure::refuse_on_tunnel_host,
+        )))
         .merge(local_file)
         // Alias for the original Tendril's GET /api/jobs/health, same handler/payload. Kept
         // unauthenticated to match /api/health (the original guards it, but a peer that hasn't
@@ -419,7 +543,16 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // navigation carries no Authorization header, and neither do the subresource requests the
         // service worker reissues from inside the proxied page. A loopback-only target allow-list is
         // what keeps these from being an open relay — see crate::webviewer.
-        .merge(crate::webviewer::routes())
+        // ...and that allow-list is exactly why this has to be refused over *either* tunnel: confined
+        // to loopback targets, a publicly reachable proxy lets an anonymous visitor reach services
+        // bound to the daemon host's localhost. See `crate::share_exposure`.
+        .merge(
+            crate::webviewer::routes().layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                crate::share_exposure::refuse_on_any_tunnel_host,
+            )),
+        )
+        .merge(owner_local)
         .merge(protected)
         .layer(cors)
         .with_state(state)

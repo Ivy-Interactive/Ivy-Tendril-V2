@@ -159,4 +159,97 @@ mod tests {
             "our parameter prefix must match the original's byte for byte"
         );
     }
+
+    /// The strongest form of the cross-implementation check: given the golden vector's own salt, this
+    /// implementation must reproduce the original's hash *byte for byte*, not merely verify it.
+    ///
+    /// `hash_password` draws a fresh random salt every call — which is why every other test here can
+    /// only assert verifiability — so this reaches for the same Argon2 configuration with the salt
+    /// pinned. A drift in any input (algorithm, version, m/t/p, output length, or how the pepper is
+    /// fed in as Argon2's secret key `K`) changes the digest and fails here.
+    #[test]
+    fn the_original_vector_is_reproduced_byte_for_byte_from_its_own_salt() {
+        use argon2::password_hash::{PasswordHash, PasswordHasher};
+        use argon2::{Algorithm, Argon2, Params, Version};
+
+        let secret_bytes = decode_secret(V1_SECRET_B64).unwrap();
+        let parsed = PasswordHash::new(V1_PHC).expect("the golden vector is a valid PHC string");
+        let salt = parsed.salt.expect("the golden vector carries its salt");
+
+        let hasher = Argon2::new_with_secret(
+            &secret_bytes,
+            Algorithm::Argon2i,
+            Version::V0x13,
+            Params::new(65536, 3, 1, Some(32)).unwrap(),
+        )
+        .unwrap();
+        let recomputed = hasher
+            .hash_password(V1_PASSWORD.as_bytes(), salt)
+            .unwrap()
+            .to_string();
+
+        assert_eq!(
+            recomputed, V1_PHC,
+            "same password, same pepper, same salt must give the original's exact hash"
+        );
+    }
+
+    /// The golden vector's own shape: a 16-byte salt and a 32-byte digest, matching the C# hasher's
+    /// `new byte[16]` / `HashLength = 32`. A shorter digest would still "verify" happily.
+    #[test]
+    fn the_original_vector_has_a_16_byte_salt_and_a_32_byte_digest() {
+        use argon2::password_hash::PasswordHash;
+
+        let parsed = PasswordHash::new(V1_PHC).unwrap();
+        assert_eq!(
+            parsed
+                .salt
+                .unwrap()
+                .decode_b64(&mut [0u8; 64])
+                .unwrap()
+                .len(),
+            16
+        );
+        assert_eq!(parsed.hash.unwrap().as_bytes().len(), 32);
+
+        let ours = hash_password(V1_PASSWORD, &decode_secret(V1_SECRET_B64).unwrap()).unwrap();
+        let ours = PasswordHash::new(&ours).unwrap();
+        assert_eq!(
+            ours.salt.unwrap().decode_b64(&mut [0u8; 64]).unwrap().len(),
+            16
+        );
+        assert_eq!(ours.hash.unwrap().as_bytes().len(), 32);
+    }
+
+    /// A tampered stored hash must not validate, and must not panic on the way to saying so: this is
+    /// reached from an unauthenticated login request.
+    #[test]
+    fn a_tampered_or_malformed_hash_never_validates() {
+        let secret_bytes = decode_secret(V1_SECRET_B64).unwrap();
+
+        // One flipped character in the digest.
+        let mut tampered: Vec<char> = V1_PHC.chars().collect();
+        let last = tampered.len() - 1;
+        tampered[last] = if tampered[last] == 'A' { 'B' } else { 'A' };
+        let tampered: String = tampered.into_iter().collect();
+        assert!(!verify_password(&tampered, &secret_bytes, V1_PASSWORD));
+
+        for malformed in [
+            "",
+            "   ",
+            "not-a-hash",
+            "$argon2i$v=19$m=65536,t=3,p=1$",
+            // Parameters swapped out from under the digest.
+            "$argon2i$v=19$m=1024,t=1,p=1$K9UDN6FZZNVlZrOuQHgOuQ$UL4PysO6B9l6SbeMAugIU5ghXmutXzsXp/PZzXsBgFQ",
+        ] {
+            assert!(
+                !verify_password(malformed, &secret_bytes, V1_PASSWORD),
+                "{} must not validate",
+                malformed
+            );
+        }
+
+        // An empty password never validates, whatever is stored.
+        assert!(!verify_password(V1_PHC, &secret_bytes, ""));
+    }
 }

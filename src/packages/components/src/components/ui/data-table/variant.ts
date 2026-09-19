@@ -14,6 +14,20 @@ export const dataTableCellAlignVariant = cva("", {
   },
 });
 
+/**
+ * A cell that *navigates*, as the framework draws one: blue text with an underline.
+ *
+ * `widgets/dataTables/utils/customRenderers.ts:526` builds a link cell with a custom renderer whose
+ * comment is exactly "blue text + underline", and `utils/canvasText.ts:103-109` draws the underline. On a
+ * canvas that is a literal colour; here it is `--info`, the semantic token for blue, so a link is the
+ * same blue as everything else informational and follows the theme.
+ *
+ * Underlined always rather than on hover: an affordance nobody can see until they are already pointing at
+ * it is not an affordance. The framework draws the underline unconditionally for the same reason.
+ */
+export const dataTableLinkClass =
+  "text-info underline decoration-info/40 underline-offset-2 hover:decoration-info";
+
 /** Row affordances: clickable rows get a pointer, selected rows get the muted surface. */
 export const dataTableRowVariant = cva("", {
   variants: {

@@ -229,13 +229,10 @@ describe("ChatHeader", () => {
 });
 
 describe("system event rows", () => {
-  const rowProps = { isCopied: false, onCopy: () => {}, onCreatePlan: () => {} };
-
   it("renders a completion as a timeline note with a plan link, not a bubble", () => {
     const onOpenPlan = vi.fn();
     render(
       <ChatMessageRow
-        {...rowProps}
         onOpenPlan={onOpenPlan}
         message={systemMessage(
           "s1",
@@ -257,7 +254,6 @@ describe("system event rows", () => {
   it("shows the plan as plain text when there is nothing to open it with", () => {
     render(
       <ChatMessageRow
-        {...rowProps}
         message={systemMessage(
           "s1",
           "[System Event] Job 900 (ExecutePlan) for '00059: Add dark mode' has finished with status: Failed (NpmTest)",
@@ -275,7 +271,6 @@ describe("system event rows", () => {
   it("leaves a user message as a bubble", () => {
     render(
       <ChatMessageRow
-        {...rowProps}
         message={{
           id: "u1",
           role: "user",

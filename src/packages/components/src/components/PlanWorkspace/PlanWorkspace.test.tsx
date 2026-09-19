@@ -520,4 +520,49 @@ describe("shortcuts", () => {
     expect(matchesShortcut(key({ key: "Enter" }), "Ctrl+Enter")).toBe(false);
     expect(matchesShortcut(key({ key: "Backspace" }), "Backspace")).toBe(true);
   });
+
+  /**
+   * `matchesShortcut` above is the reference; the registry is what actually fires. These pin the two
+   * places the registry does not behave like V1's `keydown` handler on its own, both of which bite as
+   * soon as a second view mounts this widget.
+   */
+  it("registers per instance, so two mounted workspaces both answer their key", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    renderWorkspace(first);
+    renderWorkspace(second);
+
+    fireEvent.keyDown(document.body, { key: "x", code: "KeyX" });
+
+    // The registry is a module-level Map: with one id per tag there is one registration, and only one
+    // of these two would ever be called.
+    expect(first).toHaveBeenCalledWith("OnAction", "w", ["Execute"]);
+    expect(second).toHaveBeenCalledWith("OnAction", "w", ["Execute"]);
+  });
+
+  it("leaves the survivor's keys registered when another instance unmounts", () => {
+    const survivor = vi.fn();
+    renderWorkspace(survivor);
+    const { unmount } = renderWorkspace(vi.fn());
+
+    // With a shared id, this cleanup deletes the entry the survivor's mount made.
+    unmount();
+    fireEvent.keyDown(document.body, { key: "x", code: "KeyX" });
+
+    expect(survivor).toHaveBeenCalledWith("OnAction", "w", ["Execute"]);
+  });
+
+  it("gives a key to the first binding that claims it, as V1's bindings.find did", () => {
+    const handler = vi.fn();
+    // `bindings` is `[...actions, ...menuItems, ...secondary, primary, ...shortcuts]`, so the primary's
+    // `x` is ahead of this one. The registry would otherwise run both registrations for one press.
+    renderWorkspace(handler, {
+      shortcuts: [{ tag: "Shadow", label: "Shadow", shortcut: "x" }],
+    });
+
+    fireEvent.keyDown(document.body, { key: "x", code: "KeyX" });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith("OnAction", "w", ["Execute"]);
+  });
 });

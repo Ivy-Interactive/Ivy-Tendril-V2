@@ -10,6 +10,11 @@ import type {
   SweepReport,
 } from "../src/types/api";
 
+const openUrl = vi.fn();
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: (url: string) => openUrl(url),
+}));
+
 const makePage = (
   issues: GitHubIssue[],
   overrides: Partial<GitHubIssuesPage> = {},
@@ -80,6 +85,8 @@ describe("InboxView Component & Triage Tests", () => {
   ];
 
   beforeEach(() => {
+    openUrl.mockReset();
+    openUrl.mockResolvedValue(undefined);
     listGitHubIssuesSpy = vi
       .spyOn(bridge, "listGitHubIssues")
       .mockResolvedValue(makePage(mockIssues, { hasMore: true, totalCount: 60 }));
@@ -110,8 +117,8 @@ describe("InboxView Component & Triage Tests", () => {
     // V1's `SidebarView` rows, with V1's labels: "My issues", "Reviews", and one row per project
     // under an expandable "Projects".
     expect(screen.getByTestId("inbox-view")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /my issues/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /^reviews$/i })).toBeInTheDocument();
+    expect(screen.getByTestId("category-my-issues")).toBeInTheDocument();
+    expect(screen.getByTestId("category-review-requests")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /projects/i })).toHaveAttribute(
       "aria-expanded",
       "true",
@@ -122,7 +129,7 @@ describe("InboxView Component & Triage Tests", () => {
       expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "my-issues", 1, PAGE_SIZE);
     });
 
-    fireEvent.click(screen.getByRole("tab", { name: /^reviews$/i }));
+    fireEvent.click(screen.getByTestId("category-review-requests"));
 
     await waitFor(() => {
       expect(listGitHubIssuesSpy).toHaveBeenCalledWith(undefined, "review-requests", 1, PAGE_SIZE);
@@ -234,7 +241,8 @@ describe("InboxView Component & Triage Tests", () => {
     await waitFor(() => expect(issueRow(101)).not.toBeNull());
 
     fireEvent.click(screen.getByRole("button", { name: "Select All" }));
-    expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("2 of 2 selected");
+    // V1's denominator is `allIssues.Count`, the whole category, which is the daemon's `totalCount`.
+    expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("2 of 60 selected");
 
     fireEvent.click(screen.getByRole("button", { name: /Fire off in Tendril \(2\)/ }));
 
@@ -250,7 +258,7 @@ describe("InboxView Component & Triage Tests", () => {
       sourceUrl: "https://github.com/SpaceCorps/Tendril-App/issues/101",
     });
     // V1 drops the fired issues from the selection.
-    expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("0 of 2 selected");
+    expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("0 of 60 selected");
   });
 
   it("hands the selected issues to chat as V1's InboxChatPrompt does", async () => {
@@ -287,7 +295,7 @@ describe("InboxView Component & Triage Tests", () => {
     vi.spyOn(bridge, "listGitHubIssues").mockResolvedValue(makePage([]));
     render(<InboxView projects={mockProjects} />);
 
-    fireEvent.click(screen.getByRole("tab", { name: /^reviews$/i }));
+    fireEvent.click(screen.getByTestId("category-review-requests"));
 
     // `NoContentView("All Caught Up!", "No pull requests currently require your review.")`.
     await waitFor(() => {
@@ -394,13 +402,18 @@ describe("InboxView Component & Triage Tests", () => {
       vi.useRealTimers();
     });
 
+    // Mount also primes the inactive category's rail badge, exactly as V1's second standing query
+    // does, so the fetches for the displayed category have to be counted on their own.
+    const fetchesForDisplayedCategory = () =>
+      listGitHubIssuesSpy.mock.calls.filter((call) => call[1] === "my-issues").length;
+
     it("silently refetches on the configured interval and stops once disabled", async () => {
       render(<InboxView projects={mockProjects} />);
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(1);
+      expect(fetchesForDisplayedCategory()).toBe(1);
 
       fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
         target: { value: "30s" },
@@ -409,7 +422,7 @@ describe("InboxView Component & Triage Tests", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(30_000);
       });
-      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(2);
+      expect(fetchesForDisplayedCategory()).toBe(2);
 
       fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
         target: { value: "off" },
@@ -418,7 +431,7 @@ describe("InboxView Component & Triage Tests", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(60_000);
       });
-      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(2);
+      expect(fetchesForDisplayedCategory()).toBe(2);
     });
 
     it("clears the polling interval on unmount", async () => {
@@ -427,7 +440,7 @@ describe("InboxView Component & Triage Tests", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
       });
-      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(1);
+      expect(fetchesForDisplayedCategory()).toBe(1);
 
       fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
         target: { value: "30s" },
@@ -438,7 +451,48 @@ describe("InboxView Component & Triage Tests", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(60_000);
       });
-      expect(listGitHubIssuesSpy).toHaveBeenCalledTimes(1);
+      expect(fetchesForDisplayedCategory()).toBe(1);
+    });
+
+    it("polls the swept proposals on the same tick, since nothing pushes a sweep result", async () => {
+      // The app's filesystem-change handler for `inbox` is an explicit no-op and the daemon emits no
+      // event for a sweep at all, so a pass that ran server-side is only ever noticed by this poll.
+      render(<InboxView projects={mockProjects} />);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(listInboxProposalsSpy).toHaveBeenCalledTimes(1);
+
+      fireEvent.change(screen.getByLabelText(/auto-refresh interval/i), {
+        target: { value: "30s" },
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(listInboxProposalsSpy).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("rail counts", () => {
+    it("carries a count on both fixed categories before either has been visited", async () => {
+      // V1 keeps `inbox:my-issues` and `inbox:review-requests` running as two standing queries, so
+      // `myIssuesCount` and `reviewsCount` are both live from the first render (`InboxApp.cs:202`).
+      listGitHubIssuesSpy.mockImplementation((_repo?: string, category?: string) =>
+        Promise.resolve(
+          category === "review-requests"
+            ? makePage([], { totalCount: 7 })
+            : makePage(mockIssues, { totalCount: 60 }),
+        ),
+      );
+
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("category-review-requests")).toHaveTextContent("7");
+        expect(screen.getByTestId("category-my-issues")).toHaveTextContent("60");
+      });
     });
   });
 
@@ -507,6 +561,194 @@ describe("InboxView Component & Triage Tests", () => {
     });
   });
 
+  describe("bulk selection", () => {
+    /** Two single-issue pages, so a selection has to survive leaving the page it was made on. */
+    const pagedFetch = (_repo?: string, _category?: string, page?: number) =>
+      Promise.resolve(
+        page === 2
+          ? makePage([mockIssues[1]], { page: 2, hasMore: false, totalCount: 60 })
+          : makePage([mockIssues[0]], { page: 1, hasMore: true, totalCount: 60 }),
+      );
+
+    it("fires off issues selected on a page that is no longer listed", async () => {
+      // V1 resolves the selection against `allIssues`, every issue in the category, because it
+      // fetched the lot and paged the table client-side (`ContentView.cs:402-404`). V2 holds one
+      // server page, so this used to show `(2)` on the button and then fire nothing at all.
+      const startJobSpy = vi
+        .spyOn(bridge, "startJob")
+        .mockResolvedValue({ jobId: "00042", status: "Queued" });
+      listGitHubIssuesSpy.mockImplementation(pagedFetch);
+
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      await waitFor(() => expect(issueRow(101)).not.toBeNull());
+
+      fireEvent.click(screen.getByRole("button", { name: "Select All" }));
+      expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("1 of 60 selected");
+
+      fireEvent.click(screen.getByRole("button", { name: /next page/i }));
+      await waitFor(() => expect(issueRow(102)).not.toBeNull());
+      expect(issueRow(101)).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Select All" }));
+      expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("2 of 60 selected");
+
+      fireEvent.click(screen.getByRole("button", { name: /Fire off in Tendril \(2\)/ }));
+
+      await waitFor(() => expect(startJobSpy).toHaveBeenCalledTimes(2));
+      expect(startJobSpy.mock.calls.map((call) => call[0].sourceUrl)).toEqual([
+        mockIssues[0].url,
+        mockIssues[1].url,
+      ]);
+    });
+
+    it("clears a cross-page selection on Deselect All, as V1's does over its whole list", async () => {
+      listGitHubIssuesSpy.mockImplementation(pagedFetch);
+
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+
+      fireEvent.click(screen.getByRole("button", { name: "Select All" }));
+      fireEvent.click(screen.getByRole("button", { name: /next page/i }));
+      await waitFor(() => expect(issueRow(102)).not.toBeNull());
+      fireEvent.click(screen.getByRole("button", { name: "Select All" }));
+      expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("2 of 60 selected");
+
+      fireEvent.click(screen.getByRole("button", { name: "Deselect All" }));
+
+      expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("0 of 60 selected");
+    });
+
+    it("reports how many landed and keeps only the unfired issues selected on a failure", async () => {
+      // V1 skips any issue whose inbox file already exists (`InboxApp.cs:169`), so pressing the
+      // button again after a failure never fires the same issue twice. A `CreatePlan` job has no
+      // such guard, so what landed has to leave the selection.
+      const startJobSpy = vi
+        .spyOn(bridge, "startJob")
+        .mockResolvedValueOnce({ jobId: "00042", status: "Queued" })
+        .mockRejectedValueOnce({ code: "GITHUB_ERROR", message: "the daemon went away" });
+
+      render(<InboxView projects={mockProjects} />);
+      await waitFor(() => expect(issueRow(101)).not.toBeNull());
+
+      fireEvent.click(screen.getByRole("button", { name: "Select All" }));
+      fireEvent.click(screen.getByRole("button", { name: /Fire off in Tendril \(2\)/ }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("inbox-fire-notice")).toHaveTextContent(
+          /Fired off 1 of 2\. Failed on #102/,
+        ),
+      );
+      expect(startJobSpy).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("1 of 60 selected");
+    });
+  });
+
+  describe("project issues", () => {
+    it("says a project's remotes resolve to nothing instead of querying without a repo", async () => {
+      // V1 `InboxApp.cs:98-103`. The daemon's search branch drops the `repo:` qualifier when no repo
+      // is given, so the query that used to be issued here searched the whole of GitHub.
+      render(<InboxView projects={[{ name: "No-Remotes", repos: [], verifications: [] }]} />);
+      await waitForInboxIdle();
+
+      fireEvent.click(screen.getByRole("tab", { name: "No-Remotes" }));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("inbox-error")).toHaveTextContent(
+          "No git remotes resolved for project No-Remotes.",
+        ),
+      );
+      expect(listGitHubIssuesSpy.mock.calls.some((call) => call[1] === "project-issues")).toBe(
+        false,
+      );
+    });
+
+    it("drops pull requests from an issues category and keeps them under Reviews", async () => {
+      // The daemon serves a project's issues from `repos/{slug}/issues`, which GitHub answers with
+      // pull requests too; V1's project query is `gh` issue search and never returned any.
+      const pr: GitHubIssue = {
+        ...mockIssues[0],
+        number: 103,
+        title: "A pull request",
+        isPullRequest: true,
+      };
+      listGitHubIssuesSpy.mockResolvedValue(makePage([mockIssues[0], pr], { totalCount: 2 }));
+
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(issueRow(101)).not.toBeNull());
+      expect(issueRow(103)).toBeNull();
+
+      fireEvent.click(screen.getByTestId("category-review-requests"));
+
+      await waitFor(() => expect(issueRow(103)).not.toBeNull());
+    });
+  });
+
+  describe("issue urls and target projects", () => {
+    it("leaves an unconfigured repository to auto-detection rather than the first project", async () => {
+      // V1 `InboxApp.cs:171-173`: outside the Project category the repository decides, and a
+      // repository that matches no project falls back to the literal `Auto`.
+      const handleOpenModal = vi.fn();
+      listGitHubIssuesSpy.mockResolvedValue(
+        makePage([
+          { ...mockIssues[0], repository: { name: "Other", nameWithOwner: "Someone/Other" } },
+        ]),
+      );
+
+      render(<InboxView projects={mockProjects} onOpenNewPlanModal={handleOpenModal} />);
+      await waitFor(() => expect(issueRow(101)).not.toBeNull());
+
+      fireEvent.click(within(issueRow(101)!).getByRole("button", { name: "Fire off in Tendril" }));
+
+      expect(handleOpenModal.mock.calls[0][0].project).toBe("Auto");
+    });
+
+    it("builds the GitHub url from the repository when the issue carries none", async () => {
+      // V1 `InboxApp.ResolveIssueUrl`; opening the empty string opened a blank window instead.
+      listGitHubIssuesSpy.mockResolvedValue(makePage([{ ...mockIssues[0], url: "" }]));
+
+      render(<InboxView projects={mockProjects} />);
+      await waitFor(() => expect(issueRow(101)).not.toBeNull());
+
+      fireEvent.click(within(issueRow(101)!).getByRole("button", { name: "Open in GitHub" }));
+
+      await waitFor(() =>
+        expect(openUrl).toHaveBeenCalledWith(
+          "https://github.com/SpaceCorps/Tendril-App/issues/101",
+        ),
+      );
+    });
+  });
+
+  describe("pagination edges", () => {
+    it("keeps the pagination footer on an empty page past the first", async () => {
+      // V1 pages one in-memory list and can never land here. `NoContentView` in the table's place
+      // takes the footer with it, which is the only control that gets back to page one.
+      listGitHubIssuesSpy.mockImplementation((_repo?: string, _category?: string, page?: number) =>
+        Promise.resolve(
+          page === 2
+            ? makePage([], { page: 2, hasMore: false, totalCount: 60 })
+            : makePage(mockIssues, { hasMore: true, totalCount: 60 }),
+        ),
+      );
+
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+
+      fireEvent.click(screen.getByRole("button", { name: /next page/i }));
+
+      await waitFor(() => expect(issueRow(101)).toBeNull());
+      expect(screen.queryByTestId("inbox-empty")).not.toBeInTheDocument();
+
+      const previous = screen.getByRole("button", { name: /previous page/i });
+      expect(previous).toBeEnabled();
+      fireEvent.click(previous);
+
+      await waitFor(() => expect(issueRow(101)).not.toBeNull());
+    });
+  });
+
   describe("imported proposals", () => {
     const proposal = (id: number, number: number): InboxProposal => ({
       id,
@@ -554,6 +796,39 @@ describe("InboxView Component & Triage Tests", () => {
       expect(screen.getByTestId("dismiss-proposal-1")).toBeInTheDocument();
     });
 
+    it("shows the swept proposals on My Issues only", async () => {
+      // V1 keeps the whole Auto-Accept surface on My Issues (`ContentView.cs:429`), and these rows
+      // are what that sweep produced: they are not scoped to a category or a project.
+      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(screen.getByTestId("inbox-proposals")).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId("category-review-requests"));
+      expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("inbox-check-now")).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("category-my-issues"));
+      expect(screen.getByTestId("inbox-proposals")).toBeInTheDocument();
+    });
+
+    it("revalidates the issue list after a manual check, as V1's onRefresh does", async () => {
+      // `AutoAcceptSettingsDialog.cs:50` awaits `onRefresh()` after the pass, and the pass itself
+      // invalidates the my-issues query (`AssignedIssuesAutoImportService.cs:93`): a sweep that
+      // accepted an issue changes what is assigned to you.
+      vi.spyOn(bridge, "checkInbox").mockResolvedValue(report());
+      const myIssuesFetches = () =>
+        listGitHubIssuesSpy.mock.calls.filter((call) => call[1] === "my-issues").length;
+
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      const before = myIssuesFetches();
+
+      fireEvent.click(screen.getByTestId("inbox-check-now"));
+
+      await waitFor(() => expect(myIssuesFetches()).toBe(before + 1));
+    });
+
     it("runs a check and refetches proposals, reporting what the sweep did", async () => {
       const checkInboxSpy = vi
         .spyOn(bridge, "checkInbox")
@@ -572,6 +847,44 @@ describe("InboxView Component & Triage Tests", () => {
         expect(screen.getByTestId("proposal-card-1")).toBeInTheDocument();
       });
       expect(screen.getByTestId("inbox-check-summary")).toHaveTextContent("Imported 1, skipped 3.");
+    });
+
+    it("says a sweep failed per-project rather than reporting an empty import", async () => {
+      // `SweepReport.errors` collects per-project `gh` failures and is never fatal, so a pass in
+      // which every project failed still reports `Ran` with nothing imported. Reading only
+      // `imported` and `skipped` made that indistinguishable from "nothing is assigned to you" -
+      // the silence V1's `InboxRecoverySummary` was written to end.
+      vi.spyOn(bridge, "checkInbox").mockResolvedValue(
+        report({ errors: ["Tendril-App: gh exited with status 1"] }),
+      );
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(screen.getByTestId("inbox-check-now")).toBeEnabled());
+      fireEvent.click(screen.getByTestId("inbox-check-now"));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("inbox-check-summary")).toHaveTextContent(
+          "1 error: Tendril-App: gh exited with status 1",
+        ),
+      );
+    });
+
+    it("reports the plans an auto-accepting sweep started, which leave no card behind", async () => {
+      // With auto-accept on, the sweep inserts the proposal and accepts it in the same pass, so the
+      // panel below stays empty and `accepted` is the only evidence anything happened.
+      vi.spyOn(bridge, "checkInbox").mockResolvedValue(
+        report({ imported: [proposal(1, 101)], accepted: 1 }),
+      );
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(screen.getByTestId("inbox-check-now")).toBeEnabled());
+      fireEvent.click(screen.getByTestId("inbox-check-now"));
+
+      await waitFor(() =>
+        expect(screen.getByTestId("inbox-check-summary")).toHaveTextContent(
+          "Imported 1, skipped 0. 1 started a plan straight away.",
+        ),
+      );
     });
 
     it("says so when a sweep is already in flight rather than reporting an empty import", async () => {
@@ -673,6 +986,134 @@ describe("InboxView Component & Triage Tests", () => {
       });
       expect(issueRow(101)).not.toBeNull();
       expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * V1 `SidebarListRow.BuildSubItem` colours a project's marker with `config.GetProjectColor`, and
+   * `SettingsApp.cs:120-121` reduces to "the configured colour, else `Colors.Slate`". The colour now
+   * reaches the view: `ProjectConfig.color` -> the bridge's `ProjectSummaryDto` -> `ProjectSummary`.
+   *
+   * The shape is the Settings project rail's, deliberately: `Box().Background(color)
+   * .BorderRadius(Rounded).Width(Size.Units(3)).Height(Size.Units(3))` — 0.75rem at 0.5rem radius.
+   */
+  describe("project colour in the category rail", () => {
+    const dot = (project: string) => screen.getByTestId(`inbox-project-${project}-dot`);
+
+    it("gives each project a dot in its configured colour", async () => {
+      render(
+        <InboxView
+          projects={[
+            { name: "Tendril", color: "Emerald", repos: [], verifications: [] },
+            { name: "Ivy", color: "Purple", repos: [], verifications: [] },
+          ]}
+        />,
+      );
+      await waitForInboxIdle();
+
+      // The name resolves through the package's single `ivyColorVar`, so the token, not a hex literal.
+      expect(dot("Tendril")).toHaveAttribute("data-color", "Emerald");
+      expect(dot("Tendril").style.backgroundColor).toBe("var(--emerald, currentColor)");
+      expect(dot("Ivy")).toHaveAttribute("data-color", "Purple");
+      expect(dot("Ivy").style.backgroundColor).toBe("var(--purple, currentColor)");
+    });
+
+    /** V1's `?? Colors.Slate`: no colour configured is a neutral dot, not the absence of one. */
+    it("falls back to Slate for a project with no colour", async () => {
+      render(
+        <InboxView
+          projects={[
+            { name: "Tendril", repos: [], verifications: [] },
+            { name: "Ivy", color: "   ", repos: [], verifications: [] },
+          ]}
+        />,
+      );
+      await waitForInboxIdle();
+
+      expect(dot("Tendril")).toHaveAttribute("data-color", "Slate");
+      expect(dot("Tendril").style.backgroundColor).toBe("var(--slate, currentColor)");
+      expect(dot("Ivy")).toHaveAttribute("data-color", "Slate");
+    });
+
+    /** `Size.Units(3)` with `BorderRadius.Rounded`, which the framework resolves to 0.5rem. */
+    it("matches the Settings rail's 0.75rem swatch rather than inventing a size", async () => {
+      render(
+        <InboxView projects={[{ name: "Tendril", color: "Blue", repos: [], verifications: [] }]} />,
+      );
+      await waitForInboxIdle();
+
+      expect(dot("Tendril").className).toContain("size-3");
+      // `rounded-box` is `--radius-boxes`, which is the same 0.5rem this asserted as a literal before
+      // the swatch moved onto the shared radius token.
+      expect(dot("Tendril").className).toContain("rounded-box");
+      expect(dot("Tendril").className).not.toContain("rounded-full");
+    });
+
+    /** `BuildSubItem` renders icon *or* colour, never both — so this row keeps its folder icon. */
+    it("leaves the no-projects row its icon and gives it no dot", async () => {
+      render(<InboxView projects={[]} />);
+      await waitForInboxIdle();
+
+      const row = screen.getByTestId("inbox-no-projects");
+      expect(row).toHaveTextContent("No projects in settings");
+      expect(row.querySelector("[data-color]")).toBeNull();
+      expect(row.querySelector("svg")).not.toBeNull();
+    });
+  });
+
+  /**
+   * The issues table bounds its own height instead of growing and taking the page's scroller with it.
+   *
+   * jsdom does no layout, so the height itself is not observable here; the *chain* that produces it
+   * is. Every link matters, and `min-h-0` most of all: a flex child's default `min-height: auto`
+   * refuses to shrink below its content, which is exactly how a bounded table becomes a scrolling
+   * page. Inbox stays registered padded (`APP_DESCRIPTORS`), so `h-full` here is what turns the
+   * shell's definite-height content frame into a definite height for this column.
+   */
+  describe("issues table height", () => {
+    it("hangs a definite-height column off the shell's frame", async () => {
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+
+      const root = screen.getByTestId("inbox-view");
+      expect(root.className).toContain("h-full");
+      expect(root.className).toContain("min-h-0");
+
+      // The content column: a flex column that may shrink, with the table as its growing child.
+      const column = screen.getByTestId("inbox-content");
+      expect(column.className).toContain("flex-col");
+      expect(column.className).toContain("flex-1");
+      expect(column.className).toContain("min-h-0");
+      expect(column.parentElement).toBe(root);
+      expect(column.contains(screen.getByTestId("inbox-issue-table"))).toBe(true);
+
+      // The rail is the column's sibling and scrolls itself, so it cannot grow the frame either.
+      const rail = screen.getByRole("tablist", { name: "Inbox categories" });
+      expect(rail.className).toContain("overflow-y-auto");
+    });
+
+    it("gives the table `fillHeight`'s bounded viewport rather than the page scroller", async () => {
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+
+      // `data-testid` lands on the `<table>`; walk out through the wrappers `fillHeight` builds.
+      const table = screen.getByTestId("inbox-issue-table");
+      const viewport = table.parentElement as HTMLElement;
+      const box = viewport.parentElement as HTMLElement;
+      const wrapper = box.parentElement as HTMLElement;
+
+      // The scroll viewport is bounded and is the element that scrolls.
+      expect(viewport.className).toContain("min-h-0");
+      expect(viewport.className).toContain("flex-1");
+      // `fillHeight`'s bordered box: takes the remaining height and clips, so nothing escapes it.
+      expect(box.className).toContain("min-h-0");
+      expect(box.className).toContain("flex-1");
+      expect(box.className).toContain("overflow-hidden");
+      // The table's own root claims the column's leftover height.
+      expect(wrapper.className).toContain("min-h-0");
+      expect(wrapper.className).toContain("flex-1");
+      // No view-level scroller: the frame owns the page scroll, the table owns the rows'.
+      expect(screen.getByTestId("inbox-view").className).not.toContain("overflow-y-auto");
     });
   });
 });

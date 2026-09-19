@@ -41,6 +41,7 @@ async fn run_finish(home: &HomeFixture, job: JobItem, claimed: JobStatus) -> Job
         claimed,
         "Process exited with code 0".to_string(),
         Some(12),
+        None,
     )
     .await;
 

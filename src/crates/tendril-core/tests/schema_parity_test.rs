@@ -201,6 +201,9 @@ fn fresh_database_has_every_v25_object() {
                 "CostSource",
                 "ExecutionProfile",
                 "Effort",
+                // The original app's `Migration_026_JobsInboxFileAndChatSessionId` adds this, so both
+                // apps have to spell it the same way to share one `tendril.db`.
+                "ChatSessionId",
             ],
         ),
         (

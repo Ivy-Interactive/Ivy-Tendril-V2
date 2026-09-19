@@ -44,6 +44,23 @@ pub async fn cmd_write_revision(
         .await
 }
 
+/// Overwrite the plan's newest revision in place, keeping its number.
+///
+/// What answering a plan question needs, and the reason it is a separate command from
+/// `cmd_write_revision`: that one appends. An answer is not a new revision of the plan, it is filling
+/// in a blank the plan left, and appending would both claim the agent produced a new plan and inflate
+/// `revisionCount` — which the app's unfolded-answer execute guard reads as `revisionCount === 1`, so
+/// a single answer would silently switch that guard off.
+#[tauri::command]
+pub async fn cmd_update_latest_revision(
+    id: String,
+    content: String,
+) -> Result<RevisionResultDto, BridgeError> {
+    get_client_from_master()?
+        .update_latest_revision(&id, &content)
+        .await
+}
+
 /// Permanently delete a plan: its folder on disk and its database row.
 ///
 /// Irreversible, and the service refuses it while a job still holds the plan, so

@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 export type EventUnsubscribe = () => void;
@@ -95,6 +96,48 @@ export async function onChatEvent(
   return () => unlisten();
 }
 
+/** One frame of a chat session's interactive-agent stream, as re-emitted by `agent_terminal_bridge.rs`. */
+export interface AgentTerminalEvent {
+  /** The *chat* session the pane belongs to, which is how a pane recognises its own frames. */
+  chatSessionId: string;
+  /** `log`, `end`, or `meta` (already consumed natively and returned by the invoke). */
+  event: string;
+  data: string;
+}
+
+/**
+ * Interactive-agent frames bridged from the daemon's `/api/chat/sessions/:id/terminal` SSE stream by
+ * `service/agent_terminal_bridge.rs`, for the same reason [`onChangeEvent`] exists.
+ *
+ * Subscribe before starting the session: the agent can write before the invoke that started it has
+ * returned the pty id, so a listener registered afterwards misses the first frames.
+ */
+export async function onAgentTerminalEvent(
+  handler: (event: AgentTerminalEvent) => void,
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<AgentTerminalEvent>("agent-terminal-event", (event) => {
+    handler(event.payload);
+  });
+  return () => unlisten();
+}
+
+/**
+ * Connection transitions of a chat terminal's stream. Like a review action's and unlike the change
+ * stream's, this never reconnects — re-issuing the request would spawn a second agent — so
+ * `disconnected` is terminal.
+ */
+export async function onAgentTerminalStreamStatus(
+  handler: (status: { chatSessionId: string; status: "connected" | "disconnected" }) => void,
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<{
+    chatSessionId: string;
+    status: "connected" | "disconnected";
+  }>("agent-terminal-stream-status", (event) => {
+    handler(event.payload);
+  });
+  return () => unlisten();
+}
+
 export interface JobStreamEvent {
   kind?: string;
   type?: string;
@@ -112,7 +155,16 @@ export interface JobStreamEvent {
 
 export interface JobEventSubscriptionOptions {
   kinds?: string[];
-  onEvent: (event: JobStreamEvent) => void;
+  /**
+   * Where to resume: the daemon skips every log line below this index.
+   *
+   * `/api/jobs/:id/events` reads the job's log from the start on every connection, so without this a
+   * remount or a reconnect replays the whole run. Frames carry their line index (see `line` below),
+   * which is what makes a resume point expressible in the first place.
+   */
+  sinceLine?: number;
+  /** `line` is the frame's index in the job's log, from the SSE `id:` field. */
+  onEvent: (event: JobStreamEvent, line?: number) => void;
   onEnd?: (status: string) => void;
   onError?: (err: unknown) => void;
 }
@@ -123,8 +175,13 @@ export interface SseSubscriptionOptions {
   /** JSON request body, sent with `Content-Type: application/json`. */
   body?: string;
   token?: string;
-  /** Every frame except `end`, with the payload exactly as it arrived — undecoded and unparsed. */
-  onEvent: (event: string, data: string) => void;
+  /**
+   * Every frame except `end`, with the payload exactly as it arrived — undecoded and unparsed.
+   *
+   * `id` is the frame's SSE `id:` field when it had one. Streams that number their frames use it to
+   * make a resume point expressible; streams that do not leave it `undefined`.
+   */
+  onEvent: (event: string, data: string, id?: string) => void;
   /** The `end` frame's raw payload. The stream is closed immediately afterwards. */
   onEnd?: (data: string) => void;
   onError?: (err: unknown) => void;
@@ -178,6 +235,7 @@ export function subscribeSse(url: string, options: SseSubscriptionOptions): Even
       const decoder = new TextDecoder();
       let buffer = "";
       let currentEvent = "";
+      let currentId: string | undefined;
       let currentData: string[] = [];
 
       const processLine = (line: string) => {
@@ -194,13 +252,16 @@ export function subscribeSse(url: string, options: SseSubscriptionOptions): Even
               active = false;
               controller.abort();
             } else {
-              options.onEvent(currentEvent, dataStr);
+              options.onEvent(currentEvent, dataStr, currentId);
             }
           }
           currentEvent = "";
+          currentId = undefined;
           currentData = [];
         } else if (line.startsWith("event:")) {
           currentEvent = line.slice(6).trim();
+        } else if (line.startsWith("id:")) {
+          currentId = line.slice(3).trim();
         } else if (line.startsWith("data:")) {
           currentData.push(line.slice(5).trimStart());
         }
@@ -243,6 +304,142 @@ export function subscribeSse(url: string, options: SseSubscriptionOptions): Even
   };
 }
 
+/**
+ * Whether the app is running inside the Tauri host.
+ *
+ * Duplicated from `api/bridge.ts` rather than imported: `bridge.ts` imports this module, and the
+ * cycle would be resolved at load time by whichever side won, which for a module-scope `invoke`
+ * lookup is not something to leave to chance.
+ */
+function isTauriHost(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+/** One frame of a job's event stream, as re-emitted by `service/job_events_bridge.rs`. */
+export interface JobStreamFrame {
+  jobId: string;
+  /** `event` or `end`. */
+  event: string;
+  /** The frame's payload, exactly as the daemon sent it. */
+  data: string;
+  /** The frame's index in the job's log, or `null` for a frame the daemon did not number. */
+  line: number | null;
+}
+
+/**
+ * Job event frames bridged from the daemon's `/api/jobs/:id/events` SSE stream by
+ * `service/job_events_bridge.rs`, for the same reason [`onChangeEvent`] exists.
+ */
+export async function onJobStreamEvent(
+  handler: (frame: JobStreamFrame) => void,
+): Promise<EventUnsubscribe> {
+  const unlisten: UnlistenFn = await listen<JobStreamFrame>("job-stream-event", (event) => {
+    handler(event.payload);
+  });
+  return () => unlisten();
+}
+
+/**
+ * Subscribes to a job's event stream over whichever transport can actually authenticate.
+ *
+ * Under Tauri that is the native bridge: `/api/jobs/:id/events` is bearer-authenticated and the
+ * secret is deliberately native-only, so a `fetch` from the webview gets a 401 and the job session
+ * view shows nothing. This is why the change stream and review actions are bridged natively too;
+ * job events were the one stream still trying to read the daemon directly from the webview, which is
+ * why live agent output never appeared in the desktop app.
+ *
+ * In a browser build there is no native side, so the HTTP transport is used with whatever credential
+ * the caller has.
+ */
+export function subscribeToJobStream(
+  jobId: string,
+  options: JobEventSubscriptionOptions & {
+    /** Daemon origin for the HTTP transport. Unused under Tauri, where the native side knows it. */
+    httpBaseUrl: string;
+    /** Bearer credential for the HTTP transport. Unused under Tauri, for the reason above. */
+    token?: string;
+  },
+): EventUnsubscribe {
+  if (isTauriHost()) {
+    return subscribeJobEventsViaTauri(jobId, options);
+  }
+  return subscribeJobEvents(options.httpBaseUrl, jobId, options.token, options);
+}
+
+/**
+ * Desktop transport: the native side holds the bearer secret, reads the stream and re-emits every
+ * frame as a `job-stream-event`.
+ *
+ * The listener is registered before the invoke, because the daemon can deliver a job's backlog before
+ * the invoke's acknowledgement has crossed back over the boundary. Frames for other jobs are dropped
+ * here rather than in the host, so several open job tabs cost one stream each and no cross-talk.
+ */
+function subscribeJobEventsViaTauri(
+  jobId: string,
+  options: JobEventSubscriptionOptions,
+): EventUnsubscribe {
+  let active = true;
+  let unlisten: EventUnsubscribe | undefined;
+
+  const deliver = (frame: JobStreamFrame) => {
+    if (!active || frame.jobId !== jobId) return;
+
+    if (frame.event === "end") {
+      options.onEnd?.(parseEndStatus(frame.data));
+      return;
+    }
+
+    options.onEvent(parseJobFrame(frame.data), frame.line ?? undefined);
+  };
+
+  void (async () => {
+    try {
+      unlisten = await onJobStreamEvent(deliver);
+      if (!active) {
+        unlisten();
+        return;
+      }
+      await invoke<void>("cmd_subscribe_job_events", {
+        jobId,
+        kinds: options.kinds && options.kinds.length > 0 ? options.kinds.join(",") : null,
+        sinceLine: options.sinceLine ?? null,
+      });
+    } catch (err) {
+      if (!active) return;
+      options.onError?.(err);
+    }
+  })();
+
+  return () => {
+    active = false;
+    unlisten?.();
+    // Fire-and-forget: the view is already gone, and a failure here only means the native reader
+    // stops when the job ends instead of now.
+    void invoke<void>("cmd_unsubscribe_job_events", { jobId }).catch(() => {});
+  };
+}
+
+/** A frame that is not JSON is still worth showing; both fields are set because consumers read one or the other. */
+function parseJobFrame(data: string): JobStreamEvent {
+  try {
+    return JSON.parse(data) as JobStreamEvent;
+  } catch {
+    return { text: data, message: data };
+  }
+}
+
+function parseEndStatus(data: string): string {
+  try {
+    const parsed = JSON.parse(data);
+    if (parsed && typeof parsed === "object" && typeof parsed.status === "string") {
+      return parsed.status;
+    }
+  } catch {
+    if (data) return data;
+  }
+  return "Completed";
+}
+
 export function subscribeJobEvents(
   baseUrl: string,
   jobId: string,
@@ -254,32 +451,17 @@ export function subscribeJobEvents(
   if (options.kinds && options.kinds.length > 0) {
     url.searchParams.set("kinds", options.kinds.join(","));
   }
+  if (options.sinceLine !== undefined && options.sinceLine > 0) {
+    url.searchParams.set("since_line", String(options.sinceLine));
+  }
 
   return subscribeSse(url.toString(), {
     token,
-    onEvent: (_event, data) => {
-      try {
-        options.onEvent(JSON.parse(data));
-      } catch {
-        // A frame that is not JSON is still worth showing; both fields are populated because
-        // consumers read one or the other.
-        options.onEvent({ text: data, message: data });
-      }
+    onEvent: (_event, data, id) => {
+      const line = id !== undefined && /^\d+$/.test(id) ? Number(id) : undefined;
+      options.onEvent(parseJobFrame(data), line);
     },
-    onEnd: (data) => {
-      let status = "Completed";
-      try {
-        const parsed = JSON.parse(data);
-        if (parsed && typeof parsed === "object" && typeof parsed.status === "string") {
-          status = parsed.status;
-        }
-      } catch {
-        if (data) {
-          status = data;
-        }
-      }
-      options.onEnd?.(status);
-    },
+    onEnd: (data) => options.onEnd?.(parseEndStatus(data)),
     onError: options.onError,
   });
 }

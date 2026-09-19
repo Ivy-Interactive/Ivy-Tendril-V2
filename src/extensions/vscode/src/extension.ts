@@ -1,14 +1,15 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { BridgeHandler } from './bridge/bridgeHandler';
-import { registerChatParticipant } from './chat/chatParticipant';
-import { registerPlanCommands } from './commands/planCommands';
-import { COMMANDS, CONFIG_KEYS, VIEWS } from './constants';
-import { JobRunner } from './jobs/jobRunner';
-import { ServerManager } from './server/serverManager';
-import { StatusBarItem } from './statusbar/statusBarItem';
-import { SidebarProvider } from './views/sidebarProvider';
-import { DashboardPanel } from './webview/dashboardPanel';
+import * as vscode from "vscode";
+import * as path from "path";
+import { BridgeHandler } from "./bridge/bridgeHandler";
+import { registerChatParticipant } from "./chat/chatParticipant";
+import { registerPlanCommands } from "./commands/planCommands";
+import { COMMANDS, CONFIG_KEYS, VIEWS } from "./constants";
+import { JobRunner } from "./jobs/jobRunner";
+import { hasWebDashboard } from "./server/masterDiscovery";
+import { ServerManager } from "./server/serverManager";
+import { StatusBarItem } from "./statusbar/statusBarItem";
+import { SidebarProvider } from "./views/sidebarProvider";
+import { DashboardPanel } from "./webview/dashboardPanel";
 
 let serverManager: ServerManager | undefined;
 let pollTimer: NodeJS.Timeout | undefined;
@@ -30,6 +31,23 @@ export function getActiveServerManager(): ServerManager | undefined {
   return serverManager;
 }
 
+/**
+ * Message shown when the daemon serves no dashboard at its root.
+ *
+ * The V2 daemon registers API routes only: there is no `ServeDir`, no SPA fallback and no `web_ui`
+ * in `.master`'s `capabilities`, so `GET /` is a bare 404. V1's daemon served the Ivy web UI there,
+ * which is what both of these commands were built around. Reporting that plainly beats V1's
+ * behaviour transplanted unchanged, which is a webview showing an empty 404 page and a browser tab
+ * doing the same.
+ */
+function noDashboardMessage(baseUrl: string): string {
+  return (
+    `The Tendril daemon at ${baseUrl} does not serve a web dashboard; it exposes the JSON API only. ` +
+    "Use the Tendril desktop app for the dashboard, or the Tendril sidebar and @tendril chat " +
+    "commands from here."
+  );
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   serverManager = new ServerManager();
   context.subscriptions.push(serverManager);
@@ -44,10 +62,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const sidebarProvider = new SidebarProvider(serverManager);
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider(VIEWS.quickAccess, sidebarProvider)
+    vscode.window.registerTreeDataProvider(VIEWS.quickAccess, sidebarProvider),
   );
 
-  serverManager.onDidChangeState(health => {
+  serverManager.onDidChangeState((health) => {
     statusBar.update(health);
     sidebarProvider.refresh();
   });
@@ -57,28 +75,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(COMMANDS.openDashboard, async () => {
       try {
         const result = await serverManager!.ensureServerRunning();
-        await DashboardPanel.createOrShow(
-          context.extensionUri,
-          result.baseUrl,
-          bridgeHandler
-        );
+        if (!(await hasWebDashboard(result.baseUrl))) {
+          vscode.window.showErrorMessage(noDashboardMessage(result.baseUrl));
+          return;
+        }
+        await DashboardPanel.createOrShow(context.extensionUri, result.baseUrl, bridgeHandler);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to open Tendril Dashboard: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.openInBrowser, async () => {
       try {
         const result = await serverManager!.ensureServerRunning();
+        if (!(await hasWebDashboard(result.baseUrl))) {
+          vscode.window.showErrorMessage(noDashboardMessage(result.baseUrl));
+          return;
+        }
         await vscode.env.openExternal(vscode.Uri.parse(result.baseUrl));
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to open Tendril in browser: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -89,7 +111,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           canSelectFiles: false,
           canSelectFolders: true,
           canSelectMany: false,
-          openLabel: 'Open Worktree as Folder'
+          openLabel: "Open Worktree as Folder",
         });
         if (uris && uris.length > 0) {
           resolvedPath = uris[0].fsPath;
@@ -102,50 +124,50 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       try {
         await bridgeHandler.handleMessage({
-          type: 'openWorktree',
-          path: resolvedPath
+          type: "openWorktree",
+          path: resolvedPath,
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to open worktree: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.startServer, async () => {
       try {
         await serverManager!.startServer();
-        vscode.window.showInformationMessage('Tendril server started successfully.');
+        vscode.window.showInformationMessage("Tendril server started successfully.");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to start Tendril server: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.stopServer, async () => {
       try {
         await serverManager!.stopServer();
-        vscode.window.showInformationMessage('Tendril server stopped.');
+        vscode.window.showInformationMessage("Tendril server stopped.");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to stop Tendril server: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.restartServer, async () => {
       try {
         await serverManager!.restartServer();
-        vscode.window.showInformationMessage('Tendril server restarted successfully.');
+        vscode.window.showInformationMessage("Tendril server restarted successfully.");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to restart Tendril server: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -153,11 +175,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         const folders = vscode.workspace.workspaceFolders;
         const targetFolder = folderUri
-          ? folders?.find(f => f.uri.toString() === folderUri.toString()) ?? { uri: folderUri, name: path.basename(folderUri.fsPath) }
+          ? (folders?.find((f) => f.uri.toString() === folderUri.toString()) ?? {
+              uri: folderUri,
+              name: path.basename(folderUri.fsPath),
+            })
           : folders?.[0];
 
         if (!targetFolder) {
-          vscode.window.showWarningMessage('No workspace folder open to add to Tendril.');
+          vscode.window.showWarningMessage("No workspace folder open to add to Tendril.");
           return;
         }
 
@@ -168,21 +193,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           {
             location: vscode.ProgressLocation.Notification,
             title: `Adding '${folderName}' to Tendril...`,
-            cancellable: false
+            cancellable: false,
           },
           async () => {
-            await serverManager!.executeCli(['project', 'add', folderName]);
-            await serverManager!.executeCli(['project', 'add-repo', folderName, folderPath]);
-            await serverManager!.executeCli(['job', 'start', 'AddProject', folderName]);
-          }
+            await serverManager!.executeCli(["project", "add", folderName]);
+            await serverManager!.executeCli(["project", "add-repo", folderName, folderPath]);
+            await serverManager!.executeCli(["job", "start", "AddProject", folderName]);
+          },
         );
 
-        vscode.window.showInformationMessage(`Project '${folderName}' added to Tendril. Setup job started.`);
+        vscode.window.showInformationMessage(
+          `Project '${folderName}' added to Tendril. Setup job started.`,
+        );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to add project to Tendril: ${msg}`);
       }
-    })
+    }),
   );
 
   const promptedWorkspaces = new Set<string>();
@@ -203,9 +230,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const folderName = path.basename(status.workspacePath);
         const action = await vscode.window.showInformationMessage(
           `Workspace folder '${folderName}' is not registered in Tendril. Add it now?`,
-          'Add to Tendril'
+          "Add to Tendril",
         );
-        if (action === 'Add to Tendril') {
+        if (action === "Add to Tendril") {
           await vscode.commands.executeCommand(COMMANDS.addCurrentProject);
         }
       }
@@ -217,7 +244,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       void checkAndPromptUnmanagedWorkspace();
-    })
+    }),
   );
 
   // Background initialization & auto-start check

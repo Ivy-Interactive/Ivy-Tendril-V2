@@ -23,7 +23,7 @@ export default defineConfig({
     ],
     format: ["esm"],
     dts: {
-      tsgo: true,
+      tsgo: {},
     },
     clean: true,
     sourcemap: true,

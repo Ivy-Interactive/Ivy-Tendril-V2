@@ -1,7 +1,9 @@
+use crate::agents::eventwire::EventWireNormalizer;
 use crate::agents::providers::{
     apply_security_settings, build_agent_spec, AgentLaunchConfig, AgentProcessSpec,
 };
 use crate::agents::reconcile::build_missing_result_lines;
+use crate::agents::resolution::resolve_agent;
 use crate::agents::runner::{run_agent_process_with_grace, AgentRunOutcome, TerminationReason};
 use crate::config::{get_plans_dir_with_settings, TendrilSettings};
 use crate::db::jobs::{
@@ -22,8 +24,9 @@ use crate::jobs::denials::{describe_denials, extract_permission_denials, summari
 use crate::jobs::dependents::release_dependents;
 use crate::jobs::failure_analysis::extract_failure_reason;
 use crate::jobs::firmware_values::{
-    build_firmware_values, execution_profile_override, find_project, find_repo_ref, repo_name,
-    resolve_project, resolve_project_skills, resolve_working_directory,
+    build_firmware_values, build_job_context, execution_profile_override, find_project,
+    find_repo_ref, is_auto_project, repo_name, resolve_project, resolve_project_skills,
+    resolve_working_directory, resolve_writable_directories,
 };
 use crate::jobs::hooks::{run_hooks, shell_hook_executor, HookExecutor, HookPhase, HookRunContext};
 use crate::jobs::logger::{
@@ -38,18 +41,20 @@ use crate::plans::dependencies::{
     check_dependencies, check_dependencies_with, get_gh_pr_state, unblock_satisfied_plans_with,
 };
 use crate::plans::guards::PlanCompletionGuard;
+use crate::plans::helpers::resolve_plan_folder;
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::verification_gate::resolve_post_execution_state;
 use crate::plans::writer::write_plan_yaml;
 use crate::promptware::compiler::compile_firmware_with_skills;
 use crate::telemetry::Track;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
 use std::time::{Duration, Instant};
-use tokio::sync::{watch, Mutex, Notify, OwnedSemaphorePermit, RwLock, Semaphore};
+use tokio::sync::{broadcast, watch, Mutex, Notify, OwnedSemaphorePermit, RwLock, Semaphore};
 
 /// Grace on top of `staleOutputTimeout` before the maintenance pass reaps a `Running` job whose own
 /// per-job watchdog never armed, because the launch itself hung.
@@ -65,9 +70,125 @@ const STALE_JOB_KEEP_RECENT: usize = 20;
 /// SQLite once per output line.
 const LAST_OUTPUT_PERSIST_INTERVAL: Duration = Duration::from_secs(5);
 
+/// The only statuses [`JobManager::clear_jobs`] will remove: finished work, and nothing else.
+///
+/// This is the whole safety property of every bulk clear. `Running` and `Queued` are excluded for the
+/// obvious reason — clearing a job that is working, or about to, destroys work rather than history.
+/// `Pending` and `Blocked` are excluded too, which is stricter than V1's `not Running and not Queued`
+/// (`Services/Jobs/JobService.cs:678`) and deliberately so: a `Blocked` job is waiting on a real
+/// dependency and is released by [`JobManager::restore_blocked`] and the maintenance sweeps, so it is
+/// pending work under a discouraging name, and `Pending` is the pre-dispatch status a restart
+/// normalises to `Queued`.
+///
+/// A caller wanting one status asks for one; the order here is the order the app's menu offers them in.
+pub const CLEARABLE_STATUSES: &[JobStatus] = &[
+    JobStatus::Completed,
+    JobStatus::Failed,
+    JobStatus::Timeout,
+    JobStatus::Stopped,
+];
+
 /// Builds the process spec for an agent launch. Injectable so tests can exercise the whole launch
 /// path against a throwaway script instead of a real agent CLI.
 pub type SpecBuilder = Arc<dyn Fn(&str, &AgentLaunchConfig) -> AgentProcessSpec + Send + Sync>;
+
+/// How many job events the manager buffers for a slow subscriber.
+///
+/// Job events are per-transition, not per-output-line, so this is generous: a subscriber would have
+/// to sleep through 256 transitions to lag. The server's forwarder survives a lag anyway rather than
+/// ending, which is the failure mode that actually matters (see `AppState::new`).
+const JOB_EVENT_CHANNEL_CAPACITY: usize = 256;
+
+/// Emitted on every status transition the manager writes.
+pub const JOB_EVENT_STATUS_CHANGED: &str = "job.status_changed";
+/// Emitted alongside [`JOB_EVENT_STATUS_CHANGED`] when a job settles on `Completed`.
+pub const JOB_EVENT_COMPLETED: &str = "job.completed";
+/// Emitted alongside [`JOB_EVENT_STATUS_CHANGED`] when a job settles on `Failed`, `Timeout` or
+/// `Stopped`.
+pub const JOB_EVENT_FAILED: &str = "job.failed";
+
+/// A job lifecycle notification, broadcast to anything watching a [`JobManager`].
+///
+/// The `job.` prefix is load-bearing rather than decorative. The desktop bridge
+/// (`ws_bridge.rs::route_ws_message`) claims `chat.`, `plan.`, `state` and `status` for their own
+/// channels and routes *everything else* to `job-event` — so an unprefixed name would reach the Jobs
+/// area by falling through a match rather than by matching one, and a future `plan.`-shaped name
+/// added to that list would silently steal it.
+///
+/// A subscriber gets both a generic transition event and, for a terminal status, a second event
+/// naming the outcome: a client that only cares about "did this finish" does not have to know which
+/// of `Failed`, `Timeout` and `Stopped` count as failure.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct JobEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub job_id: String,
+    pub job_type: String,
+    pub status: JobStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_message: Option<String>,
+    /// The plan folder the job is working on, if any — the name, not the absolute path, because that
+    /// is what a client keys a plan on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_folder: Option<String>,
+    /// The conversation that started the job, so a subscriber can route the event to it without
+    /// re-reading the job. Carried on the event because the chat notifier needs it for a `CreatePlan`,
+    /// which has no `plan_folder` to resolve a conversation through.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_session_id: Option<String>,
+    /// The plan the job ended up holding, for a job whose `plan_folder` was empty when it started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reported_plan_id: Option<String>,
+}
+
+impl JobEvent {
+    fn of_type(event_type: &str, job: &JobItem) -> Self {
+        Self {
+            event_type: event_type.to_string(),
+            job_id: job.id.clone(),
+            job_type: job.job_type.clone(),
+            status: job.status,
+            status_message: job.status_message.clone(),
+            plan_folder: Path::new(&job.plan_file)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string()),
+            chat_session_id: job.chat_session_id.clone(),
+            reported_plan_id: job
+                .reported_plan_id
+                .clone()
+                .filter(|id| !id.trim().is_empty()),
+        }
+    }
+
+    /// The transition event every status write produces.
+    pub fn status_changed(job: &JobItem) -> Self {
+        Self::of_type(JOB_EVENT_STATUS_CHANGED, job)
+    }
+
+    /// The outcome event a terminal status produces, or `None` while the job is still live.
+    pub fn terminal(job: &JobItem) -> Option<Self> {
+        match job.status {
+            JobStatus::Completed => Some(Self::of_type(JOB_EVENT_COMPLETED, job)),
+            JobStatus::Failed | JobStatus::Timeout | JobStatus::Stopped => {
+                Some(Self::of_type(JOB_EVENT_FAILED, job))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Publishes the events for one status write. A send failure only means nobody is subscribed.
+fn emit_job_event(events: Option<&broadcast::Sender<JobEvent>>, job: &JobItem) {
+    let Some(tx) = events else {
+        return;
+    };
+    let _ = tx.send(JobEvent::status_changed(job));
+    if let Some(terminal) = JobEvent::terminal(job) {
+        let _ = tx.send(terminal);
+    }
+}
 
 /// Live control surface for a queued or running job.
 ///
@@ -122,6 +243,10 @@ pub struct StartOptions {
     /// work already running", which stops helping the moment the first job finishes. A key answers
     /// "have I already sent this request", which stays true forever.
     pub idempotency_key: Option<String>,
+    /// The conversation that started this job. `None` for a job started from a terminal or by the
+    /// scheduler; a job that names a plan then inherits the plan's own chat session instead, so the
+    /// link survives an agent that forgot to pass one.
+    pub chat_session_id: Option<String>,
 }
 
 /// Why a job may not be queued yet.
@@ -152,6 +277,7 @@ struct DispatchContext {
     stale_output_timeout_override: Option<Duration>,
     plans_dir_override: Option<PathBuf>,
     self_handle: Weak<JobManager>,
+    events: broadcast::Sender<JobEvent>,
 }
 
 pub struct JobManager {
@@ -191,11 +317,16 @@ pub struct JobManager {
     /// Empty unless the manager was published with [`JobManager::share`]; empty simply means no
     /// restarts happen, which is what a manager nobody can reach should do.
     self_handle: OnceLock<Weak<JobManager>>,
+    /// Job lifecycle events, for anything that would otherwise have to poll — the daemon forwards
+    /// them onto the WebSocket. See [`JobEvent`]. The channel exists whether or not anyone is
+    /// listening, so a send is always safe and a CLI invocation simply drops every event.
+    events: broadcast::Sender<JobEvent>,
 }
 
 impl JobManager {
     pub fn new(tendril_home: PathBuf, settings: TendrilSettings) -> Self {
         let max_jobs = settings.max_concurrent_jobs.max(1) as usize;
+        let (events, _) = broadcast::channel(JOB_EVENT_CHANNEL_CAPACITY);
         Self {
             tendril_home,
             settings: Arc::new(RwLock::new(settings)),
@@ -213,7 +344,17 @@ impl JobManager {
             stale_output_timeout_override: None,
             plans_dir_override: None,
             self_handle: OnceLock::new(),
+            events,
         }
+    }
+
+    /// Subscribes to this manager's job lifecycle events.
+    ///
+    /// A receiver only sees events published after it subscribes, and it may lag: a subscriber that
+    /// treats [`broadcast::error::RecvError::Lagged`] as fatal silences itself permanently, so
+    /// forward the next event instead and let the client reconcile.
+    pub fn subscribe_events(&self) -> broadcast::Receiver<JobEvent> {
+        self.events.subscribe()
     }
 
     /// Publishes the manager as an `Arc` and records a weak handle to itself.
@@ -293,6 +434,7 @@ impl JobManager {
             stale_output_timeout_override: self.stale_output_timeout_override,
             plans_dir_override: self.plans_dir_override.clone(),
             self_handle: self.self_handle.get().cloned().unwrap_or_else(Weak::new),
+            events: self.events.clone(),
         }
     }
 
@@ -360,6 +502,39 @@ impl JobManager {
     /// the job the key already created.
     pub async fn start_job_with(&self, args: JobArgs, opts: StartOptions) -> Result<String> {
         let job_type = args.job_type().to_string();
+        let settings = self.settings.read().await.clone();
+
+        // Canonicalize the plan reference before anything reads it.
+        //
+        // `POST /api/jobs` deserializes raw `JobArgs`, so it is the one front end that can name a plan
+        // by its bare id — which is exactly what the app sends (`folderPath: plan.id`). The CLI and the
+        // MCP dispatcher both resolve a folder first, so nothing else ever saw the difference, and a
+        // great deal downstream reads this string as a path:
+        //
+        // * `resolve_project` reads `plan.yaml` at it, so an unresolved id meant every plan-scoped job
+        //   from the app was recorded as project `Auto` — and with it went the project's skills, its
+        //   job hooks, its terminal allowlist and its `RepoConfigs`.
+        // * `add_plan_scoped_values` bails when it is not a directory, so the firmware header lost its
+        //   whole plan block: no `TendrilPlanFolder`, no `TendrilPlanId`, no `Note` / `UpdateInstructions`
+        //   / `ChangeRequest`. The agent had to work out which plan it was on by searching for it.
+        // * `verify_execute_plan` reads `plan.yaml` at it too, so an execution that succeeded was
+        //   recorded `Failed` — "exited 0 but its plan.yaml could not be read at 00681" — and the plan
+        //   was flipped to `Failed` with it.
+        // * the dedupe and conflict keys compare this string, so `00681` and the absolute path were two
+        //   different keys and the duplicate gate could be walked around by mixing front ends.
+        //
+        // Resolution failure falls back to the raw string rather than becoming an error: a submission
+        // naming a plan that does not exist yet is the caller's problem to report, and the guard below
+        // already rejects the only unrecoverable shape (no reference at all).
+        let mut args = args;
+        if let Some(reference) = args.plan_folder().map(str::to_string) {
+            if !reference.trim().is_empty() {
+                if let Ok(resolved) = resolve_plan_folder(&reference, &self.plans_dir(&settings)) {
+                    args.set_plan_folder(resolved.to_string_lossy().to_string());
+                }
+            }
+        }
+
         let plan_folder_str = args.plan_folder().unwrap_or("").to_string();
         let plan_folder = PathBuf::from(&plan_folder_str);
 
@@ -378,12 +553,9 @@ impl JobManager {
 
         // `CreatePlan` carries a priority of its own, so an explicit override is written back into the
         // stored args rather than only onto the job row.
-        let mut args = args;
         if let (JobArgs::CreatePlan(create), Some(priority)) = (&mut args, opts.priority) {
             create.priority = priority;
         }
-
-        let settings = self.settings.read().await.clone();
 
         // A forced submission is the operator saying "yes, again": it opts out of both duplicate
         // gates, and stores no dedupe key so it cannot block the next submission either.
@@ -462,6 +634,13 @@ impl JobManager {
         job.wait_for_job_ids = opts.wait_for_jobs.clone();
         job.priority = resolve_job_priority(&args, &plan_folder, opts.priority);
         job.idempotency_key = opts.idempotency_key.clone();
+        // What the caller said, else what the plan it names already knows. The second half is what
+        // links a job an agent started without the flag — `tendril job start ExecutePlan 00042` from a
+        // plan's own side-panel chat — back to the conversation watching that plan.
+        job.chat_session_id = opts
+            .chat_session_id
+            .clone()
+            .or_else(|| plan_chat_session_id(&plan_folder));
 
         // The wait-for gate only runs when the plan dependency gate let the job through: a blocked
         // plan is the more specific reason and should be the one the user sees.
@@ -592,6 +771,43 @@ impl JobManager {
         Ok(job_id)
     }
 
+    /// Puts a job that was still waiting in the queue when the daemon stopped back onto it.
+    ///
+    /// The queue itself is in-memory, so a restart loses it; the `Queued` rows in the database are
+    /// the durable record, and this is how they are read back. Without it such a job never runs
+    /// again, and it does not fail either — it sits `Queued` forever, which is worse than losing it:
+    /// startup reconciliation treats its plan as live and so never reverts it out of `Executing`,
+    /// and the conflict guard counts the row as in-flight and rejects every resubmission naming a
+    /// job that will never start. The only way out was `force-start` on each one.
+    ///
+    /// The in-memory insert is not optional. `drain_queue` re-reads the job from `self.jobs` after
+    /// popping its id and silently drops an id it cannot find, and that map is empty on a fresh
+    /// process — so enqueueing alone would lose the job a second time, quietly.
+    pub async fn requeue_restored(&self, job: JobItem) {
+        let id = job.id.clone();
+        let priority = job.priority;
+        self.jobs.write().await.insert(id.clone(), job);
+        self.enqueue(&id, priority).await;
+    }
+
+    /// Puts a job that was still `Blocked` when the daemon stopped back into the in-memory map, with
+    /// no enqueue: its gate has not been re-run yet, so it is still waiting by default.
+    ///
+    /// This is the map-only counterpart to [`Self::requeue_restored`], and it exists because every
+    /// path that can ever release a blocked job reads the map, not SQLite: both blocked sweeps in
+    /// [`Self::run_maintenance_pass_with`] and [`release_wait_dependents`] on the live path all
+    /// filter `self.jobs` for `JobStatus::Blocked`. A restart empties that map, so without this a
+    /// `Blocked` row is invisible to all three — which strands it, rather than merely delaying it.
+    /// It never runs, and it never fails either: `find_conflicting_job` reads SQLite, so the row
+    /// still counts as in-flight and every resubmission naming its plan is refused.
+    ///
+    /// Restoring it is what a live daemon looks like anyway. `start_job` inserts the job and returns
+    /// early at its gate without enqueueing, and `evict_stale_jobs` only drops terminal jobs, so on a
+    /// daemon that never died the blocked job is sitting in this same map waiting for the same sweeps.
+    pub async fn restore_blocked(&self, job: JobItem) {
+        self.jobs.write().await.insert(job.id.clone(), job);
+    }
+
     /// Pushes a `Queued` job onto the priority queue and wakes the dispatcher.
     async fn enqueue(&self, job_id: &str, priority: i32) {
         ensure_handle(&self.handles, job_id).await;
@@ -600,8 +816,16 @@ impl JobManager {
         self.dispatch_notify.notify_one();
     }
 
+    /// Moves a plan into its in-flight state as a job claims it, and mirrors that to SQLite.
+    ///
+    /// The mirror is the point: `apply_plan_state` writes `plan.yaml` and nothing else, and the plan
+    /// list, the Kanban columns and `?status=` all read `Plans.State` out of the database. Without
+    /// this the row still says `Draft` while the plan is executing, and no refetch fixes it — the
+    /// watcher cannot compensate either, because `write_plan_yaml` marks the write as ours and the
+    /// watcher skips self-writes.
     fn set_plan_state(&self, plan_folder: &Path, state: PlanStatus) {
         apply_plan_state(plan_folder, state);
+        sync_plan_state_to_db(&self.tendril_home, plan_folder);
     }
 
     pub async fn get_job(&self, id: &str) -> Result<Option<JobItem>> {
@@ -631,12 +855,21 @@ impl JobManager {
         job.status_message = Some(message.to_string());
         if let Some(pid) = plan_id {
             job.reported_plan_id = Some(pid.to_string());
+            // The moment a `CreatePlan` says which plan it made is the first moment its project can be
+            // known, and it is also the moment the Jobs list and the chat come to read the row. Waiting
+            // for the job to finish would leave both showing `Auto` for the whole run.
+            if is_auto_project(&job.project) {
+                let settings = self.settings.read().await.clone();
+                if let Some(project) = plan_project(pid, &self.plans_dir(&settings)) {
+                    job.project = project;
+                }
+            }
         }
         if let Some(title) = plan_title {
             job.reported_plan_title = Some(title.to_string());
         }
 
-        persist(&self.tendril_home, &self.jobs, &job).await;
+        persist(&self.tendril_home, &self.jobs, &job, Some(&self.events)).await;
         Ok(true)
     }
 
@@ -649,7 +882,7 @@ impl JobManager {
         job.reported_failure_reason = Some(message.to_string());
         job.completed_at = Some(Utc::now());
 
-        persist(&self.tendril_home, &self.jobs, &job).await;
+        persist(&self.tendril_home, &self.jobs, &job, Some(&self.events)).await;
         Ok(true)
     }
 
@@ -712,7 +945,10 @@ impl JobManager {
         job.status_message = Some(message.unwrap_or("Cancelled").to_string());
         job.completed_at = Some(Utc::now());
         revert_plan_state(&job);
-        persist(&self.tendril_home, &self.jobs, &job).await;
+        // A cancellation ends the run, so the plan's row moves with it exactly as it does in
+        // `finish_job` — this path never reaches that function.
+        sync_plan_state_to_db(&self.tendril_home, Path::new(&job.plan_file));
+        persist(&self.tendril_home, &self.jobs, &job, Some(&self.events)).await;
         self.handles.write().await.remove(id);
 
         // A stopped job is terminal, so jobs waiting on it have to be told: they will never be
@@ -977,7 +1213,7 @@ impl JobManager {
             if let Some(state) = in_flight_plan_state(&job.job_type) {
                 self.set_plan_state(Path::new(&job.plan_file), state);
             }
-            persist(&self.tendril_home, &self.jobs, &job).await;
+            persist(&self.tendril_home, &self.jobs, &job, Some(&self.events)).await;
         }
 
         ensure_handle(&self.handles, id).await;
@@ -1020,11 +1256,36 @@ impl JobManager {
 
     /// Bulk delete by status. Each job goes through [`Self::delete_job`], so the plan-state guards
     /// apply to every one of them.
+    ///
+    /// **Terminal statuses only.** Anything else in `statuses` is dropped before a single row is read,
+    /// so no caller — the CLI's `tendril job clear`, the app's header menu, or whatever asks next — can
+    /// destroy work that is still in flight. V1 makes the same promise, but it makes it in the
+    /// *predicate each use passes* (`ClearAllJobs` is `not Running and not Queued`,
+    /// `Services/Jobs/JobService.cs:678`), which leaves the guarantee one careless new call site away
+    /// from being lost. Here it is a property of the primitive. See [`CLEARABLE_STATUSES`].
     pub async fn clear_jobs(&self, statuses: &[JobStatus]) -> Result<usize> {
+        let clearable: Vec<JobStatus> = statuses
+            .iter()
+            .copied()
+            .filter(|status| CLEARABLE_STATUSES.contains(status))
+            .collect();
+        for refused in statuses.iter().filter(|s| !clearable.contains(s)) {
+            tracing::warn!(
+                "Refusing to clear {} jobs: a clear only ever removes finished work",
+                refused
+            );
+        }
+        // Not an early `Ok(0)` for the empty case only as an optimisation: `list_job_ids_by_status`
+        // with no statuses builds an `IN ()` predicate, and an empty scope must mean "nothing" rather
+        // than whatever SQLite makes of that.
+        if clearable.is_empty() {
+            return Ok(0);
+        }
+
         let ids = {
             let db_path = crate::config::get_database_path(&self.tendril_home);
             let conn = open_database(&db_path)?;
-            list_job_ids_by_status(&conn, statuses)?
+            list_job_ids_by_status(&conn, &clearable)?
         };
 
         let mut cleared = 0;
@@ -1046,16 +1307,9 @@ impl JobManager {
         self.clear_jobs(&[JobStatus::Failed]).await
     }
 
-    /// Clears every terminal job. `Blocked` jobs survive: one still waiting on a real dependency is
-    /// pending work, not history.
+    /// Clears every terminal job — [`CLEARABLE_STATUSES`] in full.
     pub async fn clear_all_jobs(&self) -> Result<usize> {
-        self.clear_jobs(&[
-            JobStatus::Completed,
-            JobStatus::Failed,
-            JobStatus::Timeout,
-            JobStatus::Stopped,
-        ])
-        .await
+        self.clear_jobs(CLEARABLE_STATUSES).await
     }
 
     // -----------------------------------------------------------------------
@@ -1153,7 +1407,7 @@ impl JobManager {
                     failed.status_message = Some(reason);
                     failed.completed_at = Some(Utc::now());
                     revert_plan_state(&failed);
-                    persist(&self.tendril_home, &self.jobs, &failed).await;
+                    persist(&self.tendril_home, &self.jobs, &failed, Some(&self.events)).await;
                 }
                 Some(WaitOutcome::Blocked(_)) => {}
             }
@@ -1374,6 +1628,68 @@ fn resolve_job_priority(args: &JobArgs, plan_folder: &Path, override_priority: O
         .unwrap_or(0)
 }
 
+/// Records `chat_session_id` on the plan a finished job produced or worked on, so the plan's own later
+/// events reach the conversation too. Never overwrites a session the plan already names: a plan opened
+/// in its own side-panel chat belongs to that conversation, not to whichever chat last ran a job on it.
+fn adopt_plan_into_chat_session(plans_dir: &Path, job: &JobItem, chat_session_id: &str) {
+    // `plan_file` is empty for the `CreatePlan` that produced the plan, so fall back to the id the
+    // promptware reported through `tendril job status --plan-id`.
+    let folder = {
+        let named = PathBuf::from(&job.plan_file);
+        if named.is_dir() {
+            Some(named)
+        } else {
+            let plan_id = job.resolve_plan_id();
+            (!plan_id.is_empty())
+                .then(|| resolve_plan_folder(&plan_id, plans_dir).ok())
+                .flatten()
+        }
+    };
+    let Some(folder) = folder else { return };
+
+    let Ok((mut plan, _)) = read_plan_yaml(&folder) else {
+        return;
+    };
+    if plan
+        .chat_session_id
+        .as_deref()
+        .is_some_and(|id| !id.trim().is_empty())
+    {
+        return;
+    }
+    plan.chat_session_id = Some(chat_session_id.to_string());
+    if let Err(e) = write_plan_yaml(&folder, &plan) {
+        tracing::debug!(
+            "Could not record chat session {chat_session_id} on plan {}: {e}",
+            folder.display()
+        );
+    }
+}
+
+/// The project a plan belongs to, by plan reference — an id, a folder name or a path. `None` when the
+/// plan cannot be read or names no project of its own.
+fn plan_project(plan_reference: &str, plans_dir: &Path) -> Option<String> {
+    let folder = resolve_plan_folder(plan_reference, plans_dir).ok()?;
+    read_plan_yaml(&folder)
+        .ok()
+        .map(|(plan, _)| plan.project)
+        .filter(|project| !is_auto_project(project))
+}
+
+/// The conversation a plan already belongs to, used to link a job that names the plan but was started
+/// without a `--chat-session` of its own. Empty for a job with no plan — a `CreatePlan` has none yet,
+/// which is why [`JobManager::finish_job`] stamps the link the other way round once the plan exists.
+fn plan_chat_session_id(plan_folder: &Path) -> Option<String> {
+    if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
+        return None;
+    }
+    read_plan_yaml(plan_folder)
+        .ok()
+        .and_then(|(plan, _)| plan.chat_session_id)
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+}
+
 /// Human-readable dependency description: `"ExecutePlan of plan 00123 (job 00456)"`, or
 /// `"CreatePr (job 00456)"` when no plan id can be resolved.
 pub fn describe_wait_dependency(dep: &JobItem) -> String {
@@ -1451,14 +1767,20 @@ async fn release_wait_dependents(ctx: &DispatchContext, finished_id: &str) -> Ve
                 failed.status_message = Some(reason);
                 failed.completed_at = Some(Utc::now());
                 revert_plan_state(&failed);
-                persist(&ctx.tendril_home, &ctx.jobs, &failed).await;
+                persist(&ctx.tendril_home, &ctx.jobs, &failed, Some(&ctx.events)).await;
             }
             Some(WaitOutcome::Blocked(reason)) => {
                 // Still waiting on something else; keep the message current.
                 if job.status_message.as_deref() != Some(reason.as_str()) {
                     let mut still_blocked = job;
                     still_blocked.status_message = Some(reason);
-                    persist(&ctx.tendril_home, &ctx.jobs, &still_blocked).await;
+                    persist(
+                        &ctx.tendril_home,
+                        &ctx.jobs,
+                        &still_blocked,
+                        Some(&ctx.events),
+                    )
+                    .await;
                 }
             }
         }
@@ -1475,8 +1797,11 @@ async fn release_blocked_job(ctx: &DispatchContext, mut job: JobItem) {
     job.started_at = Some(Utc::now());
     if let Some(state) = in_flight_plan_state(&job.job_type) {
         apply_plan_state(Path::new(&job.plan_file), state);
+        // The other end of `JobManager::set_plan_state`: a job released from `Blocked` claims its
+        // plan here instead, and its row has to move with it.
+        sync_plan_state_to_db(&ctx.tendril_home, Path::new(&job.plan_file));
     }
-    persist(&ctx.tendril_home, &ctx.jobs, &job).await;
+    persist(&ctx.tendril_home, &ctx.jobs, &job, Some(&ctx.events)).await;
 
     ensure_handle(&ctx.handles, &job.id).await;
     ctx.queue.lock().await.push(job.id.clone(), job.priority);
@@ -1677,6 +2002,30 @@ impl OutputActivity {
             .map(|last| last.elapsed())
             .unwrap_or_default()
     }
+
+    /// Whether this line's timestamp is due to be published, recording that it was.
+    ///
+    /// The first line always is, so a job shows a real "last heard from" the moment it says anything.
+    /// After that it is one claim per [`LAST_OUTPUT_PERSIST_INTERVAL`], because the alternative is an
+    /// `UPDATE Jobs` per output line: an agent mid-`cargo test` emits thousands of lines a minute, and
+    /// the only reader of the value is a table cell rendering it as `1m 20s`. Ten seconds of extra
+    /// staleness is invisible there; ten thousand writes are not.
+    ///
+    /// A poisoned lock claims nothing: dropping a heartbeat is a stale cell, and the watchdog's own
+    /// anchor is a separate field, so nothing about liveness depends on this succeeding.
+    fn claim_persist_slot(&self, now: Instant) -> bool {
+        match self.last_persist.lock() {
+            Ok(mut last_persist) => {
+                let due = last_persist
+                    .is_none_or(|at| now.duration_since(at) >= LAST_OUTPUT_PERSIST_INTERVAL);
+                if due {
+                    *last_persist = Some(now);
+                }
+                due
+            }
+            Err(_) => false,
+        }
+    }
 }
 
 /// Fails a job whose agent has gone quiet for longer than `staleOutputTimeout`.
@@ -1738,6 +2087,7 @@ fn spawn_runner(
         .unwrap_or_else(|| get_plans_dir_with_settings(&tendril_home, Some(&settings)));
     let jobs_map = ctx.jobs.clone();
     let handles = ctx.handles.clone();
+    let job_events = ctx.events.clone();
     let spec_builder = ctx.spec_builder.clone();
     let hook_executor = ctx.hook_executor.clone();
     let dispatch_notify = ctx.dispatch_notify.clone();
@@ -1766,7 +2116,9 @@ fn spawn_runner(
         }
 
         job.status = JobStatus::Running;
-        persist(&tendril_home, &jobs_map, &job).await;
+        // The dispatch path's own announcement: without it a job that starts while no job view is
+        // open is invisible until the next poll.
+        persist(&tendril_home, &jobs_map, &job, Some(&job_events)).await;
 
         // `before` hooks fire once the job is genuinely starting: past the queue and the cancel
         // check, ahead of everything that can still fail. A hook cannot stop the job — a failing one
@@ -1799,6 +2151,7 @@ fn spawn_runner(
                 JobStatus::Failed,
                 msg,
                 None,
+                Some(&job_events),
             )
             .await;
             release_wait_dependents(&ctx, &job_id).await;
@@ -1828,6 +2181,7 @@ fn spawn_runner(
                         JobStatus::Failed,
                         msg,
                         None,
+                        Some(&job_events),
                     )
                     .await;
                     release_wait_dependents(&ctx, &job_id).await;
@@ -1854,11 +2208,38 @@ fn spawn_runner(
             .map(|p| p.security.clone())
             .unwrap_or_default();
 
+        // What the agent is actually launched with. Without this the launch config carries no
+        // allowlist at all, which sends `build_claude_spec` down its restrictive fallback and denies
+        // the shell commands every promptware is built out of — so the job burns tokens and reports
+        // "exited 0 with no commits recorded". V1 resolves the same way in `AgentProviderFactory`.
+        let job_context = build_job_context(&values, &tendril_home, &promptware_folder);
+        let resolution = resolve_agent(
+            &settings,
+            &job.provider,
+            &job.job_type,
+            job.execution_profile.as_deref(),
+            &job_context,
+        );
+
         let mut launch_config = AgentLaunchConfig {
             prompt: compiled_prompt,
             working_directory: working_dir.clone(),
-            model: job.model.clone(),
-            effort: job.effort.clone(),
+            // The job's own model and effort win when it carries them: an explicit per-job choice is
+            // downstream of the profile the resolution applied.
+            model: job.model.clone().or_else(|| resolution.model.clone()),
+            effort: job.effort.clone().or_else(|| resolution.effort.clone()),
+            permission_mode: Some("FullAuto".to_string()),
+            allowed_tools: resolution.allowed_tools.clone(),
+            denied_tools: resolution.denied_tools.clone(),
+            writable_directories: resolve_writable_directories(
+                &job.job_type,
+                &promptware_folder,
+                Path::new(&job.plan_file),
+                &tendril_home,
+                &settings,
+            ),
+            environment_variables: resolution.environment_variables.clone(),
+            extra_arguments: resolution.extra_arguments.clone(),
             ..Default::default()
         };
         apply_security_settings(&mut launch_config, &security);
@@ -1892,14 +2273,27 @@ fn spawn_runner(
         let activity_for_output = activity.clone();
         let home_for_output = tendril_home.clone();
         let id_for_output = job_id.clone();
+        let jobs_for_output = jobs_map.clone();
+
+        // Stateful, and held by the `FnMut` closure rather than shared: Antigravity ties a tool call's
+        // two halves together by `step_index`, so the normalizer has to remember the open ones.
+        let mut eventwire = EventWireNormalizer::new();
 
         let run_res = run_agent_process_with_grace(
             spec,
             move |evt| {
                 let _ = append_to_raw_log(&th, &jid, &evt.raw_line);
-                let _ = append_to_eventwire(&th, &jid, &evt.raw_line);
+                // A provider's own line is *not* eventwire. `parseEventWireStream` keeps only lines
+                // carrying a `kind`, so appending the raw line here left `AgentViewer` with nothing to
+                // render in `JobSessionView` - for every provider, not just one. Normalising first is
+                // what the chat turn already does; this is the same layer, so a job's tool disclosure
+                // and a chat turn's now come from one implementation.
+                for event_line in eventwire.normalize(&evt.raw_line, evt.is_stderr) {
+                    let _ = append_to_eventwire(&th, &jid, &event_line);
+                }
                 note_agent_output(
                     &activity_for_output,
+                    &jobs_for_output,
                     &home_for_output,
                     &id_for_output,
                     &evt.raw_line,
@@ -1912,7 +2306,9 @@ fn spawn_runner(
                 let mut with_pid = job_for_pid;
                 with_pid.process_id = Some(spawned_pid);
                 tokio::spawn(async move {
-                    persist(&home_for_pid, &jobs_for_pid, &with_pid).await;
+                    // No sender: the status has not moved since the `Running` write above, so this
+                    // would be a duplicate event even before `persist`'s own guard sees it.
+                    persist(&home_for_pid, &jobs_for_pid, &with_pid, None).await;
                 });
             },
             cancel_rx,
@@ -1923,6 +2319,36 @@ fn spawn_runner(
 
         finished.store(true, Ordering::SeqCst);
         job.process_id = Some(pid.load(Ordering::SeqCst)).filter(|p| *p != 0);
+        // This task's own copy predates every write the run made, and `finish_job` persists the whole
+        // record — so anything the *running agent* reported has to be taken from the live record here or
+        // the terminal write erases it.
+        //
+        // `last_output_at` is the heartbeat `note_agent_output` maintains: without it a job's row
+        // remembers when it started but not when it last spoke. The other three are what the promptware
+        // reports over HTTP while it works — `tendril job status --plan-id/--plan-title` and
+        // `tendril job fail --message` — and losing them is why a `CreatePlan` that really did produce a
+        // plan came out with `ReportedPlanId` NULL: the chat then had no plan to name in its follow-up
+        // turn, `adopt_plan_into_chat_session` had nothing to stamp the plan with, and
+        // `resolve_created_plan_folder` lost the candidate it needed to recognise the plan at all.
+        if let Some(current) = jobs_map.read().await.get(&job_id) {
+            if let Some(at) = current.last_output_at {
+                job.last_output_at = Some(at);
+            }
+            if current.reported_plan_id.is_some() {
+                job.reported_plan_id = current.reported_plan_id.clone();
+            }
+            if current.reported_plan_title.is_some() {
+                job.reported_plan_title = current.reported_plan_title.clone();
+            }
+            if current.reported_failure_reason.is_some() {
+                job.reported_failure_reason = current.reported_failure_reason.clone();
+            }
+            // A `CreatePlan` that reported its plan mid-run learned its project then; this copy still
+            // says `Auto`, and the terminal write would put that back.
+            if is_auto_project(&job.project) && !is_auto_project(&current.project) {
+                job.project = current.project.clone();
+            }
+        }
 
         // A tool_call that never received a tool_result leaves its card spinning forever in
         // AgentViewer, since that's fed straight from this eventwire log. Close any out before
@@ -1963,6 +2389,7 @@ fn spawn_runner(
             final_status,
             msg,
             Some(duration),
+            Some(&job_events),
         )
         .await;
 
@@ -2080,6 +2507,7 @@ async fn run_detached_supervisor(ctx: DispatchContext, job: JobItem, pid: u32) {
         final_status,
         msg,
         duration_seconds,
+        Some(&ctx.events),
     )
     .await;
 
@@ -2099,9 +2527,18 @@ async fn run_detached_supervisor(ctx: DispatchContext, job: JobItem, pid: u32) {
 }
 
 /// Records one line of agent output: refreshes the liveness anchor, notes a terminal result event,
-/// and refreshes `LastOutputAt` in SQLite at most once per [`LAST_OUTPUT_PERSIST_INTERVAL`].
+/// and publishes `LastOutputAt` at most once per [`LAST_OUTPUT_PERSIST_INTERVAL`].
+///
+/// "Publishes" is two writes, and both are needed. The row is what `GET /api/jobs` and
+/// `POST /api/jobs/query` read, so it is what reaches the Jobs table's Agent Output cell. The
+/// in-memory map matters because [`persist`] writes the *whole* `JobItem` it is handed, and every
+/// caller of it takes that item from this same map ([`JobManager::update_job_status`] and friends read
+/// through [`JobManager::get_job`]): an agent reporting a status message between two heartbeats would
+/// otherwise write `LastOutputAt = NULL` back over the stamp, and the cell would flick back to
+/// "Starting…" mid-run. Stamping the map keeps the value in the record those writers carry forward.
 fn note_agent_output(
     activity: &Arc<OutputActivity>,
+    jobs: &Arc<RwLock<HashMap<String, JobItem>>>,
     tendril_home: &Path,
     job_id: &str,
     raw_line: &str,
@@ -2114,29 +2551,24 @@ fn note_agent_output(
         activity.result_seen.store(true, Ordering::SeqCst);
     }
 
-    let should_persist = match activity.last_persist.lock() {
-        Ok(mut last_persist) => {
-            let due = last_persist
-                .map(|at| now.duration_since(at) >= LAST_OUTPUT_PERSIST_INTERVAL)
-                .unwrap_or(true);
-            if due {
-                *last_persist = Some(now);
-            }
-            due
-        }
-        Err(_) => false,
-    };
-    if !should_persist {
+    if !activity.claim_persist_slot(now) {
         return;
     }
 
     let home = tendril_home.to_path_buf();
     let id = job_id.to_string();
+    let jobs = jobs.clone();
     tokio::spawn(async move {
+        let at = Utc::now();
+        if let Some(job) = jobs.write().await.get_mut(&id) {
+            job.last_output_at = Some(at);
+        }
         let db_path = crate::config::get_database_path(&home);
         match open_database(&db_path) {
             Ok(conn) => {
-                if let Err(e) = touch_job_last_output(&conn, &id, Utc::now()) {
+                // A targeted `UPDATE` rather than a row rewrite: a heartbeat must not clobber a field
+                // a concurrent writer owns. See `touch_job_last_output`.
+                if let Err(e) = touch_job_last_output(&conn, &id, at) {
                     tracing::debug!("Failed to stamp last output for job {}: {}", id, e);
                 }
             }
@@ -2403,6 +2835,50 @@ pub fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
     }
 }
 
+/// Mirrors a plan folder's current `plan.yaml` into the `Plans` table.
+///
+/// Every HTTP route that writes a plan pairs `write_plan_yaml` with `sync_plan`; the job engine did
+/// not, so a state it moved reached `plan.yaml` and stopped there. This is that pairing, for the job
+/// engine's own transitions.
+///
+/// Never fails a job: a plan whose row could not be refreshed is a stale list entry, which the 30s
+/// rescan and the watcher's re-sync both still repair, whereas a job failed over a database hiccup
+/// discards real work. Every failure path is therefore a `warn` and a return.
+pub fn sync_plan_state_to_db(tendril_home: &Path, plan_folder: &Path) {
+    if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
+        return;
+    }
+
+    // Locked, like the watcher's re-sync: the state write that led here released the lock, but a
+    // concurrent writer may hold it, and mirroring a half-written document is worse than not
+    // mirroring at all.
+    let plan = match crate::plans::reader::read_plan_file_locked(plan_folder) {
+        Ok(plan) => plan,
+        Err(e) => {
+            tracing::warn!(
+                "Not mirroring {} to the database: {}",
+                plan_folder.display(),
+                e
+            );
+            return;
+        }
+    };
+
+    let db_path = crate::config::get_database_path(tendril_home);
+    match open_database(&db_path) {
+        Ok(conn) => {
+            if let Err(e) = crate::db::plans::sync_plan(&conn, &plan) {
+                tracing::warn!("Failed to mirror plan {} state: {}", plan.folder_name, e);
+            }
+        }
+        Err(e) => tracing::warn!(
+            "Failed to open the database to mirror plan {}: {}",
+            plan.folder_name,
+            e
+        ),
+    }
+}
+
 fn read_plan_state(plan_folder: &Path) -> Option<PlanStatus> {
     if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
         return None;
@@ -2589,6 +3065,18 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
                                     job.model = Some(m.to_string());
                                 }
                             }
+                            // Claude Code's result event carries no `model`; it reports usage keyed
+                            // by model id under `modelUsage`. Without this the model column stays
+                            // empty and the cost estimate falls back to a default model's pricing.
+                            if job.model.is_none() {
+                                if let Some(first) = v
+                                    .get("modelUsage")
+                                    .and_then(|m| m.as_object())
+                                    .and_then(|m| m.keys().next())
+                                {
+                                    job.model = Some(first.to_string());
+                                }
+                            }
                             if let Some(usage) = usage_opt {
                                 if let Some(m) = usage.get("model").and_then(|m| m.as_str()) {
                                     if job.model.is_none() {
@@ -2608,17 +3096,23 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
                                     .and_then(|n| n.as_i64())
                                     .unwrap_or(0);
 
+                                // `cache_read_input_tokens` is what Claude Code's result event
+                                // actually calls this, and it dominates the bill on a long run —
+                                // without the alias a 227k-token cache read was recorded as 0.
                                 let cache_read_tok = usage
                                     .get("cache_read_tokens")
                                     .or_else(|| usage.get("cacheReadTokens"))
                                     .or_else(|| usage.get("cached_input_tokens"))
+                                    .or_else(|| usage.get("cache_read_input_tokens"))
                                     .and_then(|n| n.as_i64())
                                     .unwrap_or(0);
 
+                                // Likewise `cache_creation_input_tokens` for the write side.
                                 let cache_write_tok = usage
                                     .get("cache_write_tokens")
                                     .or_else(|| usage.get("cacheWriteTokens"))
                                     .or_else(|| usage.get("cache_write_input_tokens"))
+                                    .or_else(|| usage.get("cache_creation_input_tokens"))
                                     .and_then(|n| n.as_i64())
                                     .unwrap_or(0);
 
@@ -2639,10 +3133,15 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
                                 }
                                 job.tokens = Some(total_tok);
 
+                                // `total_cost_usd` is the field Claude Code reports, and it is the
+                                // agent's own figure — preferred over our estimate, which cannot know
+                                // the caller's plan or tier.
                                 let provider_cost = usage
                                     .get("cost")
                                     .or_else(|| v.get("cost"))
                                     .or_else(|| v.get("total_cost"))
+                                    .or_else(|| v.get("total_cost_usd"))
+                                    .or_else(|| usage.get("total_cost_usd"))
                                     .and_then(|c| c.as_f64());
 
                                 if let Some(cost) = provider_cost {
@@ -2889,6 +3388,7 @@ pub async fn finish_job(
     final_status: JobStatus,
     msg: String,
     duration_seconds: Option<i64>,
+    events: Option<&broadcast::Sender<JobEvent>>,
 ) -> Option<JobItem> {
     if !claim(completion_claimed) {
         // Cancellation got there first and has already written the terminal state.
@@ -2973,6 +3473,17 @@ pub async fn finish_job(
         effective_msg = format!("{} — {}", effective_msg, summarize_denials(&denials));
     }
 
+    // `verify_deliverable` has just written the plan a `CreatePlan` produced onto `job.plan_file`, so
+    // this is the last moment the project can be learned and the only one that catches a job whose
+    // promptware never reported a plan id. Guarded, so a job that already knows its project keeps it.
+    if is_auto_project(&job.project) && !job.plan_file.trim().is_empty() {
+        if let Ok((plan, _)) = read_plan_yaml(Path::new(&job.plan_file)) {
+            if !is_auto_project(&plan.project) {
+                job.project = plan.project;
+            }
+        }
+    }
+
     job.status = effective_status;
     job.completed_at = Some(Utc::now());
     job.duration_seconds = duration_seconds;
@@ -3017,6 +3528,14 @@ pub async fn finish_job(
         if matches!(job.job_type.as_str(), "CreatePlan" | "UpdatePlan") {
             move_attachments_to_plan_folder(tendril_home, plans_dir, &job);
         }
+
+        // A `CreatePlan` had no plan to inherit a conversation from when it started, so the link is
+        // made in this direction instead: the plan it just produced takes on the chat that asked for
+        // it. That is what later plan events — a pull request, an edit — resolve their recipients by,
+        // so without this only *this* job's completion would ever reach the conversation.
+        if let Some(chat_session_id) = job.chat_session_id.as_deref() {
+            adopt_plan_into_chat_session(plans_dir, &job, chat_session_id);
+        }
     } else if matches!(deliverable, Deliverable::Missing { .. })
         && matches!(job.job_type.as_str(), "ExecutePlan" | "RetryPlan")
     {
@@ -3027,11 +3546,20 @@ pub async fn finish_job(
         revert_plan_state(&job);
     }
 
+    // Whatever the branches above decided, the plan's state on disk is now its final one for this
+    // job. Mirroring it here rather than inside `apply_plan_state` is deliberate: a job holds a
+    // plan's state for its whole run, so the two moments the mirror can be wrong are the transition
+    // into the run (`JobManager::set_plan_state`) and this one out of it — and one sync per job beats
+    // one per write from a function that is also called by the CLI, where there is nothing to serve.
+    sync_plan_state_to_db(tendril_home, Path::new(&job.plan_file));
+
     extract_and_record_usage(tendril_home, &mut job);
 
     track_job_completion(tendril_home, &job, deliverable_present);
 
-    persist(tendril_home, jobs_map, &job).await;
+    // Emits `job.status_changed` plus `job.completed`/`job.failed`, so a client hears the outcome
+    // rather than waiting for its next poll.
+    persist(tendril_home, jobs_map, &job, events).await;
     handles.write().await.remove(&job.id);
 
     // Written last, so the record carries the final status, usage and plan outcome. Never fails a job.
@@ -3147,13 +3675,41 @@ fn cleanup_empty_create_plan(
     }
 }
 
-/// Writes a job to the in-memory map and SQLite.
+/// Writes a job to the in-memory map and SQLite, and announces the transition.
+///
+/// Every status a job reaches after it is created is written through here, which is why the event is
+/// published here too: an emission bolted onto individual call sites is one `return` away from a
+/// status that reaches the database and nothing else. `events` is `None` for a caller that has no
+/// manager to publish through — the free-function test entry points, and nothing in production.
 async fn persist(
     tendril_home: &Path,
     jobs_map: &Arc<RwLock<HashMap<String, JobItem>>>,
     job: &JobItem,
+    events: Option<&broadcast::Sender<JobEvent>>,
 ) {
-    jobs_map.write().await.insert(job.id.clone(), job.clone());
+    let previous = jobs_map.write().await.insert(job.id.clone(), job.clone());
+
+    // Announce only a write that changed something a client renders. Several writes are re-persists
+    // of a job whose status has not moved (the PID write during launch, a blocked job whose reason
+    // was re-checked), and each would otherwise cost every connected client an event.
+    let moved = match &previous {
+        Some(prev) => {
+            prev.status != job.status
+                || prev.status_message != job.status_message
+                // The plan a job holds is news too, and for a `CreatePlan` it is the only news it has
+                // before it finishes: `tendril job status --plan-id` is how the promptware reports the
+                // plan it just created, and repeating the same `--message` alongside it left the status
+                // unmoved — so the plan reached the database and no client heard about it until the
+                // next poll.
+                || prev.reported_plan_id != job.reported_plan_id
+                || prev.reported_plan_title != job.reported_plan_title
+        }
+        // Not seen by this process before: the first write is always news.
+        None => true,
+    };
+    if moved {
+        emit_job_event(events, job);
+    }
 
     let db_path = crate::config::get_database_path(tendril_home);
     match open_database(&db_path) {
@@ -3163,5 +3719,110 @@ async fn persist(
             }
         }
         Err(e) => tracing::warn!("Failed to open database to persist job {}: {}", job.id, e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The write rate behind the Jobs table's Agent Output cell.
+    ///
+    /// The cell renders "how long since the agent last said anything", which needs a stamped timestamp
+    /// — but stamping it per output line would make `UPDATE Jobs SET LastOutputAt` the hottest write in
+    /// the daemon, thousands a minute for an agent running a test suite. These pin the throttle that
+    /// makes the feature affordable: one write to open the run, then one per
+    /// [`LAST_OUTPUT_PERSIST_INTERVAL`] however loud the agent is.
+    #[test]
+    fn a_chatty_agent_costs_one_last_output_write_per_interval() {
+        let activity = OutputActivity::new();
+        let start = Instant::now();
+
+        // The first line always publishes: a running job with no stamp reads "Starting…", and it should
+        // stop doing that as soon as it has actually said something.
+        assert!(activity.claim_persist_slot(start));
+
+        // Ten thousand lines inside the window, and not one more write.
+        let claims = (1..10_000u64)
+            .filter(|i| activity.claim_persist_slot(start + Duration::from_micros(i * 100)))
+            .count();
+        assert_eq!(
+            claims, 0,
+            "no line inside the interval may reach SQLite after the first"
+        );
+
+        // The window closes exactly at the interval, not a tick before it.
+        assert!(!activity
+            .claim_persist_slot(start + LAST_OUTPUT_PERSIST_INTERVAL - Duration::from_millis(1)));
+        assert!(activity.claim_persist_slot(start + LAST_OUTPUT_PERSIST_INTERVAL));
+
+        // And the next window is measured from the write that was made, not from the run's start.
+        assert!(!activity.claim_persist_slot(
+            start + LAST_OUTPUT_PERSIST_INTERVAL * 2 - Duration::from_millis(1)
+        ));
+        assert!(activity.claim_persist_slot(start + LAST_OUTPUT_PERSIST_INTERVAL * 2));
+    }
+
+    /// A silent stretch does not bank up credit: a job goes quiet for a minute and its next line still
+    /// costs exactly one write, not twelve.
+    #[test]
+    fn a_quiet_stretch_does_not_bank_up_writes() {
+        let activity = OutputActivity::new();
+        let start = Instant::now();
+        assert!(activity.claim_persist_slot(start));
+
+        let quiet = start + Duration::from_secs(60);
+        assert!(activity.claim_persist_slot(quiet));
+        assert!(!activity.claim_persist_slot(quiet + Duration::from_millis(1)));
+    }
+
+    /// The heartbeat stamps the in-memory record, not only the row.
+    ///
+    /// [`persist`] writes the whole `JobItem` its caller holds, and every caller takes that item from
+    /// this map — so a status message arriving between two heartbeats would write `LastOutputAt = NULL`
+    /// back over the row and drop the Jobs table's Agent Output cell to "Starting…" mid-run. Stamping
+    /// the map is what makes the value survive those writers.
+    #[tokio::test]
+    async fn a_heartbeat_stamps_the_record_a_status_write_would_otherwise_carry_forward() {
+        let home = std::env::temp_dir().join(format!(
+            "tendril-heartbeat-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&home).expect("temp home");
+
+        // A launch-time copy, exactly as `spawn_runner` holds one: Running, and no output yet.
+        let mut job = JobItem::new(
+            "00001".to_string(),
+            "ExecutePlan".to_string(),
+            String::new(),
+            "FixtureProject".to_string(),
+        );
+        job.status = JobStatus::Running;
+        assert!(job.last_output_at.is_none());
+        let jobs: Arc<RwLock<HashMap<String, JobItem>>> = Arc::new(RwLock::new(HashMap::new()));
+        jobs.write().await.insert(job.id.clone(), job.clone());
+
+        let activity = Arc::new(OutputActivity::new());
+        note_agent_output(&activity, &jobs, &home, "00001", "{\"type\":\"assistant\"}");
+
+        // The write is spawned so the output callback never blocks on SQLite.
+        let mut stamp = None;
+        for _ in 0..200 {
+            stamp = jobs
+                .read()
+                .await
+                .get("00001")
+                .and_then(|j| j.last_output_at);
+            if stamp.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert!(
+            stamp.is_some(),
+            "the first agent line must leave a stamp on the shared record"
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

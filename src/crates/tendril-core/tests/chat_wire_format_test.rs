@@ -49,7 +49,13 @@ fn session_serializes_camel_case() {
         assert!(json.get(key).is_some(), "missing `{key}` in {json}");
     }
 
-    for key in ["created_at", "updated_at", "agent_id", "model_id", "spawned_job_ids"] {
+    for key in [
+        "created_at",
+        "updated_at",
+        "agent_id",
+        "model_id",
+        "spawned_job_ids",
+    ] {
         assert!(json.get(key).is_none(), "unexpected snake_case `{key}`");
     }
 }
@@ -102,7 +108,10 @@ fn camel_case_round_trips() {
     let original = session();
     let json = serde_json::to_string(&original).unwrap();
 
-    assert_eq!(serde_json::from_str::<ChatSession>(&json).unwrap(), original);
+    assert_eq!(
+        serde_json::from_str::<ChatSession>(&json).unwrap(),
+        original
+    );
 }
 
 #[test]
@@ -116,10 +125,15 @@ fn queued_item_and_attachment_serialize_camel_case() {
             mime_type: Some("image/png".to_string()),
         }]),
         created_at: Utc.with_ymd_and_hms(2026, 9, 15, 12, 0, 0).unwrap(),
+        // The composer's items carry no role; only an event Tendril queued behind a running turn does.
+        role: None,
     };
 
     let json = serde_json::to_value(&item).unwrap();
-    assert!(json.get("createdAt").is_some(), "missing `createdAt` in {json}");
+    assert!(
+        json.get("createdAt").is_some(),
+        "missing `createdAt` in {json}"
+    );
     assert!(json.get("created_at").is_none());
     assert!(json["attachments"][0].get("mimeType").is_some());
 
@@ -131,5 +145,8 @@ fn queued_item_and_attachment_serialize_camel_case() {
         "attachments": [{ "name": "shot.png", "path": "/tmp/shot.png", "mime_type": "image/png" }]
     });
     let loaded: ChatQueuedItem = serde_json::from_value(legacy).unwrap();
-    assert_eq!(loaded.attachments.unwrap()[0].mime_type.as_deref(), Some("image/png"));
+    assert_eq!(
+        loaded.attachments.unwrap()[0].mime_type.as_deref(),
+        Some("image/png")
+    );
 }

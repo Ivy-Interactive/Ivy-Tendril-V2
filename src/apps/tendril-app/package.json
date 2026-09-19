@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
+    "predev": "node ../../scripts/ensure-components.mjs",
     "dev": "vp dev",
+    "prebuild": "node ../../scripts/ensure-components.mjs",
     "build": "vp build",
     "preview": "vp preview",
     "test": "vp test",
+    "pretypecheck": "node ../../scripts/ensure-components.mjs",
     "typecheck": "tsc --noEmit",
     "check": "vp check && tsc --noEmit",
     "check:fix": "vp check --fix",

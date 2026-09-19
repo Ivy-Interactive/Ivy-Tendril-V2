@@ -2073,3 +2073,412 @@ fn plan_rec_all_spans_plans_and_rebuild_reports_what_it_wrote() {
     let after = home.run_ok(&["plan", "rec", "all"]);
     assert_eq!(after.lines().count(), 2, "got: {}", after);
 }
+
+// --- `plan list` filter validation (issue #135) -------------------------------------------------
+//
+// Every filter is validated before the scan. A filter that cannot be honoured must never degrade to
+// "no filter": `--state Faild` used to turn "show me the failed plans" into "show me every plan",
+// exit 0, which is the worst possible answer for a script or an agent.
+
+/// Writes a plan folder with an explicit state, bypassing `plan create`.
+fn write_plan_with(home: &CliHome, folder_name: &str, state: &str, repos: Vec<String>) -> PathBuf {
+    let folder = home.plans_dir().join(folder_name);
+    std::fs::create_dir_all(folder.join("Revisions")).unwrap();
+    let plan = tendril_core::models::PlanYaml {
+        title: folder_name.to_string(),
+        state: state.to_string(),
+        project: "list-proj".to_string(),
+        repos,
+        ..Default::default()
+    };
+    tendril_core::plans::write_plan_yaml(&folder, &plan).unwrap();
+    folder
+}
+
+const SUPPORTED_STATES: [&str; 10] = [
+    "Draft",
+    "Creating",
+    "Updating",
+    "Executing",
+    "Completed",
+    "Failed",
+    "Review",
+    "Skipped",
+    "Icebox",
+    "Blocked",
+];
+
+#[test]
+fn plan_list_rejects_an_unknown_state_instead_of_dropping_the_filter() {
+    let home = CliHome::new("list-bad-state");
+    write_plan_with(&home, "00001-Failed", "Failed", vec![]);
+    write_plan_with(&home, "00002-Draft", "Draft", vec![]);
+
+    for flag in ["--state", "--status"] {
+        for bogus in ["Faild", "fail", "Done", ""] {
+            let out = home.run(&["plan", "list", flag, bogus, "--format", "ids"]);
+            assert_eq!(
+                out.status.code(),
+                Some(1),
+                "{} {:?} must fail rather than list every plan: {}",
+                flag,
+                bogus,
+                String::from_utf8_lossy(&out.stdout)
+            );
+            assert!(
+                out.stdout.is_empty(),
+                "a rejected filter must return no rows: {:?}",
+                String::from_utf8_lossy(&out.stdout)
+            );
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert!(
+                stderr.contains(&format!("Unknown plan state '{}'", bogus)),
+                "stderr must name the state it rejected: {}",
+                stderr
+            );
+            // The same vocabulary `GET /api/plans` returns in its 400 `supportedStates` list.
+            for state in SUPPORTED_STATES {
+                assert!(
+                    stderr.contains(state),
+                    "the supported-state list must include {}: {}",
+                    state,
+                    stderr
+                );
+            }
+        }
+    }
+
+    // The filter still works, and it still works case-insensitively.
+    for good in ["Failed", "failed", "FAILED"] {
+        let ids = home.run_ok(&["plan", "list", "--state", good, "--format", "ids"]);
+        assert_eq!(ids, "00001\n", "--state {} filtered wrongly", good);
+    }
+    assert_eq!(
+        home.run_ok(&["plan", "list", "--format", "ids"])
+            .lines()
+            .count(),
+        2,
+        "no filter still lists everything"
+    );
+}
+
+/// A mistyped `--plans-dir` printed an empty table and exited 0, which reads as "this home has no
+/// plans" rather than "I looked in the wrong place".
+#[test]
+fn plan_list_rejects_a_plans_dir_that_does_not_exist() {
+    let home = CliHome::new("list-bad-plans-dir");
+    let missing = home.path.join("NoSuchDirectory");
+
+    let out = home.run(&["plan", "list", "--plans-dir", missing.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("Plans directory not found") && stderr.contains("NoSuchDirectory"),
+        "stderr must name the directory it could not find: {}",
+        stderr
+    );
+
+    // The default plans directory is deliberately *not* checked this way: a home that has not grown
+    // a `Plans/` folder yet legitimately lists nothing.
+    let bare = CliHome::new("list-no-plans-dir");
+    std::fs::remove_dir_all(bare.plans_dir()).unwrap();
+    let out = bare.run(&["plan", "list", "--format", "ids"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out.stdout.is_empty());
+}
+
+/// `--limit 0` truncated the list to nothing while exiting 0 — indistinguishable from "no plans
+/// match". It is now a usage error, which is exit 2.
+#[test]
+fn plan_list_rejects_a_zero_limit() {
+    let home = CliHome::new("list-zero-limit");
+    write_plan_with(&home, "00001-Draft", "Draft", vec![]);
+
+    let out = home.run(&["plan", "list", "--limit", "0", "--format", "ids"]);
+    assert_eq!(out.status.code(), Some(2), "a zero limit is a usage error");
+    assert!(out.stdout.is_empty());
+
+    assert_eq!(
+        home.run_ok(&["plan", "list", "--limit", "1", "--format", "ids"]),
+        "00001\n"
+    );
+}
+
+// --- `plan validate` and `plan doctor` (issue #136) ---------------------------------------------
+
+/// A plan whose `repos` point at a directory that does not exist is not valid — and until this was
+/// fixed `plan validate` did not merely fail to *signal* it, it failed to *detect* it: it printed
+/// "Plan is valid." and exited 0.
+#[test]
+fn plan_validate_detects_a_missing_repo_and_exits_1() {
+    let home = CliHome::new("validate-missing-repo");
+    let missing = home.path.join("no-such-repo");
+    write_plan_with(
+        &home,
+        "00001-Broken",
+        "Draft",
+        vec![missing.to_string_lossy().to_string()],
+    );
+
+    let out = home.run(&["plan", "validate", "00001"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "an invalid plan must be visible in $?: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("[Error] Repository path does not exist:")
+            && stdout.contains("no-such-repo"),
+        "the report names the path it could not find: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("Plan is valid."),
+        "an invalid plan must not be called valid: {}",
+        stdout
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("1 error(s)"),
+        "the summary counts the errors: {}",
+        stderr
+    );
+}
+
+/// The healthy case, and the warning case. Warnings do **not** gate: a missing `Revisions/` folder is
+/// a note, not a reason to refuse to work with the plan.
+#[test]
+fn plan_validate_exits_0_for_a_valid_plan_and_for_warnings_only() {
+    let home = CliHome::new("validate-ok");
+    let repo = home.path.join("repo-one");
+    std::fs::create_dir_all(&repo).unwrap();
+    write_plan_with(
+        &home,
+        "00001-Fine",
+        "Draft",
+        vec![repo.to_string_lossy().to_string()],
+    );
+    assert_eq!(
+        home.run_ok(&["plan", "validate", "00001"]),
+        "Plan is valid.\n"
+    );
+
+    // Same plan, minus its Revisions directory: one Warning, still exit 0.
+    std::fs::remove_dir_all(home.plans_dir().join("00001-Fine/Revisions")).unwrap();
+    let out = home.run(&["plan", "validate", "00001"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a warning must not gate: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("[Warning] Missing Revisions directory"),
+        "{}",
+        stdout
+    );
+}
+
+/// A Completed plan is an archive: its repositories may legitimately have been moved or deleted since,
+/// so the repo check is skipped for it — exactly as the schema-version check already is.
+#[test]
+fn plan_validate_does_not_fail_a_completed_plan_for_a_vanished_repo() {
+    let home = CliHome::new("validate-completed");
+    write_plan_with(
+        &home,
+        "00001-Done",
+        "Completed",
+        vec!["/tmp/tendril-nonexistent-archived-repo".to_string()],
+    );
+    assert_eq!(
+        home.run_ok(&["plan", "validate", "00001"]),
+        "Plan is valid.\n"
+    );
+}
+
+/// `plan doctor` gates on the same rule across every plan: errors exit 1, warnings do not.
+#[test]
+fn plan_doctor_exits_1_when_any_plan_has_an_error() {
+    let home = CliHome::new("doctor-errors");
+    // A folder with no plan.yaml at all is an Error.
+    std::fs::create_dir_all(home.plans_dir().join("00002-NoYaml")).unwrap();
+    write_plan_with(&home, "00001-Fine", "Draft", vec![]);
+
+    let out = home.run(&["plan", "doctor"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{}", stdout);
+    assert!(
+        stdout.contains("00002-NoYaml: [Error] Missing plan.yaml"),
+        "{}",
+        stdout
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("plan error(s) found"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Warnings alone stay exit 0.
+    std::fs::remove_dir_all(home.plans_dir().join("00002-NoYaml")).unwrap();
+    std::fs::remove_dir_all(home.plans_dir().join("00001-Fine/Revisions")).unwrap();
+    let out = home.run(&["plan", "doctor"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout);
+    assert!(
+        stdout.contains("[Warning] Missing Revisions directory"),
+        "{}",
+        stdout
+    );
+}
+
+// --- `plan cleanup` (issue #134) ----------------------------------------------------------------
+
+/// Creates a fake worktree directory under a plan, so cleanup has something to remove.
+fn write_worktree(plan_folder: &Path, name: &str) -> PathBuf {
+    let path = plan_folder.join("Worktrees").join(name);
+    std::fs::create_dir_all(&path).unwrap();
+    std::fs::write(path.join("file.txt"), b"content").unwrap();
+    path
+}
+
+/// `plan cleanup` used to delete the worktrees of an actively executing plan out from under its
+/// agent and exit 0. The terminal-state gate and `--force` are V1's, and a V1 script passing
+/// `--force` used to fail to parse at all.
+#[test]
+fn plan_cleanup_refuses_a_non_terminal_plan_without_force() {
+    let home = CliHome::new("cleanup-guard");
+
+    for state in [
+        "Draft",
+        "Creating",
+        "Updating",
+        "Executing",
+        "Review",
+        "Blocked",
+    ] {
+        let folder = write_plan_with(&home, "00001-Live", state, vec![]);
+        let worktree = write_worktree(&folder, "repo-one");
+
+        let out = home.run(&["plan", "cleanup", "00001"]);
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "state {} must be refused: {}",
+            state,
+            String::from_utf8_lossy(&out.stdout)
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(&format!(
+                "Plan is not in a terminal state (current: {}). Use --force to override.",
+                state
+            )),
+            "state {} stderr: {}",
+            state,
+            stderr
+        );
+        assert!(
+            worktree.exists(),
+            "state {}: the worktree must survive a refused cleanup",
+            state
+        );
+        assert!(
+            String::from_utf8_lossy(&out.stdout).is_empty(),
+            "a refused cleanup must not claim success"
+        );
+
+        // `--force` is the documented override, and it does the work.
+        let out = home.run(&["plan", "cleanup", "00001", "--force"]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "--force must override: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(!worktree.exists(), "state {}: --force removes it", state);
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+}
+
+#[test]
+fn plan_cleanup_allows_every_terminal_state_without_force() {
+    let home = CliHome::new("cleanup-terminal");
+
+    for state in ["Completed", "Failed", "Skipped", "Icebox"] {
+        let folder = write_plan_with(&home, "00001-Done", state, vec![]);
+        let worktree = write_worktree(&folder, "repo-one");
+
+        let out = home.run(&["plan", "cleanup", "00001"]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "state {} is terminal: {}",
+            state,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout),
+            "Worktrees cleaned up for plan 00001\n"
+        );
+        assert!(!worktree.exists(), "state {}: the worktree is gone", state);
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+}
+
+/// The other half of #134: `cleanup_worktrees` swallows every per-directory failure and returns
+/// `Ok(())`, so "cleaned up" was printed even when nothing was removed. The command now looks again
+/// and reports what survived.
+///
+/// Unix only: the failure is provoked by making `Worktrees/` unwritable, which is what stops
+/// `remove_dir_all` from unlinking its children. Windows has no equivalent that is as cheap.
+#[cfg(unix)]
+#[test]
+fn plan_cleanup_fails_when_a_worktree_survives() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = CliHome::new("cleanup-survivor");
+    let folder = write_plan_with(&home, "00001-Done", "Completed", vec![]);
+    let worktree = write_worktree(&folder, "repo-one");
+    let worktrees_dir = folder.join("Worktrees");
+
+    // Read and traverse, but no unlinking of entries.
+    std::fs::set_permissions(&worktrees_dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let out = home.run(&["plan", "cleanup", "00001"]);
+    std::fs::set_permissions(&worktrees_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a cleanup that removed nothing must not report success: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).is_empty(),
+        "stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("1 worktrees could not be removed."),
+        "stderr must count the survivors: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("Could not remove worktree:") && stderr.contains("repo-one"),
+        "stderr must name them: {}",
+        stderr
+    );
+    assert!(
+        worktree.exists(),
+        "the worktree is still there, as reported"
+    );
+}

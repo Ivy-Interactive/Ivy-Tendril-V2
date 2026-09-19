@@ -1,7 +1,7 @@
 use crate::commands::confirm::confirm;
 use crate::commands::daemon_guard::refuse_if_daemon_running;
 use std::path::{Path, PathBuf};
-use tendril_core::config::get_plans_dir;
+use tendril_core::config::{ensure_not_real_home, get_plans_dir};
 use tendril_core::promptware::deployer::count_files_recursive;
 
 /// Environment variables `reset` reports on. They are never unset by the command — see the note in
@@ -78,6 +78,14 @@ fn set_env_vars() -> Vec<&'static str> {
 }
 
 pub fn handle_reset(args: ResetArgs, tendril_home: &Path) -> anyhow::Result<()> {
+    // The most destructive command in the CLI: it recursively deletes the home it is given. A test
+    // process that resolves the operator's real home — by inheriting `TENDRIL_HOME`, or by falling
+    // back to `~/.tendril` because no `--home` was passed — would delete their entire installation.
+    // `ensure_not_real_home` is a no-op outside a test context, so an operator resetting their real
+    // home from a shell is unaffected; only test binaries and harnesses that set
+    // `TENDRIL_TEST_ISOLATION=1` are refused.
+    ensure_not_real_home(tendril_home)?;
+
     let plans_dir = get_plans_dir(tendril_home);
 
     if refuse_if_daemon_running(tendril_home, args.force, "resetting") {

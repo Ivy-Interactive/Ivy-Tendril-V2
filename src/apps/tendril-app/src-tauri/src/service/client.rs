@@ -9,6 +9,7 @@ use crate::models::{
     SubscribeOutcomeDto, TendrilConfigDto, VersionInfoDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
+use base64::Engine;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::json;
 
@@ -463,6 +464,63 @@ impl TendrilClient {
         })
     }
 
+    /// Overwrite the newest revision in place, keeping its number.
+    ///
+    /// `PUT /api/plans/{id}/revisions/latest`, and deliberately not the `POST` above. Answering a
+    /// question is not a new revision of the plan, it is filling in a blank the plan left — V1 routes
+    /// answers through `IPlanReaderService.UpdateLatestRevision` for exactly that reason. Appending
+    /// instead would claim the agent produced a new plan, and it would inflate `revisionCount`, which
+    /// the app's unfolded-answer guard reads as `revisionCount === 1`: one answer would switch that
+    /// guard off.
+    ///
+    /// The returned `revision` is the number that did **not** move, so a caller can assert as much.
+    pub async fn update_latest_revision(
+        &self,
+        id: &str,
+        content: &str,
+    ) -> Result<RevisionResultDto, BridgeError> {
+        let url = format!(
+            "{}/api/plans/{}/revisions/latest",
+            self.base_url,
+            urlencoding(id)
+        );
+        let body = json!({ "content": content });
+
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "UPDATE_LATEST_REVISION_FAILED",
+                format!("Failed to update the latest revision of plan '{id}' ({status})"),
+                text,
+            ));
+        }
+
+        let result: serde_json::Value = resp.json().await?;
+        // No `unwrap_or(1)` here, unlike `write_revision`: a response the service answered without a
+        // revision number is one this call cannot report anything true about, and 1 would be a
+        // fabricated "revision 001 was updated". 0 is not a revision number, so it reads as unknown.
+        let rev_num = result.get("revision").and_then(|r| r.as_i64()).unwrap_or(0) as i32;
+        let message = result
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("Revision updated")
+            .to_string();
+
+        Ok(RevisionResultDto {
+            revision: rev_num,
+            message,
+        })
+    }
+
     pub async fn list_jobs(
         &self,
         status: Option<&str>,
@@ -505,11 +563,28 @@ impl TendrilClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown")
                     .to_string();
+                // Which plan this job holds. `reportedPlanId` is what the *agent* reported, so it is
+                // empty until the agent has run — and `planId` is not a key the daemon sends at all.
+                // So a job dispatched a moment ago had no plan id, and everything keyed on it silently
+                // did nothing: the Plans list never dropped the plan a job had just taken
+                // (`draftQueueFor`), `hasActiveJob` never disabled Update/Expand/Split, and the failure
+                // callout never found its job.
+                //
+                // `planFile` is the association the daemon always sets from the dispatch arguments. It
+                // arrives in two shapes — a bare id (`00681`) or a folder name
+                // (`00610-PortTunnelAndShareSubsys`) — so it is normalised to the 5-digit id the app
+                // compares against `PlanSummary.id`.
                 let plan_id = val
                     .get("reportedPlanId")
                     .or_else(|| val.get("planId"))
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        val.get("planFile")
+                            .and_then(|v| v.as_str())
+                            .and_then(plan_id_from_folder)
+                    });
                 let plan_title = val
                     .get("reportedPlanTitle")
                     .or_else(|| val.get("planTitle"))
@@ -539,6 +614,7 @@ impl TendrilClient {
                     .map(|s| s.to_string());
                 let cost = val.get("cost").and_then(|v| v.as_f64());
                 let tokens = val.get("tokens").and_then(|v| v.as_i64());
+                let num = |key: &str| val.get(key).and_then(|v| v.as_i64());
 
                 JobDto {
                     id,
@@ -550,13 +626,193 @@ impl TendrilClient {
                     status_message,
                     started_at,
                     completed_at,
+                    // The Jobs table's Agent Output column counts up from this. The live overlay
+                    // replaces each fetched row whole, so a row that arrived without it falls back to
+                    // "Starting..." however long the agent has been talking.
+                    last_output_at: val
+                        .get("lastOutputAt")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                     cost,
                     tokens,
+                    cost_source: val
+                        .get("costSource")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    duration_seconds: num("durationSeconds"),
+                    input_tokens: num("inputTokens"),
+                    output_tokens: num("outputTokens"),
+                    cache_read_tokens: num("cacheReadTokens"),
+                    cache_write_tokens: num("cacheWriteTokens"),
+                    reasoning_tokens: num("reasoningTokens"),
+                    model: val
+                        .get("model")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    process_id: num("processId"),
+                    chat_session_id: val
+                        .get("chatSessionId")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    // Absent rather than `false` when the daemon does not say, so "not detached" and
+                    // "the list endpoint cannot tell" stay distinguishable.
+                    detached: val.get("detached").and_then(|v| v.as_bool()),
                 }
             })
             .collect();
 
         Ok(jobs)
+    }
+
+    /// One `POST` to the daemon's table query API, forwarded whole.
+    ///
+    /// Every other method here maps the daemon's reply onto a DTO, because a view needs one. This one
+    /// must not: the body is the caller's `TableQuery` and the reply is the daemon's page, and both
+    /// belong to the table being queried rather than to this client. Keeping it shapeless is what lets
+    /// one command serve `/api/jobs/query` and `/api/tables/{table}/query` alike, and what leaves
+    /// `api/tableQuery.ts` as the single place a page is decoded — the seam an Arrow encoding would
+    /// slot into without any caller knowing.
+    ///
+    /// `Accept: application/json` is explicit because the daemon negotiates on it and answers 406 for
+    /// Arrow: asking for what this side can actually decode is the difference between a clear reply and
+    /// a 406 nobody expected.
+    pub async fn post_query(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}{}", self.base_url, path);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .header(reqwest::header::ACCEPT, "application/json")
+            .json(&body)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            // A 400 from this API names the column or the filter function that was wrong, and that
+            // sentence is the entire value of the error to a filter UI. It is carried through verbatim
+            // rather than replaced by the status code.
+            let reason = serde_json::from_str::<serde_json::Value>(&text)
+                .ok()
+                .and_then(|payload| {
+                    payload
+                        .get("error")
+                        .and_then(|error| error.as_str())
+                        .map(str::to_string)
+                });
+            return Err(BridgeError::with_details(
+                "TABLE_QUERY_FAILED",
+                reason.unwrap_or_else(|| format!("Query to {path} failed ({status})")),
+                text,
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Ask the daemon what models a bring-your-own provider serves: `POST /api/agents/models`.
+    ///
+    /// The path is hard-coded rather than taken from the caller. `post_query` above takes one because it
+    /// serves a family of table routes and checks the shape before forwarding; this serves exactly one
+    /// route, so there is nothing to parameterise and nothing to check.
+    ///
+    /// `request` is forwarded and the reply handed back, both untouched. That is deliberate on the way
+    /// out as well as in: the body may carry an API key the operator has typed but not yet saved, so
+    /// nothing here reads it, records it or puts it in an error. The daemon redacts credentials from
+    /// every message this route produces, which is why a failure reason can be carried through at all.
+    ///
+    /// A refusal is an `Err`; a *reachable* endpoint that rejected the key is not. The route answers
+    /// `200` with `{ "status": "apiKeyError", ... }` for that, because "the provider said no" is an
+    /// outcome the settings page renders rather than a transport failure.
+    pub async fn fetch_provider_models(
+        &self,
+        request: serde_json::Value,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/agents/models", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .header(reqwest::header::ACCEPT, "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            // The daemon never reflects the request back, so nothing here can be the key. A stale
+            // daemon that predates the route answers 404, and saying so is the whole value of this arm.
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "FETCH_PROVIDER_MODELS_FAILED",
+                format!("The service could not look up the provider's models ({status})"),
+                text,
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Runs V1's Test Agent checks against one agent, via `POST /api/agents/{agent}/test`.
+    ///
+    /// The generous client timeout this inherits is load-bearing: the daemon gives Claude and
+    /// Copilot thirty seconds per model, so a three-model test on a slow provider legitimately runs
+    /// past a minute. A transport timeout here would report "the service is down" for an agent that
+    /// is merely thinking.
+    pub async fn test_agent(
+        &self,
+        agent: &str,
+        request: serde_json::Value,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/agents/{}/test", self.base_url, urlencoding(agent));
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .header(reqwest::header::ACCEPT, "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            // The daemon redacts credentials from everything this route produces, so the body is
+            // safe to carry through - and a stale daemon predating the route answers 404, which is
+            // the one failure the operator can actually act on.
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "TEST_AGENT_FAILED",
+                format!("The service could not test this agent ({status})"),
+                text,
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// The rate-limit windows behind the settings pane's usage strip.
+    ///
+    /// `Ok(null)` for an agent whose provider publishes no usage. That is the common case for four
+    /// of the seven agents and is not an error.
+    pub async fn get_agent_usage(&self, agent: &str) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/agents/{}/usage", self.base_url, urlencoding(agent));
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_AGENT_USAGE_FAILED",
+                format!("Failed to read agent usage ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     pub async fn get_job(&self, job_id: &str) -> Result<JobDetailDto, BridgeError> {
@@ -585,11 +841,21 @@ impl TendrilClient {
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown")
             .to_string();
+        // Same fallback as `list_jobs`: `reportedPlanId` is empty until the agent has reported, so a
+        // job detail opened right after dispatch would otherwise claim to hold no plan. `plan_folder`
+        // below keeps the raw `planFile`; this is the normalised id.
         let plan_id = details
             .get("reportedPlanId")
             .or_else(|| details.get("planId"))
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                details
+                    .get("planFile")
+                    .and_then(|v| v.as_str())
+                    .and_then(plan_id_from_folder)
+            });
         let plan_title = details
             .get("reportedPlanTitle")
             .or_else(|| details.get("planTitle"))
@@ -626,11 +892,26 @@ impl TendrilClient {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         let cost = details.get("cost").and_then(|v| v.as_f64());
+        let detail_num = |key: &str| details.get(key).and_then(|v| v.as_i64());
+        // An unset string arrives as `""` for the fields the daemon serializes unconditionally
+        // (`provider` is one), and a debug panel should read that as "not recorded", not as a blank row.
+        let detail_text = |key: &str| {
+            details
+                .get(key)
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        };
         let tokens = details.get("tokens").and_then(|v| v.as_i64());
         let reported_failure_reason = details
             .get("reportedFailureReason")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+        let job_log_path = job_artifact_path(&id, ".md");
+        let job_prompt_path = job_artifact_path(&id, ".prompt.md");
+        let job_raw_log_path = job_artifact_path(&id, ".raw.jsonl");
+        let job_eventwire_path = job_artifact_path(&id, ".eventwire.jsonl");
 
         Ok(JobDetailDto {
             id,
@@ -647,7 +928,130 @@ impl TendrilClient {
             cost,
             tokens,
             reported_failure_reason,
+            cost_source: details
+                .get("costSource")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            duration_seconds: detail_num("durationSeconds"),
+            input_tokens: detail_num("inputTokens"),
+            output_tokens: detail_num("outputTokens"),
+            cache_read_tokens: detail_num("cacheReadTokens"),
+            cache_write_tokens: detail_num("cacheWriteTokens"),
+            reasoning_tokens: detail_num("reasoningTokens"),
+            model: details
+                .get("model")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            process_id: detail_num("processId"),
+            detached: details.get("detached").and_then(|v| v.as_bool()),
+            permission_denials: details
+                .get("permissionDenials")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            provider: detail_text("provider"),
+            cli_command: detail_text("cliCommand"),
+            // `planFile` is the plan *folder* — see `JobDetailDto::plan_folder`.
+            plan_folder: detail_text("planFile"),
+            last_output_at: detail_text("lastOutputAt"),
+            job_log_path,
+            job_prompt_path,
+            job_raw_log_path,
+            job_eventwire_path,
         })
+    }
+
+    /// Removes a job from the list and the database. The daemon keeps its log artifacts.
+    pub async fn delete_job(&self, job_id: &str) -> Result<(), BridgeError> {
+        let url = format!("{}/api/jobs/{}", self.base_url, urlencoding(job_id));
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "DELETE_JOB_FAILED",
+                format!("Failed to delete job '{job_id}' ({status}): {text}"),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Promotes a blocked or queued job past its gates so it runs next.
+    pub async fn force_start_job(&self, job_id: &str) -> Result<(), BridgeError> {
+        let url = format!(
+            "{}/api/jobs/{}/force-start",
+            self.base_url,
+            urlencoding(job_id)
+        );
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "FORCE_START_JOB_FAILED",
+                format!("Failed to force-start job '{job_id}' ({status}): {text}"),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Bulk-clear finished jobs by scope: `POST /api/jobs/clear` with `{ "status": scope }`, answering
+    /// how many rows went.
+    ///
+    /// The scope is passed through rather than checked here. The daemon filters to
+    /// `Completed`/`Failed`/`Timeout`/`Stopped` before it reads a row, so a Running or Queued job cannot
+    /// be cleared through any caller, and it answers `400` naming the scopes it does accept. A second
+    /// check on this side would only be able to disagree with that list.
+    ///
+    /// The daemon's own `error` string is carried verbatim for exactly that reason: the refusal is the
+    /// useful part, and replacing it with a status code turns a helpful sentence into a blank failure.
+    pub async fn clear_jobs(&self, status: &str) -> Result<usize, BridgeError> {
+        let url = format!("{}/api/jobs/clear", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&json!({ "status": status }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let http_status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            let reason = serde_json::from_str::<serde_json::Value>(&text)
+                .ok()
+                .and_then(|payload| {
+                    payload
+                        .get("error")
+                        .and_then(|error| error.as_str())
+                        .map(str::to_string)
+                });
+            return Err(BridgeError::with_details(
+                "CLEAR_JOBS_FAILED",
+                reason
+                    .unwrap_or_else(|| format!("Failed to clear '{status}' jobs ({http_status})")),
+                text,
+            ));
+        }
+
+        let result: serde_json::Value = resp.json().await?;
+        Ok(result.get("cleared").and_then(|v| v.as_u64()).unwrap_or(0) as usize)
     }
 
     pub async fn start_job(
@@ -883,6 +1287,14 @@ impl TendrilClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or_default()
                     .to_string();
+                /* `ProjectConfig.color` is a defaulted `String`, so an unconfigured project sends
+                `""`; the blank is dropped here so the DTO's `Option` means what it says. */
+                let color = val
+                    .get("color")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
                 let repos = val
                     .get("repos")
                     .and_then(|v| v.as_array())
@@ -930,6 +1342,7 @@ impl TendrilClient {
 
                 ProjectSummaryDto {
                     name,
+                    color,
                     repos,
                     verifications,
                     review_actions,
@@ -1051,6 +1464,148 @@ impl TendrilClient {
             return Err(BridgeError::new(
                 "REVIEW_ACTION_CONTROL_FAILED",
                 format!("Review action {endpoint} failed ({status}): {text}"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Starts an interactive agent for a chat session and returns its SSE stream, unread.
+    ///
+    /// The chat session id is the only thing that decides what runs: the daemon resolves the agent
+    /// from the session and refuses an id it does not know, so this cannot start an arbitrary process
+    /// even though it carries the daemon's credential.
+    pub async fn start_chat_terminal(
+        &self,
+        session_id: &str,
+        prompt: Option<&str>,
+        agent_id: Option<&str>,
+        model_id: Option<&str>,
+    ) -> Result<reqwest::Response, BridgeError> {
+        let url = format!(
+            "{}/api/chat/sessions/{}/terminal",
+            self.base_url,
+            path_segment(session_id)
+        );
+        let body = json!({
+            "prompt": prompt,
+            "agentId": agent_id,
+            "modelId": model_id,
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .header(reqwest::header::ACCEPT, "text/event-stream")
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "START_CHAT_TERMINAL_FAILED",
+                format!("Failed to start a terminal for chat '{session_id}' ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp)
+    }
+
+    /// Sends keystrokes to a chat session's terminal. `data` is base64 of the raw bytes, because a
+    /// control character is most of what a terminal sends.
+    pub async fn chat_terminal_input(
+        &self,
+        chat_session_id: &str,
+        pty_session_id: &str,
+        data: &str,
+    ) -> Result<(), BridgeError> {
+        self.post_chat_terminal_control(
+            chat_session_id,
+            "terminal/input",
+            json!({ "sessionId": pty_session_id, "data": data }),
+        )
+        .await
+    }
+
+    /// Reports the terminal's size, so the agent redraws its interface to fit.
+    pub async fn chat_terminal_resize(
+        &self,
+        chat_session_id: &str,
+        pty_session_id: &str,
+        rows: u16,
+        cols: u16,
+    ) -> Result<(), BridgeError> {
+        self.post_chat_terminal_control(
+            chat_session_id,
+            "terminal/resize",
+            json!({ "sessionId": pty_session_id, "rows": rows, "cols": cols }),
+        )
+        .await
+    }
+
+    /// Ends the agent behind a chat terminal. Unlike a review action, whose process has to outlive its
+    /// pane, an interactive agent belongs to the pane that opened it.
+    pub async fn chat_terminal_close(
+        &self,
+        chat_session_id: &str,
+        pty_session_id: &str,
+    ) -> Result<(), BridgeError> {
+        let url = format!(
+            "{}/api/chat/sessions/{}/terminal",
+            self.base_url,
+            path_segment(chat_session_id)
+        );
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers())
+            .json(&json!({ "sessionId": pty_session_id }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CHAT_TERMINAL_CONTROL_FAILED",
+                format!("Chat terminal close failed ({status}): {text}"),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn post_chat_terminal_control(
+        &self,
+        chat_session_id: &str,
+        endpoint: &str,
+        body: serde_json::Value,
+    ) -> Result<(), BridgeError> {
+        let url = format!(
+            "{}/api/chat/sessions/{}/{}",
+            self.base_url,
+            path_segment(chat_session_id),
+            endpoint
+        );
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&body)
+            .send()
+            .await?;
+
+        // A `404` means the agent has already exited, which a client racing the `end` frame cannot
+        // avoid; it is reported rather than retried.
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "CHAT_TERMINAL_CONTROL_FAILED",
+                format!("Chat terminal {endpoint} failed ({status}): {text}"),
             ));
         }
 
@@ -2380,6 +2935,214 @@ impl TendrilClient {
         }
         Ok(resp.json().await?)
     }
+
+    /// Stages an attached file with the daemon and answers with the absolute path it now lives at,
+    /// inside `<TendrilHome>/Attachments/<session_id>/`.
+    ///
+    /// The bytes travel, not the source path: the daemon owns the Tendril home (and need not be on this
+    /// machine), so it is the only thing that can write there, and handing it a path to copy *from*
+    /// would give the route a file-reading half it has no business having. See
+    /// `tendril_server::routes::attachments`.
+    ///
+    /// The credential is the ordinary bearer header here — unlike [`Self::get_local_file_data_url`],
+    /// nothing about this request is made by the webview, so there is no reason for it to leave the
+    /// `Authorization` header.
+    pub async fn upload_attachment(
+        &self,
+        session_id: &str,
+        file_name: &str,
+        bytes: Vec<u8>,
+    ) -> Result<crate::models::ChatAttachmentDto, BridgeError> {
+        let url = format!(
+            "{}/api/attachments/{}?fileName={}",
+            self.base_url,
+            path_segment(session_id),
+            urlencoding(file_name)
+        );
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            CONTENT_TYPE,
+            HeaderValue::from_static("application/octet-stream"),
+        );
+        if let Some(ref secret) = self.secret {
+            if let Ok(value) = HeaderValue::from_str(&format!("Bearer {secret}")) {
+                headers.insert(AUTHORIZATION, value);
+            }
+        }
+
+        let resp = self
+            .client
+            .post(&url)
+            .headers(headers)
+            .body(bytes)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(BridgeError::unauthenticated(
+                "The daemon refused the credential for an attachment upload",
+            ));
+        }
+        if !status.is_success() {
+            let detail = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "UPLOAD_ATTACHMENT_FAILED",
+                format!("Tendril would not store '{file_name}' ({status}): {detail}"),
+            ));
+        }
+
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Stored {
+            path: String,
+        }
+        let stored: Stored = resp.json().await?;
+        Ok(crate::models::ChatAttachmentDto {
+            // The name the user picked the file by, not the name it was stored under: those differ
+            // when the session already held a file of that name, and the chip has to keep reading the
+            // way the user chose it.
+            name: file_name.to_string(),
+            path: stored.path,
+            mime_type: None,
+        })
+    }
+
+    /// Fetches a local file through the daemon's guarded `GET /ivy/local-file` and returns it as a
+    /// `data:` URL the webview can put in an `<img src>`.
+    ///
+    /// The daemon decides what may be read — `tendril-server`'s `local_file_guard` checks the
+    /// credential, the extension allowlist and root confinement, and this call carries no opinion of
+    /// its own about the path. Nothing is read off the filesystem here, so the app gains no
+    /// file-reading surface of its own: it can only ask for what the guard already serves.
+    ///
+    /// The bytes come back rather than a URL because the guard's own layers make a URL unusable from
+    /// the webview: the packaged app's page is `tauri://localhost`, so an `<img>` pointed at
+    /// `http://127.0.0.1:<port>` is a cross-site subresource (`Sec-Fetch-Site: cross-site`, layer 3)
+    /// whose `Origin` names a different host than the request (layer 2), and the route's `?token=`
+    /// would have to be the daemon's bearer secret — the credential `commands::get_client_from_master`
+    /// exists to keep out of the webview. Handing over the bytes keeps both invariants.
+    pub async fn get_local_file_data_url(&self, path: &str) -> Result<String, BridgeError> {
+        /// Enough for a screenshot or a plan attachment, and small enough that a stray large file
+        /// cannot be turned into a data URL big enough to wedge the webview.
+        const MAX_PREVIEW_BYTES: u64 = 16 * 1024 * 1024;
+
+        let Some(secret) = self.secret.as_deref() else {
+            return Err(BridgeError::unauthenticated(
+                "No daemon credential is available to read a local file",
+            ));
+        };
+
+        // The guard reads the credential from `?token=` — it sits outside the bearer middleware
+        // because an `<img src>` sends no `Authorization` header. So the secret is in this URL, and
+        // the URL must not reach a log, an error message or the webview: every failure below is
+        // reported from `path` alone, and `without_url` strips it out of reqwest's own errors, which
+        // otherwise print the whole request URL.
+        let url = format!(
+            "{}/ivy/local-file?path={}&token={}",
+            self.base_url,
+            urlencoding(path),
+            urlencoding(secret)
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|err| BridgeError::from(err.without_url()))?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(BridgeError::unauthenticated(
+                "The daemon refused the credential for a local file read",
+            ));
+        }
+        if !status.is_success() {
+            // 403 (host/origin/cross-site) and 404 (extension, or outside every allowed root) are the
+            // guard's answers, and it deliberately does not distinguish "outside the roots" from
+            // "does not exist" — so neither does this.
+            return Err(BridgeError::not_found(format!(
+                "Tendril will not serve '{path}' ({status})"
+            )));
+        }
+
+        if resp
+            .content_length()
+            .is_some_and(|len| len > MAX_PREVIEW_BYTES)
+        {
+            return Err(BridgeError::validation(format!(
+                "'{path}' is too large to preview"
+            )));
+        }
+
+        let content_type = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.split(';').next().unwrap_or(value).trim().to_string())
+            .unwrap_or_default();
+        // The route only serves the extensions in its allowlist, so this is always an image or a PDF.
+        // It is checked anyway: the media type goes into a `data:` URL the webview will load, and
+        // nothing else belongs there.
+        if !content_type.starts_with("image/") && content_type != "application/pdf" {
+            return Err(BridgeError::validation(format!(
+                "'{path}' is not a previewable file"
+            )));
+        }
+
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|err| BridgeError::from(err.without_url()))?;
+        if bytes.len() as u64 > MAX_PREVIEW_BYTES {
+            return Err(BridgeError::validation(format!(
+                "'{path}' is too large to preview"
+            )));
+        }
+
+        Ok(format!(
+            "data:{content_type};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        ))
+    }
+}
+
+/// Where a job's `suffix` artifact is on this machine, or `None` when it was never written.
+///
+/// The daemon does not publish these paths, so they are resolved with the daemon's own lookup —
+/// `tendril_core::jobs::logger::find_log_file`, which knows both the `Logs/Jobs/<id><suffix>` layout and
+/// the prefixed variants it also has to find. Resolving them by hand here would be a second copy of a
+/// layout that is not this crate's to know.
+///
+/// Only an existing file is reported: a debug panel offering a path to a log that was never created
+/// sends the reader to an empty `tail`.
+fn job_artifact_path(job_id: &str, suffix: &str) -> Option<String> {
+    let home = crate::daemon::resolve_tendril_home();
+    tendril_core::jobs::logger::find_log_file(&home, job_id, suffix)
+        .map(|path| path.to_string_lossy().to_string())
+}
+
+/// The 5-digit plan id a job's `planFile` names, or `None` if it names no plan.
+///
+/// `planFile` is whatever the dispatch passed, so it is a bare id (`00681`) as often as a folder name
+/// (`00610-PortTunnelAndShareSubsys`), and occasionally an absolute path. Only the leading digit run
+/// matters, zero-padded to five so it compares equal to `PlanSummary.id`.
+///
+/// Empty is `None` rather than `Some("00000")`: a CreatePlan job holds no plan until it has made one,
+/// and a job claiming to hold plan zero would be filtered against a plan that cannot exist.
+pub(crate) fn plan_id_from_folder(plan_file: &str) -> Option<String> {
+    let name = plan_file
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(plan_file)
+        .trim();
+    let digits: String = name.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    Some(format!("{:0>5}", digits.parse::<u32>().ok()?))
 }
 
 fn urlencoding(s: &str) -> String {

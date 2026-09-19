@@ -119,6 +119,63 @@ describe("RecommendationNoteDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
     expect(onSubmit).toHaveBeenCalledWith("Updated memo");
   });
+
+  it("focuses the note field on open, as V1's .AutoFocus() does", () => {
+    render(
+      <RecommendationNoteDialog
+        isOpen={true}
+        title="Test Rec"
+        action="Accept"
+        onClose={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: "Optional note" })).toHaveFocus();
+  });
+
+  it("submits on Ctrl+Enter and ignores a bare Enter in the note field", () => {
+    const onSubmit = vi.fn();
+    render(
+      <RecommendationNoteDialog
+        isOpen={true}
+        title="Test Rec"
+        action="Accept"
+        onClose={() => {}}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    const textarea = screen.getByRole("textbox", { name: "Optional note" });
+    fireEvent.change(textarea, { target: { value: "Ship it" } });
+
+    // V1 puts `.ShortcutKey("Ctrl+Enter")` on the Accept button. The modifier is the point: a bare
+    // Enter is a newline in a textarea.
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(textarea, { key: "Enter", ctrlKey: true });
+    expect(onSubmit).toHaveBeenCalledWith("Ship it");
+  });
+
+  it("shows the recommendation's own text above the note field when given it", () => {
+    render(
+      <RecommendationNoteDialog
+        isOpen={true}
+        title="Automate Workflows"
+        action="Accept"
+        recommendationDescription="Drive the packaged app with tauri-driver."
+        onClose={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+
+    // `AcceptWithNotesDialog` renders the description in its body; notes written from memory are
+    // notes about the title only.
+    expect(screen.getByTestId("rec-dialog-description")).toHaveTextContent(
+      "Drive the packaged app with tauri-driver.",
+    );
+  });
 });
 
 describe("RecommendationCard", () => {

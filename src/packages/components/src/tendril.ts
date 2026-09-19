@@ -1,6 +1,9 @@
 // Tendril Entrypoint for components-storybook/tendril
 // Re-exports Tendril shell, agent viewers, inputs, plan widgets, and dashboard components
 
+// The Tendril brand mark, which the shell header renders.
+export { TendrilLogo, type TendrilLogoProps } from "./components/TendrilLogo";
+
 // Shell Components
 export {
   TendrilShell,
@@ -18,8 +21,15 @@ export {
   ShellRailFlyout,
   ShellSectionItems,
   ShellTooltip,
+  SidebarListRow,
+  SidebarListRowExpandable,
+  SidebarListRowSubItem,
   sectionItemIcons,
   formatShortcut,
+  type SidebarListRowIcon,
+  type SidebarListRowProps,
+  type SidebarListRowExpandableProps,
+  type SidebarListRowSubItemProps,
   type ShellContextValue,
   type ShellBadgeDto,
   type ShellItemState,
@@ -232,6 +242,12 @@ export type {
 // Web Viewer Component
 export { WebViewer, Toolbar } from "./components/WebViewer/index.ts";
 export type { WebViewerProps, ToolbarProps, ToolbarAction } from "./components/WebViewer/index.ts";
+
+// Exported beside the viewer because an application needs both: the viewer frames the proxy's
+// origin, and this is how the shell says where that is. Without it a viewer falls back to
+// same-origin, which is right in a browser and wrong under Tauri.
+export { WebViewerProvider, WebViewerContext, useProxyOrigin } from "./contexts/webviewer-context";
+export type { WebViewerProviderProps, WebViewerContextValue } from "./contexts/webviewer-context";
 
 // Terminal Component. Sits next to the WebViewer because they are the two halves of reviewing a
 // running app: the terminal is what the app boots in, the viewer is what it is then previewed in.

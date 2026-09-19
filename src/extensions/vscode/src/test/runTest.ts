@@ -1,14 +1,14 @@
-import * as path from 'path';
-import { run } from './suite/index';
-import { createIsolatedTendrilHome } from './testHome';
-import { TEST_ISOLATION_ENV } from '../server/homeGuard';
+import * as path from "path";
+import { run } from "./suite/index";
+import { createIsolatedTendrilHome } from "./testHome";
+import { TEST_ISOLATION_ENV } from "../server/homeGuard";
 
 async function main(): Promise<void> {
   try {
-    if (process.env.VSCODE_TEST_ELECTRON === '1') {
-      const { runTests } = await import('@vscode/test-electron');
-      const extensionDevelopmentPath = path.resolve(__dirname, '../../');
-      const extensionTestsPath = path.resolve(__dirname, './suite/index');
+    if (process.env.VSCODE_TEST_ELECTRON === "1") {
+      const { runTests } = await import("@vscode/test-electron");
+      const extensionDevelopmentPath = path.resolve(__dirname, "../../");
+      const extensionTestsPath = path.resolve(__dirname, "./suite/index");
       // The Extension Host is a separate process, so the isolated home is passed explicitly rather
       // than relying on environment inheritance.
       const home = createIsolatedTendrilHome();
@@ -18,22 +18,26 @@ async function main(): Promise<void> {
           extensionTestsPath,
           extensionTestsEnv: {
             TENDRIL_HOME: home.path,
-            TENDRIL_PLANS: path.join(home.path, 'Plans'),
-            TENDRIL_CONFIG: path.join(home.path, 'config.yaml'),
-            [TEST_ISOLATION_ENV]: '1'
+            TENDRIL_PLANS: path.join(home.path, "Plans"),
+            TENDRIL_CONFIG: path.join(home.path, "config.yaml"),
+            [TEST_ISOLATION_ENV]: "1",
           },
-          launchArgs: ['--user-data-dir', path.join(home.path, 'vscode-user'), '--disable-extensions']
+          launchArgs: [
+            "--user-data-dir",
+            path.join(home.path, "vscode-user"),
+            "--disable-extensions",
+          ],
         });
       } finally {
         home.dispose();
       }
     } else {
-      console.log('Running Tendril extension test suite...');
+      console.log("Running Tendril extension test suite...");
       await run();
-      console.log('All tests passed successfully.');
+      console.log("All tests passed successfully.");
     }
   } catch (err) {
-    console.error('Failed to run tests:', err);
+    console.error("Failed to run tests:", err);
     process.exit(1);
   }
 }

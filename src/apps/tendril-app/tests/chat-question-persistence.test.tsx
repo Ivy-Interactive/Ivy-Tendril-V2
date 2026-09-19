@@ -274,14 +274,7 @@ questions:
     const setInProgressSpy = vi.spyOn(chatStore, "setInProgressAnswer");
     const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
 
-    render(
-      <ChatMessageRow
-        message={testMessage}
-        isCopied={false}
-        onCopy={vi.fn()}
-        onCreatePlan={vi.fn()}
-      />,
-    );
+    render(<ChatMessageRow message={testMessage} />);
 
     const input = screen.getByTestId("input-other-chat-msg-msg-test-1");
 
@@ -319,14 +312,7 @@ questions:
     const setInProgressSpy = vi.spyOn(chatStore, "setInProgressAnswer");
     const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
 
-    render(
-      <ChatMessageRow
-        message={testMessage}
-        isCopied={false}
-        onCopy={vi.fn()}
-        onCreatePlan={vi.fn()}
-      />,
-    );
+    render(<ChatMessageRow message={testMessage} />);
 
     const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-test-1");
     fireEvent.click(selectBtn);
@@ -343,14 +329,7 @@ questions:
     const setInProgressSpy = vi.spyOn(chatStore, "setInProgressAnswer");
     const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
 
-    const { unmount } = render(
-      <ChatMessageRow
-        message={testMessage}
-        isCopied={false}
-        onCopy={vi.fn()}
-        onCreatePlan={vi.fn()}
-      />,
-    );
+    const { unmount } = render(<ChatMessageRow message={testMessage} />);
 
     const input = screen.getByTestId("input-other-chat-msg-msg-test-1");
     fireEvent.change(input, { target: { value: "custom-db" } });
@@ -375,14 +354,7 @@ questions:
     const setInProgressSpy = vi.spyOn(chatStore, "setInProgressAnswer");
     const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
 
-    render(
-      <ChatMessageRow
-        message={testMessage}
-        isCopied={false}
-        onCopy={vi.fn()}
-        onCreatePlan={vi.fn()}
-      />,
-    );
+    render(<ChatMessageRow message={testMessage} />);
 
     const input = screen.getByTestId("input-other-chat-msg-msg-test-1");
     const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-test-1");
@@ -505,14 +477,7 @@ questions:
 
     await chatStore.init();
 
-    render(
-      <ChatMessageRow
-        message={questionMessage}
-        isCopied={false}
-        onCopy={vi.fn()}
-        onCreatePlan={vi.fn()}
-      />,
-    );
+    render(<ChatMessageRow message={questionMessage} />);
 
     const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
 
@@ -561,14 +526,7 @@ questions:
 
     await chatStore.init();
 
-    render(
-      <ChatMessageRow
-        message={questionMessage}
-        isCopied={false}
-        onCopy={vi.fn()}
-        onCreatePlan={vi.fn()}
-      />,
-    );
+    render(<ChatMessageRow message={questionMessage} />);
 
     expect(screen.queryByTestId("submitting-answer-indicator")).not.toBeInTheDocument();
 
@@ -628,14 +586,7 @@ questions:
 
     await chatStore.init();
 
-    render(
-      <ChatMessageRow
-        message={questionMessage}
-        isCopied={false}
-        onCopy={vi.fn()}
-        onCreatePlan={vi.fn()}
-      />,
-    );
+    render(<ChatMessageRow message={questionMessage} />);
 
     const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
     act(() => {
@@ -823,14 +774,7 @@ questions:
   it("answer selections and in-progress drafts persist across window resize events and component unmount/remount", () => {
     vi.spyOn(chatApi, "answerQuestions").mockReturnValue(new Promise(() => {}));
 
-    const { unmount } = render(
-      <ChatMessageRow
-        message={questionMessage}
-        isCopied={false}
-        onCopy={vi.fn()}
-        onCreatePlan={vi.fn()}
-      />,
-    );
+    const { unmount } = render(<ChatMessageRow message={questionMessage} />);
 
     const selectBtn = screen.getByTestId("select-answer-chat-msg-msg-opt-1");
     act(() => {
@@ -856,14 +800,7 @@ questions:
     unmount();
 
     // Remount
-    render(
-      <ChatMessageRow
-        message={questionMessage}
-        isCopied={false}
-        onCopy={vi.fn()}
-        onCreatePlan={vi.fn()}
-      />,
-    );
+    render(<ChatMessageRow message={questionMessage} />);
 
     // Remounted row immediately shows the in-progress answer
     expect(screen.getByTestId("plan-markdown-content-chat-msg-msg-opt-1").textContent).toContain(

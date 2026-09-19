@@ -167,3 +167,35 @@ export function getPageCount(total: number, pageSize: number): number {
   if (pageSize <= 0) return 1;
   return Math.max(1, Math.ceil(total / pageSize));
 }
+
+/**
+ * The separator between row ids in a [`rowIdentity`] string.
+ *
+ * NUL, because it cannot occur in a row id. That is what makes [`isRowIdentityAppend`]'s prefix test
+ * exact rather than a guess about where one id ends and the next begins.
+ */
+const ROW_IDENTITY_SEPARATOR = "\u0000";
+
+/** The rows currently rendered, in order, as one comparable string. */
+export function rowIdentity(rowIds: readonly string[]): string {
+  return rowIds.join(ROW_IDENTITY_SEPARATOR);
+}
+
+/**
+ * Whether `next` is `previous` with rows added to the end, rather than a different set of rows.
+ *
+ * This is the question a scroll position depends on. A re-sort, a filter or a page change *replaces*
+ * the rows, and the viewport belongs at the top of the new ones. An appended window under infinite
+ * scroll replaces nothing, and returning to the top there would undo the very scroll that asked for
+ * it — which is the difference between infinite scroll working and being unusable.
+ *
+ * Growing from *no* rows counts as an append, because nothing was replaced. Treating it as a
+ * replacement looks harmless — an empty table is already at the top — but the reset it triggers runs
+ * in an effect, one commit after the rows themselves render. A scroll that lands in that gap is
+ * silently rewound to zero, and under infinite scroll that also swallows the window it asked for: the
+ * load-more check then reads the distance to the end from the top of the table and declines.
+ */
+export function isRowIdentityAppend(previous: string, next: string): boolean {
+  if (previous.length === 0) return next.length > 0;
+  return next.startsWith(`${previous}${ROW_IDENTITY_SEPARATOR}`);
+}

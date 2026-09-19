@@ -1,6 +1,15 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { render } from "@testing-library/react";
+import { loadRehypeKatex } from "@/lib/math";
 import { PlanMarkdown as DraftMarkdown } from "./PlanMarkdown";
+
+// KaTeX is loaded on demand (see `src/lib/math.ts`), so in the app the first render of a document
+// containing maths shows its TeX source and `useMathReady` brings back a typeset one. Resolving the
+// import up front puts these synchronous assertions on the second of those two renders, which is the
+// one that describes what a user sees.
+beforeAll(async () => {
+  await loadRehypeKatex();
+});
 
 const renderContent = (content: string) => {
   const { container } = render(<DraftMarkdown id="w1" content={content} />);

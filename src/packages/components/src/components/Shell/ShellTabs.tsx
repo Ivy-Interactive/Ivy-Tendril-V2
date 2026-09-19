@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import type { ShellTabDto, ShellWidgetProps } from "./types.ts";
+import { IconButton } from "../ui/IconButton";
 import "./shell.css";
 
 interface ShellTabsProps extends ShellWidgetProps {
@@ -93,29 +94,31 @@ export const ShellTabs: React.FC<ShellTabsProps> = ({
               <span className="tsh-tab-label">{tab.title}</span>
             </span>
             {closable && (
-              <button
-                type="button"
+              <IconButton
                 className="tsh-tab-close"
-                aria-label={`Close ${tab.title}`}
+                label={`Close ${tab.title}`}
+                tooltip={false}
+                size="2xs"
                 onClick={(e) => {
                   e.stopPropagation();
                   fire("OnClose", [tab.id]);
                 }}
               >
                 <X size={16} />
-              </button>
+              </IconButton>
             )}
           </div>
         );
       })}
-      <button
-        type="button"
+      <IconButton
         className="tsh-tab-new"
-        aria-label="New agent session"
+        label="New agent session"
+        tooltip={false}
+        size="xl"
         onClick={() => fire("OnNew")}
       >
         <Plus size={16} />
-      </button>
+      </IconButton>
     </div>
   );
 };

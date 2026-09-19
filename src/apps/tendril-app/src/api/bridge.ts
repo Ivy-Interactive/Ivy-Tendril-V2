@@ -11,6 +11,7 @@ import type {
   AgentCostBreakdown,
   Annotation,
   CreateProjectRequest,
+  CrossPlanRecommendation,
   DashboardActivity,
   DiscoveredVaultRepo,
   DoctorCheck,
@@ -30,6 +31,7 @@ import type {
   PrSyncReport,
   ProjectAssets,
   ProjectSummary,
+  ProvisionReport,
   RecentMergedPr,
   RecentPlanCost,
   RecommendationItem,
@@ -55,6 +57,7 @@ import type {
   VerificationStatus,
   VersionInfo,
 } from "../types/api";
+import type { ChatAttachment } from "../types/chat";
 
 export type { ReviewActionSession } from "./events";
 
@@ -325,6 +328,20 @@ const tauriClient = {
     return invoke<ServiceInfo>("cmd_switch_service_mode", { mode });
   },
 
+  /**
+   * Installs the bundled `tendril` and `opencode` sidecars into `<tendril home>/bin` and registers
+   * the daemon to start with the session. The app already does this on first run; this is the retry
+   * for a machine that refused it then.
+   */
+  async installService(this: void): Promise<ProvisionReport> {
+    return invoke<ProvisionReport>("cmd_install_service");
+  },
+
+  /** Stops the daemon starting at login. The installed binaries stay where they are. */
+  async uninstallServiceAutostart(this: void): Promise<string> {
+    return invoke<string>("cmd_uninstall_service_autostart");
+  },
+
   async listPlans(this: void, query?: PlanQuery): Promise<PlanSummary[]> {
     return invoke<PlanSummary[]>("cmd_list_plans", { query });
   },
@@ -383,6 +400,20 @@ const tauriClient = {
 
   async writeRevision(this: void, id: string, content: string): Promise<RevisionResult> {
     return invoke<RevisionResult>("cmd_write_revision", { id, content });
+  },
+
+  /**
+   * Overwrite the plan's newest revision in place, keeping its number.
+   *
+   * The write answering a plan question needs, and deliberately not `writeRevision`, which appends.
+   * V1 routes answers through `IPlanReaderService.UpdateLatestRevision` on the stated grounds that
+   * "answering a question is not a new revision of the plan, it is filling in a blank the plan left".
+   * An append would claim the agent produced a new plan, and it would inflate `revisionCount`, which
+   * `execute_guards.unfoldedAnswerCount` reads as `revisionCount === 1` — so one answer would switch
+   * that guard off. The returned `revision` is the number that did *not* move.
+   */
+  async updateLatestRevision(this: void, id: string, content: string): Promise<RevisionResult> {
+    return invoke<RevisionResult>("cmd_update_latest_revision", { id, content });
   },
 
   /**
@@ -477,6 +508,51 @@ const tauriClient = {
     return invoke<RecommendationItem[]>("cmd_list_recommendations", { planId });
   },
 
+  async listCrossPlanRecommendations(
+    this: void,
+    project?: string,
+    state?: string,
+  ): Promise<CrossPlanRecommendation[]> {
+    try {
+      return await invoke<CrossPlanRecommendation[]>("cmd_list_all_recommendations", {
+        project,
+        state,
+      });
+    } catch {
+      // Cross-plan projection fallback: gather from completed plans
+      const plans = await bridge.listPlans();
+      const relevantPlans = plans.filter((p) => p.state === "Completed" || !state);
+      const results: CrossPlanRecommendation[] = [];
+      await Promise.all(
+        relevantPlans.map(async (plan) => {
+          try {
+            const recs = await bridge.listRecommendations(plan.id);
+            for (const r of recs) {
+              const rState = r.state || "Pending";
+              if (state && rState !== state) continue;
+              if (project && plan.project !== project) continue;
+              results.push({
+                planId: plan.id,
+                planTitle: plan.title,
+                project: plan.project,
+                sourcePlanStatus: plan.state,
+                title: r.title,
+                description: r.description,
+                impact: r.impact,
+                state: r.state,
+                declineReason: r.declineReason,
+                notes: r.notes,
+              });
+            }
+          } catch {
+            // Ignore per-plan failure
+          }
+        }),
+      );
+      return results;
+    }
+  },
+
   /**
    * `declineReason` and `notes` are separate fields, not one field reused: a
    * decline reason is why the recommendation was rejected, a note is why it was
@@ -514,6 +590,28 @@ const tauriClient = {
 
   async cancelJob(this: void, id: string, message?: string): Promise<void> {
     return invoke<void>("cmd_cancel_job", { id, message });
+  },
+
+  /** Drops a job from the list and the database. The daemon keeps its log artifacts. */
+  async deleteJob(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_delete_job", { id });
+  },
+
+  /** Promotes a blocked or queued job past its gates so it runs next. */
+  async forceStartJob(this: void, id: string): Promise<void> {
+    return invoke<void>("cmd_force_start_job", { id });
+  },
+
+  /**
+   * Bulk-clears finished jobs by scope, answering how many rows went.
+   *
+   * The scope is not validated here. The daemon filters to the terminal statuses before it reads a row,
+   * so a Running or Queued job cannot be cleared through any caller, and it answers a `400` naming the
+   * scopes it accepts — a refusal worth showing rather than pre-empting with a second list that could
+   * fall out of step with it.
+   */
+  async clearJobs(this: void, status: string): Promise<number> {
+    return invoke<number>("cmd_clear_jobs", { status });
   },
 
   async listProjects(this: void): Promise<ProjectSummary[]> {
@@ -834,6 +932,45 @@ const tauriClient = {
 
   async dismissInboxProposal(this: void, id: number): Promise<void> {
     await invoke("cmd_dismiss_inbox_proposal", { id });
+  },
+
+  /**
+   * A file on this machine as a `data:` URL an `<img>` can load, or a rejection if the daemon will not
+   * serve it.
+   *
+   * The webview cannot load a `file://` path, so the bytes come from the daemon's guarded
+   * `GET /ivy/local-file` — V1's mechanism — fetched natively because that route takes its credential
+   * in the query string and the only credential the app has is the bearer secret the webview never
+   * sees. Which paths are readable is the daemon's decision, not this method's: anything outside the
+   * configured local-file roots, and anything that is not an allow-listed image or PDF, rejects with
+   * `NOT_FOUND`. See `src-tauri/src/commands/local_file.rs`.
+   *
+   * A client that is not on the daemon's machine implements this shape differently — it can request the
+   * route directly with a session token, which is what V1's `getAttachmentUrl` builds.
+   */
+  async getLocalFilePreview(this: void, path: string): Promise<string> {
+    return invoke<string>("cmd_get_local_file_preview", { path });
+  },
+
+  /**
+   * Copies an attached file into Tendril's own attachment directory and answers with the attachment to
+   * put on the message: the user's file name, and the staged path.
+   *
+   * The path a file dialog or a native drop hands over is almost never inside a local-file root — a
+   * screenshot on the Desktop is the ordinary case — so `getLocalFilePreview` would refuse it and the
+   * message would show a paperclip chip instead of the image. Staging is what makes it previewable, and
+   * is what V1's composer does by uploading every attachment before referencing it. The staged path is
+   * also what the agent is told about, so the file the agent reads is the file the thumbnail shows.
+   *
+   * `sessionId` is the chat session the file belongs to; omitted, the daemon stages under `temp`, as
+   * V1 does for a file attached before the session exists.
+   */
+  async uploadChatAttachment(
+    this: void,
+    path: string,
+    sessionId?: string,
+  ): Promise<ChatAttachment> {
+    return invoke<ChatAttachment>("cmd_upload_chat_attachment", { path, sessionId });
   },
 };
 

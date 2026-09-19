@@ -142,16 +142,18 @@ describe("ChatView native webview drag-drop", () => {
     fireEvent.change(textarea, { target: { value: "Look at this" } });
     fireEvent.click(screen.getByTitle("Send message"));
 
+    // The absolute path travels on the turn, appended under `[Attached Files]:` as
+    // `ChatExecutionService.SendMessageAsync` does, since that is all the agent process can read.
     await waitFor(() => {
       expect(executeSpy).toHaveBeenCalledWith("session-native-drop", {
-        prompt: "Look at this",
+        prompt: "Look at this\n\n[Attached Files]:\n- /Users/me/notes.md",
         agentId: "claude",
         modelId: undefined,
         effort: undefined,
       });
     });
 
-    // The absolute path travels on the message the thread renders, not on the turn itself.
+    // It also travels as a structured chip on the message the thread renders.
     expect(chatStore.getState().activeSession?.messages.at(-1)).toMatchObject({
       role: "user",
       attachments: [{ name: "notes.md", path: "/Users/me/notes.md" }],

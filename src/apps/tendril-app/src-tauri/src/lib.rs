@@ -6,15 +6,19 @@ pub mod service;
 pub mod verification_reports;
 
 pub use commands::agents::*;
+pub use commands::attachments::*;
 pub use commands::chat::*;
 pub use commands::config::*;
 pub use commands::dashboard::*;
 pub use commands::github::*;
 pub use commands::inbox::*;
 pub use commands::jobs::*;
+pub use commands::local_file::*;
 pub use commands::plans::*;
 pub use commands::pull_requests::*;
 pub use commands::state::*;
+pub use commands::tables::*;
+pub use commands::tunnel::*;
 pub use commands::vault::*;
 pub use commands::*;
 
@@ -80,6 +84,38 @@ pub fn run() {
 
             let bridge = service::ChangeBridge::new(app.handle().clone(), base_url, secret);
             app.manage(bridge);
+
+            // Install the daemon the app is a client of.
+            //
+            // A Tendril installer puts the app on the machine and nothing else, so on first run the
+            // app copies its bundled `tendril` and `opencode` sidecars into `<home>/bin` and
+            // registers an autostart unit against them. That is what makes a fresh install able to
+            // serve plans and run agents without the user also installing the CLI - and what makes
+            // the daemon survive a reboot instead of dying with the window.
+            //
+            // On a background thread because it can copy ~250 MB on a version bump, and nothing
+            // about showing a window depends on it. Idempotent and entirely best-effort: a machine
+            // that refuses the copy or the LaunchAgent still gets the managed child the supervisor
+            // has always spawned. Off in debug builds unless `TENDRIL_PROVISION_SERVICE` is set,
+            // because a dev build should not copy its debug sidecars over a developer's real
+            // `~/.tendril/bin`.
+            if service::provision::should_provision_on_startup() {
+                std::thread::spawn(|| {
+                    let report = service::provision(&daemon::resolve_tendril_home());
+                    for err in &report.errors {
+                        tracing::warn!("Service provisioning: {err}");
+                    }
+                    if report.changed() {
+                        tracing::info!(
+                            "Service provisioning installed {:?} into {} ({:?})",
+                            report.installed,
+                            report.bin_dir,
+                            report.autostart
+                        );
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -96,6 +132,7 @@ pub fn run() {
             cmd_get_plan_git,
             cmd_get_revision,
             cmd_write_revision,
+            cmd_update_latest_revision,
             cmd_get_verification_report,
             cmd_list_verification_reports,
             cmd_list_recommendations,
@@ -113,6 +150,21 @@ pub fn run() {
             cmd_get_job,
             cmd_start_job,
             cmd_cancel_job,
+            cmd_delete_job,
+            cmd_force_start_job,
+            cmd_clear_jobs,
+            cmd_subscribe_job_events,
+            cmd_unsubscribe_job_events,
+            // The server-paged table API. Without this the Jobs table cannot reach
+            // `POST /api/jobs/query` at all — the webview holds no bearer secret — so it would fall
+            // back to re-reading the whole listing per window.
+            cmd_query_table,
+            // Attachment and screenshot previews. The webview cannot load a `file://` path, so it asks
+            // the daemon's guarded `/ivy/local-file` for the bytes — see `commands::local_file`.
+            cmd_get_local_file_preview,
+            // The other half of the preview: a file picked from outside every local-file root is copied
+            // into `<TendrilHome>/Attachments/<session>/` so that the route above will serve it back.
+            cmd_upload_chat_attachment,
             cmd_list_projects,
             cmd_create_project,
             cmd_get_config,
@@ -136,6 +188,8 @@ pub fn run() {
             cmd_restart_service,
             cmd_repair_service,
             cmd_switch_service_mode,
+            cmd_install_service,
+            cmd_uninstall_service_autostart,
             cmd_list_chat_sessions,
             cmd_create_chat_session,
             cmd_get_chat_session,
@@ -150,7 +204,14 @@ pub fn run() {
             cmd_clear_chat_queue,
             cmd_delete_queued_chat_item,
             cmd_update_queued_chat_item,
+            cmd_execute_agent_terminal,
+            cmd_send_agent_terminal_input,
+            cmd_resize_agent_terminal,
+            cmd_close_agent_terminal,
             cmd_list_agents,
+            cmd_fetch_provider_models,
+            cmd_test_agent,
+            cmd_get_agent_usage,
             cmd_list_github_issues,
             cmd_vault_list,
             cmd_vault_status,
@@ -178,6 +239,19 @@ pub fn run() {
             cmd_get_recent_merged_prs,
             cmd_get_recent_plan_costs,
             cmd_get_agent_cost_breakdown,
+            // Share tunnel. Without these four the share dialog is unreachable from the running app.
+            cmd_get_share_tunnel,
+            cmd_start_share_tunnel,
+            cmd_stop_share_tunnel,
+            cmd_get_cloudflared_install_state,
+            // Full-access tunnel and the session password it is gated on — Settings' "Security &
+            // Tunneling" section. Same module as the share commands.
+            cmd_get_full_tunnel,
+            cmd_start_full_tunnel,
+            cmd_stop_full_tunnel,
+            cmd_get_password_status,
+            cmd_set_password,
+            cmd_clear_password,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

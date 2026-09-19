@@ -51,7 +51,7 @@ export const ServiceStatusBanner: React.FC<ServiceStatusBannerProps> = ({
           {serviceInfo?.host || "127.0.0.1"}:{serviceInfo?.port || "N/A"}
         </span>
         {serviceInfo?.ownership && (
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="rounded bg-muted px-1.5 py-0.5 text-2xs text-muted-foreground">
             {serviceInfo.ownership}
           </span>
         )}

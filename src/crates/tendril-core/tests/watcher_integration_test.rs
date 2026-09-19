@@ -214,7 +214,7 @@ async fn config_write_emits_config_event() {
 }
 
 #[tokio::test]
-async fn self_written_plan_yaml_does_not_wake_the_watcher() {
+async fn a_self_written_plan_yaml_is_announced_exactly_once() {
     let fx = Fixture::new("self-write");
     let plan = fx.write_plan("00576-Foo");
 
@@ -222,14 +222,80 @@ async fn self_written_plan_yaml_does_not_wake_the_watcher() {
     let _watcher = FsWatcher::spawn(fx.config(), tx).expect("spawn watcher");
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    // The daemon's own write. Clients still hear about it — via `notify_changed` from the write path
-    // — but the watcher echo must not feed back into the daemon's own re-sync.
+    // The daemon's own write. Both halves of the design are under test here: the watcher echo is
+    // suppressed, *and* the write path re-announces the write itself — so a second app window, a
+    // second desktop instance and the VS Code extension all still hear about it. Getting only the
+    // suppression (which is where this started) means a daemon-side write is announced to nobody
+    // until the 30s rescan, and a rescan does not even fire for an in-place edit.
     tendril_core::fs_lock::write_atomic(&plan.join("plan.yaml"), b"state: Review\n").unwrap();
 
-    let events = drain(&mut rx, Duration::from_millis(1500)).await;
+    let event = next_event(&mut rx, Duration::from_secs(3))
+        .await
+        .expect("a daemon write must still reach clients");
+    assert_eq!(
+        event.target,
+        ChangeTarget::Plans {
+            folder: Some("00576-Foo".to_string())
+        }
+    );
+
+    // One write, one notification: the announcement goes through the same coalescer as watcher
+    // events, so the suppressed echo cannot arrive as a second event.
+    let rest = drain(&mut rx, Duration::from_millis(1500)).await;
+    assert!(
+        rest.is_empty(),
+        "our own write must be announced once, not once per route: {:?}",
+        rest
+    );
+}
+
+#[tokio::test]
+async fn a_daemon_write_the_os_watcher_cannot_see_is_still_announced() {
+    let fx = Fixture::new("self-write-unwatched");
+    let plan = fx.write_plan("00576-Foo");
+    // `Notes/` is inside a plan folder but is not one of the directories `watch_paths` registers, and
+    // every registration is non-recursive — so no OS event for this write can reach the watcher. The
+    // event asserted below therefore cannot have come from the filesystem: the write path is the only
+    // possible source, which is what makes this test specific to the announcement rather than to the
+    // debounce or to FSEvents timing.
+    let notes = plan.join("Notes");
+    std::fs::create_dir_all(&notes).expect("create Notes");
+
+    let (tx, mut rx) = broadcast::channel(64);
+    let _watcher = FsWatcher::spawn(fx.config(), tx).expect("spawn watcher");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    tendril_core::fs_lock::write_atomic(&notes.join("note.md"), b"# Note\n").unwrap();
+
+    let event = next_event(&mut rx, Duration::from_secs(3))
+        .await
+        .expect("the write path must announce a write the OS watcher never reports");
+    assert_eq!(
+        event.target,
+        ChangeTarget::Plans {
+            folder: Some("00576-Foo".to_string())
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_daemon_write_outside_the_watched_tree_is_not_announced() {
+    let fx = Fixture::new("self-write-foreign");
+    let (tx, mut rx) = broadcast::channel(64);
+    let _watcher = FsWatcher::spawn(fx.config(), tx).expect("spawn watcher");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Every `write_atomic` in the process reaches the announcement, including the ones for logs,
+    // caches and job artifacts. Classification is what keeps those off the change stream, and it has
+    // to hold for the announced path exactly as it does for a raw event.
+    let logs = fx.home.join("Logs").join("Jobs");
+    std::fs::create_dir_all(&logs).expect("create Logs");
+    tendril_core::fs_lock::write_atomic(&logs.join("00001.raw.log"), b"line\n").unwrap();
+
+    let events = drain(&mut rx, Duration::from_millis(1200)).await;
     assert!(
         events.is_empty(),
-        "our own write must not come back as a foreign change, got {:?}",
+        "a write outside Plans/, config.yaml and Inbox/ is not a change event: {:?}",
         events
     );
 }

@@ -1,5 +1,6 @@
 import { agentsApi } from "../api/agentsApi";
 import { chatApi } from "../api/chatApi";
+import { publishChatSessionCount } from "./chatSessionCount";
 import { onChatEvent, type EventUnsubscribe } from "../api/events";
 import { DEFAULT_OPTION_ID, type AgentOption } from "../types/agents";
 import type {
@@ -11,6 +12,7 @@ import type {
   InProgressQuestionAnswers,
 } from "../types/chat";
 import {
+  AGENT_PREFERENCES_STORAGE_KEY,
   loadStoredAgentPreferences,
   loadStoredSelectedAgent,
   saveStoredAgentPreferences,
@@ -32,6 +34,36 @@ export const PINNED_SESSIONS_STORAGE_KEY = "tendril:chat:pinned_sessions";
 
 /** The agent every chat runs with until the catalog says otherwise. */
 export const FALLBACK_AGENT_ID = "claude";
+
+/**
+ * How long an interrupt is given to land before a force-send goes ahead anyway, matching the five
+ * seconds `ChatExecutionService.InterruptAsync` waits on the execution task.
+ */
+export const TURN_INTERRUPT_TIMEOUT_MS = 5000;
+
+/** How a row in the Chats list reads while, or just after, its own turn runs. */
+export type ChatSessionRowState = "working" | "completed" | null;
+
+/**
+ * The prompt a turn actually carries when files are attached. Port of the `promptWithAttachments`
+ * block in `ChatExecutionService.SendMessageAsync`: the paths are appended to the prompt under an
+ * `[Attached Files]:` heading, because that is the only channel the agent process has for them.
+ */
+export function buildPromptWithAttachments(
+  prompt: string,
+  attachments?: ChatAttachment[] | null,
+): string {
+  if (!attachments || attachments.length === 0) return prompt;
+  const lines: string[] = [];
+  if (prompt.trim()) {
+    lines.push(prompt, "");
+  }
+  lines.push("[Attached Files]:");
+  for (const attachment of attachments) {
+    lines.push(`- ${attachment.path}`);
+  }
+  return lines.join("\n").trimEnd();
+}
 
 function loadStoredPinnedSessions(): Record<string, string> {
   try {
@@ -172,7 +204,63 @@ function saveStoredDraftOwners(data: Record<string, string>): void {
   }
 }
 
+/**
+ * The plan a store instance is scoped to, so the chat beside a plan follows that plan's own
+ * conversation and nothing else.
+ *
+ * This is V1's arrangement, not an invention: `PlanChatView` keeps its **own** `activeSessionId`
+ * state over the one shared `IChatHistoryService`, and hands `Chat.ContentView` a `sessionDtos` list
+ * of zero or one session — whatever `PlanChatSessions.FindForPlan` resolves. A second `ChatStore`
+ * carrying a scope is that second `activeSessionId`.
+ */
+export interface ChatStorePlanScope {
+  // The store keeps the object it is handed and reads it live rather than copying the fields out, so
+  // a caller may refine it in place. The review page needs that: it renders the panel from a queue
+  // row and only learns the plan's folder when the detail record lands, and the folder is what a new
+  // session records as its owner.
+
+  /** The plan's id as its folder records it — `00021`. */
+  planId: string;
+  /** `00021-BuildDesktopOperator`, which is the whole of `PlanChatSessions.BelongsTo`. */
+  folderName?: string;
+  /** `#21 Build Desktop Operator`: the title `PlanChatSessions.CreateForPlan` gives a new session. */
+  sessionTitle: string;
+}
+
+/**
+ * `PlanChatSessions.BelongsTo`: "A session belongs to exactly one plan, recorded on the session
+ * itself." Matched case-insensitively, as V1's `StringComparison.OrdinalIgnoreCase` does.
+ *
+ * The id-prefix arm is V2's own. V1 can compare `plan.FolderName` directly because a `PlanFile`
+ * always has one; a `PlanDetail` fetched without `folderPath` does not, and it still knows its
+ * number, so `<id>-<slug>` is accepted as the second key rather than losing the conversation.
+ */
+export function sessionBelongsToPlan(session: ChatSession, scope: ChatStorePlanScope): boolean {
+  const recorded = session.planFolderName?.toLowerCase();
+  if (!recorded) return false;
+  const folder = scope.folderName?.toLowerCase();
+  if (folder && recorded === folder) return true;
+  return recorded.startsWith(`${scope.planId.toLowerCase()}-`);
+}
+
+/**
+ * Every live store in this window, so a write made through one is seen by the others.
+ *
+ * At most two exist: the app-wide store the Chat page owns, and a plan-scoped one behind the chat
+ * beside a plan. See {@link ChatStore.adoptStorageChange} for why the sharing is needed at all.
+ */
+const liveChatStores = new Set<ChatStore>();
+
 export class ChatStore {
+  /**
+   * The plan this instance follows, or null for the app-wide store the Chat page owns.
+   *
+   * Two things follow from it and nothing else does: the session list is narrowed to the plan's own
+   * conversation (so "select the first one" resolves to `FindForPlan`'s answer, or to nothing), and a
+   * session created here records the plan, which is the only way the panel finds it again.
+   */
+  private readonly planScope: ChatStorePlanScope | null;
+
   private state: ChatState = {
     sessions: [],
     activeSessionId: null,
@@ -191,36 +279,100 @@ export class ChatStore {
 
   private listeners: Set<() => void> = new Set();
   private eventUnsubscribe: EventUnsubscribe | null = null;
+  /** In-flight (or settled) `init()`, so concurrent callers share one subscription. */
+  private initPromise: Promise<void> | null = null;
+  /**
+   * Bumped by {@link destroy}, so an `init()` still in flight knows its work is unwanted.
+   *
+   * `onChatEvent` is awaited, so a store torn down in that window would otherwise have its listener
+   * registered *after* the `destroy()` that was supposed to remove it — and the plan panel is torn
+   * down in exactly that window, because React's strict mode mounts it, unmounts it and mounts it
+   * again before a single await has settled.
+   */
+  private generation = 0;
+  /**
+   * Whether `fetchSessions` has come back, so `state.sessions` is a list rather than a placeholder.
+   * Only the Chat badge reads it, and only to tell "no chats" from "not asked yet".
+   */
+  private sessionsLoaded = false;
   private storageListenerAttached = false;
   private draftOwners: Record<string, string> = loadStoredDraftOwners();
   private pinnedSessions: Record<string, string> = loadStoredPinnedSessions();
   private agentPreferences: AgentPreferences = loadStoredAgentPreferences();
+  /**
+   * Which sessions are generating, and which finished one while the user was elsewhere. V1 keeps
+   * both sets in `ChatHistoryService` (`SetSessionGenerating`) and every consumer asks about a
+   * named session; `state.isGenerating` here is only the answer for the *active* one, so switching
+   * away from a working chat no longer leaves the composer stuck in its stop-and-queue state.
+   */
+  private generatingSessionIds: Set<string> = new Set();
+  private completedSessionIds: Set<string> = new Set();
+  /** Resolvers waiting for a session's turn to end, used by the force-send path. */
+  private turnEndWaiters: Map<string, Array<() => void>> = new Map();
+  /**
+   * User messages this client appended before the daemon confirmed them. The daemon's own copy
+   * arrives under a fresh id and, when files were attached, with the `[Attached Files]:` block
+   * appended, so it is matched by prefix rather than by id - V1's ChatWidget retires its optimistic
+   * rows the same way (`m.content.startsWith(opt.content)`).
+   */
+  private optimisticMessageIds: Set<string> = new Set();
 
-  constructor() {
+  constructor(planScope?: ChatStorePlanScope) {
+    this.planScope = planScope ?? null;
+    liveChatStores.add(this);
     if (typeof window !== "undefined") {
       this.attachStorageListener();
     }
     this.applyAgentPreference(this.state.selectedAgentId);
   }
 
+  /** Whether this instance follows one plan's conversation rather than the whole history. */
+  public get isPlanScoped(): boolean {
+    return this.planScope !== null;
+  }
+
   private handleStorageEvent = (event: StorageEvent): void => {
-    if (event.key === IN_PROGRESS_ANSWERS_STORAGE_KEY) {
+    this.adoptStorageChange(event.key, event.newValue);
+  };
+
+  /**
+   * Takes on a write to one of this store's persisted maps, whoever made it.
+   *
+   * Two callers: the `storage` event, which is another *window*; and {@link broadcastStorageChange},
+   * which is the other store in **this** window. V1 needs neither, because its `IChatHistoryService`
+   * and `IChatAgentPreferences` are single shared services that both the Chat app and the embedded
+   * `PlanChatView` read straight through. Here each store holds its own in-memory copy of the same
+   * localStorage, so a pin, an in-progress answer or a per-agent model chosen in the plan panel has
+   * to be handed to the store the Chat page reads — otherwise it silently shows the value from before.
+   */
+  private adoptStorageChange(key: string | null, newValue: string | null): void {
+    if (key === IN_PROGRESS_ANSWERS_STORAGE_KEY) {
       try {
-        const next = event.newValue ? JSON.parse(event.newValue) : {};
+        const next = newValue ? JSON.parse(newValue) : {};
         this.state.inProgressAnswers = next;
         this.notify();
       } catch {
         // Ignore malformed external writes
       }
-    } else if (event.key === DRAFT_OWNERS_STORAGE_KEY) {
+    } else if (key === DRAFT_OWNERS_STORAGE_KEY) {
       try {
-        this.draftOwners = event.newValue ? JSON.parse(event.newValue) : {};
+        this.draftOwners = newValue ? JSON.parse(newValue) : {};
       } catch {
         // Ignore malformed external writes
       }
-    } else if (event.key === PINNED_SESSIONS_STORAGE_KEY) {
+    } else if (key === AGENT_PREFERENCES_STORAGE_KEY) {
       try {
-        this.pinnedSessions = event.newValue ? JSON.parse(event.newValue) : {};
+        this.agentPreferences = newValue ? JSON.parse(newValue) : {};
+        // The picker reads the selected agent's model and effort off `state`, so adopting the map is
+        // only half of it: the selection has to be re-resolved against it.
+        this.applyAgentPreference(this.state.selectedAgentId);
+        this.notify();
+      } catch {
+        // Ignore malformed external writes
+      }
+    } else if (key === PINNED_SESSIONS_STORAGE_KEY) {
+      try {
+        this.pinnedSessions = newValue ? JSON.parse(newValue) : {};
         this.state.sessions = this.sortSessions(this.enrichSessionsWithPins(this.state.sessions));
         if (this.state.activeSession) {
           const isPinned = Boolean(this.pinnedSessions[this.state.activeSession.id]);
@@ -234,7 +386,15 @@ export class ChatStore {
         // Ignore malformed external writes
       }
     }
-  };
+  }
+
+  /** Hands a write this store just made to every other live store in this window. */
+  private broadcastStorageChange(key: string, value: unknown): void {
+    const serialized = JSON.stringify(value);
+    for (const other of liveChatStores) {
+      if (other !== this) other.adoptStorageChange(key, serialized);
+    }
+  }
 
   private attachStorageListener(): void {
     if (!this.storageListenerAttached && typeof window !== "undefined") {
@@ -260,24 +420,69 @@ export class ChatStore {
   }
 
   private notify(): void {
+    /* The shell's Chat badge, which V1 recomputes from `chatService.GetSessions().Count` on every
+       `Build()` (`AppShell/TendrilAppShell.cs:1085`). Pushed from here rather than pulled by the
+       shell because `App.tsx` must not import this module - see `chatSessionCount.ts`. Doing it on
+       every notify is the closest thing to V1's every-build: a create, a delete, a prune and a
+       reload all pass through here, and the publish is a no-op when the number has not moved.
+
+       Two stores stay out of it. A plan-scoped one filters the list to a single conversation, so its
+       count is not the number of chats the user has. And an app-wide one that has not loaded yet has
+       an empty `sessions` meaning "not known", not "none" - publishing that would blank a badge the
+       shell's own startup fetch had correctly filled. */
+    if (!this.planScope && this.sessionsLoaded) {
+      publishChatSessionCount(this.state.sessions.length);
+    }
     this.listeners.forEach((l) => l());
   }
 
-  public async init(): Promise<void> {
+  /**
+   * Loads drafts, the agent catalog, the event subscription and the session list, at most once.
+   *
+   * The in-flight promise is stored **synchronously**, because the `eventUnsubscribe` guard inside
+   * `runInit` is only reached after two awaits: two overlapping calls (React StrictMode invokes
+   * `ChatView`'s mount effect twice) both got past it while the first was still awaiting, and the
+   * store ended up with two `chat-event` listeners. `chat.stream_delta` is the one handler that is
+   * not idempotent — it *appends* to the message it names — so every streamed chunk, and the
+   * synthesized report a failed turn ends with, was written into the message twice.
+   *
+   * A failed init clears the memo so the next caller can retry.
+   */
+  public init(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.runInit().catch((err) => {
+        this.initPromise = null;
+        throw err;
+      });
+    }
+    return this.initPromise;
+  }
+
+  private async runInit(): Promise<void> {
+    const generation = this.generation;
     this.state.inProgressAnswers = loadStoredInProgressAnswers();
     this.draftOwners = loadStoredDraftOwners();
     this.pinnedSessions = loadStoredPinnedSessions();
     this.attachStorageListener();
+    liveChatStores.add(this);
     await this.loadAgents();
     if (!this.eventUnsubscribe) {
       try {
-        this.eventUnsubscribe = await onChatEvent((event) => {
+        const unsubscribe = await onChatEvent((event) => {
           this.handleChatEvent(event);
         });
+        if (generation !== this.generation) {
+          // Destroyed while the subscription was being set up, so it belongs to nobody: drop it
+          // here rather than leave a listener the `destroy()` already went past.
+          unsubscribe();
+          return;
+        }
+        this.eventUnsubscribe = unsubscribe;
       } catch {
         // May fail in mock/testing environments without Tauri runtime
       }
     }
+    if (generation !== this.generation) return;
     await this.fetchSessions();
   }
 
@@ -312,20 +517,143 @@ export class ChatStore {
     return this.state.agents.find((a) => a.id === agentId);
   }
 
-  /** Where an agent with no remembered preference starts: the head of each of its lists. */
-  private agentDefaults(agentId: string): { modelId: string; effort: string } {
-    const agent = this.agentById(agentId);
-    return {
-      modelId: agent?.models[0]?.id ?? DEFAULT_OPTION_ID,
-      effort: agent?.efforts[0]?.id ?? DEFAULT_OPTION_ID,
-    };
+  /**
+   * The model an agent runs with: the first remembered candidate the agent still offers, then the
+   * one its catalog marks as the default, then the head of the list. Port of
+   * `ChatApp.ResolveModel` - a remembered id that the catalog no longer carries is dropped rather
+   * than passed through to `--model`.
+   */
+  public resolveModel(agentId: string, ...preferred: (string | undefined)[]): string {
+    const models = this.agentById(agentId)?.models ?? [];
+    // With no catalog there is nothing to validate against, so a remembered choice is kept.
+    if (models.length === 0) {
+      return preferred.find((candidate) => Boolean(candidate)) ?? DEFAULT_OPTION_ID;
+    }
+    for (const candidate of preferred) {
+      if (!candidate) continue;
+      const match = models.find((m) => m.id.toLowerCase() === candidate.toLowerCase());
+      if (match) return match.id;
+    }
+    const fallback = models.find(
+      (m) =>
+        m.id.toLowerCase() === DEFAULT_OPTION_ID ||
+        /\(default\)/i.test(m.displayName) ||
+        /\sdefault$/i.test(m.displayName),
+    );
+    return fallback?.id ?? models[0].id;
+  }
+
+  /**
+   * The effort an agent runs with. Port of `ChatApp.ResolveEffort`: anything the agent does not
+   * offer falls back to `default` rather than being sent on.
+   */
+  public resolveEffort(agentId: string, ...preferred: (string | undefined)[]): string {
+    const efforts = this.agentById(agentId)?.efforts ?? [];
+    if (efforts.length === 0) {
+      return preferred.find((candidate) => Boolean(candidate)) ?? DEFAULT_OPTION_ID;
+    }
+    for (const candidate of preferred) {
+      if (!candidate) continue;
+      const match = efforts.find((e) => e.id.toLowerCase() === candidate.toLowerCase());
+      if (match) return match.id;
+    }
+    return DEFAULT_OPTION_ID;
   }
 
   private applyAgentPreference(agentId: string): void {
     const preference = this.agentPreferences[agentId];
-    const defaults = this.agentDefaults(agentId);
-    this.state.selectedModelId = preference?.modelId ?? defaults.modelId;
-    this.state.selectedEffort = preference?.effort ?? defaults.effort;
+    this.state.selectedModelId = this.resolveModel(agentId, preference?.modelId);
+    this.state.selectedEffort = this.resolveEffort(agentId, preference?.effort);
+  }
+
+  /**
+   * A session remembers the agent, model and effort it ran with, and opening it restores them, so
+   * a follow-up turn in an old chat does not silently run on whatever the composer was last set to.
+   * Port of the three `Set` calls in `ChatApp.SelectSession`. Two deliberate additions: a session
+   * whose agent differs also picks up that agent's remembered model and effort first, and the
+   * session's own ids are validated against the catalog, both so the picker cannot end up showing
+   * one agent wearing another's model.
+   */
+  private adoptSessionSelection(session: ChatSession): void {
+    if (session.agentId && session.agentId !== this.state.selectedAgentId) {
+      this.state.selectedAgentId = session.agentId;
+      this.applyAgentPreference(session.agentId);
+    }
+    const agentId = this.state.selectedAgentId;
+    if (session.modelId) {
+      this.state.selectedModelId = this.resolveModel(agentId, session.modelId);
+    }
+    if (session.effort) {
+      this.state.selectedEffort = this.resolveEffort(agentId, session.effort);
+    }
+  }
+
+  /**
+   * Records that a session started or stopped generating, mirroring
+   * `ChatHistoryService.SetSessionGenerating`: leaving the generating set marks the session
+   * completed, so a chat that finished while the user was reading another one can say so.
+   */
+  private setSessionGenerating(sessionId: string, isGenerating: boolean): void {
+    if (!sessionId) return;
+    if (isGenerating) {
+      this.completedSessionIds.delete(sessionId);
+      this.generatingSessionIds.add(sessionId);
+    } else {
+      this.generatingSessionIds.delete(sessionId);
+      this.completedSessionIds.add(sessionId);
+      const waiters = this.turnEndWaiters.get(sessionId);
+      if (waiters) {
+        this.turnEndWaiters.delete(sessionId);
+        for (const resolve of waiters) resolve();
+      }
+    }
+    this.syncGenerating();
+  }
+
+  /** `state.isGenerating` only ever describes the active session, as `ChatApp.Build` does. */
+  private syncGenerating(): void {
+    this.state.isGenerating = this.state.activeSessionId
+      ? this.generatingSessionIds.has(this.state.activeSessionId)
+      : false;
+  }
+
+  public isSessionGenerating(sessionId: string): boolean {
+    return this.generatingSessionIds.has(sessionId);
+  }
+
+  /** Port of `ChatApp.BuildRowState`: the state a Chats row wears in the list. */
+  public sessionRowState(sessionId: string): ChatSessionRowState {
+    if (this.generatingSessionIds.has(sessionId)) return "working";
+    if (this.completedSessionIds.has(sessionId) && sessionId !== this.state.activeSessionId) {
+      return "completed";
+    }
+    return null;
+  }
+
+  /** Port of `ChatHistoryService.ClearSessionCompleted`, called when a session is opened. */
+  public clearSessionCompleted(sessionId: string): void {
+    this.completedSessionIds.delete(sessionId);
+  }
+
+  /**
+   * Waits for a session's turn to end, so a force-send interrupts before it sends. The daemon
+   * refuses a second turn while one is running, so this is the client-side equivalent of
+   * `InterruptAsync` awaiting the execution task, with the same five-second ceiling.
+   */
+  private waitForTurnToEnd(sessionId: string): Promise<void> {
+    if (!this.generatingSessionIds.has(sessionId)) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const waiters = this.turnEndWaiters.get(sessionId) ?? [];
+      waiters.push(finish);
+      this.turnEndWaiters.set(sessionId, waiters);
+      setTimeout(finish, TURN_INTERRUPT_TIMEOUT_MS);
+    });
   }
 
   /**
@@ -346,6 +674,7 @@ export class ChatStore {
       [agentId]: { ...this.agentPreferences[agentId], modelId },
     };
     saveStoredAgentPreferences(this.agentPreferences);
+    this.broadcastStorageChange(AGENT_PREFERENCES_STORAGE_KEY, this.agentPreferences);
     if (agentId === this.state.selectedAgentId) {
       this.state.selectedModelId = modelId;
     }
@@ -359,6 +688,7 @@ export class ChatStore {
       [agentId]: { ...this.agentPreferences[agentId], effort },
     };
     saveStoredAgentPreferences(this.agentPreferences);
+    this.broadcastStorageChange(AGENT_PREFERENCES_STORAGE_KEY, this.agentPreferences);
     if (agentId === this.state.selectedAgentId) {
       this.state.selectedEffort = effort;
     }
@@ -384,12 +714,27 @@ export class ChatStore {
     };
   }
 
+  /**
+   * Releases everything this instance holds outside itself: the `storage` listener, the `chat-event`
+   * subscription, and its place in the live set.
+   *
+   * The plan panel's store is destroyed when the panel unmounts, which is what keeps a visit to a
+   * plan page from leaving another `chat-event` listener behind. The `init()` memo goes with it, so a
+   * remount subscribes again rather than believing it already had.
+   */
   public destroy(): void {
+    this.generation += 1;
     this.detachStorageListener();
     if (this.eventUnsubscribe) {
       this.eventUnsubscribe();
       this.eventUnsubscribe = null;
     }
+    // The `init()` memo goes with the subscription it was standing for, so a remount subscribes
+    // again instead of believing it already had. Safe now that `generation` stops the previous
+    // `runInit` from also finishing: exactly one listener survives, however the two interleave.
+    this.initPromise = null;
+    this.listeners.clear();
+    liveChatStores.delete(this);
   }
 
   public resetForTesting(): void {
@@ -416,6 +761,16 @@ export class ChatStore {
     this.agentPreferences = {};
     saveStoredAgentPreferences({});
     saveStoredSelectedAgent(null);
+    this.sessionsLoaded = false;
+    this.generatingSessionIds = new Set();
+    this.completedSessionIds = new Set();
+    this.turnEndWaiters = new Map();
+    this.optimisticMessageIds = new Set();
+    // Drop the event subscription and the `init()` memo together: a test that reset the store and
+    // called `init()` again would otherwise keep the previous test's listener and skip the reload.
+    this.eventUnsubscribe?.();
+    this.eventUnsubscribe = null;
+    this.initPromise = null;
     try {
       const legacyStorage =
         typeof sessionStorage !== "undefined"
@@ -466,6 +821,7 @@ export class ChatStore {
       this.pinnedSessions[sessionId] = new Date().toISOString();
     }
     saveStoredPinnedSessions(this.pinnedSessions);
+    this.broadcastStorageChange(PINNED_SESSIONS_STORAGE_KEY, this.pinnedSessions);
 
     if (this.state.activeSession && this.state.activeSession.id === sessionId) {
       this.state.activeSession.isPinned = !isCurrentlyPinned;
@@ -481,7 +837,9 @@ export class ChatStore {
   public async pruneEmptySessions(keepSessionId?: string | null): Promise<void> {
     const toDelete = this.state.sessions.filter((s) => {
       if (keepSessionId && s.id === keepSessionId) return false;
-      if (this.state.isGenerating && this.state.activeSessionId === s.id) return false;
+      // A generating session is never pruned, whether or not it is the one on screen, which is
+      // what `ChatHistoryService.PruneEmptySessions` checks.
+      if (this.generatingSessionIds.has(s.id)) return false;
       return !s.messages || s.messages.length === 0;
     });
 
@@ -493,6 +851,7 @@ export class ChatStore {
       this.state.activeSessionId = null;
       this.state.activeSession = null;
       this.state.queuedItems = [];
+      this.syncGenerating();
     }
 
     let pinnedChanged = false;
@@ -514,7 +873,10 @@ export class ChatStore {
   public handleChatEvent(event: ChatEvent): void {
     switch (event.type) {
       case "chat.stream_delta": {
+        // A delta proves its own session is working, whichever one is on screen.
+        this.setSessionGenerating(event.sessionId, true);
         if (!this.state.activeSession || this.state.activeSession.id !== event.sessionId) {
+          this.notify();
           return;
         }
         const messages = this.state.activeSession.messages;
@@ -535,7 +897,38 @@ export class ChatStore {
             timestamp: new Date().toISOString(),
           });
         }
-        this.state.isGenerating = true;
+        this.notify();
+        break;
+      }
+
+      case "chat.stream_event": {
+        // Same reasoning as the delta above: a stream event proves the session is working.
+        this.setSessionGenerating(event.sessionId, true);
+        if (!this.state.activeSession || this.state.activeSession.id !== event.sessionId) {
+          this.notify();
+          return;
+        }
+        const messages = this.state.activeSession.messages;
+        const targetIndex = messages.findIndex((m) => m.id === event.messageId);
+        // The stream is newline-delimited JSON, which is exactly what `TurnActivity` hands to
+        // `parseEventWireStream`, so appending one line per event makes the tool cards appear as the
+        // turn runs. A duplicate line would only re-render the same tool card, since events are keyed
+        // by `tool_use_id`.
+        if (targetIndex >= 0) {
+          const targetMsg = messages[targetIndex];
+          const rawStream = targetMsg.rawStream
+            ? `${targetMsg.rawStream}\n${event.line}`
+            : event.line;
+          messages[targetIndex] = { ...targetMsg, rawStream };
+        } else {
+          messages.push({
+            id: event.messageId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date().toISOString(),
+            rawStream: event.line,
+          });
+        }
         this.notify();
         break;
       }
@@ -547,9 +940,40 @@ export class ChatStore {
         const messages = this.state.activeSession.messages;
         const index = messages.findIndex((m) => m.id === event.message.id);
         if (index >= 0) {
-          messages[index] = event.message;
+          // An upsert, which is what makes the daemon's copy of a finished turn safe to apply more
+          // than once. Fields the frame leaves off are kept: the raw stream is omitted from the
+          // finalize frame (it is a whole run's worth of JSON) and attachments only exist locally.
+          const existing = messages[index];
+          messages[index] = {
+            ...event.message,
+            rawStream: event.message.rawStream ?? existing.rawStream,
+            attachments: event.message.attachments ?? existing.attachments,
+          };
         } else {
-          messages.push(event.message);
+          // The daemon's copy of a message this client already showed replaces it rather than
+          // doubling it up. Prefix match, not equality: the prompt that reaches the agent carries
+          // the `[Attached Files]:` block the composer did not show.
+          const optimisticIndex =
+            event.message.role === "user"
+              ? messages.findIndex(
+                  (m) =>
+                    m.role === "user" &&
+                    this.optimisticMessageIds.has(m.id) &&
+                    event.message.content.startsWith(m.content),
+                )
+              : -1;
+          if (optimisticIndex >= 0) {
+            const optimistic = messages[optimisticIndex];
+            this.optimisticMessageIds.delete(optimistic.id);
+            // The daemon does not persist attachments on a message, so the chips only survive
+            // because the local copy carried them.
+            messages[optimisticIndex] = {
+              ...event.message,
+              attachments: event.message.attachments ?? optimistic.attachments,
+            };
+          } else {
+            messages.push(event.message);
+          }
         }
         this.state.activeSession.updatedAt = event.message.timestamp || new Date().toISOString();
         this.notify();
@@ -557,10 +981,20 @@ export class ChatStore {
       }
 
       case "chat.generating_state": {
-        if (this.state.activeSessionId === event.sessionId) {
-          this.state.isGenerating = event.isGenerating;
-          this.notify();
+        const wasGenerating = this.generatingSessionIds.has(event.sessionId);
+        this.setSessionGenerating(event.sessionId, event.isGenerating);
+        // A finished turn is re-read from the daemon rather than assumed, the way `ChatApp`'s
+        // `OnSessionGeneratingChanged` bumps its version and re-reads the session: the final
+        // content, the reconciled tool results and any answers applied mid-flight only exist
+        // there. The stream we already received is never truncated by the re-read.
+        if (
+          wasGenerating &&
+          !event.isGenerating &&
+          this.state.activeSessionId === event.sessionId
+        ) {
+          void this.refreshActiveSession({ preserveLocalLonger: true }).catch(() => {});
         }
+        this.notify();
         break;
       }
 
@@ -594,12 +1028,25 @@ export class ChatStore {
       }
 
       case "chat.job_spawned": {
-        if (this.state.activeSessionId === event.sessionId && this.state.activeSession) {
-          if (!this.state.activeSession.spawnedJobIds.includes(event.jobId)) {
-            this.state.activeSession.spawnedJobIds.push(event.jobId);
-            this.notify();
-          }
-        }
+        // Recorded on whichever copies of the session are loaded, not only the active one: a turn keeps
+        // running after the user navigates away, and a job announced in that window used to be dropped
+        // here — so switching back showed a conversation with no jobs in its header.
+        //
+        // The list is *replaced* rather than pushed to. `ChatView` derives the header's jobs in a
+        // `useMemo` keyed on `activeSession.spawnedJobIds`, so a push left the key referentially equal
+        // and the memo kept its previous value: the re-render happened and the pill still did not
+        // appear. A new array is what makes the change visible.
+        let changed = false;
+        const record = (session: ChatSession | null | undefined) => {
+          if (!session || session.id !== event.sessionId) return false;
+          if (session.spawnedJobIds.includes(event.jobId)) return false;
+          session.spawnedJobIds = [...session.spawnedJobIds, event.jobId];
+          changed = true;
+          return true;
+        };
+        record(this.state.activeSession);
+        this.state.sessions.forEach(record);
+        if (changed) this.notify();
         break;
       }
 
@@ -632,6 +1079,8 @@ export class ChatStore {
     this.draftOwners = owners;
     saveStoredInProgressAnswers(drafts);
     saveStoredDraftOwners(owners);
+    this.broadcastStorageChange(DRAFT_OWNERS_STORAGE_KEY, owners);
+    this.broadcastStorageChange(IN_PROGRESS_ANSWERS_STORAGE_KEY, drafts);
   }
 
   private backfillDraftOwners(sessions: ChatSession[]): void {
@@ -689,9 +1138,19 @@ export class ChatStore {
 
     try {
       const sessions = await chatApi.listSessions();
-      const enriched = this.enrichSessionsWithPins(sessions);
+      // A plan-scoped store sees only the plan's own conversation, which is `PlanChatView`'s
+      // `sessionDtos`: `[ToSessionDto(session)]` when `FindForPlan` found one and an empty list when
+      // it did not. Narrowing here rather than at every reader is what keeps the rest of the store
+      // honest — "select the first session" then resolves to the plan's, or to nothing at all, and a
+      // delete cannot fall back onto an unrelated chat.
+      const scope = this.planScope;
+      const scoped = scope
+        ? sessions.filter((session) => sessionBelongsToPlan(session, scope))
+        : sessions;
+      const enriched = this.enrichSessionsWithPins(scoped);
       const sorted = this.sortSessions(enriched);
       this.state.sessions = sorted;
+      this.sessionsLoaded = true;
       this.state.isLoading = false;
       this.backfillDraftOwners(sorted);
       this.sweepDraftsForMissingSessions(sorted);
@@ -721,6 +1180,17 @@ export class ChatStore {
     }
   }
 
+  /**
+   * Reads one session without making it the active one.
+   *
+   * A terminal pane needs its conversation's title for its header but is not the chat view and must
+   * not take over `activeSession` — `selectSession` would move the chat view's selection and prune the
+   * session it left.
+   */
+  public async fetchSession(id: string): Promise<ChatSession> {
+    return await chatApi.getSession(id);
+  }
+
   public async selectSession(id: string): Promise<void> {
     const prevId = this.state.activeSessionId;
     const prevSession = this.state.activeSession;
@@ -730,13 +1200,17 @@ export class ChatStore {
       prevSession &&
       prevSession.id === prevId &&
       (!prevSession.messages || prevSession.messages.length === 0) &&
-      !this.state.isGenerating
+      !this.generatingSessionIds.has(prevId)
     ) {
       await this.pruneEmptySessions(id);
     }
 
     this.state.activeSessionId = id;
     this.state.error = null;
+    // Opening a chat acknowledges that it finished, and the composer's state follows the session
+    // that is now on screen rather than the one that was. Both are `ChatApp.SelectSession`.
+    this.clearSessionCompleted(id);
+    this.syncGenerating();
     this.notify();
 
     try {
@@ -751,6 +1225,7 @@ export class ChatStore {
       this.state.activeSession = session;
       this.state.queuedItems = queue;
       this.backfillDraftOwners([session]);
+      this.adoptSessionSelection(session);
 
       // Also update in sessions list
       const idx = this.state.sessions.findIndex((s) => s.id === session.id);
@@ -766,8 +1241,14 @@ export class ChatStore {
     }
   }
 
-  public async refreshActiveSession(): Promise<void> {
+  /**
+   * Re-reads the active session from the daemon. `preserveLocalLonger` keeps a locally streamed
+   * message that is longer than the daemon's copy, which is what makes this safe to call the
+   * moment a turn ends as well as while one runs.
+   */
+  public async refreshActiveSession(options?: { preserveLocalLonger?: boolean }): Promise<void> {
     if (!this.state.activeSessionId) return;
+    const preserveLocalLonger = options?.preserveLocalLonger ?? this.state.isGenerating;
     try {
       const [session, queue] = await Promise.all([
         chatApi.getSession(this.state.activeSessionId),
@@ -777,24 +1258,32 @@ export class ChatStore {
       session.isPinned = isPinned;
       session.pinnedAt = isPinned ? this.pinnedSessions[session.id] : undefined;
 
-      if (this.state.isGenerating && this.state.activeSession) {
-        const mergedMessages = session.messages.map((serverMsg) => {
-          const localMsg = this.state.activeSession?.messages.find((m) => m.id === serverMsg.id);
-          if (localMsg && localMsg.content.length > serverMsg.content.length) {
-            return {
-              ...localMsg,
-              content: mergeConfirmedQuestionsBlock(localMsg.content, serverMsg.content),
-            };
-          }
-          return serverMsg;
-        });
-        this.state.activeSession = {
-          ...session,
-          messages: mergedMessages,
+      const localMessages = this.state.activeSession?.messages ?? [];
+      const mergedMessages = session.messages.map((serverMsg) => {
+        const localMsg = localMessages.find((m) => m.id === serverMsg.id);
+        // The daemon persists a turn's stream on a timer, so mid-turn its copy lags the events this
+        // client already received. Keeping the longer one applies to the stream for the same reason it
+        // applies to the content: otherwise a refresh mid-turn drops tool cards that are on screen.
+        const rawStream =
+          preserveLocalLonger &&
+          (localMsg?.rawStream?.length ?? 0) > (serverMsg.rawStream?.length ?? 0)
+            ? localMsg?.rawStream
+            : serverMsg.rawStream;
+        if (preserveLocalLonger && localMsg && localMsg.content.length > serverMsg.content.length) {
+          return {
+            ...localMsg,
+            content: mergeConfirmedQuestionsBlock(localMsg.content, serverMsg.content),
+            rawStream,
+          };
+        }
+        // Attachments live only on this client, so a re-read must not drop the chips.
+        return {
+          ...serverMsg,
+          rawStream,
+          attachments: serverMsg.attachments ?? localMsg?.attachments,
         };
-      } else {
-        this.state.activeSession = session;
-      }
+      });
+      this.state.activeSession = { ...session, messages: mergedMessages };
       this.state.queuedItems = queue;
       this.backfillDraftOwners([session]);
 
@@ -820,7 +1309,7 @@ export class ChatStore {
       if (
         prevSession &&
         (!prevSession.messages || prevSession.messages.length === 0) &&
-        !this.state.isGenerating
+        !this.generatingSessionIds.has(prevSession.id)
       ) {
         await this.pruneEmptySessions();
       }
@@ -828,8 +1317,13 @@ export class ChatStore {
       // A session records its agent/model/effort, so the very first turn runs with the current
       // selection rather than the backend's defaults.
       const newSession = await chatApi.createSession({
-        title,
+        // `PlanChatSessions.CreateForPlan`: `title: $"#{plan.Id} {plan.Title}"`, so the plan's chat
+        // is recognisable in the Chat app's own list rather than sitting there as another "New Chat".
+        title: title ?? this.planScope?.sessionTitle,
         ...(args ?? this.turnOptions()),
+        // `planFolderName: plan.FolderName` — the durable record of which plan owns the conversation,
+        // and the only thing that lets the panel find it again on the next visit.
+        ...(this.planScope?.folderName ? { planFolderName: this.planScope.folderName } : {}),
       });
       newSession.isPinned = false;
       newSession.pinnedAt = undefined;
@@ -837,7 +1331,7 @@ export class ChatStore {
       this.state.activeSessionId = newSession.id;
       this.state.activeSession = newSession;
       this.state.queuedItems = [];
-      this.state.isGenerating = false;
+      this.syncGenerating();
       this.notify();
       return newSession;
     } catch (err) {
@@ -907,6 +1401,11 @@ export class ChatStore {
         delete this.pinnedSessions[id];
         saveStoredPinnedSessions(this.pinnedSessions);
       }
+      // Deleting a session cancels its turn daemon-side, so it is neither working nor freshly
+      // completed any more.
+      this.generatingSessionIds.delete(id);
+      this.completedSessionIds.delete(id);
+      this.turnEndWaiters.delete(id);
 
       if (this.state.activeSessionId === id) {
         if (this.state.sessions.length > 0) {
@@ -917,6 +1416,7 @@ export class ChatStore {
           this.state.queuedItems = [];
         }
       }
+      this.syncGenerating();
 
       const messageIds = new Set(deletedSession?.messages?.map((m) => m.id) ?? []);
       const nextInProgress = { ...this.state.inProgressAnswers };
@@ -951,10 +1451,14 @@ export class ChatStore {
       sessionId = newSession.id;
     }
 
+    const wasGenerating = this.generatingSessionIds.has(sessionId);
+    let optimisticId: string | null = null;
+
     if (!options?.enqueue) {
       // Optimistic user message
+      optimisticId = `msg-${Date.now()}`;
       const userMsg: ChatMessage = {
-        id: `msg-${Date.now()}`,
+        id: optimisticId,
         role: "user",
         content: prompt,
         timestamp: new Date().toISOString(),
@@ -962,8 +1466,9 @@ export class ChatStore {
       };
       if (this.state.activeSession) {
         this.state.activeSession.messages.push(userMsg);
+        this.optimisticMessageIds.add(optimisticId);
       }
-      this.state.isGenerating = true;
+      this.setSessionGenerating(sessionId, true);
       this.notify();
     }
 
@@ -978,25 +1483,101 @@ export class ChatStore {
         }
       } else {
         // `postMessage` starts the turn with ChatTurnOptions::default(), so it cannot carry the
-        // agent/model/effort selection; the execute route can.
-        await chatApi.executeTurn(sessionId, { prompt, ...this.turnOptions() });
+        // agent/model/effort selection; the execute route can. The prompt carries the attachment
+        // paths, because the execute route has nowhere else to put them.
+        await chatApi.executeTurn(sessionId, {
+          prompt: buildPromptWithAttachments(prompt, options?.attachments),
+          ...this.turnOptions(),
+        });
       }
     } catch (err) {
-      this.state.isGenerating = false;
+      // The turn was refused, so this session's generating state is whatever it already was - a
+      // send that races a running turn must not tell the composer the chat went idle. The row the
+      // send optimistically added is dropped, since nothing will ever answer it.
+      if (!wasGenerating) {
+        this.generatingSessionIds.delete(sessionId);
+        this.syncGenerating();
+      }
+      if (optimisticId && this.state.activeSession) {
+        this.state.activeSession.messages = this.state.activeSession.messages.filter(
+          (m) => m.id !== optimisticId,
+        );
+        this.optimisticMessageIds.delete(optimisticId);
+      }
       this.state.error = err instanceof Error ? err.message : String(err);
       this.notify();
       throw err;
     }
   }
 
+  /**
+   * Stops the turn in flight. The queue is cleared first, as `ContentView`'s `OnCancelStream`
+   * does: the daemon drains its queue as soon as a turn ends, so a stop that left prompts behind
+   * would immediately start the next one instead of stopping.
+   */
   public async cancelGeneration(): Promise<void> {
-    if (!this.state.activeSessionId) return;
+    const sessionId = this.state.activeSessionId;
+    if (!sessionId) return;
+
+    const previousQueue = this.state.queuedItems;
+    if (previousQueue.length > 0) {
+      this.state.queuedItems = [];
+      this.notify();
+      try {
+        await chatApi.clearQueue(sessionId);
+      } catch {
+        // A queue that could not be cleared is still queued; show it again rather than lie.
+        this.state.queuedItems = previousQueue;
+        this.notify();
+      }
+    }
+
     try {
-      await chatApi.cancelTurn(this.state.activeSessionId);
-      this.state.isGenerating = false;
+      await chatApi.cancelTurn(sessionId);
+      this.setSessionGenerating(sessionId, false);
       this.notify();
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+    }
+  }
+
+  /**
+   * Jumps a queued prompt to the front of the line. Port of `ContentView.OnSendQueuedNow` and the
+   * `ForceSend` path behind it: the item leaves the queue and starts a turn straight away,
+   * interrupting the one in flight (`ChatExecutionService.ForceSendMessageAsync` =
+   * `InterruptAsync` then `SendMessageAsync`).
+   */
+  public async sendQueuedNow(itemId: string): Promise<void> {
+    const sessionId = this.state.activeSessionId;
+    if (!sessionId) return;
+    const item = this.state.queuedItems.find((queued) => queued.id === itemId);
+    if (!item) return;
+
+    const previousQueue = this.state.queuedItems;
+    this.state.queuedItems = previousQueue.filter((queued) => queued.id !== itemId);
+    this.notify();
+
+    try {
+      // The item has to leave the daemon's queue before the turn starts, or it would be drained
+      // again once that turn finishes.
+      await chatApi.deleteQueuedItem(sessionId, itemId);
+      if (this.generatingSessionIds.has(sessionId)) {
+        await chatApi.cancelTurn(sessionId);
+        await this.waitForTurnToEnd(sessionId);
+      }
+      await this.sendMessage(item.prompt, { attachments: item.attachments });
+    } catch (err) {
+      // A prompt the user asked to send now must not disappear. Its place in the queue is lost,
+      // which is the price of having taken it out before the send could be attempted.
+      this.state.error = err instanceof Error ? err.message : String(err);
+      this.notify();
+      try {
+        const restored = await chatApi.enqueueItem(sessionId, item.prompt, item.attachments);
+        this.state.queuedItems = [...this.state.queuedItems, restored];
+      } catch {
+        this.state.queuedItems = previousQueue;
+      }
       this.notify();
     }
   }

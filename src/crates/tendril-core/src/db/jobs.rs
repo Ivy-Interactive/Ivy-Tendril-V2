@@ -1,3 +1,4 @@
+use crate::db::query::{QueryPage, TableDescriptor, TableQuery};
 use crate::models::{JobItem, JobStatus};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Result, Row};
@@ -9,7 +10,8 @@ const JOB_COLUMNS: &str = "Id, Type, PlanFile, Project, Status, Provider, Starte
      CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason, \
      Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens, \
      ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState, \
-     Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey";
+     Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey, \
+     ChatSessionId";
 
 const INSERT_SQL: &str = r#"
     INSERT INTO Jobs (
@@ -18,11 +20,12 @@ const INSERT_SQL: &str = r#"
         CliCommand, Cleared, ReportedPlanId, ReportedPlanTitle, ReportedFailureReason,
         Model, InputTokens, OutputTokens, CacheReadTokens, CacheWriteTokens,
         ReasoningTokens, CostSource, ExecutionProfile, Effort, ProcessId, PreviousPlanState,
-        Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey
+        Priority, LastOutputAt, WaitForJobIds, PermissionDenials, DedupeKey, IdempotencyKey,
+        ChatSessionId
     ) VALUES (
         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
         ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
-        ?31, ?32, ?33, ?34, ?35, ?36
+        ?31, ?32, ?33, ?34, ?35, ?36, ?37
     )
 "#;
 
@@ -32,15 +35,34 @@ const INSERT_SQL: &str = r#"
 /// be able to clear or rewrite them.
 const UPSERT_TAIL: &str = r#"
     ON CONFLICT(Id) DO UPDATE SET
+        -- A `CreatePlan` starts with no plan and is given one by `verify_create_plan`, so unlike every
+        -- other column here this one has to be writable *and* protected: a write carrying the empty
+        -- string is a record that predates the back-fill, and must not erase the folder a later one
+        -- found. Without this the plan a `CreatePlan` produced was unreachable from its own job row.
+        PlanFile = CASE WHEN excluded.PlanFile != '' THEN excluded.PlanFile ELSE Jobs.PlanFile END,
+        -- Same guard, and `Auto` counts as unset: it is the sentinel for "not known yet", so a write
+        -- carrying it must not undo one that had learned the real project. A `CreatePlan` submitted
+        -- without one starts as `Auto` and learns it from the plan it produces.
+        Project = CASE
+            WHEN excluded.Project != '' AND excluded.Project != 'Auto' THEN excluded.Project
+            ELSE Jobs.Project
+        END,
         Status = excluded.Status,
         CompletedAt = excluded.CompletedAt,
         DurationSeconds = excluded.DurationSeconds,
         Cost = excluded.Cost,
         Tokens = excluded.Tokens,
         StatusMessage = excluded.StatusMessage,
-        ReportedPlanId = excluded.ReportedPlanId,
-        ReportedPlanTitle = excluded.ReportedPlanTitle,
-        ReportedFailureReason = excluded.ReportedFailureReason,
+        -- Coalesced for the same reason as `ChatSessionId` below: these three are reported by the
+        -- *running* agent — `tendril job status --plan-id/--plan-title`, `tendril job fail --message` —
+        -- and only ever set, never deliberately cleared. The write that ends a job is made from the
+        -- snapshot its runner took before any of them existed, so taking `excluded` here erased the plan
+        -- a `CreatePlan` had just announced, at the moment it finished and the chat came to look for it.
+        ReportedPlanId = COALESCE(excluded.ReportedPlanId, Jobs.ReportedPlanId),
+        ReportedPlanTitle = COALESCE(excluded.ReportedPlanTitle, Jobs.ReportedPlanTitle),
+        ReportedFailureReason = COALESCE(
+            excluded.ReportedFailureReason, Jobs.ReportedFailureReason
+        ),
         Model = excluded.Model,
         InputTokens = excluded.InputTokens,
         OutputTokens = excluded.OutputTokens,
@@ -55,7 +77,12 @@ const UPSERT_TAIL: &str = r#"
         Priority = excluded.Priority,
         LastOutputAt = excluded.LastOutputAt,
         WaitForJobIds = excluded.WaitForJobIds,
-        PermissionDenials = excluded.PermissionDenials;
+        PermissionDenials = excluded.PermissionDenials,
+        -- `COALESCE`, not `excluded`, because this one is both *set later* and *never unset*: a job
+        -- can learn its chat session after it starts (a `CreatePlan` that inherits it from the plan it
+        -- just produced), while every ordinary status or cost write carries `None` and must leave an
+        -- established link alone.
+        ChatSessionId = COALESCE(excluded.ChatSessionId, Jobs.ChatSessionId);
 "#;
 
 fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
@@ -115,6 +142,7 @@ fn execute_write(conn: &Connection, sql: &str, job: &JobItem) -> Result<()> {
             permission_denials_json,
             job.dedupe_key,
             job.idempotency_key,
+            job.chat_session_id,
         ],
     )?;
 
@@ -195,6 +223,7 @@ fn row_to_job(row: &Row<'_>) -> Result<JobItem> {
         .filter(|d| !d.is_empty());
     item.dedupe_key = row.get(34)?;
     item.idempotency_key = row.get(35)?;
+    item.chat_session_id = row.get(36)?;
 
     // `typed_args` has no column of its own; it is rehydrated from the Args JSON so a job loaded
     // after a daemon restart still knows what it was launched with.
@@ -215,27 +244,113 @@ pub fn get_job(conn: &Connection, id: &str) -> Result<Option<JobItem>> {
     Ok(None)
 }
 
+/// The job list, unfinished work first, capped at `limit`.
+///
+/// The ordering is V1's (`Services/Plans/PlanDatabaseService.cs`): everything that has not completed
+/// sorts ahead of everything that has, and the finished rows then run newest-first. Ordering by
+/// `StartedAt DESC` instead — as this did — put exactly the wrong rows last, because SQLite sorts
+/// NULLs last under `DESC` and a `Pending`, `Queued` or `Blocked` job has no `StartedAt` at all. On
+/// any home with `limit` started jobs the queue became invisible: the rows a user needs in order to
+/// act were the first ones the cap discarded.
+///
+/// `Id DESC` breaks the tie within each group, so two rows sharing a `CompletedAt` — or the whole
+/// unfinished group, which has none — come back newest-first rather than in whatever order the scan
+/// happened to produce.
+///
+/// `Cleared = 0` restores V1's other guard. V2 clears by deleting the row, so it writes no `Cleared`
+/// flag of its own; a home migrated from V1 still holds rows V1 flagged, and without this they keep
+/// consuming slots in the limit forever while never being shown.
 pub fn list_jobs(
     conn: &Connection,
     status_filter: Option<JobStatus>,
     limit: usize,
 ) -> Result<Vec<JobItem>> {
-    let mut sql = format!("SELECT {} FROM Jobs", JOB_COLUMNS);
+    let mut sql = format!(
+        "SELECT {} FROM Jobs WHERE {}",
+        JOB_COLUMNS, JOBS_BASE_PREDICATE
+    );
 
+    // Bound, not interpolated. `status_filter` is a parsed `JobStatus` so its `as_str()` cannot carry
+    // anything but one of the enum's literals — but a read path that formats a value into SQL is a
+    // pattern the next edit copies, and the next value may not be an enum.
+    let mut binds: Vec<&str> = Vec::new();
     if let Some(status) = status_filter {
-        sql.push_str(&format!(" WHERE Status = '{}'", status.as_str()));
+        sql.push_str(" AND Status = ?1");
+        binds.push(status.as_str());
     }
 
-    sql.push_str(&format!(" ORDER BY StartedAt DESC LIMIT {}", limit));
+    sql.push_str(&format!(
+        " ORDER BY {}, {} LIMIT {}",
+        JOBS_DEFAULT_ORDER, JOBS_TIEBREAK_ORDER, limit
+    ));
 
     let mut stmt = conn.prepare(&sql)?;
-    let mut rows = stmt.query([])?;
+    let mut rows = stmt.query(rusqlite::params_from_iter(binds))?;
     let mut jobs = Vec::new();
     while let Some(row) = rows.next()? {
         jobs.push(row_to_job(row)?);
     }
 
     Ok(jobs)
+}
+
+/// The server's own visibility rule for the Jobs table: a row V1 flagged as cleared is not part of
+/// any list, and is not part of any count either. Applied ahead of a caller's filter and never
+/// negotiable — see [`crate::db::query::TableDescriptor::base_predicate`].
+const JOBS_BASE_PREDICATE: &str = "Cleared = 0";
+
+/// [`list_jobs`]' ordering, reused as the query API's default sort so the two agree by construction:
+/// unfinished work first, then finished rows newest-first.
+const JOBS_DEFAULT_ORDER: &str =
+    "CASE WHEN CompletedAt IS NULL THEN 0 ELSE 1 END, CompletedAt DESC";
+
+/// Appended after every sort — the caller's included.
+///
+/// Not decoration: `Status`, `Project` and `CompletedAt` all have huge ties, and two windows of a
+/// result whose ties are ordered arbitrarily are not slices of one sequence. Without a total order,
+/// paging a large Jobs table can show a row twice and never show its neighbour. `Id` is the primary
+/// key, so this makes every sort total.
+const JOBS_TIEBREAK_ORDER: &str = "Id DESC";
+
+/// The Jobs table as the query processor sees it.
+pub fn jobs_table_descriptor() -> TableDescriptor<'static> {
+    TableDescriptor {
+        table: "Jobs",
+        columns_sql: JOB_COLUMNS,
+        base_predicate: Some(JOBS_BASE_PREDICATE),
+        default_order_sql: JOBS_DEFAULT_ORDER,
+        tiebreak_order_sql: JOBS_TIEBREAK_ORDER,
+        // Moves whenever a job is stamped — every status transition writes one of these — so a client
+        // paging through a busy queue is told its offsets have shifted. Inserts and deletions are
+        // caught by the row count the token is paired with.
+        version_marker_sql: Some("MAX(COALESCE(LastOutputAt, CompletedAt, StartedAt, ''))"),
+    }
+}
+
+/// One window of the Jobs table under a caller's sort, filter and offset, with the matching total.
+///
+/// This is what lets a jobs table stay responsive at any row count: the sort, the filter and the
+/// window are SQLite's problem, and the client receives `limit` rows plus a number. Contrast
+/// [`list_jobs`], which can only answer "the newest N in the server's order" — a client wanting page
+/// four, or rows sorted by cost, had no choice but to fetch everything and do it itself.
+///
+/// Every identifier in `query` is validated against the live `Jobs` schema and every value is bound;
+/// see [`crate::db::query`] for the injection boundary.
+pub fn query_jobs(
+    conn: &Connection,
+    query: &TableQuery,
+) -> crate::error::Result<QueryPage<JobItem>> {
+    crate::db::query::query_table(conn, &jobs_table_descriptor(), query, row_to_job)
+}
+
+/// Distinct values of one Jobs column, for a filter facet. The framework's `Values` rpc.
+pub fn job_column_values(
+    conn: &Connection,
+    column: &str,
+    search: Option<&str>,
+    limit: Option<i64>,
+) -> crate::error::Result<crate::db::query::ValuesPage> {
+    crate::db::query::distinct_values(conn, &jobs_table_descriptor(), column, search, limit)
 }
 
 /// Every job row that has not reached a terminal status. This is the input to startup
@@ -292,6 +407,22 @@ pub fn list_non_terminal_jobs_for_plan(
 /// else — would turn a retry after completion into a second run.
 ///
 /// Parameterised, since the key comes from a client.
+/// Every job a chat session started, oldest first — the durable answer to "what has this conversation
+/// set running", as against the session file's `spawned_job_ids`, which is only as complete as the
+/// stream-scraping that maintains it. Served by `idx_jobs_chatsession`.
+pub fn list_jobs_for_chat_session(
+    conn: &Connection,
+    chat_session_id: &str,
+) -> Result<Vec<JobItem>> {
+    let sql = format!(
+        "SELECT {} FROM Jobs WHERE ChatSessionId = ?1 AND Cleared = 0 ORDER BY Id ASC",
+        JOB_COLUMNS
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([chat_session_id], row_to_job)?;
+    rows.collect()
+}
+
 pub fn find_job_by_idempotency_key(conn: &Connection, key: &str) -> Result<Option<JobItem>> {
     let sql = format!(
         "SELECT {} FROM Jobs WHERE IdempotencyKey = ?1 ORDER BY Id ASC LIMIT 1",

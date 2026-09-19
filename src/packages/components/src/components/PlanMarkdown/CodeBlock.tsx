@@ -2,6 +2,7 @@ import React, { Suspense, useCallback, useState } from "react";
 import { prismTheme } from "@/lib/prismTheme";
 import { copyToClipboard } from "@/lib/clipboard";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
+import { IconButton } from "../ui/IconButton";
 
 /**
  * A highlighted code block with a copy button — the plain-fence rendering, with no dispatch on the
@@ -76,13 +77,17 @@ const CopyButton: React.FC<{ content: string }> = ({ content }) => {
   }, [content]);
 
   return (
-    <button
+    <IconButton
       className={`pmv-code-copy${copied ? " pmv-code-copy--copied" : ""}`}
+      label="Copy to clipboard"
+      tooltip={false}
+      size="lg"
+      tone="muted"
+      variant={copied ? "solid" : "ghost"}
       onClick={handleCopy}
-      aria-label="Copy to clipboard"
     >
       {copied ? <CheckIcon /> : <CopyIcon />}
-    </button>
+    </IconButton>
   );
 };
 

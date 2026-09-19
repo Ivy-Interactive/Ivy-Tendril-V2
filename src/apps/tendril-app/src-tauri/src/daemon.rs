@@ -83,10 +83,27 @@ pub fn resolve_tendril_home() -> PathBuf {
     PathBuf::from(".tendril")
 }
 
+/// The first `.master` schema that names itself. A file declaring this or higher was written by a V2
+/// daemon; V1 wrote no such field, which is the only thing that now separates the two.
+const FIRST_SELF_DESCRIBING_MASTER_SCHEMA: u64 = 2;
+
+/// Why this `.master` does not belong to a daemon this app can talk to, or `None` when it does.
+///
+/// `heartbeat` used to be the V1 marker on its own, and is not one any more: V2's claim writes a field
+/// of exactly that name on purpose — it is the name V1's `MasterLock.ReadLiveMaster` ages a claim by,
+/// and a V2 claim that lacked it read as infinitely stale and got deleted by any V1 CLI on the machine
+/// (see `tendril_core::config::MasterClaim::heartbeat`). Since that change, a V2 daemon's own
+/// registration matched this check, so the app refused to talk to the daemon it had just launched.
+/// `schemaVersion` is the discriminator instead: V1 never wrote one.
 pub fn detect_foreign_master(content: &str) -> Option<String> {
     if let Ok(val) = serde_json::from_str::<serde_json::Value>(content) {
         if let Some(obj) = val.as_object() {
-            if obj.contains_key("heartbeat") {
+            let declares_v2_schema = obj
+                .get("schemaVersion")
+                .and_then(serde_json::Value::as_u64)
+                .is_some_and(|version| version >= FIRST_SELF_DESCRIBING_MASTER_SCHEMA);
+
+            if obj.contains_key("heartbeat") && !declares_v2_schema {
                 return Some(
                     "Detected foreign Ivy Tendril daemon (.master contains 'heartbeat' field)"
                         .to_string(),
