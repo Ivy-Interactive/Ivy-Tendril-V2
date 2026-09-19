@@ -40,6 +40,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
   {
     id,
     title,
+    titleSlot,
     subtitle,
     width,
     headerAction,
@@ -141,12 +142,24 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
             </button>
           )}
           <div className="min-w-0">
-            <h2
-              id={headingId}
-              className="truncate text-base font-semibold leading-none tracking-tight"
-            >
-              {title}
-            </h2>
+            {/* `titleSlot` replaces the heading, not the accessible name: the section is still
+                labelled by `headingId`, so an editor swapped in here cannot leave the landmark
+                unnamed. The heading stays in the tree, visually hidden, for exactly that reason. */}
+            {titleSlot ? (
+              <>
+                <h2 id={headingId} className="sr-only">
+                  {title}
+                </h2>
+                {titleSlot}
+              </>
+            ) : (
+              <h2
+                id={headingId}
+                className="truncate text-base font-semibold leading-none tracking-tight"
+              >
+                {title}
+              </h2>
+            )}
             {subtitle && (
               <p id={subtitleId} className="mt-1 truncate text-sm text-muted-foreground">
                 {subtitle}

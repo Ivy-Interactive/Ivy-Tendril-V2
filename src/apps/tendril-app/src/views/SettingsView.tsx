@@ -609,6 +609,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   /**
+   * `SettingsApp`'s `onDeleteProject`, minus the write: the dialog has already called
+   * `DELETE /api/projects/:name`. What is left is V1's two lines - re-read, then fall back to the
+   * first remaining project, or to Coding Agent when that was the last one - and V1's toast.
+   *
+   * The config is re-read here rather than trusted from local state, because the daemon is the only
+   * thing that knows what the file holds now: the `tendril` CLI writes to it too.
+   */
+  const selectAfterDelete = (name: string) => {
+    void (async () => {
+      let remaining = projects.filter((project) => project.name !== name);
+      try {
+        const cfg = await bridge.getConfig();
+        applyConfig(cfg);
+        remaining = readProjectEntries(cfg);
+      } catch {
+        // A failed re-read leaves the last good config in place; the selection below still moves,
+        // because the entry this handler was called for is gone whatever the refresh did.
+      }
+      setSelected(remaining.length > 0 ? projectTag(0) : SettingsTag.CodingAgent);
+      notificationsStore.notifySuccess("Deleted", `Deleted project '${name}'`);
+    })();
+  };
+
+  /**
    * `ConfigYamlUiHelper.OpenOrNavigate`, now taking its *navigate* arm.
    *
    * V1's helper has two: hand the file to the operator's editor, or navigate to `ConfigEditorApp`.
@@ -796,6 +820,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 isBeta={isBeta}
                 onSaveRaw={saveRawKey}
                 onReloadConfig={reloadConfig}
+                siblingNames={projectNames.filter((name) => name !== selectedProject.name)}
+                onDeleted={selectAfterDelete}
               />
             </div>
           </div>

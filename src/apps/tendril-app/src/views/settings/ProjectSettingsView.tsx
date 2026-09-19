@@ -1,5 +1,5 @@
 import React from "react";
-import { Loader2, Pencil, Plus, X } from "lucide-react";
+import { Check, Loader2, Pencil, Plus, X } from "lucide-react";
 import {
   BladeContainer,
   Button,
@@ -62,13 +62,19 @@ import {
   type ReviewActionConfigEntry,
   type VerificationDef,
 } from "./projectConfig";
-import { classifyRepoPath, isValidRepoPath, normalizeRepoPath } from "../onboarding/validation";
+import {
+  classifyRepoPath,
+  describeProjectNameError,
+  isValidRepoPath,
+  normalizeRepoPath,
+} from "../onboarding/validation";
+import { DeleteProjectDialog } from "../dialogs/DeleteProjectDialog";
 
 /**
  * `Apps/Settings/ProjectDetailView.cs` plus the editors in `Apps/Settings/Blades/`, which is where
  * V1 puts every per-project setting. V2 had none of it: repos and base branches, verifications and
- * their run order, review actions, MCP servers, skills, ports, env files, colour and Delete Project
- * had no counterpart anywhere in the app.
+ * their run order, review actions, MCP servers, skills, ports, env files, colour, the inline rename
+ * and Delete Project had no counterpart anywhere in the app.
  *
  * The block order is `ProjectDetailView.innerContent`'s: header, repositories, review actions,
  * verifications, ports, environment files, agent behaviour, security, local permissions (MCP),
@@ -97,6 +103,14 @@ export interface ProjectSettingsViewProps {
    * daemon route rather than a config write, so this is how its result gets back into the view.
    */
   onReloadConfig: () => Promise<void>;
+  /**
+   * Every *other* project's name, for the duplicate check `EditProjectBladeView` runs before it will
+   * enable Save. The daemon answers 409 on a collision regardless; checking here is what turns that
+   * into a message under the field instead of a failed round trip.
+   */
+  siblingNames?: string[];
+  /** Called once the project's entry is gone, so the parent can move the selection off it. */
+  onDeleted?: (name: string) => void;
 }
 
 const AGENT_LABELS: Record<string, string> = {
@@ -109,15 +123,12 @@ const AGENT_LABELS: Record<string, string> = {
 };
 
 /**
- * Neither rename nor delete is reachable from the app: `PUT /api/config` merges `projects` by name,
- * so a renamed entry matches nothing and is appended beside the original, and its own documentation
- * says omission is not deletion. Both need `PUT /api/projects/:name` (`newName`) and
- * `DELETE /api/projects/:name`, which the daemon has and the Tauri bridge does not expose.
+ * Neither rename nor delete can go through this screen's usual `PUT /api/config` write: that route
+ * merges `projects` by name, so a renamed entry matches nothing and is appended beside the original,
+ * and its own documentation says omission is not deletion. Both take their own daemon route -
+ * `PUT /api/projects/:name` with `newName`, and `DELETE /api/projects/:name` - which the bridge
+ * reaches directly as `renameProject` and `deleteProject`.
  */
-const RENAME_UNAVAILABLE =
-  "Renaming needs PUT /api/projects/:name, which the app's bridge does not expose yet. A rename written through PUT /api/config would add a second project instead of renaming this one.";
-const DELETE_UNAVAILABLE =
-  "Deleting needs DELETE /api/projects/:name, which the app's bridge does not expose yet. PUT /api/config cannot remove a project: omitting one leaves it exactly as it was.";
 
 /** The Cancel/confirm pair every V1 `*BladeView` ends with. */
 const BladeFooter: React.FC<{
@@ -538,12 +549,14 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   isBeta,
   onSaveRaw,
   onReloadConfig,
+  onDeleted,
 }) => {
   const { push, pop } = useBlades();
   const [error, setError] = React.useState<string | null>(null);
   const [repoDraft, setRepoDraft] = React.useState("");
   const [repoError, setRepoError] = React.useState<string | null>(null);
   const [isAddingRepo, setIsAddingRepo] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
   const [basic, setBasic] = React.useState({ color: project.color, context: project.context });
   const [security, setSecurity] = React.useState<ProjectSecurityForm>(project.security);
 
@@ -1512,14 +1525,157 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       {/* Section 10: danger zone. */}
       <SubSection title="Danger Zone" testId="project-danger-zone">
         <div className="space-y-2">
-          <Button type="button" variant="destructive" disabled title={DELETE_UNAVAILABLE}>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => setIsDeleting(true)}
+            data-testid="delete-project"
+          >
             Delete Project
           </Button>
-          <p className="text-xs text-muted-foreground">{DELETE_UNAVAILABLE}</p>
+          {/* What the button does *not* do, said before it is pressed as well as in the dialog:
+              `delete_project` touches no file on disk, and an operator deciding whether to click
+              should not have to open the dialog to learn that. */}
+          <p className="text-xs text-muted-foreground">
+            Removes the project from config.yaml. Cloned repositories and plan folders are left on
+            disk.
+          </p>
         </div>
       </SubSection>
 
+      <DeleteProjectDialog
+        isOpen={isDeleting}
+        onClose={() => setIsDeleting(false)}
+        projectName={project.name}
+        onDeleted={onDeleted}
+      />
+
       {removalDialog}
+    </div>
+  );
+};
+
+/**
+ * `ProjectDetailView`'s `nameHeader`: the H2 becomes a text input with a confirm and a cancel beside
+ * it, and reverts once either is pressed. V1's confirm is synchronous - it edits the in-memory
+ * project and calls `SaveSettings()` - so it has nowhere to put a failure and never needs a busy
+ * state; this one is a daemon round trip that can be refused, so it has both, and the input stays
+ * open carrying the message rather than closing on a rename that did not happen.
+ *
+ * The check is `EditProjectBladeView`'s, in its order: `DescribeProjectNameError` first, then V1's
+ * case-insensitive duplicate scan over every *other* project. It is a message under the field rather
+ * than a failed round trip; the daemon answers 409 on a collision either way.
+ *
+ * V1 also moves the project directory (`ProjectPathHelper.MoveProjectDirectory`) before it saves.
+ * `update_project` does not - it renames the config entry and re-points the plan rows that name it -
+ * so the clones stay where they are and no copy of this can promise otherwise.
+ */
+const ProjectNameEditor: React.FC<{
+  name: string;
+  siblingNames: string[];
+  onReloadConfig: () => Promise<void>;
+  onDone: () => void;
+}> = ({ name, siblingNames, onReloadConfig, onDone }) => {
+  const [draft, setDraft] = React.useState(name);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const trimmed = draft.trim();
+  /**
+   * Skipped while the draft still *is* the stored name, so a project already named something
+   * `InputSanitizer` would refuse - V1 wrote plenty, its inline rename never validated - does not
+   * open its own editor showing an error about a name nobody typed. Everything else is
+   * `EditProjectBladeView`'s check in its order: the character set, then V1's case-insensitive scan
+   * over `siblingNames`, which already excludes this project the way V1's
+   * `projectsList.Where((_, i) => i != editIndex)` does.
+   */
+  const validationError =
+    trimmed === name
+      ? null
+      : (describeProjectNameError(draft) ??
+        (siblingNames.some((sibling) => sibling.toLowerCase() === trimmed.toLowerCase())
+          ? `A project named '${trimmed}' already exists.`
+          : null));
+
+  const commit = async () => {
+    // V1's no-op arm: the same name, case included, closes the editor without a write. A case-only
+    // change is not one - `update_project` accepts it and rewrites config.yaml with the new casing.
+    if (trimmed === name) {
+      onDone();
+      return;
+    }
+    if (validationError) return;
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      // The daemon's echo, not `trimmed`: the route trims before it stores, so this is the name that
+      // will match on the next read.
+      const stored = await bridge.renameProject(name, trimmed);
+      await onReloadConfig();
+      notificationsStore.notifySuccess("Renamed", `Renamed project to '${stored}'`);
+      // Nothing re-points the selection: `update_project` renames the entry in place, so the
+      // `project:<index>` tag still resolves, and the screen is keyed on the project's name, so the
+      // reload above remounts it under the new one. That remount is also what unmounts this editor -
+      // `onDone` is here for the case where the reload silently failed and the key did not change.
+      onDone();
+    } catch (err) {
+      setError(describeBridgeError(err));
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1">
+        <Input
+          aria-label="Project name"
+          data-testid="project-name-input"
+          value={draft}
+          disabled={isSaving}
+          autoFocus
+          className="h-8 w-60"
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void commit();
+            // Escape reverts. It does not go through `onDone` alone because the draft is this
+            // component's state and it is remounted, not reset, the next time the pencil is pressed.
+            if (event.key === "Escape") onDone();
+          }}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          disabled={isSaving || validationError !== null}
+          title="Confirm rename"
+          aria-label="Confirm rename"
+          data-testid="confirm-rename"
+          onClick={() => void commit()}
+        >
+          {isSaving ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <Check className="size-4" aria-hidden />
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          disabled={isSaving}
+          title="Cancel rename"
+          aria-label="Cancel rename"
+          onClick={onDone}
+        >
+          <X className="size-4" aria-hidden />
+        </Button>
+      </div>
+      {(validationError ?? error) && (
+        <p className="text-xs text-destructive" data-testid="project-name-error">
+          {validationError ?? error}
+        </p>
+      )}
     </div>
   );
 };
@@ -1528,29 +1684,42 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
  * The project screen, with `ProjectDetailView` as the non-closable root blade and every editor
  * pushed on top of it - V1's `bladeContext.Push(this, new Edit...BladeView(...))`.
  */
-export const ProjectSettingsView: React.FC<ProjectSettingsViewProps> = (props) => (
-  <BladeContainer
-    aria-label="Project configuration"
-    data-testid="project-settings-blades"
-    root={{
-      title: props.project.name,
-      subtitle: "Project configuration",
-      width: "flex",
-      // V1 renders the name with a Rename pencil beside it. The blade header already renders the
-      // name, so the pencil belongs there rather than on a second row that repeats it.
-      headerAction: (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          disabled
-          title={RENAME_UNAVAILABLE}
-          aria-label="Rename Project"
-        >
-          <Pencil className="size-4" aria-hidden />
-        </Button>
-      ),
-      content: <ProjectDetailBody {...props} />,
-    }}
-  />
-);
+export const ProjectSettingsView: React.FC<ProjectSettingsViewProps> = (props) => {
+  const [isRenaming, setIsRenaming] = React.useState(false);
+
+  return (
+    <BladeContainer
+      aria-label="Project configuration"
+      data-testid="project-settings-blades"
+      root={{
+        title: props.project.name,
+        subtitle: "Project configuration",
+        width: "flex",
+        // V1 renders the name with a Rename pencil beside it. The blade header already renders the
+        // name, so the pencil belongs there rather than on a second row that repeats it, and the
+        // editor replaces the heading the same way V1's `nameHeader` swaps its `Text.H2`.
+        titleSlot: isRenaming ? (
+          <ProjectNameEditor
+            name={props.project.name}
+            siblingNames={props.siblingNames ?? []}
+            onReloadConfig={props.onReloadConfig}
+            onDone={() => setIsRenaming(false)}
+          />
+        ) : undefined,
+        headerAction: isRenaming ? undefined : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            title="Rename Project"
+            aria-label="Rename Project"
+            onClick={() => setIsRenaming(true)}
+          >
+            <Pencil className="size-4" aria-hidden />
+          </Button>
+        ),
+        content: <ProjectDetailBody {...props} />,
+      }}
+    />
+  );
+};

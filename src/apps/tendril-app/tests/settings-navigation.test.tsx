@@ -469,9 +469,10 @@ describe("SettingsView sidebar", () => {
     });
 
     /**
-     * V1 does not roll back a project whose promptware run failed to start, and V2 cannot: the only
-     * project-removing call is `DELETE /api/projects/:name`, which the bridge does not expose. So a
-     * failed hand-off goes forward to the harness step with the project registered, not back.
+     * V1 does not roll back a project whose promptware run failed to start, and V2 does not either:
+     * `DELETE /api/projects/:name` exists and the bridge reaches it, but a failed hand-off is not a
+     * reason to delete a project the operator asked for. So this goes forward to the harness step
+     * with the project registered, not back.
      */
     it("keeps the registered project when the setup job cannot start", async () => {
       const { createProject, getConfig } = mockAddProject();

@@ -32,10 +32,12 @@ import {
  *   into "Create Project" (watch it here) and "Create in Background" (hand it over and close), which
  *   is what V1's two buttons amount to.
  * - **Cancelling after the agent step does not un-create the project.** V1's `RemoveCommittedProject`
- *   edits `config.Settings.Projects` in memory and saves; V2's only project-removing call is
- *   `DELETE /api/projects/:name`, which the Tauri bridge does not expose (see the note in
- *   `ProjectSettingsView`). So the step-1 Back button is gone once the project is registered, and the
- *   copy says the project exists rather than pretending it can be rolled back.
+ *   edits `config.Settings.Projects` in memory and saves, silently. V2's removal is
+ *   `DELETE /api/projects/:name`, and it is deliberately not run from here: a Cancel that deleted a
+ *   project the setup agent may already have cloned repositories into is a destructive act behind a
+ *   non-destructive word. So the step-1 Back button is gone once the project is registered, the copy
+ *   says the project exists rather than pretending it can be rolled back, and Delete Project on the
+ *   project's own screen - with its confirm - is where a removal goes.
  *
  * The name check is `InputSanitizer.DescribeProjectNameError`'s two refusals plus V1's
  * case-insensitive duplicate check.

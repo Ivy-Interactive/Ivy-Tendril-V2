@@ -16,6 +16,7 @@ export { PendingAnnotationsDialog } from "./PendingAnnotationsDialog";
 export { DirtyRepoDialog } from "./DirtyRepoDialog";
 
 export { DeletePlanDialog } from "./DeletePlanDialog";
+export { DeleteProjectDialog } from "./DeleteProjectDialog";
 export { UpdatePlanDialog } from "./UpdatePlanDialog";
 export { CreateIssueDialog } from "./CreateIssueDialog";
 export { NoProjectsDialog } from "./NoProjectsDialog";

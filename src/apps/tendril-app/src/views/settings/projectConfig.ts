@@ -34,9 +34,9 @@ import {
  *   leaves the old key behind alongside the new one. `PORTS_ARE_MERGED` is that limitation as a
  *   constant so the UI can say so instead of pretending.
  * - Renaming or deleting a **project** is not possible over `PUT /api/config` at all: a renamed
- *   entry matches nothing and is appended next to the original. Both go through
- *   `PUT /api/projects/:name` (`newName`) and `DELETE /api/projects/:name`, neither of which the
- *   Tauri bridge exposes yet.
+ *   entry matches nothing and is appended next to the original, and omission is not deletion. Both
+ *   go through their own daemon route instead - `PUT /api/projects/:name` with `newName`, and
+ *   `DELETE /api/projects/:name` - which the bridge reaches as `renameProject` and `deleteProject`.
  */
 
 export const PORTS_ARE_MERGED =

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import { SettingsView } from "../src/views/SettingsView";
 import { bridge } from "../src/api/bridge";
+import { notificationsStore } from "../src/state/notificationsStore";
 import {
   applyVerificationChange,
   orderForDisplay,
@@ -19,6 +20,11 @@ import type { ServiceInfo, TendrilConfig } from "../src/types/api";
  * Every write goes out as the one-element `projects` array `merge_projects_by_name` matches by name,
  * carrying only the keys that changed. Arrays inside a project replace wholesale, which is what makes
  * a deletion possible; `ports` is a mapping and deep-merges, which is what makes one impossible.
+ *
+ * Renaming and deleting the project itself are the two things that route cannot express at all - a
+ * renamed entry matches nothing and is appended beside the original, and omission is not deletion -
+ * so they go out as `PUT /api/projects/:name` and `DELETE /api/projects/:name` instead, and the tests
+ * for them assert on the bridge call rather than on a config patch.
  */
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -49,6 +55,12 @@ const configWith = (
     ...extraRaw,
     projects: [{ name: "Tendril", ...project }],
   },
+});
+
+/** {@link configWith} for the two tests that need a second project to collide with. */
+const withProjects = (projects: Record<string, unknown>[]): TendrilConfig => ({
+  ...configWith({}),
+  raw: { ...configWith({}).raw, projects },
 });
 
 async function renderProject(config: TendrilConfig) {
@@ -92,6 +104,7 @@ const lastProjectPatch = (putConfig: ReturnType<typeof vi.spyOn>) => {
 
 describe("project configuration", () => {
   let putConfig: ReturnType<typeof vi.spyOn>;
+  let notifySuccess: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     putConfig = vi.spyOn(bridge, "putConfig").mockResolvedValue(undefined);
@@ -105,6 +118,9 @@ describe("project configuration", () => {
       cachePath: "/home/user/.tendril/models.json",
     });
     vi.spyOn(bridge, "getServiceLogs").mockResolvedValue([]);
+    notifySuccess = vi
+      .spyOn(notificationsStore, "notifySuccess")
+      .mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -576,19 +592,237 @@ describe("project configuration", () => {
     });
 
     /**
-     * A rename over `PUT /api/config` appends a second project, and omission is not deletion, so both
-     * need daemon routes the bridge does not expose. Disabled with the reason beats a control that
-     * silently corrupts config.yaml.
+     * `ProjectDetailView.nameHeader`. Neither of these is a `putConfig` call, and that is the point:
+     * a rename over `PUT /api/config` appends a second project beside the original, and omission is
+     * not deletion, so each takes its own daemon route. What the tests assert on is therefore the
+     * bridge call, and that no config patch went out beside it.
      */
-    it("disables Rename and Delete Project, and says what they need", async () => {
-      await renderProject(configWith({}));
+    describe("rename", () => {
+      const openRename = async () => {
+        await clickButton("Rename Project");
+        return screen.getByTestId("project-name-input");
+      };
 
-      expect(screen.getByRole("button", { name: "Rename Project" })).toBeDisabled();
-      const del = screen.getByRole("button", { name: "Delete Project" });
-      expect(del).toBeDisabled();
-      expect(screen.getByTestId("project-danger-zone")).toHaveTextContent(
-        "DELETE /api/projects/:name",
-      );
+      it("renames over the project route, not through a config patch", async () => {
+        const rename = vi.spyOn(bridge, "renameProject").mockResolvedValue("Tendril2");
+        await renderProject(configWith({}));
+
+        const input = await openRename();
+        fireEvent.change(input, { target: { value: "Tendril2" } });
+        await clickButton("Confirm rename");
+
+        expect(rename).toHaveBeenCalledWith("Tendril", "Tendril2");
+        expect(putConfig).not.toHaveBeenCalled();
+      });
+
+      /**
+       * Two things at once, because they are the same mistake: the draft is trimmed before it is
+       * sent, and the *toast* names the daemon's echo rather than the draft. A route that trims
+       * differently - or at all, when this one did not - must not leave the operator reading a name
+       * that is not in config.yaml.
+       */
+      it("sends the trimmed draft and toasts the daemon's stored name", async () => {
+        const rename = vi.spyOn(bridge, "renameProject").mockResolvedValue("Stored");
+        await renderProject(configWith({}));
+
+        const input = await openRename();
+        fireEvent.change(input, { target: { value: "  Trimmed  " } });
+        await clickButton("Confirm rename");
+
+        expect(rename).toHaveBeenCalledWith("Tendril", "Trimmed");
+        expect(notifySuccess).toHaveBeenCalledWith("Renamed", "Renamed project to 'Stored'");
+      });
+
+      it("commits on Enter and reverts on Escape", async () => {
+        const rename = vi.spyOn(bridge, "renameProject").mockResolvedValue("ByKey");
+        await renderProject(configWith({}));
+
+        let input = await openRename();
+        fireEvent.change(input, { target: { value: "ByKey" } });
+        await act(async () => {
+          fireEvent.keyDown(input, { key: "Enter" });
+        });
+        expect(rename).toHaveBeenCalledWith("Tendril", "ByKey");
+
+        rename.mockClear();
+        input = await openRename();
+        fireEvent.change(input, { target: { value: "Discarded" } });
+        await act(async () => {
+          fireEvent.keyDown(input, { key: "Escape" });
+        });
+        expect(rename).not.toHaveBeenCalled();
+        expect(screen.queryByTestId("project-name-input")).not.toBeInTheDocument();
+      });
+
+      /** `InputSanitizer.DescribeProjectNameError`, with the suggestion clause V1 appends. */
+      it("refuses a name the config cannot hold, before the round trip", async () => {
+        const rename = vi.spyOn(bridge, "renameProject").mockResolvedValue("x");
+        await renderProject(configWith({}));
+
+        const input = await openRename();
+        fireEvent.change(input, { target: { value: "my project" } });
+
+        expect(screen.getByTestId("project-name-error")).toHaveTextContent(
+          "Suggested: 'myproject'",
+        );
+        expect(screen.getByRole("button", { name: "Confirm rename" })).toBeDisabled();
+
+        // Enter, not the button: a disabled button cannot be clicked, so clicking it would pass
+        // whether or not the commit path itself refuses the name. Enter reaches the handler.
+        await act(async () => {
+          fireEvent.keyDown(input, { key: "Enter" });
+        });
+        expect(rename).not.toHaveBeenCalled();
+      });
+
+      /** `EditProjectBladeView`'s duplicate scan, which is case-insensitive and skips this project. */
+      it("refuses a sibling's name but allows a case-only change to its own", async () => {
+        const rename = vi.spyOn(bridge, "renameProject").mockResolvedValue("TENDRIL");
+        await renderProject(withProjects([{ name: "Tendril" }, { name: "Other" }]));
+
+        const input = await openRename();
+        fireEvent.change(input, { target: { value: "OTHER" } });
+        expect(screen.getByTestId("project-name-error")).toHaveTextContent(
+          "A project named 'OTHER' already exists.",
+        );
+
+        fireEvent.change(input, { target: { value: "TENDRIL" } });
+        expect(screen.queryByTestId("project-name-error")).not.toBeInTheDocument();
+        await clickButton("Confirm rename");
+        expect(rename).toHaveBeenCalledWith("Tendril", "TENDRIL");
+      });
+
+      /**
+       * A project that vanished from the header and then came back is a lie the operator may act on,
+       * so a refused rename holds the editor open carrying the daemon's message.
+       */
+      it("keeps the editor open with the daemon's message when the rename is refused", async () => {
+        vi.spyOn(bridge, "renameProject").mockRejectedValue(
+          new Error("Project 'x' already exists"),
+        );
+        await renderProject(configWith({}));
+
+        const input = await openRename();
+        fireEvent.change(input, { target: { value: "Taken" } });
+        await clickButton("Confirm rename");
+
+        expect(screen.getByTestId("project-name-input")).toBeInTheDocument();
+        expect(screen.getByTestId("project-name-error")).toHaveTextContent("already exists");
+      });
+    });
+
+    describe("Delete Project", () => {
+      const openDeleteDialog = async () => {
+        await clickButton("Delete Project");
+        return screen.getByTestId("delete-project-dialog");
+      };
+
+      /** Framework's "never delete on single click": the button opens a confirm, it does not delete. */
+      it("confirms first, then deletes over the project route", async () => {
+        const remove = vi.spyOn(bridge, "deleteProject").mockResolvedValue(undefined);
+        await renderProject(configWith({}));
+
+        const dialog = await openDeleteDialog();
+        expect(remove).not.toHaveBeenCalled();
+
+        await act(async () => {
+          fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
+        });
+
+        expect(remove).toHaveBeenCalledWith("Tendril");
+        expect(putConfig).not.toHaveBeenCalled();
+      });
+
+      /**
+       * `delete_project` contains no `fs::` call, so both the button's caption and the dialog say
+       * what survives rather than reaching for V1's bare "This cannot be undone."
+       */
+      it("says what stays on disk, in the danger zone and in the dialog", async () => {
+        await renderProject(configWith({}));
+
+        expect(screen.getByTestId("project-danger-zone")).toHaveTextContent(
+          "Cloned repositories and plan folders are left on disk.",
+        );
+        expect(await openDeleteDialog()).toHaveTextContent(/stay on disk/);
+      });
+
+      /** `SettingsApp`'s `onDeleteProject`: fall back to the first remaining project, and toast. */
+      it("moves the selection to the first remaining project", async () => {
+        vi.spyOn(bridge, "deleteProject").mockResolvedValue(undefined);
+        const getConfig = vi
+          .spyOn(bridge, "getConfig")
+          .mockResolvedValue(withProjects([{ name: "Tendril" }, { name: "Other" }]));
+        await act(async () => {
+          render(
+            <SettingsView
+              serviceInfo={serviceInfo}
+              onRefreshHealth={vi.fn()}
+              initialSection="project:1"
+            />,
+          );
+        });
+
+        const dialog = await openDeleteDialog();
+        getConfig.mockResolvedValue(withProjects([{ name: "Tendril" }]));
+        await act(async () => {
+          fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
+        });
+
+        // The row, not the body: `selectedProject` falls back to the first project for an index that
+        // no longer resolves, so the body would read "Tendril" whether the selection moved or not.
+        expect(screen.getByTestId("settings-row-project-0")).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+        expect(screen.queryByTestId("settings-row-project-1")).not.toBeInTheDocument();
+        expect(notifySuccess).toHaveBeenCalledWith("Deleted", "Deleted project 'Other'");
+      });
+
+      /** The last project leaves nothing to select, so V1 falls back to Coding Agent. */
+      it("falls back to Coding Agent when the last project is deleted", async () => {
+        vi.spyOn(bridge, "deleteProject").mockResolvedValue(undefined);
+        const getConfig = vi.spyOn(bridge, "getConfig").mockResolvedValue(configWith({}));
+        await act(async () => {
+          render(
+            <SettingsView
+              serviceInfo={serviceInfo}
+              onRefreshHealth={vi.fn()}
+              initialSection="project:0"
+            />,
+          );
+        });
+
+        const dialog = await openDeleteDialog();
+        getConfig.mockResolvedValue(withProjects([]));
+        await act(async () => {
+          fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
+        });
+
+        expect(screen.queryByTestId("project-settings-blades")).not.toBeInTheDocument();
+        expect(screen.getByTestId("coding-agent-card")).toBeInTheDocument();
+        // `fallsBackToCodingAgent` renders that card for an unresolvable project tag as well, so the
+        // row's own state is what says the selection moved rather than merely failing to resolve.
+        expect(screen.getByTestId("settings-row-coding-agent")).toHaveAttribute(
+          "aria-selected",
+          "true",
+        );
+      });
+
+      /** A sidebar row that vanished and came back is the same lie the rename editor guards against. */
+      it("keeps the dialog open with the daemon's message when the delete is refused", async () => {
+        vi.spyOn(bridge, "deleteProject").mockRejectedValue(new Error("Failed to save config"));
+        await renderProject(configWith({}));
+
+        const dialog = await openDeleteDialog();
+        await act(async () => {
+          fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
+        });
+
+        expect(screen.getByTestId("delete-project-dialog")).toHaveTextContent(
+          "Failed to save config",
+        );
+        expect(screen.getByTestId("project-settings-Tendril")).toBeInTheDocument();
+      });
     });
   });
 });
