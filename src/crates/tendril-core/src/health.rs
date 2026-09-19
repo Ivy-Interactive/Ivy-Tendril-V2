@@ -995,12 +995,18 @@ fn plan_folder_names(plans_root: &Path) -> Vec<String> {
         return Vec::new();
     };
 
-    entries
+    let mut names: Vec<String> = entries
         .filter_map(|e| e.ok())
         .filter(|e| e.path().is_dir())
         .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
         .filter(|name| name.len() >= 5 && name.as_bytes()[..5].iter().all(|b| b.is_ascii_digit()))
-        .collect()
+        .collect();
+    // `read_dir` yields whatever order the filesystem happens to hand back - APFS returns these
+    // sorted, ext4 does not - and `path_budget_checks` names the longest folder via `max_by_key`,
+    // which keeps the *last* of equally long names. Without an order that tie would resolve
+    // differently per machine and the doctor output would not reproduce.
+    names.sort();
+    names
 }
 
 /// The relative path segment a worktree would use for every repo and build-dependency path

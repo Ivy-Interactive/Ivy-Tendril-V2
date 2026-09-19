@@ -278,7 +278,12 @@ fn dedupe_entries(entries: &mut Vec<BundleEntry>) {
 /// Every file in the plan folder except the worktrees, which are working copies of repositories that
 /// are already on the reporter's disk and would dwarf everything else in the bundle.
 fn collect_plan_files(plan_folder: &Path, entries: &mut Vec<BundleEntry>) {
+    // `WalkDir` hands each directory back in whatever order the filesystem gives it - APFS returns
+    // these sorted, ext4 does not - and these entries become both the `File | Size` table printed
+    // before the upload and the order of the members inside the zip, so two reports on the same
+    // plan have to read the same way whoever ran them.
     let walker = walkdir::WalkDir::new(plan_folder)
+        .sort_by_file_name()
         .into_iter()
         .filter_entry(|entry| !is_worktrees_dir(entry));
 
