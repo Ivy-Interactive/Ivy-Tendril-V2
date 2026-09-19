@@ -71,10 +71,24 @@ pub fn build_agent_spec(provider: &str, config: &AgentLaunchConfig) -> AgentProc
 }
 
 /// The binary `provider` is launched as, derived from the same builders that launch it so the two
-/// can never drift. Safe to call for its command alone: a default `AgentLaunchConfig` has no
-/// system prompt and no MCP servers, so no temp files are written.
+/// can never drift.
+///
+/// Side-effect free, which the builders themselves are not. Most write a temp file only when the
+/// config asks for one — a default [`AgentLaunchConfig`] has no system prompt and no MCP servers —
+/// but `build_antigravity_spec` writes its prompt file unconditionally, because the tool-schema
+/// guardrails have to reach the agent even when the caller supplied a prompt file of its own. Only
+/// the runner cleans `temp_files` up, so a spec built for its command and dropped leaks one every
+/// call. `health.rs`'s `agent_model_checks` calls this once per configured agent on every probe,
+/// which had been quietly filling the temp directory.
+///
+/// Discarding the spec rather than not building it keeps the no-drift property: the command still
+/// comes from the same builder that launches the process.
 pub fn agent_command(provider: &str) -> String {
-    build_agent_spec(provider, &AgentLaunchConfig::default()).command
+    let spec = build_agent_spec(provider, &AgentLaunchConfig::default());
+    for path in &spec.temp_files {
+        let _ = std::fs::remove_file(path);
+    }
+    spec.command
 }
 
 /// What an agent is launched with for an **interactive** session under a pseudo-terminal, as opposed
