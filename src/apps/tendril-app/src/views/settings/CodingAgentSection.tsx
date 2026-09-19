@@ -643,12 +643,9 @@ export const CodingAgentSection: React.FC<{
                     row stays one line; `min-w-0` lets a long model name shrink rather than push its
                     neighbour out.
 
-                    Aligned at the *start*, not the end: only the model column carries a hint
-                    ("Not set - this is the built-in default for this tier"), so aligning bottoms
-                    pushed the effort control down by the height of a line the column beside it does
-                    not have. Both columns open with the same `text-xs` label above the same `h-9`
-                    control, so aligning tops lines the labels and the selects up and lets the hint
-                    hang below where it belongs. */}
+                    Aligned at the *start*, not the end: both columns open with the same `text-xs`
+                    label above the same `h-9` control, so aligning tops lines the labels and the
+                    selects up. */}
                 <div
                   className={
                     effortEnabled ? "min-w-0 grow-[65] basis-0" : "min-w-0 grow basis-full"
@@ -678,11 +675,6 @@ export const CodingAgentSection: React.FC<{
                          nothing sensible. */
                       value={shownTierModel(tier)}
                       options={modelOptions}
-                      hint={
-                        isTierUnset(profiles[tier].model)
-                          ? "Not set — this is the built-in default for this tier."
-                          : undefined
-                      }
                       onChange={(value) =>
                         setProfiles((prev) => ({
                           ...prev,
