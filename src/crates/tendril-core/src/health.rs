@@ -919,6 +919,22 @@ fn configured_or_default_models(settings: &TendrilSettings, agent: &str) -> Vec<
 /// is configured (or defaulted) to use resolves in the model catalog. Model resolution is a pure
 /// catalog lookup, never a shell-out to the agent, so this stays synchronous and offline.
 fn agent_model_checks(settings: &TendrilSettings, catalog_is_static: bool) -> Vec<CheckResult> {
+    agent_model_checks_with(settings, catalog_is_static, |command| {
+        probe_version(command).is_some()
+    })
+}
+
+/// [`agent_model_checks`] with the "is this CLI installed" probe supplied by the caller.
+///
+/// Split out for the tests. The model-catalog half of this function is pure, but it is only reached
+/// for an agent whose CLI is on PATH — so asserting on it through the real probe asserts that the
+/// machine running the suite happens to have `claude` installed, which CI does not. The tests pass a
+/// fixed answer and get to exercise the logic they are actually about.
+fn agent_model_checks_with(
+    settings: &TendrilSettings,
+    catalog_is_static: bool,
+    is_installed: impl Fn(&str) -> bool,
+) -> Vec<CheckResult> {
     let active = normalize_agent_name(&settings.coding_agent);
     let mut agents: Vec<(String, bool)> = vec![(active, true)];
     for a in &settings.coding_agents {
@@ -938,7 +954,7 @@ fn agent_model_checks(settings: &TendrilSettings, catalog_is_static: bool) -> Ve
         };
         let command = agent_command(agent);
 
-        if probe_version(&command).is_none() {
+        if !is_installed(&command) {
             checks.push(CheckResult::environment(
                 "Agent models",
                 if *is_active {
@@ -1814,7 +1830,10 @@ mod tests {
             ..Default::default()
         };
 
-        let checks = agent_model_checks(&settings, false);
+        // Installed, always: the subject is whether the built-in default models resolve in the
+        // catalog, and running the real probe would instead assert that whoever runs the suite has
+        // `claude` on PATH. CI does not, and used to fail here with a single "not found" line.
+        let checks = agent_model_checks_with(&settings, false, |_| true);
         let lines = render(&checks);
 
         assert!(
@@ -1830,7 +1849,7 @@ mod tests {
     fn agent_model_lines_flags_unknown_model() {
         let settings = agent_settings("claude", "not-a-real-model-id");
 
-        let checks = agent_model_checks(&settings, false);
+        let checks = agent_model_checks_with(&settings, false, |_| true);
         let lines = render(&checks);
 
         assert!(
@@ -1846,10 +1865,36 @@ mod tests {
     fn agent_model_lines_marks_active_agent() {
         let settings = agent_settings("claude", "opus");
 
-        let checks = agent_model_checks(&settings, false);
+        let checks = agent_model_checks_with(&settings, false, |_| true);
         let lines = render(&checks);
 
         assert!(lines.iter().any(|l| l.contains("claude (active)")));
+    }
+
+    /// The other side of the probe, which CI was exercising by accident.
+    ///
+    /// A machine without the agent installed gets one line per agent and no model lines at all —
+    /// `FAIL` for the active agent, `WARN` for the rest, because an unresolvable model on an agent
+    /// you are not using is noise. This is pinned so the fixed-`true` probe in the tests above
+    /// cannot quietly become the only behaviour under test.
+    #[test]
+    fn agent_model_lines_stop_at_the_cli_when_it_is_not_installed() {
+        let mut settings = agent_settings("claude", "not-a-real-model-id");
+        settings.coding_agents.push(crate::config::AgentConfig {
+            name: "codex".to_string(),
+            ..Default::default()
+        });
+
+        let checks = agent_model_checks_with(&settings, false, |_| false);
+        let lines = render(&checks);
+
+        assert_eq!(
+            lines,
+            vec![
+                "[FAIL] claude (active): CLI 'claude' not found on PATH".to_string(),
+                "[WARN] codex: CLI 'codex' not found on PATH".to_string(),
+            ]
+        );
     }
 
     #[test]
