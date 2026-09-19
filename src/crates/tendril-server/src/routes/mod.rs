@@ -379,9 +379,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .post(tunnel::start_share_tunnel)
                 .delete(tunnel::stop_share_tunnel),
         )
+        // The install check, the install itself, and the way out of one. `POST` is only ever reached
+        // from an explicit Install press — nothing downloads on start or on a status read — and
+        // `DELETE` cancels a transfer in flight rather than deleting an installed binary.
         .route(
             "/api/tunnel/share/install",
-            get(tunnel::get_cloudflared_install_state),
+            get(tunnel::get_cloudflared_install_state)
+                .post(tunnel::install_cloudflared)
+                .delete(tunnel::cancel_cloudflared_install),
         )
         // Models
         .route("/api/models", get(models::list_models))
