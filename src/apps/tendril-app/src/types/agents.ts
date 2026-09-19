@@ -95,3 +95,96 @@ export interface ProviderModelsRequest {
   baseUrl?: string;
   apiKey?: string;
 }
+
+/* --------------------------------------- the Test Agent dialog, `POST /api/agents/:agent/test` */
+
+/**
+ * How a model validation came out — Rust `provider_models::ModelValidationStatus`, V1
+ * `Abstractions/AgentTypes.ModelValidationStatus`.
+ *
+ * `rateLimit` is an error rather than a warning on purpose: the model is valid and reachable, but a
+ * fleet started against an exhausted quota produces nothing at all.
+ */
+export type ModelValidationStatus =
+  | "ok"
+  | "invalidModel"
+  | "authError"
+  | "rateLimit"
+  | "timeout"
+  | "unknown";
+
+export interface ModelValidation {
+  status: ModelValidationStatus;
+  model: string;
+  errorMessage?: string | null;
+}
+
+/** Whether the agent's CLI is on the machine — Rust `probe::AgentInstallStatus`. */
+export interface AgentInstallStatus {
+  isInstalled: boolean;
+  version?: string | null;
+  binaryPath?: string | null;
+  error?: string | null;
+}
+
+/** Rust `probe::AuthStatus`. `checkFailed` is "the check itself broke", not "you are signed out". */
+export type AuthStatus = "authenticated" | "notAuthenticated" | "checkFailed" | "unknown";
+
+export interface AgentAuthResult {
+  status: AuthStatus;
+  /** Which backend the credential is for: `bedrock`, `vertex`, `anthropic-api`. */
+  provider?: string | null;
+  /** How it is held: `oauth`, `api-key`, `auth-file`, `environment`. */
+  authMethod?: string | null;
+  error?: string | null;
+  signInHint?: string | null;
+}
+
+/**
+ * One complete Test Agent run.
+ *
+ * `auth` and `models` are empty when the CLI is missing: the daemon short-circuits there, because an
+ * auth probe against a binary that does not exist reports a spawn failure and teaches nobody
+ * anything.
+ */
+export interface TestAgentResult {
+  agent: string;
+  install: AgentInstallStatus;
+  auth?: AgentAuthResult | null;
+  models: ModelValidation[];
+}
+
+/** The models to validate, in the order the dialog lists them. */
+export interface TestAgentRequest {
+  models: string[];
+}
+
+/* ------------------------------------- the usage strip, `GET /api/agents/:agent/usage` */
+
+/** One provider rate-limit window — Rust `usage::AgentUsageWindow`. */
+export interface AgentUsageWindow {
+  /** 300 for five hours, 10080 for a week. */
+  windowMinutes: number;
+  usedPercent: number;
+  remainingPercent: number;
+  totalTokens?: number | null;
+  costUsd?: number | null;
+  /** RFC 3339, or absent when the provider does not say. */
+  resetsAt?: string | null;
+}
+
+/**
+ * Every window for one agent, as of one moment.
+ *
+ * `null` from the route for the four agents whose providers publish no usage at all — Gemini,
+ * Copilot, OpenCode and the proxies. That is parity with V1, which has three usage providers and
+ * not six, and the pane draws no strip rather than an empty one.
+ */
+export interface AgentUsageSnapshot {
+  agentId: string;
+  windows: AgentUsageWindow[];
+  /** RFC 3339. The strip says "as of ..." once this is old enough to matter. */
+  capturedAt: string;
+  /** Which of several same-length limits this came from, e.g. "from Opus weekly limit". */
+  note?: string | null;
+}

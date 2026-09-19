@@ -14,6 +14,8 @@ import {
 } from "../../types/agents";
 import { formatEnvLines, parseEnvLines } from "./configValues";
 import { normalizeAgentName } from "./projectConfig";
+import { AgentTestDialog, type TestModelEntry } from "./AgentTestDialog";
+import { AgentUsageStrip } from "./AgentUsageStrip";
 import {
   LinesField,
   NativeSelectField,
@@ -55,8 +57,9 @@ import {
  * every one of those keys back for each launch, which is why they are written in the shapes
  * `codingAgents.ts` produces rather than as anything more convenient.
  *
- * Two of V1's blocks have no counterpart in this build and are stated rather than faked - see the
- * note at the foot of the pane.
+ * Above the profiles sits the usage strip - this agent's rate-limit windows - and below Save is Test
+ * Agent, which runs install, auth and one prompt per configured model. Both are V1 blocks; both read
+ * routes that V2 grew for them, since neither answer can be computed in a webview.
  */
 
 /** `EffortLevels.Claude`, V1's fallback when neither the model nor the descriptor names any. */
@@ -138,6 +141,7 @@ export const CodingAgentSection: React.FC<{
   const [agents, setAgents] = React.useState<AgentOption[]>([]);
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [isTestOpen, setIsTestOpen] = React.useState(false);
 
   // Live discovery (`POST /api/agents/models`). `discovered` is per endpoint rather than global: it is
   // what *this* URL answered, and switching cards discards it.
@@ -293,6 +297,44 @@ export const CodingAgentSection: React.FC<{
     ? catalogAgent.supportsEffort
     : supportsEffort(finalAgent) && effortOptionsFor(DEFAULT_OPTION_ID).length > 0;
   const defaults = tierDefaults(finalAgent, baseUrl);
+
+  /**
+   * `getModels()` in `CodingAgentSetupView.cs:415-441`: what Test Agent validates.
+   *
+   * The three tiers in order, deduplicated - two tiers on one model is one prompt, not two, and the
+   * dialog charges a real request per row. An unset tier contributes a single row labelled "Default"
+   * however many tiers are unset, deduplicated on the literal key `default` rather than on the model
+   * id, because "whatever this agent defaults to" is one thing regardless of what it resolves to.
+   * Everything else dedupes case-insensitively and shows the catalogue's display name.
+   *
+   * Deliberately the *stored* value, not `shownTierModel`: a tier the operator has not touched must
+   * be tested as unset, which is what a launch would do with it. Testing the resolved model instead
+   * would validate a model the agent might never be asked for.
+   */
+  const testModels: TestModelEntry[] = React.useMemo(() => {
+    const entries: TestModelEntry[] = [];
+    const seen = new Set<string>();
+    for (const tier of PROFILE_TIERS) {
+      const model = profiles[tier].model;
+      if (isTierUnset(model)) {
+        if (!seen.has("default")) {
+          seen.add("default");
+          entries.push({ id: "", displayName: "Default" });
+        }
+        continue;
+      }
+      const key = model.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const known = modelOptions.find((option) => option.value.toLowerCase() === key);
+      entries.push({ id: model, displayName: known?.label ?? model });
+    }
+    return entries;
+    // `modelOptions` is rebuilt every render, so it is read for labels but not depended on: a label
+    // that arrives with the catalogue does not need to rebuild this list, and depending on it would
+    // give the dialog a new `models` identity on every render of the pane.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles]);
 
   const chooseCard = (next: string) => {
     setChosenCard(next);
@@ -612,6 +654,10 @@ export const CodingAgentSection: React.FC<{
           }
           testId="profile-models-block"
         >
+          {/* V1 puts the strip above the whole `profileModels` stack, which in this build is the
+              section it heads. First child, so the quota is read before the models it constrains. */}
+          <AgentUsageStrip agent={finalAgent} />
+
           {isByo && modelOptions.length > 0 && (
             <div className="mb-3 flex items-center gap-3">
               <Switch
@@ -743,23 +789,33 @@ export const CodingAgentSection: React.FC<{
 
         <SaveError message={error} />
 
-        <Button type="submit" disabled={!hasChanges || isSaving}>
-          {isSaving ? "Saving..." : "Save"}
-        </Button>
+        {/* `Layout.Horizontal() | Test Agent | Save`, in that order. `type="button"` because this
+            sits inside the settings form and a bare button in a form submits it - which would save
+            the pane every time someone tested it. */}
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="test-agent"
+            disabled={isFetchingModels}
+            onClick={() => setIsTestOpen(true)}
+          >
+            Test Agent
+          </Button>
+          <Button type="submit" disabled={!hasChanges || isSaving}>
+            {isSaving ? "Saving..." : "Save"}
+          </Button>
+        </div>
 
-        {/* Stated rather than offered, as in `SecurityTunnelingSection`. */}
-        <Callout.Info data-testid="agent-gaps-note">
-          <div className="space-y-1 text-xs">
-            <p>
-              V1&apos;s <strong>Test Agent</strong> dialog is missing because the daemon has no
-              route that runs a one-off prompt against an agent, so there is nothing for it to call.
-            </p>
-            <p>
-              V1&apos;s usage strip (the rate-limit windows above the profiles) needs a per-agent
-              usage snapshot, which this build does not collect.
-            </p>
-          </div>
-        </Callout.Info>
+        {/* Tests the agent as *saved*, which is what a launch would use. Unsaved edits to the model
+            fields are still what `testModels` reads, so the dialog checks what the pane shows - but
+            an unsaved API key is not sent, because the daemon reads the key from `config.yaml`. */}
+        <AgentTestDialog
+          isOpen={isTestOpen}
+          onClose={() => setIsTestOpen(false)}
+          agent={finalAgent}
+          models={testModels}
+        />
       </form>
     </SettingsSection>
   );
