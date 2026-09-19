@@ -169,6 +169,8 @@ pub fn run() {
             cmd_create_project,
             cmd_get_config,
             cmd_put_config,
+            cmd_get_config_text,
+            cmd_put_config_text,
             cmd_get_onboarding_status,
             cmd_complete_onboarding,
             cmd_dismiss_onboarding,

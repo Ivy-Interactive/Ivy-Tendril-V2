@@ -33,6 +33,37 @@ pub async fn cmd_put_config(key: String, value: serde_json::Value) -> Result<(),
     get_client_from_master()?.put_config(&key, value).await
 }
 
+/// `config.yaml` as text, with its secrets already masked daemon-side (`GET /api/config/text`).
+///
+/// A command rather than a `fetch` for the reason every route on this file is one: the daemon's
+/// bearer secret is read from `.master` natively and never crosses into the webview, and there is no
+/// `/api` proxy outside the dev server, so a relative `fetch` from the packaged app resolves against
+/// the asset origin and reaches neither the daemon nor a credential. `api/configTextApi.ts` picks
+/// between this and `fetch` once, by host - the two paths are exclusive rather than a fallback
+/// chain, so a real rejection here stays the reason the operator sees.
+///
+/// The reply comes back untouched. It is `config.yaml` itself, so this side neither parses it nor
+/// traces it: the daemon is the only side that may see the unmasked values, and it fails this route
+/// closed rather than serving a file whose secrets it could not confidently mask.
+#[tauri::command]
+pub async fn cmd_get_config_text() -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.get_config_text().await
+}
+
+/// Writes an edited `config.yaml` back (`PUT /api/config/text`).
+///
+/// A command for the same reason as `cmd_get_config_text`, plus one of its own: the daemon resolves
+/// the mask sentinels the operator left in place back to the stored secrets, which only it can read.
+///
+/// Deliberately no `tracing` line carrying `text`, unlike most write commands. Mid-edit the buffer
+/// can hold an API key the operator has typed and not yet saved, and a log line is the cheapest way
+/// for one to end up in a bug report. `text` is passed straight through and the reply handed back
+/// untouched - a property that holds only as long as this stays a delegation.
+#[tauri::command]
+pub async fn cmd_put_config_text(text: String) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.put_config_text(&text).await
+}
+
 #[tauri::command]
 pub async fn cmd_get_onboarding_status() -> Result<OnboardingStatusDto, BridgeError> {
     get_client_from_master()?.get_onboarding_status().await

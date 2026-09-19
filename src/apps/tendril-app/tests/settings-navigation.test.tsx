@@ -190,19 +190,45 @@ describe("SettingsView sidebar", () => {
     expect(screen.getByText("Daemon Diagnostics")).toBeInTheDocument();
   });
 
-  /** `ConfigYamlUiHelper.OpenOrNavigate`: on the desktop shell it opens the file itself. */
-  it("opens config.yaml from the action row without changing the selection", async () => {
+  /**
+   * `ConfigYamlUiHelper.OpenOrNavigate`, taking the *navigate* arm rather than the shell-out.
+   *
+   * V2 used to hand the path to the OS, on the reasoning that V2 is always the desktop shell — which
+   * made the app's own config button open TextEdit. `ConfigEditorView` is V1's `ConfigEditorApp`, so
+   * the row now goes there. `openPath` is still spied on because the point of the assertion is that
+   * nothing leaves the app any more.
+   */
+  it("opens the config editor from the action row without changing the selection", async () => {
     await renderSettings();
 
     await click("settings-row-open-config");
 
-    expect(openPath).toHaveBeenCalledWith("/home/user/.tendril/config.yaml");
-    // The action row never becomes the selection, so Coding Agent is still showing.
-    expect(screen.getByTestId("coding-agent-card")).toBeInTheDocument();
+    expect(await screen.findByTestId("config-editor-view")).toBeInTheDocument();
+    expect(openPath).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("coding-agent-card")).not.toBeInTheDocument();
+    // V1 passes `false` for this row's selected, and the content pane it opens is a branch rather
+    // than a section — so, exactly as while Add Project is open, no section row is highlighted.
+    const selected = Array.from(
+      screen.getByTestId("settings-sidebar").querySelectorAll('[aria-selected="true"]'),
+    );
+    expect(selected).toEqual([]);
     expect(screen.getByTestId("settings-row-open-config")).toHaveAttribute(
       "aria-selected",
       "false",
     );
+  });
+
+  /** And the way back: picking any section leaves the editor, exactly as it leaves Add Project. */
+  it("leaves the config editor when a section is selected", async () => {
+    await renderSettings();
+
+    await click("settings-row-open-config");
+    expect(await screen.findByTestId("config-editor-view")).toBeInTheDocument();
+
+    await click("settings-row-advanced");
+
+    expect(screen.queryByTestId("config-editor-view")).not.toBeInTheDocument();
+    expect(screen.getByTestId("advanced-settings-card")).toBeInTheDocument();
   });
 
   describe("the expandable Projects row", () => {

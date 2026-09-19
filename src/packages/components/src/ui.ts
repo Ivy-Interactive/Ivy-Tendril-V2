@@ -19,6 +19,10 @@ export * from "./components/ui/badge";
 export * from "./components/ui/blades";
 export * from "./components/ui/button";
 export * from "./components/ui/calendar";
+/* Not under components/ui/: CodeEditor owns a directory because it ships a stylesheet and a
+   lazy CodeMirror loader alongside the component. Exported here because it is a form control a
+   host reaches for like any other primitive. */
+export * from "./components/CodeEditor/index.ts";
 export * from "./components/ui/callout";
 export * from "./components/ui/callout-variant";
 export * from "./components/ui/card";

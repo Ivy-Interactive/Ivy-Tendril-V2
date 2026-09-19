@@ -297,7 +297,9 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
   type ToolKey = "verifications" | "questions";
   const rootRef = useRef<HTMLDivElement>(null);
   const [rootWidth, setRootWidth] = useState<number | null>(null);
-  const [width, setWidth] = useState(() => readStoredChatWidth() ?? chatWidth);
+  // Keyed by `id`, so two workspaces in the same app remember their own widths. `chatWidth` is the
+  // default only until one has been dragged; after that the stored value under this id wins.
+  const [width, setWidth] = useState(() => readStoredChatWidth(id) ?? chatWidth);
   const [dragging, setDragging] = useState(false);
   const [openTool, setOpenTool] = useState<{ tool: ToolKey; pinned: boolean } | null>(null);
   const [, setSeenVersion] = useState(0);
@@ -383,7 +385,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
       setDragging(false);
-      writeStoredChatWidth(latest);
+      writeStoredChatWidth(id, latest);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -392,7 +394,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
 
   const resetWidth = () => {
     setWidth(chatWidth);
-    writeStoredChatWidth(null);
+    writeStoredChatWidth(id, null);
   };
 
   const hasVerifications = hasNodes(slots?.Verifications);

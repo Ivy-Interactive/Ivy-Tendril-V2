@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Button,
   Input,
@@ -16,6 +15,7 @@ import {
 import { Plus } from "lucide-react";
 import { bridge } from "../api/bridge";
 import { notificationsStore } from "../state/notificationsStore";
+import { uiStore } from "../state/uiStore";
 import { readAppearance } from "../state/appearance";
 import { describeBridgeError, type ServiceInfo, type TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
@@ -45,6 +45,14 @@ import { readLevels, readProjectEntries, readVerificationDefs } from "./settings
 import { PROFILE_TIERS, readAgentEntries } from "./settings/codingAgents";
 import { ProjectSettingsView } from "./settings/ProjectSettingsView";
 import { AddProjectView } from "./settings/AddProjectView";
+/**
+ * `React.lazy` rather than a plain import, for the reason `App.tsx` lazies every view: this one
+ * reaches CodeMirror and the whole embedded chat, and Settings is opened far more often than
+ * `config.yaml` is hand-edited. Bundling it in would make every visit to Settings pay for both.
+ */
+const ConfigEditorView = React.lazy(() =>
+  import("./settings/ConfigEditorView").then((m) => ({ default: m.ConfigEditorView })),
+);
 import { AppearanceSection } from "./settings/AppearanceSection";
 import { CodingAgentSection } from "./settings/CodingAgentSection";
 import { LevelsSection } from "./settings/LevelsSection";
@@ -376,6 +384,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
   /** The "Add Project" sub-item. V1 opens `AddProjectDialog`; this area owns no dialog files. */
   const [isAddingProject, setIsAddingProject] = useState(false);
+  /**
+   * The "Open config.yaml" action row, which is a branch of the content pane and not a section — the
+   * same shape as {@link isAddingProject}, and for the same reason: V1 reaches both from the sidebar
+   * without either becoming the selection.
+   */
+  const [isEditingConfig, setIsEditingConfig] = useState(false);
   /** The project the Add Project blade wrote, so its harness step can read it back off the config. */
   const [createdProjectName, setCreatedProjectName] = useState<string | null>(null);
   // `saved` is what config.yaml last said; `form` is what the operator has typed. Every section's
@@ -522,6 +536,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const selectSection = (tag: string) => {
     setIsAddingProject(false);
+    setIsEditingConfig(false);
     setSelected(tag);
   };
 
@@ -592,16 +607,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   /**
-   * `ConfigYamlUiHelper.OpenOrNavigate`. On a desktop shell V1 opens `config.yaml` in the configured
-   * editor; V2 is always the desktop shell, so it hands the path to the OS. V1's web fallback
-   * (`ConfigEditorApp`) has no V2 counterpart, so there is nothing to navigate to instead.
+   * `ConfigYamlUiHelper.OpenOrNavigate`, now taking its *navigate* arm.
+   *
+   * V1's helper has two: hand the file to the operator's editor, or navigate to `ConfigEditorApp`.
+   * V2 took only the first, on the reasoning that V2 is always the desktop shell — which is true and
+   * still gave the wrong answer, because it made "Open config.yaml" leave the app for TextEdit. The
+   * second arm now exists ({@link ConfigEditorView}), so this navigates to it, and the daemon is
+   * edited through the daemon rather than behind its back: the editor writes over the config route,
+   * which validates the document before it lands and masks every secret on the way out.
+   *
+   * Like Add Project this is a branch of the content pane rather than a section, so the row it is
+   * fired from never becomes the selection.
    */
   const openConfigYaml = () => {
-    const home = serviceInfo?.tendrilHome;
-    if (!home) return;
-    void openPath(`${home.replace(/[/\\]+$/, "")}/config.yaml`).catch((err) => {
-      notificationsStore.notifyError(`Failed to open config.yaml: ${describeBridgeError(err)}`);
-    });
+    setIsAddingProject(false);
+    setIsEditingConfig(true);
   };
 
   const isProjectTag = selected === SettingsTag.Projects || selected.startsWith(PROJECT_TAG_PREFIX);
@@ -611,18 +631,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     ...sections.map((section) => section.tag),
     SettingsTag.Tunnel,
   ]);
-  const showsProject = !isAddingProject && isProjectTag && selectedProject !== null;
+  const showsProject =
+    !isEditingConfig && !isAddingProject && isProjectTag && selectedProject !== null;
   /** V1's two fallbacks to `CodingAgentSetupView`: no projects to show, and an unrecognised tag. */
   const fallsBackToCodingAgent =
+    !isEditingConfig &&
     !isAddingProject &&
     ((isProjectTag && selectedProject === null) || (!isProjectTag && !knownTags.has(selected)));
-  const on = (tag: string) => !isAddingProject && selected === tag;
+  const on = (tag: string) => !isEditingConfig && !isAddingProject && selected === tag;
   const showCodingAgent = on(SettingsTag.CodingAgent) || fallsBackToCodingAgent;
 
   const projectNames = projects.map((project) => project.name);
-  const currentLabel = isAddingProject
-    ? "Add Project"
-    : sectionLabel(selected, sections, projectNames);
+  const currentLabel = isEditingConfig
+    ? "config.yaml"
+    : isAddingProject
+      ? "Add Project"
+      : sectionLabel(selected, sections, projectNames);
 
   return (
     <div className="flex h-full min-h-0" data-testid="settings-view">
@@ -686,7 +710,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               label={section.label}
               selected={
                 section.tag === SettingsTag.Security
-                  ? securitySelected && !isAddingProject
+                  ? securitySelected && !isEditingConfig && !isAddingProject
                   : on(section.tag)
               }
               onClick={() => selectSection(section.tag)}
@@ -734,7 +758,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </Select>
         </div>
 
-        {showsProject && selectedProject ? (
+        {isEditingConfig ? (
+          // No scroller and no inset, unlike the two branches below: the editor is a
+          // `PlanWorkspace`, which owns its own chrome and expects the whole pane. Wrapping it in
+          // `overflow-auto py-4 pl-4` would give the split pane a height of its content and collapse
+          // the CodeMirror host, which sizes itself from the box it is given.
+          <React.Suspense fallback={null}>
+            <ConfigEditorView
+              tendrilHome={serviceInfo?.tendrilHome}
+              // `App.handleSelectPlan`'s navigation, minus its detail prefetch: a plan is
+              // `PlansApp` plus args, so the app id carries the number and the args carry it again
+              // for the page that reads them.
+              onOpenPlan={(planId) => {
+                uiStore.setSelectedPlanId(planId);
+                uiStore.navigate({ appId: `plan-${planId}`, args: { planId } });
+              }}
+            />
+          </React.Suspense>
+        ) : showsProject && selectedProject ? (
           // The same inset and the same scroll owner as the section branch below. Settings is a
           // full-bleed page (V1's `SidebarLayout`), so the content pane is what supplies both;
           // leaving this branch bare made it the one settings section that took its padding from the
@@ -916,7 +957,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </SettingsSection>
               )}
 
-              {securitySelected && !isAddingProject && <SecurityTunnelingSection />}
+              {securitySelected && !isEditingConfig && !isAddingProject && (
+                <SecurityTunnelingSection />
+              )}
 
               {on(SettingsTag.Advanced) && (
                 <>
