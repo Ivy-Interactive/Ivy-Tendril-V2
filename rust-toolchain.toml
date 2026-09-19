@@ -1,3 +1,17 @@
+# Pinned to an exact version rather than `stable`. With a floating channel every machine and every
+# CI run resolves to whatever stable happened to be that day, so the workspace was already building
+# on two compilers depending on who last ran `rustup update`.
+#
+# This file does NOT make CI follow the pin on its own. `dtolnay/rust-toolchain` installs whatever
+# its `toolchain:` input says (defaulting to `stable`), points `rustup default` at that, and installs
+# any `targets:` into it — it never exports `RUSTUP_TOOLCHAIN`. A rustup override file beats `rustup
+# default`, so cargo would then run under the version pinned here while the target std sat in the
+# other toolchain, and every job would pay for a second, uncached toolchain download. So each
+# workflow passes `toolchain:` explicitly, and `ci_resource_config_test.rs` fails if one drifts from
+# this file.
+#
+# Bumping this is a deliberate act: raise the version here and in the workflows (the test names them
+# all), run the gates, and land it on its own.
 [toolchain]
-channel = "stable"
+channel = "1.98.1"
 components = ["clippy", "rustfmt"]

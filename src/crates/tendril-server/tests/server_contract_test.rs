@@ -298,6 +298,19 @@ async fn test_cors_rejection_for_unauthorized_origins() {
             .unwrap(),
         "http://localhost:1420"
     );
+
+    // `Vary: origin` and nothing else, which is a property of how the layer is configured rather
+    // than a default. tower-http computes this per field: the allow-list is a predicate, so the
+    // reply genuinely varies by origin and a shared cache must not serve one origin's response to
+    // another; `allow_methods` and `allow_headers` are fixed lists, so they do not. tower-http 0.5
+    // emitted all three names unconditionally, and the 0.7 bump narrowed this with nothing in the
+    // diff to show it — pinned here so a future change to the layer is a decision, not a side
+    // effect of a dependency.
+    assert_eq!(
+        local_resp.headers().get("vary").unwrap(),
+        "origin",
+        "the allow-list is a predicate over Origin, so caches must key on it"
+    );
 }
 
 #[tokio::test]

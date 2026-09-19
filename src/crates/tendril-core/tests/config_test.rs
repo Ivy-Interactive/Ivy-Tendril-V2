@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use tendril_core::config::{
     chat_mode_is_terminal, delete_master, dirs_home, dirs_home_with_env, ensure_home_directories,
     expand_variables, expand_variables_with_env, find_projects_referencing_verification,
-    get_config_path, get_config_path_with_env, get_default_tendril_home,
+    generate_bearer_secret, get_config_path, get_config_path_with_env, get_default_tendril_home,
     get_default_tendril_home_with_env, get_hooks_dir, get_plans_dir, get_plans_dir_with_env,
     get_plans_dir_with_settings, get_tendril_home, get_tendril_home_with_env, load_config,
     normalize_slashes, read_master, remove_verification_from_projects, save_config, write_master,
@@ -1014,4 +1014,28 @@ fn test_chat_mode_defaults_to_chat_and_round_trips() {
     assert!(chat_mode_is_terminal(&loaded.chat_mode));
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `generate_bearer_secret` mints the daemon's own auth token, so "it is 32 bytes of real entropy,
+/// rendered as hex" is a security property, not a formatting detail. Pinned here because the rand
+/// 0.9 port changed the call underneath it: `OsRng` no longer implements `RngCore`, and the
+/// fallible `try_fill_bytes` it now uses would leave `bytes` all-zero if its error were swallowed
+/// rather than raised — a silently predictable secret that every other test in the tree would still
+/// pass with, since they only ever use the value as an opaque string.
+#[test]
+fn test_generate_bearer_secret_is_32_bytes_of_hex_entropy() {
+    let a = generate_bearer_secret();
+    let b = generate_bearer_secret();
+
+    // 32 bytes rendered `{:02x}` each.
+    assert_eq!(a.len(), 64, "expected 64 hex chars, got {}", a);
+    assert!(
+        a.chars().all(|c| c.is_ascii_hexdigit()),
+        "expected lowercase hex, got {}",
+        a
+    );
+
+    // The all-zero secret is what a swallowed entropy failure would produce.
+    assert_ne!(a, "0".repeat(64), "secret is all zeroes");
+    assert_ne!(a, b, "two secrets in a row were identical");
 }

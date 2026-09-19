@@ -31,7 +31,7 @@ const HASH_SECRET_LEN: usize = 32;
 /// A fresh base64 `hashSecret` (32 random bytes), the port of `AuthPasswordHelper.GenerateSecret`.
 pub fn generate_hash_secret() -> String {
     let mut bytes = [0u8; HASH_SECRET_LEN];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     BASE64.encode(bytes)
 }
 
@@ -53,7 +53,7 @@ pub fn hash_password_with_secret(plaintext: &str, secret: &[u8]) -> Result<Strin
         .map_err(|e| TendrilError::Config(format!("Failed to initialise Argon2: {e}")))?;
 
     let mut salt_bytes = [0u8; SALT_LEN];
-    rand::thread_rng().fill_bytes(&mut salt_bytes);
+    rand::rng().fill_bytes(&mut salt_bytes);
     let salt = SaltString::encode_b64(&salt_bytes)
         .map_err(|e| TendrilError::Config(format!("Failed to encode salt: {e}")))?;
 

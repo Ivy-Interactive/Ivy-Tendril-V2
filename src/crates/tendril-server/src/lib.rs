@@ -221,7 +221,11 @@ pub async fn run_server(
                 signalled.graceful_shutdown(Some(SHUTDOWN_GRACE));
             });
 
-            axum_server::from_tcp_rustls(listener.into_std()?, config)
+            // The `?` on `from_tcp_rustls` is new in axum-server 0.8: `Server` became generic over
+            // its connection type and the constructor now returns `Result` rather than the server
+            // itself. The 0.8 changelog does not mark this breaking, so it shows up as an E0599 on
+            // `.handle` rather than as anything you would have read about beforehand.
+            axum_server::from_tcp_rustls(listener.into_std()?, config)?
                 .handle(handle)
                 .serve(app.into_make_service_with_connect_info::<std::net::SocketAddr>())
                 .await?;
