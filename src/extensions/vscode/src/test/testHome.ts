@@ -1,9 +1,9 @@
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { TEST_ISOLATION_ENV } from '../server/homeGuard';
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { TEST_ISOLATION_ENV } from "../server/homeGuard";
 
-export const STUB_INVOCATIONS_FILE = 'stub-invocations.jsonl';
+export const STUB_INVOCATIONS_FILE = "stub-invocations.jsonl";
 
 export interface IsolatedHome {
   path: string;
@@ -13,7 +13,7 @@ export interface IsolatedHome {
 export interface StubInvocation {
   args: string[];
   tendrilHome?: string;
-  mode: 'server' | 'cli';
+  mode: "server" | "cli";
   pid: number;
 }
 
@@ -27,7 +27,7 @@ export interface MasterInfo {
 }
 
 /** The bearer secret the stub daemon publishes in `.master` and requires on `/api/*`. */
-export const STUB_SECRET = 'stub-secret';
+export const STUB_SECRET = "stub-secret";
 
 function realPath(p: string): string {
   try {
@@ -38,9 +38,9 @@ function realPath(p: string): string {
 }
 
 function isUnderTempDir(candidate: string): boolean {
-  const tmp = realPath(os.tmpdir()).replace(/[\\/]+$/, '');
+  const tmp = realPath(os.tmpdir()).replace(/[\\/]+$/, "");
   const resolved = realPath(candidate);
-  return resolved.startsWith(tmp + path.sep) || resolved.startsWith(tmp + '/');
+  return resolved.startsWith(tmp + path.sep) || resolved.startsWith(tmp + "/");
 }
 
 /**
@@ -50,22 +50,24 @@ function isUnderTempDir(candidate: string): boolean {
  * that reaches the developer's real ~/.tendril can seize mastership from the production daemon.
  */
 export function createIsolatedTendrilHome(): IsolatedHome {
-  const homePath = fs.mkdtempSync(path.join(os.tmpdir(), 'tendril-vscode-test-'));
+  const homePath = fs.mkdtempSync(path.join(os.tmpdir(), "tendril-vscode-test-"));
 
-  fs.mkdirSync(path.join(homePath, 'Plans'), { recursive: true });
-  fs.mkdirSync(path.join(homePath, 'Logs', 'Jobs'), { recursive: true });
+  fs.mkdirSync(path.join(homePath, "Plans"), { recursive: true });
+  fs.mkdirSync(path.join(homePath, "Logs", "Jobs"), { recursive: true });
   fs.writeFileSync(
-    path.join(homePath, 'config.yaml'),
-    ['planFolder: ' + path.join(homePath, 'Plans').replace(/\\/g, '/'), 'projects: []', ''].join('\n'),
-    'utf-8'
+    path.join(homePath, "config.yaml"),
+    ["planFolder: " + path.join(homePath, "Plans").replace(/\\/g, "/"), "projects: []", ""].join(
+      "\n",
+    ),
+    "utf-8",
   );
 
   process.env.TENDRIL_HOME = homePath;
   // TENDRIL_PLANS and TENDRIL_CONFIG take precedence over the home-derived paths, so an inherited
   // value would send plan writes back to the developer's live Plans directory despite the temp home.
-  process.env.TENDRIL_PLANS = path.join(homePath, 'Plans');
-  process.env.TENDRIL_CONFIG = path.join(homePath, 'config.yaml');
-  process.env[TEST_ISOLATION_ENV] = '1';
+  process.env.TENDRIL_PLANS = path.join(homePath, "Plans");
+  process.env.TENDRIL_CONFIG = path.join(homePath, "config.yaml");
+  process.env[TEST_ISOLATION_ENV] = "1";
 
   return {
     path: homePath,
@@ -74,12 +76,12 @@ export function createIsolatedTendrilHome(): IsolatedHome {
 
       if (!isUnderTempDir(homePath)) {
         throw new Error(
-          `Refusing to remove isolated Tendril home ${homePath}: it is not under ${os.tmpdir()}.`
+          `Refusing to remove isolated Tendril home ${homePath}: it is not under ${os.tmpdir()}.`,
         );
       }
 
       fs.rmSync(homePath, { recursive: true, force: true });
-    }
+    },
   };
 }
 
@@ -88,15 +90,15 @@ export function createIsolatedTendrilHome(): IsolatedHome {
  * .master claim (the orphan half of the incident this guard exists for).
  */
 export function killStubServer(home: string): void {
-  const masterFile = path.join(home, '.master');
+  const masterFile = path.join(home, ".master");
   if (!fs.existsSync(masterFile)) {
     return;
   }
 
   try {
-    const data = JSON.parse(fs.readFileSync(masterFile, 'utf-8')) as { pid?: number };
-    if (typeof data.pid === 'number' && data.pid > 0 && data.pid !== process.pid) {
-      process.kill(data.pid, 'SIGKILL');
+    const data = JSON.parse(fs.readFileSync(masterFile, "utf-8")) as { pid?: number };
+    if (typeof data.pid === "number" && data.pid > 0 && data.pid !== process.pid) {
+      process.kill(data.pid, "SIGKILL");
     }
   } catch {
     // Nothing to kill, or already gone.
@@ -118,7 +120,7 @@ const path = require('path');
 
 const args = process.argv.slice(2);
 const home = process.env.TENDRIL_HOME;
-const SECRET = ${JSON.stringify('stub-secret')};
+const SECRET = ${JSON.stringify("stub-secret")};
 // \`tendril run\` / \`tendril serve\` are the V2 launch verbs; V1's \`--web\` flag no longer exists.
 const isServer = args[0] === 'run' || args[0] === 'serve';
 
@@ -227,24 +229,24 @@ process.on('SIGINT', shutdown);
  * `tendril.executablePath` can never resolve to a real (possibly production) binary on PATH.
  */
 export function stubTendrilExecutablePath(home: string): string {
-  const scriptPath = path.join(home, 'tendril-stub.js');
-  fs.writeFileSync(scriptPath, STUB_SOURCE, 'utf-8');
+  const scriptPath = path.join(home, "tendril-stub.js");
+  fs.writeFileSync(scriptPath, STUB_SOURCE, "utf-8");
 
-  if (process.platform === 'win32') {
-    const cmdPath = path.join(home, 'tendril-stub.cmd');
+  if (process.platform === "win32") {
+    const cmdPath = path.join(home, "tendril-stub.cmd");
     fs.writeFileSync(
       cmdPath,
-      ['@echo off', `"${process.execPath}" "${scriptPath}" %*`, ''].join('\r\n'),
-      'utf-8'
+      ["@echo off", `"${process.execPath}" "${scriptPath}" %*`, ""].join("\r\n"),
+      "utf-8",
     );
     return cmdPath;
   }
 
-  const shPath = path.join(home, 'tendril-stub');
+  const shPath = path.join(home, "tendril-stub");
   fs.writeFileSync(
     shPath,
-    ['#!/bin/sh', `exec "${process.execPath}" "${scriptPath}" "$@"`, ''].join('\n'),
-    'utf-8'
+    ["#!/bin/sh", `exec "${process.execPath}" "${scriptPath}" "$@"`, ""].join("\n"),
+    "utf-8",
   );
   fs.chmodSync(shPath, 0o755);
   return shPath;
@@ -261,29 +263,30 @@ export function stubTendrilExecutablePath(home: string): string {
  * genuine readiness failure is debuggable instead of surfacing as a bare assertion mismatch.
  */
 export async function waitForMaster(home: string, timeoutMs = 10000): Promise<MasterInfo> {
-  const masterFile = path.join(home, '.master');
+  const masterFile = path.join(home, ".master");
   const startTime = Date.now();
-  let lastReason = 'not attempted yet';
+  let lastReason = "not attempted yet";
 
   while (Date.now() - startTime < timeoutMs) {
     try {
-      const raw = fs.readFileSync(masterFile, 'utf-8');
+      const raw = fs.readFileSync(masterFile, "utf-8");
       const parsed = JSON.parse(raw) as Partial<MasterInfo>;
-      if (typeof parsed.pid === 'number' && typeof parsed.port === 'number') {
+      if (typeof parsed.pid === "number" && typeof parsed.port === "number") {
         return parsed as MasterInfo;
       }
       lastReason = `parsed but missing numeric pid/port: ${raw}`;
     } catch (err: unknown) {
       const code = (err as NodeJS.ErrnoException)?.code;
-      lastReason = code === 'ENOENT' ? 'ENOENT (file does not exist yet)' : `parse error: ${String(err)}`;
+      lastReason =
+        code === "ENOENT" ? "ENOENT (file does not exist yet)" : `parse error: ${String(err)}`;
     }
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
   const listing = (() => {
     try {
-      return fs.readdirSync(home).join(', ');
+      return fs.readdirSync(home).join(", ");
     } catch (err: unknown) {
       return `<failed to list ${home}: ${String(err)}>`;
     }
@@ -291,13 +294,13 @@ export async function waitForMaster(home: string, timeoutMs = 10000): Promise<Ma
 
   const invocationTail = readStubInvocations(home)
     .slice(-5)
-    .map(i => JSON.stringify(i))
-    .join('\n');
+    .map((i) => JSON.stringify(i))
+    .join("\n");
 
   throw new Error(
     `Timed out waiting for a ready .master under ${home} after ${timeoutMs}ms (last attempt: ${lastReason}).\n` +
       `Directory listing: ${listing}\n` +
-      `Last stub invocations:\n${invocationTail || '<none>'}`
+      `Last stub invocations:\n${invocationTail || "<none>"}`,
   );
 }
 
@@ -308,8 +311,8 @@ export function readStubInvocations(home: string): StubInvocation[] {
   }
 
   return fs
-    .readFileSync(logPath, 'utf-8')
-    .split('\n')
-    .filter(line => line.trim().length > 0)
-    .map(line => JSON.parse(line) as StubInvocation);
+    .readFileSync(logPath, "utf-8")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as StubInvocation);
 }

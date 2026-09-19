@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { Badge, Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../../api/bridge";
+import { SettingsSection } from "../../views/settings/fields";
 import type { ProvisionReport, ServiceInfo } from "../../types/api";
 
 /**
@@ -150,90 +152,85 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
   const badge = serviceInfo?.statusBadge || serviceInfo?.state || "Disconnected";
 
   return (
-    <div className="space-y-6" data-testid="service-settings-view">
-      <div className="rounded-box border border-border bg-card/60 p-6">
-        <div className="flex items-center justify-between border-b border-border pb-4">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">
-              Service Supervision & Controls
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Manage local companion daemon lifecycle, ownership adoption, and crash recovery.
-            </p>
-          </div>
-          <span className="inline-flex items-center space-x-1.5 rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-foreground">
-            <span>Status:</span>
-            <span className="font-semibold text-success">{badge}</span>
-          </span>
-        </div>
-
+    <div className="space-y-10" data-testid="service-settings-view">
+      <SettingsSection
+        title="Service Supervision & Controls"
+        hint="Manage local companion daemon lifecycle, ownership adoption, and crash recovery."
+        action={<Badge variant="secondary">{badge}</Badge>}
+      >
         {actionMessage && (
-          <div className="mt-4 rounded bg-background p-2.5 text-xs text-success border border-success/40">
+          <div className="rounded bg-background p-2.5 text-xs text-success border border-success/40">
             {actionMessage}
           </div>
         )}
 
         {/* Action Controls */}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button
             type="button"
+            size="sm"
+            variant="secondary"
             disabled={isBusy}
             onClick={handleRestart}
-            className="rounded-field bg-muted px-3.5 py-2 text-xs font-medium text-accent-foreground hover:bg-accent disabled:opacity-50 transition"
           >
             Restart Service
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="warning"
             disabled={isBusy}
             onClick={handleRepair}
-            className="rounded-field bg-warning/80 px-3.5 py-2 text-xs font-medium text-warning-foreground hover:bg-warning/90 disabled:opacity-50 transition"
           >
             Repair Service
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="outline"
             disabled={isBusy}
             onClick={() =>
               handleSwitchMode(serviceInfo?.ownership === "Managed" ? "external" : "managed")
             }
-            className="rounded-field border border-border bg-background px-3.5 py-2 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50 transition"
           >
             {serviceInfo?.ownership === "Managed"
               ? "Switch to External Daemon"
               : "Adopt Managed Companion"}
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="outline"
             disabled={isBusy}
             onClick={handleInstall}
             title="Copy the bundled daemon into TENDRIL_HOME/bin and start it with your session"
-            className="rounded-field border border-border bg-background px-3.5 py-2 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50 transition"
           >
             Install Background Service
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="outline"
             disabled={isBusy}
             onClick={handleDisableAutostart}
             title="Stop the daemon starting at login. The installed binaries stay where they are."
-            className="rounded-field border border-border bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground hover:bg-card disabled:opacity-50 transition"
           >
             Disable Start at Login
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="outline"
             disabled={isLoadingLogs}
             onClick={fetchLogs}
-            className="rounded-field border border-border bg-background px-3.5 py-2 text-xs font-medium text-muted-foreground hover:bg-card disabled:opacity-50 transition"
           >
             {isLoadingLogs ? "Loading Logs..." : "Refresh Logs"}
-          </button>
+          </Button>
         </div>
 
         {/* Service Details */}
@@ -259,19 +256,12 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             <dd className="mt-1 font-semibold text-foreground">{serviceInfo?.crashCount ?? 0}</dd>
           </div>
         </dl>
-      </div>
+      </SettingsSection>
 
-      {/* Diagnostics Log Viewer */}
-      <div className="rounded-box border border-border bg-card/60 p-6">
-        <div className="flex items-center justify-between border-b border-border pb-3">
-          <h3 className="text-sm font-semibold text-foreground">
-            Daemon Diagnostics & Service Logs (Sensitive Tokens Redacted)
-          </h3>
-          <span className="text-xs-tight text-muted-foreground font-mono">
-            TENDRIL_HOME/Logs/service.log
-          </span>
-        </div>
-
+      <SettingsSection
+        title="Daemon Diagnostics & Service Logs"
+        hint="Sensitive tokens are redacted. Read from TENDRIL_HOME/Logs/service.log."
+      >
         <div
           data-testid="service-logs-container"
           className="mt-4 max-h-72 overflow-y-auto rounded-box border border-border bg-background p-3 font-mono text-xs text-muted-foreground space-y-1"
@@ -286,7 +276,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             ))
           )}
         </div>
-      </div>
+      </SettingsSection>
     </div>
   );
 };

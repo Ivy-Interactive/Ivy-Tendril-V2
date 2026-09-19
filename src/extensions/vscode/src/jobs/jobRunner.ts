@@ -1,10 +1,15 @@
-import * as vscode from 'vscode';
-import * as cp from 'child_process';
-import { CONFIG_KEYS } from '../constants';
-import { assertIsolatedTendrilHome } from '../server/homeGuard';
-import { authHeaders, discoverMaster, padTendrilId, resolveTendrilHome } from '../server/masterDiscovery';
-import { ServerManager } from '../server/serverManager';
-import { DiscoveryResult } from '../server/types';
+import * as vscode from "vscode";
+import * as cp from "child_process";
+import { CONFIG_KEYS } from "../constants";
+import { assertIsolatedTendrilHome } from "../server/homeGuard";
+import {
+  authHeaders,
+  discoverMaster,
+  padTendrilId,
+  resolveTendrilHome,
+} from "../server/masterDiscovery";
+import { ServerManager } from "../server/serverManager";
+import { DiscoveryResult } from "../server/types";
 
 export interface JobStreamEvent {
   kind?: string;
@@ -55,7 +60,7 @@ export interface IJobRunner {
     jobId: string,
     onEvent: (event: JobStreamEvent) => void,
     cancellationToken?: vscode.CancellationToken,
-    kinds?: string[]
+    kinds?: string[],
   ): Promise<JobStatusResult>;
   listJobs(): Promise<JobListItem[]>;
   listProjects(): Promise<string[]>;
@@ -66,14 +71,14 @@ export interface IJobRunner {
  * Statuses the daemon treats as terminal (`JobStatus` in tendril-core's models/job.rs, and the set
  * `stream_job_events` closes an SSE stream on). Anything else is still in flight and worth polling.
  */
-export const TERMINAL_JOB_STATUSES = ['Completed', 'Failed', 'Stopped', 'Timeout'];
+export const TERMINAL_JOB_STATUSES = ["Completed", "Failed", "Stopped", "Timeout"];
 
 export function isTerminalJobStatus(status: string | undefined): boolean {
-  return typeof status === 'string' && TERMINAL_JOB_STATUSES.includes(status);
+  return typeof status === "string" && TERMINAL_JOB_STATUSES.includes(status);
 }
 
 /** Where the job API lives and what it takes to be let in. */
-interface JobApiTarget extends Pick<DiscoveryResult, 'secret' | 'apiKey'> {
+interface JobApiTarget extends Pick<DiscoveryResult, "secret" | "apiKey"> {
   baseUrl: string;
 }
 
@@ -82,12 +87,12 @@ export class JobRunner implements IJobRunner {
 
   public async executeCli(args: string[]): Promise<{ stdout: string; stderr: string }> {
     const config = vscode.workspace.getConfiguration();
-    const executable = config.get<string>(CONFIG_KEYS.executablePath, 'tendril');
+    const executable = config.get<string>(CONFIG_KEYS.executablePath, "tendril");
     const tendrilHome = this.serverManager
       ? this.serverManager.tendrilHome
       : resolveTendrilHome(config.get<string>(CONFIG_KEYS.homeDirectory));
 
-    assertIsolatedTendrilHome(tendrilHome, `run 'tendril ${args.join(' ')}'`);
+    assertIsolatedTendrilHome(tendrilHome, `run 'tendril ${args.join(" ")}'`);
 
     return new Promise((resolve, reject) => {
       cp.execFile(
@@ -96,21 +101,21 @@ export class JobRunner implements IJobRunner {
         {
           env: {
             ...process.env,
-            TENDRIL_HOME: tendrilHome
-          }
+            TENDRIL_HOME: tendrilHome,
+          },
         },
         (err, stdout, stderr) => {
           if (err) {
-            const errorOutput = stderr ? stderr.toString().trim() : '';
-            const stdOutput = stdout ? stdout.toString().trim() : '';
+            const errorOutput = stderr ? stderr.toString().trim() : "";
+            const stdOutput = stdout ? stdout.toString().trim() : "";
             reject(new Error(errorOutput || stdOutput || err.message));
           } else {
             resolve({
-              stdout: stdout ? stdout.toString() : '',
-              stderr: stderr ? stderr.toString() : ''
+              stdout: stdout ? stdout.toString() : "",
+              stderr: stderr ? stderr.toString() : "",
             });
           }
-        }
+        },
       );
     });
   }
@@ -129,25 +134,25 @@ export class JobRunner implements IJobRunner {
   }
 
   public async startCreatePlan(description: string, project?: string): Promise<JobResult> {
-    const proj = project || 'default';
+    const proj = project || "default";
     const args = [
-      'job',
-      'start',
-      'CreatePlan',
+      "job",
+      "start",
+      "CreatePlan",
       `--description=${description}`,
-      `--project=${proj}`
+      `--project=${proj}`,
     ];
     const { stdout } = await this.executeCli(args);
     const jobId = this.extractJobId(stdout);
     return {
       jobId,
-      status: 'Started',
-      message: stdout.trim()
+      status: "Started",
+      message: stdout.trim(),
     };
   }
 
   public async startExecutePlan(planId: string, note?: string): Promise<JobResult> {
-    const args = ['job', 'start', 'ExecutePlan', planId];
+    const args = ["job", "start", "ExecutePlan", planId];
     if (note) {
       args.push(`--note=${note}`);
     }
@@ -155,42 +160,30 @@ export class JobRunner implements IJobRunner {
     const jobId = this.extractJobId(stdout);
     return {
       jobId,
-      status: 'Started',
-      message: stdout.trim()
+      status: "Started",
+      message: stdout.trim(),
     };
   }
 
   public async startRetryPlan(planId: string, changeRequest: string): Promise<JobResult> {
-    const args = [
-      'job',
-      'start',
-      'RetryPlan',
-      planId,
-      `--change-request=${changeRequest}`
-    ];
+    const args = ["job", "start", "RetryPlan", planId, `--change-request=${changeRequest}`];
     const { stdout } = await this.executeCli(args);
     const jobId = this.extractJobId(stdout);
     return {
       jobId,
-      status: 'Started',
-      message: stdout.trim()
+      status: "Started",
+      message: stdout.trim(),
     };
   }
 
   public async startUpdatePlan(planId: string, instructions: string): Promise<JobResult> {
-    const args = [
-      'job',
-      'start',
-      'UpdatePlan',
-      planId,
-      `--instructions=${instructions}`
-    ];
+    const args = ["job", "start", "UpdatePlan", planId, `--instructions=${instructions}`];
     const { stdout } = await this.executeCli(args);
     const jobId = this.extractJobId(stdout);
     return {
       jobId,
-      status: 'Started',
-      message: stdout.trim()
+      status: "Started",
+      message: stdout.trim(),
     };
   }
 
@@ -206,7 +199,7 @@ export class JobRunner implements IJobRunner {
    */
   public async listJobs(): Promise<JobListItem[]> {
     try {
-      const { stdout } = await this.executeCli(['job', 'list', '--json']);
+      const { stdout } = await this.executeCli(["job", "list", "--json"]);
       const parsed = JSON.parse(stdout) as unknown;
       if (!Array.isArray(parsed)) {
         return [];
@@ -223,16 +216,16 @@ export class JobRunner implements IJobRunner {
         };
 
         return {
-          id: text(job.id) ?? '',
-          type: text(job.type) ?? '',
-          project: text(job.project) ?? '',
-          status: text(job.status) ?? '',
+          id: text(job.id) ?? "",
+          type: text(job.type) ?? "",
+          project: text(job.project) ?? "",
+          status: text(job.status) ?? "",
           message: text(job.statusMessage),
           // `reportedPlanId` is what the agent told the daemon; `planFile` is the plan folder, whose
           // leading digits are the id when nothing was reported.
           planId: text(job.reportedPlanId) ?? planIdFromFolder(text(job.planFile)),
           started: text(job.startedAt),
-          duration: text(job.durationSeconds) ? `${text(job.durationSeconds)}s` : undefined
+          duration: text(job.durationSeconds) ? `${text(job.durationSeconds)}s` : undefined,
         };
       });
     } catch {
@@ -257,8 +250,8 @@ export class JobRunner implements IJobRunner {
         return undefined;
       }
       const discovery = discoverMaster(this.serverManager.tendrilHome, false);
-      const credentials: Pick<DiscoveryResult, 'secret' | 'apiKey'> =
-        discovery.status === 'found'
+      const credentials: Pick<DiscoveryResult, "secret" | "apiKey"> =
+        discovery.status === "found"
           ? { secret: discovery.result.secret, apiKey: discovery.result.apiKey }
           : {};
       return { baseUrl: health.baseUrl, ...credentials };
@@ -275,9 +268,9 @@ export class JobRunner implements IJobRunner {
 
     if (target) {
       try {
-        const url = `${target.baseUrl.replace(/\/+$/, '')}/api/jobs/${encodeURIComponent(paddedId)}`;
+        const url = `${target.baseUrl.replace(/\/+$/, "")}/api/jobs/${encodeURIComponent(paddedId)}`;
         const res = await fetch(url, {
-          headers: { Accept: 'application/json', ...authHeaders(target) }
+          headers: { Accept: "application/json", ...authHeaders(target) },
         });
         if (res.ok) {
           const data = (await res.json()) as {
@@ -293,7 +286,7 @@ export class JobRunner implements IJobRunner {
             // V1 returned the plan id at the top level. V2 nests the whole `JobItem` under
             // `details`, and this is the only place the chat panel can learn which plan a
             // CreatePlan job produced, so its "Next Command" hint depends on reading it.
-            planId: planIdFromDetails(data.details)
+            planId: planIdFromDetails(data.details),
           };
         }
       } catch {
@@ -302,20 +295,20 @@ export class JobRunner implements IJobRunner {
     }
 
     const jobs = await this.listJobs();
-    const found = jobs.find(j => j.id === paddedId || j.id === jobId || j.id.endsWith(jobId));
+    const found = jobs.find((j) => j.id === paddedId || j.id === jobId || j.id.endsWith(jobId));
     if (found) {
       return {
         id: found.id,
         status: found.status,
         message: found.message,
-        planId: found.planId
+        planId: found.planId,
       };
     }
 
     return {
       id: paddedId,
-      status: 'Unknown',
-      message: 'Job status not found'
+      status: "Unknown",
+      message: "Job status not found",
     };
   }
 
@@ -337,7 +330,7 @@ export class JobRunner implements IJobRunner {
     jobId: string,
     onEvent: (event: JobStreamEvent) => void,
     cancellationToken?: vscode.CancellationToken,
-    kinds?: string[]
+    kinds?: string[],
   ): Promise<JobStatusResult> {
     const paddedId = padTendrilId(jobId);
     const target = await this.resolveTarget();
@@ -358,14 +351,14 @@ export class JobRunner implements IJobRunner {
       }
     }
 
-    let url = `${target.baseUrl.replace(/\/+$/, '')}/api/jobs/${encodeURIComponent(paddedId)}/events`;
+    let url = `${target.baseUrl.replace(/\/+$/, "")}/api/jobs/${encodeURIComponent(paddedId)}/events`;
     if (kinds && kinds.length > 0) {
       // The daemon reads a comma-separated `?kinds=` *and* repeated `?kind=` pairs; the repeated
       // form is kept because that is what V1 sent.
       const params = new URLSearchParams();
       for (const k of kinds) {
         if (k && k.trim().length > 0) {
-          params.append('kind', k.trim());
+          params.append("kind", k.trim());
         }
       }
       const queryString = params.toString();
@@ -374,38 +367,38 @@ export class JobRunner implements IJobRunner {
       }
     }
     const headers: Record<string, string> = {
-      Accept: 'text/event-stream',
-      ...authHeaders(target)
+      Accept: "text/event-stream",
+      ...authHeaders(target),
     };
 
     let finalStatus: string | undefined;
 
     const parseSseMessage = (message: string) => {
-      let eventType = '';
+      let eventType = "";
       const dataLines: string[] = [];
       for (const line of message.split(/\r?\n/)) {
         // Comment frames, which is how the daemon's 15s keep-alive arrives.
-        if (line.startsWith(':')) {
+        if (line.startsWith(":")) {
           continue;
         }
-        if (line.startsWith('event:')) {
+        if (line.startsWith("event:")) {
           eventType = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
+        } else if (line.startsWith("data:")) {
           dataLines.push(line.slice(5).trimStart());
         }
       }
-      const dataStr = dataLines.join('\n');
+      const dataStr = dataLines.join("\n");
       if (!dataStr) {
         return;
       }
 
       try {
         const parsed = JSON.parse(dataStr);
-        if (eventType === 'end') {
+        if (eventType === "end") {
           if (parsed.status) {
             finalStatus = parsed.status;
           }
-          onEvent({ kind: 'end', status: parsed.status, ...parsed });
+          onEvent({ kind: "end", status: parsed.status, ...parsed });
         } else {
           if (parsed.status && !finalStatus) {
             finalStatus = parsed.status;
@@ -420,7 +413,7 @@ export class JobRunner implements IJobRunner {
     try {
       const res = await fetch(url, {
         headers,
-        signal: abortController.signal
+        signal: abortController.signal,
       });
 
       if (!res.ok || !res.body) {
@@ -429,7 +422,7 @@ export class JobRunner implements IJobRunner {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -465,7 +458,7 @@ export class JobRunner implements IJobRunner {
         id: paddedId,
         status: finalStatus,
         message: settled.message,
-        planId: settled.planId
+        planId: settled.planId,
       };
     }
 
@@ -474,11 +467,11 @@ export class JobRunner implements IJobRunner {
 
   public async listProjects(): Promise<string[]> {
     try {
-      const { stdout } = await this.executeCli(['project', 'list']);
+      const { stdout } = await this.executeCli(["project", "list"]);
       return stdout
         .split(/\r?\n/)
-        .map(l => l.trim())
-        .filter(l => l.length > 0 && !l.startsWith('Error'));
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && !l.startsWith("Error"));
     } catch {
       return [];
     }
@@ -490,7 +483,11 @@ function planIdFromFolder(folder: string | undefined): string | undefined {
   if (!folder) {
     return undefined;
   }
-  const base = folder.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '';
+  const base =
+    folder
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]/)
+      .pop() ?? "";
   const match = base.match(/^(\d{1,})(?:-|$)/);
   return match ? padTendrilId(match[1]) : undefined;
 }
@@ -500,9 +497,9 @@ function planIdFromDetails(details: Record<string, unknown> | undefined): string
     return undefined;
   }
   const reported = details.reportedPlanId;
-  if (typeof reported === 'string' && reported.trim().length > 0) {
+  if (typeof reported === "string" && reported.trim().length > 0) {
     return reported.trim();
   }
   const planFile = details.planFile;
-  return typeof planFile === 'string' ? planIdFromFolder(planFile) : undefined;
+  return typeof planFile === "string" ? planIdFromFolder(planFile) : undefined;
 }

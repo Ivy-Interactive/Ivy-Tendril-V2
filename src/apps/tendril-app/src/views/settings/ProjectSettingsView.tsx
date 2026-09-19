@@ -15,7 +15,15 @@ import {
 import { SortableVerificationList } from "@ivy-interactive/components/tendril";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
-import { LinesField, SaveError, SelectField, SubSection, TextField, asOptions } from "./fields";
+import {
+  LinesField,
+  SETTINGS_CONTAINER,
+  SaveError,
+  SelectField,
+  SubSection,
+  TextField,
+  asOptions,
+} from "./fields";
 import { useRemovalConfirm } from "./useRemovalConfirm";
 import { formatEnvLines, parseEnvLines, parseLines } from "./configValues";
 import {
@@ -797,26 +805,17 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   ];
 
   return (
-    // `max-w-170` is the width the forms and tables below already use, lifted to the pane so the
-    // whole section shares it. Without it only the *content* was bounded while `SubSection`'s header
-    // stretched to the pane, so on a wide window every "Add …" button sat far out to the right of the
-    // fields it belonged to, and a wide table pushed rows past the edge with no way to scroll to them.
-    <div className="min-w-0 max-w-170 space-y-6" data-testid={`project-settings-${project.name}`}>
-      {/* Section 1: header. V1 renders a colour swatch, the name and a Rename pencil. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-lg font-bold text-foreground">{project.name}</h2>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled
-          title={RENAME_UNAVAILABLE}
-          aria-label="Rename Project"
-        >
-          <Pencil className="size-4" aria-hidden />
-        </Button>
-      </div>
-
+    // The pane is capped at the shared settings width, which bounds every child at once. Without it
+    // only the *content* was bounded while `SubSection`'s header stretched to the pane, so on a wide
+    // window every "Add …" button sat far out to the right of the fields it belonged to, and a wide
+    // table pushed rows past the edge with no way to scroll to them.
+    <div
+      className={`${SETTINGS_CONTAINER} space-y-6`}
+      data-testid={`project-settings-${project.name}`}
+    >
+      {/* No in-body header: the blade header above already prints the project name, and printing it
+          twice cost a whole row before the first field. The Rename pencil V1 puts beside the name
+          moved up there with it, as the blade's `headerAction`. */}
       <SaveError message={error} />
 
       <SubSection
@@ -824,7 +823,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         hint="The project's colour and the AI context handed to every agent working on it."
       >
         <form
-          className="max-w-170 space-y-4"
+          className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             void patch({ color: basic.color, context: basic.context }, "Project saved");
@@ -863,7 +862,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         count={project.repos.length}
         testId="project-repos"
       >
-        <div className="max-w-170 space-y-2">
+        <div className="space-y-2">
           {project.repos.length === 0 && (
             <p className="text-sm text-muted-foreground">No repositories yet.</p>
           )}
@@ -1042,7 +1041,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             create it and enable it here.
           </p>
         ) : (
-          <div className="max-h-80 max-w-170 overflow-auto">
+          <div className="max-h-80 overflow-auto">
             <SortableVerificationList
               id="project-verifications-list"
               itemsJson={verificationItemsJson}
@@ -1167,7 +1166,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       {/* Section 7: agent behaviour, `isBeta` in V1. */}
       {isBeta && (
         <SubSection title="Agent Behavior" testId="project-agent-behavior">
-          <div className="max-w-170">
+          <div>
             <SelectField
               id="project-auto-implement"
               label="Artifact Review / Auto-Implement Policy"
@@ -1191,7 +1190,7 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         testId="project-security"
       >
         <form
-          className="max-w-170 space-y-4"
+          className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
             void patch(
@@ -1474,6 +1473,20 @@ export const ProjectSettingsView: React.FC<ProjectSettingsViewProps> = (props) =
       title: props.project.name,
       subtitle: "Project configuration",
       width: "flex",
+      // V1 renders the name with a Rename pencil beside it. The blade header already renders the
+      // name, so the pencil belongs there rather than on a second row that repeats it.
+      headerAction: (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          disabled
+          title={RENAME_UNAVAILABLE}
+          aria-label="Rename Project"
+        >
+          <Pencil className="size-4" aria-hidden />
+        </Button>
+      ),
       content: <ProjectDetailBody {...props} />,
     }}
   />

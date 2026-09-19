@@ -1,9 +1,6 @@
 import React from "react";
 import { Button, TuiKbd } from "@ivy-interactive/components/ui";
-import {
-  getPlatformShortcut,
-  getRegisteredShortcuts,
-} from "@ivy-interactive/components/tendril";
+import { getPlatformShortcut, getRegisteredShortcuts } from "@ivy-interactive/components/tendril";
 import { DialogShell } from "../views/dialogs/DialogShell";
 
 interface KeyboardShortcutsHelpProps {

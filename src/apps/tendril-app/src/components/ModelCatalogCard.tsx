@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { Badge, Button, Input, Label, Switch } from "@ivy-interactive/components/ui";
+import { ChevronDown } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+  Input,
+  Label,
+  Switch,
+} from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { describeBridgeError, type ModelCatalogStatus, type TendrilConfig } from "../types/api";
 import { SettingsSection } from "../views/settings/fields";
@@ -125,6 +135,7 @@ export const ModelCatalogCard: React.FC = () => {
   const [form, setForm] = useState<EnrichmentForm>(ENRICHMENT_DEFAULTS);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
 
   const applyConfig = (cfg: TendrilConfig | null) => {
     const next = enrichmentFormOf(cfg);
@@ -208,6 +219,11 @@ export const ModelCatalogCard: React.FC = () => {
   return (
     // Heading, hint and header action were hand-rolled here in exactly the markup
     // `SettingsSection` already draws, so this section kept its box when that one lost it.
+    //
+    // Collapsed by default: the catalogue is a diagnostic readout plus three tuning knobs, and it
+    // sits directly under Coding Agent - the row the operator actually came for. V1 has no
+    // equivalent screen at all, so the closest thing to its layout is for this not to occupy the
+    // page until asked for.
     <SettingsSection
       title="Model Catalog"
       hint="Tendril merges the curated model table with a models.dev snapshot cached on disk."
@@ -224,173 +240,192 @@ export const ModelCatalogCard: React.FC = () => {
         </Button>
       }
     >
-      {loadError && (
-        <p data-testid="model-catalog-error" className="mt-3 text-xs text-destructive">
-          {loadError}
-        </p>
-      )}
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CollapsibleTrigger
+          className="group flex w-full items-center gap-2 rounded-box py-1 text-left text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          data-testid="model-catalog-toggle"
+        >
+          <ChevronDown
+            className="size-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
+            aria-hidden
+          />
+          {isOpen ? "Hide catalog status and settings" : "Show catalog status and settings"}
+        </CollapsibleTrigger>
 
-      {refreshMessage && !refreshError && (
-        <p className="mt-3 font-mono text-xs text-success">{refreshMessage}</p>
-      )}
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+          {loadError && (
+            <p data-testid="model-catalog-error" className="mt-3 text-xs text-destructive">
+              {loadError}
+            </p>
+          )}
 
-      {refreshError && <p className="mt-3 text-xs text-destructive">{refreshError}</p>}
+          {refreshMessage && !refreshError && (
+            <p className="mt-3 font-mono text-xs text-success">{refreshMessage}</p>
+          )}
 
-      {status && (
-        <dl className="mt-4 space-y-3 text-sm">
-          <Row label="Source:">
-            {status.source === "models.dev" ? (
-              <Badge
-                variant="secondary"
-                title="Catalog is enriched from models.dev"
-                aria-label="Live (models.dev)"
-              >
-                Live (models.dev)
-              </Badge>
-            ) : (
-              <Badge
-                variant="outline"
-                title="Catalog is using the static fallback table"
-                aria-label="Static fallback"
-              >
-                Static fallback
-              </Badge>
-            )}
-          </Row>
+          {refreshError && <p className="mt-3 text-xs text-destructive">{refreshError}</p>}
 
-          <Row label="Models:">
-            <div className="text-xs text-muted-foreground">
-              <div className="font-semibold text-foreground">{status.totalModelCount}</div>
-              <div>
-                {status.dynamicModelCount} enriched / {status.staticModelCount} curated
-              </div>
-            </div>
-          </Row>
+          {status && (
+            <dl className="mt-4 space-y-3 text-sm">
+              <Row label="Source:">
+                {status.source === "models.dev" ? (
+                  <Badge
+                    variant="secondary"
+                    title="Catalog is enriched from models.dev"
+                    aria-label="Live (models.dev)"
+                  >
+                    Live (models.dev)
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    title="Catalog is using the static fallback table"
+                    aria-label="Static fallback"
+                  >
+                    Static fallback
+                  </Badge>
+                )}
+              </Row>
 
-          <Row label="Cache updated:">
-            <span
-              className={`text-xs ${stale ? "text-warning" : "text-muted-foreground"}`}
-              title={status.cachedAt ?? undefined}
-            >
-              {formatRelativeAge(status.cachedAt)}
-              {stale && " (Stale)"}
-              {expired && " (Expired, using curated table)"}
-            </span>
-          </Row>
+              <Row label="Models:">
+                <div className="text-xs text-muted-foreground">
+                  <div className="font-semibold text-foreground">{status.totalModelCount}</div>
+                  <div>
+                    {status.dynamicModelCount} enriched / {status.staticModelCount} curated
+                  </div>
+                </div>
+              </Row>
 
-          <Row label="Cache file:">
-            <span
-              className="max-w-50 truncate font-mono text-xs text-muted-foreground"
-              title={status.cachePath}
-            >
-              {status.cachePath}
-            </span>
-          </Row>
-        </dl>
-      )}
+              <Row label="Cache updated:">
+                <span
+                  className={`text-xs ${stale ? "text-warning" : "text-muted-foreground"}`}
+                  title={status.cachedAt ?? undefined}
+                >
+                  {formatRelativeAge(status.cachedAt)}
+                  {stale && " (Stale)"}
+                  {expired && " (Expired, using curated table)"}
+                </span>
+              </Row>
 
-      {/* Every one of these is a key the daemon reads. They used to be reportable but not settable,
+              <Row label="Cache file:">
+                <span
+                  className="max-w-50 truncate font-mono text-xs text-muted-foreground"
+                  title={status.cachePath}
+                >
+                  {status.cachePath}
+                </span>
+              </Row>
+            </dl>
+          )}
+
+          {/* Every one of these is a key the daemon reads. They used to be reportable but not settable,
           which is the same as the feature being absent from the app. */}
-      {/* `noValidate`: the `min`/`max` attributes still drive the spinner, but the refusal the
+          {/* `noValidate`: the `min`/`max` attributes still drive the spinner, but the refusal the
           operator reads is `ParseBoundedInt`'s message rather than a browser bubble. */}
-      <form
-        noValidate
-        className="mt-6 max-w-120 space-y-4 border-t border-border pt-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void handleSave();
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <Switch
-            id="enrich-models-switch"
-            aria-labelledby="enrich-models-label"
-            checked={form.enrichModels}
-            onCheckedChange={(checked) => set("enrichModels", checked)}
-          />
-          <Label
-            id="enrich-models-label"
-            htmlFor="enrich-models-switch"
-            className="text-xs font-medium text-foreground"
+          <form
+            noValidate
+            className="mt-6 max-w-120 space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSave();
+            }}
           >
-            Enrich the catalog from models.dev
-          </Label>
-        </div>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="enrich-models-switch"
+                aria-labelledby="enrich-models-label"
+                checked={form.enrichModels}
+                onCheckedChange={(checked) => set("enrichModels", checked)}
+              />
+              <Label
+                id="enrich-models-label"
+                htmlFor="enrich-models-switch"
+                className="text-xs font-medium text-foreground"
+              >
+                Enrich the catalog from models.dev
+              </Label>
+            </div>
 
-        <div className="space-y-1">
-          <Label
-            htmlFor="model-enrichment-interval-input"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Refresh Interval
-          </Label>
-          <Input
-            id="model-enrichment-interval-input"
-            type="number"
-            min={ENRICHMENT_BOUNDS.modelEnrichmentIntervalHours[0]}
-            max={ENRICHMENT_BOUNDS.modelEnrichmentIntervalHours[1]}
-            value={form.modelEnrichmentIntervalHours}
-            disabled={!form.enrichModels}
-            onChange={(e) =>
-              set("modelEnrichmentIntervalHours", Number.parseInt(e.target.value, 10) || 0)
-            }
-          />
-          <p className="text-xs text-muted-foreground">
-            Hours between background refreshes. 0 refreshes once at startup and never again.
-          </p>
-        </div>
+            <div className="space-y-1">
+              <Label
+                htmlFor="model-enrichment-interval-input"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Refresh Interval
+              </Label>
+              <Input
+                id="model-enrichment-interval-input"
+                type="number"
+                min={ENRICHMENT_BOUNDS.modelEnrichmentIntervalHours[0]}
+                max={ENRICHMENT_BOUNDS.modelEnrichmentIntervalHours[1]}
+                value={form.modelEnrichmentIntervalHours}
+                disabled={!form.enrichModels}
+                onChange={(e) =>
+                  set("modelEnrichmentIntervalHours", Number.parseInt(e.target.value, 10) || 0)
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Hours between background refreshes. 0 refreshes once at startup and never again.
+              </p>
+            </div>
 
-        <div className="space-y-1">
-          <Label
-            htmlFor="model-cache-warn-age-input"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Cache Warn Age
-          </Label>
-          <Input
-            id="model-cache-warn-age-input"
-            type="number"
-            min={ENRICHMENT_BOUNDS.modelCacheWarnAgeDays[0]}
-            max={ENRICHMENT_BOUNDS.modelCacheWarnAgeDays[1]}
-            value={form.modelCacheWarnAgeDays}
-            onChange={(e) => set("modelCacheWarnAgeDays", Number.parseInt(e.target.value, 10) || 0)}
-          />
-          <p className="text-xs text-muted-foreground">
-            Days after which the cache is still used but reported as stale. 0 never warns.
-          </p>
-        </div>
+            <div className="space-y-1">
+              <Label
+                htmlFor="model-cache-warn-age-input"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Cache Warn Age
+              </Label>
+              <Input
+                id="model-cache-warn-age-input"
+                type="number"
+                min={ENRICHMENT_BOUNDS.modelCacheWarnAgeDays[0]}
+                max={ENRICHMENT_BOUNDS.modelCacheWarnAgeDays[1]}
+                value={form.modelCacheWarnAgeDays}
+                onChange={(e) =>
+                  set("modelCacheWarnAgeDays", Number.parseInt(e.target.value, 10) || 0)
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Days after which the cache is still used but reported as stale. 0 never warns.
+              </p>
+            </div>
 
-        <div className="space-y-1">
-          <Label
-            htmlFor="model-cache-max-age-input"
-            className="text-xs font-medium text-muted-foreground"
-          >
-            Cache Max Age
-          </Label>
-          <Input
-            id="model-cache-max-age-input"
-            type="number"
-            min={ENRICHMENT_BOUNDS.modelCacheMaxAgeDays[0]}
-            max={ENRICHMENT_BOUNDS.modelCacheMaxAgeDays[1]}
-            value={form.modelCacheMaxAgeDays}
-            onChange={(e) => set("modelCacheMaxAgeDays", Number.parseInt(e.target.value, 10) || 0)}
-          />
-          <p className="text-xs text-muted-foreground">
-            Days after which the cache is ignored and the curated table is used instead. 0 never
-            expires.
-          </p>
-        </div>
+            <div className="space-y-1">
+              <Label
+                htmlFor="model-cache-max-age-input"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Cache Max Age
+              </Label>
+              <Input
+                id="model-cache-max-age-input"
+                type="number"
+                min={ENRICHMENT_BOUNDS.modelCacheMaxAgeDays[0]}
+                max={ENRICHMENT_BOUNDS.modelCacheMaxAgeDays[1]}
+                value={form.modelCacheMaxAgeDays}
+                onChange={(e) =>
+                  set("modelCacheMaxAgeDays", Number.parseInt(e.target.value, 10) || 0)
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Days after which the cache is ignored and the curated table is used instead. 0 never
+                expires.
+              </p>
+            </div>
 
-        {saveError && (
-          <p className="text-xs text-destructive" data-testid="model-catalog-save-error">
-            {saveError}
-          </p>
-        )}
+            {saveError && (
+              <p className="text-xs text-destructive" data-testid="model-catalog-save-error">
+                {saveError}
+              </p>
+            )}
 
-        <Button type="submit" disabled={!hasChanges || isSaving}>
-          {isSaving ? "Saving..." : "Save"}
-        </Button>
-      </form>
+            <Button type="submit" disabled={!hasChanges || isSaving}>
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
+          </form>
+        </CollapsibleContent>
+      </Collapsible>
     </SettingsSection>
   );
 };

@@ -105,7 +105,7 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
         </Button>
       }
     >
-      <div className="max-w-170 space-y-4">
+      <div className="space-y-4">
         <DataTable<LevelEntry>
           data-testid="levels-table"
           paginated={false}
@@ -139,7 +139,7 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
 
         {draft && (
           <form
-            className="space-y-3 border-t border-border pt-4"
+            className="space-y-3"
             data-testid="level-editor"
             onSubmit={(e) => {
               e.preventDefault();

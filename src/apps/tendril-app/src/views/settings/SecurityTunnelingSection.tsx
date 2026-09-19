@@ -1,6 +1,6 @@
 import React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, Callout, Input, Label, Separator, Switch } from "@ivy-interactive/components/ui";
+import { Button, Callout, Input, Label, Switch } from "@ivy-interactive/components/ui";
 import { ClipboardCopy, ExternalLink, Loader2 } from "lucide-react";
 import {
   tunnelApi,
@@ -75,11 +75,9 @@ export const SecurityTunnelingSection: React.FC<SecurityTunnelingSectionProps> =
     hint="Require a password to access Tendril, and expose this instance over a public tunnel."
     testId="security-tunneling-card"
   >
-    <div className="max-w-170 space-y-6">
+    <div className="space-y-6">
       <SessionProtectionBlock api={api} />
-      <Separator />
       <TunnelBlock api={api} kind="full" />
-      <Separator />
       <TunnelBlock api={api} kind="share" />
     </div>
   </SettingsSection>

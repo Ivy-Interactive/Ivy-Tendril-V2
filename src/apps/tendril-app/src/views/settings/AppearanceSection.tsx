@@ -140,7 +140,7 @@ export const AppearanceSection: React.FC<{
       hint="Choose how Tendril appears. System matches your OS setting."
       testId="appearance-card"
     >
-      <div className="max-w-170 space-y-4">
+      <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {THEME_MODES.map((mode) => (
             <Button

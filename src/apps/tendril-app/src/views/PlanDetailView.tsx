@@ -39,7 +39,12 @@ import {
 } from "../controllers/execute_guards";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
-import { formatPlanId, isReviewState, normalizePlanState, planStateBadgeVariant } from "./PlansView";
+import {
+  formatPlanId,
+  isReviewState,
+  normalizePlanState,
+  planStateBadgeVariant,
+} from "./PlansView";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { RecommendationCard } from "../components/RecommendationCard";

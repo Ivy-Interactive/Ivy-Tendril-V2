@@ -1,15 +1,15 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { BridgeHandler } from './bridge/bridgeHandler';
-import { registerChatParticipant } from './chat/chatParticipant';
-import { registerPlanCommands } from './commands/planCommands';
-import { COMMANDS, CONFIG_KEYS, VIEWS } from './constants';
-import { JobRunner } from './jobs/jobRunner';
-import { hasWebDashboard } from './server/masterDiscovery';
-import { ServerManager } from './server/serverManager';
-import { StatusBarItem } from './statusbar/statusBarItem';
-import { SidebarProvider } from './views/sidebarProvider';
-import { DashboardPanel } from './webview/dashboardPanel';
+import * as vscode from "vscode";
+import * as path from "path";
+import { BridgeHandler } from "./bridge/bridgeHandler";
+import { registerChatParticipant } from "./chat/chatParticipant";
+import { registerPlanCommands } from "./commands/planCommands";
+import { COMMANDS, CONFIG_KEYS, VIEWS } from "./constants";
+import { JobRunner } from "./jobs/jobRunner";
+import { hasWebDashboard } from "./server/masterDiscovery";
+import { ServerManager } from "./server/serverManager";
+import { StatusBarItem } from "./statusbar/statusBarItem";
+import { SidebarProvider } from "./views/sidebarProvider";
+import { DashboardPanel } from "./webview/dashboardPanel";
 
 let serverManager: ServerManager | undefined;
 let pollTimer: NodeJS.Timeout | undefined;
@@ -43,8 +43,8 @@ export function getActiveServerManager(): ServerManager | undefined {
 function noDashboardMessage(baseUrl: string): string {
   return (
     `The Tendril daemon at ${baseUrl} does not serve a web dashboard; it exposes the JSON API only. ` +
-    'Use the Tendril desktop app for the dashboard, or the Tendril sidebar and @tendril chat ' +
-    'commands from here.'
+    "Use the Tendril desktop app for the dashboard, or the Tendril sidebar and @tendril chat " +
+    "commands from here."
   );
 }
 
@@ -62,10 +62,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const sidebarProvider = new SidebarProvider(serverManager);
   context.subscriptions.push(
-    vscode.window.registerTreeDataProvider(VIEWS.quickAccess, sidebarProvider)
+    vscode.window.registerTreeDataProvider(VIEWS.quickAccess, sidebarProvider),
   );
 
-  serverManager.onDidChangeState(health => {
+  serverManager.onDidChangeState((health) => {
     statusBar.update(health);
     sidebarProvider.refresh();
   });
@@ -79,16 +79,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           vscode.window.showErrorMessage(noDashboardMessage(result.baseUrl));
           return;
         }
-        await DashboardPanel.createOrShow(
-          context.extensionUri,
-          result.baseUrl,
-          bridgeHandler
-        );
+        await DashboardPanel.createOrShow(context.extensionUri, result.baseUrl, bridgeHandler);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to open Tendril Dashboard: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -104,7 +100,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to open Tendril in browser: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -115,7 +111,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           canSelectFiles: false,
           canSelectFolders: true,
           canSelectMany: false,
-          openLabel: 'Open Worktree as Folder'
+          openLabel: "Open Worktree as Folder",
         });
         if (uris && uris.length > 0) {
           resolvedPath = uris[0].fsPath;
@@ -128,50 +124,50 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       try {
         await bridgeHandler.handleMessage({
-          type: 'openWorktree',
-          path: resolvedPath
+          type: "openWorktree",
+          path: resolvedPath,
         });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to open worktree: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.startServer, async () => {
       try {
         await serverManager!.startServer();
-        vscode.window.showInformationMessage('Tendril server started successfully.');
+        vscode.window.showInformationMessage("Tendril server started successfully.");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to start Tendril server: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.stopServer, async () => {
       try {
         await serverManager!.stopServer();
-        vscode.window.showInformationMessage('Tendril server stopped.');
+        vscode.window.showInformationMessage("Tendril server stopped.");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to stop Tendril server: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.restartServer, async () => {
       try {
         await serverManager!.restartServer();
-        vscode.window.showInformationMessage('Tendril server restarted successfully.');
+        vscode.window.showInformationMessage("Tendril server restarted successfully.");
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to restart Tendril server: ${msg}`);
       }
-    })
+    }),
   );
 
   context.subscriptions.push(
@@ -179,11 +175,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         const folders = vscode.workspace.workspaceFolders;
         const targetFolder = folderUri
-          ? folders?.find(f => f.uri.toString() === folderUri.toString()) ?? { uri: folderUri, name: path.basename(folderUri.fsPath) }
+          ? (folders?.find((f) => f.uri.toString() === folderUri.toString()) ?? {
+              uri: folderUri,
+              name: path.basename(folderUri.fsPath),
+            })
           : folders?.[0];
 
         if (!targetFolder) {
-          vscode.window.showWarningMessage('No workspace folder open to add to Tendril.');
+          vscode.window.showWarningMessage("No workspace folder open to add to Tendril.");
           return;
         }
 
@@ -194,21 +193,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           {
             location: vscode.ProgressLocation.Notification,
             title: `Adding '${folderName}' to Tendril...`,
-            cancellable: false
+            cancellable: false,
           },
           async () => {
-            await serverManager!.executeCli(['project', 'add', folderName]);
-            await serverManager!.executeCli(['project', 'add-repo', folderName, folderPath]);
-            await serverManager!.executeCli(['job', 'start', 'AddProject', folderName]);
-          }
+            await serverManager!.executeCli(["project", "add", folderName]);
+            await serverManager!.executeCli(["project", "add-repo", folderName, folderPath]);
+            await serverManager!.executeCli(["job", "start", "AddProject", folderName]);
+          },
         );
 
-        vscode.window.showInformationMessage(`Project '${folderName}' added to Tendril. Setup job started.`);
+        vscode.window.showInformationMessage(
+          `Project '${folderName}' added to Tendril. Setup job started.`,
+        );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to add project to Tendril: ${msg}`);
       }
-    })
+    }),
   );
 
   const promptedWorkspaces = new Set<string>();
@@ -229,9 +230,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const folderName = path.basename(status.workspacePath);
         const action = await vscode.window.showInformationMessage(
           `Workspace folder '${folderName}' is not registered in Tendril. Add it now?`,
-          'Add to Tendril'
+          "Add to Tendril",
         );
-        if (action === 'Add to Tendril') {
+        if (action === "Add to Tendril") {
           await vscode.commands.executeCommand(COMMANDS.addCurrentProject);
         }
       }
@@ -243,7 +244,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       void checkAndPromptUnmanagedWorkspace();
-    })
+    }),
   );
 
   // Background initialization & auto-start check

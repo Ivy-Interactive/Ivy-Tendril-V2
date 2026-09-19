@@ -57,9 +57,9 @@ describe("Persistence and Uninstallation Tests", () => {
   }
 
   it("preserves TENDRIL_HOME workspace, database, and plans when uninstaller runs without --purge-data", () => {
-    expect(
-      fs.existsSync(path.resolve(__dirname, "../scripts/packaging/uninstall-macos.sh")),
-    ).toBe(true);
+    expect(fs.existsSync(path.resolve(__dirname, "../scripts/packaging/uninstall-macos.sh"))).toBe(
+      true,
+    );
 
     const output = runUninstaller();
 

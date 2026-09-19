@@ -1,11 +1,11 @@
-import * as vscode from 'vscode';
-import { BridgeHandler } from '../bridge/bridgeHandler';
-import { mapColorThemeKindToTheme } from '../bridge/bridgeProtocol';
-import { getWebviewContent } from './htmlHelper';
+import * as vscode from "vscode";
+import { BridgeHandler } from "../bridge/bridgeHandler";
+import { mapColorThemeKindToTheme } from "../bridge/bridgeProtocol";
+import { getWebviewContent } from "./htmlHelper";
 
 export class DashboardPanel {
   public static currentPanel: DashboardPanel | undefined;
-  public static readonly viewType = 'tendril.dashboard';
+  public static readonly viewType = "tendril.dashboard";
 
   private readonly panel: vscode.WebviewPanel;
   private readonly bridgeHandler: BridgeHandler;
@@ -15,7 +15,7 @@ export class DashboardPanel {
   public static async createOrShow(
     extensionUri: vscode.Uri,
     serverUrl: string,
-    bridgeHandler: BridgeHandler
+    bridgeHandler: BridgeHandler,
   ): Promise<DashboardPanel> {
     const column = vscode.window.activeTextEditor
       ? vscode.window.activeTextEditor.viewColumn
@@ -29,13 +29,13 @@ export class DashboardPanel {
 
     const panel = vscode.window.createWebviewPanel(
       DashboardPanel.viewType,
-      'Tendril Dashboard',
+      "Tendril Dashboard",
       column || vscode.ViewColumn.One,
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [extensionUri]
-      }
+        localResourceRoots: [extensionUri],
+      },
     );
 
     DashboardPanel.currentPanel = new DashboardPanel(panel, serverUrl, bridgeHandler);
@@ -43,11 +43,7 @@ export class DashboardPanel {
     return DashboardPanel.currentPanel;
   }
 
-  private constructor(
-    panel: vscode.WebviewPanel,
-    serverUrl: string,
-    bridgeHandler: BridgeHandler
-  ) {
+  private constructor(panel: vscode.WebviewPanel, serverUrl: string, bridgeHandler: BridgeHandler) {
     this.panel = panel;
     this.serverUrl = serverUrl;
     this.bridgeHandler = bridgeHandler;
@@ -55,7 +51,7 @@ export class DashboardPanel {
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
 
     this.panel.webview.onDidReceiveMessage(
-      async message => {
+      async (message) => {
         try {
           await this.bridgeHandler.handleRawMessage(message);
         } catch (err: unknown) {
@@ -64,16 +60,16 @@ export class DashboardPanel {
         }
       },
       null,
-      this.disposables
+      this.disposables,
     );
 
     vscode.window.onDidChangeActiveColorTheme(
-      theme => {
+      (theme) => {
         const themeKind = mapColorThemeKindToTheme(theme.kind);
-        this.panel.webview.postMessage({ type: 'themeChanged', theme: themeKind });
+        this.panel.webview.postMessage({ type: "themeChanged", theme: themeKind });
       },
       null,
-      this.disposables
+      this.disposables,
     );
   }
 

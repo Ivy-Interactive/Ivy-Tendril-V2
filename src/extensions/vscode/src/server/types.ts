@@ -44,10 +44,10 @@ export interface DiscoveryResult {
 }
 
 export type DiscoveryStatus =
-  | { status: 'found'; result: DiscoveryResult }
-  | { status: 'dead_process'; pid: number; message: string }
-  | { status: 'not_found'; message: string }
-  | { status: 'invalid_content'; message: string };
+  | { status: "found"; result: DiscoveryResult }
+  | { status: "dead_process"; pid: number; message: string }
+  | { status: "not_found"; message: string }
+  | { status: "invalid_content"; message: string };
 
 export interface TendrilPlanSummary {
   id: string;

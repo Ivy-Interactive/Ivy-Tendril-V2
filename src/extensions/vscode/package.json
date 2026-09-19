@@ -1,57 +1,59 @@
 {
   "name": "ivy-tendril",
   "displayName": "Ivy Tendril",
-  "description": "Visual Studio Code integration for Ivy Tendril, plan management and autonomous execution system",
   "version": "0.1.0",
-  "publisher": "ivy-interactive",
-  "icon": "resources/icon.png",
-  "license": "SEE LICENSE IN LICENSE",
-  "pricing": "Free",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git",
-    "directory": "src/extensions/vscode"
-  },
-  "bugs": {
-    "url": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues"
-  },
-  "homepage": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2",
-  "keywords": [
-    "tendril",
-    "ai",
-    "agent",
-    "planning",
-    "orchestration",
-    "git-worktrees",
-    "ivy",
-    "workflow"
-  ],
-  "engines": {
-    "vscode": "^1.90.0"
-  },
+  "description": "Visual Studio Code integration for Ivy Tendril, plan management and autonomous execution system",
   "categories": [
     "AI",
     "Chat",
     "Machine Learning",
     "Other"
   ],
-  "main": "./out/extension.js",
-  "extensionKind": [
-    "workspace"
+  "keywords": [
+    "agent",
+    "ai",
+    "git-worktrees",
+    "ivy",
+    "orchestration",
+    "planning",
+    "tendril",
+    "workflow"
   ],
-  "capabilities": {
-    "untrustedWorkspaces": {
-      "supported": false,
-      "description": "Tendril spawns the tendril executable and git worktrees for the open workspace, so it stays disabled until the workspace is trusted."
-    },
-    "virtualWorkspaces": {
-      "supported": false,
-      "description": "Tendril needs a real filesystem for git worktrees and the local Tendril server."
-    }
+  "homepage": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2",
+  "bugs": {
+    "url": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2/issues"
   },
-  "activationEvents": [
-    "onStartupFinished"
-  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git",
+    "directory": "src/extensions/vscode"
+  },
+  "publisher": "ivy-interactive",
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "node esbuild.js --production",
+    "build": "node esbuild.js --production",
+    "package": "vsce package --no-dependencies",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit",
+    "compile": "tsc -p ./",
+    "pretest": "node esbuild.js",
+    "test": "node ./out/test/runTest.js",
+    "lint": "tsc --noEmit",
+    "check": "vp check && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.20.2",
+    "@types/vscode": "1.90.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "3.2.1",
+    "esbuild": "0.28.2",
+    "glob": "13.0.6",
+    "mocha": "12.0.0",
+    "typescript": "7.0.2"
+  },
   "contributes": {
     "commands": [
       {
@@ -195,27 +197,25 @@
       }
     }
   },
-  "scripts": {
-    "vscode:prepublish": "node esbuild.js --production",
-    "build": "node esbuild.js --production",
-    "package": "vsce package --no-dependencies",
-    "watch": "node esbuild.js --watch",
-    "typecheck": "tsc --noEmit",
-    "compile": "tsc -p ./",
-    "pretest": "node esbuild.js",
-    "test": "node ./out/test/runTest.js",
-    "lint": "tsc --noEmit",
-    "check": "tsc --noEmit"
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.90.0"
   },
-  "devDependencies": {
-    "@types/mocha": "10.0.10",
-    "@types/node": "22.20.2",
-    "@types/vscode": "1.90.0",
-    "@vscode/test-electron": "3.1.0",
-    "@vscode/vsce": "3.2.1",
-    "esbuild": "0.28.2",
-    "glob": "13.0.6",
-    "mocha": "12.0.0",
-    "typescript": "7.0.2"
-  }
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Tendril spawns the tendril executable and git worktrees for the open workspace, so it stays disabled until the workspace is trusted."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Tendril needs a real filesystem for git worktrees and the local Tendril server."
+    }
+  },
+  "pricing": "Free"
 }

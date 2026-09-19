@@ -75,12 +75,7 @@ export const PLAN_STATE_BADGE_VARIANT: Record<string, PlanStateBadgeVariant> = {
   Icebox: "outline",
 };
 
-export type PlanStateBadgeVariant =
-  | "info"
-  | "success"
-  | "destructive"
-  | "warning"
-  | "outline";
+export type PlanStateBadgeVariant = "info" | "success" | "destructive" | "warning" | "outline";
 
 export const planStateBadgeVariant = (state: string): PlanStateBadgeVariant =>
   PLAN_STATE_BADGE_VARIANT[normalizePlanState(state)] ?? "outline";

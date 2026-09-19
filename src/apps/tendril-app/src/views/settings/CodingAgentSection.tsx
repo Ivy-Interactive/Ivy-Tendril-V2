@@ -485,7 +485,7 @@ export const CodingAgentSection: React.FC<{
       testId="coding-agent-card"
     >
       <form
-        className="max-w-170 space-y-4"
+        className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
