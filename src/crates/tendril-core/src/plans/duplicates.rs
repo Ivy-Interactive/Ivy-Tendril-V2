@@ -76,6 +76,12 @@ impl DuplicateCandidateFinder {
             }
         }
 
+        // `read_dir` yields whatever order the filesystem happens to hand back - APFS returns these
+        // sorted, ext4 does not - and `format_block` prints this list straight to the operator and
+        // to the CreatePlan promptware that parses it. Folder names are `NNNNN-Title`, so a name
+        // sort is an id sort, matching how plans are listed everywhere else.
+        candidates.sort_by(|a, b| a.folder_name.cmp(&b.folder_name));
+
         candidates
     }
 
