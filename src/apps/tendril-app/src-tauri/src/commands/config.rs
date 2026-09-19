@@ -116,6 +116,36 @@ pub async fn cmd_add_project_repo(
         .await
 }
 
+/// Renames a project (`PUT /api/projects/:name`).
+///
+/// Not expressible through `cmd_put_config`: `PUT /api/config` merges the `projects` sequence by
+/// name, so a renamed entry matches nothing and is appended alongside the original rather than
+/// replacing it. This route also cascades the new name into the project's plans and its
+/// Plans/Jobs/Recommendations rows, which a config write would leave pointing at a name that no
+/// longer exists.
+#[tauri::command]
+pub async fn cmd_rename_project(
+    name: String,
+    new_name: String,
+) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?
+        .rename_project(&name, &new_name)
+        .await
+}
+
+/// Removes a project from `config.yaml` (`DELETE /api/projects/:name`).
+///
+/// Also not expressible through `cmd_put_config`, for the opposite reason to the rename: the merge
+/// reads an omitted project as unchanged, never as deleted, so the only way to remove one is the
+/// route that removes it.
+///
+/// Scope worth repeating wherever this is called: the config entry is all that goes. Plans, the
+/// project's database rows and any repository the daemon cloned for it remain on disk.
+#[tauri::command]
+pub async fn cmd_delete_project(name: String) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.delete_project(&name).await
+}
+
 /// Starts a review action and returns the session the webview must address to talk to it.
 ///
 /// The stream itself is consumed natively — `invoke` cannot stream, and the route is

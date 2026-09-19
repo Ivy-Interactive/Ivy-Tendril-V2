@@ -171,6 +171,8 @@ pub fn run() {
             // stores what it is handed, so a remote URL added that way keeps its credentials and
             // never becomes a checkout. This route clones first.
             cmd_add_project_repo,
+            cmd_rename_project,
+            cmd_delete_project,
             cmd_get_config,
             cmd_put_config,
             cmd_get_config_text,

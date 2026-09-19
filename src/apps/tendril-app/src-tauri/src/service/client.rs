@@ -1935,6 +1935,76 @@ impl TendrilClient {
         Ok(resp.json().await?)
     }
 
+    /// Renames a project (`PUT /api/projects/:name` with `newName`).
+    ///
+    /// This route rather than `PUT /api/config`, and not as a matter of taste: `update_config_raw`
+    /// merges the `projects` sequence **by name**, so a renamed entry matches nothing and is
+    /// appended beside the original — the operator ends up with two projects instead of one
+    /// renamed. Only this route renames.
+    ///
+    /// It also cascades. The daemon rewrites every plan naming the project and updates the Plans,
+    /// Jobs and Recommendations tables, none of which `PUT /api/config` would touch. A cascade that
+    /// only partly succeeds is logged daemon-side and still answers 200, because the rename itself
+    /// did happen; the reply is the renamed project either way.
+    ///
+    /// 404 when the project is gone, 409 when the new name is taken or the project was renamed out
+    /// from under the request, 400 when the name is empty. The daemon's own message is relayed
+    /// verbatim — it names projects, never repository URLs.
+    pub async fn rename_project(
+        &self,
+        name: &str,
+        new_name: &str,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/projects/{}", self.base_url, path_segment(name));
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&json!({ "newName": new_name }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "RENAME_PROJECT_FAILED",
+                format!("Failed to rename project ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Removes a project from `config.yaml` (`DELETE /api/projects/:name`).
+    ///
+    /// `PUT /api/config` cannot do this at all: omitting a project from the sequence leaves it
+    /// exactly as it was, because the merge treats omission as "unchanged" rather than "deleted".
+    ///
+    /// What this does **not** remove is as important as what it does, and the caller has to say so
+    /// before asking: the project's plans, its rows in Plans/Jobs/Recommendations, and any
+    /// repository the daemon cloned for it all stay on disk. Only the `config.yaml` entry goes.
+    pub async fn delete_project(&self, name: &str) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/projects/{}", self.base_url, path_segment(name));
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "DELETE_PROJECT_FAILED",
+                format!("Failed to delete project ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
     pub async fn get_models_status(&self) -> Result<ModelCatalogStatusDto, BridgeError> {
         let url = format!("{}/api/models/status", self.base_url);
         let resp = self.client.get(&url).headers(self.headers()).send().await?;
