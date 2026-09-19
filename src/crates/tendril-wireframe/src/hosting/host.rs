@@ -128,7 +128,23 @@ impl WireframeHost {
     /// Switching scope stops every watcher belonging to the plan being left. That is the whole point
     /// of tracking a scope: a reviewer moving between plans should not accumulate builds.
     pub async fn open(&self, scope: &str, name: &str) -> Option<(WireframeSite, PathBuf)> {
-        let root = (self.resolve_root)(scope, name)?;
+        self.ensure(scope, name).await.0
+    }
+
+    /// Builds and starts watching if needed, and reports the settled status.
+    ///
+    /// Both `open` and `status` go through this, exactly as V1's `OpenAsync` and `StatusAsync` both
+    /// call `EnsureAsync`. That is not tidiness: the fence's status request is what waits for the
+    /// first build, and a status that returned before the build finished would have to say
+    /// "building" -- which the renderer does not accept, and shows as "not available right now".
+    async fn ensure(
+        &self,
+        scope: &str,
+        name: &str,
+    ) -> (Option<(WireframeSite, PathBuf)>, WireframeStatus) {
+        let Some(root) = (self.resolve_root)(scope, name) else {
+            return (None, WireframeStatus::missing());
+        };
 
         let mut state = self.state.lock().await;
 
@@ -151,7 +167,12 @@ impl WireframeHost {
 
         let key = (scope.to_string(), name.to_string());
         if let Some(entry) = state.entries.get(&key) {
-            return Some((entry.site.clone(), entry.out_dir.clone()));
+            let payload = if entry.is_watching() {
+                Some((entry.site.clone(), entry.out_dir.clone()))
+            } else {
+                None
+            };
+            return (payload, entry.status.clone());
         }
 
         let project = WireframeProject::at(&root);
@@ -168,7 +189,7 @@ impl WireframeHost {
                     watcher: None,
                 },
             );
-            return None;
+            return (None, WireframeStatus::missing());
         }
 
         if scaffolder::needs_refresh(&project) {
@@ -200,12 +221,12 @@ impl WireframeHost {
                 site: site.clone(),
                 out_dir: out_dir.clone(),
                 hub,
-                status,
+                status: status.clone(),
                 watcher,
             },
         );
 
-        Some((site, out_dir))
+        (Some((site, out_dir)), status)
     }
 
     /// A file the loaded page asks for: whatever was built last, without starting anything.
@@ -225,16 +246,13 @@ impl WireframeHost {
             .map(|entry| entry.hub.clone())
     }
 
+    /// The settled status, building first if the wireframe has not been opened yet.
+    ///
+    /// This is what the fence calls before it frames anything, and it is deliberately the slow path:
+    /// the renderer shows its own "checking" state until this answers, and only understands a
+    /// settled phase when it does.
     pub async fn status(&self, scope: &str, name: &str) -> WireframeStatus {
-        let state = self.state.lock().await;
-        match state.entries.get(&(scope.to_string(), name.to_string())) {
-            Some(entry) => entry.status.clone(),
-            None => match (self.resolve_root)(scope, name) {
-                // Known but not opened yet: the frame shows a building state rather than a failure.
-                Some(root) if WireframeProject::at(&root).exists() => WireframeStatus::building(),
-                _ => WireframeStatus::missing(),
-            },
-        }
+        self.ensure(scope, name).await.1
     }
 
     /// Stops every watcher. Called when the daemon shuts down.
@@ -396,6 +414,27 @@ mod tests {
         assert!(host.active_scope().await.is_none());
         assert_eq!(host.watching().await, 0);
         assert!(host.find("99", "checkout").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn status_never_answers_with_a_phase_the_renderer_cannot_read() {
+        // WireframeBlock accepts running, failed and missing, and treats anything else - including
+        // "building" - as unreachable, which it shows as "the wireframe preview is not available
+        // right now". So `status` has to settle the build before answering rather than reporting
+        // that one is in flight. This is the bug that reached a running app.
+        let dir = tempfile::tempdir().unwrap();
+        scaffold_into(&dir.path().join("99").join("Wireframes").join("checkout"));
+        let host = host_over(dir.path().to_path_buf());
+
+        let status = host.status("99", "checkout").await;
+        assert!(
+            matches!(status.phase, "running" | "failed" | "missing"),
+            "the renderer cannot interpret phase {:?}",
+            status.phase
+        );
+
+        // And for one that does not exist, which is a state it can read.
+        assert_eq!(host.status("99", "nope").await.phase, "missing");
     }
 
     #[test]
