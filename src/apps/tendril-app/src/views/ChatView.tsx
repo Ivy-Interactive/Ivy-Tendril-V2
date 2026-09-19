@@ -456,6 +456,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  // The chat beside a plan resolves `wireframe` fences against that plan; the general chat page
+  // has no plan, so a fence there renders a placeholder.
+  const wireframeBaseUrl = store.planId ? `/__wireframes/${store.planId}/` : undefined;
+
   const [activeLightboxImage, setActiveLightboxImage] = useState<LightboxImage | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deleteSessionError, setDeleteSessionError] = useState<string | null>(null);
@@ -1306,6 +1310,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
                           onOpenPlan={onOpenPlan}
                           onOpenImage={setActiveLightboxImage}
+                          wireframeBaseUrl={wireframeBaseUrl}
                           jobs={jobs}
                           threadMessages={messages}
                         />
@@ -1325,6 +1330,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
                       onOpenPlan={onOpenPlan}
                       onOpenImage={setActiveLightboxImage}
+                          wireframeBaseUrl={wireframeBaseUrl}
                       jobs={jobs}
                       threadMessages={messages}
                     />

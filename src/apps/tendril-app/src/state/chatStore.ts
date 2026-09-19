@@ -325,6 +325,11 @@ export class ChatStore {
     return this.planScope !== null;
   }
 
+  /** The plan this chat belongs to, or null for the general chat page. */
+  public get planId(): string | null {
+    return this.planScope?.planId ?? null;
+  }
+
   private handleStorageEvent = (event: StorageEvent): void => {
     this.adoptStorageChange(event.key, event.newValue);
   };

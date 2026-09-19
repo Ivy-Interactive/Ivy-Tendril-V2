@@ -506,6 +506,9 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
               <PlanMarkdown
                 id="pr-plan-revision"
                 content={revision}
+                // The sheet shows a plan's revision, so its wireframes resolve the same way they do
+                // on the plan page itself.
+                wireframeBaseUrl={sheetRow ? `/__wireframes/${sheetRow.planId}/` : undefined}
                 article
                 dangerouslyAllowLocalFiles
               />
