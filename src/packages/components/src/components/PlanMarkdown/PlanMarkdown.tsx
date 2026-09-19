@@ -31,6 +31,16 @@ export interface PlanMarkdownProps {
   height?: string;
   content?: string;
   article?: boolean;
+  /**
+   * Render the markdown body on its own, without the plan page around it.
+   *
+   * V1 has no equivalent flag because it has no shared component: `ChatWidget`/`AssistantTurn`
+   * render `BlockMarkdown` inside a plain `.chat-markdown-body`, and `.pmv-root`'s shell — the
+   * `Cap()` stand-in, the 1.5rem gutter, the widget's own scroll — belongs to the plan tab alone.
+   * Sharing one renderer here means a chat turn gets that page unless it opts out, which is what
+   * pushes a code block's left edge out of line with the prose above it.
+   */
+  flow?: boolean;
   dangerouslyAllowLocalFiles?: boolean;
   annotations?: MarkdownAnnotation[];
   scrollTo?: { questionId: string; token: number } | null;
@@ -59,6 +69,7 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
   height,
   content = "",
   article = false,
+  flow = false,
   dangerouslyAllowLocalFiles = false,
   annotations = EMPTY_ANNOTATIONS,
   scrollTo,
@@ -507,7 +518,7 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
   };
 
   return (
-    <div className="pmv-root" style={shellStyle}>
+    <div className={flow ? "pmv-root pmv-root--flow" : "pmv-root"} style={shellStyle}>
       {isSearchOpen && (
         <SearchOverlay
           query={searchQuery}

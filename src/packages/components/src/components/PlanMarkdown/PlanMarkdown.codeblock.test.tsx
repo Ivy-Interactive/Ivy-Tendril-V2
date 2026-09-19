@@ -90,3 +90,39 @@ describe("DraftMarkdown code block rendering and width constraints", () => {
     expect(container.querySelectorAll("pre").length).toBe(1);
   });
 });
+
+/**
+ * `flow`: the opt-in that takes the plan page off the renderer, for chat.
+ *
+ * V1 never faced this choice — its chat renders `BlockMarkdown`, which has no page to take off.
+ * V2 shares one component between the plan tab and the thread, so the page has to become a
+ * variant. See `plan-markdown.css.test.ts` for what the class changes and why; these tests pin
+ * only the wiring, which is the part a render can actually see.
+ */
+describe("DraftMarkdown flow variant", () => {
+  it("marks the root so the page's chrome can be dropped in chat", () => {
+    const { container } = render(<DraftMarkdown id="w1" content="Hi" flow />);
+
+    expect(container.querySelector(".pmv-root--flow")).not.toBeNull();
+  });
+
+  it("keeps the page chrome by default, which is what the plan tab renders", () => {
+    // Additive by construction: `PlanDetailView`, `InboxView` and `PullRequestsView` pass no
+    // `flow`, and none of them may shift because chat needed a flush left edge.
+    const { container } = render(<DraftMarkdown id="w1" content="Hi" />);
+
+    expect(container.querySelector(".pmv-root")).not.toBeNull();
+    expect(container.querySelector(".pmv-root--flow")).toBeNull();
+  });
+
+  it("still renders a code block with its own border, padding and scroll", () => {
+    // The block's own chrome is correct already and the variant must not reach into it - only the
+    // page around it changes.
+    const { container } = render(<DraftMarkdown id="w1" content={"```\nplain\n```"} flow />);
+
+    const pre = container.querySelector(".pmv-code-block pre");
+    expect(pre).not.toBeNull();
+    expect((pre as HTMLElement).style.overflowX).toBe("auto");
+    expect((pre as HTMLElement).style.maxWidth).toBe("100%");
+  });
+});

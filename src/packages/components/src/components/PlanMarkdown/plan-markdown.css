@@ -53,6 +53,42 @@
   margin-top: 0;
 }
 
+/* ─── Flow variant ───────────────────────────────────────────────────────
+   The same markdown body with the plan *page* taken off it, for a surface that
+   renders markdown inline in a stream rather than as a tab that fills the window.
+
+   V1 draws this line in the component graph instead: `ChatWidget` and `AssistantTurn`
+   render `BlockMarkdown` (react-markdown + `BlockHandler`, nothing else) inside a plain
+   `.chat-markdown-body`, and only the plan page ever gets `.pmv-root`'s shell. V2 has one
+   component for both, so without this a chat turn inherits the page — a 1.5rem top/left
+   inset on every message, a 50rem cap inside a column that is already capped, and an
+   `overflow-y: auto` scroller nested in the thread's own scroller.
+
+   The inset is what the "broken code blocks" report is about: a code block is full-bleed,
+   bordered and the widest thing in a turn, so it is where a gutter the prose does not
+   share becomes obvious. Everything the block itself needs — the border, the 1rem padding,
+   the 3rem copy gutter, `overflow-x: auto` — is already correct and is deliberately left
+   alone here. */
+.pmv-root--flow {
+  height: auto;
+  min-height: 0;
+}
+
+.pmv-root--flow .pmv-shell {
+  /* The thread scrolls; a turn must not. `overflow: hidden` would clip a code block's own
+     horizontal scroll, so this has to be `visible` rather than merely not `auto`. */
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.pmv-root--flow .pmv-markdown {
+  /* No gutter and no cap: in a thread the column supplies both. */
+  padding: 0;
+  max-width: 100%;
+}
+
 /* Fixed slot: sticky top-right, stays pinned while the shell scrolls.
    The scrollbar is on the shell itself (far right edge). Horizontal padding
    keeps the slot content off the right edge and away from the markdown. */
