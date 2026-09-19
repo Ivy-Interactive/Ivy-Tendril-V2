@@ -99,12 +99,39 @@ pub struct ChatTurnOptions {
     pub role: Option<String>,
 }
 
+/// The output of one turn while it is still being produced.
+///
+/// The turn task appends to this as the agent streams, and flushes a copy of it over the stored
+/// message on every persist tick and once more when the turn ends. Anything that wants to change a
+/// message the turn is still writing has to change this too, or the next flush puts the old text
+/// back - which is what {@link ChatExecutionManager::apply_answers} does for a question block the
+/// agent asked mid-turn. The port of V1's `ActiveExecution.LastText` / `ActiveExecution.RawLines`.
+#[derive(Debug, Default)]
+struct LiveTurn {
+    /// The assistant message this turn is streaming into. Held so an answer to some *earlier*
+    /// message of the same session - a question block from a turn that has already finished - does
+    /// not get written into the one being produced now.
+    message_id: String,
+    /// The prose so far, as `content` will be composed from.
+    text: String,
+    /// The eventwire lines so far, as `raw_stream` will be joined from.
+    lines: Vec<String>,
+}
+
 pub struct ChatExecutionManager {
     tendril_home: PathBuf,
     sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
     generating_sessions: Arc<RwLock<HashSet<String>>>,
     queued_messages: Arc<RwLock<HashMap<String, Vec<ChatQueuedItem>>>>,
     active_cancellations: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    /// The output buffers of every turn currently in flight, keyed by session id.
+    ///
+    /// They live here rather than in the spawned turn task because an answer submitted *while* the
+    /// turn runs has to reach them: the task flushes its buffers over the stored message on every
+    /// persist tick and again when the turn ends, so an answer written only to the stored message
+    /// was reverted by the next flush. V1 keeps the same two buffers on its `ActiveExecution`
+    /// (`exec.LastText` / `exec.RawLines`) and patches them under `exec.Lock` for this reason.
+    live_turns: Arc<Mutex<HashMap<String, Arc<Mutex<LiveTurn>>>>>,
     spec_builder: SpecBuilder,
     event_tx: broadcast::Sender<ChatEvent>,
     persist_interval: Duration,
@@ -119,6 +146,7 @@ impl ChatExecutionManager {
             generating_sessions: Arc::new(RwLock::new(HashSet::new())),
             queued_messages: Arc::new(RwLock::new(HashMap::new())),
             active_cancellations: Arc::new(Mutex::new(HashMap::new())),
+            live_turns: Arc::new(Mutex::new(HashMap::new())),
             spec_builder: Arc::new(build_agent_spec),
             event_tx,
             persist_interval: Duration::from_secs(1),
@@ -423,6 +451,45 @@ impl ChatExecutionManager {
         }
     }
 
+    /// Rewrites a question block's answers into a turn that is still being produced.
+    ///
+    /// The port of `ChatExecutionService.ApplyQuestionAnswers(sessionId, answers)`: the prose buffer
+    /// is patched whole, the eventwire lines through {@link patch_answers_into_wire_lines}.
+    ///
+    /// Returns the patched buffer when `message_id` is the message a turn is currently streaming
+    /// into, and `None` otherwise - for a session with no turn in flight, or for an answer to some
+    /// earlier message of a session that does have one. The absence of a {@link LiveTurn} entry *is*
+    /// the "is it generating" test, and a better one than the flag, because it is the buffer itself
+    /// that would otherwise overwrite the answer.
+    async fn patch_live_turn(
+        &self,
+        session_id: &str,
+        message_id: &str,
+        answers: &HashMap<String, Vec<String>>,
+    ) -> Option<(String, Vec<String>)> {
+        let handle = {
+            let map = self.live_turns.lock().await;
+            Arc::clone(map.get(session_id)?)
+        };
+
+        let mut live = handle.lock().await;
+        // An answer to a question block from an *earlier* turn of the same session must not be
+        // written into the message being streamed now.
+        if live.message_id != message_id {
+            return None;
+        }
+
+        if !live.text.is_empty() {
+            if let Ok(updated) = apply_question_answers(&live.text, answers) {
+                live.text = updated;
+            }
+        }
+
+        patch_answers_into_wire_lines(&mut live.lines, answers);
+
+        Some((live.text.clone(), live.lines.clone()))
+    }
+
     // Apply answers
     pub async fn apply_answers(
         &self,
@@ -430,16 +497,39 @@ impl ChatExecutionManager {
         message_id: &str,
         answers: &HashMap<String, Vec<String>>,
     ) -> Result<ChatSession> {
+        // Before the stored message, not after. A turn still in flight flushes its buffers over the
+        // stored message on its next persist tick and once more when it ends, so an answer written
+        // only to the stored copy was reverted by that flush - the agent asked, you answered, and
+        // the block came back unanswered a second later. V1 calls the two the other way round
+        // (`ContentView.OnAnswerQuestion`: chat service, then execution service), which leaves a
+        // window where a flush landing between them does exactly that.
+        let live_snapshot = self.patch_live_turn(session_id, message_id, answers).await;
+
         let mut session = self.get_session(session_id).await?;
         let mut found = false;
 
         for msg in &mut session.messages {
             if msg.id == message_id {
-                let updated_content = apply_question_answers(&msg.content, answers)?;
-                msg.content = updated_content;
-                if let Some(ref raw) = msg.raw_stream {
-                    if let Ok(updated_raw) = apply_question_answers(raw, answers) {
-                        msg.raw_stream = Some(updated_raw);
+                if let Some((text, lines)) = &live_snapshot {
+                    // The turn is still writing this message and its buffer has just been patched,
+                    // so take the buffer whole instead of patching the stored copy. The stored copy
+                    // is only as recent as the last persist tick: patching it would answer a block
+                    // as it looked a tick ago, drop whatever the agent has said since, and be
+                    // overwritten by the next tick regardless.
+                    msg.content = text.clone();
+                    msg.raw_stream = Some(lines.join("\n"));
+                } else {
+                    msg.content = apply_question_answers(&msg.content, answers)?;
+                    if let Some(ref raw) = msg.raw_stream {
+                        let mut lines: Vec<String> = raw.split('\n').map(str::to_string).collect();
+                        if patch_answers_into_wire_lines(&mut lines, answers) {
+                            msg.raw_stream = Some(lines.join("\n"));
+                        } else if let Ok(updated_raw) = apply_question_answers(raw, answers) {
+                            // Nothing here is eventwire - a stream imported from V1, or one stored
+                            // as plain prose. A fence spans lines, so it can only be found by
+                            // reading the whole thing at once.
+                            msg.raw_stream = Some(updated_raw);
+                        }
                     }
                 }
                 found = true;
@@ -672,8 +762,19 @@ impl ChatExecutionManager {
                     .await
                 });
 
-                let mut accumulated_text = String::new();
-                let mut raw_stream_lines = Vec::new();
+                // Shared rather than task-local so `apply_answers` can reach them: an answer to a
+                // question the agent asked mid-turn has to land in the buffers the flushes below
+                // are composed from, or the next flush writes the unanswered block back over it.
+                let live = Arc::new(Mutex::new(LiveTurn {
+                    message_id: current_assistant_msg_id.clone(),
+                    text: String::new(),
+                    lines: Vec::new(),
+                }));
+                mgr.live_turns
+                    .lock()
+                    .await
+                    .insert(s_id.clone(), Arc::clone(&live));
+
                 let mut stderr_tail: Vec<String> = Vec::new();
                 // One per run: Antigravity identifies a tool step by `step_index`, so tying its
                 // `ACTIVE` and `DONE` halves together is state that lives for the length of the turn.
@@ -738,8 +839,13 @@ impl ChatExecutionManager {
                                     // The provider's line becomes one or more eventwire events, which
                                     // is the only shape `TurnActivity`/`AgentViewer` can render, and
                                     // the only place a turn's prose can be read from uniformly.
-                                    for wire_line in normalizer.normalize(&evt.raw_line, evt.is_stderr) {
-                                        raw_stream_lines.push(wire_line.clone());
+                                    //
+                                    // Locked once for the whole batch: an answer arriving mid-batch
+                                    // would otherwise see half of one provider line applied.
+                                    let wire_lines = normalizer.normalize(&evt.raw_line, evt.is_stderr);
+                                    let mut buf = live.lock().await;
+                                    for wire_line in wire_lines {
+                                        buf.lines.push(wire_line.clone());
                                         is_dirty = true;
 
                                         // Published per event so tool calls appear *while* the turn
@@ -751,10 +857,9 @@ impl ChatExecutionManager {
                                             line: wire_line.clone(),
                                         });
 
-                                        if let Some(delta) =
-                                            next_text_delta(&accumulated_text, &wire_line)
+                                        if let Some(delta) = next_text_delta(&buf.text, &wire_line)
                                         {
-                                            accumulated_text.push_str(&delta);
+                                            buf.text.push_str(&delta);
                                             let _ = mgr.event_tx.send(ChatEvent::StreamDelta {
                                                 session_id: s_id.clone(),
                                                 message_id: current_assistant_msg_id.clone(),
@@ -770,11 +875,17 @@ impl ChatExecutionManager {
                         }
                         _ = persist_ticker.tick() => {
                             if is_dirty {
+                                // Held across the write, not just the read: an answer that patched
+                                // the buffer and saved the stored message in between would be
+                                // undone by a snapshot taken before it. Nothing waits on this but
+                                // `apply_answers` - the reader loop is this same task - so the cost
+                                // is that a submission waits out one session save.
+                                let buf = live.lock().await;
                                 mgr.persist_in_flight_message(
                                     &s_id,
                                     &current_assistant_msg_id,
-                                    &accumulated_text,
-                                    &raw_stream_lines,
+                                    &buf.text,
+                                    &buf.lines,
                                 )
                                 .await;
                                 is_dirty = false;
@@ -789,21 +900,34 @@ impl ChatExecutionManager {
                 // periodic `persist_in_flight_message` tick above must never reconcile, since a
                 // tool that is genuinely still running would get a fake result written over it.
                 let outcome = TurnOutcome::from_run(run_handle.await, stderr_tail);
-                raw_stream_lines.extend(build_missing_result_lines(
-                    &raw_stream_lines,
-                    outcome.synthetic_tool_output(),
-                    true,
-                ));
 
-                // Final message update & persistence
-                mgr.finalize_message(
-                    &s_id,
-                    &current_assistant_msg_id,
-                    accumulated_text,
-                    raw_stream_lines,
-                    &outcome,
-                )
-                .await;
+                // The turn is over, so its buffer stops being live. The lock is held across the
+                // whole handover - deregister, snapshot, write - because this is the one flush an
+                // answer cannot be re-applied after: a patch that read the buffer just before the
+                // snapshot and saved the stored message just after it would be overwritten here and
+                // have nothing left to correct it. Blocked on the lock, that patch instead runs
+                // afterwards, finds no live turn, and writes the answer into the final message.
+                {
+                    let buf = live.lock().await;
+                    mgr.live_turns.lock().await.remove(&s_id);
+
+                    let mut raw_stream_lines = buf.lines.clone();
+                    raw_stream_lines.extend(build_missing_result_lines(
+                        &raw_stream_lines,
+                        outcome.synthetic_tool_output(),
+                        true,
+                    ));
+
+                    // Final message update & persistence
+                    mgr.finalize_message(
+                        &s_id,
+                        &current_assistant_msg_id,
+                        buf.text.clone(),
+                        raw_stream_lines,
+                        &outcome,
+                    )
+                    .await;
+                }
 
                 // Clean up active cancellation
                 mgr.active_cancellations.lock().await.remove(&s_id);
@@ -1256,6 +1380,61 @@ fn compose_turn_content(text: &str, raw_lines: &[String], outcome: &TurnOutcome)
     } else {
         outcome.failure_text(raw_lines)
     }
+}
+
+/// Rewrites a question block's answers inside a run of eventwire lines, in place. Returns whether
+/// any line changed.
+///
+/// Each line is reparsed so its `text` and `response` fields can be rewritten *inside* the JSON. The
+/// alternative - treating the stream as one string - cannot work: a fence in an eventwire line is
+/// inside a JSON string with its newlines escaped, so there is no fence to find at the top level and
+/// the answer silently went nowhere.
+///
+/// A line that is not a JSON object, or whose fields the answers do not touch, is left byte-for-byte
+/// as it was. The stream is replayed verbatim by `TurnActivity`, so re-rendering a line changes what
+/// the reader sees for no reason. Port of the `RawLines` loop shared by V1's
+/// `ChatExecutionService.ApplyQuestionAnswers` and `ChatHistoryService.ApplyQuestionAnswers`.
+fn patch_answers_into_wire_lines(
+    lines: &mut [String],
+    answers: &HashMap<String, Vec<String>>,
+) -> bool {
+    let mut any_changed = false;
+
+    for line in lines.iter_mut() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Ok(mut value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+        let Some(obj) = value.as_object_mut() else {
+            continue;
+        };
+
+        let mut line_changed = false;
+        for field in ["text", "response"] {
+            let Some(current) = obj.get(field).and_then(|v| v.as_str()).map(str::to_string) else {
+                continue;
+            };
+            let Ok(updated) = apply_question_answers(&current, answers) else {
+                continue;
+            };
+            if updated != current {
+                obj.insert(field.to_string(), serde_json::Value::String(updated));
+                line_changed = true;
+            }
+        }
+
+        if line_changed {
+            if let Ok(rendered) = serde_json::to_string(&value) {
+                *line = rendered;
+                any_changed = true;
+            }
+        }
+    }
+
+    any_changed
 }
 
 /// The response text carried by the last terminal result event in the stream, in either wire shape.

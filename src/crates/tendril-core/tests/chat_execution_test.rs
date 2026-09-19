@@ -1825,3 +1825,374 @@ async fn test_injected_event_during_a_turn_is_answered_after_it_rather_than_inte
 
     let _ = std::fs::remove_dir_all(&test_dir);
 }
+
+/// An answer submitted while the turn that asked the question is still running must survive that
+/// turn's own flushes.
+///
+/// The turn streams into buffers it owns and writes a copy of them over the stored message on every
+/// persist tick and once more when it ends. An answer that reached only the stored message was
+/// therefore undone a tick later: the agent asked, you picked an option, and the block came back
+/// unanswered - a plain data loss, and the one that cost the most, because the turn then went on to
+/// read a document that did not have your decision in it. Port of V1's
+/// `ApplyQuestionAnswers_PatchesTheLiveBufferSoTheAnswerSurvivesTheFinalFlush`.
+#[tokio::test]
+async fn test_answer_submitted_mid_turn_survives_the_turns_own_flushes() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-live-answer-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    // Asks its question and then keeps running, which is the whole point: the answer has to land
+    // while the turn still owns the message.
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone())
+            .with_spec_builder(Arc::new(|_agent, config| AgentProcessSpec {
+                command: "sh".to_string(),
+                args: vec![
+                    "-c".to_string(),
+                    concat!(
+                        // `printf '%s\n'` rather than `echo`: `sh`'s echo expands the `\n`
+                        // escapes inside the JSON and splits it across lines, which is not a shape
+                        // any provider emits.
+                        r#"printf '%s\n' '{"delta": "Which env?\n\n```questions\n- id: target_env\n  title: Which env?\n  options:\n    - title: Staging\n      value: staging\n    - title: Production\n      value: production\n```\n"}'; "#,
+                        "sleep 10"
+                    )
+                    .to_string(),
+                ],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            }))
+            // Short enough that a tick is certain to land between the answer and the assertions
+            // below, which is the flush that used to revert it.
+            .with_persist_interval(Duration::from_millis(20)),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Live Answer Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(
+        &session.id,
+        "Where should we deploy?",
+        ChatTurnOptions::default(),
+    )
+    .await
+    .expect("Failed to start session turn");
+
+    // Wait until the question is actually in the stream.
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::StreamDelta { delta, .. } = evt {
+            if delta.contains("target_env") {
+                break;
+            }
+        }
+    }
+
+    let assistant_msg_id = mgr
+        .get_session(&session.id)
+        .await
+        .expect("session must be readable mid-turn")
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .map(|m| m.id.clone())
+        .expect("the turn must have an assistant message");
+
+    assert!(
+        mgr.is_generating(&session.id).await,
+        "the turn must still be running, or this proves nothing"
+    );
+
+    let answers = HashMap::from([("target_env".to_string(), vec!["staging".to_string()])]);
+    let patched = mgr
+        .apply_answers(&session.id, &assistant_msg_id, &answers)
+        .await
+        .expect("applying answers must succeed");
+
+    assert!(
+        patched
+            .messages
+            .iter()
+            .any(|m| m.content.contains("answer: staging")),
+        "the answer must be in the session the call returns"
+    );
+
+    // Several persist ticks' worth. Without the live buffer being patched too, the next one writes
+    // the unanswered block back over it.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let mid_turn = load_session(&test_dir, &session.id).expect("session must be on disk");
+    let mid_msg = mid_turn
+        .messages
+        .iter()
+        .find(|m| m.id == assistant_msg_id)
+        .expect("assistant message must be on disk");
+    assert!(
+        mid_msg.content.contains("answer: staging"),
+        "a persist tick reverted the answer; content was: {}",
+        mid_msg.content
+    );
+
+    // Ending the turn flushes the buffers one last time - the flush that composed the final message
+    // out of text the answer never reached.
+    assert!(mgr.cancel_session(&session.id).await);
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+
+    let finished = load_session(&test_dir, &session.id).expect("session must be on disk");
+    let final_msg = finished
+        .messages
+        .iter()
+        .find(|m| m.id == assistant_msg_id)
+        .expect("assistant message must be on disk");
+    assert!(
+        final_msg.content.contains("answer: staging"),
+        "the final flush reverted the answer; content was: {}",
+        final_msg.content
+    );
+    let raw = final_msg
+        .raw_stream
+        .as_deref()
+        .expect("the turn must have left a raw stream");
+    assert!(
+        raw.contains("answer: staging"),
+        "the answer must survive in the raw stream too, which is what `TurnActivity` replays; got: {}",
+        raw
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// An answer to a question block from an *earlier* turn must not be written into the turn running
+/// now. The live buffer belongs to one message; anything else is the stored message's business.
+#[tokio::test]
+async fn test_answering_an_older_message_does_not_touch_the_live_turn() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-live-answer-scope-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(
+        ChatExecutionManager::new(test_dir.clone())
+            .with_spec_builder(Arc::new(|_agent, config| AgentProcessSpec {
+                command: "sh".to_string(),
+                args: vec![
+                    "-c".to_string(),
+                    concat!(
+                        r#"printf '%s\n' '{"delta": "Still deciding.\n\n```questions\n- id: target_env\n  title: Which env?\n  options:\n    - title: Staging\n      value: staging\n```\n"}'; "#,
+                        "sleep 10"
+                    )
+                    .to_string(),
+                ],
+                environment: HashMap::new(),
+                working_directory: config.working_directory.clone(),
+                stdin_content: None,
+                redirect_stdin: false,
+                temp_files: vec![],
+            }))
+            .with_persist_interval(Duration::from_millis(20)),
+    );
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Scope Test".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(&session.id, "First question", ChatTurnOptions::default())
+        .await
+        .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::StreamDelta { delta, .. } = evt {
+            if delta.contains("target_env") {
+                break;
+            }
+        }
+    }
+
+    // The message the turn is *not* streaming into: the user's own turn, which carries a question
+    // block of its own with the same question id.
+    let live_msg_id = {
+        let s = mgr.get_session(&session.id).await.expect("session");
+        s.messages
+            .iter()
+            .find(|m| m.role == "assistant")
+            .map(|m| m.id.clone())
+            .expect("assistant message")
+    };
+    let other_msg_id = {
+        let s = mgr.get_session(&session.id).await.expect("session");
+        s.messages
+            .iter()
+            .find(|m| m.role == "user")
+            .map(|m| m.id.clone())
+            .expect("user message")
+    };
+
+    let answers = HashMap::from([("target_env".to_string(), vec!["staging".to_string()])]);
+    // The user message has no question block, so this is a no-op on the stored side too - what
+    // matters is that it does not reach into the live turn's buffer.
+    let _ = mgr
+        .apply_answers(&session.id, &other_msg_id, &answers)
+        .await;
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let on_disk = load_session(&test_dir, &session.id).expect("session must be on disk");
+    let live_msg = on_disk
+        .messages
+        .iter()
+        .find(|m| m.id == live_msg_id)
+        .expect("assistant message must be on disk");
+    assert!(
+        !live_msg.content.contains("answer: staging"),
+        "answering one message must not answer the block in another; content was: {}",
+        live_msg.content
+    );
+
+    assert!(mgr.cancel_session(&session.id).await);
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
+
+/// The common case, and the one the live buffer must get out of the way of: a question answered
+/// after the turn that asked it has finished. The stored message is the only copy left, so the
+/// answer is patched into it - and into the *final* message, the one `finalize_message` composed,
+/// with its reconciled tool results, rather than into a mid-turn snapshot that a finished turn's
+/// buffer would still be holding.
+#[tokio::test]
+async fn test_answer_after_the_turn_finished_patches_the_stored_message() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-chat-answer-after-turn-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("Failed to create test dir");
+
+    let mgr = Arc::new(ChatExecutionManager::new(test_dir.clone()).with_spec_builder(Arc::new(
+        |_agent, config| AgentProcessSpec {
+            command: "sh".to_string(),
+            args: vec![
+                "-c".to_string(),
+                concat!(
+                    r#"printf '%s\n' '{"delta": "Which env?\n\n```questions\n- id: target_env\n  title: Which env?\n  options:\n    - title: Staging\n      value: staging\n```\n"}'; "#,
+                    // A tool the stream never closes, so `finalize_message` has something to
+                    // reconcile: the answer must land in that composed message, not in a snapshot
+                    // taken before it.
+                    r#"printf '%s\n' '{"kind":"tool_call","tool_use_id":"t-1","tool_name":"read_file","timestamp":"2026-01-01T00:00:00Z"}'"#
+                )
+                .to_string(),
+            ],
+            environment: HashMap::new(),
+            working_directory: config.working_directory.clone(),
+            stdin_content: None,
+            redirect_stdin: false,
+            temp_files: vec![],
+        },
+    )));
+
+    let mut rx = mgr.subscribe_events();
+
+    let session = mgr
+        .create_session(
+            Some("Answer After Turn".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("Failed to create session");
+
+    mgr.start_session_turn(
+        &session.id,
+        "Where should we deploy?",
+        ChatTurnOptions::default(),
+    )
+    .await
+    .expect("Failed to start session turn");
+
+    while let Ok(evt) = rx.recv().await {
+        if let ChatEvent::GeneratingState {
+            is_generating: false,
+            ..
+        } = evt
+        {
+            break;
+        }
+    }
+    assert!(!mgr.is_generating(&session.id).await);
+
+    let assistant_msg_id = mgr
+        .get_session(&session.id)
+        .await
+        .expect("session")
+        .messages
+        .iter()
+        .find(|m| m.role == "assistant")
+        .map(|m| m.id.clone())
+        .expect("assistant message");
+
+    let answers = HashMap::from([("target_env".to_string(), vec!["staging".to_string()])]);
+    mgr.apply_answers(&session.id, &assistant_msg_id, &answers)
+        .await
+        .expect("applying answers must succeed");
+
+    let on_disk = load_session(&test_dir, &session.id).expect("session must be on disk");
+    let msg = on_disk
+        .messages
+        .iter()
+        .find(|m| m.id == assistant_msg_id)
+        .expect("assistant message must be on disk");
+    assert!(
+        msg.content.contains("answer: staging"),
+        "content was: {}",
+        msg.content
+    );
+    let raw = msg.raw_stream.as_deref().expect("raw stream");
+    assert!(raw.contains("answer: staging"), "raw stream was: {}", raw);
+    assert!(
+        raw.contains("tool_result"),
+        "the answer must be written into the reconciled final stream, not over it; got: {}",
+        raw
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}
