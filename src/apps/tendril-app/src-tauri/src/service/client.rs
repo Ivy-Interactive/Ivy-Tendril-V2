@@ -758,6 +758,63 @@ impl TendrilClient {
         Ok(resp.json().await?)
     }
 
+    /// Runs V1's Test Agent checks against one agent, via `POST /api/agents/{agent}/test`.
+    ///
+    /// The generous client timeout this inherits is load-bearing: the daemon gives Claude and
+    /// Copilot thirty seconds per model, so a three-model test on a slow provider legitimately runs
+    /// past a minute. A transport timeout here would report "the service is down" for an agent that
+    /// is merely thinking.
+    pub async fn test_agent(
+        &self,
+        agent: &str,
+        request: serde_json::Value,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/agents/{}/test", self.base_url, urlencoding(agent));
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .header(reqwest::header::ACCEPT, "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            // The daemon redacts credentials from everything this route produces, so the body is
+            // safe to carry through - and a stale daemon predating the route answers 404, which is
+            // the one failure the operator can actually act on.
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "TEST_AGENT_FAILED",
+                format!("The service could not test this agent ({status})"),
+                text,
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// The rate-limit windows behind the settings pane's usage strip.
+    ///
+    /// `Ok(null)` for an agent whose provider publishes no usage. That is the common case for four
+    /// of the seven agents and is not an error.
+    pub async fn get_agent_usage(&self, agent: &str) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/agents/{}/usage", self.base_url, urlencoding(agent));
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_AGENT_USAGE_FAILED",
+                format!("Failed to read agent usage ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
     pub async fn get_job(&self, job_id: &str) -> Result<JobDetailDto, BridgeError> {
         let url = format!("{}/api/jobs/{}", self.base_url, urlencoding(job_id));
         let resp = self.client.get(&url).headers(self.headers()).send().await?;

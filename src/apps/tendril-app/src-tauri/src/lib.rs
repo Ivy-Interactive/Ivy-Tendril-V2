@@ -210,6 +210,8 @@ pub fn run() {
             cmd_close_agent_terminal,
             cmd_list_agents,
             cmd_fetch_provider_models,
+            cmd_test_agent,
+            cmd_get_agent_usage,
             cmd_list_github_issues,
             cmd_vault_list,
             cmd_vault_status,

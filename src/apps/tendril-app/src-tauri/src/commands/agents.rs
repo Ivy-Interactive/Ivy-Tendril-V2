@@ -28,3 +28,26 @@ pub async fn cmd_fetch_provider_models(
         .fetch_provider_models(request)
         .await
 }
+
+/// V1's Test Agent dialog, via `POST /api/agents/{agent}/test`.
+///
+/// A command rather than a `fetch` for the same reason as `cmd_fetch_provider_models`: the daemon's
+/// bearer secret is read natively and never crosses into the webview, and the route reads a saved
+/// API key out of `config.yaml` that the renderer must never see either. `request` goes through
+/// untouched and the reply comes back untouched - the daemon has already redacted it.
+#[tauri::command]
+pub async fn cmd_test_agent(
+    agent: String,
+    request: serde_json::Value,
+) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.test_agent(&agent, request).await
+}
+
+/// The rate-limit windows for one agent, via `GET /api/agents/{agent}/usage`.
+///
+/// Returns `null` for the agents whose providers publish no usage, which the settings pane reads as
+/// "draw no strip".
+#[tauri::command]
+pub async fn cmd_get_agent_usage(agent: String) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.get_agent_usage(&agent).await
+}
