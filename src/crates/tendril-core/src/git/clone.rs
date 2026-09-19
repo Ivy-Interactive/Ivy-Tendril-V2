@@ -569,7 +569,21 @@ fn remote_identity(url: &str) -> String {
         Some(idx) => &trimmed[idx + 3..],
         None => trimmed,
     };
-    let without_user = match after_scheme.find('@') {
+    // The *last* `@` before the path, for the reason `redact_credentials` gives at length: a
+    // password may legally contain one, git accepts `https://user:p@ss@host/o/r`, and splitting at
+    // the first `@` leaves the host reading as `ss@host`. Here that is a wrong answer rather than a
+    // leak - the identity no longer matches the same repository cloned without the credential - and
+    // the caller that asks turns a mismatch into "Remove that folder", pointed at a clone that was
+    // the right one all along.
+    //
+    // Bounded by `/` and only `/`. A colon is not a boundary here: it is the very character that
+    // divides a username from a password, so cutting at the first one lands *inside* the userinfo
+    // and `user:p@ss@host` would search only "user" and find no `@` at all. RFC 3986 forbids `/`
+    // in userinfo, which is what makes it the one safe bound.
+    let before_path = after_scheme
+        .find('/')
+        .map_or(after_scheme, |end| &after_scheme[..end]);
+    let without_user = match before_path.rfind('@') {
         Some(idx) => &after_scheme[idx + 1..],
         None => after_scheme,
     };
@@ -843,5 +857,71 @@ fn signal_tree(pid: u32, sig: libc::c_int) {
         unsafe {
             libc::kill(pid as libc::pid_t, sig);
         }
+    }
+}
+
+#[cfg(test)]
+mod remote_identity_tests {
+    use super::{remote_identity, same_remote};
+
+    /// The point of the whole function: one repository, spelled every way git accepts.
+    #[test]
+    fn one_repository_spelled_many_ways_is_one_identity() {
+        let expected = remote_identity("https://github.com/Owner/Repo.git");
+        for spelling in [
+            "https://github.com/Owner/Repo",
+            "https://github.com/owner/repo.git",
+            "https://github.com/Owner/Repo.git/",
+            "git@github.com:Owner/Repo.git",
+            "ssh://git@github.com/Owner/Repo.git",
+            "https://oauth2:ghp_token@github.com/Owner/Repo.git",
+        ] {
+            assert_eq!(
+                remote_identity(spelling),
+                expected,
+                "{} should be the same repository",
+                spelling
+            );
+        }
+    }
+
+    /// A password may legally contain `@`, and git accepts it. Splitting the userinfo at the first
+    /// one read the host as `ss@github.com`, so the same repository stopped matching itself the
+    /// moment a credential like that was in play - and `refresh_existing` turns a mismatch into
+    /// "Remove that folder", aimed at a clone that was correct.
+    #[test]
+    fn an_at_sign_inside_the_password_does_not_move_the_host() {
+        assert_eq!(
+            remote_identity("https://user:p@ss@github.com/Owner/Repo.git"),
+            remote_identity("https://github.com/Owner/Repo.git"),
+        );
+        assert!(same_remote(
+            "https://user:p@ss@github.com/Owner/Repo.git",
+            "git@github.com:Owner/Repo.git",
+        ));
+    }
+
+    /// The host is a host, not the tail of a password: the identity has to *start* with it, or the
+    /// assertion above would also pass for a function that returned a constant.
+    #[test]
+    fn the_identity_is_the_host_and_the_path() {
+        assert_eq!(
+            remote_identity("https://user:p@ss@github.com/Owner/Repo.git"),
+            "github.com/owner/repo",
+        );
+    }
+
+    /// Different repositories stay different. Without this the tests above are satisfied by a
+    /// function that collapses everything together.
+    #[test]
+    fn different_repositories_are_not_the_same_remote() {
+        assert!(!same_remote(
+            "https://github.com/Owner/Repo.git",
+            "https://github.com/Owner/Other.git",
+        ));
+        assert!(!same_remote(
+            "https://github.com/Owner/Repo.git",
+            "https://gitlab.com/Owner/Repo.git",
+        ));
     }
 }
