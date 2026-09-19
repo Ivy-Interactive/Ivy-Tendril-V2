@@ -27,8 +27,16 @@ fn a_first_run_installs_both_sidecars_into_the_home_bin() {
 
     let report = provision_with("1.0.0", Some(&bundle), &home, false);
 
-    assert!(report.errors.is_empty(), "unexpected errors: {:?}", report.errors);
-    assert_eq!(report.installed.len(), 2, "both sidecars install: {report:?}");
+    assert!(
+        report.errors.is_empty(),
+        "unexpected errors: {:?}",
+        report.errors
+    );
+    assert_eq!(
+        report.installed.len(),
+        2,
+        "both sidecars install: {report:?}"
+    );
     assert!(report.up_to_date.is_empty());
     assert!(report.missing.is_empty());
 
@@ -82,7 +90,10 @@ fn a_second_run_of_the_same_version_copies_nothing() {
     provision_with("1.0.0", Some(&bundle), &home, false);
     let second = provision_with("1.0.0", Some(&bundle), &home, false);
 
-    assert!(second.installed.is_empty(), "nothing to reinstall: {second:?}");
+    assert!(
+        second.installed.is_empty(),
+        "nothing to reinstall: {second:?}"
+    );
     assert_eq!(second.up_to_date.len(), 2);
     assert!(!second.changed());
 }
@@ -151,7 +162,10 @@ fn no_temporary_files_are_left_behind() {
         .filter_map(|e| e.file_name().to_str().map(str::to_string))
         .filter(|n| n.ends_with(".new") || n.ends_with(".old"))
         .collect();
-    assert!(leftovers.is_empty(), "staging files left behind: {leftovers:?}");
+    assert!(
+        leftovers.is_empty(),
+        "staging files left behind: {leftovers:?}"
+    );
 }
 
 #[test]
@@ -166,7 +180,10 @@ fn a_bundle_missing_a_sidecar_is_reported_and_not_fatal() {
 
     assert_eq!(report.installed, vec![CLI_BINARY.to_string()]);
     assert_eq!(report.missing, vec![OPENCODE_BINARY.to_string()]);
-    assert!(report.errors.is_empty(), "a missing sidecar is not an error: {report:?}");
+    assert!(
+        report.errors.is_empty(),
+        "a missing sidecar is not an error: {report:?}"
+    );
 }
 
 #[test]
@@ -248,5 +265,8 @@ fn an_unchanged_unit_is_not_rewritten() {
 
     assert!(!unit_needs_write(&unit, Some(&unit)));
     assert!(unit_needs_write(&unit, None));
-    assert!(unit_needs_write(&unit, Some("<plist>something else</plist>")));
+    assert!(unit_needs_write(
+        &unit,
+        Some("<plist>something else</plist>")
+    ));
 }

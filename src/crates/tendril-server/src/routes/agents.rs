@@ -314,9 +314,9 @@ mod tests {
         );
         let snapshot = state.settings_snapshot();
         let settings = snapshot.settings.as_ref();
-        assert!(has_saved_api_key(&settings, "ivy"));
-        assert!(has_saved_api_key(&settings, "openaiproxy"));
-        assert!(!has_saved_api_key(&settings, "claude"));
+        assert!(has_saved_api_key(settings, "ivy"));
+        assert!(has_saved_api_key(settings, "openaiproxy"));
+        assert!(!has_saved_api_key(settings, "claude"));
     }
 
     #[tokio::test]

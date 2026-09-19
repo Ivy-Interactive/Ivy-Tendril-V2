@@ -1316,7 +1316,10 @@ fn opencode_mcp_config_content(servers: &[McpServerConfig]) -> Option<String> {
         );
 
         let mut entry = serde_json::Map::new();
-        entry.insert("type".to_string(), serde_json::Value::String("local".into()));
+        entry.insert(
+            "type".to_string(),
+            serde_json::Value::String("local".into()),
+        );
         entry.insert("command".to_string(), serde_json::Value::Array(command));
         entry.insert("enabled".to_string(), serde_json::Value::Bool(true));
         if !s.environment.is_empty() {

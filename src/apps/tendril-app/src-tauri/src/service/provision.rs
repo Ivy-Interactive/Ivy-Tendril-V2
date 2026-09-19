@@ -101,8 +101,7 @@ pub struct ProvisionReport {
 
 impl ProvisionReport {
     pub fn changed(&self) -> bool {
-        !self.installed.is_empty()
-            || matches!(self.autostart, AutostartOutcome::Registered(_))
+        !self.installed.is_empty() || matches!(self.autostart, AutostartOutcome::Registered(_))
     }
 }
 
@@ -151,7 +150,10 @@ pub fn sidecar_dir() -> Option<PathBuf> {
 }
 
 fn file_len(path: &Path) -> Option<u64> {
-    fs::metadata(path).ok().filter(|m| m.is_file()).map(|m| m.len())
+    fs::metadata(path)
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
 }
 
 fn read_stamp(bin_dir: &Path) -> Option<ProvisionStamp> {
@@ -185,8 +187,7 @@ fn replace_binary(source: &Path, dest: &Path) -> Result<(), String> {
         .and_then(|n| n.to_str())
         .ok_or_else(|| format!("{} has no file name", dest.display()))?;
 
-    fs::create_dir_all(dir)
-        .map_err(|e| format!("failed to create {}: {e}", dir.display()))?;
+    fs::create_dir_all(dir).map_err(|e| format!("failed to create {}: {e}", dir.display()))?;
 
     let staged = dir.join(format!(".{name}.new"));
     let _ = fs::remove_file(&staged);
@@ -382,7 +383,10 @@ pub fn unregister_autostart(service_name: &str) -> Result<String, String> {
             return Err("no home directory to look for a systemd user unit in".to_string());
         };
         super::platform::linux::uninstall_systemd_service(&unit)?;
-        return Ok(format!("Removed the systemd user unit at {}.", unit.display()));
+        return Ok(format!(
+            "Removed the systemd user unit at {}.",
+            unit.display()
+        ));
     }
 
     #[cfg(target_os = "windows")]
@@ -425,9 +429,9 @@ pub fn provision_with(
     };
 
     let Some(sidecar_dir) = sidecar_dir else {
-        report
-            .errors
-            .push("could not locate the running executable, so no bundled sidecar was found".into());
+        report.errors.push(
+            "could not locate the running executable, so no bundled sidecar was found".into(),
+        );
         return report;
     };
 
@@ -479,10 +483,8 @@ pub fn provision_with(
         // the CLI has to have landed - either this run or an earlier one.
         let cli = bin_dir.join(CLI_BINARY);
         if cli.is_file() {
-            report.autostart = register_autostart(
-                &autostart_config(home),
-                !report.installed.is_empty(),
-            );
+            report.autostart =
+                register_autostart(&autostart_config(home), !report.installed.is_empty());
         } else {
             report.autostart = AutostartOutcome::Skipped(format!(
                 "{} is not installed, so there is nothing to start",
@@ -550,7 +552,12 @@ mod tests {
     #[test]
     fn a_missing_bundled_binary_is_not_an_install() {
         assert!(!binary_needs_install(None, None, None, "1.0.0"));
-        assert!(!binary_needs_install(None, Some(10), Some("0.9.0"), "1.0.0"));
+        assert!(!binary_needs_install(
+            None,
+            Some(10),
+            Some("0.9.0"),
+            "1.0.0"
+        ));
     }
 
     #[test]

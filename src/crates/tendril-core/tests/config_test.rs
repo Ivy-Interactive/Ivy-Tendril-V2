@@ -999,8 +999,10 @@ fn test_chat_mode_defaults_to_chat_and_round_trips() {
     std::fs::create_dir_all(&dir).expect("create test dir");
     let path = dir.join("config.yaml");
 
-    let mut settings = TendrilSettings::default();
-    settings.chat_mode = "terminal".to_string();
+    let settings = TendrilSettings {
+        chat_mode: "terminal".to_string(),
+        ..Default::default()
+    };
     save_config(&path, &settings).expect("save");
 
     // The on-disk key is camelCase, as V1's `CamelCaseNamingConvention` writes it.
