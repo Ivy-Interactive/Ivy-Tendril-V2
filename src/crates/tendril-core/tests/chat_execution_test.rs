@@ -2196,3 +2196,96 @@ async fn test_answer_after_the_turn_finished_patches_the_stored_message() {
 
     let _ = std::fs::remove_dir_all(&test_dir);
 }
+
+/// A question fence split across two streamed deltas still gets the answer into `raw_stream`.
+///
+/// A provider that chunks its output can put the fence opener in one event and the rest of the YAML
+/// in the next, so no single line holds a whole block and the per-line patch finds nothing to do.
+/// The message content was answered correctly and the raw stream was not, which matters because
+/// `TurnActivity` replays the stream rather than the content: reopening the chat showed the block
+/// unanswered again, with no way to tell it apart from a question still waiting.
+///
+/// Port of V1's `ApplyQuestionAnswers_ConsolidatesDeltaTextChunksWhenPresent`.
+#[tokio::test]
+async fn test_a_fence_split_across_deltas_is_consolidated_into_one_answered_chunk() {
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-split-delta-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).expect("create test dir");
+    let mgr = ChatExecutionManager::new(test_dir.clone());
+    let session = mgr
+        .create_session(
+            Some("Split deltas".to_string()),
+            Some("mock".to_string()),
+            Some("default".to_string()),
+            None,
+            None,
+        )
+        .await
+        .expect("create session");
+
+    let content = "Which env?\n\n```questions\n- id: target_env\n  title: Which env?\n  options:\n    - title: Staging\n      value: staging\n```\n";
+    // Split mid-key, so neither chunk parses as a question block on its own.
+    let raw = [
+        r#"{"kind":"text","text":"Which env?\n\n```questions\n- id: ","delta":true}"#,
+        r#"{"kind":"text","text":"target_env\n  title: Which env?\n  options:\n    - title: Staging\n      value: staging\n```\n","delta":true}"#,
+        r#"{"kind":"result","is_success":true}"#,
+    ]
+    .join("\n");
+
+    let msg = tendril_core::chat::models::ChatMessage {
+        id: "m-split".to_string(),
+        role: "assistant".to_string(),
+        content: content.to_string(),
+        timestamp: chrono::Utc::now(),
+        agent_id: None,
+        model_id: None,
+        raw_stream: Some(raw),
+        effort: None,
+    };
+    mgr.add_message(&session.id, msg)
+        .await
+        .expect("add message");
+
+    let mut answers: HashMap<String, Vec<String>> = HashMap::new();
+    answers.insert("target_env".to_string(), vec!["staging".to_string()]);
+    let updated = mgr
+        .apply_answers(&session.id, "m-split", &answers)
+        .await
+        .expect("apply answers");
+
+    let m = updated
+        .messages
+        .iter()
+        .find(|m| m.id == "m-split")
+        .expect("the answered message");
+    assert!(
+        m.content.contains("answer: staging"),
+        "content: {}",
+        m.content
+    );
+
+    let raw = m.raw_stream.as_deref().expect("raw stream survives");
+    assert!(
+        raw.contains("answer: staging"),
+        "the replayed stream must carry the answer too, raw was: {raw}"
+    );
+    // The delta run collapses into one settled chunk: replaying an appending chunk that now holds
+    // the whole answered text would render the prose twice.
+    assert!(
+        raw.contains(r#""delta":false"#),
+        "the consolidated chunk must replace rather than append, raw was: {raw}"
+    );
+    assert!(
+        !raw.contains(r#""delta":true"#),
+        "no appending chunk may survive the consolidation, raw was: {raw}"
+    );
+    // Events that are not the agent's prose keep their place in the replay.
+    assert!(
+        raw.contains(r#""kind":"result""#),
+        "the terminal result must survive, raw was: {raw}"
+    );
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+}

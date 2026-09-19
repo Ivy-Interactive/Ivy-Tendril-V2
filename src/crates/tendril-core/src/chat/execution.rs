@@ -1,4 +1,4 @@
-use crate::agents::eventwire::{event_wire_text, EventWireNormalizer};
+use crate::agents::eventwire::{event_wire_text, text_event, EventWireNormalizer};
 use crate::agents::providers::{build_agent_spec, AgentLaunchConfig, AgentProcessSpec};
 use crate::agents::reconcile::build_missing_result_lines;
 use crate::agents::runner::{
@@ -485,7 +485,8 @@ impl ChatExecutionManager {
             }
         }
 
-        patch_answers_into_wire_lines(&mut live.lines, answers);
+        let answered_text = live.text.clone();
+        patch_answers_into_wire_lines(&mut live.lines, answers, &answered_text);
 
         Some((live.text.clone(), live.lines.clone()))
     }
@@ -522,7 +523,7 @@ impl ChatExecutionManager {
                     msg.content = apply_question_answers(&msg.content, answers)?;
                     if let Some(ref raw) = msg.raw_stream {
                         let mut lines: Vec<String> = raw.split('\n').map(str::to_string).collect();
-                        if patch_answers_into_wire_lines(&mut lines, answers) {
+                        if patch_answers_into_wire_lines(&mut lines, answers, &msg.content) {
                             msg.raw_stream = Some(lines.join("\n"));
                         } else if let Ok(updated_raw) = apply_question_answers(raw, answers) {
                             // Nothing here is eventwire - a stream imported from V1, or one stored
@@ -1395,10 +1396,12 @@ fn compose_turn_content(text: &str, raw_lines: &[String], outcome: &TurnOutcome)
 /// the reader sees for no reason. Port of the `RawLines` loop shared by V1's
 /// `ChatExecutionService.ApplyQuestionAnswers` and `ChatHistoryService.ApplyQuestionAnswers`.
 fn patch_answers_into_wire_lines(
-    lines: &mut [String],
+    lines: &mut Vec<String>,
     answers: &HashMap<String, Vec<String>>,
+    answered_content: &str,
 ) -> bool {
     let mut any_changed = false;
+    let mut has_delta_text = false;
 
     for line in lines.iter_mut() {
         let trimmed = line.trim();
@@ -1411,6 +1414,10 @@ fn patch_answers_into_wire_lines(
         let Some(obj) = value.as_object_mut() else {
             continue;
         };
+
+        if is_delta_text_chunk(obj) {
+            has_delta_text = true;
+        }
 
         let mut line_changed = false;
         for field in ["text", "response"] {
@@ -1434,7 +1441,48 @@ fn patch_answers_into_wire_lines(
         }
     }
 
+    // Nothing matched, but the stream was built from deltas: the fence is split across chunks, so no
+    // single one holds a whole block to patch. Replace the whole delta run with one settled chunk
+    // carrying the answered content - the same consolidation V1 does, and the reason its
+    // `ApplyQuestionAnswers_ConsolidatesDeltaTextChunksWhenPresent` exists. Non-text events keep
+    // their place, so the tool calls and the result still replay in order.
+    if has_delta_text && !any_changed && !answered_content.is_empty() {
+        let mut rebuilt: Vec<String> = Vec::with_capacity(lines.len());
+        let mut inserted = false;
+        for line in lines.iter() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let is_delta_text = serde_json::from_str::<serde_json::Value>(trimmed)
+                .ok()
+                .and_then(|v| v.as_object().map(is_delta_text_chunk))
+                .unwrap_or(false);
+
+            if is_delta_text {
+                if !inserted {
+                    rebuilt.push(text_event(answered_content, false));
+                    inserted = true;
+                    any_changed = true;
+                }
+            } else {
+                rebuilt.push(line.clone());
+            }
+        }
+        if any_changed {
+            *lines = rebuilt;
+        }
+    }
+
     any_changed
+}
+
+/// Whether an eventwire object is a streamed text delta - a `text` chunk that appends to what came
+/// before rather than replacing it. Only these are collapsed by the consolidation above; a settled
+/// chunk already holds whole content and a non-text event is not the agent's prose at all.
+fn is_delta_text_chunk(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
+    obj.get("kind").and_then(|k| k.as_str()) == Some("text")
+        && obj.get("delta").and_then(|d| d.as_bool()) == Some(true)
 }
 
 /// The response text carried by the last terminal result event in the stream, in either wire shape.
