@@ -1,12 +1,17 @@
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tendril_core::agents::catalog::{all_agents_for_proxy_base_url, OPENAI_PROXY_AGENT_ID};
-use tendril_core::agents::provider_models::discover_provider_models;
+use tendril_core::agents::probe::{
+    check_auth, check_install, validate_model, AgentAuthResult, AgentInstallStatus,
+    ProbeCredentials,
+};
+use tendril_core::agents::provider_models::{discover_provider_models, ModelValidation};
 use tendril_core::agents::resolution::normalize_agent_name;
+use tendril_core::agents::usage::{agent_usage, AgentUsageSnapshot};
 use tendril_core::config::TendrilSettings;
 
 use crate::state::AppState;
@@ -68,6 +73,95 @@ pub async fn fetch_provider_models_handler(
     Json(discover_provider_models(&base_url, &api_key).await)
 }
 
+/// What the Test Agent dialog asks for: one agent, and the models it should be tested against.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestAgentRequest {
+    /// The models to validate, in the order the dialog lists them. Empty means install and auth only.
+    #[serde(default)]
+    pub models: Vec<String>,
+}
+
+/// Everything V1's dialog draws: one install row, one auth row, and one row per model.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestAgentResponse {
+    pub agent: String,
+    pub install: AgentInstallStatus,
+    /// Absent when the CLI is not installed: V1 short-circuits there rather than running an auth
+    /// probe against a binary that does not exist.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AgentAuthResult>,
+    pub models: Vec<ModelValidation>,
+}
+
+/// `POST /api/agents/:agent/test` — V1's Test Agent dialog, as one call.
+///
+/// The three checks run here rather than as three routes because they are strictly sequential and
+/// each one's usefulness depends on the last: an auth probe against a missing binary reports a
+/// spawn failure, and a model probe against a signed-out CLI reports an auth error for every model
+/// in the list. V1 short-circuits for exactly that reason, and so does this.
+///
+/// It can take a while — Claude and Copilot each get thirty seconds per model — because the only
+/// honest test of whether a provider will serve a model is asking it to.
+pub async fn test_agent_handler(
+    State(state): State<Arc<AppState>>,
+    Path(agent): Path<String>,
+    Json(request): Json<TestAgentRequest>,
+) -> impl IntoResponse {
+    let snapshot = state.settings_snapshot();
+    let agent = normalize_agent_name(&agent);
+    let credentials = probe_credentials(&snapshot.settings, &agent);
+
+    let install = check_install(&agent).await;
+    if !install.is_installed {
+        return Json(TestAgentResponse {
+            agent,
+            install,
+            auth: None,
+            models: Vec::new(),
+        });
+    }
+
+    let auth = check_auth(&agent, &credentials).await;
+
+    let mut models = Vec::with_capacity(request.models.len());
+    for model in &request.models {
+        // Sequentially, not concurrently: these are real prompts against one provider, and firing
+        // three at once at an account near its rate limit turns a model check into the thing that
+        // exhausts the quota.
+        models.push(validate_model(&agent, model, &credentials).await);
+    }
+
+    Json(TestAgentResponse {
+        agent,
+        install,
+        auth: Some(auth),
+        models,
+    })
+}
+
+/// `GET /api/agents/:agent/usage` — the rate-limit windows behind the settings pane's usage strip.
+///
+/// `null` for the four agents whose providers publish no usage, which the pane reads as "draw no
+/// strip". That is not an error and is not reported as one.
+pub async fn get_agent_usage_handler(
+    Path(agent): Path<String>,
+) -> Json<Option<AgentUsageSnapshot>> {
+    Json(agent_usage(&agent).await)
+}
+
+/// The base URL and key a bring-your-own-LLM probe needs, read from `config.yaml`.
+///
+/// Empty for every CLI-backed agent, which never looks at them: only the proxy arm of the probe
+/// reads credentials, and it is the only arm that has no binary to ask instead.
+fn probe_credentials(settings: &TendrilSettings, agent: &str) -> ProbeCredentials {
+    ProbeCredentials {
+        base_url: agent_environment(settings, agent, BASE_URL_KEYS).unwrap_or_default(),
+        api_key: agent_environment(settings, agent, API_KEY_KEYS).unwrap_or_default(),
+    }
+}
+
 /// The variables `codingAgents.ts`'s `byoEnvironment` writes, in the order `readApiKey` /
 /// `readBaseUrl` read them.
 const API_KEY_KEYS: &[&str] = &["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "IVY_API_KEY"];
@@ -127,6 +221,7 @@ fn openai_proxy_base_url(settings: &TendrilSettings) -> Option<String> {
 mod tests {
     use super::*;
     use axum::body::to_bytes;
+    use axum::extract::Path as AxumPath;
     use axum::response::Response;
 
     fn scratch_state(name: &str, config_yaml: Option<&str>) -> Arc<AppState> {
@@ -317,6 +412,95 @@ mod tests {
         assert!(has_saved_api_key(settings, "ivy"));
         assert!(has_saved_api_key(settings, "openaiproxy"));
         assert!(!has_saved_api_key(settings, "claude"));
+    }
+
+    /// A missing CLI stops the run rather than producing two more rows that only restate it.
+    #[tokio::test]
+    async fn testing_an_uninstalled_agent_reports_the_install_row_and_nothing_else() {
+        let state = scratch_state("tendril-agents-test-missing", None);
+        let response = body_json(
+            test_agent_handler(
+                State(state),
+                AxumPath("tendril-no-such-agent-7f3c".to_string()),
+                Json(TestAgentRequest {
+                    models: vec!["some-model".to_string()],
+                }),
+            )
+            .await
+            .into_response(),
+        )
+        .await;
+
+        assert_eq!(response["install"]["isInstalled"], false);
+        assert!(response["install"]["error"]
+            .as_str()
+            .unwrap()
+            .contains("not found on PATH"));
+        // No auth row and no model rows: neither would mean anything without a binary.
+        assert!(response.get("auth").is_none() || response["auth"].is_null());
+        assert_eq!(response["models"].as_array().unwrap().len(), 0);
+    }
+
+    /// The proxy arm needs the saved credential, and the reply must not carry it back.
+    #[tokio::test]
+    async fn a_proxy_test_reads_the_saved_key_and_never_echoes_it() {
+        let state = scratch_state(
+            "tendril-agents-test-proxy",
+            Some(
+                "codingAgents:\n  - name: openaiproxy\n    environmentVariables:\n      OPENAI_API_KEY: sk-probe-0123456789\n      ANTHROPIC_BASE_URL: http://127.0.0.1:1/v1\n",
+            ),
+        );
+        let snapshot = state.settings_snapshot();
+        let credentials = probe_credentials(snapshot.settings.as_ref(), "openaiproxy");
+        assert_eq!(credentials.api_key, "sk-probe-0123456789");
+        assert_eq!(credentials.base_url, "http://127.0.0.1:1/v1");
+
+        // Nothing is listening on port 1, so the probe fails at the connection - which is the proof
+        // it got as far as using the configured credential.
+        let response = body_json(
+            test_agent_handler(
+                State(state),
+                AxumPath("openaiproxy".to_string()),
+                Json(TestAgentRequest::default()),
+            )
+            .await
+            .into_response(),
+        )
+        .await;
+
+        let serialized = response.to_string();
+        assert!(!serialized.contains("sk-probe-0123456789"), "{serialized}");
+        assert!(!serialized.contains("sk-probe"), "{serialized}");
+    }
+
+    /// A CLI-backed agent's probe never reads a credential from config - it asks its own binary.
+    #[tokio::test]
+    async fn a_cli_agent_is_probed_without_credentials() {
+        let state = scratch_state(
+            "tendril-agents-test-cli-creds",
+            Some(
+                "codingAgents:\n  - name: openaiproxy\n    environmentVariables:\n      OPENAI_API_KEY: sk-not-for-claude\n",
+            ),
+        );
+        let snapshot = state.settings_snapshot();
+        let credentials = probe_credentials(snapshot.settings.as_ref(), "claude");
+        assert!(credentials.api_key.is_empty());
+        assert!(credentials.base_url.is_empty());
+    }
+
+    /// Parity with V1's three usage providers: the other agents report nothing, and that is a
+    /// `null` body rather than an error the pane would have to handle.
+    #[tokio::test]
+    async fn an_agent_without_a_usage_provider_answers_null() {
+        for agent in ["gemini", "copilot", "opencode"] {
+            let response = body_json(
+                get_agent_usage_handler(AxumPath(agent.to_string()))
+                    .await
+                    .into_response(),
+            )
+            .await;
+            assert!(response.is_null(), "{agent}: {response}");
+        }
     }
 
     #[tokio::test]

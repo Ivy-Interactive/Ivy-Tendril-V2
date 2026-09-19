@@ -317,6 +317,15 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/agents/models",
             post(agents::fetch_provider_models_handler),
         )
+        // V1's Test Agent dialog: install, then auth, then one validation per model. A POST because
+        // it launches real processes and spends real provider quota - this is not a safe GET.
+        .route("/api/agents/:agent/test", post(agents::test_agent_handler))
+        // The rate-limit windows behind the settings pane's usage strip. Cached for a minute in
+        // core, so the pane's own poll does not become the thing that rate-limits the account.
+        .route(
+            "/api/agents/:agent/usage",
+            get(agents::get_agent_usage_handler),
+        )
         // Config
         .route(
             "/api/config",
