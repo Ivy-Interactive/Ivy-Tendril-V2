@@ -250,6 +250,11 @@ pub fn run() {
             cmd_start_share_tunnel,
             cmd_stop_share_tunnel,
             cmd_get_cloudflared_install_state,
+            // The install itself and the way out of one. Without these the Install button in Security
+            // & Tunneling cannot reach the daemon, and a fresh machine has no way to get cloudflared
+            // except by hand.
+            cmd_install_cloudflared,
+            cmd_cancel_cloudflared_install,
             // Full-access tunnel and the session password it is gated on — Settings' "Security &
             // Tunneling" section. Same module as the share commands.
             cmd_get_full_tunnel,
