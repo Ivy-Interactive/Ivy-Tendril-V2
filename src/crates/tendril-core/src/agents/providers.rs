@@ -1420,7 +1420,7 @@ fn find_on_path(binary: &str) -> Option<PathBuf> {
     None
 }
 
-fn resolve_copilot_binary() -> (String, Vec<String>) {
+pub fn resolve_copilot_binary() -> (String, Vec<String>) {
     if find_on_path("copilot").is_some() {
         return ("copilot".to_string(), vec![]);
     }
@@ -1449,7 +1449,7 @@ const OPENCODE_BINARY: &str = if cfg!(windows) {
 ///
 /// Falls back to the bare name so the failure is OpenCode's own "not found" rather than a path that
 /// does not exist.
-fn resolve_opencode_binary() -> String {
+pub fn resolve_opencode_binary() -> String {
     if let Ok(curr_exe) = std::env::current_exe() {
         if let Some(parent) = curr_exe.parent() {
             let direct = parent.join(OPENCODE_BINARY);
