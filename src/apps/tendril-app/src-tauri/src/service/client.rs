@@ -13,6 +13,10 @@ use base64::Engine;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::json;
 
+/// How long a request that may clone is given. Long enough for a real repository over a slow link,
+/// short enough that a wedged daemon still returns something.
+const CLONE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
 #[derive(Debug, Clone)]
 pub struct TendrilClient {
     base_url: String,
@@ -1854,6 +1858,11 @@ impl TendrilClient {
 
     /// Creates a project. A duplicate name comes back as 409, which surfaces here as a
     /// `CREATE_PROJECT_FAILED` error carrying the server's message.
+    ///
+    /// The shared client's 10s timeout is overridden here because this one route can clone: a repo
+    /// given by URL is fetched by the daemon inside this request, and a large one takes minutes. At
+    /// 10s the app would report a failure over a clone that then succeeds, leaving a project the UI
+    /// says was never created.
     pub async fn create_project(
         &self,
         request: CreateProjectDto,
@@ -1863,6 +1872,7 @@ impl TendrilClient {
             .client
             .post(&url)
             .headers(self.headers())
+            .timeout(CLONE_TIMEOUT)
             .json(&request)
             .send()
             .await?;
@@ -1873,6 +1883,52 @@ impl TendrilClient {
             return Err(BridgeError::new(
                 "CREATE_PROJECT_FAILED",
                 format!("Failed to create project ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Adds one repository to an existing project, cloning it first when it is a URL
+    /// (`POST /api/projects/:name/repos`).
+    ///
+    /// This has to be the route the settings screen uses, and the alternative is not a style choice.
+    /// `PUT /api/config` merges what it is handed and saves it, so a remote added that way is written
+    /// into `config.yaml` as the URL itself — which persists any credential the URL carries, and
+    /// leaves the project unusable besides, because `resolve_working_directory` only ever picks a
+    /// repo whose path is a directory on disk. This route clones first and stores the clone.
+    ///
+    /// Same `CLONE_TIMEOUT` as [`TendrilClient::create_project`], for the same reason: the clone runs
+    /// inside this request and a large repository takes minutes.
+    ///
+    /// `repo_path` is deliberately absent from the error. The daemon has already put every URL it
+    /// mentions through `tendril_core::git::redact_credentials`, so its own message is the safe one
+    /// to relay; re-adding the URL here would undo that.
+    pub async fn add_project_repo(
+        &self,
+        project_name: &str,
+        repo_path: &str,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!(
+            "{}/api/projects/{}/repos",
+            self.base_url,
+            path_segment(project_name)
+        );
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .timeout(CLONE_TIMEOUT)
+            .json(&json!({ "path": repo_path }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "ADD_PROJECT_REPO_FAILED",
+                format!("Failed to add repository ({status}): {text}"),
             ));
         }
 

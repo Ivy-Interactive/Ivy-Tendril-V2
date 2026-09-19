@@ -167,6 +167,10 @@ pub fn run() {
             cmd_upload_chat_attachment,
             cmd_list_projects,
             cmd_create_project,
+            // The only way the app may add a repository to an existing project: `PUT /api/config`
+            // stores what it is handed, so a remote URL added that way keeps its credentials and
+            // never becomes a checkout. This route clones first.
+            cmd_add_project_repo,
             cmd_get_config,
             cmd_put_config,
             cmd_get_config_text,

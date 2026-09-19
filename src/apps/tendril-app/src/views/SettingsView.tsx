@@ -561,10 +561,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
    * agent has written to it.
    */
   const createProject = async (name: string, repos: string[]) => {
-    await bridge.createProject({ name, repos });
+    const created = await bridge.createProject({ name, repos });
     applyConfig(await bridge.getConfig());
     setCreatedProjectName(name);
     setIsProjectsExpanded(true);
+    // A remote was cloned into TENDRIL_HOME; the response is where the caller learns the path.
+    return created?.repos?.map((repo) => repo.path) ?? repos;
   };
 
   /** Re-reads config.yaml. The setup agent edits it through the `tendril` CLI, behind the app's back. */
@@ -793,6 +795,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 agent={saved.codingAgent}
                 isBeta={isBeta}
                 onSaveRaw={saveRawKey}
+                onReloadConfig={reloadConfig}
               />
             </div>
           </div>

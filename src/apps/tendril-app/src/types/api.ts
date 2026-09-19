@@ -324,7 +324,31 @@ export interface DoctorCheck {
 export interface CreateProjectRequest {
   name: string;
   color?: string;
+  /**
+   * Local paths, or remote URLs for the daemon to clone. A URL is never stored: the route clones it
+   * into `<TendrilHome>/Projects/<name>/Repos/<owner>/<repo>` and keeps that path, which is why the
+   * caller has to read {@link CreatedProject.repos} back rather than reuse what it sent.
+   */
   repos?: string[];
+}
+
+/**
+ * What `POST /api/projects` answers with: the project as it was written, whose `repos` are the
+ * resolved paths. Narrowed to the fields the create callers read.
+ */
+export interface CreatedProject {
+  name: string;
+  repos?: { path: string; baseBranch?: string }[];
+}
+
+/**
+ * What `POST /api/projects/:name/repos` answers with: the repository as it was stored. For a remote
+ * that is the clone's directory rather than the URL that was sent - the route clones before it
+ * writes, and the response is the only place the caller can learn where to.
+ */
+export interface AddedProjectRepo {
+  path: string;
+  baseBranch?: string;
 }
 
 export type ModelCatalogSource = "models.dev" | "static";

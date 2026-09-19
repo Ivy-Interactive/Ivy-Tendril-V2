@@ -179,6 +179,82 @@ describe("project configuration", () => {
       });
     });
 
+    /**
+     * The half of this that refuses an unrecognised path is V1 `ProjectRepoPickerView.AddAsync`'s
+     * own guard. The other half is a regression test for a credential leak: a remote used to be
+     * added by writing the whole `repos` list back through `PUT /api/config`, which stores what it
+     * is handed, so `https://user:token@host/o/r.git` was persisted to `config.yaml` with the token
+     * in it - and the entry was useless besides, because `resolve_working_directory` only accepts a
+     * repo path that is a directory. `POST /api/projects/:name/repos` is the only route that clones,
+     * so that is where a remote has to go, and the path that comes back is the clone's.
+     */
+    it("clones a remote through the repos route, and refuses a path it cannot recognise", async () => {
+      const addProjectRepo = vi
+        .spyOn(bridge, "addProjectRepo")
+        .mockResolvedValue({ path: "/home/user/.tendril/Projects/Tendril/Repos/ivy/widgets" });
+      await renderProject(configWith({ repos: [{ path: "/a" }] }));
+
+      fireEvent.change(screen.getByLabelText("Repository URL or Local Path"), {
+        target: { value: "tendril" },
+      });
+      await clickButton(/Add Repository/);
+      expect(screen.getByTestId("project-repo-error")).toHaveTextContent(
+        "Invalid repository path.",
+      );
+      expect(putConfig).not.toHaveBeenCalled();
+      expect(addProjectRepo).not.toHaveBeenCalled();
+
+      // The re-read that follows the clone is what puts the stored path on screen, so the config the
+      // daemon answers with has to be the post-clone one.
+      (bridge.getConfig as ReturnType<typeof vi.spyOn>).mockResolvedValue(
+        configWith({
+          repos: [
+            { path: "/a" },
+            { path: "/home/user/.tendril/Projects/Tendril/Repos/ivy/widgets" },
+          ],
+        }),
+      );
+
+      fireEvent.change(screen.getByLabelText("Repository URL or Local Path"), {
+        target: { value: "https://GitHub.com/Ivy-Interactive/Ivy-Tendril-V2.git" },
+      });
+      await clickButton(/Add Repository/);
+
+      // Normalized: V1 lowercases a remote's scheme and host so two spellings dedupe.
+      expect(addProjectRepo).toHaveBeenCalledWith(
+        "Tendril",
+        "https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git",
+      );
+      // Nothing about the remote reaches `PUT /api/config` - that write is what used to store the
+      // URL, credentials included.
+      expect(putConfig).not.toHaveBeenCalled();
+
+      // The row names the clone directory. The URL appears nowhere on the screen, which is the
+      // property that matters when it is a URL with a token in it.
+      const row = await screen.findByLabelText(
+        "Base branch for /home/user/.tendril/Projects/Tendril/Repos/ivy/widgets",
+      );
+      expect(row).toBeInTheDocument();
+      expect(document.body.textContent).not.toContain("Ivy-Tendril-V2.git");
+    });
+
+    /** A local path has nothing to clone, so it stays the `PUT /api/config` write V1 makes too. */
+    it("adds a local path through the config write, without touching the clone route", async () => {
+      const addProjectRepo = vi.spyOn(bridge, "addProjectRepo");
+      await renderProject(configWith({ repos: [{ path: "/a" }] }));
+
+      fireEvent.change(screen.getByLabelText("Repository URL or Local Path"), {
+        target: { value: "/b" },
+      });
+      await clickButton(/Add Repository/);
+
+      expect(addProjectRepo).not.toHaveBeenCalled();
+      expect(lastProjectPatch(putConfig)).toEqual({
+        name: "Tendril",
+        repos: [{ path: "/a" }, { path: "/b" }],
+      });
+    });
+
     it("removes a repository, once the removal is confirmed", async () => {
       await renderProject(configWith({ repos: [{ path: "/a" }, { path: "/b" }] }));
 

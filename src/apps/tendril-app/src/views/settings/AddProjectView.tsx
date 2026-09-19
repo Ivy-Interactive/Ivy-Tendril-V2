@@ -5,6 +5,12 @@ import { jobsStore } from "../../state/jobsStore";
 import { describeBridgeError } from "../../types/api";
 import type { ProjectEntry } from "./projectConfig";
 import { SaveError, SettingsSection, SubSection, TextField } from "./fields";
+import {
+  classifyRepoPath,
+  extractRepoName,
+  isValidRepoPath,
+  normalizeRepoPath,
+} from "../onboarding/validation";
 
 /**
  * `Apps/Settings/Blades/AddProjectBladeView.cs`, which is what the "Add Project" sub-item under the
@@ -45,7 +51,8 @@ export interface AddProjectViewProps {
    * precondition `AddProject`'s promptware opens with ("Run `tendril project list` to confirm the
    * project exists"), so the job is only started after this settles.
    */
-  onCreate: (name: string, repos: string[]) => Promise<void>;
+  /** Writes the project row and answers with the repository paths that were actually stored. */
+  onCreate: (name: string, repos: string[]) => Promise<string[]>;
   /** The freshly written project, once the config has been re-read. Drives the harness step. */
   createdProject?: ProjectEntry | null;
   /**
@@ -98,6 +105,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
   const [name, setName] = React.useState("");
   const [repos, setRepos] = React.useState<string[]>([]);
   const [repoDraft, setRepoDraft] = React.useState("");
+  const [repoError, setRepoError] = React.useState<string | null>(null);
   const [isCreating, setIsCreating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [jobId, setJobId] = React.useState<string | null>(null);
@@ -111,20 +119,28 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
       ? `A project named '${trimmed}' already exists.`
       : null);
 
+  /**
+   * V1 `ProjectRepoPickerView.AddAsync`, in its order: normalize, refuse what `RepoPathValidator`
+   * does not recognise, dedupe case-insensitively, then seed the name. Without the refusal a typo
+   * like `tendril` reaches `POST /api/projects` as a repository path and is stored as one.
+   */
   const addRepo = () => {
-    const path = repoDraft.trim();
+    const path = normalizeRepoPath(repoDraft);
     if (path === "") return;
+    setRepoError(null);
+
+    if (!isValidRepoPath(path)) {
+      setRepoError("Invalid repository path.");
+      return;
+    }
+
     setRepos((prev) =>
       prev.some((p) => p.toLowerCase() === path.toLowerCase()) ? prev : [...prev, path],
     );
     // V1 seeds a blank project name from the repository name on the first add.
     if (trimmed === "") {
-      const leaf =
-        path
-          .replace(/[/\\]+$/, "")
-          .split(/[/\\]/)
-          .pop() ?? "";
-      if (leaf !== "") setName(leaf.replace(/\.git$/i, ""));
+      const leaf = extractRepoName(path) ?? "";
+      if (leaf !== "") setName(leaf);
     }
     setRepoDraft("");
   };
@@ -141,8 +157,11 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
     if (nameError || repos.length === 0) return;
     setIsCreating(true);
     setError(null);
+    let resolved = repos;
     try {
-      await onCreate(trimmed, repos);
+      // A remote among `repos` is cloned by the create, and the paths it answers with are the only
+      // record of where. `AddProject` inspects them on disk, so it gets those, not the URLs.
+      resolved = await onCreate(trimmed, repos);
     } catch (err) {
       setError(`Failed to create project: ${describeBridgeError(err)}`);
       setIsCreating(false);
@@ -153,7 +172,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
       const started = await jobsStore.startJob({
         type: "AddProject",
         projectName: trimmed,
-        repos: repos.map((path) => ({ path })),
+        repos: resolved.map((path) => ({ path })),
       });
       setJobId(started.jobId);
       if (background) {
@@ -200,6 +219,11 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
               <div key={path} className="flex items-center gap-2 rounded-selector bg-muted/50 p-2">
                 <span className="min-w-0 flex-1 truncate font-mono text-xs text-primary">
                   {path}
+                  {classifyRepoPath(path) !== "local" && (
+                    <span className="ml-2 font-sans text-muted-foreground">
+                      will be cloned on Create Project
+                    </span>
+                  )}
                 </span>
                 <Button
                   type="button"
@@ -230,6 +254,11 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
                 Add Repository
               </Button>
             </div>
+            {repoError && (
+              <p className="text-xs text-destructive" data-testid="add-project-repo-error">
+                {repoError}
+              </p>
+            )}
           </div>
 
           <TextField

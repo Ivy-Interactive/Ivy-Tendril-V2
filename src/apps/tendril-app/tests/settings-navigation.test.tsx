@@ -242,10 +242,14 @@ describe("SettingsView sidebar", () => {
 
     const mockAddProject = () => {
       order = [];
-      const createProject = vi.spyOn(bridge, "createProject").mockImplementation(async () => {
-        order.push("createProject");
-        return undefined;
-      });
+      const createProject = vi
+        .spyOn(bridge, "createProject")
+        .mockImplementation(async (request) => {
+          order.push("createProject");
+          // The daemon answers with the repositories as stored, which is what the blade hands to
+          // `AddProject`. Nothing here clones, so they come back as sent.
+          return { name: request.name, repos: (request.repos ?? []).map((path) => ({ path })) };
+        });
       const startJob = vi.spyOn(bridge, "startJob").mockImplementation(async () => {
         order.push("startJob");
         return { jobId: "00042", status: "Started" };
@@ -341,6 +345,40 @@ describe("SettingsView sidebar", () => {
      * real job type and `OnboardingWizard` had been starting it all along, so the blade now runs it
      * too, and the exit moved to the Finish button at the end of the harness step.
      */
+    it("refuses an unrecognised repository path and sends a remote URL to be cloned", async () => {
+      const { createProject } = mockAddProject();
+
+      await renderSettings(withProjects(projects));
+      await openAddProject();
+
+      // V1 `ProjectRepoPickerView.AddAsync`'s refusal. Without it a bare word is a repository path.
+      fireEvent.change(screen.getByLabelText("Repository URL or Local Path"), {
+        target: { value: "newthing" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Add Repository/ }));
+      });
+      expect(screen.getByTestId("add-project-repo-error")).toHaveTextContent(
+        "Invalid repository path.",
+      );
+
+      // A remote is accepted and its name seeds the project name, `.git` stripped, the same way a
+      // local path's leaf does. The daemon clones it and stores the clone's path.
+      const url = "https://github.com/Ivy-Interactive/newthing.git";
+      fireEvent.change(screen.getByLabelText("Repository URL or Local Path"), {
+        target: { value: url },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Add Repository/ }));
+      });
+      expect(screen.getByLabelText("Name")).toHaveValue("newthing");
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
+      });
+      expect(createProject).toHaveBeenCalledWith({ name: "newthing", repos: [url] });
+    });
+
     it("creates the project, then hands the setup run to the AddProject job", async () => {
       const { createProject, startJob, getConfig } = mockAddProject();
 

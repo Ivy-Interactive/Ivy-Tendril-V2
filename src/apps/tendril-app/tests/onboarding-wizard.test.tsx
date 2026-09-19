@@ -107,7 +107,10 @@ describe("OnboardingWizard", () => {
     dismissOnboarding = vi.spyOn(bridge, "dismissOnboarding").mockResolvedValue(undefined);
     completeOnboarding = vi.spyOn(bridge, "completeOnboarding").mockResolvedValue(undefined);
     putConfig = vi.spyOn(bridge, "putConfig").mockResolvedValue(undefined);
-    createProject = vi.spyOn(bridge, "createProject").mockResolvedValue({});
+    createProject = vi.spyOn(bridge, "createProject").mockImplementation(async (request) => ({
+      name: request.name,
+      repos: (request.repos ?? []).map((path) => ({ path })),
+    }));
     startJob = vi
       .spyOn(bridge, "startJob")
       .mockResolvedValue({ jobId: "00900", status: "Started" });

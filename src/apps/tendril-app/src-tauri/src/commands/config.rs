@@ -96,6 +96,26 @@ pub async fn cmd_create_project(
     get_client_from_master()?.create_project(request).await
 }
 
+/// Adds one repository to an existing project (`POST /api/projects/:name/repos`).
+///
+/// The project settings screen used to add a repository by writing the whole `repos` list back
+/// through `cmd_put_config`, which is `PUT /api/config` and does not clone: a remote URL was stored
+/// verbatim, credentials and all, and `resolve_working_directory` then skipped the entry because its
+/// path is not a directory. Only this route clones, so only this route may add a repository.
+///
+/// No `tracing` line, for the reason `cmd_put_config_text` has none: `path` can be a URL with a
+/// token embedded in it, and a log line is the cheapest way for one to reach a bug report. The reply
+/// is the stored `RepoRef` — the clone's path, never the URL — and is handed back untouched.
+#[tauri::command]
+pub async fn cmd_add_project_repo(
+    project_name: String,
+    path: String,
+) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?
+        .add_project_repo(&project_name, &path)
+        .await
+}
+
 /// Starts a review action and returns the session the webview must address to talk to it.
 ///
 /// The stream itself is consumed natively — `invoke` cannot stream, and the route is

@@ -8,9 +8,11 @@ import {
   type ReviewActionSession,
 } from "./events";
 import type {
+  AddedProjectRepo,
   AgentCostBreakdown,
   Annotation,
   CreateProjectRequest,
+  CreatedProject,
   CrossPlanRecommendation,
   DashboardActivity,
   DiscoveredVaultRepo,
@@ -671,8 +673,25 @@ const tauriClient = {
     return run.session;
   },
 
-  async createProject(this: void, request: CreateProjectRequest): Promise<unknown> {
-    return invoke<unknown>("cmd_create_project", { request });
+  /**
+   * Creates a project, cloning any remote among `repos` first. The returned project's `repos` are
+   * the resolved local paths - the only place the caller can learn where a URL was cloned to.
+   */
+  async createProject(this: void, request: CreateProjectRequest): Promise<CreatedProject> {
+    return invoke<CreatedProject>("cmd_create_project", { request });
+  },
+
+  /**
+   * Adds one repository to an existing project, cloning it first when `path` is a remote URL.
+   *
+   * `putConfig("projects", ...)` cannot stand in for this. It merges and saves whatever it is given,
+   * so a URL added that way is what lands in `config.yaml` - persisting any credential embedded in
+   * it, and leaving a repo entry the daemon skips, because a working directory has to be a directory.
+   * Only this route clones. The returned `path` is what was stored, which is the clone's directory
+   * for a remote and the typed path for a local one.
+   */
+  async addProjectRepo(this: void, projectName: string, path: string): Promise<AddedProjectRepo> {
+    return invoke<AddedProjectRepo>("cmd_add_project_repo", { projectName, path });
   },
 
   async getConfig(this: void): Promise<TendrilConfig> {

@@ -1,5 +1,5 @@
 import React from "react";
-import { Pencil, Plus, X } from "lucide-react";
+import { Loader2, Pencil, Plus, X } from "lucide-react";
 import {
   BladeContainer,
   Button,
@@ -13,6 +13,7 @@ import {
   type DataTableRowAction,
 } from "@ivy-interactive/components/ui";
 import { SortableVerificationList } from "@ivy-interactive/components/tendril";
+import { bridge } from "../../api/bridge";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
 import {
@@ -61,6 +62,7 @@ import {
   type ReviewActionConfigEntry,
   type VerificationDef,
 } from "./projectConfig";
+import { classifyRepoPath, isValidRepoPath, normalizeRepoPath } from "../onboarding/validation";
 
 /**
  * `Apps/Settings/ProjectDetailView.cs` plus the editors in `Apps/Settings/Blades/`, which is where
@@ -90,6 +92,11 @@ export interface ProjectSettingsViewProps {
   isBeta: boolean;
   /** Writes one top-level config key and re-reads the config. */
   onSaveRaw: (key: string, value: unknown) => Promise<void>;
+  /**
+   * Re-reads `config.yaml` without writing anything. Adding a remote repository goes out as its own
+   * daemon route rather than a config write, so this is how its result gets back into the view.
+   */
+  onReloadConfig: () => Promise<void>;
 }
 
 const AGENT_LABELS: Record<string, string> = {
@@ -530,10 +537,13 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   agent,
   isBeta,
   onSaveRaw,
+  onReloadConfig,
 }) => {
   const { push, pop } = useBlades();
   const [error, setError] = React.useState<string | null>(null);
   const [repoDraft, setRepoDraft] = React.useState("");
+  const [repoError, setRepoError] = React.useState<string | null>(null);
+  const [isAddingRepo, setIsAddingRepo] = React.useState(false);
   const [basic, setBasic] = React.useState({ color: project.color, context: project.context });
   const [security, setSecurity] = React.useState<ProjectSecurityForm>(project.security);
 
@@ -577,15 +587,58 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   const saveRepos = (repos: RepoRef[], message: string) =>
     void patch({ repos: repos.map(repoToWire) }, message);
 
-  const addRepo = () => {
-    const path = repoDraft.trim();
+  /**
+   * V1 `ProjectRepoPickerView.AddAsync`: normalize, refuse what `RepoPathValidator` does not
+   * recognise, dedupe, add.
+   *
+   * A remote is the one row action on this screen that is *not* a `PUT /api/config` write, and it
+   * cannot be one. That route saves what it is handed, so a URL added through it is what ends up in
+   * `config.yaml`: any credential the URL carries is persisted verbatim, and the entry is dead
+   * weight besides, because `resolve_working_directory` only ever picks a repo path that is a
+   * directory on disk. `POST /api/projects/:name/repos` is the only route that clones, so a remote
+   * goes there and the project is re-read afterwards - the stored path is the clone's directory and
+   * the response is the only place it is named. A local path still goes through the config write,
+   * which is all V1 does with one too.
+   */
+  const addRepo = async () => {
+    const path = normalizeRepoPath(repoDraft);
     if (path === "") return;
+    setRepoError(null);
+
+    if (!isValidRepoPath(path)) {
+      setRepoError("Invalid repository path.");
+      return;
+    }
+
     if (project.repos.some((repo) => repo.path.toLowerCase() === path.toLowerCase())) {
       setRepoDraft("");
       return;
     }
-    saveRepos([...project.repos, { path, rest: {} }], `Added ${path}`);
-    setRepoDraft("");
+
+    if (classifyRepoPath(path) === "local") {
+      saveRepos([...project.repos, { path, rest: {} }], `Added ${path}`);
+      setRepoDraft("");
+      return;
+    }
+
+    // The clone runs inside the request and can take minutes on a large repository, so the button
+    // stays down for the whole of it rather than letting a second click start a second clone.
+    setIsAddingRepo(true);
+    try {
+      const added = await bridge.addProjectRepo(project.name, path);
+      await onReloadConfig();
+      setRepoDraft("");
+      // The clone path, never `path`. A remote URL can carry a token, and a toast is copied into
+      // screenshots and bug reports; the daemon's answer is a directory under TENDRIL_HOME and
+      // cannot carry one. `redact_credentials` is the daemon's guard on the same hazard.
+      notificationsStore.notifySuccess("Cloned", `Repository cloned to ${added.path}`);
+    } catch (err) {
+      // The daemon has already put every URL its clone errors mention through `redact_credentials`,
+      // so relaying its message is safe and re-stating the typed URL here would undo that.
+      setRepoError(`Failed to add repository: ${describeBridgeError(err)}`);
+    } finally {
+      setIsAddingRepo(false);
+    }
   };
 
   /* ----------------------------------------------------------- review actions */
@@ -915,23 +968,33 @@ const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               value={repoDraft}
               placeholder="Repository URL or Local Path"
               className="min-w-60 flex-1"
+              disabled={isAddingRepo}
               onChange={(e) => setRepoDraft(e.target.value)}
             />
             <Button
               type="button"
               variant="outline"
-              disabled={repoDraft.trim() === ""}
-              onClick={addRepo}
+              disabled={repoDraft.trim() === "" || isAddingRepo}
+              onClick={() => void addRepo()}
             >
-              <Plus className="size-4" aria-hidden />
-              Add Repository
+              {isAddingRepo ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Plus className="size-4" aria-hidden />
+              )}
+              {isAddingRepo ? "Cloning..." : "Add Repository"}
             </Button>
           </div>
-          {/* V1 clones a remote URL into TENDRIL_HOME on add and resolves the real default branch
-              first; neither is reachable from V2, so a remote URL is stored verbatim. */}
+          {repoError && (
+            <p className="text-xs text-destructive" data-testid="project-repo-error">
+              {repoError}
+            </p>
+          )}
+          {/* The clone is the daemon's, and it can take minutes on a large repository - worth
+              saying, because the row only appears once it has finished. */}
           <p className="text-xs text-muted-foreground">
-            V1 clones a remote URL into TENDRIL_HOME and detects its default branch on add. Neither
-            is reachable from this app, so a path is stored exactly as typed.
+            A remote URL is cloned into TENDRIL_HOME, and the row shows where it was cloned to
+            rather than the URL; a local path is stored as typed.
           </p>
         </div>
       </SubSection>
