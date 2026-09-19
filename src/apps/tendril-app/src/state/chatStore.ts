@@ -1218,6 +1218,12 @@ export class ChatStore {
         chatApi.getSession(id),
         chatApi.getQueue(id).catch(() => []),
       ]);
+      // The user can switch chats while this fetch is in flight. Landing a stale session here would
+      // leave `activeSession.id` disagreeing with `activeSessionId`, and every guard in
+      // `handleChatEvent` compares against `activeSession.id` - so the losing session's stream would
+      // then be appended to the pane showing the winning one. Same check as `submitAnswer`.
+      if (this.state.activeSessionId !== id) return;
+
       const isPinned = Boolean(this.pinnedSessions[id]);
       session.isPinned = isPinned;
       session.pinnedAt = isPinned ? this.pinnedSessions[id] : undefined;
@@ -1247,13 +1253,20 @@ export class ChatStore {
    * moment a turn ends as well as while one runs.
    */
   public async refreshActiveSession(options?: { preserveLocalLonger?: boolean }): Promise<void> {
-    if (!this.state.activeSessionId) return;
+    const targetId = this.state.activeSessionId;
+    if (!targetId) return;
     const preserveLocalLonger = options?.preserveLocalLonger ?? this.state.isGenerating;
     try {
       const [session, queue] = await Promise.all([
-        chatApi.getSession(this.state.activeSessionId),
-        chatApi.getQueue(this.state.activeSessionId).catch(() => []),
+        chatApi.getSession(targetId),
+        chatApi.getQueue(targetId).catch(() => []),
       ]);
+      // Fired automatically when a turn ends (`chat.generating_state`), so this routinely races a
+      // chat switch rather than only on a double-click. Without the re-check the merge below splices
+      // the local messages of whichever session is on screen now into the server messages of the one
+      // that was. Reading `activeSessionId` once, above, also keeps the two fetches on one session.
+      if (this.state.activeSessionId !== targetId) return;
+
       const isPinned = Boolean(this.pinnedSessions[session.id]);
       session.isPinned = isPinned;
       session.pinnedAt = isPinned ? this.pinnedSessions[session.id] : undefined;
