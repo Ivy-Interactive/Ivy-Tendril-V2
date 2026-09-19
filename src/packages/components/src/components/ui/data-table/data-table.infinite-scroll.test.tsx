@@ -317,6 +317,32 @@ describe("DataTable infinite scroll", () => {
     expect(screen.queryByRole("button", { name: /next page/i })).not.toBeInTheDocument();
     expect(container.querySelector('[data-slot="data-table-pagination"]')).not.toBeInTheDocument();
   });
+
+  it("keeps a scroll that lands before the first window's reset effect runs", async () => {
+    /* The first window grows the table from *no* rows, which is an append: nothing was replaced. It
+       used to read as a replacement, and the reset a replacement triggers runs in an effect, one
+       commit after the rows it reacts to. A scroll landing in that gap was rewound to zero, and under
+       infinite scroll that also swallowed the window it asked for - the load-more check then measured
+       the distance to the end from the top of the table and declined.
+
+       Waiting with bare timers rather than `waitFor` is the point: `waitFor` runs its callback inside
+       `asyncWrapper`, which flushes React's pending passive effects, so the reset has always already
+       happened by the time it returns and the gap this closes cannot be observed. Polling the DOM
+       outside `act` stops at the commit that rendered the rows, which is where a loaded CI machine
+       delivers a scroll. */
+    const { requests, fetchPage } = fakeServer(100);
+    const { container } = render(<Harness fetchPage={fetchPage} />);
+    for (let i = 0; i < 500 && dataRows(container).length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    expect(dataRows(container)).toHaveLength(20);
+
+    scrollTo(scrollerFor(container), 400);
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1].offset).toBe(20);
+    // The scroll that asked for the window is still where the reader left it.
+    expect(scrollerFor(container).scrollTop).toBe(400);
+  });
 });
 
 /**
