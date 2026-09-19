@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { SettingsView } from "../src/views/SettingsView";
 import { bridge } from "../src/api/bridge";
+import { notificationsStore } from "../src/state/notificationsStore";
 import type { ServiceInfo, TendrilConfig } from "../src/types/api";
 
 /**
@@ -207,6 +208,46 @@ describe("SettingsView sidebar", () => {
   describe("the expandable Projects row", () => {
     const projects = [{ name: "Tendril" }, { name: "Ivy" }];
 
+    /**
+     * The Add Project blade's two daemon calls. They are ordered relative to each other, so the
+     * spies record into one list rather than being asserted independently.
+     */
+    let order: string[];
+
+    const mockAddProject = () => {
+      order = [];
+      const createProject = vi.spyOn(bridge, "createProject").mockImplementation(async () => {
+        order.push("createProject");
+        return undefined;
+      });
+      const startJob = vi.spyOn(bridge, "startJob").mockImplementation(async () => {
+        order.push("startJob");
+        return { jobId: "00042", status: "Started" };
+      });
+      // `jobsStore.startJob` refreshes the job list behind the create.
+      vi.spyOn(bridge, "listJobs").mockResolvedValue([]);
+      const getConfig = vi.spyOn(bridge, "getConfig");
+      getConfig.mockResolvedValue(withProjects(projects));
+      return { createProject, startJob, getConfig };
+    };
+
+    const openAddProject = async () => {
+      await click("settings-row-projects");
+      await click("settings-row-add-project");
+      expect(screen.getByTestId("add-project-card")).toBeInTheDocument();
+    };
+
+    /** Step 0: one repository, whose leaf seeds the name the way V1's picker does. */
+    const fillNewProject = async () => {
+      fireEvent.change(screen.getByLabelText("Repository URL or Local Path"), {
+        target: { value: "/src/newthing" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Add Repository/ }));
+      });
+      expect(screen.getByLabelText("Name")).toHaveValue("newthing");
+    };
+
     it("is collapsed to start, with no project rows", async () => {
       await renderSettings(withProjects(projects));
 
@@ -267,25 +308,19 @@ describe("SettingsView sidebar", () => {
       expect(screen.getByTestId("project-settings-Ivy")).toBeInTheDocument();
     });
 
-    it("creates a project from the Add Project sub-item and selects it", async () => {
-      const createProject = vi.spyOn(bridge, "createProject").mockResolvedValue(undefined);
-      const getConfig = vi.spyOn(bridge, "getConfig");
-      getConfig.mockResolvedValue(withProjects(projects));
+    /**
+     * `AddProjectBladeView`'s three steps. The blade used to stop after the first one and say in a
+     * callout that the agent run was unreachable, which is what this used to assert - it closed the
+     * blade and selected the project the instant Create Project was clicked. `AddProjectArgs` is a
+     * real job type and `OnboardingWizard` had been starting it all along, so the blade now runs it
+     * too, and the exit moved to the Finish button at the end of the harness step.
+     */
+    it("creates the project, then hands the setup run to the AddProject job", async () => {
+      const { createProject, startJob, getConfig } = mockAddProject();
 
       await renderSettings(withProjects(projects));
-      await click("settings-row-projects");
-      await click("settings-row-add-project");
-
-      expect(screen.getByTestId("add-project-card")).toBeInTheDocument();
-
-      fireEvent.change(screen.getByLabelText("Repository URL or Local Path"), {
-        target: { value: "/src/newthing" },
-      });
-      await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: /Add Repository/ }));
-      });
-      // The name is seeded from the repository's leaf, the way V1's picker seeds a blank name.
-      expect(screen.getByLabelText("Name")).toHaveValue("newthing");
+      await openAddProject();
+      await fillNewProject();
 
       // The config the daemon reports after the create is what decides the new selection.
       getConfig.mockResolvedValue(withProjects([...projects, { name: "newthing" }]));
@@ -293,9 +328,149 @@ describe("SettingsView sidebar", () => {
         fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
       });
 
+      // V1's order, and the `AddProject` promptware's precondition: its first execution step is
+      // "Run `tendril project list` to confirm the project exists", so the row has to be written
+      // before the job that reads it starts.
+      expect(order).toEqual(["createProject", "startJob"]);
       expect(createProject).toHaveBeenCalledWith({ name: "newthing", repos: ["/src/newthing"] });
+      expect(startJob).toHaveBeenCalledWith({
+        type: "AddProject",
+        projectName: "newthing",
+        repos: [{ path: "/src/newthing" }],
+      });
+
+      // The blade stays open on the agent step to watch the run, rather than popping on create.
+      expect(screen.getByTestId("add-project-agent-step")).toBeInTheDocument();
+      expect(screen.queryByTestId("project-settings-newthing")).not.toBeInTheDocument();
+    });
+
+    /** `ProjectCrudStepView`'s Next: the `Pop(this)` and the "added successfully" toast. */
+    it("lands on the new project once the harness step finishes", async () => {
+      const { getConfig } = mockAddProject();
+      const notifySuccess = vi
+        .spyOn(notificationsStore, "notifySuccess")
+        .mockImplementation(() => undefined);
+
+      await renderSettings(withProjects(projects));
+      await openAddProject();
+      await fillNewProject();
+
+      getConfig.mockResolvedValue(withProjects([...projects, { name: "newthing" }]));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
+      });
+
+      // Skip rather than Next: Next is gated on the run reaching a terminal status, and this test
+      // is about the exit, not about the stream.
+      await click("add-project-agent-skip");
+      expect(screen.getByTestId("add-project-harness-step")).toBeInTheDocument();
+
+      await click("add-project-finish");
+
       expect(screen.getByTestId("project-settings-newthing")).toBeInTheDocument();
       expect(screen.getByTestId("settings-row-project-2")).toHaveAttribute("aria-selected", "true");
+      expect(notifySuccess).toHaveBeenCalledWith(
+        "Success",
+        "Project 'newthing' added successfully",
+      );
+    });
+
+    /**
+     * V1's Background button starts the same job as its Next; the only difference is that the blade
+     * does not stay open to watch it. Its toast is the one `onBgJob` raises.
+     */
+    it("hands the run over and closes on Create in Background", async () => {
+      const { startJob, getConfig } = mockAddProject();
+      const notifySuccess = vi
+        .spyOn(notificationsStore, "notifySuccess")
+        .mockImplementation(() => undefined);
+
+      await renderSettings(withProjects(projects));
+      await openAddProject();
+      await fillNewProject();
+
+      getConfig.mockResolvedValue(withProjects([...projects, { name: "newthing" }]));
+      await click("add-project-background");
+
+      expect(startJob).toHaveBeenCalledWith({
+        type: "AddProject",
+        projectName: "newthing",
+        repos: [{ path: "/src/newthing" }],
+      });
+      expect(screen.queryByTestId("add-project-agent-step")).not.toBeInTheDocument();
+      expect(notifySuccess).toHaveBeenCalledWith(
+        "Job Started",
+        "Created background job for project 'newthing'",
+      );
+    });
+
+    /**
+     * V1 does not roll back a project whose promptware run failed to start, and V2 cannot: the only
+     * project-removing call is `DELETE /api/projects/:name`, which the bridge does not expose. So a
+     * failed hand-off goes forward to the harness step with the project registered, not back.
+     */
+    it("keeps the registered project when the setup job cannot start", async () => {
+      const { createProject, getConfig } = mockAddProject();
+      vi.spyOn(bridge, "startJob").mockRejectedValue(new Error("daemon is down"));
+
+      await renderSettings(withProjects(projects));
+      await openAddProject();
+      await fillNewProject();
+
+      getConfig.mockResolvedValue(withProjects([...projects, { name: "newthing" }]));
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
+      });
+
+      expect(createProject).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("add-project-harness-step")).toBeInTheDocument();
+      expect(screen.getByText(/setup agent could not start/)).toBeInTheDocument();
+    });
+
+    /** The harness step reads what the run wrote back into config.yaml. */
+    it("shows the verifications and review actions the run configured", async () => {
+      const { getConfig } = mockAddProject();
+
+      await renderSettings(withProjects(projects));
+      await openAddProject();
+      await fillNewProject();
+
+      getConfig.mockResolvedValue(
+        withProjects([
+          ...projects,
+          {
+            name: "newthing",
+            verifications: [{ name: "build", command: "pnpm build", required: true }],
+            reviewActions: [{ name: "Run dev", command: "pnpm dev" }],
+          },
+        ]),
+      );
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
+      });
+      await click("add-project-agent-skip");
+
+      expect(screen.getByTestId("add-project-verifications")).toHaveTextContent("build");
+      expect(screen.getByTestId("add-project-review-actions")).toHaveTextContent("pnpm dev");
+      expect(screen.queryByTestId("add-project-harness-empty")).not.toBeInTheDocument();
+    });
+
+    /** A create that fails never reaches the agent step, and never starts a job. */
+    it("stays on the input step when the create itself fails", async () => {
+      const { startJob } = mockAddProject();
+      vi.spyOn(bridge, "createProject").mockRejectedValue(new Error("name is taken"));
+
+      await renderSettings(withProjects(projects));
+      await openAddProject();
+      await fillNewProject();
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
+      });
+
+      expect(startJob).not.toHaveBeenCalled();
+      expect(screen.getByTestId("add-project-card")).toBeInTheDocument();
+      expect(screen.getByText(/Failed to create project/)).toBeInTheDocument();
     });
 
     it("refuses a duplicate project name, case-insensitively", async () => {

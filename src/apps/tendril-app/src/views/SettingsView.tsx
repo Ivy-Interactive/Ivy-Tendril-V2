@@ -376,6 +376,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
   /** The "Add Project" sub-item. V1 opens `AddProjectDialog`; this area owns no dialog files. */
   const [isAddingProject, setIsAddingProject] = useState(false);
+  /** The project the Add Project blade wrote, so its harness step can read it back off the config. */
+  const [createdProjectName, setCreatedProjectName] = useState<string | null>(null);
   // `saved` is what config.yaml last said; `form` is what the operator has typed. Every section's
   // Save is disabled until the two differ, which is V1's `hasChanges` gate.
   const [saved, setSaved] = useState<SettingsForm>(DEFAULTS);
@@ -534,18 +536,59 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return projects[index ?? 0] ?? projects[0];
   })();
 
-  /** `AddProjectDialog`'s `onCreated`: the new project becomes the selection. */
+  /**
+   * Step 0 of `AddProjectBladeView`: write the project row and re-read the config. It deliberately
+   * does *not* move the selection - `AddProjectView` stays open for its agent and harness steps, and
+   * V1's own `Pop(this)` (with the success toast) only happens at Finish. That is what
+   * {@link finishAddProject} is.
+   *
+   * The created name is remembered so the harness step can read the project back once the setup
+   * agent has written to it.
+   */
   const createProject = async (name: string, repos: string[]) => {
     await bridge.createProject({ name, repos });
-    const next = await bridge.getConfig();
-    applyConfig(next);
-    const index = readProjectEntries(next).findIndex(
-      (project) => project.name.toLowerCase() === name.toLowerCase(),
-    );
-    setIsAddingProject(false);
+    applyConfig(await bridge.getConfig());
+    setCreatedProjectName(name);
     setIsProjectsExpanded(true);
+  };
+
+  /** Re-reads config.yaml. The setup agent edits it through the `tendril` CLI, behind the app's back. */
+  const reloadConfig = async () => {
+    try {
+      applyConfig(await bridge.getConfig());
+    } catch {
+      // A failed refresh leaves the last good config in place; the harness step says as much.
+    }
+  };
+
+  /**
+   * `AddProjectBladeView`'s two exits, both of which pop the blade and toast. V1 toasts
+   * "Created background job for project '<name>'" from `onBgJob` and "Project '<name>' added
+   * successfully" from the Crud step's Next.
+   *
+   * The name comes from the blade rather than from {@link createdProjectName}, which the background
+   * exit races: it fires inside the same call that registered the project, before that state has
+   * reached the blade's `onFinish` closure.
+   */
+  const finishAddProject = (outcome: "created" | "background", name: string) => {
+    // Only the Finish exit lands on the project. V1's background `Pop(this)` returns to the list it
+    // was opened from, and it has to: the hand-off happens in the same call that registered the
+    // project, so this closure's `projects` predates the config refresh and could not find it.
+    const index =
+      outcome === "created"
+        ? projects.findIndex((project) => project.name.toLowerCase() === name.toLowerCase())
+        : -1;
+    setIsAddingProject(false);
+    setCreatedProjectName(null);
     setSelected(index >= 0 ? projectTag(index) : SettingsTag.Projects);
-    notificationsStore.notifySuccess("Success", `Project '${name}' added successfully`);
+    if (outcome === "background") {
+      notificationsStore.notifySuccess(
+        "Job Started",
+        `Created background job for project '${name}'`,
+      );
+    } else {
+      notificationsStore.notifySuccess("Success", `Project '${name}' added successfully`);
+    }
   };
 
   /**
@@ -719,7 +762,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 only thing separating one from the next - wider than the `space-y-6` that was only
                 ever spacing between two already-bordered boxes. */}
               {isAddingProject && (
-                <AddProjectView existingNames={projectNames} onCreate={createProject} />
+                <AddProjectView
+                  existingNames={projectNames}
+                  onCreate={createProject}
+                  createdProject={
+                    createdProjectName
+                      ? (projects.find(
+                          (project) =>
+                            project.name.toLowerCase() === createdProjectName.toLowerCase(),
+                        ) ?? null)
+                      : null
+                  }
+                  onFinish={finishAddProject}
+                  onReloadConfig={reloadConfig}
+                />
               )}
 
               {/* Row order follows `SettingsApp.Build`: Coding Agent, Plans, Appearance, Projects,
