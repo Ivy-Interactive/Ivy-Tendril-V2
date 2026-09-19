@@ -1,4 +1,5 @@
 import React from "react";
+import { Button, IconButton } from "@ivy-interactive/components/ui";
 import { FolderOpen, Plus, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -161,16 +162,18 @@ export function FirstProjectStep({
               addRepo(e.currentTarget.value);
             }}
           />
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => void browse()}
             disabled={locked}
             data-testid="onboarding-pick-repos"
-            className="flex shrink-0 items-center gap-1.5 rounded-field border border-border px-2.5 py-2 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+            className="shrink-0 text-xs"
           >
             <FolderOpen className="size-3.5" aria-hidden="true" />
             Browse
-          </button>
+          </Button>
         </div>
 
         {repoPaths.length > 0 && (
@@ -178,30 +181,35 @@ export function FirstProjectStep({
             {repoPaths.map((path) => (
               <li key={path} className="flex items-center justify-between gap-3 p-2">
                 <span className="min-w-0 break-all font-mono text-xs text-primary">{path}</span>
-                <button
-                  type="button"
-                  onClick={() => onReposChange(repoPaths.filter((p) => p !== path))}
+                {/* The path, not "Remove repository": a list of them all offering the same name
+                    is unusable by voice or by screen reader. */}
+                <IconButton
+                  label={`Remove ${path}`}
+                  size="sm"
+                  variant="outline"
+                  tone="muted"
                   disabled={locked}
-                  aria-label={`Remove ${path}`}
-                  className="shrink-0 rounded-selector border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  onClick={() => onReposChange(repoPaths.filter((p) => p !== path))}
                 >
                   <X className="size-3" aria-hidden="true" />
-                </button>
+                </IconButton>
               </li>
             ))}
           </ul>
         )}
 
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => addRepo(repoInput)}
           disabled={locked || !repoInput.trim()}
           data-testid="onboarding-add-repo"
-          className="flex items-center gap-1.5 rounded-field border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+          className="self-start text-xs"
         >
           <Plus className="size-3.5" aria-hidden="true" />
           Add Repository
-        </button>
+        </Button>
       </div>
 
       <div className="space-y-1">
@@ -242,15 +250,17 @@ export function FirstProjectStep({
             the existing project&apos;s configuration (its repository path and settings will be
             preserved).
           </p>
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={onUseExisting}
             disabled={busy}
             data-testid="onboarding-use-existing-project"
-            className="rounded-field border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+            className="text-xs"
           >
             Use Existing Project Configuration
-          </button>
+          </Button>
         </div>
       )}
 

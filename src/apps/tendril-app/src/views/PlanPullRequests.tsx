@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Badge } from "@ivy-interactive/components/ui";
+import { Badge, Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
 import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
@@ -135,14 +135,16 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Pull Requests
         </h4>
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant="outline"
           onClick={handleRefresh}
           disabled={syncing}
-          className="rounded-field border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
+          className="h-auto px-2 py-1 text-xs text-muted-foreground"
         >
           {syncing ? "Refreshing..." : "Refresh"}
-        </button>
+        </Button>
       </div>
 
       {notice && <p className="mt-2 text-xs text-warning">{notice}</p>}

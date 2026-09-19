@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
-import { Badge, Callout } from "@ivy-interactive/components/ui";
+import { Badge, Button, Callout, IconButton } from "@ivy-interactive/components/ui";
+import { X } from "lucide-react";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
 import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStatus";
@@ -470,55 +471,61 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             and Debug needs `JobDebugSheet`. Both are reported rather than stubbed. */}
         <div className="flex flex-wrap items-center gap-2">
           {canStop && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="destructive"
               disabled={isStopping}
               onClick={handleStop}
               title="Stop this job"
-              className="rounded-selector bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-50"
+              className="h-auto rounded-selector px-3 py-1.5 text-xs"
             >
               {isStopping ? "Stopping..." : "Stop"}
-            </button>
+            </Button>
           )}
 
           {canForceStart && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               data-testid="job-force-start"
               disabled={isForceStarting}
               onClick={handleForceStart}
               title="Force start this blocked job"
-              className="rounded-selector border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+              className="h-auto rounded-selector px-3 py-1.5 text-xs"
             >
               {isForceStarting ? "Starting..." : "Force Start"}
-            </button>
+            </Button>
           )}
 
+          {/* Delete is `outline` with the destructive tint it already had rather than the solid
+              `destructive` fill: Stop is the loud one in this row, and two filled reds side by
+              side stop reading as a hierarchy. */}
           {canDelete && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               data-testid="job-delete"
               onClick={() => {
                 setDeleteError(null);
                 setIsConfirmDeleteOpen(true);
               }}
               title="Delete this job"
-              className="rounded-selector border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10"
+              className="h-auto rounded-selector border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               Delete
-            </button>
+            </Button>
           )}
 
-          {/* A sheet has its own close control; a second one beside Delete is noise. */}
+          {/* A sheet has its own close control; a second one beside Delete is noise. An X icon
+              rather than the "✕" glyph this used to draw: every other close in the app is
+              `lucide-react`'s, and a text glyph does not line up with one. */}
           {onCloseTab && !isSheet && (
-            <button
-              type="button"
-              onClick={onCloseTab}
-              aria-label="Close session tab"
-              className="rounded-selector p-1 text-muted-foreground hover:text-foreground"
-            >
-              ✕
-            </button>
+            <IconButton label="Close session tab" size="md" tone="muted" onClick={onCloseTab}>
+              <X className="size-4" />
+            </IconButton>
           )}
         </div>
       </div>

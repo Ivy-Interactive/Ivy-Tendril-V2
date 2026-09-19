@@ -1,5 +1,6 @@
 import type { DoctorCheck, DoctorCheckStatus } from "../../types/api";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { Button } from "@ivy-interactive/components/ui";
 import { ErrorBanner } from "../../components/ErrorBanner";
 
 /**
@@ -85,15 +86,17 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
             ? `Tendril needs ${blocking.map((check) => check.name).join(", ")} but it isn't installed. Install it, then press Re-check.`
             : "The tools Tendril launches on your machine."}
         </p>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={onRecheck}
           disabled={loading}
           data-testid="onboarding-recheck"
-          className="shrink-0 rounded-field border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+          className="shrink-0 text-xs"
         >
           {loading ? "Checking…" : "Re-check"}
-        </button>
+        </Button>
       </div>
 
       {error && <ErrorBanner data-testid="onboarding-checks-error">{error}</ErrorBanner>}
@@ -121,14 +124,16 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
                 <div className="break-words text-xs text-muted-foreground">{check.message}</div>
               </div>
               {check.status !== "Ok" && check.installUrl && (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => openInstall(check.installUrl as string)}
                   data-testid={`onboarding-install-${check.name}`}
-                  className="shrink-0 rounded-field border border-border px-2 py-1 text-xs text-foreground hover:bg-muted"
+                  className="shrink-0 text-xs"
                 >
                   Install
-                </button>
+                </Button>
               )}
             </li>
           ))}

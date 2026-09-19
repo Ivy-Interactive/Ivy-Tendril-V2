@@ -6,7 +6,7 @@ import {
   type PlanTabDto,
   type ShellBadgeDto,
 } from "@ivy-interactive/components/tendril";
-import { Callout } from "@ivy-interactive/components/ui";
+import { Button, Callout } from "@ivy-interactive/components/ui";
 import {
   describeBridgeError,
   type DraftComment,
@@ -1011,12 +1011,13 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
                 {pendingRecs.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
                       data-testid="implement-recommendations"
                       disabled={pendingAction !== null}
                       onClick={() => void implementSelectedRecommendations()}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-field border border-border px-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-8"
                     >
                       {pendingAction === "implementRecs" ? "Starting…" : "Implement"}
                       {selectedRecTitles.size > 0 && (
@@ -1024,7 +1025,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                           {selectedRecTitles.size}
                         </span>
                       )}
-                    </button>
+                    </Button>
                     <span className="text-xs text-muted-foreground">
                       Accepts the ticked recommendations and retries the plan with them as the
                       change request.

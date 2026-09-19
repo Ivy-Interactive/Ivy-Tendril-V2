@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { bridge } from "../../api/bridge";
 import { jobsStore } from "../../state/jobsStore";
 import { describeBridgeError, type DoctorCheck, type OnboardingStatus } from "../../types/api";
-import { Progress } from "@ivy-interactive/components/ui";
+import { Button, Progress } from "@ivy-interactive/components/ui";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { DataStorageStep, blockingChecks } from "./PrerequisitesStep";
 import { CodingAgentStep, agentCheck, agentLabel, machinePrerequisites } from "./CodingAgentStep";
@@ -377,16 +377,16 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     repoPaths.length > 0 && isValidProjectName(projectName) && !nameExists && !projectRegistered;
 
   const backButton = (
-    <button
+    <Button
       type="button"
+      variant="outline"
       onClick={() => goTo(Math.max(AGENT_STEP, step - 1))}
       disabled={busy}
       data-testid="onboarding-back"
-      className="flex items-center gap-1.5 rounded-field border border-border px-4 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50"
     >
       <ArrowLeft className="size-4" aria-hidden="true" />
       Back
-    </button>
+    </Button>
   );
 
   /**
@@ -401,16 +401,15 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
         <>
           {backButton}
           <div className="flex-1" />
-          <button
+          <Button
             type="button"
             onClick={() => goTo(PROJECT_STEP)}
             disabled={busy || !canLeaveHomeStep}
             data-testid="onboarding-continue"
-            className="flex items-center gap-1.5 rounded-field bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             Next
             <ArrowRight className="size-4" aria-hidden="true" />
-          </button>
+          </Button>
         </>
       );
     }
@@ -440,27 +439,28 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       return (
         <>
           {/* V1's Skip on this step jumps the whole project section, straight to Complete. */}
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onClick={() => goTo(COMPLETE_STEP)}
             disabled={busy}
             data-testid="onboarding-skip"
-            className="rounded-field px-4 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            className="text-muted-foreground"
           >
             Skip
-          </button>
+          </Button>
           <div className="flex-1" />
           {backButton}
-          <button
+          <Button
             type="button"
+            variant="secondary"
             onClick={() => void registerProject()}
             disabled={busy || !canCreateProject}
             data-testid="onboarding-continue"
-            className="flex items-center gap-1.5 rounded-field bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
           >
             Create Project
             <ArrowRight className="size-4" aria-hidden="true" />
-          </button>
+          </Button>
         </>
       );
     }
@@ -469,16 +469,15 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       <>
         {backButton}
         <div className="flex-1" />
-        <button
+        <Button
           type="button"
           onClick={() => void finish(true)}
           disabled={busy}
           data-testid="onboarding-continue"
-          className="flex items-center gap-1.5 rounded-field bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           Finish
           <Check className="size-4" aria-hidden="true" />
-        </button>
+        </Button>
       </>
     );
   };
@@ -585,15 +584,18 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
         {/* V1 has no way out of onboarding; V2's daemon does, and the shell has to be reachable
             when the wizard cannot be satisfied. */}
         <div>
-          <button
+          {/* `inline`: the shared link treatment — underlined, no padding, no height — which is
+              what this was drawing by hand. */}
+          <Button
             type="button"
+            variant="inline"
             onClick={() => void skipSetup()}
             disabled={busy}
             data-testid="onboarding-skip-setup"
-            className="text-xs text-muted-foreground underline hover:text-foreground disabled:opacity-50"
+            className="text-xs text-muted-foreground hover:text-foreground"
           >
             Skip setup
-          </button>
+          </Button>
         </div>
       </div>
     </div>

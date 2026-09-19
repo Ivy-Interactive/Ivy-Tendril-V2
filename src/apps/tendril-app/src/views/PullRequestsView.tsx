@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, FileText, GitBranch, RefreshCw } from "lucide-react";
 import {
   Badge,
+  Button,
   DataTable,
   Sheet,
   SheetContent,
@@ -442,16 +443,18 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
               </div>
             ),
             right: (
-              <button
+              <Button
                 type="button"
+                size="sm"
+                variant="outline"
                 onClick={() => void handleSync()}
                 disabled={isSyncing}
-                className="rounded-field border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                className="h-auto px-3 py-1.5 text-xs text-muted-foreground"
               >
                 {/* "All" rather than "Resync": the row action carries that label, and one pass
                     covers every PR, so the toolbar control says which scope it has. */}
                 {isSyncing ? "Resyncing..." : "Resync All"}
-              </button>
+              </Button>
             ),
           }}
         />

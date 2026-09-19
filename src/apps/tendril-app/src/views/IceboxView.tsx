@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Flame, Search, Trash2 } from "lucide-react";
-import { Badge } from "@ivy-interactive/components/ui";
+import { Badge, Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { describeBridgeError, type PlanSummary } from "../types/api";
 import { VERIFICATION_DOT_CLASS } from "../utils/verificationStatus";
@@ -276,26 +276,31 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
 
                 {/* V1's action bar order: Delete (outline), then Thaw (primary). */}
                 <div className="mt-3 flex items-center gap-2">
-                  <button
+                  {/* Both keep their per-plan `aria-label`: a page of frozen plans offering a
+                      column of identical "Delete"s cannot be driven by voice or screen reader. */}
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="outline"
                     disabled={isBusy}
                     aria-label={`Delete plan ${formatPlanId(plan.id)}`}
                     onClick={() => setDeleting(plan)}
-                    className="inline-flex items-center gap-1.5 rounded-field border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+                    className="h-auto px-2.5 py-1 text-xs"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    size="sm"
                     disabled={isBusy}
                     aria-label={`Thaw plan ${formatPlanId(plan.id)}`}
                     onClick={() => void thaw(plan)}
-                    className="inline-flex items-center gap-1.5 rounded-field bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                    className="h-auto px-2.5 py-1 text-xs"
                   >
                     <Flame className="h-3.5 w-3.5" />
                     {pendingId === plan.id ? "Thawing..." : "Thaw"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             );

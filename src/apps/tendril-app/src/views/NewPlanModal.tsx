@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ContentInput } from "@ivy-interactive/components/tendril";
+import { IconButton } from "@ivy-interactive/components/ui";
+import { X } from "lucide-react";
 import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
 import { firstStringArg, submitValueArg } from "../utils/eventArgs";
@@ -187,14 +189,10 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           <h2 id="new-plan-title" className="text-lg font-bold text-foreground">
             Create New Plan
           </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close modal"
-            className="rounded p-1 text-muted-foreground hover:text-foreground"
-          >
-            ✕
-          </button>
+          {/* See the note on `JobSessionView`'s tab close: an icon, not the "✕" glyph. */}
+          <IconButton label="Close modal" size="md" tone="muted" onClick={onClose}>
+            <X className="size-4" />
+          </IconButton>
         </div>
 
         {error && <ErrorBanner className="mt-4">{error}</ErrorBanner>}

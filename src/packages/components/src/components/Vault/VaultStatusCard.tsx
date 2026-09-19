@@ -1,5 +1,6 @@
 import React from "react";
 import { ExternalLink, Unlink } from "lucide-react";
+import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { DetailItem, Details } from "../ui/detail";
 import { IconButton } from "../ui/IconButton";
@@ -83,13 +84,18 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
       <Details>
         <DetailItem label="Vault">
           <span className="flex items-center justify-end gap-1">
-            <button
+            {/* `link` is this treatment exactly - `text-primary underline-offset-4 hover:underline`
+                in `buttonVariant` - so the hand-rolled copy was one more place the shared link had
+                to be kept in step by hand. `h-auto p-0` because a link inside a detail row is not a
+                control-height box; the variant's own size keys all carry one. */}
+            <Button
               type="button"
-              className="text-primary underline-offset-4 hover:underline"
+              variant="link"
               onClick={() => onOpenUrl?.(url)}
+              className="h-auto p-0"
             >
               {repo}
-            </button>
+            </Button>
             <IconButton
               label="Open on GitHub"
               variant="ghost"

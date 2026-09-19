@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@ivy-interactive/components/ui";
 import type { ServiceInfo } from "../../types/api";
 
 interface ServiceStatusBannerProps {
@@ -59,31 +60,39 @@ export const ServiceStatusBanner: React.FC<ServiceStatusBannerProps> = ({
 
       <div className="flex items-center space-x-2">
         {onRestart && (
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="secondary"
             onClick={onRestart}
-            className="rounded bg-muted px-2 py-1 text-xs text-foreground hover:bg-accent transition"
+            className="bg-muted px-2 text-xs text-foreground hover:bg-accent"
           >
             Restart Service
-          </button>
+          </Button>
         )}
+        {/* Repair is the one that changes something on the machine, so it keeps the warning tint
+            it had — see the note on `UpdateNotice` for why that is a className and not a variant. */}
         {onRepair && (
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="outline"
             onClick={onRepair}
-            className="rounded bg-warning/10 border border-warning/40 px-2 py-1 text-xs text-warning hover:bg-warning/20 transition"
+            className="border-warning/40 bg-warning/10 px-2 text-xs text-warning hover:bg-warning/20 hover:text-warning"
           >
             Repair Service
-          </button>
+          </Button>
         )}
         {onViewDiagnostics && (
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="secondary"
             onClick={onViewDiagnostics}
-            className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground hover:bg-accent transition"
+            className="bg-muted px-2 text-xs text-muted-foreground hover:bg-accent"
           >
             Diagnostics
-          </button>
+          </Button>
         )}
       </div>
     </div>
