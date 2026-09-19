@@ -23,6 +23,9 @@ pub mod reconcile;
 pub mod resolution;
 pub mod runner;
 pub mod truncation;
+// Deliberately not re-exported below: `usage::format_window` and friends are too generically named
+// to live in `agents::*`. Use `agents::usage::*`.
+pub mod usage;
 
 pub use catalog::*;
 pub use model_cache::*;
