@@ -42,9 +42,7 @@ vi.mock("@ivy-interactive/components/tendril", async (importOriginal) => {
       return (
         <div data-testid={`plan-markdown-${id}`}>
           <pre data-testid={`plan-markdown-content-${id}`}>{content}</pre>
-          {fence && (
-            <BlockHandler className="language-questions">{`${fence[1]}\n`}</BlockHandler>
-          )}
+          {fence && <BlockHandler className="language-questions">{`${fence[1]}\n`}</BlockHandler>}
         </div>
       );
     },
