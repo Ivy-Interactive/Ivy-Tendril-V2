@@ -662,3 +662,105 @@ fn sync_project_selects_by_directory_name_and_ignores_unmatched() {
     let unmatched = sync_project(&project, Some("no-such-repo"), Path::new(&home.path));
     assert!(unmatched.is_empty());
 }
+
+/// A repo path that is a credentialed URL ends up in the result verbatim, and from there in three
+/// places at once: the CLI printed `message` raw on the line between two it redacted,
+/// `RepoSyncResultDto` copies every field into the HTTP response the webview reads, and
+/// `diagnostic_prompt` pastes them into text handed to an agent.
+///
+/// A URL reaches `repos` for real. `tendril add-repo` and `POST /api/projects/:name/repos` both
+/// accept one, `config.yaml` is hand-editable, and a create whose clone failed can leave one
+/// behind. Sync expands whatever is there and reports it back.
+///
+/// The URL resolving to nothing is the point rather than a limitation: no directory means the very
+/// first check fails, so this needs no network and no fixture, and it pins the field that carries
+/// the credential furthest.
+#[test]
+fn sync_redacts_a_credentialed_repo_path() {
+    let home = HomeFixture::new("sync-redact-path");
+    let secret_url = "https://oauth2:ghp_notarealtoken@example.invalid/o/r.git";
+
+    let result = sync_repository(secret_url, Some("main"), Path::new(&home.path));
+
+    assert!(!result.success, "a URL is not a directory");
+
+    let prompt = diagnostic_prompt(&result);
+    for (label, text) in [
+        ("message", result.message.as_str()),
+        ("repo_path", result.repo_path.as_str()),
+        ("diagnostic_prompt", prompt.as_str()),
+    ] {
+        assert!(
+            !text.contains("ghp_notarealtoken"),
+            "{} leaked the token: {}",
+            label,
+            text
+        );
+        // The username half goes too: a bare `ghp_...@host` is a credential with no colon in it, so
+        // no rule can keep one half of the userinfo and still be safe.
+        assert!(
+            !text.contains("oauth2"),
+            "{} leaked the userinfo: {}",
+            label,
+            text
+        );
+    }
+
+    // Redacted, not dropped. A path the operator cannot recognise is a worse bug report than a
+    // loud one, and this is what tells the assertions above from a function returning "".
+    assert!(
+        result.repo_path.contains("example.invalid") && result.repo_path.contains("***"),
+        "the host should survive redaction: {}",
+        result.repo_path
+    );
+    assert!(
+        result.message.contains("example.invalid"),
+        "the message should still name the repo: {}",
+        result.message
+    );
+}
+
+/// The other half: git's own stderr, reached through a fetch that fails.
+///
+/// Current git strips the userinfo out of its "unable to access" line itself, so this does not
+/// leak today - it is here so that it cannot start to. Git has echoed credentialed URLs back in
+/// the past, the shapes it prints differ by version, subcommand and transport, and the redaction
+/// this asserts is what makes the difference not matter.
+#[test]
+fn sync_redacts_git_stderr_from_a_failing_fetch() {
+    let home = HomeFixture::new("sync-redact-fetch");
+    let fixture = GitRepoFixture::new("sync-redact-fetch");
+    fixture.git(&[
+        "remote",
+        "set-url",
+        "origin",
+        "https://oauth2:ghp_notarealtoken@example.invalid/o/r.git",
+    ]);
+
+    let result = sync_repository(
+        &fixture.repo.to_string_lossy(),
+        Some("main"),
+        Path::new(&home.path),
+    );
+
+    assert!(!result.success, "a fetch from nowhere should fail");
+    let details = result.git_error_details.as_deref().unwrap_or_default();
+    assert!(
+        !details.is_empty(),
+        "the fetch failure should carry git's stderr"
+    );
+
+    let prompt = diagnostic_prompt(&result);
+    for (label, text) in [
+        ("message", result.message.as_str()),
+        ("git_error_details", details),
+        ("diagnostic_prompt", prompt.as_str()),
+    ] {
+        assert!(
+            !text.contains("ghp_notarealtoken") && !text.contains("oauth2"),
+            "{} leaked the credential: {}",
+            label,
+            text
+        );
+    }
+}
