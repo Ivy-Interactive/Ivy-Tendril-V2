@@ -9,6 +9,36 @@ import "./content-input.css";
 type PdfJsLib = typeof import("pdfjs-dist");
 let pdfjsPromise: Promise<PdfJsLib> | null = null;
 
+/**
+ * Hands pdf.js a worker we constructed ourselves, instead of a URL for it to construct one from.
+ *
+ * THE BUG. Given a `workerSrc` URL, pdf.js first asks `PDFWorker._isSameOrigin(window.location,
+ * workerSrc)`, which opens with `if (!base?.origin || base.origin === "null") return false`. In the
+ * packaged app on macOS and Linux the frontend is served from `tauri://localhost`, and because
+ * `tauri:` is a custom (non-special) URL scheme, WHATWG origin serialisation gives the literal
+ * string `"null"`. So that check fails no matter which URL we supply, and pdf.js routes the load
+ * through `_createCDNWrapper` — `URL.createObjectURL(new Blob([...], { type: "text/javascript" }))`.
+ * Our CSP refuses the `blob:` worker, `new Worker` throws, and pdf.js quietly falls back to
+ * `#setupFakeWorker()`: every page parses on the main thread and the UI freezes while a thumbnail
+ * renders, with no error surfaced. Windows and Android are served from `http(s)://tauri.localhost`
+ * — a real origin — so they never took that path, and `pnpm dev` serves from
+ * `http://127.0.0.1:5173`, which is why this never showed up outside a packaged macOS/Linux build.
+ *
+ * THE FIX. `GlobalWorkerOptions.workerPort` is read by `getDocument` and passed to
+ * `PDFWorker.create`, whose constructor takes the `#initializeFromPort` branch — `_isSameOrigin` is
+ * never consulted and no blob is minted. Pointing `workerSrc` at the bundled asset would NOT have
+ * worked: under a null origin no URL can satisfy that check. The `worker-src 'self' blob:` widening
+ * in `src-tauri/tauri.conf.json` is the belt to this braces (see `tests/tauri-csp.test.ts` in the
+ * app for why both exist); `'self'` is what authorises the `new Worker` below.
+ *
+ * `PDFWorker.create` caches per port, so the single worker built here is shared by every
+ * `PdfThumbnail` on screen. Nothing calls `loadingTask.destroy()` today; if that changes, note that
+ * `PDFWorker.destroy()` terminates a port-provided worker too, so `pdfjsPromise` would have to be
+ * invalidated alongside it or later thumbnails would talk to a dead worker.
+ *
+ * The `workerSrc` assignment is kept as a fallback for environments with no `Worker` constructor —
+ * jsdom under the test runner, and SSR — where a port cannot be built at all.
+ */
 export const loadPdfJs = async (): Promise<PdfJsLib> => {
   if (!pdfjsPromise) {
     pdfjsPromise = Promise.all([
@@ -20,7 +50,13 @@ export const loadPdfJs = async (): Promise<PdfJsLib> => {
           ? pdfjsLib
           : ((pdfjsLib as any).default ?? pdfjsLib);
         if (typeof window !== "undefined" && lib.GlobalWorkerOptions) {
-          lib.GlobalWorkerOptions.workerSrc = workerModule.default;
+          if (typeof Worker !== "undefined") {
+            lib.GlobalWorkerOptions.workerPort = new Worker(workerModule.default, {
+              type: "module",
+            });
+          } else {
+            lib.GlobalWorkerOptions.workerSrc = workerModule.default;
+          }
         }
         return lib;
       })
