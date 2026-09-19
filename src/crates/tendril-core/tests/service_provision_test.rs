@@ -1,15 +1,45 @@
-//! The app installing the daemon it is a client of.
+//! Installing the daemon: copying the binaries and registering autostart.
 //!
-//! These run against a temp home with fake sidecars, and never register autostart: writing a real
-//! LaunchAgent or systemd unit from a test would install a service on the machine running it.
+//! Moved here with the implementation (it was `src-tauri/tests/service_provision_tests.rs`). The app
+//! still calls `provision_with` through its thin `service::provision` wrapper, and
+//! `tendril service install` calls `register_autostart` directly, so these pin what both do.
+//!
+//! These run against a temp home with fake sidecars, and never register autostart for real: writing
+//! a live LaunchAgent or systemd unit from a test would install a service on the machine running it.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use tendril_app_lib::service::provision::{
-    autostart_config, provision_with, unit_needs_write, AutostartOutcome, CLI_BINARY,
-    OPENCODE_BINARY,
+use tendril_core::service::provision::{
+    autostart_config, provision_with, purge_binaries, service_config, unit_needs_write,
+    AutostartOutcome, CLI_BINARY, OPENCODE_BINARY, STAMP_FILE,
 };
+
+/// A fixture directory that removes itself, standing in for `tempfile::tempdir` — `tempfile` is not
+/// a dependency of this crate, so the fixture is built the way `attachment_staging_test` builds its
+/// own.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(label: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!(
+            "tendril-service-provision-{label}-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).expect("create fixture dir");
+        Self(dir)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 /// A stand-in bundle directory holding both sidecars.
 fn staged_sidecars(dir: &Path, cli_body: &str, opencode_body: &str) {
@@ -20,7 +50,7 @@ fn staged_sidecars(dir: &Path, cli_body: &str, opencode_body: &str) {
 
 #[test]
 fn a_first_run_installs_both_sidecars_into_the_home_bin() {
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("a-first-run-installs-both-sidecars-into-");
     let bundle = tmp.path().join("bundle");
     let home = tmp.path().join("home");
     staged_sidecars(&bundle, "cli v1", "opencode v1");
@@ -61,7 +91,7 @@ fn a_first_run_installs_both_sidecars_into_the_home_bin() {
 fn an_installed_sidecar_is_executable() {
     use std::os::unix::fs::PermissionsExt;
 
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("an-installed-sidecar-is-executable");
     let bundle = tmp.path().join("bundle");
     let home = tmp.path().join("home");
     staged_sidecars(&bundle, "cli", "opencode");
@@ -82,7 +112,7 @@ fn an_installed_sidecar_is_executable() {
 
 #[test]
 fn a_second_run_of_the_same_version_copies_nothing() {
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("a-second-run-of-the-same-version-copies-");
     let bundle = tmp.path().join("bundle");
     let home = tmp.path().join("home");
     staged_sidecars(&bundle, "cli v1", "opencode v1");
@@ -100,7 +130,7 @@ fn a_second_run_of_the_same_version_copies_nothing() {
 
 #[test]
 fn a_version_bump_reinstalls_even_when_the_size_is_unchanged() {
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("a-version-bump-reinstalls-even-when-the-");
     let bundle = tmp.path().join("bundle");
     let home = tmp.path().join("home");
     staged_sidecars(&bundle, "cli v1", "opencode v1");
@@ -119,7 +149,7 @@ fn a_version_bump_reinstalls_even_when_the_size_is_unchanged() {
 
 #[test]
 fn a_replaced_binary_does_not_truncate_the_one_already_there() {
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("a-replaced-binary-does-not-truncate-the-");
     let bundle = tmp.path().join("bundle");
     let home = tmp.path().join("home");
     staged_sidecars(&bundle, "cli v1", "opencode v1");
@@ -150,7 +180,7 @@ fn a_replaced_binary_does_not_truncate_the_one_already_there() {
 
 #[test]
 fn no_temporary_files_are_left_behind() {
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("no-temporary-files-are-left-behind");
     let bundle = tmp.path().join("bundle");
     let home = tmp.path().join("home");
     staged_sidecars(&bundle, "cli v1", "opencode v1");
@@ -170,7 +200,7 @@ fn no_temporary_files_are_left_behind() {
 
 #[test]
 fn a_bundle_missing_a_sidecar_is_reported_and_not_fatal() {
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("a-bundle-missing-a-sidecar-is-reported-a");
     let bundle = tmp.path().join("bundle");
     let home = tmp.path().join("home");
     fs::create_dir_all(&bundle).expect("bundle dir");
@@ -188,7 +218,7 @@ fn a_bundle_missing_a_sidecar_is_reported_and_not_fatal() {
 
 #[test]
 fn an_unlocatable_executable_reports_instead_of_guessing() {
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("an-unlocatable-executable-reports-instea");
     let report = provision_with("1.0.0", None, &tmp.path().join("home"), false);
 
     assert!(report.installed.is_empty());
@@ -202,7 +232,7 @@ fn an_unlocatable_executable_reports_instead_of_guessing() {
 
 #[test]
 fn autostart_is_skipped_when_there_is_no_installed_cli_to_start() {
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("autostart-is-skipped-when-there-is-no-in");
     let bundle = tmp.path().join("bundle");
     let home = tmp.path().join("home");
     // A bundle with only the agent: nothing to register a service against.
@@ -222,7 +252,7 @@ fn autostart_is_skipped_when_there_is_no_installed_cli_to_start() {
 
 #[test]
 fn disabling_autostart_still_installs_the_binaries() {
-    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp = Scratch::new("disabling-autostart-still-installs-the-b");
     let bundle = tmp.path().join("bundle");
     let home = tmp.path().join("home");
     staged_sidecars(&bundle, "cli", "opencode");
@@ -251,7 +281,7 @@ fn the_autostart_unit_points_at_the_installed_copy_not_the_bundled_one() {
         .iter()
         .any(|(k, v)| k == "TENDRIL_HOME" && *v == home.to_string_lossy()));
 
-    let plist = tendril_app_lib::service::platform::macos::generate_launchd_plist(&cfg);
+    let plist = tendril_core::service::platform::macos::generate_launchd_plist(&cfg);
     assert!(plist.contains(&cfg.binary_path.display().to_string()));
     assert!(plist.contains("<string>serve</string>"));
 }
@@ -261,7 +291,7 @@ fn the_autostart_unit_points_at_the_installed_copy_not_the_bundled_one() {
 #[test]
 fn an_unchanged_unit_is_not_rewritten() {
     let cfg = autostart_config(Path::new("/tmp/tendril-provision-test-home"));
-    let unit = tendril_app_lib::service::platform::macos::generate_launchd_plist(&cfg);
+    let unit = tendril_core::service::platform::macos::generate_launchd_plist(&cfg);
 
     assert!(!unit_needs_write(&unit, Some(&unit)));
     assert!(unit_needs_write(&unit, None));
@@ -269,4 +299,75 @@ fn an_unchanged_unit_is_not_rewritten() {
         &unit,
         Some("<plist>something else</plist>")
     ));
+}
+
+/// The CLI's half of the shared config: it registers the executable the operator ran, with `--home`
+/// baked in only when they named one. The app's half is `autostart_config` above — same function
+/// underneath, which is the point of the move.
+#[test]
+fn the_cli_config_registers_the_binary_it_is_handed() {
+    let home = Path::new("/tmp/tendril-service-config-home");
+    let binary = Path::new("/opt/homebrew/bin/tendril");
+
+    let implicit = service_config(home, binary, None, "Tendril-CLI");
+    assert_eq!(implicit.binary_path, binary);
+    assert_eq!(implicit.args, vec!["serve".to_string()]);
+
+    // A home the operator named is pinned; a defaulted one is not, because the daemon's own
+    // resolution honours `.tendril_location` and a baked-in path would override a later relocation.
+    let explicit = service_config(home, binary, Some(home), "Tendril-CLI");
+    assert_eq!(
+        explicit.args,
+        vec![
+            "--home".to_string(),
+            home.display().to_string(),
+            "serve".to_string()
+        ]
+    );
+    assert!(explicit
+        .env_vars
+        .iter()
+        .any(|(k, v)| k == "TENDRIL_MANAGED_BY" && v == "Tendril-CLI"));
+}
+
+/// `service uninstall --purge-binaries` removes what a provisioning run installed and nothing else.
+/// `<home>/bin` is on a coding agent's `PATH`, so an operator may well have put their own tools
+/// there — deleting the directory, or sweeping it, would take those with it.
+#[test]
+fn purging_removes_only_the_binaries_provisioning_installed() {
+    let tmp = Scratch::new("purge");
+    let bundle = tmp.path().join("bundle");
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&bundle).expect("bundle dir");
+    fs::write(bundle.join(CLI_BINARY), "cli").expect("cli sidecar");
+    fs::write(bundle.join(OPENCODE_BINARY), "opencode").expect("opencode sidecar");
+    provision_with("1.0.0", Some(&bundle), &home, false);
+
+    let bin = home.join("bin");
+    let operators_own = bin.join("my-linter");
+    fs::write(&operators_own, "not ours").expect("operator's own tool");
+
+    let removed = purge_binaries(&home).expect("purge");
+
+    assert_eq!(removed.len(), 3, "cli, agent and stamp: {removed:?}");
+    assert!(!bin.join(CLI_BINARY).exists());
+    assert!(!bin.join(OPENCODE_BINARY).exists());
+    assert!(!bin.join(STAMP_FILE).exists());
+    assert!(
+        operators_own.is_file(),
+        "purging must not touch anything provisioning did not install"
+    );
+    assert!(
+        bin.is_dir(),
+        "the directory itself stays: it is on agents' PATH"
+    );
+}
+
+/// Purging a home that was never provisioned is a no-op, not an error: `service uninstall
+/// --purge-binaries` runs it unconditionally, and a CLI-only install has no `<home>/bin` at all.
+#[test]
+fn purging_a_home_with_nothing_in_it_is_not_an_error() {
+    let tmp = Scratch::new("purge-empty");
+    let removed = purge_binaries(tmp.path()).expect("purging an empty home succeeds");
+    assert!(removed.is_empty(), "{removed:?}");
 }

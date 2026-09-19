@@ -19,6 +19,7 @@ pub mod plans;
 pub mod promptware;
 pub mod questions;
 pub mod security;
+pub mod service;
 pub mod share;
 pub mod skills;
 pub mod stack;
