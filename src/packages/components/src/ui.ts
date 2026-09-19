@@ -85,6 +85,8 @@ export {
   type TooltipSide as TuiTooltipSide,
   type TooltipProps as TuiTooltipProps,
 } from "./components/ui/TuiTooltip";
+export * from "./components/SidebarListRow/index.ts";
+
 // Appended: the bare `inputVariant`, so a consumer styling a native control to match `Input`
 // can import the one `cva` rather than the `InputVariants` namespace, which retains all ten
 // variant modules and cannot be tree-shaken.
