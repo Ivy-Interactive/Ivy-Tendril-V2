@@ -47,6 +47,7 @@ import {
   X,
 } from "lucide-react";
 import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
+import { useWireframeBaseUrl } from "../api/proxyOrigin";
 
 interface ChatViewProps {
   onCreatePlan?: (initialDescription: string) => void;
@@ -457,8 +458,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   // The chat beside a plan resolves `wireframe` fences against that plan; the general chat page
-  // has no plan, so a fence there renders a placeholder.
-  const wireframeBaseUrl = store.planId ? `/__wireframes/${store.planId}/` : undefined;
+  // has no plan, so a fence there renders a placeholder. The base names the daemon's origin, not
+  // the app's -- see `useWireframeBaseUrl`.
+  const wireframeBaseUrl = useWireframeBaseUrl(store.planId);
 
   const [activeLightboxImage, setActiveLightboxImage] = useState<LightboxImage | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);

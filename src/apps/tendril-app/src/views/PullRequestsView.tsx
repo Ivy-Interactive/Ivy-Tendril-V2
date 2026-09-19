@@ -19,6 +19,7 @@ import { bridge } from "../api/bridge";
 import { onPrStatusEvent } from "../api/events";
 import { bridgeErrorCode, describeBridgeError, type PrState, type PrStatus } from "../types/api";
 import { EmptyState } from "../components/EmptyState";
+import { useWireframeBaseUrl } from "../api/proxyOrigin";
 
 /** The original's `BatchSize` — a cross-plan PR list is long, so the page holds more than the default 10. */
 const DEFAULT_PAGE_SIZE = 50;
@@ -110,6 +111,8 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
   const [notice, setNotice] = useState<string | null>(null);
 
   const [sheetRow, setSheetRow] = useState<PrStatus | null>(null);
+  // The daemon's origin, not the app's -- see useWireframeBaseUrl.
+  const wireframeBaseUrl = useWireframeBaseUrl(sheetRow?.planId);
   const [revision, setRevision] = useState<string | null>(null);
   const [revisionError, setRevisionError] = useState<string | null>(null);
 
@@ -506,9 +509,9 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
               <PlanMarkdown
                 id="pr-plan-revision"
                 content={revision}
-                // The sheet shows a plan's revision, so its wireframes resolve the same way they do
-                // on the plan page itself.
-                wireframeBaseUrl={sheetRow ? `/__wireframes/${sheetRow.planId}/` : undefined}
+                // The sheet shows a plan's revision, so its wireframes resolve the same way they
+                // do on the plan page itself.
+                wireframeBaseUrl={wireframeBaseUrl}
                 article
                 dangerouslyAllowLocalFiles
               />
