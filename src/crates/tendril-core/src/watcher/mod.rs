@@ -314,6 +314,27 @@ impl FsWatcher {
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
             match res {
                 Ok(event) => {
+                    // A read is not a change, and on Linux treating it as one is a livelock rather
+                    // than merely noise. inotify reports `IN_OPEN`/`IN_ACCESS`/`IN_CLOSE` against the
+                    // *watched directory itself*, and `register_paths` reads `Plans/` to enumerate
+                    // plan folders. So: any top-level event schedules a catch-up pass, the catch-up
+                    // calls `register_paths`, its `read_dir` makes inotify emit `Access(Open)` on
+                    // `Plans/`, that path classifies as `Plans { folder: None }` and is top-level, so
+                    // it schedules another catch-up - which reads the directory again. Measured on
+                    // Linux before this filter: one four-file write produced 6,755 events and 5,871
+                    // spurious `Plans` notifications in the six seconds a test ran, and the loop has
+                    // no exit, so a live daemon would spin a core and republish the plans mirror
+                    // forever. `None` is absorbing in the coalescer, so it also erases the folder name
+                    // from every event a client would otherwise have been able to act on narrowly.
+                    //
+                    // Nothing is lost by dropping these. A write still arrives as `Create`/`Modify`
+                    // (verified against notify 8.2.0's inotify backend: `std::fs::write` emits
+                    // `Create(File)`, `Modify(Data)` and `Access(Close(Write))` - the first two carry
+                    // the same path). The fsevent and windows backends never construct an
+                    // `EventKind::Access` at all, so on macOS and Windows this filter is a no-op.
+                    if matches!(event.kind, notify::EventKind::Access(_)) {
+                        return;
+                    }
                     for path in event.paths {
                         // A closed channel means the driving task is gone; nothing to do but drop.
                         let _ = raw_tx.send(WatchMsg::Raw(path));

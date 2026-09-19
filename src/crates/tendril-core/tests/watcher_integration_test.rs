@@ -127,6 +127,47 @@ async fn plan_yaml_write_emits_exactly_one_event() {
     );
 }
 
+/// A read of the plans directory must not look like a write to it.
+///
+/// This is the Linux livelock in miniature. inotify reports `IN_OPEN`/`IN_ACCESS`/`IN_CLOSE` against
+/// the watched directory itself, and the watcher's own `register_paths` reads `Plans/` to enumerate
+/// plan folders - so before the fix a top-level event scheduled a catch-up, the catch-up's
+/// `read_dir` produced an `Access(Open)` on `Plans/`, and that event scheduled the next catch-up. It
+/// never terminated: one four-file write produced 6,755 events and 5,871 spurious notifications in
+/// six seconds, so a live daemon spun a core and republished the mirror forever, with `None`
+/// absorbing every folder name on the way through the coalescer.
+///
+/// Written as "a reader outside the daemon opens the directory" because that is the shape a test can
+/// state without reaching into the watcher's internals, and it is the same inotify event. It passes
+/// trivially on macOS and Windows, whose backends never construct an `EventKind::Access` - the
+/// regression it guards can only reappear on Linux, which is exactly where nobody runs the suite by
+/// hand.
+#[tokio::test]
+async fn reading_the_plans_directory_is_not_a_change_to_it() {
+    let fx = Fixture::new("read-not-write");
+    fx.write_plan("00576-Foo");
+
+    let (tx, mut rx) = broadcast::channel(64);
+    let _watcher = FsWatcher::spawn(fx.config(), tx).expect("spawn watcher");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Enumerating a watched directory, which is all `register_paths` does.
+    for _ in 0..3 {
+        let _: Vec<_> = std::fs::read_dir(fx.plans_dir())
+            .expect("read plans dir")
+            .filter_map(|e| e.ok())
+            .collect();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    let events = drain(&mut rx, Duration::from_millis(1500)).await;
+    assert!(
+        events.is_empty(),
+        "reading the plans directory must announce nothing, got {:?}",
+        events
+    );
+}
+
 #[tokio::test]
 async fn new_plan_folder_is_picked_up_after_creation() {
     let fx = Fixture::new("new-folder");
