@@ -820,6 +820,11 @@ pub async fn handle_plan_command(
                         }
                     }
                 }
+                // `read_dir` yields whatever order the filesystem happens to hand back - APFS
+                // returns these sorted, ext4 does not - so the ordering has to be imposed here to
+                // match the database branch's `ORDER BY p.Id DESC`. It is also what makes
+                // `--limit` mean "the newest N" rather than "an arbitrary N".
+                disk_plans.sort_by_key(|p| std::cmp::Reverse(p.metadata.id));
                 disk_plans.retain(|p| {
                     if let Some(state) = status_filter {
                         if p.metadata.state != state {
