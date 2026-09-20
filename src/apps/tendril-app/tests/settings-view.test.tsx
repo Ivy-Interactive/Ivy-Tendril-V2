@@ -110,6 +110,7 @@ describe("SettingsView", () => {
       "Gemini",
       "Antigravity",
       "OpenCode",
+      "Cursor",
       "Apple",
       "OpenAI",
       "Anthropic",
@@ -237,11 +238,11 @@ describe("SettingsView", () => {
 
   /** `ConfigCommand.ValidateCodingAgent` refuses an unregistered agent and names the valid set. */
   it("names an unknown configured coding agent instead of just selecting nothing", async () => {
-    getConfig.mockResolvedValue({ ...baseConfig, codingAgent: "cursor" });
+    getConfig.mockResolvedValue({ ...baseConfig, codingAgent: "aider" });
     await renderSettings();
 
     expect(screen.getByTestId("unknown-coding-agent")).toHaveTextContent(
-      "Unknown coding agent 'cursor'. Valid agents: antigravity, apple, claude, codex, copilot, gemini, opencode",
+      "Unknown coding agent 'aider'. Valid agents: antigravity, apple, claude, codex, copilot, cursor, gemini, opencode",
     );
     for (const agent of [
       "claude",
@@ -250,6 +251,7 @@ describe("SettingsView", () => {
       "gemini",
       "antigravity",
       "opencode",
+      "cursor",
       "apple",
     ]) {
       expect(screen.getByTestId(`coding-agent-${agent}`)).toHaveAttribute("aria-pressed", "false");
