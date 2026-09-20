@@ -183,3 +183,93 @@ describe("SidebarListRowSubItem", () => {
     expect(screen.getByRole("button").className).toContain("pl-4");
   });
 });
+
+/**
+ * The affordance: a row has to *look* clickable, not merely be clickable.
+ *
+ * This regressed invisibly at the Tailwind v3 -> v4 upgrade. v3's preflight shipped
+ * `button, [role="button"] { cursor: pointer }`, so every row here got the pointer for free and none
+ * of these classes were ever written down. v4 (4.1.16) removed that rule, which silently took the
+ * pointer off all three row shapes at once -- `buttonVariant` re-adds it for `Button`, and nothing
+ * re-added it here. The Settings sidebar, whose entire rail is built from these rows, was the visible
+ * symptom: "it does not suggest that elements in the sidebar are at all clickable."
+ *
+ * The hover fill was the other half and failed differently: `hover:bg-accent` *did* compile and *did*
+ * apply, so nothing looked broken in the markup or in a render test. It was just not perceivable --
+ * `--accent` is `#f8f8f8` against a `#ffffff` rail, 1.06:1. A fill that is present and invisible is
+ * why this is asserted on the token rather than on the mere existence of a `hover:` class.
+ *
+ * Asserted as classes rather than computed style because jsdom resolves no Tailwind cascade: nothing
+ * in this suite can see the compiled utility, so the class string is the only honest witness.
+ */
+describe("SidebarListRow affordance", () => {
+  /** Every shape that renders a `<button>`, i.e. every row a user can actually click. */
+  const clickable: [string, React.ReactElement][] = [
+    ["plain", <SidebarListRow key="a" label="Plans" icon={Icon} onClick={vi.fn()} />],
+    [
+      "expandable",
+      <SidebarListRowExpandable
+        key="b"
+        label="Projects"
+        icon={Folder}
+        expanded={false}
+        onClick={vi.fn()}
+      />,
+    ],
+    ["sub-item", <SidebarListRowSubItem key="c" label="Tendril" onClick={vi.fn()} />],
+  ];
+
+  it.each(clickable)("gives the %s row a pointer cursor", (_name, element) => {
+    render(element);
+    expect(screen.getByRole("button").className).toContain("cursor-pointer");
+  });
+
+  it.each(clickable)("gives the %s row a visible hover fill", (_name, element) => {
+    render(element);
+    const className = screen.getByRole("button").className;
+    // `--secondary`, the token the selected row uses, rather than `--accent` at 1.06:1 on a white
+    // rail. Pinning the token is the point: a `hover:` class alone was what shipped and was unseeable.
+    expect(className).toContain("hover:bg-secondary/60");
+    expect(className).not.toContain("hover:bg-accent");
+  });
+
+  it.each(clickable)("gives the %s row a focus ring for keyboard users", (_name, element) => {
+    render(element);
+    // These are real buttons and were always Tab-reachable; preflight's outline reset meant focus
+    // landed on them with nothing drawn, so the ring is the same omission seen from the keyboard.
+    expect(screen.getByRole("button").className).toContain("focus-visible:ring-2");
+  });
+
+  /**
+   * The selected row is already filled with solid `bg-secondary`, so a hover fill on top of it would
+   * either do nothing or muddy the one state the rail uses to say where you are.
+   */
+  it("does not add a hover fill to a row that is already selected", () => {
+    render(<SidebarListRow label="Plans" icon={Icon} selected onClick={vi.fn()} />);
+    const className = screen.getByRole("button").className;
+    expect(className).toContain("bg-secondary");
+    expect(className).not.toContain("hover:bg-secondary/60");
+  });
+
+  /**
+   * The inverse bug, and the reason the affordance classes are not simply on `ROW_BASE`: a sub-item
+   * with no handler is static text. Giving it a pointer and a hover fill would advertise a click that
+   * does nothing. It got away with an ungated hover before only because that hover was invisible.
+   */
+  it("withholds the affordance from a sub-item that does not navigate", () => {
+    render(<SidebarListRowSubItem label="No projects in settings" testId="static" />);
+    const row = screen.getByTestId("static");
+    expect(row.tagName).toBe("SPAN");
+    expect(row.className).toContain("cursor-default");
+    expect(row.className).not.toContain("cursor-pointer");
+    expect(row.className).not.toContain("hover:bg-secondary/60");
+  });
+
+  /** A disabled row shows `not-allowed`; a hover fill at the same moment would contradict it. */
+  it("withholds the hover fill from a disabled row", () => {
+    render(<SidebarListRow label="Off" icon={Icon} disabled onClick={vi.fn()} />);
+    const className = screen.getByRole("button").className;
+    expect(className).toContain("disabled:cursor-not-allowed");
+    expect(className).toContain("disabled:hover:bg-transparent");
+  });
+});

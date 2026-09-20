@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ChatInput, ChatMessageList } from "@ivy-interactive/components/renderers";
-import { VoiceRecorder, type VoiceStatus } from "@ivy-interactive/components/tendril";
+import {
+  VoiceRecorder,
+  clipboardFiles,
+  type VoiceStatus,
+} from "@ivy-interactive/components/tendril";
 import {
   Dialog,
   DialogContent,
@@ -14,6 +18,8 @@ import {
 import { bridge } from "../api/bridge";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import { chatStore, type ChatState, type ChatStore } from "../state/chatStore";
+import { chatLauncher } from "../state/chatLauncher";
+import type { ChatMode } from "../state/appearance";
 import { jobsStore } from "../state/jobsStore";
 import { plansStore } from "../state/plansStore";
 import type { ChatSession, ChatAttachment, ChatQueuedItem } from "../types/chat";
@@ -853,10 +859,18 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
   };
 
-  const handleCreateSession = async () => {
+  /**
+   * The bug this page was the centre of: this used to call `store.createSession` directly, so the
+   * `chatMode` setting was ignored by the header button, the Chats-list "+", and -- through
+   * `ShellLayout`'s `(source?.onNew ?? onNewChat)` -- the collapsed rail's flyout and its
+   * Cmd/Ctrl+Alt+N chord too. All four now go through V1's single `ChatLauncher`.
+   */
+  const handleCreateSession = async (override?: ChatMode) => {
     try {
-      await store.createSession("New Chat");
-      requestComposerFocus();
+      const target = await chatLauncher.startNew(override);
+      // Only when the user stayed here: focusing this composer after being sent to a terminal pane
+      // would pull the caret out of the pane the press just opened.
+      if (target === "chat") requestComposerFocus();
     } catch {
       // Handled in store
     }
@@ -948,9 +962,16 @@ export const ChatView: React.FC<ChatViewProps> = ({
     adjustTextareaHeight();
   };
 
-  /** Files pasted into the prompt become attachments, as they do on a drop. */
+  /**
+   * Files pasted into the prompt become attachments, as they do on a drop.
+   *
+   * Read through `clipboardFiles`, which consults `clipboardData.items` before `.files`. This handler
+   * used to read `.files` alone, which is what made a pasted screenshot look like nothing happened:
+   * HTML derives `files` from the item list, so an image put on the clipboard by a screenshot tool
+   * rather than copied from a file arrives as an item of kind `"file"` that `.files` need not expose.
+   */
   const handleComposerPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const pasted = Array.from(e.clipboardData?.files ?? []);
+    const pasted = clipboardFiles(e.clipboardData);
     if (pasted.length === 0) return;
     e.preventDefault();
     processFiles(pasted);
@@ -1277,7 +1298,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
               jobs={spawnedJobs}
               onOpenPlan={onOpenPlan}
               onReviewJobs={handleReviewJobs}
-              onNewChat={handleCreateSession}
+              onNewChat={(override) => void handleCreateSession(override)}
               onRename={(next) => {
                 if (activeSession) void store.renameSession(activeSession.id, next);
               }}

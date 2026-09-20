@@ -15,7 +15,6 @@ import {
   Cpu,
   Ellipsis,
   Loader2,
-  MessageSquarePlus,
   Pencil,
   Sparkles,
   Trash2,
@@ -23,6 +22,8 @@ import {
   XCircle,
 } from "lucide-react";
 import type { Job } from "../types/api";
+import type { ChatMode } from "../state/appearance";
+import { NewChatModeButtons } from "../components/chat/NewChatModeButtons";
 import { isCompletedJob, isFailedJob, isRunningJob } from "../utils/jobStatus";
 
 const jobsLabel = (count: number) => `${count} job${count === 1 ? "" : "s"}`;
@@ -240,7 +241,12 @@ export interface ChatHeaderProps {
   onReviewJobs?: () => void;
   onRename?: (title: string) => void;
   onDelete?: () => void;
-  onNewChat?: () => void;
+  /**
+   * Starts a chat. Called with no argument by the plain button, which resolves the mode through
+   * `chatLauncher` and therefore obeys the `chatMode` setting; called with a mode by the sibling
+   * button beside it, which is the direct pick that overrides the default.
+   */
+  onNewChat?: (override?: ChatMode) => void;
   /** Rendered after the title when supplied; the app keeps its agent picker in the composer. */
   agentPicker?: React.ReactNode;
 }
@@ -329,11 +335,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <JobsMenu jobs={jobs} spawned onOpenPlan={onOpenPlan} onReviewJobs={onReviewJobs} />
         )}
         <div className="flex items-center">
-          {onNewChat && (
-            <IconButton label="New chat" size="lg" onClick={onNewChat}>
-              <MessageSquarePlus className="size-4" aria-hidden="true" />
-            </IconButton>
-          )}
+          {/* Two buttons, not one: the left keeps the configured default and the right is the
+              direct pick, "same size" as requested. Both are `size="lg"`, which is what every other
+              button in this header is. */}
+          {onNewChat && <NewChatModeButtons onNewChat={onNewChat} size="lg" />}
           {/* V2-only: V1 detaches from the tail on a scroll up and has no control for it. The
               desktop app keeps an explicit lock, as an icon button so the header stays as V1's. */}
           <IconButton

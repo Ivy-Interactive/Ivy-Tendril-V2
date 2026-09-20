@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
-import { APPEARANCE_DEFAULTS, initAppearance, type ChatMode } from "./state/appearance";
-import { sidebarListStore, usePublishedSidebarList } from "./state/sidebarListStore";
+import type { ChatMode } from "./state/appearance";
+import { chatLauncher, useChatMode } from "./state/chatLauncher";
+import {
+  planDetailNavPlanId,
+  sidebarListStore,
+  usePublishedSidebarList,
+} from "./state/sidebarListStore";
 import { seedChatSessionCount, useChatSessionCount } from "./state/chatSessionCount";
 import { toAddressArgs } from "./state/navigation";
 import { plansStore } from "./state/plansStore";
@@ -205,7 +210,13 @@ export const App: React.FC = () => {
    * to survive a remount without re-reading anything, and the prompt is not something to put in a URL.
    */
   const [terminalPanes, setTerminalPanes] = useState<Record<string, { prompt?: string }>>({});
-  const [chatMode, setChatMode] = useState<ChatMode>(APPEARANCE_DEFAULTS.chatMode);
+  /**
+   * Live, not a mount-time snapshot. This was `useState` seeded once by `initAppearance`, so choosing
+   * "terminal" in Appearance did nothing until the app was restarted -- the same class of staleness
+   * the chat-session badge above had. `chatLauncher` owns the value now and every entry point reads
+   * it from there, which is V1's single `ChatLauncher`.
+   */
+  const chatMode = useChatMode();
 
   const [reviewActionTargets, setReviewActionTargets] = useState<
     Record<string, ReviewActionTarget>
@@ -215,6 +226,10 @@ export const App: React.FC = () => {
   const [onboarding, setOnboarding] = useState<OnboardingStatus | null>(null);
   // Failures from actions the shell itself owns (service restart/repair).
   const [shellError, setShellError] = useState<string | null>(null);
+  /** A plan nav whose own fetch failed, so the page can say so instead of loading forever. */
+  const [planNavError, setPlanNavError] = useState<{ planId: string; message: string } | null>(
+    null,
+  );
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [recommendationsCount, setRecommendationsCount] = useState<number>(0);
   /* Live, not a mount-time snapshot: the count used to be `useState` filled by the one
@@ -239,7 +254,7 @@ export const App: React.FC = () => {
     // V1's shell applies the saved theme and theme mode on every session start
     // (`TendrilThemes.ApplyTheme` / `ApplyThemeMode`), so a preset chosen in Appearance survives a
     // restart instead of lasting only for the session that chose it.
-    void initAppearance().then((settings) => setChatMode(settings.chatMode));
+    void chatLauncher.init();
     serviceStore.refreshInfo().catch(() => {});
     plansStore.fetchPlans().catch(() => {});
     jobsStore.fetchJobs().catch(() => {});
@@ -367,6 +382,9 @@ export const App: React.FC = () => {
             .listProjects()
             .then(setProjects)
             .catch(() => {}),
+        // `chatMode` lives in config.yaml too, so the Appearance pane's write and a CLI edit both
+        // reach the launcher through the same event the project list uses.
+        refreshChatMode: () => void chatLauncher.refresh(),
         selectedPlanFolder: selected?.folderPath ?? selected?.id ?? null,
       });
     })
@@ -493,21 +511,21 @@ export const App: React.FC = () => {
   };
 
   /**
-   * V1's `ChatLauncher.StartNew`: a new session, opened in whichever mode `chatMode` names. Both
-   * branches create the session first — V1 defers creation to the page in chat mode and to the shell
-   * in terminal mode, and the terminal route needs a session to exist before it can resolve an agent
-   * for it, so creating it here covers both.
+   * The launcher cannot open a terminal pane itself -- the pane registry is this component's own
+   * state -- so the shell hands it the opener. Re-registered on every commit rather than once at
+   * mount, which keeps it free of a stale `terminalPanes` closure with no exhaustive-deps exception.
    */
-  const handleNewChat = async () => {
-    const { chatStore } = await import("./state/chatStore");
-    if (chatMode === "terminal") {
-      const session = await chatStore.createSession("New Chat");
-      openTerminalPane(session.id);
-      return;
-    }
-    uiStore.navigate({ appId: "chat" });
-    void chatStore.createSession("New Chat");
-  };
+  useEffect(() => {
+    chatLauncher.registerTerminalOpener(openTerminalPane);
+  });
+
+  /**
+   * V1's `ChatLauncher.StartNew`, which now lives in `state/chatLauncher` so that `ChatView`'s button,
+   * the Chats list "+" and the rail flyout reach the same decision this does -- they used to call
+   * `chatStore.createSession` directly and ignore `chatMode` entirely. `override` is the direct pick
+   * made at the mode button beside "New chat".
+   */
+  const handleNewChat = (override?: ChatMode) => chatLauncher.startNew(override);
 
   /**
    * V1's `OpenChat`: the Chat button reveals the terminal pane already open when there is one, and
@@ -638,6 +656,36 @@ export const App: React.FC = () => {
     sidebarListStore.retainFor(activeNav);
   }, [activeNav]);
 
+  // The id the nav names, read through the same helper the sidebar's selection uses rather than a
+  // second hand-rolled `replace("plan-", "")`, so the prefix stays spelled in one place.
+  const navPlanId = planDetailNavPlanId(activeNav);
+
+  /**
+   * The plan page's own fetch, for the navigations no click produced.
+   *
+   * `handleSelectPlan` fetches because a click knows the plan it just opened, but a `plan-<id>` nav
+   * is also *adopted*: `uiStore` starts navigation on the persisted `lastPageNav`, and back/forward
+   * replays an address the same way -- both set `activeNav` with nothing fetching behind them. V1
+   * cannot have this bug, because there the page reads its plan through a `UseQuery` keyed on the
+   * folder and the query fetches whenever the key is new, wherever the key came from. `renderActiveView`
+   * below has no such key, so an adopted nav used to sit on "Loading plan <id>..." forever, which
+   * reads as an empty plan rather than as a fetch nobody started.
+   *
+   * `pendingDetailId` is the store's own in-flight id, so a re-render, or the commit that follows
+   * `handleSelectPlan`'s own navigate, does not issue the fetch a second time.
+   */
+  useEffect(() => {
+    if (!navPlanId) return;
+    if (plansStore.getState().selectedPlan?.id === navPlanId) return;
+    if (plansStore.pendingDetailId === navPlanId) return;
+    setPlanNavError(null);
+    plansStore.fetchPlanDetail(navPlanId).catch((err) => {
+      // Kept here rather than read back off the store: `error` is shared with `fetchPlans`, so a
+      // failing list refresh would otherwise be reported against this plan.
+      setPlanNavError({ planId: navPlanId, message: describeBridgeError(err) });
+    });
+  }, [navPlanId]);
+
   /**
    * V1's section click handler: `OpenApp(new NavigateArgs(list.AppId, list.BuildSelectArgs(itemId)))`.
    *
@@ -712,7 +760,7 @@ export const App: React.FC = () => {
           <AgentTerminalView
             sessionId={session.id}
             prompt={terminal.prompt}
-            onNewSession={() => void handleNewChat()}
+            onNewSession={(override) => void handleNewChat(override)}
           />
         </React.Suspense>
       );
@@ -750,16 +798,27 @@ export const App: React.FC = () => {
 
   // Render view depending on navigation/tab
   const renderActiveView = () => {
-    if (activeNav.startsWith("plan-")) {
-      const planId = activeNav.replace("plan-", "");
+    if (navPlanId) {
+      const planId = navPlanId;
       const detail = plansState.selectedPlan?.id === planId ? plansState.selectedPlan : null;
 
       if (!detail) {
+        // A failed fetch has to say so. The effect above starts one for every plan nav, so an
+        // unreachable daemon otherwise leaves the same "Loading..." on screen as a fetch still in
+        // flight, and the page looks hung rather than broken.
+        const loadError = planNavError?.planId === planId ? planNavError.message : null;
+
         return (
           // A plan page is full-bleed, so this placeholder centres itself in the frame rather than
           // relying on the content container's padding to keep it off the edge.
           <div className="flex h-full min-h-0 items-center justify-center p-4 text-sm text-muted-foreground">
-            Loading plan {planId}...
+            {loadError ? (
+              <ErrorBanner data-testid="plan-load-error">
+                Could not load plan {planId}: {loadError}
+              </ErrorBanner>
+            ) : (
+              <>Loading plan {planId}...</>
+            )}
           </div>
         );
       }

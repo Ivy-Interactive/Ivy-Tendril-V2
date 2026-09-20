@@ -688,6 +688,46 @@ pub fn strip_provider_prefix(id: &str) -> &str {
     s
 }
 
+/// Whether a spec carries rates worth pricing a run against.
+///
+/// "The catalog knows this model" and "the catalog can price this model" are different questions,
+/// and conflating them is what recorded a $1.26 run as `$0.00`. models.dev lists the same model
+/// under every provider that resells it, and a provider that publishes no `cost` block at all
+/// parses to a rate card of zeros, because [`crate::agents::model_cache::parse_catalog`] defaults
+/// each missing field to `0.0`. The live catalog carries 18 rows for `claude-opus-5`, three of them
+/// such placeholders.
+///
+/// A card of all zeros is therefore read as "no prices here" rather than "free". The one model that
+/// means it — `apple/system`, which bills nothing because it runs on the device — is unaffected:
+/// [`prefer_priced`] only demotes an unpriced row when a priced row matches just as well, and
+/// nothing else in any catalog claims that id.
+pub fn is_priced(spec: &ModelSpec) -> bool {
+    spec.input_per_million > 0.0
+        || spec.output_per_million > 0.0
+        || spec.cache_read_per_million > 0.0
+        || spec.cache_write_per_million > 0.0
+}
+
+/// Picks between specs that all match a lookup *equally well*: the first priced one, or the first
+/// of them if none carries prices.
+///
+/// Order within a tier is still dynamic-before-static and, in tier 3, longest-key-first, so this
+/// only ever chooses among rows that were already interchangeable. Which of 18 duplicate
+/// `claude-opus-5` rows the HashMap iteration order happened to put first is not a decision worth
+/// letting a bill turn on.
+fn prefer_priced<'a>(mut matches: impl Iterator<Item = &'a ModelSpec>) -> Option<ModelSpec> {
+    let first = matches.next()?;
+    if is_priced(first) {
+        return Some(first.clone());
+    }
+    Some(
+        matches
+            .find(|spec| is_priced(spec))
+            .unwrap_or(first)
+            .clone(),
+    )
+}
+
 pub fn find(id: &str) -> Option<ModelSpec> {
     let trimmed = id.trim();
     if trimmed.is_empty() {
@@ -703,29 +743,41 @@ pub fn find(id: &str) -> Option<ModelSpec> {
 
     // 1. Exact declared ID match (case-insensitive and dot-dash normalized),
     //    checking the dynamic registry before the static fallback table.
-    for spec in dynamic_specs.iter().chain(SPECS) {
-        if normalize_model_id(spec.model_id.as_ref()) == normalized {
-            return Some(spec.clone());
-        }
+    let exact = dynamic_specs
+        .iter()
+        .chain(SPECS)
+        .filter(|spec| normalize_model_id(spec.model_id.as_ref()) == normalized);
+    if let Some(spec) = prefer_priced(exact) {
+        return Some(spec);
     }
 
     // 2. Provider-prefix stripped match
-    for spec in dynamic_specs.iter().chain(SPECS) {
-        if normalize_model_id(spec.model_id.as_ref()) == normalized_stripped {
-            return Some(spec.clone());
-        }
+    let stripped_match = dynamic_specs
+        .iter()
+        .chain(SPECS)
+        .filter(|spec| normalize_model_id(spec.model_id.as_ref()) == normalized_stripped);
+    if let Some(spec) = prefer_priced(stripped_match) {
+        return Some(spec);
     }
 
     // 3. Longest-first pattern match across declared model keys
     let mut sorted_specs: Vec<&ModelSpec> = dynamic_specs.iter().chain(SPECS).collect();
     sorted_specs.sort_by_key(|a| std::cmp::Reverse(a.model_id.len()));
 
-    for spec in sorted_specs {
+    // The longest matching key is the most specific model, so specificity still decides *which*
+    // model wins; pricedness only decides which of that model's duplicate rows does. Resolving the
+    // key first is what keeps a short, priced key from outbidding a long, unpriced one and pricing
+    // the run against a different model entirely.
+    let winning_key = sorted_specs.iter().find_map(|spec| {
         let spec_key = normalize_model_id(spec.model_id.as_ref());
-        if normalized_stripped.contains(&spec_key) || normalized.contains(&spec_key) {
-            return Some(spec.clone());
-        }
-    }
+        (normalized_stripped.contains(&spec_key) || normalized.contains(&spec_key))
+            .then_some(spec_key)
+    })?;
 
-    None
+    prefer_priced(
+        sorted_specs
+            .iter()
+            .copied()
+            .filter(|spec| normalize_model_id(spec.model_id.as_ref()) == winning_key),
+    )
 }

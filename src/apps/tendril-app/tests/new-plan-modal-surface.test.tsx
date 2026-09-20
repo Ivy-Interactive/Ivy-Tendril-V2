@@ -40,6 +40,20 @@ describe("NewPlanModal surface", () => {
     expect(surface.className).toContain("sm:rounded-box");
   });
 
+  /**
+   * The dialog carried a `border-b` under its header and no other divider. It was the only rule in the
+   * dialog and was asked for removal; the `pb-4` gap to the body stays, so this pins the line's absence
+   * rather than the spacing. Nothing else is affected: every other dialog composes `DialogShell`, whose
+   * `DialogHeader` draws no rule -- this one is hand-rolled.
+   */
+  it("draws no rule under the header", () => {
+    render(<NewPlanModal isOpen onClose={() => {}} projects={projects} />);
+
+    const header = screen.getByText("Create New Plan").parentElement!;
+    expect(header.className).not.toContain("border-b");
+    expect(header.className).toContain("pb-4");
+  });
+
   it("dismisses on a backdrop click but not on a click inside the surface", () => {
     const onClose = vi.fn();
     render(<NewPlanModal isOpen onClose={onClose} projects={projects} />);

@@ -40,7 +40,7 @@ function NavLink({
         "block rounded-field py-1 text-sm transition-colors",
         "border-l border-border/60",
         active
-          ? "border-l-primary bg-accent font-medium text-foreground"
+          ? "border-l-primary bg-secondary font-medium text-foreground"
           : "text-muted-foreground hover:border-l-muted-foreground hover:text-foreground",
       )}
       style={{ paddingInlineStart: `${0.75 + depth * 0.75}rem` }}
@@ -100,7 +100,7 @@ function Section({
           className={cn(
             "flex min-w-0 flex-1 items-center gap-2 rounded-field px-1.5 py-1 text-sm font-medium transition-colors",
             activeRoute === section.route
-              ? "bg-accent text-foreground"
+              ? "bg-secondary text-foreground"
               : "text-foreground/90 hover:text-foreground",
           )}
         >

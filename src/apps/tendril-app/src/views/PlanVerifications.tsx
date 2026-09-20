@@ -245,7 +245,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                   variant="secondary"
                   onClick={() => setExpanded(isOpen ? null : v.name)}
                   aria-expanded={isOpen}
-                  className="h-auto bg-muted px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  className="h-auto bg-muted px-2.5 py-1 text-xs text-muted-foreground"
                 >
                   {isOpen ? "Hide report" : "View report"}
                 </Button>

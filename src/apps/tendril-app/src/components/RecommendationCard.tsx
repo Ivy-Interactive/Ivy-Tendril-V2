@@ -83,7 +83,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
             variant="secondary"
             disabled={disabled}
             onClick={() => onDecline(recommendation.title)}
-            className="bg-muted px-2.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            className="bg-muted px-2.5 text-xs text-muted-foreground"
           >
             Decline
           </Button>

@@ -122,6 +122,7 @@ pub fn run_checks(tendril_home: &Path) -> Vec<CheckResult> {
     checks.extend(installation_checks());
 
     checks.push(git_check());
+    checks.extend(co_author_check(&settings));
     checks.extend(github_cli_checks());
 
     let (mut catalog_checks, catalog_is_static) = model_catalog_checks(tendril_home, &settings);
@@ -283,6 +284,67 @@ fn git_check() -> CheckResult {
             "https://git-scm.com/downloads",
         ),
     }
+}
+
+/// The one version floor this codebase asserts, and it only applies to an install that has opted in.
+///
+/// `coAuthor` attribution works by handing a spawned agent `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /
+/// `GIT_CONFIG_VALUE_n`, which git only honours from 2.31 (2021). An older git ignores them silently:
+/// commits would simply come out unattributed, with nothing anywhere saying why. Reported here rather
+/// than failing a job, because a missing trailer must never be the reason a plan does not run.
+///
+/// Nothing is reported when the feature is off, which is why this returns a `Vec` — `doctor` should
+/// not grow a line for a setting the operator has not touched.
+fn co_author_check(settings: &TendrilSettings) -> Vec<CheckResult> {
+    co_author_check_with(settings, || probe_full_version("git"))
+}
+
+/// Split from [`co_author_check`] so the version arm can be tested without an old git on the box —
+/// there is no way to install git 2.30 in CI to prove the warning fires.
+fn co_author_check_with(
+    settings: &TendrilSettings,
+    probe: impl FnOnce() -> Option<String>,
+) -> Vec<CheckResult> {
+    if settings.co_author_identity().is_none() {
+        return Vec::new();
+    }
+
+    // `git version 2.54.0 (Apple Git-157)` — the third whitespace-separated token, then major.minor.
+    let parsed = probe()
+        .and_then(|v| v.split_whitespace().nth(2).map(str::to_string))
+        .and_then(|v| {
+            let mut parts = v.split('.');
+            let major: u32 = parts.next()?.parse().ok()?;
+            let minor: u32 = parts.next()?.parse().ok()?;
+            Some((major, minor))
+        });
+
+    let check = match parsed {
+        Some((major, minor)) if (major, minor) >= (2, 31) => CheckResult::prerequisite(
+            "Git (coAuthor)",
+            CheckStatus::Ok,
+            format!(
+                "Git {major}.{minor} supports GIT_CONFIG_COUNT; coAuthor attribution is active"
+            ),
+            false,
+            "https://git-scm.com/downloads",
+        ),
+        Some((major, minor)) => CheckResult::prerequisite(
+            "Git (coAuthor)",
+            CheckStatus::Warn,
+            format!(
+                "coAuthor is configured but Git {major}.{minor} predates GIT_CONFIG_COUNT (2.31); \
+                 commits will not carry the Co-Authored-By trailer"
+            ),
+            false,
+            "https://git-scm.com/downloads",
+        ),
+        // An unparseable `git --version` is not evidence of an old git, and `git_check` above already
+        // reports a git that is missing outright.
+        None => return Vec::new(),
+    };
+
+    vec![check]
 }
 
 fn github_cli_check() -> CheckResult {
@@ -2092,5 +2154,83 @@ mod tests {
         assert!(lines.iter().any(|l| l.starts_with("[WARN]")
             && l.contains("Legacy .NET tool")
             && l.contains("1.0.99")));
+    }
+
+    fn settings_with_co_author(value: Option<&str>) -> TendrilSettings {
+        TendrilSettings {
+            co_author: value.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    /// An operator who has not touched `coAuthor` must not gain a doctor line about it. This is the
+    /// same "unconfigured is byte-identical to today" rule the feature is built on, applied to output.
+    #[test]
+    fn co_author_check_is_silent_when_the_feature_is_off() {
+        assert!(co_author_check_with(&settings_with_co_author(None), || {
+            panic!("git must not even be probed when coAuthor is unset")
+        })
+        .is_empty());
+
+        // Blank is "off" too, per `co_author_identity`.
+        assert!(
+            co_author_check_with(&settings_with_co_author(Some("   ")), || {
+                panic!("git must not even be probed when coAuthor is blank")
+            })
+            .is_empty()
+        );
+    }
+
+    /// The whole reason this check exists: on git < 2.31 the `GIT_CONFIG_COUNT` handoff is ignored
+    /// silently, so the only symptom is commits that quietly lack the trailer.
+    #[test]
+    fn co_author_check_warns_on_a_git_older_than_the_env_config_floor() {
+        let checks = co_author_check_with(
+            &settings_with_co_author(Some("bot <bot@example.com>")),
+            || Some("git version 2.30.2".to_string()),
+        );
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].status, CheckStatus::Warn);
+        assert!(
+            checks[0].message.contains("2.30"),
+            "got: {}",
+            checks[0].message
+        );
+        assert!(checks[0].message.contains("Co-Authored-By"));
+        // A missing trailer is cosmetic; it must never gate a job or a daemon start.
+        assert!(!checks[0].required);
+    }
+
+    #[test]
+    fn co_author_check_passes_on_the_floor_and_above() {
+        for version in ["git version 2.31.0", "git version 2.54.0 (Apple Git-157)"] {
+            let checks = co_author_check_with(
+                &settings_with_co_author(Some("bot <bot@example.com>")),
+                || Some(version.to_string()),
+            );
+            assert_eq!(checks.len(), 1, "{version}");
+            assert_eq!(checks[0].status, CheckStatus::Ok, "{version}");
+        }
+    }
+
+    /// `git_check` already reports a git that is missing or unreadable; a second red line saying the
+    /// same thing in different words is noise, so an unparseable probe reports nothing here.
+    #[test]
+    fn co_author_check_defers_to_git_check_when_the_version_is_unreadable() {
+        for probe in [
+            None,
+            Some("nonsense".to_string()),
+            Some("git version x.y".to_string()),
+        ] {
+            assert!(
+                co_author_check_with(
+                    &settings_with_co_author(Some("bot <bot@example.com>")),
+                    || probe.clone()
+                )
+                .is_empty(),
+                "{probe:?}"
+            );
+        }
     }
 }

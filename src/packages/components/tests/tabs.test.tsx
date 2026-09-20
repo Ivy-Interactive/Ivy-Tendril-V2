@@ -34,7 +34,15 @@ describe("Tabs component", () => {
     expect(tab.getAttribute("aria-selected")).toBe("true");
   });
 
-  it("applies hover:bg-muted/50 and hover:text-foreground to tab triggers", () => {
+  /**
+   * jsdom resolves no Tailwind cascade -- it never computes a colour -- so the class string is the
+   * only honest witness available here. Asserting the visible token is present AND the invisible ones
+   * are absent (the `SidebarListRow.test.tsx:232-233` pattern) keeps this catching the real bug: the
+   * old `hover:bg-muted/50` sat on a `bg-muted` `TabsList`, i.e. muted-at-50% over muted, which
+   * measures exactly 1.000:1 and changed zero pixels on hover. A bare `toContain` of a literal string
+   * would have pinned that defect in place instead of catching it.
+   */
+  it("gives tab triggers a hover fill that is actually visible", () => {
     render(
       <Tabs defaultValue="a">
         <TabsList>
@@ -44,7 +52,9 @@ describe("Tabs component", () => {
       </Tabs>,
     );
     const tab = screen.getByRole("tab", { name: "A" });
-    expect(tab.className).toContain("hover:bg-muted/50");
+    expect(tab.className).toContain("hover:bg-secondary/60");
     expect(tab.className).toContain("hover:text-foreground");
+    expect(tab.className).not.toContain("hover:bg-muted");
+    expect(tab.className).not.toContain("hover:bg-accent");
   });
 });

@@ -6,7 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tendril_core::config::get_database_path;
 use tendril_core::db::{list_costs_by_plan, open_database};
-use tendril_core::jobs::manager::finish_job;
+use tendril_core::jobs::manager::{extract_and_record_usage, finish_job};
 use tendril_core::models::{JobItem, JobStatus, PlanStatus, VerificationStatus};
 use tokio::sync::RwLock;
 
@@ -147,5 +147,52 @@ async fn test_job_completion_cost_extraction() {
             .join("costs.csv")
             .is_file(),
         "the durable cost record shared with the original app must be written"
+    );
+}
+
+/// The agent's own cost figure wins over our estimate -- including when it is spelled the way the
+/// eventwire log spells it.
+///
+/// `extract_and_record_usage` reads `.eventwire.jsonl` in preference to `.raw.jsonl`, and the two
+/// files do not agree on the key: the raw frame carries a top-level `total_cost_usd`, but the
+/// normalized eventwire frame carries `usage.cost_usd` beside `usage.cost_source: "agent"`. The
+/// alias chain checked `cost`, `total_cost` and `total_cost_usd` and never `cost_usd`, so the file
+/// it actually reads was the one file whose spelling it could not read -- and `CostSource = 'agent'`
+/// appeared on no row in the user's database at all. Job 00012 reported
+/// `usage.cost_usd = 1.2584212500000005` and was still recorded as `estimated`.
+///
+/// Asserted against the eventwire spelling deliberately: the raw-file spelling passed throughout and
+/// would not have caught this.
+#[test]
+fn the_eventwire_spelling_of_the_agents_own_cost_beats_the_estimate() {
+    let home = HomeFixture::new("cost-eventwire-cost-usd");
+    let logs_dir = home.path.join("Logs").join("Jobs");
+    std::fs::create_dir_all(&logs_dir).unwrap();
+
+    // The shape a real run writes, `usage.cost_usd` and all -- job 00012's own figure.
+    let event = r#"{"kind":"result","usage":{"input_tokens":1000,"output_tokens":200,"cost_usd":1.2584212500000005,"cost_source":"agent","model":"claude-3-5-sonnet"},"timestamp":"2026-09-20T17:59:00Z"}"#;
+    std::fs::write(
+        logs_dir.join("00012.eventwire.jsonl"),
+        format!("{}\n", event),
+    )
+    .expect("write eventwire log");
+
+    let mut job = JobItem::new(
+        "00012".to_string(),
+        "CreatePlan".to_string(),
+        String::new(),
+        "TestProject".to_string(),
+    );
+    extract_and_record_usage(&home.path, &mut job);
+
+    assert_eq!(
+        job.cost_source,
+        Some("agent".to_string()),
+        "a reported figure must be recorded as the agent's, not estimated"
+    );
+    assert_eq!(
+        job.cost,
+        Some(1.2584212500000005),
+        "the agent's exact figure must survive verbatim rather than be re-derived"
     );
 }

@@ -7,7 +7,10 @@
 mod common;
 
 use common::HomeFixture;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use tendril_core::agents::model_specs::{self, ModelSpec};
 use tendril_core::agents::pricing;
 use tendril_core::config;
 use tendril_core::db::{get_job, insert_job, open_database};
@@ -20,6 +23,15 @@ const KNOWN_MODEL: &str = "claude-sonnet-5";
 /// Deliberately not in any price list, static or dynamic. The pass must count it rather than reach
 /// for `get_model_price`'s hardcoded fallback.
 const UNKNOWN_MODEL: &str = "unpriced-fixture-model-zz";
+
+/// Registered *in* the catalog but with every rate at 0.0, the shape a models.dev provider that
+/// publishes no `cost` block parses to. `find` answers for it, which is what made this worse than a
+/// plain miss.
+const ZERO_RATE_MODEL: &str = "zero-rate-fixture-model-zz";
+
+/// `register_dynamic_specs` writes a process-wide static, so the one test that installs a catalog
+/// serializes against any future sibling that does the same.
+static DYNAMIC_REGISTRY_LOCK: Mutex<()> = Mutex::new(());
 
 const CSV_HEADER: &str = "Promptware,Tokens,Cost,Model,CostSource,Agent";
 
@@ -449,4 +461,92 @@ fn write_foreign_master(tendril_home: &Path) {
     let mut info = config::read_master(tendril_home).expect("existing master file");
     info.pid = std::process::id().wrapping_add(1_000_000);
     config::write_master_info(tendril_home, &info).expect("write foreign master");
+}
+
+// ---------------------------------------------------------------------------------------------
+// 12. A catalog entry with no rates on it is a gap, not a free run.
+// ---------------------------------------------------------------------------------------------
+
+/// The case that sent the user here, reproduced at the pass level.
+///
+/// `model_specs::find` answered for `claude-opus-5` -- the id *was* in the catalog -- but the row it
+/// returned came from a models.dev provider that publishes no `cost` block, so every rate was 0.0.
+/// The pass priced a 1.25M-token run at exactly $0.00 and stamped it `estimated`, and the Jobs table
+/// rendered `$0.00`: "this run was free", for a run the agent itself billed at $1.2584.
+///
+/// Gating on `find().is_some()` could not catch this, because the lookup succeeded. Gating on a rate
+/// card that can actually price something does, and it puts the row back in the candidate set so the
+/// next pass repairs it once real pricing lands -- which is exactly what this service is for.
+#[test]
+fn test_zero_rate_catalog_entry_is_unpriced_not_free() {
+    let _guard = DYNAMIC_REGISTRY_LOCK.lock().unwrap();
+    // A rate card of zeros for a model that is unambiguously not free, registered the way the daemon
+    // registers the models.dev catalog at startup.
+    model_specs::register_dynamic_specs(vec![ModelSpec {
+        model_id: Cow::Borrowed(ZERO_RATE_MODEL),
+        display_name: Cow::Borrowed(ZERO_RATE_MODEL),
+        context_window: 1_000_000,
+        max_output_tokens: 128_000,
+        input_per_million: 0.0,
+        output_per_million: 0.0,
+        cache_read_per_million: 0.0,
+        cache_write_per_million: 0.0,
+    }]);
+
+    let fx = Fixture::new("backfill-zero-rate");
+    fx.write_csv(&["ExecutePlan,128000,,,,claude"]);
+
+    let mut job = fx.unpriced_job("03010", "ExecutePlan", Some(ZERO_RATE_MODEL));
+    job.cost = None;
+    fx.insert(&job);
+
+    let report = fx.run();
+    assert_eq!(
+        report,
+        BackfillReport {
+            filled: 0,
+            unpriced: 1,
+            failed: 0
+        },
+        "a card with no rates on it prices nothing, so the row is counted rather than guessed at"
+    );
+
+    let job = fx.job("03010");
+    assert_eq!(
+        job.cost, None,
+        "recording 0.0 here is what made the table claim a paid run was free"
+    );
+    assert_eq!(job.cost_source, None);
+    assert!(
+        fx.csv().contains("ExecutePlan,128000,,,,claude"),
+        "costs.csv must be left as it was: {}",
+        fx.csv()
+    );
+
+    // Once the catalog carries real rates for the same id, the very next pass fills the row -- the
+    // repair this service exists to make.
+    model_specs::register_dynamic_specs(vec![ModelSpec {
+        model_id: Cow::Borrowed(ZERO_RATE_MODEL),
+        display_name: Cow::Borrowed(ZERO_RATE_MODEL),
+        context_window: 1_000_000,
+        max_output_tokens: 128_000,
+        input_per_million: 5.0,
+        output_per_million: 25.0,
+        cache_read_per_million: 0.50,
+        cache_write_per_million: 6.25,
+    }]);
+
+    assert_eq!(
+        fx.run().filled,
+        1,
+        "prices arrived, so the row is repairable"
+    );
+    let repaired = fx.job("03010");
+    assert!(
+        repaired.cost.expect("cost filled") > 0.0,
+        "the estimate the user asked to see"
+    );
+    assert_eq!(repaired.cost_source.as_deref(), Some("estimated"));
+
+    model_specs::register_dynamic_specs(Vec::new());
 }

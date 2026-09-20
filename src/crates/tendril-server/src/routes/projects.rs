@@ -9,8 +9,8 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tendril_core::config::{
-    insert_project_verification, load_config, move_project_verification, save_config,
-    VerificationPlacement,
+    expand_variables, insert_project_verification, load_config, move_project_verification,
+    save_config, VerificationPlacement,
 };
 use tendril_core::db::open_database;
 use tendril_core::git::clone::{
@@ -325,6 +325,40 @@ async fn materialize_repos(
             kind: CloneFailure::InvalidUrl,
             message: format!(
                 "'{}' is not a valid repository path: it starts with a dash, which git would read as an option.",
+                redact_credentials(repo.path.trim())
+            ),
+        });
+    }
+
+    // A relative local path is refused rather than stored, because nothing downstream can turn it
+    // back into the directory the caller meant. Every consumer -- `resolve_working_directory`,
+    // `resolve_project_github_repos` -- expands the stored string and then asks `is_dir()`, and
+    // `is_dir()` resolves a relative path against *this process's* working directory: wherever the
+    // daemon happened to be started, which is neither the client's directory nor TENDRIL_HOME. A
+    // daemon launched from a checkout resolves a stored `..` to that checkout's parent, so the
+    // project silently points at a directory nobody chose and the mistake only surfaces later, as
+    // jobs running in the wrong tree.
+    //
+    // V1 never had the hole: `RepoPathValidator.IsLocalPath` accepts only an absolute path, a `~`
+    // one, or a drive letter, and the app still enforces that port of it in
+    // `views/onboarding/validation.ts`. This closes the same gap for the callers the app does not
+    // own -- the HTTP API, the CLI's daemon path and MCP -- which reach these routes directly.
+    //
+    // Checked *after* expansion, the same expansion the consumers run before they resolve, so
+    // `~/repos/x` and `%TENDRIL_HOME%/Projects/...` stay exactly as acceptable here as they are
+    // there. An empty path is left to the per-route emptiness checks, so this guard's message is
+    // only ever shown for a path that really does name something relative.
+    let home_str = tendril_home.to_string_lossy().to_string();
+    if let Some(repo) = repos.iter().find(|r| {
+        let raw = r.path.trim();
+        !raw.is_empty()
+            && !is_remote_url(raw)
+            && !std::path::Path::new(&expand_variables(raw, &home_str)).is_absolute()
+    }) {
+        return Err(CloneError {
+            kind: CloneFailure::InvalidUrl,
+            message: format!(
+                "'{}' is not a valid repository path: it is relative, so it would resolve against the daemon's own working directory rather than against anything you chose. Use an absolute path.",
                 redact_credentials(repo.path.trim())
             ),
         });

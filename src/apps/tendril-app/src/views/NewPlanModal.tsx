@@ -185,7 +185,9 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
         className="max-h-[90vh] w-full overflow-y-auto rounded-t-box border border-border bg-card p-6 shadow-2xl sm:max-h-none sm:max-w-[30rem] sm:rounded-box"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-border pb-4">
+        {/* No `border-b` here: the rule the header used to carry was the only divider in the dialog
+            and was asked for removal. The `pb-4` stays -- it is the gap to the body, not the line. */}
+        <div className="flex items-center justify-between pb-4">
           <h2 id="new-plan-title" className="text-lg font-bold text-foreground">
             Create New Plan
           </h2>

@@ -30,9 +30,13 @@ function footerButtons(): HTMLButtonElement[] {
 function Harness({
   onConfirm = vi.fn(),
   onClose,
+  confirmDisabled,
+  isBusy,
 }: {
   onConfirm?: () => void;
   onClose?: () => void;
+  confirmDisabled?: boolean;
+  isBusy?: boolean;
 }) {
   const [isOpen, setIsOpen] = React.useState(true);
   return (
@@ -47,6 +51,8 @@ function Harness({
       confirmLabel="Delete"
       confirmVariant="destructive"
       onConfirm={onConfirm}
+      confirmDisabled={confirmDisabled}
+      isBusy={isBusy}
     />
   );
 }
@@ -157,5 +163,97 @@ describe("the plan delete keeps Framework's shape with V1's alternatives", () =>
     ]);
     expect(buttons.filter((b) => b.className.includes("bg-destructive"))).toHaveLength(1);
     expect(buttons[3]).toHaveClass("bg-destructive");
+  });
+});
+
+/**
+ * Point 7 of the contract, asserted on `ConfirmDialog` itself because that is where it is bound: the
+ * chord belongs to every confirm dialog in the app, not to the plan delete that prompted it.
+ *
+ * `DialogShell` reads `event.ctrlKey || event.metaKey`, so Cmd and Ctrl are both the chord on both
+ * platforms; the tests fire each one rather than stubbing `navigator` per platform. The keydown goes
+ * to the dialog element because that is where `onKeyDown` lives and where a real press inside the
+ * focus trap bubbles from.
+ */
+describe("Ctrl/Cmd+Enter confirms", () => {
+  it("fires the primary action on Cmd+Enter", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter", metaKey: true });
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires the primary action on Ctrl+Enter", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter", ctrlKey: true });
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Point 6's hazard is a bare Enter reaching the destructive button, and the modifier is what keeps
+   * the two apart: with focus parked on Cancel, an unmodified Enter is a decline.
+   */
+  it("ignores a bare Enter, so the chord and a stray keystroke stay different things", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter" });
+
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `JobsView`'s clear-jobs confirm renders disabled while its scope is empty. A shortcut that
+   * bypassed `confirmDisabled` would submit exactly what the button is refusing.
+   */
+  it("is inert while the primary action is disabled", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} confirmDisabled />);
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.keyDown(dialog, { key: "Enter", metaKey: true });
+    fireEvent.keyDown(dialog, { key: "Enter", ctrlKey: true });
+
+    expect(screen.getByTestId("dialog-confirm")).toBeDisabled();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  /** The in-flight case: the button reads "Working…" and is disabled, so the chord must be too. */
+  it("is inert while the dialog is busy, so a second press cannot double-submit", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} isBusy />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter", metaKey: true });
+
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  /** An auto-repeat from a held chord is one press, not a stream of confirmations. */
+  it("ignores auto-repeat", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} />);
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.keyDown(dialog, { key: "Enter", metaKey: true });
+    fireEvent.keyDown(dialog, { key: "Enter", metaKey: true, repeat: true });
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  /** Point 5 is unchanged: adding a confirm chord must not turn Escape into anything but a cancel. */
+  it("leaves Escape as the cancel", async () => {
+    const onConfirm = vi.fn();
+    const onClose = vi.fn();
+    render(<Harness onConfirm={onConfirm} onClose={onClose} />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onConfirm).not.toHaveBeenCalled();
   });
 });

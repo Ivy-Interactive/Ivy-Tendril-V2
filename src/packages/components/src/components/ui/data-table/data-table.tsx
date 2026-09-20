@@ -575,7 +575,12 @@ function DataTableInner<TRow>(
         role="button"
         tabIndex={0}
         aria-label={`Edit ${label}`}
-        className="w-full rounded-field outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        // `cursor-default` is deliberate and must not be "tidied away". This cell carries
+        // `role="button"`, which the shared pointer rule in `styles/base.css` targets, but it opens
+        // its editor on DOUBLE click -- the single `onClick` here only stops propagation. A pointer
+        // would advertise a single-click edit that never happens, so the utility overrides the base
+        // rule from `@layer utilities`, which outranks `@layer base`.
+        className="w-full cursor-default rounded-field outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={(event) => event.stopPropagation()}
         onDoubleClick={(event) => {
           event.stopPropagation();

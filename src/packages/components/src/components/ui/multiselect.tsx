@@ -419,7 +419,7 @@ const MultipleSelector = React.forwardRef<
                   !ghost &&
                     "border-0 bg-transparent shadow-none focus-within:ring-0 dark:bg-transparent",
                   ghost &&
-                    "border-transparent shadow-none bg-transparent hover:bg-accent hover:text-accent-foreground dark:border-transparent dark:bg-transparent dark:hover:bg-accent dark:hover:text-accent-foreground",
+                    "border-transparent shadow-none bg-transparent hover:bg-secondary/60 hover:text-foreground dark:border-transparent dark:bg-transparent",
                 )}
               >
                 <span
@@ -496,7 +496,7 @@ const MultipleSelector = React.forwardRef<
                       hidePlaceholderWhenSelected && value.length > 0 ? undefined : placeholder
                     }
                     disabled={disabled}
-                    className="ml-2 bg-transparent outline-none placeholder:text-muted-foreground flex-1 min-w-[120px] cursor-pointer"
+                    className="ml-2 bg-transparent outline-none placeholder:text-muted-foreground flex-1 min-w-[120px]"
                   />
                 </span>
                 <div className={selectTriggerEndActionsVariant()}>

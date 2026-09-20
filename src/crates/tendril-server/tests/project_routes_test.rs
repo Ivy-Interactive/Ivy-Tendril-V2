@@ -1188,3 +1188,95 @@ async fn a_put_that_clones_keeps_what_another_writer_added_meanwhile() {
         "the PUT stored a path with no clone at it"
     );
 }
+
+/// A relative repo path is refused by every write route, rather than being stored.
+///
+/// The reported symptom was a project that "ended up in git/ivy instead of the tendril folder".
+/// Nothing had cloned anything there: the stored path was relative, and every consumer resolves a
+/// stored path with `is_dir()`, which resolves against the *daemon's* working directory. The daemon
+/// in that report was started from a checkout, so a stored `..` named that checkout's parent --
+/// `/Users/.../git/ivy` -- and jobs then ran in a tree the operator never picked. An absolute path
+/// cannot drift that way, and a remote URL is cloned into `Projects/<name>/Repos/<owner>/<repo>`,
+/// so refusing the relative case is what makes the stored path mean one directory.
+///
+/// All three write routes are covered because each one is a separate way into `config.yaml`, and
+/// only `materialize_repos` is shared between them.
+#[tokio::test]
+async fn a_relative_repo_path_is_refused_by_every_write_route() {
+    let srv = start_test_server("relative-repo").await;
+
+    for relative in ["..", "../Ivy-Tendril-V2", "src", "./repo"] {
+        let (status, body) = srv
+            .send(
+                reqwest::Method::POST,
+                "",
+                json!({ "name": "relcreate", "repos": [relative] }),
+            )
+            .await;
+        assert_eq!(status, 400, "POST accepted '{relative}': {body}");
+
+        let (status, body) = srv
+            .send(
+                reqwest::Method::PUT,
+                "/ivy-framework",
+                json!({ "repos": [relative] }),
+            )
+            .await;
+        assert_eq!(status, 400, "PUT accepted '{relative}': {body}");
+
+        let (status, body) = srv
+            .send(
+                reqwest::Method::POST,
+                "/ivy-framework/repos",
+                json!({ "path": relative }),
+            )
+            .await;
+        assert_eq!(status, 400, "add-repo accepted '{relative}': {body}");
+    }
+
+    // The refusals are refusals, not partial writes: the fixture project still has exactly the one
+    // absolute repo it started with, and the create never registered a project at all.
+    let proj = srv.project_from_disk("ivy-framework");
+    assert_eq!(
+        proj.repos.len(),
+        1,
+        "a refused write still changed repos: {:?}",
+        proj.repos
+    );
+    assert_eq!(proj.repos[0].path, "/repos/ivy-framework");
+
+    let settings = load_config(&srv.tendril_home.join("config.yaml")).expect("load config");
+    assert!(
+        !settings
+            .projects
+            .iter()
+            .any(|p| p.name.eq_ignore_ascii_case("relcreate")),
+        "a refused create still registered the project"
+    );
+}
+
+/// The shapes the guard above must *not* catch, so it cannot be tightened into refusing the paths
+/// V1's `RepoPathValidator.IsLocalPath` accepts. `%TENDRIL_HOME%` is expanded before the check for
+/// exactly this reason -- it is relative as written and absolute once expanded, which is how the
+/// skills entries in a real `config.yaml` are spelled.
+#[tokio::test]
+async fn an_absolute_or_expandable_repo_path_is_still_accepted() {
+    let srv = start_test_server("absolute-repo").await;
+
+    let expandable = "%TENDRIL_HOME%/Projects/ivy-framework/Repos/o/r";
+    let (status, body) = srv
+        .send(
+            reqwest::Method::PUT,
+            "/ivy-framework",
+            json!({ "repos": ["/repos/ivy-framework", expandable] }),
+        )
+        .await;
+    assert_eq!(status, 200, "PUT refused an absolute path set: {body}");
+
+    let proj = srv.project_from_disk("ivy-framework");
+    assert_eq!(proj.repos.len(), 2, "unexpected repos: {:?}", proj.repos);
+    assert_eq!(
+        proj.repos[1].path, expandable,
+        "the expandable path was rewritten rather than stored as written"
+    );
+}

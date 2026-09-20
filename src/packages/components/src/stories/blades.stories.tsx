@@ -16,7 +16,7 @@ export default meta;
 const projects = ["Ivy-Tendril-V2", "Ivy-Framework", "Open-Glass"];
 
 const rowClass =
-  "w-full rounded-field px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground";
+  "w-full rounded-field px-2 py-1.5 text-left text-sm hover:bg-secondary/60 hover:text-foreground";
 
 interface DemoContext {
   /** Records the last action so the drill-down's side effects are visible in the root blade. */

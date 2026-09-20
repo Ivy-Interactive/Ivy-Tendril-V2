@@ -393,6 +393,73 @@ describe("ShellLayout sidebar list", () => {
     expect(screen.queryByLabelText("#75 Wire the rail options")).not.toBeInTheDocument();
   });
 
+  /**
+   * The double-highlight bug: opening #75 from the sidebar left #74 highlighted *as well*.
+   *
+   * `PlansView` unmounts the instant its row click navigates to `plan-00075`, so the publish carrying
+   * `selectedId: "00075"` never happens -- the retained snapshot is the one the click was made from,
+   * still naming #74. `retainFor` keeps that list alive on purpose (a plan page must not blank the
+   * sidebar it was opened from), so the stale selection is retained with it. The nav is the only
+   * thing that still knows which plan is open, and V1 reads the same fact from `PlansAppArgs.PlanId`.
+   */
+  const selectedRows = (container: HTMLElement, selector: string) => [
+    ...container.querySelectorAll(`${selector}[data-selected="true"]`),
+  ];
+
+  it("marks exactly one row selected after switching plans, and it is the plan that is open", () => {
+    // The click published nothing, so the list the shell still holds names the *previous* plan.
+    const stale = plansList({ selectedId: "00074" });
+    const { container } = renderShell({ sidebarList: stale, activeNav: "plan-00075" });
+
+    const selected = selectedRows(container, ".tsh-section-item");
+    expect(selected).toHaveLength(1);
+    expect(selected[0].textContent).toContain("#75 Wire the rail");
+  });
+
+  it("titles the page tab after the plan the nav opened, not the one it came from", () => {
+    // `PageTabTitle` reads the same `selectedId`, so a stale row would mis-title the strip too.
+    renderShell({
+      sidebarList: plansList({ selectedId: "00074" }),
+      activeNav: "plan-00075",
+      pageNav: "plans",
+      sessionTabs: [reviewActionPane],
+    });
+
+    expect(screen.getByRole("tab", { name: /#75 Wire the rail/ })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /#74 Draft the shell/ })).not.toBeInTheDocument();
+  });
+
+  it("leaves the selection alone on the list's own page, where the publisher still owns it", () => {
+    // Only a `plan-<id>` nav has no publisher; on Plans itself the published value is the truth.
+    const { container } = renderShell({ sidebarList: plansList(), activeNav: "plans" });
+
+    const selected = selectedRows(container, ".tsh-section-item");
+    expect(selected).toHaveLength(1);
+    expect(selected[0].textContent).toContain("#74 Draft the shell");
+  });
+
+  it("leaves a retained list alone when it holds no row for the plan the nav names", () => {
+    // A chat list retained across a plan page keys on session ids, so nothing there is that plan.
+    const chats = plansList({ appId: "chat", title: "Chats", selectedId: "00074" });
+    const { container } = renderShell({ sidebarList: chats, activeNav: "plan-99999" });
+
+    const selected = selectedRows(container, ".tsh-section-item");
+    expect(selected).toHaveLength(1);
+    expect(selected[0].textContent).toContain("#74 Draft the shell");
+  });
+
+  it("matches a nav id spelled without the folder padding", () => {
+    // `ResolveSelection` accepts `00021`, `21` and `00021-SomePlan` as one plan; so must this.
+    const { container } = renderShell({
+      sidebarList: plansList({ selectedId: "00074" }),
+      activeNav: "plan-75",
+    });
+
+    const selected = selectedRows(container, ".tsh-section-item");
+    expect(selected).toHaveLength(1);
+    expect(selected[0].textContent).toContain("#75 Wire the rail");
+  });
+
   it("keeps Inbox out of the nav rows and in the sidebar footer", () => {
     // V1 `BuildNavItems`'s `footerAppIds` plus `ShowInboxInFooter`: the Inbox is an icon-only
     // footer button beside the settings cog, not a nav row.
@@ -416,6 +483,18 @@ describe("ShellLayout collapsed rail", () => {
     // V1's rail chips are the rows' tags, e.g. "#74".
     expect(container.querySelectorAll(".tsh-rail-item").length).toBe(2);
     expect(container.textContent).toContain("#74");
+  });
+
+  /* The rail is where the bug was reported from: the screenshot showed #4 and #2 both filled. */
+  it("highlights exactly one rail chip after switching plans", () => {
+    const { container } = renderShell({
+      sidebarList: plansList({ selectedId: "00074" }),
+      activeNav: "plan-00075",
+    });
+
+    const selected = [...container.querySelectorAll('.tsh-rail-item[data-selected="true"]')];
+    expect(selected).toHaveLength(1);
+    expect(selected[0].getAttribute("aria-label")).toBe("#75 Wire the rail");
   });
 
   it("folds a collapsedMenu list into the Chat row's flyout instead of chips", async () => {

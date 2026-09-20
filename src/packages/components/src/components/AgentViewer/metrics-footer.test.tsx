@@ -260,4 +260,37 @@ describe("the agent viewer's metrics footer", () => {
     expect(footer!.closest(".aov-virtual-node")).toBeNull();
     expect(footer!.parentElement).toHaveClass("aov-shell");
   });
+
+  /**
+   * The rule over the strip is the boundary between scrolling log and fixed chrome, which is worth
+   * drawing wherever the viewer is one element among others — and is not worth drawing where the
+   * framing already rules off the viewer's edge. The job output sheet was stacking this rule under two
+   * others within the first 50px of itself. Per instance rather than per stylesheet: the onboarding
+   * project-agent run draws the viewer inside a card and still wants it.
+   */
+  it("draws its rule by default and drops it for a framing that already has one", () => {
+    const line = [textLine(START, "hi")];
+
+    const { container: withRule } = render(
+      <AgentViewer id="ruled" jsonLines={line} eventHandler={() => {}} autoScroll={false} />,
+    );
+    expect(withRule.querySelector(".aov-metrics")).not.toHaveClass("aov-metrics-flush");
+
+    const { container: flush } = render(
+      <AgentViewer
+        id="flush"
+        jsonLines={line}
+        showMetricsDivider={false}
+        eventHandler={() => {}}
+        autoScroll={false}
+      />,
+    );
+    const footer = flush.querySelector(".aov-metrics");
+    expect(footer).toHaveClass("aov-metrics-flush");
+    // Only the border goes. The figures still render, and the strip is still the shell's own child
+    // rather than a line of the log — dropping the rule must not become dropping the footer.
+    expect(footer!.parentElement).toHaveClass("aov-shell");
+    expect(footer!.closest(".aov-body")).toBeNull();
+    expect(flush.querySelector('[data-testid="agent-metrics-elapsed"]')).toBeInTheDocument();
+  });
 });

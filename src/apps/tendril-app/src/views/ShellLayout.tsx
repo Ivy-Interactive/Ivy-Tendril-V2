@@ -37,7 +37,12 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceStatusBanner } from "../components/service";
 import { UpdateNotice } from "../components/UpdateNotice";
 import { firstStringArg } from "../utils/eventArgs";
-import { pageTabTitle, usesSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
+import {
+  pageTabTitle,
+  usesSidebarList,
+  withNavSelection,
+  type ShellSidebarList,
+} from "../state/sidebarListStore";
 import { appDescriptor, isFullBleedApp, type SessionPane } from "../state/navigation";
 
 /**
@@ -378,8 +383,15 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
 }) => {
   /* V1 `TendrilAppShell.Build()` line-for-line: a published list is rendered while
      `UsesSidebarList` holds, so moving between two sidebar-section apps (Review to Plans) does not
-     blank the sidebar; anything else falls back to the section's own Search button. */
-  const list = sidebarList && usesSidebarList(sidebarList.appId, activeNav) ? sidebarList : null;
+     blank the sidebar; anything else falls back to the section's own Search button.
+
+     `withNavSelection` is V2's own: the list we retain across a `plan-<id>` nav is one whose
+     publisher unmounted on that nav, so its `selectedId` is whatever was selected before the click
+     and nothing will ever republish it. Resolving the selection from the nav here -- once, where the
+     rail, the section and the flyout all read it -- is what keeps those three from disagreeing. */
+  const retained =
+    sidebarList && usesSidebarList(sidebarList.appId, activeNav) ? sidebarList : null;
+  const list = withNavSelection(retained, activeNav);
 
   /* V1 folds a `CollapsedMenu` list into the Chat row's rail flyout (`chatButton.List(...)`)
      instead of leaving it on the rail as narrow ID chips, and `ShellSidebarSection` drops its own

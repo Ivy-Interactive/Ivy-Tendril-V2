@@ -115,8 +115,11 @@ function DataTableFilterExpressionInner<TRow>(
         aria-expanded={expanded}
         // The framework's own active styling for an expanded option (`DataTableOption.tsx`: `expanded ?
         // "bg-accent hover:bg-accent"`), extended to "a filter is applied" so a narrowed table says so
-        // even before the box is looked at.
-        className={cn(active && "bg-accent text-accent-foreground hover:bg-accent")}
+        // even before the box is looked at. The token is `secondary`, not the framework's `accent`:
+        // `--accent` is `#f8f8f8` on a `#ffffff` toolbar and `#1a1a1a` on `#0a0a0a`, i.e. 1.062:1, so
+        // the signal this comment promises did not visibly exist. `--secondary` measures 1.259:1 and
+        // is the token every other selected state in this repo already uses.
+        className={cn(active && "bg-secondary text-secondary-foreground hover:bg-secondary")}
         onClick={() => setExpanded((open) => !open)}
       >
         <Filter aria-hidden="true" />

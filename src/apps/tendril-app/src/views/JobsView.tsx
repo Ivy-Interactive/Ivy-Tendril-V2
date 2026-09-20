@@ -1443,8 +1443,26 @@ export const JobsView: React.FC<JobsViewProps> = ({
           data-testid="job-output-sheet"
           className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
         >
+          {/* `scrollContent={false}` hands the scrolling to the log, and is what puts the metrics
+              footer back in the footer. The scrolling branch wraps its children in Radix's viewport,
+              which injects a `display: table` div of its own (`react-scroll-area/dist/index.mjs:130`) —
+              a definite height dies there, so `AgentViewer`'s `height="full"` resolved against an
+              auto-height ancestor and the viewer sized to its content instead of to the sheet. The
+              footer is `flex: 0 0 auto` against a body that gives up its height, so it was pinned to
+              the bottom of a box that ended wherever the log happened to end: mid-sheet, with dead
+              space under it. `AgentTerminalView` makes the same trade for xterm.js, and for the same
+              reason — the viewer windows its own rows and an outer scroller fights the virtualizer for
+              the scroll position. `contentClassName` re-establishes the flex column the default `p-4`
+              wrapper would otherwise break.
+
+              `showDivider={false}`: the sheet title already reads as chrome against the body, and the
+              rule under it was the first of three stacked down this sheet. Per call site, so the Job
+              Debug sheet below and the other `HeaderLayout` consumers keep theirs. */}
           <HeaderLayout
             className="min-h-0 flex-1"
+            showDivider={false}
+            scrollContent={false}
+            contentClassName="flex h-full min-h-0 flex-col p-4"
             header={
               <SheetHeader className="pr-8">
                 <SheetTitle>{openJobTitle}</SheetTitle>

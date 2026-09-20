@@ -816,7 +816,15 @@ fn usage_value(facts: &UsageFacts, fallback_model: Option<&str>) -> Option<Value
         map.insert("cost_usd".into(), json!(cost));
         map.insert("cost_source".into(), json!("agent"));
     } else if facts.billable_tokens() > 0 {
-        if let Some(spec) = model.and_then(model_specs::find) {
+        // `is_priced` rather than a bare `find`: models.dev lists a model under every provider that
+        // resells it, and one that publishes no `cost` block parses to a rate card of zeros. Pricing
+        // against that emits `cost_usd: 0.0` stamped `estimated`, which the viewer renders as
+        // "$0.00" — "this run was free" — for a run that cost real money. Omitting the key leaves it
+        // at "—", the honest claim, and matches what `cost_backfill` refuses to guess at.
+        if let Some(spec) = model
+            .and_then(model_specs::find)
+            .filter(model_specs::is_priced)
+        {
             map.insert(
                 "cost_usd".into(),
                 json!(spec.calculate_cost(

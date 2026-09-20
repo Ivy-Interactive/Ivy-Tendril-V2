@@ -141,6 +141,13 @@
   min-width: 0;
 }
 
+/* A framing that already rules off the viewer's edge asks for the strip without its own rule — see
+   `showMetricsDivider`. Only the border goes: the padding is what holds these figures off the last
+   line of the log, and without it they read as one more line of output. */
+.aov-metrics-flush {
+  border-top: none;
+}
+
 .aov-metric {
   display: inline-flex;
   align-items: baseline;

@@ -733,7 +733,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
                     disabled={busy || setupRunning}
                     aria-current={active ? "step" : undefined}
                     data-testid={`onboarding-step-nav-${index}`}
-                    className="flex items-center gap-2 disabled:pointer-events-none disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-selector px-1 py-0.5 transition-colors hover:bg-secondary/60 disabled:pointer-events-none disabled:opacity-50"
                   >
                     <span
                       className={`${INDICATOR_BASE} ${

@@ -6,7 +6,9 @@
 //! and effort for `deep` / `balanced` / `quick`.
 
 use crate::config::{AgentProfileConfig, PromptwareConfig, TendrilSettings};
+use crate::git::coauthor_hooks::coauthor_env;
 use std::collections::HashMap;
+use std::path::Path;
 
 /// Tools every promptware gets, whatever it is.
 pub const BASE_TOOLS: [&str; 6] = ["Read", "Glob", "Grep", "Bash", "WebFetch", "WebSearch"];
@@ -210,10 +212,28 @@ pub fn resolve_agent(
     let agent_id = normalize_agent_name(agent);
 
     let (allowed_tools, denied_tools) = resolve_tools(settings, promptware, job_context);
-    let (profile_name, mut extra_arguments, environment_variables) =
+    let (profile_name, mut extra_arguments, mut environment_variables) =
         resolve_agent_config(settings, &agent_id, promptware, profile_override);
     let (model, effort, profile) =
         apply_profile(settings, &agent_id, &profile_name, &mut extra_arguments);
+
+    // `coAuthor` attribution, applied here because this is the one place both launch paths pass
+    // through: the job launcher and the CLI each build their own `AgentLaunchConfig` but both take
+    // `environment_variables` straight off this resolution, so one insertion covers every promptware
+    // — including `SyncRepo`, which commits in the customer's checkout rather than a worktree.
+    //
+    // The home comes out of `job_context` rather than a new parameter: `build_job_context` always
+    // seeds `TENDRIL_HOME`, and threading a second argument through would have meant editing both
+    // call sites for a value already in hand. Nothing is added when `coAuthor` is unset.
+    if let Some(tendril_home) = job_context.get("TENDRIL_HOME") {
+        for (key, value) in coauthor_env(settings, Path::new(tendril_home), &environment_variables)
+        {
+            // Tendril's pairs win a collision. A user who has configured `GIT_CONFIG_COUNT` for an
+            // agent keeps their pairs, because `coauthor_env` appends at the next free index rather
+            // than at zero — it is only the count itself that is replaced, with the larger value.
+            environment_variables.insert(key, value);
+        }
+    }
 
     AgentResolution {
         agent: agent_id,

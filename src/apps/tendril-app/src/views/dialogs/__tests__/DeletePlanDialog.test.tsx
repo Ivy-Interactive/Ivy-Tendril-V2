@@ -91,6 +91,32 @@ describe("DeletePlanDialog", () => {
     expect(onArchived).toHaveBeenCalledWith("00021");
   });
 
+  /**
+   * The keyboard-only delete: `PlanDetailView`/`ReviewView` bind Backspace to open this dialog, and
+   * the chord is what answers it. Before this the only way out of the dialog with the keyboard was
+   * three Tab presses past Cancel, Skipped and Icebox, or Escape.
+   *
+   * The chord deletes rather than picking one of the two alternatives: Delete is the dialog's
+   * primary action, and Skipped/Icebox are `secondaryAction`s with no shortcut of their own.
+   */
+  it.each([
+    ["Cmd+Enter", { key: "Enter", metaKey: true }],
+    ["Ctrl+Enter", { key: "Enter", ctrlKey: true }],
+  ])("deletes on %s, completing the Backspace flow", async (_label, event) => {
+    const deletePlan = vi.spyOn(bridge, "deletePlan").mockResolvedValue(undefined);
+    const updateField = vi.spyOn(bridge, "updatePlanField").mockResolvedValue(undefined);
+    const onDeleted = vi.fn();
+
+    render(<DeletePlanDialog isOpen onClose={vi.fn()} plan={plan} onDeleted={onDeleted} />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), event);
+
+    await waitFor(() => expect(deletePlan).toHaveBeenCalledWith("00021"));
+    expect(deletePlan).toHaveBeenCalledTimes(1);
+    expect(updateField).not.toHaveBeenCalled();
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledWith("00021"));
+  });
+
   it("stays open with the backend's message when the service refuses", async () => {
     vi.spyOn(bridge, "deletePlan").mockRejectedValue({
       code: "Conflict",

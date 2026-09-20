@@ -49,6 +49,12 @@ export interface AgentMetricsFooterProps {
   metrics: StreamMetrics;
   /** Whether the run has reported its terminal result — what stops the elapsed timer. */
   isComplete: boolean;
+  /**
+   * `false` drops the rule over the strip, for a framing that already rules off the viewer's edge.
+   * See {@link AgentViewerProps.showMetricsDivider}; the padding stays either way, because it is what
+   * keeps these figures off the last line of the log.
+   */
+  showDivider?: boolean;
 }
 
 /**
@@ -67,7 +73,11 @@ export interface AgentMetricsFooterProps {
  * Renders nothing when the stream has said nothing worth a line, so a viewer waiting on its first
  * output does not grow an empty bar.
  */
-export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({ metrics, isComplete }) => {
+export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({
+  metrics,
+  isComplete,
+  showDivider = true,
+}) => {
   // The agent's own duration outranks our reading of the clock, and once the run is over the span
   // between its first and last event is the measurement — neither is an estimate, so neither carries a
   // "~"; they differ only in who did the measuring, which the hover text says.
@@ -89,7 +99,10 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({ metrics,
   if (!showElapsed && tokens == null && costUsd == null) return null;
 
   return (
-    <div className="aov-metrics" data-testid="agent-metrics-footer">
+    <div
+      className={`aov-metrics${showDivider ? "" : " aov-metrics-flush"}`}
+      data-testid="agent-metrics-footer"
+    >
       {showElapsed && (
         <Metric
           label="Elapsed"

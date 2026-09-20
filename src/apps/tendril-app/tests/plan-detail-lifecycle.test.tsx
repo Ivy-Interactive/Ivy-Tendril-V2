@@ -295,10 +295,30 @@ describe("the failure callout", () => {
   });
 });
 
+/**
+ * These read git state, so they use a plan under **review**.
+ *
+ * The Git tab, and with it this fetch, now exists only for `Review`/`Failed` plans: everything the
+ * tab renders (worktrees, commit reachability, PRs) is state an execution produced, and a Draft
+ * paid for a git shell-out in every repo whose only visible effect was the tab flickering in
+ * unlabelled and then gaining its count. `draft()` no longer fetches at all, which the first case
+ * below pins.
+ */
 describe("git state", () => {
+  const reviewed = (overrides: Partial<PlanDetail> = {}) =>
+    draft({ state: "Review", ...overrides });
+
+  it("does not read git state for a draft, which has no Git tab", async () => {
+    const getPlanGit = vi.spyOn(bridge, "getPlanGit").mockResolvedValue(planGit());
+    render(<PlanDetailView plan={draft({ updated: "2026-09-07T10:41:11Z" })} />);
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Details" })).toBeInTheDocument());
+    expect(getPlanGit).not.toHaveBeenCalled();
+  });
+
   it("re-reads the plan's git state when the plan changes underneath", async () => {
     const getPlanGit = vi.spyOn(bridge, "getPlanGit").mockResolvedValue(planGit());
-    const plan = draft({ updated: "2026-09-07T10:41:11Z" });
+    const plan = reviewed({ updated: "2026-09-07T10:41:11Z" });
     const { rerender } = render(<PlanDetailView plan={plan} />);
 
     await waitFor(() => expect(getPlanGit).toHaveBeenCalledTimes(1));
@@ -311,7 +331,7 @@ describe("git state", () => {
 
   it("does not re-read for a refetch that changed nothing", async () => {
     const getPlanGit = vi.spyOn(bridge, "getPlanGit").mockResolvedValue(planGit());
-    const plan = draft({ updated: "2026-09-07T10:41:11Z" });
+    const plan = reviewed({ updated: "2026-09-07T10:41:11Z" });
     const { rerender } = render(<PlanDetailView plan={plan} />);
 
     await waitFor(() => expect(getPlanGit).toHaveBeenCalledTimes(1));

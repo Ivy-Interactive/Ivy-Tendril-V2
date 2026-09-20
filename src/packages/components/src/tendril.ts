@@ -47,6 +47,7 @@ export {
 } from "./hooks/use-resizable-sidebar";
 
 export { getPlatformShortcut } from "./lib/shortcut";
+export { clipboardFiles, type ClipboardFilesOptions } from "./lib/clipboard";
 export { useShortcut } from "./lib/useShortcut";
 export { getRegisteredShortcuts, type ShortcutInfo } from "./lib/shortcutRegistry";
 export { useFocusable, useFocusManagement, type FocusManager } from "./hooks/use-focus-management";

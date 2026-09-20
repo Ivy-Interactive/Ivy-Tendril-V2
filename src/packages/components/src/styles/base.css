@@ -180,3 +180,73 @@
 .slim-scrollbar::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
 }
+
+/* Pointer cursor on interactive controls.
+ *
+ * Tailwind v3's preflight shipped `button, [role="button"] { cursor: pointer }`. v4's preflight
+ * dropped every cursor declaration -- the only occurrence of the word in
+ * `tailwindcss@4.1.16/preflight.css` is the Safari-spinner comment at :379, and 4.3.3 is identical.
+ * So on the v4 upgrade every `<button>` in the app silently fell back to `cursor: auto` unless it
+ * happened to re-declare `cursor-pointer` itself, which ~52 of them did not -- the Questions popover
+ * rows in `PlanDetailView` being the case the user reported with a screenshot. This rule is not
+ * redundant with anything Tailwind provides; do not "clean it up".
+ *
+ * `@layer base` is load-bearing, not decorative. Tailwind emits `@layer theme, base, components,
+ * utilities;`, and layer order beats specificity and source order outright, so every explicit
+ * `cursor-*` utility still wins over this: `SidebarListRow`'s deliberate `cursor-default` sub-item,
+ * `SidebarRail`'s `cursor-w-resize`/`cursor-e-resize`, `PlanDiffView`'s `disabled:cursor-default`.
+ * The component stylesheets (`web-viewer.css`'s `cursor: text` address bar,
+ * `sortable-verification-list.css`'s `cursor: grab` handle) are unlayered and outrank `@layer base`
+ * entirely. Written unlayered or with `!important` this rule would invert all of that and break
+ * every one of them -- and jsdom resolves no cascade, so the component tests would stay green
+ * through that regression. `base-cursor.test.ts` asserts the layer for exactly that reason.
+ *
+ * v3's rule was criticised for pointing at disabled buttons, and the complaint applies here:
+ * `CodingAgentStep`'s agent card, `EmojiRating`, `ReviewActionsBarView` and `PlanDiffView`'s comments
+ * toggle are all disabled-capable with no `pointer-events-none` guard, so a naked rule would promise
+ * a click they will not accept. Hence the `:not()` guards and the second clause. `not-allowed`
+ * rather than `default` because that is what this codebase already says: `buttonVariant` ships
+ * `disabled:cursor-not-allowed`, and so do `SidebarListRow`'s `ROW_INTERACTIVE`, `checkbox`,
+ * `toggleVariant`, `expandableVariant`, `IconButton` (ui.css:458) and `.tq-submit`
+ * (tendril-questions.css:309).
+ *
+ * `[data-disabled]:not([data-disabled="false"])` and not a bare `[data-disabled]`: `Card` writes
+ * `data-disabled=""` and `Toolbar` writes `data-disabled="true"`, both only when actually disabled,
+ * but Radix convention allows a literal `"false"` and a bare attribute selector would match that
+ * string and put `not-allowed` on an enabled control.
+ *
+ * Roles are listed rather than a blanket `[role]`: `combobox` is excluded because a text-entry
+ * combobox wants the I-beam (`BadgeSelect`'s trigger sets its own pointer in badge-select.css:34),
+ * and `treeitem` because `PlanChangesView`'s rows are already covered by plan-diff.css:278. `a[href]`
+ * is absent on purpose -- v4 preflight's `a` block resets only color and text-decoration, so anchors
+ * keep the UA pointer and the docs app's SPA links need nothing. `label:has()` is scoped to labels
+ * wrapping a checkbox, radio or select; a bare `label` would pointer-ise text-input labels, which is
+ * the inverse bug. */
+@layer base {
+  button:not(:disabled):not([aria-disabled="true"]):not(
+      [data-disabled]:not([data-disabled="false"])
+    ),
+  [role="button"]:not([aria-disabled="true"]):not([data-disabled]:not([data-disabled="false"])),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]),
+  [role="menuitemcheckbox"]:not([aria-disabled="true"]),
+  [role="menuitemradio"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"]),
+  summary,
+  select:not(:disabled),
+  input:is([type="checkbox"], [type="radio"], [type="submit"], [type="button"], [type="reset"]):not(
+      :disabled
+    ),
+  label:has(> input:is([type="checkbox"], [type="radio"]):not(:disabled)),
+  label:has(> select:not(:disabled)) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled,
+  input:disabled,
+  [aria-disabled="true"],
+  [data-disabled]:not([data-disabled="false"]) {
+    cursor: not-allowed;
+  }
+}

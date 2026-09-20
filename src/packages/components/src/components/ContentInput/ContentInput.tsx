@@ -4,6 +4,7 @@ import { TuiKbd } from "../ui/TuiKbd";
 import { IconButton } from "../ui/IconButton";
 import { TuiBadge } from "../ui/TuiBadge";
 import { VoiceRecorder, type VoiceStatus } from "./voice-recorder";
+import { clipboardFiles } from "../../lib/clipboard";
 import "./content-input.css";
 
 type PdfJsLib = typeof import("pdfjs-dist");
@@ -621,36 +622,36 @@ export const ContentInput: React.FC<ContentInputProps> = ({
       }
     }
 
+    // THE BUG (#file-upload): every attach path -- the paperclip, a drop, a paste -- ended here, and
+    // this loop only ever uploaded. Nothing added the file to `files`, which is the state the
+    // thumbnail strip renders, `canSubmit` consults, and `handleSubmit` turns into the ` [file: ...]`
+    // refs that are the only channel the attachment has to the consumer. So a picked file produced no
+    // chip, no event and no change to the disabled Send button -- indistinguishable from the control
+    // being dead. Registering the name here is what makes an attachment exist at all.
+    //
+    // The name, not a path: a `File` from an `<input>` or a clipboard exposes no path (see the same
+    // note in `ChatView.processFiles`), and the name is what `getPreviewUrl`/`getFileMetadata` key the
+    // object URL and the size badge by.
+    const names = list.map((file) => file.name);
+    const nextFiles = [...filesRef.current, ...names.filter((n) => !filesRef.current.includes(n))];
+    setFiles(nextFiles);
+    filesRef.current = nextFiles;
+    if (dispatchEvent) {
+      const fullText = textRef.current + nextFiles.map((f) => ` [file: ${f}]`).join("");
+      dispatchEvent("OnChange", id, [fullText]);
+    }
+
     for (const file of list) {
       await handleUploadFile(file);
     }
   };
 
   const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData.items;
-    const pastedFiles: File[] = [];
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].kind === "file") {
-        const itemFile = items[i].getAsFile();
-        if (itemFile) {
-          const mimeType = itemFile.type || "image/png";
-          const ext = mimeType.split("/")[1] || "png";
-          const fileName =
-            itemFile.name &&
-            itemFile.name.trim() !== "" &&
-            itemFile.name !== "image.png" &&
-            itemFile.name !== "blob"
-              ? itemFile.name
-              : `screenshot_${Date.now()}_${i}.${ext}`;
-          const renamedFile = new File([itemFile], fileName, { type: mimeType });
-          pastedFiles.push(renamedFile);
-        }
-      }
-    }
-    if (pastedFiles.length > 0) {
-      e.preventDefault();
-      await handleFiles(pastedFiles);
-    }
+    const pastedFiles = clipboardFiles(e.clipboardData);
+    if (pastedFiles.length === 0) return;
+    // Only once there is a file to take: a paste carrying just text must still reach the textarea.
+    e.preventDefault();
+    await handleFiles(pastedFiles);
   };
 
   const handleDragEnter = (e: React.DragEvent) => {

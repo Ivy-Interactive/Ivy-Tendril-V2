@@ -26,16 +26,66 @@ export type SidebarListRowIcon = React.ComponentType<{
 }>;
 
 const ROW_BASE = "flex w-full items-center gap-2 py-1.5 text-left text-xs transition-colors";
-const ROW_SELECTED = "bg-secondary text-secondary-foreground";
-const ROW_IDLE = "text-muted-foreground hover:bg-accent hover:text-accent-foreground";
 
-/** Horizontal padding is per variant so a sub-item's 1rem indent never has to beat `px-2`. */
-const rowClass = (selected: boolean, rounded: boolean, padding: string, extra?: string): string =>
+/**
+ * What makes a row read as a control. Applied only on the branches that render a `<button>`, never
+ * on the static sub-item -- `cursor-pointer` and `cursor-default` are the same specificity and
+ * Tailwind emits `.cursor-pointer` *after* `.cursor-default` in its utility order, so a base-level
+ * `cursor-pointer` would silently win over the static row's own `cursor-default`.
+ *
+ * `cursor-pointer` has to be stated because nothing grants it any more: Tailwind v3's preflight
+ * shipped `button, [role="button"] { cursor: pointer }` and v4 -- 4.1.16 here -- dropped that rule,
+ * so every `<button>` in this repo gets the default `cursor: auto` unless its own classes say
+ * otherwise. `buttonVariant` in `ui/button/variant.ts` compensates explicitly; these rows never did,
+ * which is why a Settings sidebar row reads as inert text under the pointer.
+ *
+ * The focus ring is the same omission seen from the keyboard: the rows are real `<button>`s and were
+ * always reachable by Tab, but with no ring nothing showed where focus was. `ring-inset` because a
+ * rail row spans the full sidebar width, so an outset ring would be clipped by the container edge.
+ */
+const ROW_INTERACTIVE =
+  "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+
+const ROW_SELECTED = "bg-secondary text-secondary-foreground";
+const ROW_IDLE = "text-muted-foreground";
+
+/**
+ * The hover fill is `bg-secondary/60`, where it used to be `bg-accent`. `--accent` is `#f8f8f8` on a
+ * `#ffffff` rail and `#1a1a1a` on `#0a0a0a`, i.e. 1.06:1 and 1.14:1 against the surface behind it --
+ * a fill that exists in the compiled CSS and is not visible on a screen. `--secondary` is the token
+ * the *selected* row already uses, so hovering previews the selected state at 60%: 1.14:1 light and
+ * 1.15:1 dark. Still quiet, but on the same ramp as selection rather than a neutral nobody can see,
+ * and far enough below the solid `bg-secondary` that hovered and selected never read as one state.
+ *
+ * Gated on `interactive`, so the handler-less sub-item does not light up under a pointer it will not
+ * respond to -- a false affordance is the same bug as a missing one. It was previously ungated and
+ * got away with it only because `bg-accent` was invisible. The `disabled:hover:*` pair is the same
+ * rule for the other inert case: `SidebarListRow` takes a `disabled` prop, and a disabled row that
+ * still fills on hover would contradict the `not-allowed` cursor it shows at the same moment.
+ */
+const ROW_HOVER =
+  "hover:bg-secondary/60 hover:text-foreground disabled:hover:bg-transparent disabled:hover:text-muted-foreground";
+
+/**
+ * Horizontal padding is per variant so a sub-item's 1rem indent never has to beat `px-2`.
+ *
+ * `interactive` is false only for the handler-less sub-item, which renders a `<span>`: see
+ * {@link ROW_INTERACTIVE} for why that branch must not receive the affordance classes.
+ */
+const rowClass = (
+  selected: boolean,
+  rounded: boolean,
+  padding: string,
+  extra?: string,
+  interactive = true,
+): string =>
   [
     ROW_BASE,
+    interactive ? ROW_INTERACTIVE : null,
     padding,
     rounded ? "rounded-field" : "rounded-none",
     selected ? ROW_SELECTED : ROW_IDLE,
+    !selected && interactive ? ROW_HOVER : null,
     extra,
   ]
     .filter(Boolean)
@@ -189,7 +239,7 @@ export const SidebarListRowSubItem: React.FC<SidebarListRowSubItemProps> = ({
   testId,
   className,
 }) => {
-  const shared = rowClass(selected, true, "pl-4 pr-2", className);
+  const shared = rowClass(selected, true, "pl-4 pr-2", className, !!onClick);
 
   const marker = Icon ? (
     <Icon className="size-4 shrink-0" aria-hidden />
@@ -209,6 +259,8 @@ export const SidebarListRowSubItem: React.FC<SidebarListRowSubItemProps> = ({
   );
 
   if (!onClick) {
+    // `cursor-default` is explicit rather than left to the default: a `<span>` of text would
+    // otherwise show the I-beam, which reads as selectable prose in a rail of controls.
     return (
       <span className={`${shared} cursor-default`} data-testid={testId}>
         {marker}

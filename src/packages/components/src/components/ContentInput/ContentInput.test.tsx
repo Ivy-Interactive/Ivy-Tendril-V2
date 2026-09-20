@@ -363,3 +363,131 @@ describe("ContentInput", () => {
     getContextSpy.mockRestore();
   });
 });
+
+/**
+ * Attaching a file is what `files` state means: it is what the thumbnail strip renders, what
+ * `canSubmit` consults, and what `handleSubmit` turns into the ` [file: ...]` refs that are the only
+ * channel an attachment has to the consumer.
+ *
+ * THE BUG these pin: `handleFiles` uploaded the bytes and never registered the name, so every attach
+ * path produced no chip, no `OnChange` and no change to the disabled Send button. A picked file was
+ * indistinguishable from a dead control -- which is how it was reported.
+ */
+describe("ContentInput attachments", () => {
+  const imageItem = (file: File | null) => ({
+    kind: "file",
+    type: file?.type ?? "image/png",
+    getAsFile: () => file,
+  });
+
+  const chips = () => screen.queryAllByLabelText("Remove file");
+
+  it("registers a file picked through the paperclip", async () => {
+    const onIvyEvent = vi.fn();
+    const { container } = render(<ContentInput id="civ-1" value="" onIvyEvent={onIvyEvent} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.change(input, {
+        target: { files: [new File(["bytes"], "shot.png", { type: "image/png" })] },
+      });
+    });
+
+    expect(chips()).toHaveLength(1);
+    // Enabling submit with no text is the whole point of attaching a file on its own.
+    expect(screen.getByTitle("Send")).toBeEnabled();
+    expect(onIvyEvent).toHaveBeenCalledWith(
+      "OnChange",
+      "civ-1",
+      expect.arrayContaining([expect.stringContaining("[file: shot.png]")]),
+    );
+  });
+
+  /**
+   * The regression the paste fix was written for: a screenshot from a capture tool arrives as an item
+   * of kind `"file"` and need not appear in `clipboardData.files` at all, so a reader that consults
+   * only `files` drops it silently.
+   */
+  it("attaches an image pasted through clipboardData.items with files empty", async () => {
+    const onIvyEvent = vi.fn();
+    render(<ContentInput id="civ-1" value="" onIvyEvent={onIvyEvent} />);
+    const shot = new File(["bytes"], "image.png", { type: "image/png" });
+
+    await act(async () => {
+      fireEvent.paste(screen.getByRole("textbox"), {
+        clipboardData: { items: [imageItem(shot)], files: [] },
+      });
+    });
+
+    expect(chips()).toHaveLength(1);
+    expect(screen.getByTitle("Send")).toBeEnabled();
+    // Renamed off the placeholder so a second pasted screenshot cannot collide with the first.
+    const change = onIvyEvent.mock.calls.find(([event]) => event === "OnChange");
+    expect(change?.[2][0]).toMatch(/\[file: screenshot_\d+_0\.png\]/);
+  });
+
+  it("carries a pasted image into the submitted value", async () => {
+    const onIvyEvent = vi.fn();
+    render(<ContentInput id="civ-1" value="" onIvyEvent={onIvyEvent} />);
+
+    await act(async () => {
+      fireEvent.paste(screen.getByRole("textbox"), {
+        clipboardData: {
+          items: [imageItem(new File(["bytes"], "image.png", { type: "image/png" }))],
+          files: [],
+        },
+      });
+    });
+    fireEvent.click(screen.getByTitle("Send"));
+
+    const submit = onIvyEvent.mock.calls.find(([event]) => event === "OnSubmit");
+    expect((submit?.[2][0] as { value: string }).value).toMatch(/\[file: screenshot_\d+_0\.png\]/);
+  });
+
+  // A paste with no file has to fall through to the textarea, or typing by paste stops working.
+  it("leaves a text-only paste to the textarea", async () => {
+    const onIvyEvent = vi.fn();
+    render(<ContentInput id="civ-1" value="" onIvyEvent={onIvyEvent} />);
+
+    await act(async () => {
+      fireEvent.paste(screen.getByRole("textbox"), {
+        clipboardData: {
+          items: [{ kind: "string", type: "text/plain", getAsFile: () => null }],
+          files: [],
+        },
+      });
+    });
+
+    expect(chips()).toHaveLength(0);
+    expect(onIvyEvent).not.toHaveBeenCalledWith("OnChange", "civ-1", expect.anything());
+  });
+
+  it("attaches a dropped file", async () => {
+    render(<ContentInput id="civ-1" value="" />);
+    const file = new File(["bytes"], "dropped.png", { type: "image/png" });
+
+    await act(async () => {
+      fireEvent.drop(screen.getByRole("textbox").closest(".civ-input-card")!, {
+        dataTransfer: { files: [file] },
+      });
+    });
+
+    expect(chips()).toHaveLength(1);
+  });
+
+  // Attaching the same file twice is one attachment: the name is the key everything else is stored by.
+  it("does not duplicate a file attached twice", async () => {
+    const { container } = render(<ContentInput id="civ-1" value="" />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        fireEvent.change(input, {
+          target: { files: [new File(["bytes"], "same.png", { type: "image/png" })] },
+        });
+      });
+    }
+
+    expect(chips()).toHaveLength(1);
+  });
+});

@@ -1043,12 +1043,28 @@ pub const APPLE_WIRE_MODEL_ID: &str = "system";
 /// question then answers "I am a foundation model running on-device, not alive."
 ///
 /// The second is headroom. The default prompt costs 4,532 input tokens of an 8,192-token window
-/// before the user's question is read. This prompt with the tool surface below costs 512 -- about a
-/// ninth -- which is the difference between a window that fits a conversation and one that does not.
+/// before the user's question is read. This prompt with the tool surface below costs ~310 in an
+/// empty directory -- a fraction of that -- which is the difference between a window that fits a
+/// conversation and one that does not.
+///
+/// The last two sentences answer a third measurement, of a chat that repeated itself. Asked to
+/// "go through issues in ivy-tendril-v2", the model replied "I will now find these issues" and
+/// stopped; told "I dont see any tool calls happen", it replied with the same sentence again. It
+/// was not ignoring the history -- `build_chat_agent_prompt` replays it, and the replay was
+/// verified in the failing turn -- it was answering honestly. It announces an intent it can never
+/// carry out, because it emits no tool calls and the turn ends with its reply. So the prompt has
+/// to rule out the announcement itself: there is no later turn in which the work happens. With
+/// `skill` disabled but this text absent the model stopped looping and began inventing instead,
+/// answering the same question with three plausible fabricated issues. Both sentences are needed:
+/// one to stop it promising, one to give it something truthful to say in place of the promise.
 const APPLE_SYSTEM_PROMPT: &str = "You are a helpful assistant running on-device via Apple \
 Foundation Models. Answer the user directly and concisely in plain prose. You have no tools \
-available. Never write a tool name, never write text in square brackets, and never describe an \
-action you did not take.";
+available: you cannot read files, run commands, search the repository, or browse the web. Never \
+write a tool name, never write text in square brackets, and never describe an action you did not \
+take. Never say you will do something and never ask the user for permission to proceed -- your \
+reply is your entire turn, so there is no later in which to act. When a request needs information \
+you were not given, say plainly in one sentence that you cannot access it and state what you \
+would need pasted in.";
 
 /// Where `fm serve` listens when started with no arguments.
 const APPLE_DEFAULT_BASE_URL: &str = "http://127.0.0.1:1976/v1";
@@ -1116,11 +1132,27 @@ fn apple_opencode_config(base_url: &str) -> serde_json::Value {
                 "mode": "primary",
                 "model": APPLE_MODEL_ID,
                 "prompt": APPLE_SYSTEM_PROMPT,
-                // Every tool OpenCode ships, off. The narrower six-tool list this started as left
-                // 2,740 input tokens of the 8,192-token window spent on tool descriptions; with all
-                // of them off it is 512. The model cannot use them in any case -- it emits no tool
-                // calls -- so every byte describing one is a byte the conversation does not get.
+                // Every tool, off. The narrower six-tool list this started as left 2,740 input
+                // tokens of the 8,192-token window spent on tool descriptions; with all of them off
+                // it is ~310. The model cannot use them in any case -- it emits no tool calls -- so
+                // every byte describing one is a byte the conversation does not get.
+                //
+                // `"*"` is what makes the list exhaustive, and the entries after it are regression
+                // pins rather than the mechanism. Naming every builtin is not enough, because not
+                // every tool is a builtin: OpenCode registers a tool per `SKILL.md` folder it
+                // discovers under the working directory, and one per tool an attached MCP server
+                // advertises, and neither set is known here. Both leaked past the explicit list.
+                // Measured with the same prompt: this repo's six skills cost 1,305 input tokens in
+                // the repo root against 507 in an empty directory, and asked to name its skills the
+                // model listed all six -- which is what produced the chat loop the system prompt
+                // above describes, since it saw a `tendrillable` tool, said it would use it, and
+                // emitted no call. A probe MCP server advertising one tool cost another 47 on top.
+                // `"*": false` covers all three kinds at once and holds as skills and servers are
+                // added; `skill` and the builtins stay named so a regression in either is a test
+                // failure here rather than a silent return of the loop.
                 "tools": {
+                    "*": false,
+                    "skill": false,
                     "webfetch": false,
                     "task": false,
                     "todowrite": false,

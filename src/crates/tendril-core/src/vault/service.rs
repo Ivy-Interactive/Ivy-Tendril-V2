@@ -15,6 +15,7 @@ use crate::config::{
 };
 use crate::error::{Result, TendrilError};
 use crate::git::clone::redact_credentials;
+use crate::git::coauthor_hooks::trailer_line;
 use crate::git::issues::run_gh_command_raw;
 use crate::git::service::run_git;
 use crate::models::{
@@ -101,6 +102,33 @@ fn git_out(dir: &Path, args: &[&str]) -> String {
 
 fn git_run(dir: &Path, args: &[&str]) -> (i32, String, String) {
     run_git(args, dir).unwrap_or((-1, String::new(), String::new()))
+}
+
+/// `git commit` in the vault, carrying the configured `Co-Authored-By` trailer.
+///
+/// The vault's commits cannot be reached by the hook shim in [`crate::git::coauthor_hooks`]: they run
+/// in this daemon process via [`git_run`], not in an agent Tendril spawns, so no `GIT_CONFIG_*`
+/// override is in effect. Since these are Rust building an argv rather than an LLM composing a
+/// command, `--trailer` is exact and needs no hook at all.
+///
+/// `--trailer` rather than appending to the `-m` text so that git owns the placement: the trailer
+/// lands in the existing trailer block when the message already has one, and the vault's two-`-m`
+/// form (subject plus changelog) keeps its blank-line separation.
+fn git_commit(
+    dir: &Path,
+    settings: &TendrilSettings,
+    message_args: &[&str],
+) -> (i32, String, String) {
+    let mut args: Vec<&str> = vec!["commit"];
+    args.extend_from_slice(message_args);
+
+    let trailer = settings.co_author_identity().map(trailer_line);
+    if let Some(trailer) = trailer.as_deref() {
+        args.push("--trailer");
+        args.push(trailer);
+    }
+
+    git_run(dir, &args)
 }
 
 fn write_yaml<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
@@ -914,7 +942,7 @@ pub async fn create_vault_repo_with(
     std::fs::create_dir_all(dir.join("global").join("skills"))?;
 
     git_run(&dir, &["add", "-A"]);
-    git_run(&dir, &["commit", "-m", "Initial Tendril Vault setup"]);
+    git_commit(&dir, &settings, &["-m", "Initial Tendril Vault setup"]);
     git_run(&dir, &["push", "-u", "origin", "main"]);
 
     let created = VaultSettings {
@@ -1280,9 +1308,9 @@ pub async fn push_and_create_pr_with(
     git_run(&dir, &["add", "-A"]);
     let subject = format!("feat(vault): update {} (v{})", exported.join(", "), version);
     if request.changelog.trim().is_empty() {
-        git_run(&dir, &["commit", "-m", &subject]);
+        git_commit(&dir, &settings, &["-m", &subject]);
     } else {
-        git_run(&dir, &["commit", "-m", &subject, "-m", &request.changelog]);
+        git_commit(&dir, &settings, &["-m", &subject, "-m", &request.changelog]);
     }
     git_run(&dir, &["push", "-u", "origin", &branch]);
 
@@ -2042,10 +2070,10 @@ pub async fn delete_project_from_vault_with(
     )?;
 
     git_run(&dir, &["add", "-A"]);
-    git_run(
+    git_commit(
         &dir,
+        &settings,
         &[
-            "commit",
             "-m",
             &format!(
                 "chore(vault): delete {} from vault (v{})",

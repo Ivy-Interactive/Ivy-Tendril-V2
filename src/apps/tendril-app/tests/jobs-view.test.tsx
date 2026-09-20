@@ -1226,4 +1226,83 @@ describe("Jobs output sheet layout", () => {
     expect(sheet.className).toContain("overflow-hidden");
     expect(sheet.className).toContain("p-0");
   });
+
+  /**
+   * The chain that puts the metrics footer in the footer.
+   *
+   * `AgentViewer` asks for `height: 100%`, and a percentage height resolves against nothing unless
+   * every box above it has a definite one. It did not: the sheet scrolled its content through Radix's
+   * viewport, which injects a `display: table` wrapper of its own that no height survives, and the
+   * viewer's own box offered `min-h-96` — a floor, not a height. So the shell sized to its content and
+   * its `flex: 0 0 auto` footer pinned to the bottom of a box that ended wherever the log ended, with
+   * dead space under it. jsdom computes no layout, so this asserts the class contract that makes the
+   * height definite rather than the geometry it produces.
+   */
+  it("hands the output a definite height rather than a floor inside a scroller", async () => {
+    vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue({ ...job("00021", "Running") });
+    vi.spyOn(jobsStore, "subscribeToJob").mockReturnValue(() => {});
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    fireEvent.click(screen.getByTestId("job-output-00021"));
+    const sheet = await waitFor(() => screen.getByTestId("job-output-sheet"));
+    const view = await waitFor(() => screen.getByTestId("job-session-view"));
+
+    // No Radix scroll viewport between the header layout and the view: the log is the only scroller,
+    // which is also what stops an outer scroller fighting the viewer's virtualizer for the position.
+    expect(sheet.querySelector("[data-radix-scroll-area-viewport]")).toBeNull();
+    // The padded wrapper is a flex column of definite height rather than the default `p-4` block.
+    const content = sheet.querySelector('[data-slot="header-layout-header"]')?.nextElementSibling
+      ?.firstElementChild;
+    expect(content).toHaveClass("flex", "h-full", "min-h-0", "flex-col");
+    // …and the view and the output box carry it down to the viewer.
+    expect(view).toHaveClass("h-full", "min-h-0");
+    const output = view.lastElementChild;
+    expect(output).toHaveClass("min-h-0", "flex-1", "overflow-hidden");
+    expect(output?.className).not.toContain("min-h-96");
+  });
+
+  /**
+   * Three full-width rules used to stack down the first 50px of this sheet — under the title, under
+   * the job's metadata, and over the metrics strip — each drawn by a different owner. Parallel lines
+   * at that density read as a form rather than as a hierarchy. Each is dropped at its own call site so
+   * the page framing and the other `HeaderLayout` consumers keep theirs.
+   */
+  it("draws none of the three stacked rules, and leaves the debug sheet's alone", async () => {
+    vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue({ ...job("00021", "Running") });
+    vi.spyOn(jobsStore, "subscribeToJob").mockReturnValue(() => {});
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    // The strip renders nothing for a run that has said nothing worth a line, so the job needs one
+    // event with a cost on it before there is a footer to assert about at all.
+    vi.spyOn(jobsStore, "getSessionEvents").mockReturnValue([
+      {
+        id: "e1",
+        type: "result",
+        timestamp: 0,
+        payload: {},
+        rawText: JSON.stringify({
+          kind: "result",
+          timestamp: "2026-09-16T12:00:00.000Z",
+          is_success: true,
+          duration_ms: 4000,
+        }),
+      },
+    ]);
+
+    fireEvent.click(screen.getByTestId("job-output-00021"));
+    const sheet = await waitFor(() => screen.getByTestId("job-output-sheet"));
+
+    // 1: the sheet title's divider, from `HeaderLayout`'s `showDivider` default.
+    expect(sheet.querySelector('[data-slot="header-layout-header"]')).not.toHaveClass("border-b");
+    // 2: the job metadata block's own rule, and the `pb-4` that only existed to hold it off the text.
+    const view = await waitFor(() => screen.getByTestId("job-session-view"));
+    const meta = view.firstElementChild;
+    expect(meta?.className).not.toContain("border-b");
+    expect(meta?.className).not.toContain("pb-4");
+    // 3: the metrics strip's own rule, dropped per instance so the page framing keeps it.
+    await waitFor(() => expect(sheet.querySelector(".aov-metrics")).not.toBeNull());
+    expect(sheet.querySelector(".aov-metrics")).toHaveClass("aov-metrics-flush");
+  });
 });

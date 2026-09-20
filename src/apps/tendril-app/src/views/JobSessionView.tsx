@@ -80,19 +80,6 @@ function formatTimestamp(job: Job): string {
 const NO_VALUE = "—";
 
 /**
- * How tall the output may get inside the sheet before it scrolls itself.
- *
- * The sheet's `HeaderLayout` scrolls its content, so without a ceiling the viewer grows to the height
- * of the whole log and its windowing goes inert: the virtualizer renders what fits in its scroll
- * element, and an unbounded element "fits" 100k lines. A page framing needs none of this — it hands
- * the viewer a definite height already — which is why this is only passed for the sheet.
- *
- * A viewport fraction rather than a pixel count so it fills a tall window, and paired with the `min-h`
- * floor below so an empty log still shows the viewer rather than collapsing to nothing.
- */
-const SHEET_OUTPUT_MAX_HEIGHT = "70vh";
-
-/**
  * The default for `events`, hoisted so it is the *same* empty array on every render.
  *
  * `events = []` in the signature mints a new one each time, which the line cache below would read as
@@ -401,12 +388,26 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   const isSheet = layout === "sheet";
 
   return (
-    <div
-      className={`flex flex-col space-y-4 ${isSheet ? "" : "h-full"}`}
-      data-testid="job-session-view"
-    >
-      {/* Header: the output sheet's title, plus the row the table showed. */}
-      <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+    // `h-full min-h-0` in both framings now. The sheet used to omit it because its `HeaderLayout`
+    // scrolled the content, and a height against a scrolling parent is a height against nothing; the
+    // sheet hands the log its own definite box instead (see `JobsView`'s `scrollContent={false}`), and
+    // this is the link in that chain — without it the height dies here and the metrics footer goes
+    // back to floating at the end of the log.
+    <div className="flex h-full min-h-0 flex-col space-y-4" data-testid="job-session-view">
+      {/* Header: the output sheet's title, plus the row the table showed.
+
+          The rule under it is drawn for the page only. In the sheet this block is one of three
+          full-width rules stacked within ~50px of each other — under the sheet title, under here, and
+          over the metrics footer — and three parallel lines read as a form, not as a hierarchy. The
+          page has no sheet title above it, so there its rule is the only one and still separates the
+          job's identity from its output. `pb-4` goes with the border: it is the padding that held the
+          meta text off the rule, so left behind it would stack on the root's `space-y-4` for ~35px of
+          gap where the line used to be — a removal that reads as a hole rather than as tightening. */}
+      <div
+        className={`flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between ${
+          isSheet ? "" : "border-b border-border pb-4"
+        }`}
+      >
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm font-bold text-muted-foreground">
@@ -547,18 +548,24 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
 
       {/* Output. `OutputSheet.cs` decides between three things: a viewer following a live stream, a
           viewer showing a finished one, and a job that produced nothing at all. */}
-      {/* A sheet scrolls, so the viewer gets a floor rather than the remaining height of a page:
-          `flex-1` inside a scrolling container resolves to the content's own height, which for an
-          empty log is zero and hides the viewer entirely. */}
-      <div className={isSheet ? "min-h-96" : "min-h-0 flex-1 overflow-hidden"}>
+      {/* One box for both framings now. The sheet used to take a `min-h-96` floor instead, because a
+          `flex-1` inside `HeaderLayout`'s scroller resolved to the content's own height and an empty
+          log collapsed the viewer to nothing. That reasoning ended when the sheet stopped scrolling
+          its content: `flex-1` against a definite parent is the remaining space, so an empty log is
+          given the rest of the sheet rather than zero. The floor was also the bug the user reported —
+          a `min-height` is not a height, so `AgentViewer`'s `height: 100%` had nothing to resolve
+          against, the shell sized to its content, and the metrics footer pinned to the bottom of a box
+          that stopped short of the sheet. 414.72px of reserved space (`--spacing` is 0.27rem here, not
+          Tailwind's 0.25) sat under it whenever the log was shorter than the floor. */}
+      <div className="min-h-0 flex-1 overflow-hidden">
         {eventLines.length > 0 ? (
           <AgentViewer
             id={viewerId}
             jsonLines={eventLines}
             height="full"
-            // Only while the sheet framing leaves the viewer to size itself; see
-            // {@link SHEET_OUTPUT_MAX_HEIGHT}.
-            maxBodyHeight={isSheet ? SHEET_OUTPUT_MAX_HEIGHT : undefined}
+            // The third of the sheet's stacked rules. The viewer now fills the sheet, so the strip
+            // sits on the sheet's own bottom edge and has nothing left to divide it from.
+            showMetricsDivider={!isSheet}
             // `.AutoScroll(false).ShowStatusLabel(false)` once the job is no longer running: nothing
             // more is coming, so following the bottom would only fight the reader, and an animated
             // "Working..." under a finished log is a lie.
@@ -577,7 +584,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           <AgentViewer
             id={viewerId}
             height="full"
-            maxBodyHeight={isSheet ? SHEET_OUTPUT_MAX_HEIGHT : undefined}
+            showMetricsDivider={!isSheet}
             autoScroll
             showStatusLabel
             eventHandler={noop}

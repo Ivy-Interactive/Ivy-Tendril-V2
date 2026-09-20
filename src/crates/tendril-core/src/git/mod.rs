@@ -1,4 +1,5 @@
 pub mod clone;
+pub mod coauthor_hooks;
 pub mod git_tab;
 pub mod github;
 pub mod issues;

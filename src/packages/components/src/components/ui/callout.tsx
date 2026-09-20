@@ -106,7 +106,7 @@ const CalloutRoot = React.forwardRef<HTMLDivElement, CalloutProps>(
             type="button"
             onClick={onDismiss}
             aria-label={dismissLabel ?? "Dismiss"}
-            className="absolute right-3 top-3 rounded-selector p-1 opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute right-3 top-3 rounded-selector p-1 opacity-70 transition-opacity hover:bg-secondary/60 hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="size-4" />
           </button>

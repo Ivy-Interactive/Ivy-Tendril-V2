@@ -54,7 +54,7 @@ export const AssetChecklist: React.FC<AssetChecklistProps> = ({
 
   return (
     <Collapsible defaultOpen={items.length > 0} data-testid={`asset-group-${slug}`}>
-      <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-box px-2 py-1 text-left text-xs text-foreground transition-colors hover:bg-accent/50">
+      <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-box px-2 py-1 text-left text-xs text-foreground transition-colors hover:bg-secondary/60">
         {label}
         <Badge variant="secondary">{items.length}</Badge>
         <ChevronDown

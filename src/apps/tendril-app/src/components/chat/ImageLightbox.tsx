@@ -47,7 +47,7 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ image, onClose }) 
         <DialogClose
           data-testid="image-lightbox-close"
           aria-label="Close preview"
-          className="flex shrink-0 items-center gap-1 rounded-selector px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex shrink-0 items-center gap-1 rounded-selector px-2 py-1 text-xs text-muted-foreground hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="size-3.5" aria-hidden="true" />
           <span>Close</span>

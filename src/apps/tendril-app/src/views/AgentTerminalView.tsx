@@ -1,10 +1,12 @@
 import React from "react";
 import { Terminal, type TerminalHandle } from "@ivy-interactive/components/tendril";
-import { Button, HeaderLayout } from "@ivy-interactive/components/ui";
-import { Plus, Terminal as TerminalIcon } from "lucide-react";
+import { HeaderLayout } from "@ivy-interactive/components/ui";
+import { Terminal as TerminalIcon } from "lucide-react";
 import { startAgentTerminal, type AgentTerminalRun } from "../api/agentTerminal";
+import { NewChatModeButtons } from "../components/chat/NewChatModeButtons";
 import { chatStore } from "../state/chatStore";
 import { describeBridgeError } from "../types/api";
+import type { ChatMode } from "../state/appearance";
 import type { ChatSession } from "../types/chat";
 
 export interface AgentTerminalViewProps {
@@ -12,8 +14,13 @@ export interface AgentTerminalViewProps {
   sessionId: string;
   /** A task typed for the agent on launch, as `AgentAppArgs.Prompt` is. */
   prompt?: string;
-  /** Starts a new terminal chat, `TerminalSessionHeader`'s `OnCreateSession`. */
-  onNewSession?: () => void;
+  /**
+   * Starts a new chat, `TerminalSessionHeader`'s `OnCreateSession`. The pane passes an explicit
+   * `terminal` override rather than letting the default decide: a "New" button inside a terminal
+   * that opened the chat view instead would be the one press whose meaning is unambiguous from
+   * where it sits.
+   */
+  onNewSession?: (override?: ChatMode) => void;
 }
 
 /**
@@ -131,19 +138,10 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
           <span className="min-w-0 flex-1 truncate font-medium" title={title}>
             {title}
           </span>
-          {onNewSession && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onNewSession}
-              data-testid="agent-terminal-new"
-              title="New terminal chat"
-            >
-              <Plus className="size-4" aria-hidden="true" />
-              New
-            </Button>
-          )}
+          {/* The same pair the chat header carries, so the chat-UI mode stays reachable from a
+              terminal: in terminal mode this view *is* the chat, and a lone "New" here would leave
+              the other mode with no button anywhere on screen. */}
+          {onNewSession && <NewChatModeButtons onNewChat={onNewSession} size="sm" />}
         </div>
       }
     >

@@ -82,6 +82,58 @@ export const usesSidebarList = (
 };
 
 /**
+ * The plan id a `plan-<id>` nav names, or null for anything else.
+ *
+ * V1 never needs this: a row click stays inside the publishing app (`OpenApp(new
+ * NavigateArgs(list.AppId, list.BuildSelectArgs(itemId)))`), so the publisher is still mounted and
+ * still republishing its own selection on every `Build()`. V2 opens the row's plan under its own nav
+ * id instead, which is the whole reason {@link PLAN_DETAIL_NAV_PREFIX} exists -- and on that page the
+ * nav id is the only thing left that knows which plan is open.
+ */
+export const planDetailNavPlanId = (appId: string | null | undefined): string | null => {
+  if (!appId?.startsWith(PLAN_DETAIL_NAV_PREFIX)) return null;
+  return appId.slice(PLAN_DETAIL_NAV_PREFIX.length) || null;
+};
+
+/**
+ * `PlanSelectionHelper.ResolveSelection`'s id comparison, which V1 carries for the same reason: one
+ * plan reaches the UI as `00021`, as `21` and as `00021-SomePlan`, so a row id and a nav id can name
+ * the same plan without being the same string.
+ */
+const isSamePlanId = (itemId: string, planId: string): boolean => {
+  if (itemId.toLowerCase() === planId.toLowerCase()) return true;
+  const left = Number.parseInt(itemId, 10);
+  const right = Number.parseInt(planId, 10);
+  return !Number.isNaN(left) && !Number.isNaN(right) && left === right;
+};
+
+/**
+ * Points a retained list's `selectedId` at the plan the nav actually has open.
+ *
+ * {@link SidebarListStore.retainFor} keeps a plan list alive across the `plan-<id>` nav on purpose,
+ * but the publisher that owns `selectedId` unmounts on that same navigation, so it never publishes
+ * the selection the click produced: `PlansView` calls `setOpenedPlanId` and navigates in one handler,
+ * and by the next render it is gone, its `usePublishSidebarList` effect never having run. The
+ * snapshot therefore stays frozen on the plan that was selected *before* the click, and the sidebar
+ * paints that plan as selected while a different one is open.
+ *
+ * So on a plan-detail page the nav is the authority, exactly as `PlansAppArgs.PlanId` is in V1. A
+ * list holding no row for that plan is returned untouched, which is what leaves a retained chat list
+ * (session ids, not plan ids) alone. The same object comes back whenever nothing moves, because the
+ * store works hard to keep its snapshot identity-stable and this must not undo that.
+ */
+export const withNavSelection = (
+  list: ShellSidebarList | null,
+  currentAppId: string | null | undefined,
+): ShellSidebarList | null => {
+  const planId = planDetailNavPlanId(currentAppId);
+  if (!list || !planId) return list;
+  const open = list.items.find((item) => isSamePlanId(item.id, planId));
+  if (!open || open.id === list.selectedId) return list;
+  return { ...list, selectedId: open.id };
+};
+
+/**
  * V1 `TendrilAppShell.PageTabTitle`: the page tab's title is the selected sidebar row (so the strip
  * reads "#74 Draft" rather than the generic "Plans"), else the app's own title. A row whose title is
  * blank falls back too.

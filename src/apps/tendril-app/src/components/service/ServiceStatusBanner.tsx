@@ -65,7 +65,7 @@ export const ServiceStatusBanner: React.FC<ServiceStatusBannerProps> = ({
             size="sm"
             variant="secondary"
             onClick={onRestart}
-            className="bg-muted px-2 text-xs text-foreground hover:bg-accent"
+            className="bg-muted px-2 text-xs text-foreground"
           >
             Restart Service
           </Button>
@@ -89,7 +89,7 @@ export const ServiceStatusBanner: React.FC<ServiceStatusBannerProps> = ({
             size="sm"
             variant="secondary"
             onClick={onViewDiagnostics}
-            className="bg-muted px-2 text-xs text-muted-foreground hover:bg-accent"
+            className="bg-muted px-2 text-xs text-muted-foreground"
           >
             Diagnostics
           </Button>

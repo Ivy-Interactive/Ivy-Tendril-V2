@@ -88,6 +88,11 @@ export function DialogShell({
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" || onShortcut === undefined) return;
+    // The registry's rule for every other shortcut in the app (`shortcutRegistry.handleKeyDown`: "an
+    // auto-repeat ... is not a fresh shortcut press"). It matters more here than there: a held
+    // Ctrl+Enter repeats faster than React re-renders the busy state, so without this a leaned-on key
+    // can dispatch the same delete several times before `isBusy` has closed the door.
+    if (event.repeat) return;
 
     const wantsModifier = shortcut === "Ctrl+Enter";
     const hasModifier = event.ctrlKey || event.metaKey;

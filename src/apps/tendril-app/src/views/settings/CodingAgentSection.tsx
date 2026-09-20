@@ -109,8 +109,18 @@ const AgentCard: React.FC<{
     aria-pressed={selected}
     onClick={onClick}
     data-testid={`coding-agent-${id}`}
-    className={`flex items-center gap-3 rounded-box border p-6 text-left transition-colors ${
-      selected ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-muted/50"
+    /*
+     * `cursor-pointer` and the focus ring are stated because a raw `<button>` gets neither: Tailwind
+     * v4 dropped v3's `button { cursor: pointer }` preflight rule, and `Button`'s own variant string
+     * is what re-adds it for every card built on the shared component. This card is not, so it had
+     * the same "nothing suggests this is clickable" problem as the sidebar rows.
+     *
+     * The idle hover also moves from `bg-muted/50` to `bg-secondary/60`. `--muted` is `#f8f8f8` on
+     * this card's `#ffffff` surface -- 1.06:1 before the 50% alpha halves it again -- so the old
+     * hover was invisible in light mode. `bg-secondary/60` matches what the sidebar rows now use.
+     */
+    className={`flex cursor-pointer items-center gap-3 rounded-box border p-6 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+      selected ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-secondary/60"
     }`}
   >
     <BrandIcon name={icon} size={32} className="shrink-0 text-foreground" />

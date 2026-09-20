@@ -131,6 +131,20 @@ pub struct TendrilSettings {
     )]
     pub worktree_branch_delete_mode: String,
 
+    /// Identity appended as a `Co-Authored-By` trailer to the commits **Tendril itself** creates —
+    /// a promptware agent executing a plan, and the vault's own git calls — in `Name <email>` form,
+    /// e.g. `my-bot <bot@example.com>`.
+    ///
+    /// Config rather than a constant, and no accompanying boolean: the identity is different for
+    /// every installation, so a shipped literal would attribute one customer's commits to another's
+    /// bot account. Absent (the default) means no trailer *and no hook install* — see
+    /// [`crate::git::coauthor_hooks`], where an unset value returns before anything is created.
+    ///
+    /// `skip_serializing_if` for the same reason as [`Self::telemetry`]: V2 must never *introduce*
+    /// the key into a `config.yaml` shared with the original app.
+    #[serde(rename = "coAuthor", default, skip_serializing_if = "Option::is_none")]
+    pub co_author: Option<String>,
+
     #[serde(default)]
     pub beta: bool,
 
@@ -210,6 +224,28 @@ impl TendrilSettings {
     /// field directly.
     pub fn telemetry_enabled(&self) -> bool {
         self.telemetry == Some(true)
+    }
+
+    /// The single reader of `coAuthor`, returning the identity only when it is usable.
+    ///
+    /// Rejected here rather than at the point of use so that a bad value degrades to "feature off"
+    /// once, instead of each consumer inventing its own handling:
+    ///
+    /// * blank — the natural way to spell "off" in YAML, and an empty trailer is meaningless anyway;
+    /// * containing a newline or a carriage return — `git interpret-trailers` would read the tail as
+    ///   further trailers, so a configured value could forge a `Co-Authored-By` for anyone, or split
+    ///   the commit message. This is the one genuinely load-bearing rejection.
+    ///
+    /// Deliberately *not* rejected: a missing `<email>`. Git itself only credits a co-author it can
+    /// match to an account, so a malformed identity is inert rather than dangerous, and refusing it
+    /// here would turn a cosmetic mistake into a silent loss of attribution the operator never
+    /// configured their way out of.
+    pub fn co_author_identity(&self) -> Option<&str> {
+        let value = self.co_author.as_deref()?.trim();
+        if value.is_empty() || value.contains(['\n', '\r']) {
+            return None;
+        }
+        Some(value)
     }
 }
 
@@ -648,6 +684,7 @@ impl Default for TendrilSettings {
             worktree_reaper_interval: default_worktree_reaper_interval(),
             worktree_reaper_grace: default_worktree_reaper_grace(),
             worktree_branch_delete_mode: default_worktree_branch_delete_mode(),
+            co_author: None,
             beta: false,
             onboarding: OnboardingConfig::default(),
             coding_agents: Vec::new(),

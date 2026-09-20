@@ -46,6 +46,17 @@ interface AgentViewerProps {
    */
   showMetrics?: boolean;
   /**
+   * Whether the metrics strip draws its own rule against the log above it.
+   *
+   * The rule is the boundary between scrolling content and fixed chrome, so it earns its place
+   * wherever the viewer is one element among others. It stops earning it where the viewer *is* the
+   * surface and the framing already rules off its edges: the job output sheet stacks a sheet-title
+   * divider and a metadata divider above this one within the first 50px, and three parallel full-width
+   * lines read as a form rather than a hierarchy. Per instance rather than a change to the stylesheet,
+   * because the onboarding project-agent run draws the viewer inside a card and still needs it.
+   */
+  showMetricsDivider?: boolean;
+  /**
    * Whether more output is still expected.
    *
    * Only the elapsed timer cares, and only for one case the stream cannot settle by itself: a run that
@@ -92,6 +103,7 @@ export const AgentViewer: React.FC<AgentViewerProps> = ({
   statusLabelOverride,
   showStatusEvents = true,
   showMetrics = true,
+  showMetricsDivider = true,
   live,
   groupToolCalls = false,
   virtualized = true,
@@ -279,7 +291,13 @@ export const AgentViewer: React.FC<AgentViewerProps> = ({
       {/* Outside the body, which is the whole design: the footer's elapsed time ticks once a second,
           and a tick inside the windowed body would re-render and re-measure a viewport of nodes every
           second. See `metrics-footer.tsx`. */}
-      {showMetrics && <AgentMetricsFooter metrics={metrics} isComplete={noMoreOutput} />}
+      {showMetrics && (
+        <AgentMetricsFooter
+          metrics={metrics}
+          isComplete={noMoreOutput}
+          showDivider={showMetricsDivider}
+        />
+      )}
     </div>
   );
 };

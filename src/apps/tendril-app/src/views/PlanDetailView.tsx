@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { Badge } from "@ivy-interactive/components/ui";
+import { WandSparkles } from "lucide-react";
+import { Badge, Button, Callout, Densities } from "@ivy-interactive/components/ui";
 import {
   PlanGitView,
   PlanMarkdown,
@@ -236,7 +237,16 @@ const PlanQuestionsPanel: React.FC<{
               type="button"
               onClick={() => onSelect(question.id)}
               data-testid={`plan-question-${question.id}`}
-              className={`block w-full text-left text-xs transition hover:text-foreground ${
+              /* `SidebarListRow`'s hover treatment, and for its reason. The row used to carry
+                 `hover:text-foreground` alone, which is invisible on the rows that most want the
+                 affordance: an unanswered question is already `text-foreground`, so hovering it
+                 changed nothing at all. `--accent` is no help either -- it is `#f8f8f8` on a
+                 `#ffffff` surface, 1.06:1 -- so the fill is `--secondary`, which is what every
+                 selected row in the app already uses. The padding and radius exist to give that
+                 fill a shape; without them it paints a full-bleed band across the panel.
+                 `cursor-pointer` is explicit rather than inherited: Tailwind v4's preflight dropped
+                 v3's `button { cursor: pointer }`, so a bare <button> now falls back to `auto`. */
+              className={`block w-full cursor-pointer rounded-selector px-2 py-1 text-left text-xs transition hover:bg-secondary/60 hover:text-foreground ${
                 question.answerPresent ? "text-muted-foreground line-through" : "text-foreground"
               }`}
             >
@@ -648,6 +658,27 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       });
   };
 
+  /**
+   * Whether this plan gets the surfaces V1 keeps on its **Review** page.
+   *
+   * V1 has two plan pages, not one, and the diff and the recommendations belong to only one of them.
+   * `Apps/Plans/ContentView.Build` — the page a Draft or Blocked plan opens on — builds exactly
+   * `var tabs = new List<PlanTabDto> { new(PlanTab, "Plan"), new(DetailsTab, "Details") };`.
+   * `Apps/Review/ContentView.BuildPage` is where Changes and Recommendations exist at all, and
+   * `ReviewApp.Build` only ever hands it plans that are `Review` or `Failed`.
+   *
+   * So the gate is the plan's state, not a preference: a draft has no execution to diff and nothing
+   * has recommended anything about it yet.
+   *
+   * Read off the optimistic state for the same reason every other gate below reads `effectivePlan`
+   * (which is assembled further down, after the tab strip): a plan that has just been sent to execute
+   * must stop offering the review surfaces at once.
+   *
+   * Declared up here, above the git hooks, because Git is now one of these surfaces and its fetch
+   * keys off it — see the note on that effect.
+   */
+  const showsReviewSurfaces = isReviewState(optimisticState ?? plan.state);
+
   // Fetched on mount rather than when the Git tab is opened: the at-risk badge on
   // the tab button is the whole point of the feature, and a warning you only see
   // once you have clicked into the tab is not a warning. A rejection is confined to
@@ -673,6 +704,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   }|${plan.prs?.length ?? 0}`;
 
   useEffect(() => {
+    // Only a plan under review has a Git tab to feed, so a draft does not pay for this read. The
+    // fetch shells out to git in every repo of the plan's project; running it for a plan that can
+    // never show the result is work whose only visible effect was the tab flicker below.
+    if (!showsReviewSurfaces) return;
     // The last-known-good data stays on screen across a revalidation. V1 makes the same call for the
     // same reason (`ContentView.ShouldShowLoadingPlaceholder`: "a revalidation keeps the
     // last-known-good content"), and only a plan switch is allowed to blank it.
@@ -693,7 +728,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [plan.id, gitQueryKey]);
+  }, [plan.id, gitQueryKey, showsReviewSurfaces]);
 
   // A plan switch, on the other hand, must not show the previous plan's git state while the new
   // one loads.
@@ -732,24 +767,6 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   ];
 
   /**
-   * Whether this plan gets the surfaces V1 keeps on its **Review** page.
-   *
-   * V1 has two plan pages, not one, and the diff and the recommendations belong to only one of them.
-   * `Apps/Plans/ContentView.Build` — the page a Draft or Blocked plan opens on — builds exactly
-   * `var tabs = new List<PlanTabDto> { new(PlanTab, "Plan"), new(DetailsTab, "Details") };` and adds
-   * only Git to it. `Apps/Review/ContentView.BuildPage` is where Changes and Recommendations exist at
-   * all, and `ReviewApp.Build` only ever hands it plans that are `Review` or `Failed`.
-   *
-   * So the gate is the plan's state, not a preference: a draft has no execution to diff and nothing
-   * has recommended anything about it yet.
-   *
-   * Read off the optimistic state for the same reason every other gate below reads `effectivePlan`
-   * (which is assembled further down, after the tab strip): a plan that has just been sent to execute
-   * must stop offering the review surfaces at once.
-   */
-  const showsReviewSurfaces = isReviewState(optimisticState ?? plan.state);
-
-  /**
    * `BuildPage`'s own gate on the diff, with V1's reason quoted: "Only surface the Changes tab once
    * there are actual file changes — no point showing an empty 'No commits yet.' tab before any work
    * has landed" (`var changesCount = planData.AllChanges?.Files.Count ?? 0; if (changesCount > 0)`).
@@ -776,7 +793,29 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   if (showsReviewSurfaces)
     tabs.push({ id: "recommendations", label: `Recommendations (${recommendations.length})` });
 
-  if (gitItemCount === null || gitItemCount > 0) {
+  /**
+   * Git is a review surface, and it appears only once its count is known.
+   *
+   * Two changes here, both asked for after the tab was seen flickering on every plan that opened.
+   *
+   * **It is gated on `showsReviewSurfaces`.** Worktrees, commit reachability and PRs are all things
+   * an *execution* produced; a Draft has none of them, so the tab could only ever say so. V1 agrees
+   * in shape if not in placement — its Draft page (`Apps/Plans/ContentView.Build`) is where Git lived,
+   * but everything that tab renders in V2 is post-execution state, and the operator's instruction is
+   * that Git belongs to a review. The Details tab already carries this plan's repos and commits
+   * (see its own note), so a draft loses no information by not having the tab.
+   *
+   * **`gitItemCount === null` no longer shows it.** That clause was the flicker: it put an unlabelled
+   * "Git" on screen the moment the page mounted and relabelled it to "Git (4)" when the fetch landed,
+   * a tab appearing then changing under the pointer. Unknown is now treated as V1 treats it
+   * (`if (gitItemCount > 0)`) — nothing to show a tab for yet — so the tab appears once, already
+   * carrying its count.
+   *
+   * A *failed* read is not "unknown" and still gets the tab, without a count: the tab body is the
+   * only place that failure is reported, and dropping the tab would turn an unreachable daemon into
+   * a silently missing feature.
+   */
+  if (showsReviewSurfaces && ((gitItemCount ?? 0) > 0 || gitError)) {
     // The at-risk warning used to be a bare dot with an `aria-label`; a `PlanTabDto` carries only a
     // label and a badge, so the count becomes the badge (`new PlanTabDto(GitTab, "Git", count)` is how
     // V1 badges this tab) and the label says what it counts, which no dot could.
@@ -1202,9 +1241,25 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const draftLabel = (id: DraftAction["id"]) =>
     draftSet.find((action) => action.id === id)?.label ?? id;
 
+  /**
+   * Whether *Update Plan* is reachable at all right now.
+   *
+   * Hoisted out of the branch below because two surfaces depend on it and they must never disagree:
+   * the topbar's wand icon, and the empty-body callout that offers the same dialog. The callout used
+   * to tell the reader to "Run Update Plan" in prose, which was a dead end in the one case it fired
+   * most -- a husk plan has no annotations and no answered questions, so the badged *Update Plan*
+   * secondary never appears, and the only other control is an unlabeled wand glyph. One predicate,
+   * used at both sites, is what keeps the instruction and the control from drifting apart again.
+   */
+  const canOpenUpdateDialog =
+    !isPlanInFlight &&
+    effectivePlan.state !== "Review" &&
+    effectivePlan.state !== "Completed" &&
+    availableDraft.has("update");
+
   if (!isPlanInFlight && effectivePlan.state !== "Review" && effectivePlan.state !== "Completed") {
     // `actions.Action("Update", "Update", Icons.WandSparkles, ctx.ShowUpdateDialog, "U")`.
-    if (availableDraft.has("update")) {
+    if (canOpenUpdateDialog) {
       iconActions.push({
         tag: "update",
         label: draftLabel("update"),
@@ -1393,6 +1448,37 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   };
 
   /**
+   * Why the plan body is blank, when it is.
+   *
+   * This used to be one string — `revisionContent || "# No revision content available"` — fed
+   * straight into `PlanMarkdown`, which is wrong twice over. It rendered a *fake `# ` heading*, so a
+   * plan whose body genuinely was that sentence looked identical to a plan that had none; and it
+   * gave one answer to three different questions, which is how plans 00003 and 00004 came to sit
+   * there looking merely empty.
+   *
+   * Those two are the concrete evidence. Their folders have a `Revisions/` directory with nothing in
+   * it, `revisionCount: 0`, and a `plan.yaml` whose `updated` still equals its `created` — their
+   * CreatePlan jobs (00010 and 00013) were killed by stop-all between `tendril plan create`, which
+   * makes the folder, and `tendril plan write-revision`, which writes `001.md`. Nothing was ever
+   * written, nothing failed to load, and the page said neither.
+   *
+   * So the three cases are named apart:
+   *  - `writing`  — a job holds the plan right now, so the body is expected to be absent.
+   *  - `never`    — no revision file exists (`revisionCount === 0`). The creating job did not finish.
+   *  - `unreadable` — the count says a revision is on disk but its text came back empty, which is a
+   *    read fault rather than a plan that was never drafted, and must not be reported as the latter.
+   */
+  const emptyBodyReason: "writing" | "never" | "unreadable" | null = revisionContent
+    ? null
+    : IN_FLIGHT_PLAN_STATES.includes(effectivePlan.state) ||
+        hasActiveJob("CreatePlan") ||
+        hasActiveJob("UpdatePlan")
+      ? "writing"
+      : (plan.revisionCount ?? 0) === 0
+        ? "never"
+        : "unreadable";
+
+  /**
    * The plan document pane.
    *
    * Not wrapped in a scroll container of its own: `PlanTabView.Build` notes "PlanMarkdown owns its own
@@ -1406,38 +1492,109 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           <ExecutionFailedCallout plan={effectivePlan} jobs={jobs} />
         </div>
       )}
+      {/* An absent body is prose, not a document: rendering it through `PlanMarkdown` is what made it
+          indistinguishable from a real plan.
+
+          All three reasons go through `Callout`, the library primitive `ErrorBanner` already wraps,
+          rather than the three different treatments this used to have (two bare `<p>`s and one
+          banner). One shape, three variants: the severity is the only thing that differs, which is
+          what `Callout`'s variants are for. `Small` density and the icon are `ErrorBanner`'s
+          choices, kept so the `unreadable` case renders exactly as it did. */}
+      {emptyBodyReason ? (
+        <div className="px-8 py-6">
+          {emptyBodyReason === "writing" ? (
+            <Callout.Info
+              data-testid="revision-writing"
+              density={Densities.Small}
+              icon={false}
+              className="text-sm"
+            >
+              The agent is still drafting this plan. Its body appears here once the job writes the
+              first revision.
+            </Callout.Info>
+          ) : emptyBodyReason === "never" ? (
+            <Callout.Warning
+              data-testid="revision-never-written"
+              density={Densities.Small}
+              icon={false}
+              className="text-sm"
+            >
+              <p>
+                This plan has no revisions. Its folder was created but the job that was drafting it
+                never wrote one, so there is no plan body to show.
+              </p>
+              {/* The button, not the sentence "Run Update Plan to draft it".
+
+                  That sentence was a dead end precisely here. The badged *Update Plan* secondary is
+                  gated on `pendingWork > 0` -- unresolved annotations plus answered questions -- and
+                  a plan with no revision has neither, because there is no body to annotate or answer
+                  against. So the only control that remained was an unlabeled wand glyph in the
+                  topbar, which folds into an overflow menu below 720px. The instruction named a
+                  button the reader could not find.
+
+                  `canOpenUpdateDialog` is the same predicate that decides whether that wand renders,
+                  so this button appears exactly when the dialog is reachable and is absent when it
+                  is not -- rather than telling the reader to do something impossible. */}
+              {canOpenUpdateDialog && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3"
+                  data-testid="revision-never-written-update"
+                  onClick={() => setActiveDialog("update")}
+                >
+                  <WandSparkles className="size-4" aria-hidden="true" />
+                  Update Plan
+                </Button>
+              )}
+            </Callout.Warning>
+          ) : (
+            <ErrorBanner data-testid="revision-unreadable">
+              This plan records {plan.revisionCount} revision
+              {plan.revisionCount === 1 ? "" : "s"} on disk, but its latest revision came back
+              empty. The file may be unreadable.
+            </ErrorBanner>
+          )}
+        </div>
+      ) : null}
       {/* `PlanTabView.Build` composes this as
           `new PlanMarkdown(annotatedContent).Article().DangerouslyAllowLocalFiles()
            .Annotations(...).OnAnnotationsChange(...).OnAnswersChange(onAnswerChanged)
            .ScrollTo(scrollTo)`. `OnAnswersChange` is what makes the questions in the document
           answerable at all; without it `PlanMarkdown` passes `undefined` as its answer callback and
-          "undefined puts every callout in read-only mode". */}
-      <PlanMarkdown
-        id="plan-markdown"
-        content={revisionContent || "# No revision content available"}
-        wireframeBaseUrl={wireframeBaseUrl}
-        article
-        dangerouslyAllowLocalFiles
-        annotations={annotations}
-        scrollTo={scrollTo}
-        events={["OnAnnotationsChange", "OnAnswersChange"]}
-        eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-          if (evt === "OnAnnotationsChange") {
-            const next = args?.[0];
-            if (Array.isArray(next)) handleAnnotationsChange(next as Annotation[]);
-            return;
-          }
-          if (evt !== "OnAnswersChange") return;
-          const payload = args?.[0] as { questionId?: string; answer?: unknown } | undefined;
-          if (!payload?.questionId) return;
-          // `null` on the wire means the key goes; a list is the answer. Either way the merge takes a
-          // list, and an empty one removes the `answer` key.
-          const value = Array.isArray(payload.answer)
-            ? (payload.answer as unknown[]).map((entry) => String(entry))
-            : [];
-          void applyAnswer(payload.questionId, value);
-        }}
-      />
+          "undefined puts every callout in read-only mode".
+
+          Hidden entirely while the body is absent: `PlanMarkdown` with an empty string is what used
+          to require the fake-heading placeholder. */}
+      {!emptyBodyReason && (
+        <PlanMarkdown
+          id="plan-markdown"
+          content={revisionContent}
+          wireframeBaseUrl={wireframeBaseUrl}
+          article
+          dangerouslyAllowLocalFiles
+          annotations={annotations}
+          scrollTo={scrollTo}
+          events={["OnAnnotationsChange", "OnAnswersChange"]}
+          eventHandler={(evt: string, _id: string, args?: unknown[]) => {
+            if (evt === "OnAnnotationsChange") {
+              const next = args?.[0];
+              if (Array.isArray(next)) handleAnnotationsChange(next as Annotation[]);
+              return;
+            }
+            if (evt !== "OnAnswersChange") return;
+            const payload = args?.[0] as { questionId?: string; answer?: unknown } | undefined;
+            if (!payload?.questionId) return;
+            // `null` on the wire means the key goes; a list is the answer. Either way the merge takes
+            // a list, and an empty one removes the `answer` key.
+            const value = Array.isArray(payload.answer)
+              ? (payload.answer as unknown[]).map((entry) => String(entry))
+              : [];
+            void applyAnswer(payload.questionId, value);
+          }}
+        />
+      )}
     </div>
   );
 
@@ -1567,8 +1724,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           </dl>
 
           {/* Repos and commits have no row of their own in V1's Details tab; they are kept here
-              because V2's Git tab is the only other place they appear and it is hidden while a
-              plan has nothing in git yet. */}
+              because V2's Git tab is the only other place they appear, and that tab now exists only
+              for a plan under review. For every Draft — which is most of them — this is the only
+              place they are readable at all, so these two panels are load-bearing rather than a
+              duplicate of the Git tab. */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">

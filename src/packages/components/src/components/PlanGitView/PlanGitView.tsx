@@ -257,7 +257,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                     tooltip={false}
                     size="xs"
                     variant="outline"
-                    className="border-border bg-transparent hover:bg-muted"
+                    className="border-border bg-transparent hover:bg-secondary/60"
                     onClick={() => copyPath(normalizePath(worktree.path))}
                   >
                     <Copy className="h-3 w-3" />

@@ -485,6 +485,15 @@ fn apple_pins_the_only_model_fm_serve_offers_and_drops_effort() {
         "every tool must be off, found some enabled: {tools:?}"
     );
     for required in [
+        // The catch-all, and the only entry that covers tools this code cannot name: OpenCode
+        // registers one per discovered `SKILL.md` folder and one per tool an attached MCP server
+        // advertises. Both leaked past a list of builtins (this repo's six skills cost 1,305 input
+        // tokens against 507 in an empty directory; a one-tool probe server cost 47 more), and the
+        // skills are what made the model announce a `tendrillable` call it never emitted.
+        "*",
+        // Kept named alongside the wildcard so a regression in the skill surface specifically
+        // fails here, rather than silently restoring the loop.
+        "skill",
         "webfetch",
         "task",
         "todowrite",
@@ -521,6 +530,19 @@ fn apple_pins_the_only_model_fm_serve_offers_and_drops_effort() {
     assert!(
         prompt.contains("square brackets"),
         "the prompt has to name the shape it was hallucinating: {prompt}"
+    );
+    // The model cannot act, and the turn ends with its reply, so an announced intent is never
+    // carried out -- that is what made a chat repeat "I will now find these issues" verbatim after
+    // the user pointed out nothing had happened.
+    assert!(
+        prompt.contains("no later in which to act"),
+        "the prompt has to rule out promising work it cannot do in a later turn: {prompt}"
+    );
+    // Removing the promise alone made it invent: the same question came back with three plausible
+    // fabricated issues. It needs a truthful alternative to offer in place of the promise.
+    assert!(
+        prompt.contains("cannot access it"),
+        "the prompt has to give it an honest refusal to use instead of inventing: {prompt}"
     );
 
     // The Apple stanza shares `OPENCODE_CONFIG_CONTENT` with the MCP servers, because `opencode

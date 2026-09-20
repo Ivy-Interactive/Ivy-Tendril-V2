@@ -10,15 +10,15 @@ export const buttonVariant = cva(
         default: "bg-primary text-primary-foreground shadow-sm hover:brightness-90",
         destructive: "bg-destructive text-destructive-foreground shadow-sm hover:brightness-90",
         outline:
-          "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",
+          "border border-input bg-background shadow-sm hover:bg-secondary/60 hover:text-foreground",
         secondary: "bg-secondary text-secondary-foreground shadow-sm hover:brightness-90",
         success: "bg-success text-success-foreground shadow-sm hover:brightness-90",
         warning: "bg-warning text-warning-foreground shadow-sm hover:brightness-90",
         info: "bg-info text-info-foreground shadow-sm hover:brightness-90",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
+        ghost: "hover:bg-secondary/60 hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline brightness-90 hover:brightness-100",
         inline: "text-primary underline hover:no-underline !p-0 !h-auto",
-        ai: "bg-background  hover:bg-accent hover:text-accent-foreground",
+        ai: "bg-background  hover:bg-secondary/60 hover:text-foreground",
       },
       size: {
         default: `${controlHeight.Medium} px-4 ${densityText.Medium}`,

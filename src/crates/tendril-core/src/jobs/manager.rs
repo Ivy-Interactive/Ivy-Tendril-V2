@@ -66,6 +66,17 @@ pub const STUCK_JOB_HARD_CAP_MARGIN: Duration = Duration::from_secs(300);
 const STALE_JOB_EVICTION_AGE: Duration = Duration::from_secs(60 * 60);
 /// Number of most recent terminal jobs kept in memory regardless of age.
 const STALE_JOB_KEEP_RECENT: usize = 20;
+/// How much of a cancelled `CreatePlan`'s log [`JobManager::attribute_created_plan`] reads looking for
+/// the `PlanId:` marker.
+///
+/// A window, not the whole file: `finish_job` can afford to read the entire log because it runs once
+/// for a run that is over, but a stop-all sweeps every job at once and the operator is waiting on it.
+/// These logs are routinely hundreds of thousands of lines -- the two real cancellations this was
+/// written for are 196 and 105 lines and 400-600 KB. The marker is printed by the `plan create` tool
+/// call, which is the first thing the promptware does, so a run cancelled before it wrote a revision
+/// has done little since; 2000 lines covers that with room to spare and bounds the read at a few
+/// hundred KB per job.
+const CANCEL_LOG_TAIL: usize = 2000;
 /// Floor on how often a running job's `LastOutputAt` is written, so a chatty agent does not hammer
 /// SQLite once per output line.
 const LAST_OUTPUT_PERSIST_INTERVAL: Duration = Duration::from_secs(5);
@@ -941,6 +952,23 @@ impl JobManager {
             tracing::info!("Job {}: killed process tree {}", id, p);
         }
 
+        // A `CreatePlan` makes its plan in two steps -- `tendril plan create` writes the folder, an
+        // empty `Revisions/` and `plan.yaml`, and a separate later `tendril plan write-revision`
+        // writes `001.md` -- and this path runs between them often enough to matter. `finish_job`
+        // resolves the folder such a run produced and records it; a cancellation never reaches
+        // `finish_job`, so the job's row kept the empty `plan_file` it was started with and the link
+        // survived only in `Logs/Jobs/<id>.raw.jsonl`.
+        //
+        // The user's own disk is the evidence: plans 00003 and 00004 sit there as folders with an
+        // empty `Revisions/`, and jobs 00010 and 00013 -- both `Stopped by stop-all`, both with
+        // `PlanId:` in their logs -- carry an empty `PlanFile` and no `ReportedPlanId`. So the UI
+        // could render the plan as undrafted (it keys that off `revisionCount == 0`) but could not
+        // name the job that abandoned it, and the operator met two orphans with nothing linking them
+        // to the stop they had just pressed.
+        if job.job_type == "CreatePlan" && job.plan_file.trim().is_empty() {
+            self.attribute_created_plan(&mut job).await;
+        }
+
         job.status = JobStatus::Stopped;
         job.status_message = Some(message.unwrap_or("Cancelled").to_string());
         job.completed_at = Some(Utc::now());
@@ -956,6 +984,63 @@ impl JobManager {
         release_wait_dependents(&self.ctx(), id).await;
 
         Ok(true)
+    }
+
+    /// Records, on a cancelled `CreatePlan`, the plan folder the run had already made -- and marks
+    /// that plan `Failed` when nothing was ever written into it.
+    ///
+    /// Two separate repairs, both for the same two-step gap described at the call site.
+    ///
+    /// The link first: [`resolve_created_plan_folder`] is the resolver `finish_job` uses, and it reads
+    /// the `PlanId: <id>` marker out of the run's own log, so a job killed after `tendril plan create`
+    /// has already printed everything needed to find its folder. Only the tail of the log is read:
+    /// the marker is printed by a tool call, these files reach megabytes on a long run, and a sweep
+    /// stopping fifteen jobs at once would otherwise read all fifteen in full while the operator
+    /// waits.
+    ///
+    /// Then the marking. A folder with no revision in it is not a plan -- its `Revisions/` is empty
+    /// and its body will never arrive, because the agent that was going to write it is dead. Left in
+    /// `Draft` it is indistinguishable from a plan waiting to be executed, which is how 00003 and
+    /// 00004 came to sit in the operator's Drafts list looking merely unread. `Failed` is deliberate
+    /// and matches what `finish_job` does to an execution that produced nothing: the folder stays on
+    /// disk, so nothing the agent did write is lost and `Update Plan` can still draft into it.
+    ///
+    /// Marking, not deleting, even though `finish_job`'s own empty-`CreatePlan` path deletes. A
+    /// deletion there follows the agent saying it finished, which makes an empty folder proof that
+    /// the run produced nothing. Here the operator interrupted a run that was still going, and its
+    /// folder may hold attachments or a half-written `plan.yaml`; destroying that as a side effect of
+    /// a stop is irreversible and is not what "stop" means.
+    async fn attribute_created_plan(&self, job: &mut JobItem) {
+        let settings = self.settings.read().await.clone();
+        let plans_dir = self.plans_dir(&settings);
+
+        let mut tail = Vec::new();
+        if let Ok(Some(lines)) = read_raw_log(&self.tendril_home, &job.id, Some(CANCEL_LOG_TAIL)) {
+            tail.extend(lines);
+        }
+
+        let Some(folder) = resolve_created_plan_folder(&plans_dir, job, &tail) else {
+            return;
+        };
+
+        job.plan_file = folder.to_string_lossy().to_string();
+        if job.reported_plan_id.is_none() {
+            if let Some(id) = folder.file_name().and_then(|n| n.to_str()) {
+                job.reported_plan_id = Some(id.chars().take(5).collect());
+            }
+        }
+
+        if revision_count(&folder) == 0 {
+            tracing::warn!(
+                "Job {} was stopped before it wrote a revision; marking plan {} Failed",
+                job.id,
+                folder.display()
+            );
+            apply_plan_state(&folder, PlanStatus::Failed);
+            // `revert_plan_state` runs next and would put this straight back to `Draft` from its
+            // `CreatePlan` fallback. It declines to move a plan that is already `Failed`, and this is
+            // the write that makes it decline.
+        }
     }
 
     /// Registers a `Running` job whose PID survived a daemon restart, so something watches it through
@@ -1151,8 +1236,16 @@ impl JobManager {
     ///
     /// Repeated up to three passes because stopping one job frees a slot and can promote a queued job
     /// mid-sweep. Returns the ids actually stopped.
+    ///
+    /// Each pass cancels its candidates concurrently rather than one at a time. Every
+    /// [`cancel_job`](Self::cancel_job) that finds a live PID pays [`DEFAULT_KILL_GRACE`] -- up to 3s
+    /// of `SIGTERM`-then-poll inside `kill_tree` -- and awaiting those in sequence made them sum:
+    /// "Stop All" on 15 running jobs took ~45s in the UI, which reads as a hung daemon rather than a
+    /// stop. The kills are independent, so the grace periods should overlap; concurrently the same
+    /// sweep costs one grace period, ~3s worst case, and less whenever the agents honour `SIGTERM`.
     pub async fn stop_all_jobs(&self) -> Result<Vec<String>> {
         let mut stopped = Vec::new();
+        let mut first_error: Option<TendrilError> = None;
         for _ in 0..3 {
             let mut candidates: Vec<String> = self
                 .jobs
@@ -1173,10 +1266,40 @@ impl JobManager {
             }
             candidates.sort();
 
-            for id in candidates {
-                if self.cancel_job(&id, Some("Stopped by stop-all")).await? {
-                    stopped.push(id);
+            // `join_all` over futures that each borrow `&self`, not spawned tasks: spawning would
+            // need `Arc<Self>` and change this signature for every caller (the `stop-all` route, the
+            // CLI). One task per job buys nothing anyway -- the only blocking part, `kill_tree`, is
+            // already on `spawn_blocking` inside `cancel_job`, so these futures are pure await points
+            // and the fan-out is what makes the graces overlap.
+            let outcomes = futures_util::future::join_all(
+                candidates
+                    .iter()
+                    .map(|id| self.cancel_job(id, Some("Stopped by stop-all"))),
+            )
+            .await;
+
+            // A failure no longer aborts the sweep. The old `?` returned on the first error with the
+            // jobs it had already killed unreported, so the caller saw an HTTP 500 and a Jobs list
+            // still showing rows that were in fact dead -- and the jobs after the failing one were
+            // never even tried. Stopping 14 of 15 and saying so beats stopping 14 and claiming
+            // nothing happened. The first error is kept and returned only if the sweep stopped
+            // nothing at all, which is the one case where "stop-all failed" is the honest answer.
+            // Matches the frontend's own loop in `jobsStore.stopEachIds`, which keeps going too.
+            for (id, outcome) in candidates.into_iter().zip(outcomes) {
+                match outcome {
+                    Ok(true) => stopped.push(id),
+                    Ok(false) => {}
+                    Err(e) => {
+                        tracing::warn!("stop-all: failed to cancel job {}: {}", id, e);
+                        first_error.get_or_insert(e);
+                    }
                 }
+            }
+        }
+
+        if stopped.is_empty() {
+            if let Some(e) = first_error {
+                return Err(e);
             }
         }
 
@@ -3173,12 +3296,25 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
                                 // `total_cost_usd` is the field Claude Code reports, and it is the
                                 // agent's own figure — preferred over our estimate, which cannot know
                                 // the caller's plan or tier.
+                                //
+                                // `usage.cost_usd` is the alias that matters most in practice, and it
+                                // was the one missing. This loop reads `.eventwire.jsonl` in
+                                // preference to `.raw.jsonl`, and the two files spell the figure
+                                // differently: the raw frame carries a top-level `total_cost_usd`,
+                                // which the chain below already caught, but the normalized eventwire
+                                // frame the loop actually reaches carries `usage.cost_usd` beside
+                                // `usage.cost_source: "agent"`. So the chain missed every real run --
+                                // job 00012 reports `usage.cost_usd = 1.2584212500000005` and was
+                                // still recorded as `estimated`, and `CostSource = 'agent'` appeared
+                                // on no row in the database at all. Every job was billed at our guess
+                                // while the exact figure sat one key away.
                                 let provider_cost = usage
                                     .get("cost")
                                     .or_else(|| v.get("cost"))
                                     .or_else(|| v.get("total_cost"))
                                     .or_else(|| v.get("total_cost_usd"))
                                     .or_else(|| usage.get("total_cost_usd"))
+                                    .or_else(|| usage.get("cost_usd"))
                                     .and_then(|c| c.as_f64());
 
                                 if let Some(cost) = provider_cost {

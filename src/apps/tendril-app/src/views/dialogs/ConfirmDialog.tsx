@@ -65,6 +65,21 @@ const VARIANT_CLASS: Record<ConfirmVariant, "destructive" | "warning" | "default
  * button of every one of these dialogs. Framework's rule wins: a delete that happens because a
  * keystroke arrived a moment late is not recoverable.
  *
+ * 7. **Ctrl/Cmd+Enter confirms**, via `DialogShell`'s `shortcut` — the same declaration the seven
+ *    form dialogs already carry (`UpdatePlanDialog`, `CreatePrDialog`, `CreateIssueDialog`, …), so
+ *    the chord means "fire this dialog's primary action" everywhere rather than in one place.
+ *
+ *    This is the keyboard half of V1's `.ShortcutKey(...)` restored under the modifier, and it is
+ *    what closes the Backspace flow: `PlanDetailView`/`ReviewView` bind Backspace to open the delete
+ *    confirm, and until now the only way to answer it was the mouse or three Tab presses past
+ *    Cancel, Skipped and Icebox.
+ *
+ *    It does **not** reopen the hazard point 6 exists for. That hazard is a *bare* Enter landing on
+ *    an auto-focused destructive button; focus still goes to Cancel, bare Enter there still
+ *    declines, and a two-key chord pressed inside an open modal is a deliberate answer, not a
+ *    keystroke that arrived late. `onShortcut` is withheld entirely while the confirm is disabled or
+ *    busy, so the chord can never submit what the button itself refuses.
+ *
  * `secondaryAction` is the one addition to the two-button footer, for V1's Delete Plan, whose
  * alternatives are the *reversible* answers and are read before the destructive one.
  */
@@ -87,6 +102,12 @@ export function ConfirmDialog({
   const cancelRef = React.useRef<HTMLButtonElement>(null);
   const bodyId = React.useId();
 
+  // The exact condition on the confirm button below, so the chord and the click can never disagree.
+  // `JobsView`'s clear-jobs confirm is the live case: it renders with `confirmDisabled` while the
+  // scope it would clear is empty, and a shortcut that ignored that would dispatch the clear the
+  // button is refusing.
+  const confirmArmed = !isBusy && !confirmDisabled;
+
   return (
     <DialogShell
       isOpen={isOpen}
@@ -95,6 +116,8 @@ export function ConfirmDialog({
       testId={testId}
       width={width}
       initialFocusRef={cancelRef}
+      shortcut="Ctrl+Enter"
+      onShortcut={confirmArmed ? () => void onConfirm() : undefined}
       footer={
         <>
           <Button
