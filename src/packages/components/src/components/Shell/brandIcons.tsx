@@ -1,6 +1,6 @@
 // Brand icons for coding agents, ported from the Ivy framework's Icon component
 // (ClaudeCode, Antigravity, OpenCode, IvyCorner) and Simple Icons (OpenAI, Gemini,
-// Copilot, Anthropic, Apple) so the shell bundle does not depend on react-icons.
+// Copilot, Anthropic, Apple, Cursor) so the shell bundle does not depend on react-icons.
 import React from "react";
 import { ChevronUp, MessageCircle, Terminal } from "lucide-react";
 
@@ -91,6 +91,17 @@ const AppleIcon = svgIcon(
   "M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z",
 );
 
+// The Cursor cube, inlined from Simple Icons for the same reason `AppleIcon` above is: `Icon.tsx`
+// renders this mark through react-icons' `SiCursor`, which this file cannot import, so the geometry
+// is copied verbatim and the two renderings stay identical rather than drifting into two cubes.
+//
+// The mark is one path with two subpaths -- the outer cube and the inner face -- which reads as a
+// hole under the default nonzero fill rule, the way Simple Icons draws it.
+const CursorIcon = svgIcon(
+  "0 0 24 24",
+  "M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23",
+);
+
 const ChevronUpIcon = ({ size = 16, className }: BrandIconProps) => (
   <ChevronUp size={size} className={className} />
 );
@@ -115,6 +126,7 @@ export const brandIcons: Record<string, React.FC<BrandIconProps>> = {
   Anthropic: AnthropicIcon,
   Discord: DiscordIcon,
   Apple: AppleIcon,
+  Cursor: CursorIcon,
   ChevronUp: ChevronUpIcon,
   Terminal: TerminalIcon,
   MessageCircle: MessageCircleIcon,

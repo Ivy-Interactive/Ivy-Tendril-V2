@@ -128,6 +128,16 @@ fn tier_defaults_apply_with_no_coding_agents_configured() {
             Some("medium"),
         ),
         ("ivy", "deep", Some("claude-opus-5"), Some("max")),
+        // Cursor's tiers name the Thinking family at the top, because plain Opus 5 stops at `high`
+        // on Cursor and a `deep` tier that silently clamps is not a deep tier.
+        (
+            "cursor",
+            "deep",
+            Some("claude-opus-5-thinking"),
+            Some("max"),
+        ),
+        ("cursor", "balanced", Some("claude-sonnet-5"), Some("high")),
+        ("cursor", "quick", Some("gemini-3.8-flash"), Some("low")),
         ("ivy", "quick", Some("gemini-3.8-flash"), Some("low")),
         // `fm serve` serves one model and takes no effort argument, so every tier resolves to the
         // same run and neither knob is rendered.

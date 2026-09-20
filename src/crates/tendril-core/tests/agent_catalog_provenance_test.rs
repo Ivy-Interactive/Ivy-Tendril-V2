@@ -136,6 +136,21 @@ fn each_agent_offers_exactly_the_providers_it_can_serve() {
     assert!(copilot.iter().any(|id| id.starts_with("gpt-")));
     assert!(!copilot.iter().any(|id| id.contains("gemini")));
 
+    // Cursor resells four vendors at once, which is the widest catalogue any agent declares -- and
+    // the reason its ladders live on the model rows rather than on the agent.
+    let cursor = model_ids("cursor");
+    assert!(cursor.iter().any(|id| id.starts_with("claude-")));
+    assert!(cursor.iter().any(|id| id.starts_with("gpt-")));
+    assert!(cursor.iter().any(|id| id.starts_with("gemini-")));
+    assert!(cursor.iter().any(|id| id.starts_with("kimi-")));
+    // Its own house models -- `composer`, `muse-spark`, `auto`, the Grok rows -- are deliberately
+    // absent: there is no rate card for them in `model_specs`, and a model the picker offers but
+    // cannot price reports a real run as costing nothing.
+    assert!(!cursor
+        .iter()
+        .any(|id| id.contains("composer") || id.contains("muse") || id.contains("grok")));
+    assert!(!cursor.iter().any(|id| id == "auto"));
+
     // The `ivy` row is no longer offered - V2 bundles OpenCode rather than shipping a rebranded
     // agent - so it has no model list to check here. Its ladder is still resolvable, because an
     // existing `config.yaml` may still name the id, and that is what the two assertions below check.

@@ -64,6 +64,7 @@ pub fn build_agent_spec(provider: &str, config: &AgentLaunchConfig) -> AgentProc
         "gemini" => build_gemini_spec(config),
         "opencode" => build_opencode_spec(config),
         "copilot" => build_copilot_spec(config),
+        "cursor" => build_cursor_spec(config),
         "ivy" => build_ivy_spec(config),
         "openaiproxy" | "proxy" => build_openai_proxy_spec(config),
         "apple" => build_apple_spec(config),
@@ -181,6 +182,22 @@ pub fn build_agent_pty_spec(provider: &str, config: &AgentPtyConfig) -> AgentPty
                 argv.push(model.to_string());
             }
             prompt_flag = Some("-i");
+        }
+        // Cursor takes its reasoning level inside the model id rather than as a flag, so the pty
+        // path composes the same way the one-shot one does — see `format_cursor_model`. `--trust`
+        // is still required (an untrusted workspace prompts before the TUI is usable), but
+        // `--print` / `--output-format` are not: this session is the interface, not a stream to
+        // parse. `--force` is left off too, because an interactive user is there to approve.
+        "cursor" => {
+            argv.push(resolve_cursor_binary());
+            argv.push("--trust".to_string());
+            if let Some(model) = model {
+                let composed = format_cursor_model(Some(model), None);
+                if !composed.is_empty() {
+                    argv.push("--model".to_string());
+                    argv.push(composed);
+                }
+            }
         }
         // All four are OpenCode: `ivy` and the proxies are the same CLI pointed at a different
         // base URL, which is why they always shared `build_opencode_spec`. They used to resolve a
@@ -908,6 +925,330 @@ fn build_copilot_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         stdin_content: Some(config.prompt.clone()),
         redirect_stdin: true,
         temp_files,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cursor CLI (cursor-agent)
+// ---------------------------------------------------------------------------
+
+/// The effort rungs `cursor-agent` accepts for each base model, in the order its own `--list-models`
+/// declares them. Empirically read off the CLI (`cursor-agent --model <bogus>` prints the whole
+/// accepted list), not guessed: the ladder is a property of the *family*, and composing a rung a
+/// family does not have is rejected outright — `claude-opus-5-max` and `gemini-3.8-flash-xhigh` are
+/// both "Cannot use this model", while `claude-opus-5-high` and `gpt-5.5-extra-high` are fine.
+///
+/// A family listed here with rungs also accepts its **bare** id, which the server resolves to that
+/// family's own default rung (`gpt-5.6-terra` launches as "GPT-5.6 Terra 272K Medium"). That is why
+/// [`format_cursor_model`] can pass the bare id through for an unset effort rather than having to
+/// pick a rung on the CLI's behalf.
+///
+/// The `-fast` variants of most of these ids exist too, and are deliberately not offered: `-fast` is
+/// a separately-billed priority tier, and Tendril has no rate card for it.
+const CURSOR_EFFORT_LADDERS: &[(&str, &[&str])] = &[
+    // Anthropic — the two five-rung families and the three-rung Opus 5.
+    ("claude-opus-5", &["low", "medium", "high"]),
+    (
+        "claude-opus-5-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-opus-4-8",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-opus-4-8-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-opus-4-7",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-opus-4-7-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-sonnet-5",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    // Sonnet 5 Thinking is the one Anthropic row with a gap in the middle of its ladder: the CLI
+    // lists `-thinking-low`, `-medium`, `-high`, `-xhigh` and `-max`, so it is declared whole.
+    (
+        "claude-sonnet-5-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-fable-5-1",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-fable-5-1-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    // OpenAI — the Sol/Terra/Luna trio share one six-rung ladder that starts at `none`.
+    (
+        "gpt-5.6-sol",
+        &["none", "low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "gpt-5.6-terra",
+        &["none", "low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "gpt-5.6-luna",
+        &["none", "low", "medium", "high", "xhigh", "max"],
+    ),
+    // 5.5 spells its top rung `extra-high` rather than `xhigh`; see `cursor_effort_rung`.
+    ("gpt-5.5", &["none", "low", "medium", "high", "extra-high"]),
+    ("gpt-5.4", &["low", "medium", "high", "xhigh"]),
+    ("gpt-5.4-mini", &["none", "low", "medium", "high", "xhigh"]),
+    ("gpt-5.3-codex", &["low", "high", "xhigh"]),
+    ("gpt-5.2", &["low", "high", "xhigh"]),
+    // Google.
+    ("gemini-3.8-flash", &["low", "medium", "high"]),
+    ("gemini-3.7-flash", &["low", "medium", "high"]),
+    ("gemini-3.6-flash", &["minimal", "low", "medium", "high"]),
+    // Moonshot.
+    ("kimi-k3", &["low", "high", "max"]),
+];
+
+/// The rungs `cursor-agent` accepts for `base`, or `None` when the family takes no effort at all
+/// (`gemini-3.1-pro` and `gpt-5-mini` are listed by the CLI as bare ids only).
+fn cursor_efforts_for(base: &str) -> Option<&'static [&'static str]> {
+    let wanted = base.trim().to_ascii_lowercase();
+    CURSOR_EFFORT_LADDERS
+        .iter()
+        .find(|(id, _)| *id == wanted)
+        .map(|(_, efforts)| *efforts)
+}
+
+/// Tendril's effort level rendered as the rung `base` actually spells, or `None` when that family
+/// has no rung for it.
+///
+/// Two adjustments, both forced by the CLI rather than chosen:
+/// - `gpt-5.5` spells its top rung `extra-high`, so Tendril's `xhigh` maps onto that.
+/// - A family whose ladder stops short of the requested level gets the highest rung it *does* have,
+///   the same lossy-downward mapping `build_copilot_spec` applies when it folds `max` onto `xhigh`.
+///   Refusing instead would mean a picker offering `max` for a Claude model and a launch that dies.
+fn cursor_effort_rung(base: &str, effort: &str) -> Option<&'static str> {
+    let ladder = cursor_efforts_for(base)?;
+    let wanted = effort.trim().to_ascii_lowercase();
+
+    // `xhigh` and `extra-high` are the same rung under two spellings, so a request for either
+    // matches whichever one this family declares.
+    let aliases: &[&str] = match wanted.as_str() {
+        "xhigh" | "extra-high" => &["xhigh", "extra-high"],
+        _ => &[],
+    };
+    if let Some(found) = ladder
+        .iter()
+        .find(|rung| **rung == wanted || aliases.contains(rung))
+    {
+        return Some(found);
+    }
+
+    // Not offered by this family: fall to the nearest rung below, by the ladder's own order. The
+    // levels are declared weakest-first, so the last rung is the strongest this family has.
+    const ORDER: &[&str] = &[
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "extra-high",
+        "max",
+    ];
+    let wanted_rank = ORDER.iter().position(|level| *level == wanted)?;
+    ladder
+        .iter()
+        .rfind(|rung| {
+            ORDER
+                .iter()
+                .position(|level| level == *rung)
+                .is_some_and(|rank| rank <= wanted_rank)
+        })
+        .copied()
+        // Every rung this family has is stronger than what was asked for — take its weakest.
+        .or_else(|| ladder.first().copied())
+}
+
+/// The single id `cursor-agent --model` takes, composed from Tendril's separate (model, effort)
+/// pair.
+///
+/// Cursor is the one provider with no `--effort` flag: the reasoning level is *baked into the model
+/// id*, so `claude-opus-5` at high effort is the id `claude-opus-5-high`. The bracket override the
+/// `--help` text advertises (`'claude-opus-4-8[context=1m,effort=high]'`) is not accepted by the
+/// server, so composition is the only way to send an effort at all.
+///
+/// The rules, in order:
+/// - No model, or `default`: the empty string, and the caller sends no `--model` — Cursor then picks
+///   the account's own default, exactly as leaving the flag off does for every other provider.
+/// - An id already carrying a rung (`gpt-5.2-high`), or one of the `-fast` priority ids, is passed
+///   through untouched: the caller composed it themselves.
+/// - Effort unset or `default`: the **bare** base id. Verified to launch for every family declared
+///   in [`CURSOR_EFFORT_LADDERS`], including the ones whose `--list-models` output shows only
+///   composed ids — `kimi-k3` resolves to "Kimi K3 Low" and `gpt-5.6-terra` to "Terra 272K Medium".
+///   The server picks the family's own default rung, which is a better default than one Tendril
+///   invents.
+/// - Otherwise `<base>-<rung>`, where the rung is what that family spells this level (see
+///   [`cursor_effort_rung`]), and a family with no ladder at all keeps its bare id.
+pub fn format_cursor_model(model: Option<&str>, effort: Option<&str>) -> String {
+    let base = model.unwrap_or("").trim();
+    if base.is_empty() || base.eq_ignore_ascii_case("default") {
+        return String::new();
+    }
+
+    let lower = base.to_ascii_lowercase();
+    // An id the caller already composed. `-thinking` is part of a family name rather than a rung, so
+    // it is not treated as one.
+    let composed = lower.ends_with("-fast")
+        || CURSOR_EFFORT_LADDERS.iter().any(|(family, rungs)| {
+            rungs
+                .iter()
+                .any(|rung| lower == format!("{}-{}", family, rung))
+        });
+    if composed {
+        return base.to_string();
+    }
+
+    let Some(effort) = effort
+        .map(str::trim)
+        .filter(|e| !e.is_empty() && !e.eq_ignore_ascii_case("default"))
+    else {
+        return base.to_string();
+    };
+
+    match cursor_effort_rung(&lower, effort) {
+        Some(rung) => format!("{}-{}", base, rung),
+        // A family with no effort ladder — the flag would be rejected, so the bare id stands.
+        None => base.to_string(),
+    }
+}
+
+/// Cursor's own tool names, which `--allowed-tools` and `--exclude-tools` validate strictly against
+/// (an unknown name is a hard error listing all sixty-nine of them). Mirrors
+/// [`translate_copilot_tool`]: a canonical Tendril tool maps onto Cursor's spelling, and anything
+/// already spelled Cursor's way (`*_tool_call`) passes through.
+pub fn translate_cursor_tool(canonical: &str) -> String {
+    let lower = canonical.to_ascii_lowercase();
+    // Already one of Cursor's own names.
+    if lower.ends_with("_tool_call") {
+        return lower;
+    }
+    // A rule carrying a directory (`Write(/plans/**)`) names the tool before the parenthesis.
+    let bare = lower.split('(').next().unwrap_or(&lower).trim().to_string();
+    match bare.as_str() {
+        "read" => "read_tool_call".to_string(),
+        "write" | "edit" => "edit_tool_call".to_string(),
+        "bash" => "shell_tool_call".to_string(),
+        "glob" => "glob_tool_call".to_string(),
+        "grep" => "grep_tool_call".to_string(),
+        "ls" | "list" => "ls_tool_call".to_string(),
+        "webfetch" => "web_fetch_tool_call".to_string(),
+        "websearch" => "web_search_tool_call".to_string(),
+        "task" => "task_tool_call".to_string(),
+        "todowrite" | "todoread" => "update_todos_tool_call".to_string(),
+        other => format!("{}_tool_call", other.replace(['-', ' '], "_")),
+    }
+}
+
+fn build_cursor_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
+    // `--trust` is not optional: without it the CLI stops to ask whether the workspace is trusted,
+    // and a `--print` run that stops to ask never produces a line. `--force` is Cursor's spelling of
+    // "run the tools you were given" — `--yolo` is documented as its alias.
+    let mut args = vec![
+        "--print".to_string(),
+        "--output-format".to_string(),
+        "stream-json".to_string(),
+        "--trust".to_string(),
+        "--force".to_string(),
+    ];
+
+    // Cursor has no `--effort` flag: the level is part of the model id. See `format_cursor_model`.
+    let composed = format_cursor_model(config.model.as_deref(), config.effort.as_deref());
+    if !composed.is_empty() {
+        args.push("--model".to_string());
+        args.push(composed);
+    }
+
+    if !config.allowed_tools.is_empty() {
+        let mut translated: Vec<String> = Vec::new();
+        for tool in &config.allowed_tools {
+            let native = translate_cursor_tool(tool);
+            if !translated.contains(&native) {
+                translated.push(native);
+            }
+        }
+        args.push("--allowed-tools".to_string());
+        args.push(translated.join(","));
+    }
+
+    if !config.denied_tools.is_empty() {
+        let mut translated: Vec<String> = Vec::new();
+        for tool in &config.denied_tools {
+            let native = translate_cursor_tool(tool);
+            if !translated.contains(&native) {
+                translated.push(native);
+            }
+        }
+        args.push("--exclude-tools".to_string());
+        args.push(translated.join(","));
+    }
+
+    // Cursor's `--add-dir` is Copilot's: a directory the agent may touch outside the workspace. So
+    // a `Write(/plans/00553/Artifacts/**)` rule has to widen it here too, or the allowlist grants a
+    // path the sandbox then refuses -- `extract_copilot_dirs` is the same extraction, not a
+    // Copilot-specific one.
+    for dir in merge_dirs(
+        &config.writable_directories,
+        &extract_copilot_dirs(&config.allowed_tools),
+    ) {
+        args.push("--add-dir".to_string());
+        args.push(dir);
+    }
+
+    if let Some(sid) = &config.session_id {
+        if !sid.is_empty() {
+            args.push("--resume".to_string());
+            args.push(sid.clone());
+        }
+    }
+
+    // MCP servers are deliberately not rendered. Cursor loads them from a config *file* at a fixed
+    // location and nowhere else: `~/.cursor/mcp.json` or `<workspace>/.cursor/mcp.json`. There is no
+    // `--mcp-config` flag, `CURSOR_CONFIG_DIR` is not consulted for it (`cursor-agent mcp list` under
+    // one still prints "expected in .cursor/mcp.json or ~/.cursor/mcp.json"), and `--plugin-dir`
+    // carries plugins rather than servers. Writing the only file it *does* read means writing into
+    // the user's own repository and clobbering whatever MCP configuration they already keep there,
+    // which is a worse failure than not attaching a server. `build_opencode_spec` documents the same
+    // kind of gap for tool allow-lists. `--approve-mcps` is likewise omitted: with no servers
+    // attached it would only pre-approve whatever the user's own `.cursor/mcp.json` declares.
+
+    args.extend(config.extra_arguments.clone());
+
+    // No `--system-prompt`: the flag exists in the CLI's argument parser but the server rejects it
+    // ("unknown option '--system-prompt'"), so the instructions are prepended to the prompt instead —
+    // the same thing `build_opencode_spec` does for a CLI with no system-prompt argument.
+    let stdin_content = match config.system_prompt.as_deref().filter(|s| !s.is_empty()) {
+        Some(sys) => format!("{}\n\n---\n\n{}", sys, config.prompt),
+        None => config.prompt.clone(),
+    };
+
+    let mut env = default_environment();
+    for (k, v) in &config.environment_variables {
+        env.insert(k.clone(), v.clone());
+    }
+
+    AgentProcessSpec {
+        command: resolve_cursor_binary(),
+        args,
+        environment: env,
+        working_directory: config.working_directory.clone(),
+        stdin_content: Some(stdin_content),
+        redirect_stdin: true,
+        temp_files: Vec::new(),
     }
 }
 
@@ -1739,6 +2080,70 @@ pub fn resolve_opencode_binary() -> String {
     "opencode".to_string()
 }
 
+/// The `cursor-agent` executable's file name on this platform.
+const CURSOR_BINARY: &str = if cfg!(windows) {
+    "cursor-agent.exe"
+} else {
+    "cursor-agent"
+};
+
+/// The Cursor CLI to launch. Same order as [`resolve_opencode_binary`] — a copy shipped beside the
+/// app, then `$HOME/.tendril/bin`, then `PATH` — with Cursor's own installer directory
+/// (`~/.local/bin`, where `install.cursor.com` puts the launcher) as the last place to look.
+///
+/// Falls back to the bare name so a missing install fails as `cursor-agent`'s own "not found" rather
+/// than as a path that does not exist.
+pub fn resolve_cursor_binary() -> String {
+    if let Ok(curr_exe) = std::env::current_exe() {
+        if let Some(parent) = curr_exe.parent() {
+            let direct = parent.join(CURSOR_BINARY);
+            if direct.is_file() {
+                return direct.to_string_lossy().to_string();
+            }
+            let bin = parent.join("bin").join(CURSOR_BINARY);
+            if bin.is_file() {
+                return bin.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        let tendril_managed = Path::new(&home)
+            .join(".tendril")
+            .join("bin")
+            .join(CURSOR_BINARY);
+        if tendril_managed.is_file() {
+            return tendril_managed.to_string_lossy().to_string();
+        }
+    }
+
+    if let Some(p) = find_on_path("cursor-agent") {
+        return p.to_string_lossy().to_string();
+    }
+
+    if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        let fallback = Path::new(&home).join(".local").join("bin");
+        #[cfg(windows)]
+        {
+            for ext in &[".cmd", ".exe", ".bat"] {
+                let candidate = fallback.join(format!("cursor-agent{}", ext));
+                if candidate.is_file() {
+                    return candidate.to_string_lossy().to_string();
+                }
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let candidate = fallback.join(CURSOR_BINARY);
+            if candidate.is_file() {
+                return candidate.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    "cursor-agent".to_string()
+}
+
 /// Tests for the `PATH` an agent is launched with. Inline rather than in `tests/` because the
 /// resolution seam is deliberately private: nothing outside this module should be picking its own
 /// `tendril`.
@@ -1937,5 +2342,122 @@ mod agent_path_tests {
             },
         );
         assert_eq!(spec.environment.get("PATH").unwrap(), "/only/this");
+    }
+}
+
+/// Tests for the one thing Cursor does that no other provider does: it has no effort argument, so
+/// the reasoning rung has to be composed into the model id. Inline because `format_cursor_model` is
+/// a translation between two vocabularies rather than a launch, and the ladders it reads are
+/// private to this module.
+#[cfg(test)]
+mod cursor_model_tests {
+    use super::{format_cursor_model, translate_cursor_tool};
+
+    fn composed(model: &str, effort: &str) -> String {
+        format_cursor_model(Some(model), Some(effort))
+    }
+
+    /// The rule, in the ordinary case: `<base>-<rung>`.
+    #[test]
+    fn an_effort_is_composed_onto_the_model_id() {
+        assert_eq!(composed("claude-opus-5", "low"), "claude-opus-5-low");
+        assert_eq!(composed("claude-opus-5", "medium"), "claude-opus-5-medium");
+        assert_eq!(composed("gpt-5.6-terra", "max"), "gpt-5.6-terra-max");
+        assert_eq!(
+            composed("gemini-3.8-flash", "high"),
+            "gemini-3.8-flash-high"
+        );
+        assert_eq!(composed("kimi-k3", "max"), "kimi-k3-max");
+    }
+
+    /// **The reason the ladders are per-family rather than per-agent.** Cursor rejects a rung its
+    /// family does not have -- `claude-opus-5-max` is not a model -- so a level above the family's
+    /// top has to come down to the top rather than be sent and fail.
+    #[test]
+    fn an_effort_above_a_familys_ladder_clamps_to_its_top() {
+        // Plain Opus 5 stops at `high`; the Thinking variant is the one that goes to `max`.
+        assert_eq!(composed("claude-opus-5", "xhigh"), "claude-opus-5-high");
+        assert_eq!(composed("claude-opus-5", "max"), "claude-opus-5-high");
+        assert_eq!(
+            composed("claude-opus-5-thinking", "max"),
+            "claude-opus-5-thinking-max"
+        );
+        // Gemini's flash rows stop at `high`, and Kimi has no `medium` at all, so `medium` takes
+        // the rung below rather than inventing one.
+        assert_eq!(
+            composed("gemini-3.8-flash", "xhigh"),
+            "gemini-3.8-flash-high"
+        );
+        assert_eq!(composed("kimi-k3", "medium"), "kimi-k3-low");
+    }
+
+    /// A rung two families spell differently is sent the way the family being launched spells it.
+    #[test]
+    fn a_familys_own_spelling_wins_over_tendrils() {
+        // GPT-5.5 calls its fourth rung `extra-high`; every other GPT family calls it `xhigh`.
+        assert_eq!(composed("gpt-5.5", "xhigh"), "gpt-5.5-extra-high");
+        assert_eq!(composed("gpt-5.5", "max"), "gpt-5.5-extra-high");
+        assert_eq!(composed("gpt-5.4", "xhigh"), "gpt-5.4-xhigh");
+        // ...and a level below the family's floor takes the floor.
+        assert_eq!(composed("gpt-5.3-codex", "medium"), "gpt-5.3-codex-low");
+        assert_eq!(composed("claude-opus-5", "none"), "claude-opus-5-low");
+    }
+
+    /// No effort means no opinion, and the bare id is a model Cursor accepts -- it applies the
+    /// family's own default rung. Tendril picking one for it would be inventing a preference.
+    #[test]
+    fn no_effort_sends_the_bare_model_id() {
+        for effort in [None, Some(""), Some("default"), Some("Default")] {
+            assert_eq!(
+                format_cursor_model(Some("claude-opus-5"), effort),
+                "claude-opus-5",
+                "{effort:?} should leave the id bare"
+            );
+        }
+        // A model with no ladder of its own is bare-only, at every level.
+        assert_eq!(composed("gemini-3.1-pro", "high"), "gemini-3.1-pro");
+        assert_eq!(composed("gpt-5-mini", "max"), "gpt-5-mini");
+    }
+
+    /// No model means no `--model` at all, which is Cursor's "use whatever is configured".
+    #[test]
+    fn no_model_composes_nothing() {
+        for model in [None, Some(""), Some("  "), Some("default")] {
+            assert_eq!(
+                format_cursor_model(model, Some("high")),
+                "",
+                "{model:?} should send no model"
+            );
+        }
+    }
+
+    /// A user who types a composed id into the model box means it. Re-composing would produce
+    /// `claude-opus-5-high-medium`, which is not a model.
+    #[test]
+    fn an_already_composed_id_passes_through() {
+        assert_eq!(
+            composed("claude-opus-5-thinking-max", "low"),
+            "claude-opus-5-thinking-max"
+        );
+        assert_eq!(composed("gpt-5.5-extra-high", "low"), "gpt-5.5-extra-high");
+        // `-fast` is Cursor's priority-routing suffix, and it is always last.
+        assert_eq!(
+            composed("gpt-5.6-terra-high-fast", "low"),
+            "gpt-5.6-terra-high-fast"
+        );
+        assert_eq!(composed("composer-2.5-fast", "max"), "composer-2.5-fast");
+    }
+
+    /// The tool names `--allowed-tools` validates against are Cursor's own, not Tendril's.
+    #[test]
+    fn canonical_tool_names_become_cursors() {
+        assert_eq!(translate_cursor_tool("read"), "read_tool_call");
+        assert_eq!(translate_cursor_tool("write"), "edit_tool_call");
+        assert_eq!(translate_cursor_tool("edit"), "edit_tool_call");
+        assert_eq!(translate_cursor_tool("bash"), "shell_tool_call");
+        // A scoped permission is a name with a qualifier, and the qualifier is not part of it.
+        assert_eq!(translate_cursor_tool("Write(/tmp/**)"), "edit_tool_call");
+        // Something already in Cursor's vocabulary is left alone.
+        assert_eq!(translate_cursor_tool("mcp_tool_call"), "mcp_tool_call");
     }
 }

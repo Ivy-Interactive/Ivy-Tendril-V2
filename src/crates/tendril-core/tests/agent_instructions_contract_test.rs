@@ -152,6 +152,42 @@ fn cli_commands_dir() -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
+/// Every `.rs` file under `dir`, at any depth, concatenated.
+///
+/// Recursive because a command module is not necessarily one file. `plan.rs` and `project.rs` are
+/// each now a small facade over a `plan/` / `project/` directory, and a flag declared in
+/// `plan/recommendations.rs` is every bit as declared as one that used to sit in `plan.rs`. A
+/// non-recursive read reported twenty-two perfectly good flags as missing the moment that split
+/// landed -- a test failing on where the code lives rather than on what it says.
+fn rs_sources_under(dir: &Path) -> String {
+    let mut out = String::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return out;
+    };
+    let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort();
+    for path in paths {
+        if path.is_dir() {
+            out.push_str(&rs_sources_under(&path));
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push_str(&std::fs::read_to_string(&path).expect("readable module"));
+        }
+    }
+    out
+}
+
+/// The full text of a command module: `<module>.rs` plus, when the module has been split, every
+/// file in the `<module>/` directory beside it.
+fn module_source(dir: &Path, module: &str) -> String {
+    let mut source = std::fs::read_to_string(dir.join(format!("{module}.rs"))).unwrap_or_default();
+    source.push_str(&rs_sources_under(&dir.join(module)));
+    assert!(
+        !source.is_empty(),
+        "cannot read any source for command module {module}"
+    );
+    source
+}
+
 /// The command module a documented path belongs to. Root commands live in their own modules or, for
 /// the ones declared inline in `main.rs`, nowhere this test can see — those return `None` and are
 /// skipped rather than guessed at.
@@ -203,8 +239,7 @@ fn every_long_flag_the_instructions_document_is_declared_by_its_command_module()
         let Some(module) = module_for(&invocation.path) else {
             continue;
         };
-        let source = std::fs::read_to_string(dir.join(format!("{module}.rs")))
-            .unwrap_or_else(|e| panic!("cannot read {module}.rs: {e}"));
+        let source = module_source(&dir, module);
 
         for flag in &invocation.flags {
             if GLOBAL.contains(&flag.as_str()) {
@@ -244,13 +279,7 @@ fn no_long_flag_the_instructions_document_is_unknown_to_the_cli() {
         return;
     };
 
-    let mut all_sources = String::new();
-    for entry in std::fs::read_dir(&dir).expect("commands dir is readable") {
-        let path = entry.expect("readable dir entry").path();
-        if path.extension().is_some_and(|e| e == "rs") {
-            all_sources.push_str(&std::fs::read_to_string(&path).expect("readable module"));
-        }
-    }
+    let mut all_sources = rs_sources_under(&dir);
     // The root command's own options (`--home`, `--rebuild-search-index`, `--refresh`, `--tls-cert`)
     // are declared inline in `main.rs`, not in a command module.
     if let Some(main_rs) = dir.parent().map(|p| p.join("main.rs")) {

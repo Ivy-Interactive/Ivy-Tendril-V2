@@ -265,6 +265,79 @@ fn opencode_renders_neither_tools_nor_directories() {
     assert_opencode_mcp_env(&spec);
 }
 
+/// The provider with no effort flag at all. Everything else on this page renders the level as its
+/// own argument; Cursor has to fold it into the model, so the one field most likely to be silently
+/// dropped is the one that does not appear in the argument list under its own name.
+#[test]
+fn cursor_folds_the_effort_into_the_model_id() {
+    let spec = build_agent_spec("cursor", &full_config());
+
+    assert!(
+        spec.command.contains("cursor-agent"),
+        "cursor should launch cursor-agent, got {}",
+        spec.command
+    );
+
+    assert_eq!(
+        spec.args,
+        s(&[
+            "--print",
+            "--output-format",
+            "stream-json",
+            // Without `--trust`, a `--print` run stops to ask about the workspace and emits nothing.
+            "--trust",
+            "--force",
+            // `opus` at `max`: the alias is not one of Cursor's families, so it carries no ladder
+            // and stays bare rather than becoming a model id that does not exist.
+            "--model",
+            "opus",
+            "--allowed-tools",
+            "read_tool_call,edit_tool_call",
+            "--exclude-tools",
+            "shell_tool_call",
+            "--add-dir",
+            "/home/.tendril",
+            "--add-dir",
+            "/plans/00553",
+            "--add-dir",
+            "/plans/00553/Artifacts",
+            "--flag",
+        ])
+    );
+
+    // There is no `--effort` to find, on any model.
+    assert!(!spec.args.iter().any(|a| a == "--effort"));
+
+    // A real Cursor family does carry its ladder, and `max` is above plain Opus 5's top rung.
+    let composed = |model: &str, effort: &str| {
+        build_agent_spec(
+            "cursor",
+            &AgentLaunchConfig {
+                model: Some(model.to_string()),
+                effort: Some(effort.to_string()),
+                ..full_config()
+            },
+        )
+        .args
+        .join(" ")
+    };
+    assert!(composed("claude-opus-5", "max").contains("--model claude-opus-5-high"));
+    assert!(
+        composed("claude-opus-5-thinking", "max").contains("--model claude-opus-5-thinking-max")
+    );
+    assert!(composed("gpt-5.6-terra", "low").contains("--model gpt-5.6-terra-low"));
+
+    // The prompt goes down stdin, and the system prompt with it -- `--system-prompt` parses locally
+    // and is then rejected by the server, so there is nothing to render it as.
+    assert_eq!(spec.stdin_content.as_deref(), Some("Do the thing."));
+    assert!(spec.redirect_stdin);
+
+    // MCP is not rendered at all: Cursor reads servers only from `.cursor/mcp.json`, and writing
+    // that would clobber the user's own file. A `--mcp-config` here would be a flag Cursor rejects.
+    assert!(!spec.args.iter().any(|a| a == "--mcp-config"));
+    assert!(spec.temp_files.is_empty());
+}
+
 #[test]
 fn copilot_merges_explicit_and_extracted_directories() {
     let spec = build_agent_spec("copilot", &full_config());
@@ -691,6 +764,33 @@ fn test_interactive_pty_specs_match_v1() {
     assert!(gemini.contains(&"--yolo".to_string()));
     assert!(gemini.contains(&"--skip-trust".to_string()));
     assert!(gemini.windows(2).any(|w| w == ["-i", "fix the queue"]));
+
+    // `CursorPty`: `--trust` is as necessary interactively as it is in `--print`, but `--force` is
+    // not -- an interactive user is there to approve. And no `--print`/`--output-format`, which
+    // would turn the pane into a log.
+    let cursor = with_prompt("cursor");
+    // The binary resolves to an absolute path when one is installed, the same way OpenCode's does.
+    assert!(cursor[0].ends_with("cursor-agent"), "got {}", cursor[0]);
+    assert_eq!(cursor[1], "--trust");
+    assert!(!cursor.contains(&"--print".to_string()));
+    assert!(!cursor.contains(&"--force".to_string()));
+    assert_eq!(cursor.last().map(String::as_str), Some("fix the queue"));
+    // `default` is not a model here either.
+    assert!(!cursor.contains(&"--model".to_string()));
+
+    // A real model is composed the same way the one-shot path composes it, minus an effort the
+    // interactive config has no field for.
+    let cursor_model = build_agent_pty_spec(
+        "cursor",
+        &AgentPtyConfig {
+            model: Some("claude-opus-5".to_string()),
+            ..Default::default()
+        },
+    )
+    .argv;
+    assert!(cursor_model
+        .windows(2)
+        .any(|w| w == ["--model", "claude-opus-5"]));
 
     // A real model reaches the command line, normalised the way the one-shot path normalises it.
     let claude_opus = build_agent_pty_spec(

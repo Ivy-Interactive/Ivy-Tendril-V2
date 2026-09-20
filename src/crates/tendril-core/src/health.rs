@@ -251,6 +251,12 @@ const AGENT_PREREQUISITES: &[AgentPrerequisite] = &[
         install_url: "https://github.com/github/copilot-cli",
     },
     AgentPrerequisite {
+        label: "Cursor",
+        command: "cursor-agent",
+        version_arg: "--version",
+        install_url: "https://cursor.com/cli",
+    },
+    AgentPrerequisite {
         label: "Antigravity",
         command: "agy",
         version_arg: "--version",

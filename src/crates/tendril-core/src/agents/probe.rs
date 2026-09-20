@@ -29,8 +29,8 @@ use tokio::process::Command;
 
 use crate::agents::provider_models::{test_model_prompt, ModelValidation, ModelValidationStatus};
 use crate::agents::providers::{
-    apple_base_url, resolve_copilot_binary, resolve_opencode_binary, APPLE_MODEL_ID,
-    APPLE_WIRE_MODEL_ID,
+    apple_base_url, format_cursor_model, resolve_copilot_binary, resolve_cursor_binary,
+    resolve_opencode_binary, APPLE_MODEL_ID, APPLE_WIRE_MODEL_ID,
 };
 use crate::agents::resolution::normalize_agent_name;
 use crate::config::dirs_home;
@@ -361,6 +361,9 @@ fn probe_binary(agent: &str) -> (String, Vec<String>) {
         // `ivy-agent` CLI. There is no separate binary to find.
         agent if is_proxy_agent(agent) => (resolve_opencode_binary(), vec![]),
         "antigravity" | "agy" => ("agy".to_string(), vec![]),
+        // The binary is `cursor-agent`, not `cursor` -- `cursor` is the editor. Resolved through
+        // `providers` so the probe finds the same copy a launch would.
+        "cursor" => (resolve_cursor_binary(), vec![]),
         other => (other.to_string(), vec![]),
     }
 }
@@ -409,6 +412,7 @@ pub async fn check_install(agent: &str) -> AgentInstallStatus {
                 "copilot" => "copilot (or gh) not found on PATH".to_string(),
                 "apple" => "fm not found on PATH (Apple Foundation Models CLI)".to_string(),
                 agent if is_proxy_agent(agent) => "opencode not found".to_string(),
+                "cursor" => "cursor-agent not found on PATH".to_string(),
                 other => format!("{other} not found on PATH"),
             }),
         };
@@ -483,6 +487,7 @@ pub async fn check_auth(agent: &str, creds: &ProbeCredentials) -> AgentAuthResul
         "antigravity" | "agy" => antigravity_auth().await,
         "opencode" => opencode_auth().await,
         "apple" => apple_auth().await,
+        "cursor" => cursor_auth().await,
         other if is_proxy_agent(other) => proxy_auth(creds).await,
         other => AgentAuthResult::failed(
             AuthStatus::Unknown,
@@ -738,6 +743,47 @@ async fn antigravity_auth() -> AgentAuthResult {
     )
 }
 
+/// Cursor ships the check as a subcommand: `cursor-agent status` prints
+/// "✓ Logged in as <email>" and exits 0, and exits non-zero when it is not.
+///
+/// A subcommand rather than a real one-turn prompt (which is what `claude_auth` has to do) because
+/// Cursor answers the question directly and for free, and rather than a credential file because
+/// there is no documented one -- the token lives under `~/.local/share/cursor-agent`, whose layout
+/// is the CLI's own business.
+async fn cursor_auth() -> AgentAuthResult {
+    let binary = resolve_cursor_binary();
+    let out = run_probe(&binary, &argv(&[], &["status"]), Duration::from_secs(15)).await;
+
+    if out.exit_code == 0 {
+        // The account is on stdout, which is worth keeping: one machine can hold several.
+        let account = out
+            .stdout
+            .lines()
+            .find_map(|line| line.rsplit_once("Logged in as "))
+            .map(|(_, account)| account.trim().to_string())
+            .filter(|account| !account.is_empty());
+        return AgentAuthResult::authenticated()
+            .with_method("oauth")
+            .with_provider(account);
+    }
+
+    let combined = out.combined();
+    let lower = combined.to_ascii_lowercase();
+    if lower.contains("not logged in")
+        || lower.contains("auth")
+        || lower.contains("login")
+        || lower.contains("sign in")
+    {
+        return AgentAuthResult::failed(
+            AuthStatus::NotAuthenticated,
+            combined,
+            Some("Run 'cursor-agent login' to authenticate"),
+        );
+    }
+
+    AgentAuthResult::failed(AuthStatus::CheckFailed, combined, None)
+}
+
 /// V1 `OpenCodeHealthCheck.CheckAuthAsync`: the credential file first, then the CLI's own count.
 async fn opencode_auth() -> AgentAuthResult {
     if let Some(path) = opencode_auth_file() {
@@ -868,6 +914,81 @@ async fn apple_auth() -> AgentAuthResult {
 /// model probe reach the same wall and an operator should be told the same thing by both.
 const APPLE_SERVE_HINT: &str = "Start the on-device server with 'fm serve'.";
 
+/// Whether Cursor will serve this model, asked by launching the shortest real run there is.
+///
+/// Cursor validates the id *server-side* and says so unmistakably -- an id the account cannot use
+/// exits 1 with "Cannot use this model: <id>. Available models: …" on stderr -- so a one-word prompt
+/// is a complete answer, and there is no `--list-models`-style check that avoids the round trip
+/// without also missing per-account entitlements.
+///
+/// The id probed is the **composed** one, not the picker's base id: Cursor bakes the effort into the
+/// model id, so `claude-opus-5` and `claude-opus-5-high` are different ids and only one of them may
+/// be accepted. Probing the base id would pass for a launch that is going to fail.
+/// [`format_cursor_model`] with no effort is exactly what a launch with no effort sends.
+async fn cursor_model(model: &str) -> ModelValidation {
+    let binary = resolve_cursor_binary();
+    let mut args = vec![
+        "--print".to_string(),
+        "--output-format".to_string(),
+        "text".to_string(),
+        "--trust".to_string(),
+        "--force".to_string(),
+    ];
+    if let Some(explicit) = explicit_model(model) {
+        let composed = format_cursor_model(Some(explicit), None);
+        if !composed.is_empty() {
+            args.push("--model".to_string());
+            args.push(composed);
+        }
+    }
+    args.push("ping".to_string());
+
+    let out = run_probe(&binary, &args, Duration::from_secs(30)).await;
+
+    if out.exit_code == 0 {
+        return validation(ModelValidationStatus::Ok, model, None);
+    }
+    if out.timed_out() {
+        return validation(ModelValidationStatus::Timeout, model, None);
+    }
+
+    let combined = out.combined();
+    let lower = combined.to_ascii_lowercase();
+
+    // Quota first, as every other arm does: a wall is not a typo in the id.
+    match classify_provider_error(Some(&combined)) {
+        ProviderErrorKind::Quota => {
+            return validation(ModelValidationStatus::RateLimit, model, Some(combined));
+        }
+        ProviderErrorKind::Auth | ProviderErrorKind::None => {}
+    }
+
+    // Cursor's own wording. The `Available models:` list that follows it is several kilobytes long,
+    // so the message is truncated at the sentence that actually says what went wrong.
+    if lower.contains("cannot use this model") {
+        let reason = combined
+            .split(" Available models:")
+            .next()
+            .unwrap_or(&combined)
+            .trim()
+            .to_string();
+        return validation(ModelValidationStatus::InvalidModel, model, Some(reason));
+    }
+
+    if lower.contains("not logged in") || lower.contains("unauthorized") || lower.contains("auth") {
+        return validation(ModelValidationStatus::AuthError, model, Some(combined));
+    }
+
+    validation(
+        ModelValidationStatus::Unknown,
+        model,
+        Some(format!(
+            "exit={}\nstdout: {}\nstderr: {}",
+            out.exit_code, out.stdout, out.stderr
+        )),
+    )
+}
+
 /// Whether `fm serve` will serve this model.
 ///
 /// The id sent is pinned, and deliberately not the one the catalog offers: the catalog and the
@@ -978,6 +1099,7 @@ pub async fn validate_model(agent: &str, model: &str, creds: &ProbeCredentials) 
         "antigravity" | "agy" => antigravity_model(model).await,
         "opencode" => opencode_model(model).await,
         "apple" => apple_model(model).await,
+        "cursor" => cursor_model(model).await,
         other if is_proxy_agent(other) => proxy_model(model, creds).await,
         other => validation(
             ModelValidationStatus::Unknown,

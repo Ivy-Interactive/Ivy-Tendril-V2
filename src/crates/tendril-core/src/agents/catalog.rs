@@ -136,6 +136,22 @@ const COPILOT_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
 const ANTIGRAVITY_EFFORTS: &[&str] = &["low", "medium", "high"];
 const GEMINI_EFFORTS: &[&str] = &["low", "medium", "high"];
 const OPENCODE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+/// Cursor's ladders are declared per *family* rather than per agent, because the level is baked into
+/// the model id and a family only accepts the rungs its own id space spells --
+/// `claude-opus-5-max` is rejected while `claude-opus-5-high` launches. These four cover the
+/// families Cursor offers; `providers::CURSOR_EFFORT_LADDERS` is the same split, and
+/// `format_cursor_model` is what folds a level a family lacks onto the nearest rung it has.
+const CURSOR_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+/// Opus 5 without thinking stops at `high`: the CLI lists no `-xhigh` or `-max` for it.
+const CURSOR_OPUS_5_EFFORTS: &[&str] = &["low", "medium", "high"];
+/// The GPT-5.x families start at `none`, which is Cursor's "no reasoning" rung just as it is Codex's.
+const CURSOR_GPT_EFFORTS: &[&str] = &["none", "low", "medium", "high", "xhigh", "max"];
+/// Gemini's Flash rows and the older GPT rows top out at `high` / `xhigh` respectively.
+const CURSOR_GEMINI_EFFORTS: &[&str] = &["low", "medium", "high"];
+const CURSOR_XHIGH_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
+/// Kimi K3 on Cursor has three rungs and no `medium`; the picker still offers `medium` because
+/// `format_cursor_model` folds it onto `low`, the nearest rung the family actually has.
+const CURSOR_KIMI_EFFORTS: &[&str] = &["low", "high", "max"];
 // ---------------------------------------------------------------------------
 // The provider catalogues — one per V1 `*ModelCatalog.GetStaticModels()`
 // ---------------------------------------------------------------------------
@@ -177,6 +193,11 @@ const OPENCODE_DEFAULT: &str = "moonshotai/Kimi-K3";
 /// reporting prices. Naming it anything else puts a second id in circulation and prices a free
 /// on-device run at the unknown-model fallback of $3.00/$15.00 per million.
 const APPLE_DEFAULT: &str = "apple/system";
+/// Cursor's default. Opus 5 rather than a Cursor-exclusive model for two reasons: it is the
+/// strongest general coding model Cursor serves, and `model_specs` carries a real rate card for it,
+/// so a job launched on the default reports a real cost rather than a dash. `composer-2.5` would be
+/// the house pick, but Tendril has no rates for it -- see `CURSOR_MODELS`.
+const CURSOR_DEFAULT: &str = "claude-opus-5";
 
 /// V1 `ClaudeModelCatalog`. Also the list the proxy serves when pointed at `api.anthropic.com`, and
 /// the first third of `IvyModelCatalog`.
@@ -277,6 +298,92 @@ static OPENCODE_MODELS: &[CatalogModel] = &[
     model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
     model("claude-sonnet-4-6", "Claude Sonnet 4.6", CLAUDE_EFFORTS),
     model("gpt-5.5", "GPT-5.5", OPENCODE_EFFORTS),
+];
+
+/// The Cursor CLI's own catalogue, read off `cursor-agent`'s accepted-model list rather than
+/// transcribed from a docs page: launching with an unknown id prints every id the account may use,
+/// and these are the base families out of that list.
+///
+/// **Base ids, not composed ones.** Cursor has no `--effort` flag -- the reasoning level is part of
+/// the model id (`claude-opus-5-high`) -- so what the picker offers is the family, and
+/// `providers::format_cursor_model` joins the two back together at launch. Declaring the composed
+/// ids instead would put 223 rows in a picker that means 24 models, and each row would need its own
+/// price.
+///
+/// **Families Cursor offers that are deliberately absent**, because `model_specs::find` has no rate
+/// card for them and a catalogue row that cannot be priced silently reports a paid run as costing
+/// nothing: `auto`, `composer-2.5`, `muse-spark-1.3`, `cursor-grok-4.5`, `cursor-grok-4.6`,
+/// `glm-5.2`, `kimi-k2.7-code`, `gpt-5.1`, `gemini-3-flash`, `gemini-3.5-flash` and
+/// `claude-fable-5`. Cursor publishes rates for the first five of those on its own pricing page, so
+/// they can be added the moment `model_specs` carries a row -- inventing one here is what
+/// `every_declared_model_carries_a_pricing_spec` exists to prevent.
+///
+/// `gpt-5.4-nano` is absent for a subtler version of the same reason: it resolves, but only by
+/// substring onto the `gpt-5.4` row, so offering it would bill a nano run at 5.4's rates.
+///
+/// The `-thinking` variants are separate families in Cursor's id space rather than an effort rung,
+/// which is why they are separate rows here. They price onto their non-thinking sibling's card,
+/// which is right: it is the same model with extended thinking turned on.
+static CURSOR_MODELS: &[CatalogModel] = &[
+    model("claude-opus-5", "Claude Opus 5", CURSOR_OPUS_5_EFFORTS),
+    model(
+        "claude-opus-5-thinking",
+        "Claude Opus 5 (Thinking)",
+        CURSOR_EFFORTS,
+    ),
+    model("claude-opus-4-8", "Claude Opus 4.8", CURSOR_EFFORTS),
+    model(
+        "claude-opus-4-8-thinking",
+        "Claude Opus 4.8 (Thinking)",
+        CURSOR_EFFORTS,
+    ),
+    model("claude-opus-4-7", "Claude Opus 4.7", CURSOR_EFFORTS),
+    model(
+        "claude-opus-4-7-thinking",
+        "Claude Opus 4.7 (Thinking)",
+        CURSOR_EFFORTS,
+    ),
+    model("claude-fable-5-1", "Claude Fable 5.1", CURSOR_EFFORTS),
+    model(
+        "claude-fable-5-1-thinking",
+        "Claude Fable 5.1 (Thinking)",
+        CURSOR_EFFORTS,
+    ),
+    model("claude-sonnet-5", "Claude Sonnet 5", CURSOR_EFFORTS),
+    model(
+        "claude-sonnet-5-thinking",
+        "Claude Sonnet 5 (Thinking)",
+        CURSOR_EFFORTS,
+    ),
+    model("gpt-5.6-sol", "GPT-5.6-Sol", CURSOR_GPT_EFFORTS),
+    model("gpt-5.6-terra", "GPT-5.6-Terra", CURSOR_GPT_EFFORTS),
+    model("gpt-5.6-luna", "GPT-5.6-Luna", CURSOR_GPT_EFFORTS),
+    model("gpt-5.5", "GPT-5.5", CURSOR_GPT_EFFORTS),
+    model("gpt-5.4", "GPT-5.4", CURSOR_XHIGH_EFFORTS),
+    model("gpt-5.4-mini", "GPT-5.4 Mini", CURSOR_XHIGH_EFFORTS),
+    model("gpt-5.3-codex", "GPT-5.3 Codex", CURSOR_XHIGH_EFFORTS),
+    model("gpt-5.2", "GPT-5.2", CURSOR_XHIGH_EFFORTS),
+    // Bare-only families: the CLI rejects `gpt-5-mini-high` and `gemini-3.1-pro-high`, so these
+    // carry no ladder of their own and `format_cursor_model` sends the bare id whatever the picker
+    // has selected.
+    model("gpt-5-mini", "GPT-5 Mini", &[]),
+    model(
+        "gemini-3.8-flash",
+        "Gemini 3.8 Flash",
+        CURSOR_GEMINI_EFFORTS,
+    ),
+    model(
+        "gemini-3.7-flash",
+        "Gemini 3.7 Flash",
+        CURSOR_GEMINI_EFFORTS,
+    ),
+    model(
+        "gemini-3.6-flash",
+        "Gemini 3.6 Flash",
+        CURSOR_GEMINI_EFFORTS,
+    ),
+    model("gemini-3.1-pro", "Gemini 3.1 Pro", &[]),
+    model("kimi-k3", "Kimi K3", CURSOR_KIMI_EFFORTS),
 ];
 
 /// Apple's on-device Foundation Models. One row, because `fm serve` answers `GET /v1/models` with
@@ -380,6 +487,16 @@ static AGENTS: &[AgentDef] = &[
         catalogues: &[COPILOT_MODELS],
         default_model: COPILOT_DEFAULT,
         efforts: COPILOT_EFFORTS,
+    },
+    AgentDef {
+        id: "cursor",
+        label: "Cursor",
+        icon: "Cursor",
+        catalogues: &[CURSOR_MODELS],
+        default_model: CURSOR_DEFAULT,
+        // The agent-level ladder, used for `default` and for any row declaring none. Cursor's
+        // widest family ladder, so no row is offered a level the agent itself does not list.
+        efforts: CURSOR_EFFORTS,
     },
     AgentDef {
         id: "gemini",
@@ -642,6 +759,7 @@ static ALL_CATALOGUES: &[&[CatalogModel]] = &[
     GEMINI_MODELS,
     ANTIGRAVITY_MODELS,
     OPENCODE_MODELS,
+    CURSOR_MODELS,
     BERGET_MODELS,
 ];
 
@@ -762,6 +880,7 @@ mod tests {
                 "claude",
                 "codex",
                 "copilot",
+                "cursor",
                 "gemini",
                 "opencode",
                 "openaiproxy",
@@ -784,6 +903,7 @@ mod tests {
                 ("claude".to_string(), "ClaudeCode".to_string()),
                 ("codex".to_string(), "OpenAI".to_string()),
                 ("copilot".to_string(), "Copilot".to_string()),
+                ("cursor".to_string(), "Cursor".to_string()),
                 ("gemini".to_string(), "Gemini".to_string()),
                 ("opencode".to_string(), "OpenCode".to_string()),
                 ("openaiproxy".to_string(), "OpenAI".to_string()),
@@ -806,6 +926,7 @@ mod tests {
                 ("claude".to_string(), "Claude Code".to_string()),
                 ("codex".to_string(), "Codex".to_string()),
                 ("copilot".to_string(), "Copilot".to_string()),
+                ("cursor".to_string(), "Cursor".to_string()),
                 ("gemini".to_string(), "Gemini".to_string()),
                 ("opencode".to_string(), "OpenCode".to_string()),
                 ("openaiproxy".to_string(), "OpenAI Proxy".to_string()),
@@ -830,6 +951,12 @@ mod tests {
                 &["default", "none", "low", "medium", "high", "xhigh"],
             ),
             ("copilot", &["default", "low", "medium", "high", "xhigh"]),
+            // Cursor's ladder is the widest of the Anthropic families it serves; a model whose own
+            // ladder is shorter carries it on its own row.
+            (
+                "cursor",
+                &["default", "low", "medium", "high", "xhigh", "max"],
+            ),
             ("gemini", &[]),
             (
                 "opencode",
@@ -968,6 +1095,7 @@ mod tests {
             ("claude", "claude-opus-5"),
             ("codex", "gpt-5.6-terra"),
             ("copilot", "gpt-5.4"),
+            ("cursor", "claude-opus-5"),
             ("gemini", "gemini-3.8-flash"),
             ("opencode", "moonshotai/Kimi-K3"),
             ("openaiproxy", "gpt-5.6-terra"),
@@ -1088,6 +1216,17 @@ mod tests {
             (
                 "copilot",
                 &[ProviderGroup::OpenAi, ProviderGroup::Anthropic],
+            ),
+            // Cursor resells four vendors' models under its own subscription, and its catalogue
+            // declares Anthropic first.
+            (
+                "cursor",
+                &[
+                    ProviderGroup::Anthropic,
+                    ProviderGroup::OpenAi,
+                    ProviderGroup::Google,
+                    ProviderGroup::Moonshot,
+                ],
             ),
             ("gemini", &[ProviderGroup::Google]),
             // V1 `OpenCodeModelCatalog`: Kimi, Anthropic, one OpenAI row.
@@ -1220,6 +1359,7 @@ mod tests {
             "antigravity",
             "opencode",
             "copilot",
+            "cursor",
         ] {
             let offered = model_ids(&agent(agent_id));
             for tier in crate::agents::resolution::default_profiles(agent_id) {
@@ -1419,6 +1559,29 @@ mod tests {
                 "copilot should send --effort {sent} for {level}"
             );
         }
+
+        // Cursor is the one provider that sends no effort argument at all: the rung is part of the
+        // model id, so the ladder has to show up inside `--model`. `max` is a rung the Thinking
+        // family has and the plain one does not, so it clamps to that family's own top.
+        for (level, sent) in [
+            ("low", "claude-opus-5-low"),
+            ("medium", "claude-opus-5-medium"),
+            ("high", "claude-opus-5-high"),
+            ("xhigh", "claude-opus-5-high"),
+            ("max", "claude-opus-5-high"),
+        ] {
+            let args = arg_for("cursor", "claude-opus-5", level);
+            assert!(
+                args.contains(&format!("--model {sent}")),
+                "cursor should send --model {sent} for {level}, got {args}"
+            );
+            assert!(
+                !args.contains("--effort"),
+                "cursor composes the rung into the model, so it sends no --effort"
+            );
+        }
+        // A family that spells its top rung differently gets that spelling, not Tendril's.
+        assert!(arg_for("cursor", "gpt-5.5", "xhigh").contains("--model gpt-5.5-extra-high"));
 
         // Antigravity has three levels, and only emits them alongside a model.
         for (level, sent) in [("low", "low"), ("medium", "medium"), ("high", "high")] {

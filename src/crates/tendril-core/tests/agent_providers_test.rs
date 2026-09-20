@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tendril_core::agents::{
     agent_command, build_agent_spec, format_opencode_model, translate_claude_tool,
-    translate_copilot_tool, write_mcp_config, AgentLaunchConfig, McpServerConfig,
+    translate_copilot_tool, translate_cursor_tool, write_mcp_config, AgentLaunchConfig,
+    McpServerConfig,
 };
 
 #[test]
@@ -24,6 +25,14 @@ fn test_tool_translation() {
     assert_eq!(translate_copilot_tool("glob"), "glob");
     assert_eq!(translate_copilot_tool("websearch"), "web_fetch");
     assert_eq!(translate_copilot_tool("webfetch"), "web_fetch");
+
+    // Cursor names every tool `<verb>_tool_call`, and `--allowed-tools` rejects anything else.
+    assert_eq!(translate_cursor_tool("read"), "read_tool_call");
+    assert_eq!(translate_cursor_tool("write"), "edit_tool_call");
+    assert_eq!(translate_cursor_tool("edit"), "edit_tool_call");
+    assert_eq!(translate_cursor_tool("bash"), "shell_tool_call");
+    assert_eq!(translate_cursor_tool("grep"), "grep_tool_call");
+    assert_eq!(translate_cursor_tool("glob"), "glob_tool_call");
 }
 
 #[test]
@@ -134,6 +143,7 @@ fn test_all_agent_providers_spec_generation() {
         ("gemini", "gemini", true),
         ("opencode", "opencode", true),
         ("copilot", "copilot", true),
+        ("cursor", "cursor-agent", true),
         // The three proxy flavours are the bundled OpenCode with a different base URL, not a
         // separate `ivy-agent` binary - see `resolve_opencode_binary`.
         ("ivy", "opencode", true),
@@ -234,6 +244,7 @@ fn agent_command_leaves_no_temp_files_behind() {
         "gemini",
         "opencode",
         "copilot",
+        "cursor",
         // The same bundled OpenCode as the row above, but reached through its own spec builder, so
         // a temp file leaked there would be missed by every other id in this list.
         "apple",

@@ -107,6 +107,16 @@ pub fn default_profiles(agent: &str) -> [TierDefault; 3] {
             (Some("gemini-3.8-flash"), Some("medium")),
             (Some("gemini-3.8-flash"), Some("medium")),
         ),
+        // Cursor bakes the effort into the model id, so these three pairs compose into three
+        // different ids rather than three `--effort` values: `claude-opus-5-thinking-max`,
+        // `claude-sonnet-5-high` and `gemini-3.8-flash-low`. Deep picks the Thinking family because
+        // it is the only Opus row on Cursor with a `max` rung at all -- plain `claude-opus-5` stops
+        // at `high`, and `format_cursor_model` would fold `max` down onto it.
+        "cursor" => tiers(
+            (Some("claude-opus-5-thinking"), Some("max")),
+            (Some("claude-sonnet-5"), Some("high")),
+            (Some("gemini-3.8-flash"), Some("low")),
+        ),
         "ivy" => ivy_tiers(),
         // `fm serve` serves one model and takes no effort argument, so every tier is the same run.
         "apple" => tiers((None, None), (None, None), (None, None)),
