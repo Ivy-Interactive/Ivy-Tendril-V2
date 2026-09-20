@@ -471,10 +471,56 @@ fn apple_pins_the_only_model_fm_serve_offers_and_drops_effort() {
         parsed["provider"]["apple"]["models"]["system"]["limit"]["context"],
         serde_json::json!(8192)
     );
-    assert_eq!(
-        parsed["agent"]["apple-fm"]["tools"]["webfetch"],
-        serde_json::json!(false),
-        "the trimmed tool surface is what keeps the system prompt inside the context window"
+    // Every tool off, not a chosen few. Measured against a live `fm serve`: the six-tool list this
+    // started as left 2,740 of the 8,192-token window spent describing tools before the question
+    // was read, and turning the rest off brings that to 512. The model emits no tool calls at all,
+    // so a tool left on buys nothing and costs the conversation its headroom.
+    let tools = parsed["agent"]["apple-fm"]["tools"]
+        .as_object()
+        .expect("apple declares a tool surface");
+    assert!(
+        tools
+            .values()
+            .all(|enabled| enabled == &serde_json::json!(false)),
+        "every tool must be off, found some enabled: {tools:?}"
+    );
+    for required in [
+        "webfetch",
+        "task",
+        "todowrite",
+        "todoread",
+        "patch",
+        "multiedit",
+        "bash",
+        "edit",
+        "write",
+        "read",
+        "grep",
+        "glob",
+        "list",
+    ] {
+        assert_eq!(
+            tools.get(required),
+            Some(&serde_json::json!(false)),
+            "{required} must be named explicitly; OpenCode enables anything left unlisted"
+        );
+    }
+
+    // The prompt is the half of this that tool flags cannot do. Under OpenCode's own prompt the
+    // on-device model answered "are you alive?" with `[WebFetch] Retrieved from opencode.ai: ...`,
+    // inventing a tool transcript for a tool that was already disabled and that the emitted JSON
+    // shows was never called -- a small model given a prompt that is mostly tool-calling protocol
+    // imitates the protocol. Replacing the prompt is what stops it.
+    let prompt = parsed["agent"]["apple-fm"]["prompt"]
+        .as_str()
+        .expect("apple must override OpenCode's system prompt");
+    assert!(
+        prompt.contains("no tools"),
+        "the prompt has to tell the model it has no tools: {prompt}"
+    );
+    assert!(
+        prompt.contains("square brackets"),
+        "the prompt has to name the shape it was hallucinating: {prompt}"
     );
 
     // The Apple stanza shares `OPENCODE_CONFIG_CONTENT` with the MCP servers, because `opencode

@@ -1029,6 +1029,27 @@ pub const APPLE_MODEL_ID: &str = "apple/system";
 /// [`crate::agents::probe`] -- has to use this one.
 pub const APPLE_WIRE_MODEL_ID: &str = "system";
 
+/// The system prompt the on-device agent runs under, replacing OpenCode's own.
+///
+/// Two separate measurements against a live `fm serve` motivate this, both taken with the prompt
+/// "are you alive?".
+///
+/// The first is correctness. With OpenCode's default prompt the model answered
+/// `[WebFetch] Retrieved from opencode.ai: I am a CLI tool for software engineering tasks.` -- a
+/// tool transcript it invented. `webfetch` was already disabled and the emitted JSON contains no
+/// tool part at all, so nothing was called: a 3B on-device model given a prompt that is mostly
+/// tool-calling protocol imitates the protocol instead of answering. Turning more tools off does
+/// not help, because the instructions are what it is copying. Replacing the prompt does: the same
+/// question then answers "I am a foundation model running on-device, not alive."
+///
+/// The second is headroom. The default prompt costs 4,532 input tokens of an 8,192-token window
+/// before the user's question is read. This prompt with the tool surface below costs 512 -- about a
+/// ninth -- which is the difference between a window that fits a conversation and one that does not.
+const APPLE_SYSTEM_PROMPT: &str = "You are a helpful assistant running on-device via Apple \
+Foundation Models. Answer the user directly and concisely in plain prose. You have no tools \
+available. Never write a tool name, never write text in square brackets, and never describe an \
+action you did not take.";
+
 /// Where `fm serve` listens when started with no arguments.
 const APPLE_DEFAULT_BASE_URL: &str = "http://127.0.0.1:1976/v1";
 
@@ -1094,6 +1115,11 @@ fn apple_opencode_config(base_url: &str) -> serde_json::Value {
                 "description": "Apple Foundation Models on-device, with a trimmed tool surface",
                 "mode": "primary",
                 "model": APPLE_MODEL_ID,
+                "prompt": APPLE_SYSTEM_PROMPT,
+                // Every tool OpenCode ships, off. The narrower six-tool list this started as left
+                // 2,740 input tokens of the 8,192-token window spent on tool descriptions; with all
+                // of them off it is 512. The model cannot use them in any case -- it emits no tool
+                // calls -- so every byte describing one is a byte the conversation does not get.
                 "tools": {
                     "webfetch": false,
                     "task": false,
@@ -1101,6 +1127,13 @@ fn apple_opencode_config(base_url: &str) -> serde_json::Value {
                     "todoread": false,
                     "patch": false,
                     "multiedit": false,
+                    "bash": false,
+                    "edit": false,
+                    "write": false,
+                    "read": false,
+                    "grep": false,
+                    "glob": false,
+                    "list": false,
                 },
             }
         },
