@@ -1943,7 +1943,6 @@ async fn drain_queue(ctx: &DispatchContext) {
     }
 }
 
-/// Arms the runner for one job, handing it the slot the dispatcher just took.
 /// Fails a job that a pre-launch check refused, without ever starting its agent.
 ///
 /// Writes through the same fields `report_job_failure` sets, so a refused job looks exactly like
@@ -1956,6 +1955,7 @@ async fn fail_job_before_launch(ctx: &DispatchContext, job: &JobItem, message: &
     persist(&ctx.tendril_home, &ctx.jobs, &failed, Some(&ctx.events)).await;
 }
 
+/// Arms the runner for one job, handing it the slot the dispatcher just took.
 async fn launch(ctx: DispatchContext, job: JobItem, permit: OwnedSemaphorePermit) {
     ensure_handle(&ctx.handles, &job.id).await;
     let handle_state = {

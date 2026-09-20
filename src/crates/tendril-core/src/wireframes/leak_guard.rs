@@ -372,8 +372,13 @@ pub fn changed_files(worktree: &Path, base_branch: Option<&str>) -> Vec<String> 
             "diff",
             "--name-only",
             "--diff-filter=ACMR",
-            "--",
+            // The revision goes *before* the `--`, and only paths after it. Written the other way
+            // round git reads the revision as a pathspec, matches nothing, and exits 0 with empty
+            // output -- so every committed change looks like a clean plan and the guard passes.
+            // `diff_target` is a merge-base SHA or the literal `HEAD`, neither of which can be read
+            // as an option; the trailing `--` is what keeps it from being read as a path.
             &diff_target,
+            "--",
         ],
     ) {
         add_lines(&mut files, &output);
@@ -748,5 +753,92 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let fingerprints = Fingerprints::build(&dir.path().join("Wireframes"));
         assert!(fingerprints.is_empty());
+    }
+
+    /// Runs git in `dir`, failing the test rather than the guard's best-effort `None`.
+    fn git_ok(dir: &Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .output()
+            .expect("git should run");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// The case that matters and the one the other tests miss: a *committed* change.
+    ///
+    /// Every fixture above leaves its file untracked, which `ls-files --others` reports whatever
+    /// the diff call does. A finished plan has committed its work, so a `git diff` that silently
+    /// matches nothing means the guard inspects an empty set and every gate waves the plan
+    /// through. That is what this pins.
+    #[test]
+    fn a_committed_change_is_seen_both_against_a_base_branch_and_against_head() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path();
+
+        git_ok(repo, &["init", "-q", "-b", "main"]);
+        std::fs::write(repo.join("seed.txt"), "seed\n").unwrap();
+        git_ok(repo, &["add", "."]);
+        git_ok(repo, &["commit", "-qm", "seed"]);
+
+        // A commit on a plan branch, exactly as an execution job leaves one.
+        git_ok(repo, &["checkout", "-qb", "plan"]);
+        std::fs::write(repo.join("committed.tsx"), "export const A = () => null;\n").unwrap();
+        git_ok(repo, &["add", "."]);
+        git_ok(repo, &["commit", "-qm", "work"]);
+
+        let against_base = changed_files(repo, Some("main"));
+        assert!(
+            against_base.contains(&"committed.tsx".to_string()),
+            "a file committed on the plan branch must be inspected; got {against_base:?}"
+        );
+
+        // With no base branch the merge base is unavailable and the diff falls back to HEAD, which
+        // must still report a tracked file edited but not yet committed.
+        std::fs::write(repo.join("seed.txt"), "seed\nedited\n").unwrap();
+        let against_head = changed_files(repo, None);
+        assert!(
+            against_head.contains(&"seed.txt".to_string()),
+            "an uncommitted edit to a tracked file must be inspected; got {against_head:?}"
+        );
+    }
+
+    /// The guard's whole claim is that an agent cannot skip it, so the end-to-end path -- a
+    /// committed wireframe paste in a real repo -- is worth pinning too.
+    #[test]
+    fn a_committed_wireframe_paste_is_caught() {
+        let dir = tempfile::tempdir().unwrap();
+        let plan = dir.path().join("00099-Add-Checkout");
+
+        let src = plan.join(FOLDER_NAME).join("checkout").join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("App.tsx"), wireframe_source()).unwrap();
+
+        let worktree = plan.join("Worktrees").join("repo");
+        std::fs::create_dir_all(&worktree).unwrap();
+        git_ok(&worktree, &["init", "-q", "-b", "main"]);
+        std::fs::write(worktree.join("README.md"), "seed\n").unwrap();
+        git_ok(&worktree, &["add", "."]);
+        git_ok(&worktree, &["commit", "-qm", "seed"]);
+
+        // The paste is committed, not left dirty.
+        git_ok(&worktree, &["checkout", "-qb", "plan"]);
+        std::fs::write(worktree.join("Login.tsx"), wireframe_source()).unwrap();
+        git_ok(&worktree, &["add", "."]);
+        git_ok(&worktree, &["commit", "-qm", "paste"]);
+
+        let leaks = scan(&plan, Some("main"));
+        assert!(
+            !leaks.is_empty(),
+            "a committed copy of a wireframe source file must be caught"
+        );
     }
 }
